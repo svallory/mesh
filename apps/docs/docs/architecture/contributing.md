@@ -7,6 +7,24 @@ description: "How to add a page, a decision record or a research document, and h
 
 The site is a [docmd](https://docmd.io) project in `apps/docs`. Pages are Markdown files. You do not need to know docmd to write one.
 
+## Two sections, two rules
+
+**Docs** is for people who will use Mesh. **Architecture** is for contributors: what cannot be understood by looking at a single code file.
+
+**Architecture** documents what exists. If a milestone adds a contract, a pipeline stage or a cross-package rule, its Architecture page is updated in the same pull request.
+
+**Docs** is a **live spec**: pages under Docs are written *before* the implementation, and sometimes before the architecture is settled, to model how using Mesh should feel. This replaces the earlier practice, "the pages under Docs describe only what exists today".
+
+The reason is that writing the page is a test of the design. A page that has to say "the architecture does not say what this command is called" has found a gap; a page that has to contradict two architecture pages has found a contradiction. Neither shows up by reading the architecture.
+
+Two things follow from that rule:
+
+- Every page under Docs opens with the same warning callout, saying it is a live spec of how things **will** be and that Mesh is not released. Copy it verbatim from another Docs page.
+- Where a decision is Proposed or open, the page takes the option the decision record recommends and adds a short `::: callout info "Not decided yet"` linking to the record. Never pick silently.
+- Where nothing is decided at all, design the simplest thing a TypeScript developer would expect and record it in the task report as an invention, with the alternative you rejected. Those are the most valuable output of the work.
+
+The ruling is in the [rulings of 2026-10-04](./decisions/rulings-2026-10-04.md), row "User docs as live spec".
+
 ## Build and preview locally
 
 Use Bun, never npm. The repository is a Bun workspace, so install once at the repository root. The docs site's scripts run from `apps/docs`:

@@ -5,6 +5,10 @@ description: "The tags a Mesh resource file may use today. Provisional."
 
 # Resource file reference
 
+::: callout warning "Live spec, not released"
+This page describes how Mesh **will** work, not how it works today. It is a live spec of the developer experience, written before the code. Mesh is not released: nothing here can be installed or run yet, and any detail may change.
+:::
+
 ::: callout warning "Provisional vocabulary"
 These tags are the current draft of the Mesh resource-file vocabulary. They can change, be renamed or be removed without notice. Nothing reads these files yet except the parser's contract check.
 :::

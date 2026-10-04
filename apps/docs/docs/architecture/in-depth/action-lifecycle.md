@@ -94,7 +94,7 @@ Each phase gets one span through the OpenTelemetry API, which does nothing unles
 
 From `packages/compiler/test/fixtures/post.mx`:
 
-```text
+```mx
 update="publish"
   change=({ post }) => { post.state = "published" }
   validate=({ post }) => post.title.length > 0 message="title required"
@@ -102,7 +102,7 @@ update="publish"
 
 and, in `policies`:
 
-```text
+```mx
 policy action="publish"
   authorize-if=({ post, actor }) => post.authorId === actor.id
 ```

@@ -15,7 +15,7 @@ A resource file is a `.mx` file in MX concise syntax, which is indentation-based
 
 This is the test fixture `post.mx`, quoted exactly (it is the fixture of [vocabulary mapping](../roadmap/vocabulary-mapping.md), section 7):
 
-```text
+```mx
 resource="post" table="posts" domain="blog"
   attributes
     uuid-primary-key="id"

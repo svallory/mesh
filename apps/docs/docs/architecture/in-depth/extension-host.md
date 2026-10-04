@@ -50,7 +50,7 @@ A **contribution point** is a place in the model or the vocabulary that its owne
 
 From M1 until M8, the policy tags `policies`, `policy` and `authorize-if` are in the core contracts, and a resource using them gets a not-implemented build error ([ADR-0018](../decisions/0018-not-implemented-is-a-build-error.md); [roadmap](../roadmap/roadmap.md), M1). In M8 they move into `ext-policies` through the M6 mechanism, and `forbid-if` is added ([roadmap](../roadmap/roadmap.md), M8). In `packages/compiler/test/fixtures/post.mx`, `policies` is a child of `resource`, next to `attributes` and `actions`:
 
-```text
+```mx
 policies
   policy action="publish"
     authorize-if=({ post, actor }) => post.authorId === actor.id
