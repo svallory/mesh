@@ -16,7 +16,13 @@ export interface SourcePosition {
   offset: number;
 }
 
-/** A name or value the author wrote, with where it was written. */
+/**
+ * A name or value the author wrote, with where it was written. One rule for what
+ * `position` points at: the first character of the value as written (for a quoted
+ * string, its opening quote), never the attribute name that holds it. For
+ * `attribute="title"` the name's position is the `"` before `title`; the tag's own
+ * position stays on the element that owns the `Spanned`.
+ */
 export interface Spanned<T> {
   value: T;
   position: SourcePosition;

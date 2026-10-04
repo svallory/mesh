@@ -5,6 +5,8 @@ import {
   isProjectRelativePath,
   type Attribute,
   type ModelDocument,
+  type SourcePosition,
+  type Spanned,
 } from "../src/index.ts";
 import { bareDocument, postDocument, postFile, postSource } from "./sample.ts";
 import { positionOf } from "./source.ts";
@@ -75,7 +77,7 @@ describe("findNonJsonValue", () => {
 
   test("a non-finite default in a model is found at its path", () => {
     const doc = structuredClone(postDocument) as ModelDocument;
-    const views = doc.resources[0]!.attributes.find((a) => a.name === "views")!;
+    const views = doc.resources[0]!.attributes.find((a) => a.name.value === "views")!;
     views.default = { value: Infinity, position: views.position };
     expect(findNonJsonValue(doc)).toBe("$.resources[0].attributes[3].default.value");
   });
@@ -83,7 +85,7 @@ describe("findNonJsonValue", () => {
 
 describe("primary key and timestamps are attributes carrying their facts", () => {
   const attrs = postDocument.resources[0]!.attributes;
-  const by = (name: string): Attribute => attrs.find((a) => a.name === name)!;
+  const by = (name: string): Attribute => attrs.find((a) => a.name.value === name)!;
 
   test("uuid-primary-key (row 15, D4)", () => {
     expect(by("id")).toMatchObject({
@@ -133,25 +135,68 @@ describe("positions in the sample", () => {
     for (const f of seen) expect(isProjectRelativePath(f)).toBe(true);
   });
 
-  test("each author-written name sits at its own text, not at the tag", () => {
+  /** Every `Spanned` in the document: path, value and position. */
+  function spans(value: unknown, path = "$", out: [string, Spanned<unknown>][] = []) {
+    if (Array.isArray(value)) value.forEach((v, i) => spans(v, `${path}[${i}]`, out));
+    else if (value && typeof value === "object") {
+      const o = value as Record<string, unknown>;
+      if ("value" in o && "position" in o) out.push([path, o as unknown as Spanned<unknown>]);
+      else for (const [k, v] of Object.entries(o)) spans(v, `${path}.${k}`, out);
+    }
+    return out;
+  }
+  const written = (v: unknown) => (typeof v === "string" ? JSON.stringify(v) : String(v));
+
+  test("every Spanned points at the first character of its value as written", () => {
+    const all = spans(postDocument);
+    // 3 resource + 11 attribute names + 3 defaults + 2 one-of + 2 defaults items + 4 action names + 3 accept
+    expect(all.length).toBe(28);
+    for (const [path, s] of all) {
+      const text = written(s.value);
+      expect({ path, text: postSource.slice(s.position.offset, s.position.offset + text.length) })
+        .toEqual({ path, text });
+    }
+  });
+
+  test("author-written names are Spanned: resource, table, domain, attributes, actions", () => {
     const r = postDocument.resources[0]!;
-    const text = (p: { offset: number }, len: number) => postSource.slice(p.offset, p.offset + len);
-    const create = r.actions[0]!;
-    if (create.kind === "read") throw new Error("unreachable");
-    expect(create.accept.map((s) => text(s.position, s.value.length + 2))).toEqual([
-      '"title"',
-      '"body"',
-    ]);
-    expect(create.accept[0]!.position.line).toBe(16);
-    expect(create.accept[0]!.position).not.toEqual(create.position);
-    const state = r.attributes.find((a) => a.name === "state")!;
-    if (state.type !== "atom") throw new Error("unreachable");
-    expect(state.constraints!.oneOf.map((s) => text(s.position, s.value.length + 2))).toEqual([
-      '"draft"',
-      '"published"',
-    ]);
-    expect(text(state.default!.position, 15)).toBe('default="draft"');
-    expect(r.defaults!.kinds.map((s) => s.position.line)).toEqual([15, 15]);
+    const paths = spans(r).map(([p]) => p);
+    for (const p of [
+      "$.name",
+      "$.table",
+      "$.domain",
+      "$.attributes[0].name",
+      "$.attributes[9].name",
+      "$.attributes[10].name",
+      "$.actions[0].name",
+      "$.actions[3].name",
+    ]) {
+      expect(paths).toContain(p);
+    }
+  });
+
+  test("a name's position is inside its tag, after the tag's own position", () => {
+    const r = postDocument.resources[0]!;
+    const pairs: [Spanned<string>, { position: SourcePosition }][] = [
+      [r.name, r],
+      ...r.attributes.map((a): [Spanned<string>, { position: SourcePosition }] => [a.name, a]),
+      ...r.actions.map((a): [Spanned<string>, { position: SourcePosition }] => [a.name, a]),
+    ];
+    for (const [name, owner] of pairs) {
+      expect(name.position.offset).toBeGreaterThan(owner.position.offset);
+      expect(name.position.line).toBe(owner.position.line);
+    }
+    const title = r.attributes[1]!;
+    expect(title.position).toMatchObject({ line: 4, column: 4 });
+    expect(title.name.position).toMatchObject({ line: 4, column: 14 });
+  });
+
+  test("a default points at the value, not at the attribute name", () => {
+    const r = postDocument.resources[0]!;
+    const by = (n: string) => r.attributes.find((a) => a.name.value === n)!.default!;
+    expect(postSource.slice(by("views").position.offset, by("views").position.offset + 1)).toBe("0");
+    expect(by("featured").position.column).toBe(postSource.split("\n")[7]!.indexOf("false"));
+    expect(by("state").position.column).toBe(postSource.split("\n")[10]!.lastIndexOf('"draft"'));
   });
 });
 

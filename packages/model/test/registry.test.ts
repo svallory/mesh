@@ -37,7 +37,7 @@ describe("ATTRIBUTE_TYPES", () => {
       float: "number",
       boolean: "boolean",
       uuid: "string",
-      datetime: "string",
+      datetime: "Date",
       atom: "string",
     });
   });

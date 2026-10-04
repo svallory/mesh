@@ -15,10 +15,8 @@ export interface AttributeTypeInfo {
    * The TypeScript type a value of this attribute has in generated code. Free text the
    * emitter pastes into generated files, so keep it a valid type expression.
    *
-   * `datetime` is `string` (an ISO 8601 timestamp), not `Date`: a `default` literal in
-   * the model is a string, and the same generated type must hold across a JSON boundary
-   * (API, client, `model.json`) without a conversion. A data adapter that wants `Date`
-   * (Drizzle's default timestamp mode) converts at its own edge.
+   * `datetime` is `Date`, provisionally: the generated type for `datetime` is decided with
+   * the data-layer contract in M3 (roadmap M3).
    */
   readonly tsType: string;
   /** Whether the `constraints` attribute is accepted for this type. */
@@ -31,7 +29,7 @@ export const ATTRIBUTE_TYPES = Object.freeze([
   Object.freeze({ name: "float", tsType: "number", takesConstraints: false }),
   Object.freeze({ name: "boolean", tsType: "boolean", takesConstraints: false }),
   Object.freeze({ name: "uuid", tsType: "string", takesConstraints: false }),
-  Object.freeze({ name: "datetime", tsType: "string", takesConstraints: false }),
+  Object.freeze({ name: "datetime", tsType: "Date", takesConstraints: false }),
   Object.freeze({ name: "atom", tsType: "string", takesConstraints: true }),
 ] as const satisfies readonly AttributeTypeInfo[]);
 

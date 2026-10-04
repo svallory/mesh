@@ -1,4 +1,4 @@
-import type { ModelDocument } from "../src/index.ts";
+import type { ModelDocument, Spanned } from "../src/index.ts";
 import { positionOf } from "./source.ts";
 
 export const postFile = "resources/post.mx";
@@ -27,17 +27,30 @@ export const postSource = `resource="post" table="posts" domain="blog"
 
 const at = (needle: string, nth = 0) => positionOf(postSource, postFile, needle, nth);
 
+/** A name or value as `Spanned` expects: positioned at its own first character. */
+const sp = <T>(value: T, needle: string, nth = 0): Spanned<T> => ({
+  value,
+  position: at(needle, nth),
+});
+
+/** Same, for a value inside a longer text, such as `default="draft"`: `"draft"` inside it. */
+const within = <T>(value: T, whole: string, inner: string): Spanned<T> => {
+  const p = at(whole);
+  const d = whole.indexOf(inner);
+  return { value, position: { ...p, column: p.column + d, offset: p.offset + d } };
+};
+
 /** What a correct builder produces for `postSource`. */
 export const postDocument: ModelDocument = {
   resources: [
     {
-      name: "post",
-      table: "posts",
-      domain: "blog",
+      name: sp("post", '"post"'),
+      table: sp("posts", '"posts"'),
+      domain: sp("blog", '"blog"'),
       position: at('resource="post"'),
       attributes: [
         {
-          name: "id",
+          name: sp("id", '"id"'),
           source: "uuid-primary-key",
           type: "uuid",
           allowNil: false,
@@ -49,7 +62,7 @@ export const postDocument: ModelDocument = {
           position: at("uuid-primary-key"),
         },
         {
-          name: "title",
+          name: sp("title", '"title"'),
           source: "attribute",
           type: "string",
           allowNil: false,
@@ -61,7 +74,7 @@ export const postDocument: ModelDocument = {
           position: at('attribute="title"'),
         },
         {
-          name: "body",
+          name: sp("body", '"body"'),
           source: "attribute",
           type: "string",
           allowNil: true,
@@ -73,19 +86,19 @@ export const postDocument: ModelDocument = {
           position: at('attribute="body"'),
         },
         {
-          name: "views",
+          name: sp("views", '"views"'),
           source: "attribute",
           type: "integer",
           allowNil: true,
           public: false,
           writable: true,
           primaryKey: false,
-          default: { value: 0, position: at("default=0") },
+          default: within(0, "default=0", "0"),
           constraints: null,
           position: at('attribute="views"'),
         },
         {
-          name: "rating",
+          name: sp("rating", '"rating"'),
           source: "attribute",
           type: "float",
           allowNil: true,
@@ -97,19 +110,19 @@ export const postDocument: ModelDocument = {
           position: at('attribute="rating"'),
         },
         {
-          name: "featured",
+          name: sp("featured", '"featured"'),
           source: "attribute",
           type: "boolean",
           allowNil: true,
           public: false,
           writable: true,
           primaryKey: false,
-          default: { value: false, position: at("default=false") },
+          default: within(false, "default=false", "false"),
           constraints: null,
           position: at('attribute="featured"'),
         },
         {
-          name: "token",
+          name: sp("token", '"token"'),
           source: "attribute",
           type: "uuid",
           allowNil: true,
@@ -121,7 +134,7 @@ export const postDocument: ModelDocument = {
           position: at('attribute="token"'),
         },
         {
-          name: "publishedAt",
+          name: sp("publishedAt", '"publishedAt"'),
           source: "attribute",
           type: "datetime",
           allowNil: true,
@@ -133,24 +146,24 @@ export const postDocument: ModelDocument = {
           position: at('attribute="publishedAt"'),
         },
         {
-          name: "state",
+          name: sp("state", '"state"'),
           source: "attribute",
           type: "atom",
           allowNil: true,
           public: false,
           writable: true,
           primaryKey: false,
-          default: { value: "draft", position: at('default="draft"') },
+          default: within("draft", 'default="draft"', '"draft"'),
           constraints: {
             oneOf: [
-              { value: "draft", position: at('"draft"') },
-              { value: "published", position: at('"published"') },
+              sp("draft", '"draft"'),
+              sp("published", '"published"'),
             ],
           },
           position: at('attribute="state"'),
         },
         {
-          name: "insertedAt",
+          name: sp("insertedAt", '"insertedAt"'),
           source: "create-timestamp",
           type: "datetime",
           allowNil: false,
@@ -162,7 +175,7 @@ export const postDocument: ModelDocument = {
           position: at("create-timestamp"),
         },
         {
-          name: "updatedAt",
+          name: sp("updatedAt", '"updatedAt"'),
           source: "update-timestamp",
           type: "datetime",
           allowNil: false,
@@ -176,29 +189,29 @@ export const postDocument: ModelDocument = {
       ],
       defaults: {
         kinds: [
-          { value: "read", position: at('"read"') },
-          { value: "destroy", position: at('"destroy"') },
+          sp("read", '"read"'),
+          sp("destroy", '"destroy"'),
         ],
         position: at("defaults="),
       },
       actions: [
         {
           kind: "create",
-          name: "create",
+          name: sp("create", '"create"'),
           accept: [
-            { value: "title", position: at('"title"', 1) },
-            { value: "body", position: at('"body"', 1) },
+            sp("title", '"title"', 1),
+            sp("body", '"body"', 1),
           ],
           position: at('create="create"'),
         },
         {
           kind: "update",
-          name: "publish",
-          accept: [{ value: "state", position: at('"state"', 1) }],
+          name: sp("publish", '"publish"'),
+          accept: [sp("state", '"state"', 1)],
           position: at('update="publish"'),
         },
-        { kind: "destroy", name: "archive", accept: [], position: at('destroy="archive"') },
-        { kind: "read", name: "published", position: at('read="published"') },
+        { kind: "destroy", name: sp("archive", '"archive"'), accept: [], position: at('destroy="archive"') },
+        { kind: "read", name: sp("published", '"published"', 1), position: at('read="published"') },
       ],
     },
   ],
@@ -208,7 +221,7 @@ export const postDocument: ModelDocument = {
 export const bareDocument: ModelDocument = {
   resources: [
     {
-      name: "tag",
+      name: { value: "tag", position: { file: "resources/tag.mx", line: 1, column: 10, offset: 10 } },
       table: null,
       domain: null,
       position: { file: "resources/tag.mx", line: 1, column: 0, offset: 0 },

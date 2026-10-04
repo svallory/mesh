@@ -13,7 +13,7 @@ import type {
 const position: SourcePosition = { file: "a.mx", line: 1, column: 0, offset: 0 };
 
 const attribute: Attribute = {
-  name: "title",
+  name: { value: "title", position },
   source: "attribute",
   type: "string",
   allowNil: false,
@@ -50,11 +50,15 @@ const innerNull: Attribute = { ...attribute, type: "atom", constraints: { oneOf:
 
 // a name the author wrote carries its position
 // @ts-expect-error
-const bareAccept: Action = { kind: "create", name: "c", accept: ["title"], position };
+const bareAccept: Action = { kind: "create", name: { value: "c", position }, accept: ["title"], position };
+
+// a name the author wrote carries its position too
+// @ts-expect-error
+const bareName: Attribute = { ...attribute, name: "title" };
 
 // read has no accept
 // @ts-expect-error
-const readAccept: Action = { kind: "read", name: "r", accept: [], position };
+const readAccept: Action = { kind: "read", name: { value: "r", position }, accept: [], position };
 
 // a required field cannot be omitted
 // @ts-expect-error
@@ -62,6 +66,9 @@ const noPosition: Attribute = { ...attribute, position: undefined };
 
 // @ts-expect-error
 const undefinedTable: Pick<Resource, "table"> = { table: undefined };
+
+// @ts-expect-error
+const bareTable: Pick<Resource, "table"> = { table: "posts" };
 
 // @ts-expect-error
 const badKind: ActionKind = "upsert";
@@ -83,9 +90,11 @@ export type Unused = [
   typeof constrainedString,
   typeof innerNull,
   typeof bareAccept,
+  typeof bareName,
   typeof readAccept,
   typeof noPosition,
   typeof undefinedTable,
+  typeof bareTable,
   typeof badKind,
   typeof fnPosition,
   typeof badSeverity,
