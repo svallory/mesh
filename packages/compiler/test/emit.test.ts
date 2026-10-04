@@ -21,7 +21,7 @@ afterEach(async () => {
 });
 
 async function directory(prefix = "mesh-emit-"): Promise<string> {
-  const root = await mkdtemp(resolve(tmpdir(), prefix));
+  const root = await mkdtemp(resolve(import.meta.dir, "../", prefix));
   roots.push(root);
   return root;
 }
@@ -86,7 +86,7 @@ const typesFile = (files: readonly GeneratedFile[]) => {
 function typeCheck(cwd: string, files: string[]): { code: number; output: string } {
   const proc = Bun.spawnSync(
     [
-      tsc, "--noEmit", "--strict", "--noUncheckedIndexedAccess", "--target", "es2022",
+      tsc, "--ignoreConfig", "--noEmit", "--strict", "--noUncheckedIndexedAccess", "--target", "es2022",
       "--module", "esnext", "--moduleResolution", "bundler", "--skipLibCheck",
       ...files.map((file) => resolve(cwd, file)),
     ],
@@ -114,7 +114,7 @@ test("M1 test 1: the reduced post emits the expected types file and it type-chec
   const document = documentOf([post()]);
   const root = await project();
   const files = await generateFiles({ document, config: configOf(root) });
-  expect(files.map((file) => file.path)).toEqual(["generated/blog/post.types.ts", "generated/model.json"]);
+  expect(files.map((file) => file.path)).toEqual(["generated/blog/post.types.ts", "generated/blog/post.validators.ts", "generated/model.json"]);
 
   const types = typesFile(files);
   expect(types.contents).toBe(await readFile(expected("reduced-post.types.ts"), "utf8"));
@@ -152,8 +152,10 @@ test("M1 test 2: the order of the resource files does not change the emitted fil
   const backwards = await generateFiles({ document: documentOf([tag(), post()]), config });
   expect(forwards.map((file) => file.path)).toEqual([
     "generated/blog/post.types.ts",
+    "generated/blog/post.validators.ts",
     "generated/model.json",
     "generated/tag.types.ts",
+    "generated/tag.validators.ts",
   ]);
   expect(backwards).toEqual(forwards);
 });
@@ -175,9 +177,9 @@ test("the domain sets the output folder and the configured output folder holds t
   const document = documentOf([tag()]);
   const root = await project();
   const plain = await generateFiles({ document, config: configOf(root) });
-  expect(plain.map((file) => file.path)).toEqual(["generated/model.json", "generated/tag.types.ts"]);
+  expect(plain.map((file) => file.path)).toEqual(["generated/model.json", "generated/tag.types.ts", "generated/tag.validators.ts"]);
   const nested = await generateFiles({ document, config: configOf(root, "src/generated") });
-  expect(nested.map((file) => file.path)).toEqual(["src/generated/model.json", "src/generated/tag.types.ts"]);
+  expect(nested.map((file) => file.path)).toEqual(["src/generated/model.json", "src/generated/tag.types.ts", "src/generated/tag.validators.ts"]);
   expect(typesFile(await generateFiles({ document: documentOf([post()]), config: configOf(root) })).path).toBe(
     "generated/blog/post.types.ts",
   );
@@ -203,9 +205,9 @@ test("a create input is required only for an accepted attribute that allows no n
   // `views` and `rating` have defaults, so the runtime can supply either; only the
   // two that can arrive neither, `title` and `due`, are required.
   expect(contents).toContain(
-    "export type CreateNoteInput = {\n  title: string;\n  body?: string | null;\n  views?: number | null;\n  rating?: number;\n  due: Date;\n};",
+    "export type CreateNoteInput = {\n  title: string;\n  body?: string | null | undefined;\n  views?: number | null | undefined;\n  rating?: number | undefined;\n  due: Date;\n};",
   );
-  expect(contents).toContain("export type EditNoteInput = {\n  id: string;\n  title?: string;\n  body?: string | null;\n};");
+  expect(contents).toContain("export type EditNoteInput = {\n  id: string;\n  title?: string | undefined;\n  body?: string | null | undefined;\n};");
   expect(contents).toContain("export type RemoveNoteInput = {\n  id: string;\n};");
   expect(contents).not.toContain("PublishedNoteInput");
 });
@@ -213,7 +215,7 @@ test("a create input is required only for an accepted attribute that allows no n
 test("an atom with one_of is the union of its allowed values, nullable when it allows nil", async () => {
   const contents = typesFile(await generateFiles({ document: documentOf([post()]), config: configOf("/project") })).contents;
   expect(contents).toContain('state: "draft" | "published" | null;');
-  expect(contents).toContain('export type PublishPostInput = {\n  id: string;\n  state?: "draft" | "published" | null;\n};');
+  expect(contents).toContain('export type PublishPostInput = {\n  id: string;\n  state?: "draft" | "published" | null | undefined;\n};');
   const strict = [
     'resource="stateful"',
     "  attributes",
@@ -256,10 +258,10 @@ test("atom values that need escaping are written as string literals, not as code
   ]);
   const contents = typesFile(await generateFiles({ document, config: configOf("/project") })).contents;
   // Every value survives as a literal: the input's union has one member per value
-  // plus `| null`, and the awkward characters are escaped rather than written raw.
+  // plus `| null | undefined`, and the awkward characters are escaped rather than written raw.
   const start = contents.indexOf("export type CreateOddInput");
   const block = contents.slice(start, contents.indexOf("};", start));
-  expect(block.split("|")).toHaveLength(values.length + 2);
+  expect(block.split("|")).toHaveLength(values.length + 3);
   expect(block).toContain('"nul\\u0000byte"');
   expect(block).toContain('"lone \\ud800"');
   // A Unicode line separator stays as itself inside the literal, which TypeScript
@@ -291,7 +293,7 @@ test("the key and the timestamps are in the record type and never in an input", 
   const contents = typesFile(await generateFiles({ document: documentOf([{ file: "note.mx", source }]), config: configOf("/project") })).contents;
   expect(contents).toContain("export type Note = {\n  id: string;\n  insertedAt: Date;\n  updatedAt: Date;\n  title: string;\n};");
   expect(contents).toContain("export type CreateNoteInput = {\n  title: string;\n};");
-  expect(contents).toContain("export type EditNoteInput = {\n  id: string;\n  title?: string;\n};");
+  expect(contents).toContain("export type EditNoteInput = {\n  id: string;\n  title?: string | undefined;\n};");
 });
 
 test("model.json round-trips to the same document and to the same bytes", async () => {
@@ -477,7 +479,7 @@ test("H2: a destroy takes the selector alone when it accepts nothing, and the se
     },
   ]);
   expect(typesFile(await generateFiles({ document: soft, config: configOf("/project") })).contents).toContain(
-    "export type RemovePostInput = {\n  id: string;\n  archived?: boolean | null;\n  reason?: string;\n};",
+    "export type RemovePostInput = {\n  id: string;\n  archived?: boolean | null | undefined;\n  reason?: string | undefined;\n};",
   );
   const softConsumer = [
     'import type { RemovePostInput } from "./generated/post.types";',
@@ -660,7 +662,7 @@ test("M1: a declared action replaces the default action of the same kind", async
 test("a resource with no actions emits only its record type", async () => {
   const document = documentOf([{ file: "resources/tag.mx", source: 'resource="tag"\n  attributes\n    uuid-primary-key="id"\n' }]);
   const files = await generateFiles({ document, config: configOf("/project") });
-  expect(files.map((file) => file.path)).toEqual(["generated/model.json", "generated/tag.types.ts"]);
+  expect(files.map((file) => file.path)).toEqual(["generated/model.json", "generated/tag.types.ts", "generated/tag.validators.ts"]);
   expect(typesFile(files).contents).toBe(
     "// Do not edit this file by hand.\n// It is generated by `mesh build` from resources/tag.mx; change that file and rebuild.\n\nexport type Tag = {\n  id: string;\n};\n",
   );
@@ -807,7 +809,7 @@ test("M6: a property name and a one_of value that read like a generated type nam
   ]);
   const literalFiles = await generateFiles({ document: literal, config: configOf("/project") });
   expect(typesFile(literalFiles).contents).toContain('state: "Post" | "Other" | null;');
-  expect(typesFile(literalFiles).contents).toContain('state?: "Post" | "Other" | null;');
+  expect(typesFile(literalFiles).contents).toContain('state?: "Post" | "Other" | null | undefined;');
   expect(await checkConsumer(literal, ['import type { Post, EditPostInput } from "./generated/post.types";', 'const record: Post = { id: "a-uuid", state: "Other" };', 'const edit: EditPostInput = { id: "a-uuid", state: "Post" };', ""].join("\n"))).toEqual(clean);
 });
 
@@ -824,7 +826,7 @@ test("H2: the selector is the resource's own key attribute, quoted when it is no
   const document = documentOf([{ file: "resources/post.mx", source }]);
   const contents = typesFile(await generateFiles({ document, config: configOf("/project") })).contents;
   expect(contents).toContain('"post-key": string;');
-  expect(contents).toContain("export type EditPostInput = {\n  \"post-key\": string;\n  title?: string;\n};");
+  expect(contents).toContain("export type EditPostInput = {\n  \"post-key\": string;\n  title?: string | undefined;\n};");
   expect(await checkConsumer(document, ['import type { EditPostInput } from "./generated/post.types";', 'const edit: EditPostInput = { "post-key": "a-uuid", title: "new" };', ""].join("\n"))).toEqual(clean);
 });
 
@@ -840,7 +842,7 @@ test("H2: a destroy accepting the key and a timestamp carries them only as the s
     "",
   ].join("\n");
   const contents = typesFile(await generateFiles({ document: documentOf([{ file: "resources/post.mx", source }]), config: configOf("/project") })).contents;
-  expect(contents).toContain("export type RemovePostInput = {\n  id: string;\n  title?: string;\n};");
+  expect(contents).toContain("export type RemovePostInput = {\n  id: string;\n  title?: string | undefined;\n};");
 });
 
 test("L4: a resource may declare several actions of one kind, and each keeps its own input type", async () => {
@@ -860,7 +862,7 @@ test("L4: a resource may declare several actions of one kind, and each keeps its
     },
   ]);
   const contents = typesFile(await generateFiles({ document, config: configOf("/project") })).contents;
-  expect(contents).toContain("export type EditPostInput = {\n  id: string;\n  title?: string;\n};");
+  expect(contents).toContain("export type EditPostInput = {\n  id: string;\n  title?: string | undefined;\n};");
   expect(contents).toContain("export type PublishPostInput = {\n  id: string;\n};");
   expect(contents).not.toContain("UpdatePostInput");
 });
@@ -951,7 +953,9 @@ test("M1 test 2: two projects loaded and built separately emit identical files",
   expect(second).toEqual(first);
   expect(first.map((file) => file.path)).toEqual([
     "generated/blog/post.types.ts",
+    "generated/blog/post.validators.ts",
     "generated/model.json",
     "generated/tag.types.ts",
+    "generated/tag.validators.ts",
   ]);
 });

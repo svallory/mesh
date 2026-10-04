@@ -35,7 +35,7 @@ test("M1 test 4: duplicate resource points at the second name", () => {
 test("M1 test 4: unknown accept points at the missing item", () => {
   const result = build(bare + '  actions\n    create="create" accept=["missing"]\n');
   expect(result.document).toBeNull();
-  check(result.diagnostics[0], 'Unknown attribute "missing" in `accept`', 5, 28);
+  check(result.diagnostics[0], '`accept` names "missing", which is not an attribute of post.', 5, 28);
 });
 test("M1 test 5: full post fixture fails at its first unsupported tag", () => {
   const input = fixture("post.mx");

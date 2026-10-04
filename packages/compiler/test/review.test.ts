@@ -32,7 +32,7 @@ test("M1: MX failure, unsupported Mesh failure and clean resource still run all 
   expect(result.diagnostics.map((d) => d.code)).toEqual(["MX", "MESH_NOT_IMPLEMENTED", "MESH_PRIMARY_KEY", "MESH_UNKNOWN_ACCEPT", "MESH_DUPLICATE_RESOURCE"]);
   exact(result.diagnostics[1], "MESH_NOT_IMPLEMENTED", "Tag `relationships` is not implemented; it will be implemented in M7", mesh, "mesh.mx", "relationships");
   exact(result.diagnostics[2], "MESH_PRIMARY_KEY", "Resource must declare a primary key; declare `uuid-primary-key`", mesh, "mesh.mx", '"post"');
-  exact(result.diagnostics[3], "MESH_UNKNOWN_ACCEPT", 'Unknown attribute "missing" in `accept`', mesh, "mesh.mx", '"missing"');
+  exact(result.diagnostics[3], "MESH_UNKNOWN_ACCEPT", '`accept` names "missing", which is not an attribute of post.', mesh, "mesh.mx", '"missing"');
   exact(result.diagnostics[4], "MESH_DUPLICATE_RESOURCE", 'Duplicate resource name "post"', keyed, "clean.mx", '"post"');
 });
 

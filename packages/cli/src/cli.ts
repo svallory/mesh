@@ -1,6 +1,6 @@
 import { parseArgs } from "node:util";
 import { join } from "node:path";
-import { EmitError, generateFiles, loadConfig, loadProject, stableJsonStringify, writeGeneratedFiles } from "@mesh/compiler";
+import { EmitError, generatedImportDiagnostics, generateFiles, loadConfig, loadProject, stableJsonStringify, writeGeneratedFiles } from "@mesh/compiler";
 import type { Diagnostic } from "@mesh/model";
 import { compareText, diagnostic, printDiagnostics } from "./diagnostics.ts";
 import { checkGeneratedFiles, projectPath } from "./guard.ts";
@@ -59,6 +59,13 @@ export async function runCli(args: string[], root = process.cwd(), io = {
       const built = await loadProject(config);
       diagnostics.push(...built.diagnostics);
       if (built.document && !diagnostics.some((d) => d.severity === "error")) {
+        if (command.kind === "build" && !command.check) {
+          diagnostics.push(...generatedImportDiagnostics(config.root));
+          if (diagnostics.some((d) => d.severity === "error")) {
+            printDiagnostics(diagnostics, io.stderr);
+            return 1;
+          }
+        }
         const files = await generateFiles({ config, document: built.document });
         if (command.kind === "inspect") {
           if (command.resource === undefined) {

@@ -56,10 +56,10 @@ bun add @mesh/runtime @mesh/data-sqlite @mesh/ext-policies
 **Application dependencies required by generated code.** Install these as ordinary dependencies of your application. Generated code imports `zod`, `drizzle-orm` and `@opentelemetry/api` directly, so your project must depend on all three. From M2, `mesh build` checks that these imports resolve from your project:
 
 ```bash
-bun add zod drizzle-orm@0.45.3 @opentelemetry/api
+bun add zod@4.6.5 drizzle-orm@0.45.3 @opentelemetry/api
 ```
 
-- `zod` builds the input validators Mesh generates ([ADR-0028](../architecture/decisions/0028-validation-zod-behind-standard-schema.md)).
+- `zod@4.6.5` builds the input validators Mesh generates ([ADR-0028](../architecture/decisions/0028-validation-zod-behind-standard-schema.md)).
 - `drizzle-orm` is imported by the generated schema and backs the SQL adapters ([ADR-0014](../architecture/decisions/0014-sql-adapters-on-drizzle.md)).
 - `@opentelemetry/api` is what a generated handler calls for tracing; with no SDK installed the calls do nothing ([ADR-0029](../architecture/decisions/0029-tracing-opentelemetry-api.md)).
 

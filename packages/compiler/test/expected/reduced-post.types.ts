@@ -17,12 +17,12 @@ export type Post = {
 
 export type CreatePostInput = {
   title: string;
-  body?: string | null;
+  body?: string | null | undefined;
 };
 
 export type PublishPostInput = {
   id: string;
-  state?: "draft" | "published" | null;
+  state?: "draft" | "published" | null | undefined;
 };
 
 export type ArchivePostInput = {
