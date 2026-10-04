@@ -33,7 +33,7 @@ test('ts fences are byte-for-byte unchanged from docmd highlighting', () => {
 test('highlight failures abort rendering with page, block line and source', () => {
   const md = processor(() => { throw new Error('injected failure'); });
   expect(() => md.render('# Todo\n\n```mx\nresource="todo"\n```', { filePath: 'docs/todo.md' }))
-    .toThrow('FrameworkError: docs/todo.md: mx block could not be located in the source (line 3 relative to the page body;');
+    .toThrow('FrameworkError: docs/todo.md: mx block could not be located in the source (line 3 relative to the page body after frontmatter;');
   try {
     md.render('```mx\nresource="todo"\n```', { filePath: 'todo.md' });
   } catch (error) {
@@ -66,18 +66,22 @@ test('highlight failures report source-file fence lines after docmd strips front
 test('the second identical mx block reports the second source fence', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'mesh-highlight-duplicate-'));
   try {
-    const filePath = join(dir, 'duplicate.md');
-    const block = '```mx\nresource="todo"\n```\n';
-    const source = '---\ntitle: Todo\n---\n\n' + block + '\n'.repeat(8) + block;
-    writeFileSync(filePath, source);
-    let calls = 0;
-    const md = processor((code) => {
-      if (++calls === 2) throw new Error('second block failure');
-      return highlightMx(code);
-    });
-    await expect(processContentAsync(source, md, {}, { filePath }))
-      .rejects.toThrow(`${filePath}:16:1: Failed to highlight mx block`);
-    expect(calls).toBe(2);
+    for (const gap of [1, 8]) {
+      for (const newline of ['\n', '\r\n']) {
+        const filePath = join(dir, 'duplicate.md');
+        const block = '```mx\nresource="todo"\n```\n';
+        const source = ('---\ntitle: Todo\n---\n\n' + block + '\n'.repeat(gap) + block).replace(/\n/g, newline);
+        writeFileSync(filePath, source);
+        let calls = 0;
+        const md = processor((code) => {
+          if (++calls === 2) throw new Error('second block failure');
+          return highlightMx(code);
+        });
+        await expect(processContentAsync(source, md, {}, { filePath }))
+          .rejects.toThrow(`${filePath}:${8 + gap}:1: Failed to highlight mx block`);
+        expect(calls).toBe(2);
+      }
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -90,7 +94,35 @@ test('an unmatched source block fails with an explicitly body-relative diagnosti
     writeFileSync(filePath, '```mx\nresource="different"\n```');
     const md = processor(() => { throw new Error('injected failure'); });
     expect(() => md.render('# Todo\n\n```mx\nresource="todo"\n```', { filePath }))
-      .toThrow(`FrameworkError: ${filePath}: mx block could not be located in the source (line 3 relative to the page body; no matching mx fence with identical block content)`);
+      .toThrow(`FrameworkError: ${filePath}: mx block could not be located in the source (line 3 relative to the page body after frontmatter; no matching mx fence with identical block content)`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a transformed body with duplicate matches reports candidates instead of guessing', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'mesh-highlight-ambiguous-'));
+  try {
+    const filePath = join(dir, 'duplicate.md');
+    const block = '```mx\nresource="todo"\n```\n';
+    writeFileSync(filePath, '---\ntitle: Todo\n---\n\n' + block + '\n' + block);
+    const md = processor(() => { throw new Error('injected failure'); });
+    expect(() => md.render('# Changed body\n\n' + block, { filePath }))
+      .toThrow(`FrameworkError: ${filePath}: mx block could not be located in the source (line 3 relative to the page body after frontmatter; ambiguous matching fences; candidate source lines: 5, 9)`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a transformed body with one source match reports that unique fence', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'mesh-highlight-unique-'));
+  try {
+    const filePath = join(dir, 'unique.md');
+    const block = '```mx\nresource="todo"\n```\n';
+    writeFileSync(filePath, '# Original body\n\n' + block);
+    const md = processor(() => { throw new Error('injected failure'); });
+    expect(() => md.render('# Changed body\n\n' + block, { filePath }))
+      .toThrow(`${filePath}:3:1: Failed to highlight mx block`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

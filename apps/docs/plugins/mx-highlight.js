@@ -33,12 +33,12 @@ export const themeStyles = `<style>
 
 // Recover the fence by its exact content, not a guessed preprocessing offset.
 // Only the error path reads the source; this uses the same APIs on Node and Bun.
-function fenceLocation(token, env) {
+function fenceLocation(token, env, body) {
   const bodyLine = (token.map?.[0] ?? 0) + 1;
   const file = env?.filePath ?? '<markdown>';
   const unavailable = (reason) =>
     `FrameworkError: ${file}: mx block could not be located in the source ` +
-    `(line ${bodyLine} relative to the page body; ${reason})`;
+    `(line ${bodyLine} relative to the page body after frontmatter; ${reason})`;
   if (!env?.filePath) return unavailable('source path unavailable');
   let source;
   try {
@@ -46,9 +46,11 @@ function fenceLocation(token, env) {
   } catch (error) {
     return unavailable(`source could not be read: ${error.message}`);
   }
-  const lines = source.replace(/\r\n/g, '\n').split('\n');
-  const content = token.content.replace(/\r\n/g, '\n');
-  for (let start = bodyLine - 1; start < lines.length; start++) {
+  source = source.replace(/\r\n?/g, '\n');
+  const lines = source.split('\n');
+  const content = token.content.replace(/\r\n?/g, '\n');
+  const candidates = [];
+  for (let start = 0; start < lines.length; start++) {
     const opening = lines[start].match(/^ {0,3}(`{3,}|~{3,})[\t ]*mx(?:[\t ].*)?$/);
     if (!opening) continue;
     const marker = opening[1];
@@ -56,9 +58,21 @@ function fenceLocation(token, env) {
     for (let end = start + 1; end < lines.length; end++) {
       if (!closing.test(lines[end])) continue;
       const rawBlock = lines.slice(start + 1, end).join('\n') + (end > start + 1 ? '\n' : '');
-      if (rawBlock === content) return `${file}:${start + 1}:1`;
+      if (rawBlock === content) candidates.push(start + 1);
       break;
     }
+  }
+  if (typeof body === 'string') {
+    body = body.replace(/\r\n?/g, '\n');
+    if (source.endsWith(body)) {
+      const sourceLine = bodyLine + lines.length - body.split('\n').length;
+      if (candidates.includes(sourceLine)) return `${file}:${sourceLine}:1`;
+      return unavailable('computed source line has no mx fence with identical block content');
+    }
+  }
+  if (candidates.length === 1) return `${file}:${candidates[0]}:1`;
+  if (candidates.length > 1) {
+    return unavailable(`ambiguous matching fences; candidate source lines: ${candidates.join(', ')}`);
   }
   return unavailable('no matching mx fence with identical block content');
 }
@@ -68,6 +82,12 @@ export function installMxHighlight(md, renderMx = highlightMx) {
   // docmd 0.9.7 invokes markdownSetup twice on the same processor.
   if (installed.has(md)) return;
   installed.add(md);
+  // Keep the exact normalized input markdown-it parsed, keyed by render env.
+  // A core rule observes it without modifying the body or the source file.
+  const bodies = new WeakMap();
+  md.core.ruler.push('mesh_mx_source', (state) => {
+    if (!state.inlineMode) bodies.set(state.env, state.src);
+  });
   const previousHighlight = md.options.highlight;
   md.options.highlight = function (source, lang, ...args) {
     return lang === 'mx'
@@ -85,7 +105,7 @@ export function installMxHighlight(md, renderMx = highlightMx) {
     } catch (cause) {
       // Render-time errors escape docmd's isolated setup hooks and abort the build.
       throw new Error(
-        `${fenceLocation(token, env)}: ` +
+        `${fenceLocation(token, env, bodies.get(env))}: ` +
         `Failed to highlight mx block with Shiki's Marko grammar. Check the block and highlighter configuration.\n` +
         `\`\`\`mx\n${token.content}\`\`\``,
         { cause },
