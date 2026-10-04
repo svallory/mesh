@@ -16,7 +16,10 @@ export interface SQLiteLayer extends DataLayer {
    * that never settles holds the queue; close rejects with running/queued counts
    * and leaves the layer open rather than rolling back under a running callback.
    * A failed rollback is fatal: queued and later work rejects until the caller
-   * closes this layer and creates a new one. Other failures release the queue.
+   * closes this layer and creates a new one. close() drops the native handle and
+   * its prepared statements, so a file database's write lock is released once that
+   * handle is finalised (immediately after one Bun.gc(true), or at process exit).
+   * Other failures release the queue.
    */
   transaction<T>(run: (tx: DataOperations) => Promise<T>): Promise<T>;
 }
@@ -134,6 +137,12 @@ export function sqlite(options: SQLiteOptions): SQLiteLayer {
       if (closed) return;
       if (running || queued) throw new FrameworkError(`Cannot close SQLite data layer: ${running} running and ${queued} queued; wait for transactions to settle`);
       connection?.close();
+      // Drop both references. Drizzle holds prepared statements, and a live
+      // statement keeps the native close of a connection with an open
+      // transaction pending, which leaves a file database locked. Releasing
+      // them lets the deferred close finish and the lock go.
+      connection = undefined;
+      db = undefined;
       closed = true;
     },
   };

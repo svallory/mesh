@@ -1,4 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -210,6 +211,44 @@ test.each(["memory", "file"])("ROLLBACK failure fails closed for queued and late
     await layer.close();
     await layer.close();
     expect(() => layer.transaction(async () => {})).toThrow("SQLite data layer is closed");
+  } finally { await layer.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("closing a fatally failed layer releases the write lock for a new layer on the same file", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "mesh-unlock-"));
+  const file = join(dir, "unlocked.db");
+  const layer = sqlite({ file });
+  try {
+    await createSchema(layer, { table });
+    const db = await sqliteState(layer).exclusive(async (db) => db);
+    const original = db.run.bind(db);
+    let sent = false;
+    const spy = spyOn(db, "run").mockImplementation((statement) => {
+      const text = new SQLiteSyncDialect().sqlToQuery(typeof statement === "string" ? sql.raw(statement) : statement.getSQL()).sql;
+      if (text === "ROLLBACK" && !sent) { sent = true; throw new Error("swallowed rollback"); }
+      return original(statement);
+    });
+    try {
+      await expect(layer.transaction(async (tx) => { await tx.insert(table, sampleRow); throw new Error("callback failure"); }))
+        .rejects.toThrow("Transaction failed and ROLLBACK failed");
+    }
+    finally { spy.mockRestore(); db.run = original; }
+    // The transaction never rolled back, so the write lock is still held.
+    const blocked = sqlite({ file });
+    await expect(blocked.transaction(async () => {})).rejects.toThrow("another connection holds the write lock");
+    await blocked.close();
+    // close() drops the native handle and the Drizzle references that keep its
+    // prepared statements alive; the deferred close then completes. One explicit
+    // full collection makes that finalisation deterministic instead of waiting
+    // for an arbitrary garbage-collection cycle.
+    await layer.close();
+    Bun.gc(true);
+    const probe = new Database(file);
+    try { probe.run("BEGIN IMMEDIATE"); probe.run("ROLLBACK"); }
+    finally { probe.close(); }
+    const next = sqlite({ file });
+    try { await next.transaction(async (tx) => expect(await tx.selectAll(table)).toEqual([])); }
+    finally { await next.close(); }
   } finally { await layer.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 
