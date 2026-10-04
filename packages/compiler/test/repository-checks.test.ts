@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { ACTION_TYPES, ATTRIBUTE_TYPES } from "@mesh/model";
 import { buildModel, loadConfig, loadProject } from "../src/index.ts";
 import { parse } from "./helpers.ts";
-import { checkDocsSamples, checkMxImports, mxImports } from "./repository-checks.ts";
+import { checkDocsSamples, checkMxImports } from "./repository-checks.ts";
 
 const root = new URL("../../../", import.meta.url).pathname;
 function temporary(run: (dir: string) => void) {
@@ -43,35 +43,96 @@ test("M1 test 8: only tag-contract packages import MX across the workspace", () 
   expect(checkMxImports(root)).toEqual([]);
 });
 
-test("M1 test 8: planted violations fail in every import form and workspace location", () => {
-  const forms = [
-    'import x from "@mxlang/data";', 'import "@mxlang";',
-    'import type { X } from "@mxlang/core";', 'export * from "@mxlang/data";',
-    'export type { X } from "@mxlang/core";', 'const x = import("@mxlang/data");',
-    'const x = require("@mxlang/data");', 'type X = import("@mxlang/core").X;',
-    'import x = require("@mxlang/core");', 'const x = import(`@mxlang/data`);',
-  ];
+function workspace(run: (dir: string, put: (path: string, text: string) => void) => void) {
   temporary((dir) => {
     for (const group of ["packages", "apps", "examples"]) mkdirSync(join(dir, group));
-    for (const location of ["packages/model/src", "packages/model/test", "apps/demo/src", "examples/demo/generated"]) {
-      mkdirSync(join(dir, location), { recursive: true });
-      forms.forEach((form, i) => writeFileSync(join(dir, location, `${i}.ts`), form));
-    }
-    expect(checkMxImports(dir)).toHaveLength(forms.length * 4);
-    expect(checkMxImports(dir)[0]).toContain("ADR-0043");
-    for (const location of ["packages/compiler/src", "apps/docs/docs", "apps/demo/dist", "examples/demo/node_modules"]) {
-      mkdirSync(join(dir, location), { recursive: true });
-      writeFileSync(join(dir, location, "allowed.ts"), forms[0]!);
-    }
-    expect(checkMxImports(dir)).toHaveLength(forms.length * 4);
+    run(dir, (path, text) => {
+      const file = join(dir, path);
+      mkdirSync(join(file, ".."), { recursive: true });
+      writeFileSync(file, text);
+    });
+  });
+}
+
+test.each([
+  ['TS const wrapper', 'const a = import("@mxlang/data" as const);'],
+  ['TS assertion wrapper', 'const a = import("@mxlang/data" as string);'],
+  ['interpolated template', 'const b = import(`@mxlang/${"data"}`);'],
+  ['variable template suffix', 'const b = import(`@mxlang/${name}`);'],
+  ['optional require', 'const c = require?.("@mxlang/core");'],
+])("M1 test 8: text rule rejects reviewer bypass %s", (_name, source) => {
+  workspace((dir, put) => {
+    put("apps/docs/review-bypass.ts", source!);
+    expect(checkMxImports(dir)).toHaveLength(1);
+    expect(checkMxImports(dir)[0]).toStartWith("apps/docs/review-bypass.ts:1:");
   });
 });
 
-test("M1 test 8: comments, strings and similarly named modules are not imports", () => {
-  expect(mxImports('// import "@mxlang/data";\nconst text = \'require("@mxlang/core")\';\nimport "@mxlanguage/data";\nimport "@mxlang-extra";', "test.ts")).toEqual([]);
-  expect(mxImports('const x = import(`@mxlang/${name}`);', "test.ts")).toEqual([]);
-  expect(mxImports('const x = import(`@mxlang/data`);', "test.ts")).toEqual([{ specifier: "@mxlang/data", line: 1 }]);
+test("M1 test 8: real source directories named like output and all selected extensions are scanned", () => {
+  workspace((dir, put) => {
+    const locations = ["apps/docs/src/build", "packages/model/src/build", "packages/model/test/site",
+      "apps/demo/src/dist", "examples/demo/src/coverage", "packages/build", "apps/site", "examples/dist"];
+    const extensions = ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs", "json"];
+    for (const location of locations) for (const extension of extensions) put(`${location}/bad.${extension}`, '"@mxlang/data"');
+    // Group-root files and package files outside src/test are included too.
+    put("packages/root.ts", '"@mxlang"');
+    put("packages/model/scripts/check.ts", '"@mxlang"');
+    expect(checkMxImports(dir)).toHaveLength(locations.length * extensions.length + 2);
+  });
 });
+
+test("M1 test 8: only exact dependency, docs output/content and lock paths are excluded", () => {
+  workspace((dir, put) => {
+    for (const path of ["packages/model/node_modules/bad.ts", "apps/docs/site/bad.ts", "apps/docs/docs/bad.json",
+      "examples/blog/bun.lock", "apps/demo/package-lock.json", "apps/demo/bun.lock.json", "examples/blog/yarn.lock"])
+      put(path, '"@mxlang/data"');
+    expect(checkMxImports(dir)).toEqual([]);
+    for (const path of ["apps/docs/site.ts", "apps/docs/docs.ts", "apps/demo/site/bad.ts",
+      "apps/docs/site-other/bad.ts", "packages/model/src/node_modules.ts"])
+      put(path, '"@mxlang/data"');
+    expect(checkMxImports(dir)).toHaveLength(5);
+  });
+});
+
+test("M1 test 8: MX-free angle-bracket assertions and JSX never invoke a parser", () => {
+  workspace((dir, put) => {
+    put("packages/model/src/reviewer-valid.ts", "export const count = <number>1;");
+    put("apps/demo/view.tsx", "export const view = <main />;");
+    put("examples/blog/view.jsx", "export const view = <main />;");
+    expect(checkMxImports(dir)).toEqual([]);
+  });
+});
+
+test("M1 test 8: comments and strings intentionally fail at the first mention's line", () => {
+  workspace((dir, put) => {
+    put("apps/demo/comment.ts", '\n// @mxlang is intentionally forbidden even in a comment\nimport "@mxlang/data";');
+    put("examples/blog/string.js", 'const text = "@mxlang-extra";');
+    expect(checkMxImports(dir)).toEqual([
+      'apps/demo/comment.ts:2: Mention of @mxlang is forbidden here (ADR-0043), including comments and strings; move the code into packages/compiler or remove the mention',
+      'examples/blog/string.js:1: Mention of @mxlang is forbidden here (ADR-0043), including comments and strings; move the code into packages/compiler or remove the mention',
+    ]);
+  });
+});
+
+test("M1 test 8: compiler files are allowed to mention MX", () => {
+  workspace((dir, put) => {
+    put("packages/compiler/src/allowed.ts", 'import "@mxlang/data";');
+    put("packages/compiler/package.json", '{"dependencies":{"@mxlang/data":"link:@mxlang/data"}}');
+    put("packages/compiler-other/package.json", '{"dependencies":{"@mxlang/data":"*"}}');
+    expect(checkMxImports(dir)).toHaveLength(1);
+    expect(checkMxImports(dir)[0]).toStartWith("packages/compiler-other/package.json:1:");
+  });
+});
+
+test.each(["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"])(
+  "M1 test 8: package.json outside compiler rejects an MX dependency in %s", (field) => {
+    workspace((dir, put) => {
+      put("packages/model/package.json", JSON.stringify({ [field]: { "@mxlang/data": "*" } }));
+      put("examples/blog/package.json", JSON.stringify({ [field]: { "@mxlang": "*" } }));
+      expect(checkMxImports(dir)).toHaveLength(2);
+    });
+  },
+);
 
 test("Docs MX samples: complete resource blocks parse with the contracts", () => {
   const checked = checkDocsSamples(join(root, "apps/docs/docs/docs"));
