@@ -14,6 +14,7 @@ Bun workspace (`workspaces`: `packages/*`, `apps/*`, `examples/*`), one root `bu
 ## Commands
 
 - MX is a separate project. Register a local MX checkout once with `bun link` inside it; then `bun install` at the repo root resolves the `link:` deps in `packages/compiler/package.json` (verified in a fresh clone, no per-clone link step). Never run `bun link @mxlang/data @mxlang/core` at the root: `bun link <pkg>` writes a `link:` dependency into the `package.json` of the directory it runs in.
+- The linked MX packages are consumed from their built `dist` directories. `Cannot find module '@mxlang/data'` after a successful install means the MX link checkout may not be built; ask the MX maintainers to fix it. Never build inside the MX checkout yourself.
 - `bun run verify` runs every package's tests, type check (plus one for `scripts/`), and the docs build and link check; it exits non-zero and names the failed step. `bun run test` and `bun run typecheck` run one kind only. Run `verify` before a PR.
 - Docs site, from `apps/docs`: `bun run dev` (preview), `bun run build` (static site into `apps/docs/site/`), `bun run validate` (link check). How to add pages: `apps/docs/docs/architecture/contributing.md`.
 
