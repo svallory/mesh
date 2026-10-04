@@ -1,3 +1,0 @@
-resource="post"
-  attributes
-    attribute="title" type="string" values=["a", "b"]

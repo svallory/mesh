@@ -1,3 +1,0 @@
-resource="post"
-  attributes
-    attribute="state" type="enum" values="draft"

@@ -1,5 +1,5 @@
 resource="post"
   attributes
     uuid-primary-key="id"
-  attributes
-    create-timestamp="insertedAt"
+  actions
+    defaults=["read"]

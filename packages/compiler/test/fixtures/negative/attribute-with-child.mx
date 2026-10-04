@@ -1,4 +1,4 @@
 resource="post"
   attributes
     attribute="t" type="string"
-      timestamps
+      create-timestamp="insertedAt"

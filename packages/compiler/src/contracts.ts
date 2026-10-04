@@ -10,6 +10,12 @@ import type {
 /**
  * Mesh's resource-file vocabulary as MX tag contracts (MX decision 142).
  *
+ * The vocabulary copies Ash's DSL, spelled by the naming rule of the
+ * vocabulary mapping (apps/docs/docs/architecture/roadmap/vocabulary-mapping.md,
+ * section 0): Ash's snake_case names in kebab-case, a trailing `?` dropped
+ * (`allow_nil?` -> `allow-nil`). Names that differ from Ash only by that rule
+ * are not deviations.
+ *
  * Declarations plus `analyze` only: no `transform`, `finalize` or templates.
  * Mesh reads the static tree `parseData` returns; MX enforces the shape of that
  * tree at parse time, so a resource file that reaches Mesh's own stages already
@@ -19,15 +25,18 @@ import type {
  * tags, and an empty record means "none". MX treats an omitted key as open, so
  * `closed()` fills each key explicitly. Every authored value that Mesh reads
  * statically is `literalOnly`: a static tree has no scope, so an identifier
- * (`resource=post`) would reach Mesh as an unevaluable expression. Function
- * attributes (`change=`, `validate=`, ...) are the exception; they are code.
+ * (`table=posts`) would reach Mesh as an unevaluable expression. `literalOnly`
+ * accepts literal arrays and objects, so `constraints={ one_of: [...] }` keeps
+ * it. The exceptions are code: function attributes (`change=`, `validate=`,
+ * ...) and a policy's condition (`policy=action_type("read")`, a call, checked
+ * in `analyze`).
  *
  * A default attribute (`resource="post"`) arrives as an attribute named `value`,
  * so every tag that takes one declares `value`.
  *
  * Rules that need more than a declaration (an attribute required only when
- * another has a given value, one-of groups, literal array contents) live in
- * `analyze`.
+ * another has a given value, the contents of a check call, literal array
+ * contents) live in `analyze`.
  *
  * Empty sections are allowed on purpose: `attributes`, `relationships`,
  * `actions` and the other containers may have no children. Whether a resource
@@ -36,25 +45,29 @@ import type {
  * no root cardinality) and is enforced there too.
  */
 
-/** The action kinds a policy's `action-type` and `defaults` may name. */
+/** The action kinds a `defaults` list and the `action_type` check may name. */
 export const ACTION_TYPES = ["create", "read", "update", "destroy"] as const;
 
 /** The attribute types Mesh resource files may declare. */
 export const ATTRIBUTE_TYPES = [
   "string",
-  "number",
+  "integer",
+  "float",
   "boolean",
-  "enum",
+  "atom",
   "uuid",
   "datetime",
 ] as const;
 
 /**
  * A calculation yields a value, never a choice from a list, so it takes the
- * attribute types except `enum` (an enum needs `values`, which `calculate`
- * does not declare).
+ * attribute types except `atom` (an atom needs `constraints`, which
+ * `calculate` does not declare).
  */
-export const CALCULATION_TYPES = ATTRIBUTE_TYPES.filter((t) => t !== "enum");
+export const CALCULATION_TYPES = ATTRIBUTE_TYPES.filter((t) => t !== "atom");
+
+/** The policy checks the vocabulary has so far (mapping page, row 91). */
+const POLICY_CHECKS = ["action", "action_type"] as const;
 
 type Analyze = NonNullable<CustomTag["analyze"]>;
 
@@ -92,9 +105,15 @@ type Literal =
 interface LooseNode {
   type: string;
   value?: unknown;
+  name?: unknown;
   operator?: string;
   argument?: LooseNode;
   elements?: (LooseNode | null)[];
+  callee?: LooseNode;
+  arguments?: LooseNode[];
+  properties?: (LooseNode | null)[];
+  key?: LooseNode;
+  computed?: boolean;
 }
 
 function nodeOf(attr: Attr | undefined): LooseNode | undefined {
@@ -165,8 +184,59 @@ function all(...rules: Analyze[]): Analyze {
 }
 
 /**
- * `values` belongs to enum attributes and only to them, an enum needs at
- * least one, and a literal `default` has to fit the type.
+ * The `one_of` list inside `constraints={ one_of: [...] }`: the string items,
+ * with `undefined` entries where the item is not a string literal, or
+ * `undefined` when there is no well-formed `one_of` list.
+ */
+function oneOfItems(constraints: Attr | undefined): {
+  items: (string | undefined)[] | undefined;
+  problems: string[];
+} {
+  const problems: string[] = [];
+  if (constraints === undefined) return { items: undefined, problems };
+  const node = nodeOf(constraints);
+  if (node === undefined || node.type !== "ObjectExpression") {
+    problems.push("`constraints` must be an object literal with `one_of`");
+    return { items: undefined, problems };
+  }
+  let oneOf: LooseNode | undefined;
+  for (const prop of node.properties ?? []) {
+    if (prop?.type !== "ObjectProperty" || prop.computed === true) {
+      problems.push("`constraints` must be an object literal with `one_of`");
+      return { items: undefined, problems };
+    }
+    const key =
+      prop.key?.type === "Identifier" || prop.key?.type === "StringLiteral"
+        ? (prop.key.name ?? prop.key.value)
+        : undefined;
+    if (key !== "one_of") {
+      problems.push(
+        `\`constraints\` has an unknown constraint "${String(key)}"; only \`one_of\` is known`,
+      );
+      continue;
+    }
+    oneOf = prop.value as LooseNode | undefined;
+  }
+  if (oneOf === undefined) {
+    problems.push("`constraints` must name `one_of`, the list of allowed values");
+    return { items: undefined, problems };
+  }
+  if (oneOf.type !== "ArrayExpression") {
+    problems.push("`one_of` must be a list of strings");
+    return { items: undefined, problems };
+  }
+  return {
+    items: (oneOf.elements ?? []).map((el) =>
+      el?.type === "StringLiteral" ? (el.value as string) : undefined,
+    ),
+    problems,
+  };
+}
+
+/**
+ * `constraints` belongs to atom attributes and only to them, an atom needs
+ * `one_of` with at least one value, and a literal `default` has to fit the
+ * type.
  *
  * `type` is `literalOnly`, so by the time this runs it is a string literal.
  */
@@ -174,21 +244,29 @@ function analyzeAttribute(calls: readonly TagCall[], ctx: AnalyzeContext): void 
   for (const call of calls) {
     const type = literalOf(attrNamed(call, "type"));
     if (type?.kind !== "string") continue;
-    const values = attrNamed(call, "values");
-    if (type.value === "enum" && values === undefined) {
-      ctx.fail("type `enum` requires `values`", call.loc);
+    const constraints = attrNamed(call, "constraints");
+    if (type.value === "atom" && constraints === undefined) {
+      ctx.fail("type `atom` requires `constraints`", call.loc);
     }
-    if (type.value !== "enum" && values !== undefined) {
+    if (type.value !== "atom" && constraints !== undefined) {
       ctx.fail(
-        `\`values\` is only allowed when \`type\` is "enum", not "${type.value}"`,
-        values.loc,
+        `\`constraints\` is only allowed when \`type\` is "atom", not "${type.value}"`,
+        constraints.loc,
       );
     }
-    const options = arrayOf(values);
-    if (values && options?.length === 0) {
-      ctx.fail("an enum needs at least one value in `values`", values.loc);
+    const { items: options, problems } = oneOfItems(constraints);
+    for (const problem of problems) {
+      ctx.fail(problem, constraints?.loc);
     }
-    checkItems("values", options, values, ctx);
+    if (constraints && options?.length === 0) {
+      ctx.fail("an atom needs at least one value in `one_of`", constraints.loc);
+    }
+    options?.forEach((item, index) => {
+      if (item === undefined) {
+        ctx.fail(`\`one_of\` item ${index + 1} must be a string`, constraints?.loc);
+      }
+    });
+    checkItems("one_of", options, constraints, ctx);
 
     const def = attrNamed(call, "default");
     if (!def) continue;
@@ -196,7 +274,7 @@ function analyzeAttribute(calls: readonly TagCall[], ctx: AnalyzeContext): void 
     if (!lit) {
       ctx.fail("`default` must be a string, number or boolean literal", def.loc);
     }
-    if (type.value === "enum") {
+    if (type.value === "atom") {
       const known = options?.filter((o): o is string => o !== undefined);
       if (
         known &&
@@ -212,7 +290,11 @@ function analyzeAttribute(calls: readonly TagCall[], ctx: AnalyzeContext): void 
       if (lit.kind !== "boolean") {
         ctx.fail(`\`default\` must be true or false, got ${describe(lit)}`, def.loc);
       }
-    } else if (type.value === "number") {
+    } else if (type.value === "integer") {
+      if (lit.kind !== "number" || !Number.isInteger(lit.value)) {
+        ctx.fail(`\`default\` must be an integer, got ${describe(lit)}`, def.loc);
+      }
+    } else if (type.value === "float") {
       if (lit.kind !== "number") {
         ctx.fail(`\`default\` must be a number, got ${describe(lit)}`, def.loc);
       }
@@ -229,18 +311,71 @@ function describe(lit: Literal): string {
   return lit.kind === "string" ? `"${lit.value}"` : String(lit.value);
 }
 
-/** A policy applies to an action by name or to a class of actions by type: exactly one. */
+/**
+ * A policy's condition is a check call (`policy=action_type("read")`,
+ * `policy=action("publish")`) or a list of them (mapping page, D22). On main
+ * the checks are `action` and `action_type` (row 91).
+ */
 function analyzePolicy(calls: readonly TagCall[], ctx: AnalyzeContext): void {
   for (const call of calls) {
-    const action = attrNamed(call, "action");
-    const actionType = attrNamed(call, "action-type");
-    if (action === undefined && actionType === undefined) {
-      ctx.fail("requires `action` or `action-type`", call.loc);
+    const value = attrNamed(call, "value");
+    const node = nodeOf(value);
+    const checks =
+      node?.type === "ArrayExpression" ? (node.elements ?? []) : [node];
+    if (checks.length === 0) {
+      ctx.fail("a policy needs at least one check call", value?.loc);
     }
-    if (action !== undefined && actionType !== undefined) {
-      ctx.fail("takes `action` or `action-type`, not both", actionType.loc);
+    for (const check of checks) {
+      checkPolicyCheck(check, value, ctx);
     }
   }
+}
+
+function checkPolicyCheck(
+  check: LooseNode | null | undefined,
+  value: Attr | undefined,
+  ctx: AnalyzeContext,
+): void {
+  if (check?.type !== "CallExpression") {
+    ctx.fail(
+      'takes a check call, for example `action_type("read")` or `action("publish")`',
+      value?.loc,
+    );
+  }
+  const callee = check.callee;
+  const checkName = callee?.type === "Identifier" ? String(callee.name) : "";
+  if (!(POLICY_CHECKS as readonly string[]).includes(checkName)) {
+    ctx.fail(
+      `unknown policy check \`${checkName || "?"}\`; the checks are ${quoted(POLICY_CHECKS)}`,
+      value?.loc,
+    );
+  }
+  const args = check.arguments ?? [];
+  const arg = args.length === 1 ? literalArgOf(args[0]) : undefined;
+  if (arg === undefined || arg.kind !== "string") {
+    ctx.fail(`\`${checkName}\` takes exactly one string argument`, value?.loc);
+  }
+  if (checkName === "action_type") {
+    if (!(ACTION_TYPES as readonly string[]).includes(arg.value)) {
+      ctx.fail(
+        `\`action_type\` must be one of ${quoted(ACTION_TYPES)}, got "${arg.value}"`,
+        value?.loc,
+      );
+    }
+  } else if (arg.value.trim() === "") {
+    ctx.fail("`action` may not be empty", value?.loc);
+  }
+}
+
+/** The literal a call argument is written as, if it is one. */
+function literalArgOf(node: LooseNode | undefined): Literal | undefined {
+  if (node?.type === "StringLiteral")
+    return { kind: "string", value: node.value as string };
+  if (node?.type === "NumericLiteral")
+    return { kind: "number", value: node.value as number };
+  if (node?.type === "BooleanLiteral")
+    return { kind: "boolean", value: node.value as boolean };
+  return undefined;
 }
 
 /** Items of a string list: none blank, none repeated. */
@@ -264,10 +399,10 @@ function checkItems(
 }
 
 /** A list the tag exists to carry may not be empty. */
-function nonEmptyList(label: string): Analyze {
+function nonEmptyList(label: string, attrName = "value"): Analyze {
   return (calls, ctx) => {
     for (const call of calls) {
-      const attr = attrNamed(call, "value");
+      const attr = attrNamed(call, attrName);
       if (arrayOf(attr)?.length === 0) {
         ctx.fail(`\`${label}\` may not be empty`, attr?.loc);
       }
@@ -288,7 +423,7 @@ function listItems(label: string, attrName = "value"): Analyze {
 /** `defaults=["read", "destroy"]` names built-in actions; each item has to be one, once. */
 function analyzeDefaults(calls: readonly TagCall[], ctx: AnalyzeContext): void {
   for (const call of calls) {
-    const attr = attrNamed(call, "value");
+    const attr = attrNamed(call, "defaults");
     const items = arrayOf(attr);
     for (const item of items ?? []) {
       if (
@@ -332,7 +467,8 @@ export default {
     children: {
       "uuid-primary-key": {},
       attribute: { repeatable: true },
-      timestamps: {},
+      "create-timestamp": {},
+      "update-timestamp": {},
     },
   }),
   "uuid-primary-key": closed({
@@ -345,14 +481,23 @@ export default {
     attributes: {
       value: str({ required: true }),
       type: str({ required: true, enum: [...ATTRIBUTE_TYPES] }),
-      values: strings(),
-      required: flag(),
+      constraints: { literalOnly: true },
+      "allow-nil": flag(),
       public: flag(),
       default: { literalOnly: true },
     },
     analyze: all(nonEmpty("value"), analyzeAttribute),
   }),
-  timestamps: closed({ parents: ["attributes"] }),
+  "create-timestamp": closed({
+    parents: ["attributes"],
+    attributes: name(),
+    analyze: nonEmpty("value"),
+  }),
+  "update-timestamp": closed({
+    parents: ["attributes"],
+    attributes: name(),
+    analyze: nonEmpty("value"),
+  }),
 
   relationships: closed({
     parents: ["resource"],
@@ -374,23 +519,19 @@ export default {
 
   actions: closed({
     parents: ["resource"],
+    attributes: { defaults: strings() },
     children: {
-      defaults: {},
       create: { repeatable: true },
       update: { repeatable: true },
       read: { repeatable: true },
       destroy: { repeatable: true },
     },
-  }),
-  defaults: closed({
-    parents: ["actions"],
-    attributes: { value: strings({ required: true }) },
-    analyze: all(nonEmptyList("defaults"), analyzeDefaults),
+    analyze: all(nonEmptyList("defaults", "defaults"), analyzeDefaults),
   }),
   create: closed({
     parents: ["actions"],
     attributes: { ...name(), accept: strings() },
-    children: { change: { repeatable: true } },
+    children: { change: { repeatable: true }, validate: { repeatable: true } },
     analyze: all(nonEmpty("value"), listItems("accept", "accept")),
   }),
   update: closed({
@@ -401,14 +542,14 @@ export default {
   }),
   destroy: closed({
     parents: ["actions"],
-    attributes: name(),
+    attributes: { ...name(), accept: strings() },
     children: { change: { repeatable: true }, validate: { repeatable: true } },
-    analyze: nonEmpty("value"),
+    analyze: all(nonEmpty("value"), listItems("accept", "accept")),
   }),
   read: closed({
     parents: ["actions"],
     attributes: name(),
-    children: { filter: {}, sort: {} },
+    children: { filter: {}, sort: {}, validate: { repeatable: true } },
     analyze: nonEmpty("value"),
   }),
   change: closed({
@@ -416,7 +557,7 @@ export default {
     attributes: { value: code() },
   }),
   validate: closed({
-    parents: ["update", "destroy"],
+    parents: ["create", "update", "destroy", "read"],
     attributes: { value: code(), message: str() },
     analyze: nonEmpty("message"),
   }),
@@ -436,12 +577,9 @@ export default {
   }),
   policy: closed({
     parents: ["policies"],
-    attributes: {
-      action: str(),
-      "action-type": str({ enum: [...ACTION_TYPES] }),
-    },
+    attributes: { value: { required: true } },
     children: { "authorize-if": { repeatable: true, required: true } },
-    analyze: all(analyzePolicy, nonEmpty("action")),
+    analyze: analyzePolicy,
   }),
   "authorize-if": closed({
     parents: ["policy"],
@@ -472,7 +610,7 @@ export default {
   }),
   count: closed({
     parents: ["aggregates"],
-    attributes: { ...name(), relationship: str({ required: true }) },
-    analyze: nonEmpty("value", "relationship"),
+    attributes: { ...name(), "relationship-path": str({ required: true }) },
+    analyze: nonEmpty("value", "relationship-path"),
   }),
 } satisfies ContractMap;
