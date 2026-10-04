@@ -8,8 +8,8 @@ resource="post" table="posts" domain="blog"
     update-timestamp="updatedAt"
 
   relationships
-    belongs-to="author" resource="user"
-    has-many="comments" resource="comment"
+    belongs-to="author" destination="user"
+    has-many="comments" destination="comment"
 
   actions defaults=["read", "destroy"]
 

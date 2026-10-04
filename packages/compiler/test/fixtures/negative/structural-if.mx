@@ -3,4 +3,4 @@ resource="post"
     uuid-primary-key="id"
   if=true
     relationships
-      belongs-to="author" resource="user"
+      belongs-to="author" destination="user"

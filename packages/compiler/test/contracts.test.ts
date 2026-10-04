@@ -257,10 +257,10 @@ const RULE_CLASSES: Record<string, Case[]> = {
       message: "`<resource>`: missing required attribute `value`",
     },
     {
-      file: "missing-belongs-to-resource",
+      file: "missing-belongs-to-destination",
       line: 5,
       column: 4,
-      message: "`<belongs-to>`: missing required attribute `resource`",
+      message: "`<belongs-to>`: missing required attribute `destination`",
     },
     {
       file: "count-missing-relationship-path",
@@ -859,8 +859,8 @@ describe("roadmap M1 acceptance test 7: every row of the mapping page marked 'on
     { row: 31, tag: "attribute", values: ["integer", "float"].map((value) => ({ attr: "type", value })) },
     { row: 32, tag: "attribute", attrs: ["constraints"], values: [{ attr: "type", value: "atom" }] },
     { row: 36, tag: "relationships", children: ["belongs-to", "has-many"] },
-    { row: 37, tag: "belongs-to", attrs: ["value", "resource"] },
-    { row: 38, tag: "has-many", attrs: ["value", "resource"] },
+    { row: 37, tag: "belongs-to", attrs: ["value", "destination"] },
+    { row: 38, tag: "has-many", attrs: ["value", "destination"] },
     { row: 48, tag: "actions", children: ["create", "update", "destroy", "read"] },
     { row: 49, tag: "actions", attrs: ["defaults"] },
     { row: 51, tag: "create", attrs: ["value"] },

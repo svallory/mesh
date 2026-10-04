@@ -59,7 +59,7 @@ Container. Parent: `resource`. Children: `belongs-to`, `has-many` (both repeatab
 | Attribute | Required | Meaning |
 |:--|:--|:--|
 | default | yes | Relationship name |
-| `resource` | yes | Name of the related resource |
+| `destination` | yes | Name of the related resource |
 
 ## actions
 

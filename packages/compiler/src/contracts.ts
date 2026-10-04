@@ -508,13 +508,13 @@ export default {
   }),
   "belongs-to": closed({
     parents: ["relationships"],
-    attributes: { ...name(), resource: str({ required: true }) },
-    analyze: nonEmpty("value", "resource"),
+    attributes: { ...name(), destination: str({ required: true }) },
+    analyze: nonEmpty("value", "destination"),
   }),
   "has-many": closed({
     parents: ["relationships"],
-    attributes: { ...name(), resource: str({ required: true }) },
-    analyze: nonEmpty("value", "resource"),
+    attributes: { ...name(), destination: str({ required: true }) },
+    analyze: nonEmpty("value", "destination"),
   }),
 
   actions: closed({
