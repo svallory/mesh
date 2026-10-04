@@ -41,10 +41,10 @@ bun run src/main.ts
 
 Mesh does not own your project layout; it reads `resources/` and writes `generated/` inside it. Add the dependencies, then run `mesh init` to write the configuration file and the folder.
 
-**Build-time packages (development dependencies).** `@mesh/cli` is the `mesh` command; it brings the compiler, the resource model and MX, the parser that reads `.mx` files. `drizzle-kit` is what the data adapter's schema commands call.
+**Build-time packages (development dependencies).** `@mesh/cli` is the `mesh` command; it brings the compiler, the resource model and MX, the parser that reads `.mx` files. `drizzle-kit` is what the data adapter's schema commands and in-process test/development schema function call.
 
 ```bash
-bun add -d @mesh/cli drizzle-kit
+bun add -d @mesh/cli drizzle-kit@0.31.11
 ```
 
 **Run-time packages.** `@mesh/runtime` is the thin library generated code imports: the scope type, the error classes and the data-layer contract. `@mesh/data-sqlite` is the SQLite adapter; `@mesh/data-postgres` is the Postgres one; you need exactly one. `@mesh/ext-policies` is the first-party extension that adds authorization; without it nothing checks who is calling.
@@ -53,14 +53,14 @@ bun add -d @mesh/cli drizzle-kit
 bun add @mesh/runtime @mesh/data-sqlite @mesh/ext-policies
 ```
 
-**Application dependencies required by generated code.** Install these as ordinary dependencies of your application. They satisfy the libraries needed by the generated code and adapters:
+**Application dependencies required by generated code.** Install these as ordinary dependencies of your application. Generated code imports `zod`, `drizzle-orm` and `@opentelemetry/api` directly, so your project must depend on all three. From M2, `mesh build` checks that these imports resolve from your project:
 
 ```bash
-bun add zod drizzle-orm @opentelemetry/api
+bun add zod drizzle-orm@0.45.3 @opentelemetry/api
 ```
 
 - `zod` builds the input validators Mesh generates ([ADR-0028](../architecture/decisions/0028-validation-zod-behind-standard-schema.md)).
-- `drizzle-orm` backs the SQL adapters ([ADR-0014](../architecture/decisions/0014-sql-adapters-on-drizzle.md)).
+- `drizzle-orm` is imported by the generated schema and backs the SQL adapters ([ADR-0014](../architecture/decisions/0014-sql-adapters-on-drizzle.md)).
 - `@opentelemetry/api` is what a generated handler calls for tracing; with no SDK installed the calls do nothing ([ADR-0029](../architecture/decisions/0029-tracing-opentelemetry-api.md)).
 
 ::: callout info "Not decided yet"
@@ -85,11 +85,11 @@ bunx mesh build
 | `@mesh/data-sqlite`, `@mesh/data-postgres` | run-time | One data adapter. Its build half emits the database schema as a generated file; its run-time half talks to the database. |
 | `@mesh/ext-policies` | run-time | The first-party extension that fills the authorizer slot. Without it, no action checks who is calling. |
 | `zod`, `drizzle-orm`, `@opentelemetry/api` | application dependencies | Imported by generated code and by the adapters. |
-| `drizzle-kit` | dev dependency | Generates and applies schema and migrations. Never needed at run time, so it does not ship to production. |
+| `drizzle-kit` | dev dependency | Schema/migration development tooling and in-process schema preparation for tests. Not needed by production action calls. |
 
-::: callout info "Not decided yet"
-Whether generated code should import `zod`, `drizzle-orm` and `@opentelemetry/api` from the user's project, or from re-exports inside `@mesh/runtime`, is not settled. The versions Mesh pins can also clash with the versions you already have. [ADR-0014](../architecture/decisions/0014-sql-adapters-on-drizzle.md) and [ADR-0028](../architecture/decisions/0028-validation-zod-behind-standard-schema.md) are the records; the application-dependency arrangement shown here is this spec's proposal.
-:::
+[ADR-0048](../architecture/decisions/0048-schema-inside-the-process-for-tests.md) pins the stable pair exactly: `drizzle-orm@0.45.3`, `drizzle-kit@0.31.11`. The SQLite adapter's in-process schema function is only for tests and development. It dynamically imports drizzle-kit and reports a clear installation error if it is missing; production uses migrations, not schema push. No top-level import from the adapter's run-time code pulls drizzle-kit into production.
+
+Generated libraries are application dependencies, not re-exports from `@mesh/runtime`. If your project already uses them, reconcile its versions with Mesh's supported versions rather than relying on a transitive dependency.
 
 ## Next
 

@@ -47,6 +47,7 @@ recorded in [rulings of 2026-10-04](./rulings-2026-10-04.md).
 | [0005](./0005-core-interface-is-a-function-call.md) | The core's interface is a function call; transports are optional adapters, none in v1 | Accepted | operator |
 | [0006](./0006-cli-first-transport.md) | The first transport is a CLI | Superseded by 005 | lead |
 | [0007](./0007-scope-is-a-plain-argument.md) | The scope `{ actor, context }` is a plain argument on every action call | Accepted | lead |
+| [0047](./0047-actions-are-bound-to-a-data-layer.md) | Actions are bound to a data layer | Accepted | operator |
 | [0008](./0008-actor-resolver-adapter.md) | Transports obtain the scope through an actor-resolver adapter | Superseded by 007 | lead |
 | [0009](./0009-tenancy-placement.md) | Where tenancy lives: core or extension | Proposed | operator |
 | [0019](./0019-v1-scope.md) | v1 is milestones M0 to M9; what comes after | Accepted | operator |
@@ -63,6 +64,7 @@ recorded in [rulings of 2026-10-04](./rulings-2026-10-04.md).
 | [0014](./0014-sql-adapters-on-drizzle.md) | SQL adapters are built on Drizzle and drizzle-kit | Accepted | operator's position, lead's choice of tool |
 | [0015](./0015-sql-printed-by-mesh.md) | Mesh prints SQL and diffs schemas itself | Superseded by 014 | roadmap author (recommendation) |
 | [0016](./0016-in-memory-data-via-sqlite.md) | In-memory data for tests is SQLite's in-memory mode | Accepted | roadmap author |
+| [0048](./0048-schema-inside-the-process-for-tests.md) | Schema inside the process for tests | Accepted | lead |
 | [0017](./0017-atomic-by-default-and-classification.md) | Updates are atomic by default; changes and validations are classified | Accepted | operator, lead, roadmap author |
 | [0018](./0018-not-implemented-is-a-build-error.md) | A valid but unimplemented tag is a build error | Accepted | roadmap author |
 | [0044](./0044-folding-record-reading-validations.md) | Folding record-reading validations into the atomic statement (after v1) | Proposed | lead and operator |
@@ -100,6 +102,8 @@ recorded in [rulings of 2026-10-04](./rulings-2026-10-04.md).
 | [0039](./0039-run-time-error-positions.md) | Run-time errors: embedded positions or source maps | Proposed | operator or lead |
 | [0040](./0040-package-and-command-names.md) | Package scope and command name | Proposed | operator |
 | [0042](./0042-open-source-mit.md) | Mesh is open source under MIT; the docs are public | Accepted | operator |
+
+The accepted records [ADR-0017](./0017-atomic-by-default-and-classification.md) and [ADR-0022](./0022-policies-simple-tier-as-extension.md) also carry **Proposed amendments dated 2026-10-04**, by the lead: validations see the post-change record plus input; create policies see the proposed record and query relationships inside the transaction before insert.
 
 ## Open decisions at a glance
 

@@ -14,7 +14,7 @@ Mesh does not own your project. You choose where resource files live and where g
 ## The layout
 
 ::: callout info "Not decided yet"
-Beyond `generated/model.json` and the rule that `domain` sets the output directory, [the architecture does not specify a directory layout](../architecture/in-depth/generated-code-and-guard.md). The folders, per-resource filenames and `index.ts` below are this live spec's proposal; the milestone column describes when their underlying features are planned, not an accepted filename contract.
+Beyond `generated/model.json` and the rule that `domain` sets the output directory, [the architecture does not specify a directory layout](../architecture/in-depth/generated-code-and-guard.md). The folders and per-resource filenames below are this live spec's proposal; `index.ts` and its binding exports are specified by [ADR-0047](../architecture/decisions/0047-actions-are-bound-to-a-data-layer.md); the milestone column describes when their underlying features are planned, not an accepted filename contract.
 :::
 
 ```text
@@ -26,7 +26,7 @@ todo-app/
     todo.mx
   generated/              written by `mesh build`, committed, guarded
     model.json
-    index.ts              connect(), disconnect(), re-exports every action function and type
+    index.ts              bind(), connect(), disconnect(), action functions and types
     schema.ts             Drizzle table definitions (adapter's build half)
     mx-contracts.js       composed contracts module for MX tooling (M6)
     todos/                one folder per `domain`; no domain: generated/ itself
@@ -49,9 +49,7 @@ Tag and attribute names follow Ash's DSL, in kebab-case with the trailing `?` dr
 In Ash a `belongs_to` creates its foreign-key attribute as `<name>_id` (`list_id`). The roadmap uses `listId`, following the fixture. Which name Mesh generates is settled when relationships are built. [The vocabulary mapping](../architecture/roadmap/vocabulary-mapping.md), row D12, records both.
 :::
 
-::: callout info "Not decided yet"
-`table` sits on the `resource` tag in Mesh. In Ash it lives in the data layer's own section, because a data layer is an extension there. Mesh's recommendation is to keep it on `resource`, since both v1 SQL adapters use the same table name. [The vocabulary mapping](../architecture/roadmap/vocabulary-mapping.md), exception X1, holds the options.
-:::
+`table` stays an attribute of `resource` for now (operator ruling, 2026-10-04). It moves to a data-layer section, as in Ash, when the extension host exists at M6 or at the post-v1 vocabulary review. [The vocabulary mapping](../architecture/roadmap/vocabulary-mapping.md), exception X1, is closed for now.
 
 ## The generated tree
 
@@ -64,22 +62,18 @@ In Ash a `belongs_to` creates its foreign-key attribute as `<name>_id` (`list_id
 | `generated/todos/todo.actions.ts` | the compiler | M2 |
 | `generated/todos/todo.validators.ts` | the compiler | M2 |
 | `generated/schema.ts` | the data adapter | M2 |
-| `generated/index.ts` | the compiler (this spec's proposal) | M2, with generated handlers |
+| `generated/index.ts` | the compiler ([ADR-0047](../architecture/decisions/0047-actions-are-bound-to-a-data-layer.md)) | M2, with generated handlers |
 | `generated/mx-contracts.js` | the compiler, composed from core plus enabled extensions | M6 |
 
-In this proposal, your program imports generated functions and types through `generated/index.ts`. It exports `connect` and `disconnect` and re-exports the resource modules.
+Your program imports generated functions and types through `generated/index.ts`. It exports `bind`, `connect` and `disconnect`; top-level action functions delegate to the default binding ([ADR-0047](../architecture/decisions/0047-actions-are-bound-to-a-data-layer.md)).
 
-::: callout info "Not decided yet"
-The flat export surface needs a collision rule. The [roadmap](../architecture/roadmap/roadmap.md) rejects duplicate resource names, but does not settle collisions after action and resource names are combined into exported identifiers; adding a domain prefix or requiring unique export names are still options. Do not assume a new resource can always be added to the same import without a naming check.
-:::
+Two resources that would export the same action function name are a **build error naming both resources**. The check is on the resulting identifier after action and resource names are combined, including across domains. Mesh does not silently rename an export or add a domain prefix (lead ruling, 2026-10-04; [rulings before M2](../architecture/decisions/rulings-2026-10-04.md)).
 
 The subfolder `todos/` is named after the `domain` attribute on the resource. A resource with no `domain` has its files directly in `generated/`. Grouping by domain keeps one feature's generated code in one folder.
 
 **Column names equal attribute names.** Mesh does not transform names from camelCase to snake_case, so an attribute `dueOn` becomes a column `dueOn`. Drizzle quotes identifiers, so this works on both databases without a naming convention.
 
-::: callout info "Not decided yet"
-Whether Mesh should transform attribute names to a column convention is not settled. The mapping records that a name an author chooses is a value and stays as written, following the fixture; a snake_case option would be a separate decision. [The vocabulary mapping](../architecture/roadmap/vocabulary-mapping.md), row D33.
-:::
+This is the lead's ruling of 2026-10-04, not a naming-convention proposal: [rulings before M2](../architecture/decisions/rulings-2026-10-04.md).
 
 **The guard.** `mesh build --check` regenerates the tree in memory, writes nothing, and fails if the result differs from what is committed. It catches hand edits and stale trees. See [Generated code and the guard](../architecture/in-depth/generated-code-and-guard.md).
 

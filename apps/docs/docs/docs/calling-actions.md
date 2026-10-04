@@ -15,7 +15,9 @@ An action is one named operation on a resource. In v1 an action is a generated T
 
 These examples use the resources and `src/actor.ts` from [the todo example](./example-todo-list.md), after `mesh build` and `mesh db push`. Each program block is a separate replacement for `src/main.ts`, not code to concatenate.
 
-Generated handlers reach the database through module state, so a program connects once at start-up. With the SQLite adapter:
+`generated/index.ts` exports `bind(dataLayer)`, `connect(options)` and `disconnect()`. `bind` returns every action function of every resource, bound to the supplied data layer, with the same names and `(input, scope)` signatures as the top-level exports. `connect` builds the data layer from the adapter configured in `mesh.config.ts` and stores `bind(thatDataLayer)` as the module's default binding. Top-level actions delegate to that default binding ([ADR-0047](../architecture/decisions/0047-actions-are-bound-to-a-data-layer.md)).
+
+An application connects once at start-up. With the SQLite adapter:
 
 ```ts "src/main.ts"
 import { connect, disconnect } from "../generated";
@@ -37,9 +39,22 @@ For Postgres, `DATABASE_URL` has no default: if it is undefined, `connect` throw
 
 Calling an action before `connect` throws `FrameworkError`. It is a programming mistake, not a caller mistake, so it is a framework error rather than a validation failure.
 
-::: callout info "Not decided yet"
-How a generated handler gets its connection is not designed. `connect()` is the only arrangement that fits `createPost(input, scope)`, but it puts the connection in module state while the scope is an explicit argument ([ADR-0007](../architecture/decisions/0007-scope-is-a-plain-argument.md)), and it makes running the same test against two databases awkward. See *DX findings* in the task report for the options a design has to choose between.
-:::
+### Bind a database in a test
+
+A test does not need the default binding. This fragment shows the binding and call; `input` and `scope` are supplied by the test:
+
+```ts
+import { sqlite } from "@mesh/data-sqlite";
+import { bind } from "../generated";
+
+const t = bind(sqlite({ file: ":memory:" }));
+// Prepare the emitted schema on this connection before calling an action.
+await t.createTodo(input, scope);
+```
+
+Two bindings to two databases can live in one process. `bind` does not create tables: prepare the emitted schema on the same connection with the adapter's test/development function ([ADR-0048](../architecture/decisions/0048-schema-inside-the-process-for-tests.md)). Its public spelling is defined by the adapter implementation. A CLI in another process cannot prepare this private in-memory database.
+
+`disconnect()` closes the default connection, not independently supplied bindings. Explicit bindings use the supplied data layer's lifetime. The data layer never goes in the scope; `{ actor, context }` stays a required plain argument on every call.
 
 ## Signatures
 

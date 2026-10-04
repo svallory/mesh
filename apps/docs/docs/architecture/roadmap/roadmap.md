@@ -259,8 +259,8 @@ into tasks by whoever leads it. Sizes are scope, not time.
     SQLite driver. The adapter contributes the `mesh db push` command (through a fixed hook in `cli` until M6
     turns it into a manifest entry, as for emitters), which wraps
     drizzle-kit's schema push for development; `cli` itself never imports drizzle-kit.
-    Versioned migrations come in M9. Handlers call Mesh's contract and never import Drizzle. Exact
-    versions pinned.
+    Versioned migrations come in M9. Handlers call Mesh's contract and never import Drizzle.
+    Exact pins: `drizzle-orm@0.45.3`, `drizzle-kit@0.31.11` ([ADR-0048](../decisions/0048-schema-inside-the-process-for-tests.md), lead ruling, 2026-10-04). The adapter's test/development function prepares the emitted schema on the same in-process connection through `pushSQLiteSchema`, dynamically importing kit as a development dependency.
 - **Out of scope.** Any transport, action registry or command line ([ADR-0005](../decisions/0005-core-interface-is-a-function-call.md)). `public` has no effect
   ([ADR-0035](../decisions/0035-meaning-of-public.md), proposed). Authorization: nothing checks who calls until M8, and nothing pretends
   to ([ADR-0036](../decisions/0036-deny-by-default-arrives-with-policies.md)). Filters, sorting, expressions, hooks.
@@ -618,7 +618,7 @@ delete, encryption, rate limits (extensions, none blocks core); GraphQL, an admi
 2. **MX is consumed from `main`, nothing pinned** (MX notes, getting-started section 5). A
    breaking change stops Mesh the same day.
 3. **Drizzle v1 is a release candidate, its relations API is being replaced, drizzle-kit is
-   mid-rewrite** (Synthesis section 12, risk 1; section 10). Mitigation: exact pins; Drizzle
+   mid-rewrite** (Synthesis section 12, risk 1; section 10). M2 uses the stable pair `drizzle-orm@0.45.3` / `drizzle-kit@0.31.11`, not v1 RC. The RC `1.0.0-rc.4` has no `drizzle-kit/api`; revisit at Drizzle v1 release or M7, using guarded emitted DDL unless programmatic push returns ([ADR-0048](../decisions/0048-schema-inside-the-process-for-tests.md)). Mitigation: exact pins; Drizzle
    imported only in `data-*` (M2 test 4); an upgrade is its own pull request and must pass the
    suite; Mesh does not use the relations API; migrations are plain SQL files.
 4. **No CI** ([ADR-0031](../decisions/0031-no-ci-until-mx-is-published.md)): a skipped `verify` run is invisible.

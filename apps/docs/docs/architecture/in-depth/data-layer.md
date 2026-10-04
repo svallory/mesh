@@ -5,7 +5,7 @@ description: "The data-layer contract, declared capabilities, the conformance su
 
 # Data layer: contract and capabilities
 
-Status: design; built in milestone M3 ([roadmap](../roadmap/roadmap.md), M3). A first small contract arrives in M2, capabilities are first used in M5 and M7, and Postgres and migrations arrive in M9 ([roadmap](../roadmap/roadmap.md), M2, M5, M7, M9). Nothing on this page exists as code yet.
+Status: design; built in milestone M3 ([roadmap](../roadmap/roadmap.md), M3). A first small contract arrives in M2, capabilities are first used in M5 and M7, and Postgres and migrations arrive in M9 ([roadmap](../roadmap/roadmap.md), M2, M5, M7, M9). Nothing on this page exists as code yet. Updated 2026-10-04 with M2 column naming, binding and in-process schema decisions.
 
 Vocabulary note: tag and attribute names are working names. For v1 the vocabulary copies Ash's DSL, and the final name follows [vocabulary mapping](../roadmap/vocabulary-mapping.md) ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md)). Examples use MX concise syntax ([ADR-0041](../decisions/0041-mx-concise-syntax.md)).
 
@@ -61,9 +61,11 @@ What a dialect adds beyond its driver is not detailed in the roadmap: not decide
 
 Each adapter has two halves: a build-time half that emits Drizzle table definitions as a guarded generated file, and a run-time half that implements the contract with Drizzle ([roadmap](../roadmap/roadmap.md), M2). Guarded means `mesh build --check` regenerates the file and fails on any difference ([generated code and the guard](./generated-code-and-guard.md)).
 
+**Names (lead ruling, 2026-10-04).** A column is named exactly like its attribute: `dueOn` stays `dueOn`, with no camelCase-to-snake_case transform. `table` stays an attribute of `resource` until M6 or the post-v1 vocabulary review ([rulings before M2](../decisions/rulings-2026-10-04.md)).
+
 **Isolation rule.** Drizzle is imported only under `packages/data-*` and in the emitted schema file. Generated handlers never import Drizzle, the model or `model.json`; `verify` checks it ([roadmap](../roadmap/roadmap.md), M2, test 4).
 
-**Pins.** Drizzle v1 is a release candidate, its relations API is being replaced and drizzle-kit is mid-rewrite ([research synthesis](../research/synthesis.md), section 12, risk 1). So versions are exact, an upgrade is its own pull request and must pass the suite, and Mesh avoids the relations API ([roadmap](../roadmap/roadmap.md), section 9, risk 3).
+**Pins.** Drizzle v1 is a release candidate, its relations API is being replaced and drizzle-kit is mid-rewrite ([research synthesis](../research/synthesis.md), section 12, risk 1). M2 pins the stable pair `drizzle-orm@0.45.3` and `drizzle-kit@0.31.11` ([ADR-0048](../decisions/0048-schema-inside-the-process-for-tests.md)); an upgrade is its own pull request and must pass the suite, and Mesh avoids the relations API ([roadmap](../roadmap/roadmap.md), section 9, risk 3).
 
 ## Migrations
 
@@ -74,6 +76,10 @@ Before calling drizzle-kit, Mesh compares the old and new model and refuses a de
 ## SQLite in-memory mode for tests
 
 Tests use SQLite's `:memory:` mode through `data-sqlite`, not a hand-written in-memory adapter ([ADR-0016](../decisions/0016-in-memory-data-via-sqlite.md); [roadmap](../roadmap/roadmap.md), M3). A data adapter also needs sort, pagination, joins, aggregates, transactions and unique constraints, which SQLite already does. Ash ships in-memory data layers for tests, so the other option is real; the cost is that every implementation is SQL-shaped until the contract meets a non-SQL one ([ADR-0016](../decisions/0016-in-memory-data-via-sqlite.md)).
+
+`bind(dataLayer)` gives a test all generated action functions bound to its own database; the scope does not carry the data layer ([ADR-0047](../decisions/0047-actions-are-bound-to-a-data-layer.md)). Two bindings can coexist in one process.
+
+Preparing the schema must also happen in that process, on the same connection. [ADR-0048](../decisions/0048-schema-inside-the-process-for-tests.md) selects the adapter's test/development schema function, using drizzle-kit's `pushSQLiteSchema` on the pinned stable pair. The call and compatibility cast live in exactly one adapter function, covered by an in-memory create/insert/select regression test. It dynamically imports drizzle-kit, a project development dependency, and fails clearly if it is missing. Production uses migrations. Drizzle v1 RC `1.0.0-rc.4` has no `drizzle-kit/api`; revisit on v1 release or M7 and use guarded emitted DDL unless push is restored.
 
 ## What an author of a new data adapter must provide
 

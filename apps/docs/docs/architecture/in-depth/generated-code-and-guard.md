@@ -5,7 +5,7 @@ description: "What Mesh generates and commits, why the behaviour lives there, an
 
 # Generated code and the guard
 
-Status: the M1 model, types, `mesh build`, `mesh build --check` and `mesh inspect` are built (tasks `m1-emit` and `m1-cli`); the reduced blog example's committed tree is guarded and type-checked by `verify` (task `m1-example`). Handlers and the Drizzle schema come in M2, expression forms in M4, the contracts module in M6. Tag names are today's working names ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md)).
+Status: the M1 model, types, `mesh build`, `mesh build --check` and `mesh inspect` are built (tasks `m1-emit` and `m1-cli`); the reduced blog example's committed tree is guarded and type-checked by `verify` (task `m1-example`). Handlers and the Drizzle schema come in M2, expression forms in M4, the contracts module in M6. Updated 2026-10-04 with M2 bindings and export-collision handling. Tag names are today's working names ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md)).
 
 ## The rule
 
@@ -24,6 +24,7 @@ The generated tree is committed and guarded ([roadmap](../roadmap/roadmap.md), s
 | `<output>/model.json` | One file holding one document per resource, with source positions | M1 |
 | `<output>/<domain>/<resource>.types.ts` | TypeScript types for the resource | M1 |
 | One handler file per resource | One exported function per action, for example `createPost(input, scope)` | M2 |
+| `<output>/index.ts` | `bind`, `connect`, `disconnect` and default-bound action exports ([ADR-0047](../decisions/0047-actions-are-bound-to-a-data-layer.md)) | M2 |
 | Input validators | Zod schemas, seen by the rest of Mesh only through Standard Schema ([ADR-0028](../decisions/0028-validation-zod-behind-standard-schema.md)) | M2 |
 | Drizzle schema file | Table definitions emitted by `data-sqlite`'s build half | M2 |
 | Expression forms | For each translatable expression, the tree as a data literal and the in-memory form as TypeScript; the class (translatable or opaque) is recorded in `model.json` | M4 |
@@ -64,6 +65,12 @@ A reader should expect to see:
 - Changes and validations as TypeScript. Translatable ones have an in-memory form emitted here; opaque ones are the authored text sliced from the resource file (M4).
 - For atomic updates, the change folded into the `UPDATE` statement; for `require-atomic=false` actions, read the row with a write lock, run in memory, write, in one transaction (M5; [ADR-0017](../decisions/0017-atomic-by-default-and-classification.md)).
 - Calls to the data-layer contract and never to Drizzle (M2).
+
+### Binding and the flat export surface (M2)
+
+`generated/index.ts` exports `bind(dataLayer)`, returning every resource's action functions with their original names and `(input, scope)` signatures. `connect(options)` constructs the configured adapter's data layer and stores `bind(thatDataLayer)` as the default binding; top-level action exports delegate to it and throw `FrameworkError` before connection. `disconnect()` closes the default connection. Explicit bindings can target two databases in one process; the data layer is not in scope ([ADR-0047](../decisions/0047-actions-are-bound-to-a-data-layer.md)).
+
+Two resources that would export the same action function name are a **build error naming both resources** (lead ruling, 2026-10-04; [rulings before M2](../decisions/rulings-2026-10-04.md)). Check the composed identifier, not just the authored action names; different domains do not resolve a collision in the flat index. There is no silent rename or domain prefix.
 
 ## What the run-time library may contain
 
