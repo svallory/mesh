@@ -1,7 +1,5 @@
 import {
-  ATTRIBUTE_TYPES,
   attributeTypeInfo,
-  type AcceptingAction,
   type Action,
   type ActionKind,
   type Attribute,
@@ -26,21 +24,17 @@ const RESERVED = new Set([
   "var", "void", "while", "with", "yield",
 ]);
 
-/**
- * The names a generated file uses from the global scope, read from the attribute
- * type registry rather than written out here, so a new registry type brings its
- * own name with it. A generated declaration that captured one of them would
- * change the meaning of the file silently: a resource named `date` emits
- * `export type Date = { when: Date }`, and every `datetime` attribute in it
- * would refer to the record.
- */
-const TEMPLATE_GLOBALS: ReadonlySet<string> = new Set(
-  ATTRIBUTE_TYPES.flatMap((type) => type.tsType.match(/[A-Za-z_$][A-Za-z0-9_$]*/g) ?? []),
-);
+/** The names a type expression refers to from the global scope, read out of the
+ * rendered text rather than from a fixed list, because a name only matters where
+ * the file uses it: a resource named `date` is fine in a file with no `datetime`
+ * attribute, and a build error in a file with one, which is the only place where
+ * declaring `Date` would capture the type of `when`. */
+const TYPE_IDENTIFIER = /[A-Za-z_$][A-Za-z0-9_$]*/g;
 
 /** The body of an input that accepts nothing: no property may be assigned to it,
  * not even one with a `never` value, and it is not a primitive. `{}` would accept
- * both. */
+ * both. Only an input can be empty: a record always holds the primary key, which
+ * the loader requires. */
 const NEVER_MEMBER = "[key: string]: never;";
 
 /** Line terminators spelled out, so a source filename with one in it cannot end
@@ -145,13 +139,54 @@ function acceptedAttributes(resource: Resource, action: EffectiveAction): Attrib
   return accepted;
 }
 
-/** The record type: every attribute, in the order the resource file declares them,
- * read-only ones (the primary key and the timestamps) included. `public` is recorded
- * in the model and reads nothing in v1 (ADR-0035). */
-function recordType(resource: Resource, name: string): string {
-  const body = resource.attributes.map((attribute) => `  ${member(attribute, false)}`);
-  return `export type ${name} = {\n${body.join("\n")}\n};\n`;
+/** One action the resource really has: what it was declared as, or a built-in asked
+ * for through `defaults`, which is named after its kind and accepts nothing. A
+ * declared action of a kind replaces the default action of that kind. */
+interface EffectiveAction {
+  kind: ActionKind;
+  name: Spanned<string>;
+  accept: readonly Spanned<string>[];
+  position: SourcePosition;
 }
+
+const effectiveAction = (action: Action): EffectiveAction =>
+  action.kind === "read"
+    ? { kind: action.kind, name: action.name, accept: [], position: action.position }
+    : {
+        kind: action.kind,
+        name: action.name,
+        accept: action.accept,
+        position: action.position,
+      };
+
+/** Declared actions, then the default actions for the kinds nothing declared. */
+export function effectiveActions(resource: Resource): EffectiveAction[] {
+  const declared = resource.actions.map(effectiveAction);
+  const kinds = new Set(declared.map((action) => action.kind));
+  const defaults = (resource.defaults?.kinds ?? [])
+    .filter((kind) => !kinds.has(kind.value))
+    .map<EffectiveAction>((kind) => ({
+      kind: kind.value,
+      name: { value: kind.value, position: kind.position },
+      accept: [],
+      position: kind.position,
+    }));
+  return [...declared, ...defaults];
+}
+
+/** One type the file declares: its name, the authored name it came from, and its
+ * members as rendered text, before formatting. */
+interface DeclaredType {
+  name: string;
+  source: Spanned<string>;
+  members: string[];
+}
+
+/** The record type's members: every attribute, in the order the resource file
+ * declares them, read-only ones (the primary key and the timestamps) included.
+ * `public` is recorded in the model and reads nothing in v1 (ADR-0035). */
+const recordMembers = (resource: Resource): string[] =>
+  resource.attributes.map((attribute) => member(attribute, false));
 
 /**
  * One input type per action, in the shape the live action spec gives
@@ -167,16 +202,45 @@ function recordType(resource: Resource, name: string): string {
  *
  * In M2 the generated validator checks the same list.
  */
-function inputType(resource: Resource, action: EffectiveAction, recordName: string): string {
+function inputMembers(resource: Resource, action: EffectiveAction): string[] {
   const accepted = acceptedAttributes(resource, action);
-  const members =
-    action.kind === "create"
-      ? accepted.map((attribute) =>
-          member(attribute, !(!attribute.allowNil && attribute.default === null)),
-        )
-      : [member(selectorOf(resource), false), ...accepted.map((attribute) => member(attribute, true))];
-  const body = members.length === 0 ? NEVER_MEMBER : `\n${members.map((line) => `  ${line}`).join("\n")}\n`;
-  return `export type ${typeName(action.name, "Action")}${recordName}Input = {${body}};\n`;
+  if (action.kind === "create") {
+    return accepted.map((attribute) => member(attribute, !(!attribute.allowNil && attribute.default === null)));
+  }
+  return [member(selectorOf(resource), false), ...accepted.map((attribute) => member(attribute, true))];
+}
+
+/** Every type the file declares, with the members it renders. */
+function declaredTypes(resource: Resource): DeclaredType[] {
+  const recordName = typeName(resource.name, "Resource");
+  return [
+    { name: recordName, source: resource.name, members: recordMembers(resource) },
+    ...effectiveActions(resource)
+      .filter((action) => action.kind !== "read")
+      .map((action) => ({
+        name: `${typeName(action.name, "Action")}${recordName}Input`,
+        source: action.name,
+        members: inputMembers(resource, action),
+      })),
+  ];
+}
+
+/** The names the rendered type expressions of one generated file use. */
+function referencedGlobals(declared: readonly DeclaredType[]): ReadonlySet<string> {
+  const referenced = new Set<string>();
+  for (const type of declared) {
+    for (const line of type.members) for (const name of line.match(TYPE_IDENTIFIER) ?? []) referenced.add(name);
+  }
+  return referenced;
+}
+
+/** `export type Name = { ... };`, before the formatter sees the file. */
+function typeSource(declared: DeclaredType): string {
+  const body =
+    declared.members.length === 0
+      ? NEVER_MEMBER
+      : `\n${declared.members.map((line) => `  ${line}`).join("\n")}\n`;
+  return `export type ${declared.name} = {${body}};\n`;
 }
 
 /** The do-not-edit header. It names the resource file, never a machine or a run,
@@ -185,53 +249,9 @@ function header(resource: Resource): string {
   return `// Do not edit this file by hand.\n// It is generated by \`mesh build\` from ${commentSafe(resource.position.file)}; change that file and rebuild.\n`;
 }
 
-/** One action the resource really has: what it was declared as, or a built-in asked
- * for through `defaults`, which is named after its kind and accepts nothing. A
- * declared action of a kind replaces the default action of that kind. */
-interface EffectiveAction {
-  kind: ActionKind;
-  name: Spanned<string>;
-  accept: readonly Spanned<string>[];
-  position: SourcePosition;
-  declared: boolean;
-}
-
-const effectiveAction = (action: Action): EffectiveAction =>
-  action.kind === "read"
-    ? { kind: action.kind, name: action.name, accept: [], position: action.position, declared: true }
-    : {
-        kind: action.kind,
-        name: action.name,
-        accept: (action as AcceptingAction).accept,
-        position: action.position,
-        declared: true,
-      };
-
-/** Declared actions, then the default actions for the kinds nothing declared. */
-export function effectiveActions(resource: Resource): EffectiveAction[] {
-  const declared = resource.actions.map(effectiveAction);
-  const kinds = new Set(declared.map((action) => action.kind));
-  const defaults = (resource.defaults?.kinds ?? [])
-    .filter((kind) => !kinds.has(kind.value))
-    .map<EffectiveAction>((kind) => ({
-      kind: kind.value,
-      name: { value: kind.value, position: kind.position },
-      accept: [],
-      position: kind.position,
-      declared: false,
-    }));
-  return [...declared, ...defaults];
-}
-
-/** Every type name one file declares, with the authored name it came from. */
-function declaredTypeNames(resource: Resource, recordName: string): { name: string; source: Spanned<string> }[] {
-  const inputs = effectiveActions(resource)
-    .filter((action) => action.kind !== "read")
-    .map((action) => ({
-      name: `${typeName(action.name, "Action")}${recordName}Input`,
-      source: action.name,
-    }));
-  return [{ name: recordName, source: resource.name }, ...inputs];
+async function typesFor(resource: Resource): Promise<string> {
+  const parts = [header(resource), ...declaredTypes(resource).map(typeSource)];
+  return formatTypescript(parts.join("\n"));
 }
 
 /**
@@ -254,7 +274,34 @@ export const resourceTypesEmitter: Emitter = {
     const paths = new Map<string, Spanned<string>>();
     const plan: { resource: Resource; path: string }[] = [];
     for (const resource of resources) {
-      const recordName = typeName(resource.name, "Resource");
+      // The path first: a name that cannot be a path segment is not a usable name
+      // at all, whatever it would have read as.
+      const domain = resource.domain ? `${pathSegment(resource.domain)}/` : "";
+      const nameSegment = pathSegment(resource.name);
+      const declared = declaredTypes(resource);
+      const globals = referencedGlobals(declared);
+      const inFile = new Map<string, Spanned<string>>();
+      for (const type of declared) {
+        if (globals.has(type.name)) {
+          throw emitError(
+            "MESH_EMIT_NAME",
+            `${type.source === resource.name ? "Resource" : "Action"} "${type.source.value}" generates the type name "${type.name}", which would capture the \`${type.name}\` this file uses`,
+            type.source.position,
+            `Rename it so the generated type name does not shadow \`${type.name}\``,
+          );
+        }
+        const twin = inFile.get(type.name);
+        if (twin !== undefined) {
+          throw emitError(
+            "MESH_EMIT_NAME",
+            `Resource "${resource.name.value}" generates the type name "${type.name}" twice, from "${twin.value}" and "${type.source.value}"`,
+            type.source.position,
+            "Rename one of them so the generated type names in this file differ",
+          );
+        }
+        inFile.set(type.name, type.source);
+      }
+      const recordName = declared[0]!.name;
       const previousRecord = records.get(recordName);
       if (previousRecord !== undefined) {
         throw emitError(
@@ -265,28 +312,7 @@ export const resourceTypesEmitter: Emitter = {
         );
       }
       records.set(recordName, resource.name);
-      const inFile = new Map<string, Spanned<string>>();
-      for (const declared of declaredTypeNames(resource, recordName)) {
-        if (TEMPLATE_GLOBALS.has(declared.name)) {
-          throw emitError(
-            "MESH_EMIT_NAME",
-            `${declared.source === resource.name ? "Resource" : "Action"} "${declared.source.value}" generates the type name "${declared.name}", which would capture the \`${declared.name}\` the attribute types use`,
-            declared.source.position,
-            `Rename it so the generated type name does not shadow \`${declared.name}\``,
-          );
-        }
-        const twin = inFile.get(declared.name);
-        if (twin !== undefined) {
-          throw emitError(
-            "MESH_EMIT_NAME",
-            `Resource "${resource.name.value}" generates the type name "${declared.name}" twice, from "${twin.value}" and "${declared.source.value}"`,
-            declared.source.position,
-            "Rename one of them so the generated type names in this file differ",
-          );
-        }
-        inFile.set(declared.name, declared.source);
-      }
-      const path = `${prefix}/${resource.domain ? `${pathSegment(resource.domain)}/` : ""}${pathSegment(resource.name)}.types.ts`;
+      const path = `${prefix}/${domain}${nameSegment}.types.ts`;
       const alias = paths.get(path.toLowerCase());
       if (alias !== undefined) {
         throw emitError(
@@ -302,15 +328,7 @@ export const resourceTypesEmitter: Emitter = {
     return Promise.all(
       plan.map(async ({ resource, path }): Promise<GeneratedFile> => {
         try {
-          const recordName = typeName(resource.name, "Resource");
-          const parts = [
-            header(resource),
-            recordType(resource, recordName),
-            ...effectiveActions(resource)
-              .filter((action) => action.kind !== "read")
-              .map((action) => inputType(resource, action, recordName)),
-          ];
-          return { path, contents: await formatTypescript(parts.join("\n")) };
+          return { path, contents: await typesFor(resource) };
         } catch (cause) {
           // A formatter failure is a bug in this emitter, reported at the resource
           // that triggered it rather than swallowed.

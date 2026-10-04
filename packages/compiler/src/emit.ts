@@ -1,8 +1,8 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, relative, resolve } from "node:path";
+import { lstat, mkdir, writeFile } from "node:fs/promises";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { isProjectRelativePath, type ModelDocument } from "@mesh/model";
 import type { ResolvedConfig } from "./config.ts";
-import { canonicalFuturePath, errorCode, inside, normalizePath } from "./paths.ts";
+import { errorCode, inside } from "./paths.ts";
 import { EmitError } from "./emit-error.ts";
 import { modelJsonEmitter } from "./emitters/model-json.ts";
 import { resourceTypesEmitter } from "./emitters/resource-types.ts";
@@ -75,25 +75,52 @@ export async function generateFiles(input: EmitInput): Promise<GeneratedFile[]> 
 }
 
 /**
+ * Refuse to write through a symlink, at any level under the output directory. Each
+ * existing component from the output folder down to the target is inspected with
+ * `lstat`, which does not follow links: a directory symlink in the middle of the
+ * path is refused as firmly as a symlinked file at the leaf, and whatever it points
+ * at is left alone. A component that does not exist yet is where the writer will
+ * create it, so it ends the walk.
+ *
+ * Nothing here rewrites separators. A generated path arrives with `/` from the
+ * emitters, and the host path is joined with the host separator; on POSIX a
+ * backslash in a file name is a character of that name, not a folder, so treating
+ * it as one would compare two different files as if they were one.
+ */
+async function assertNoSymlink(output: string, target: string, label: string): Promise<void> {
+  const segments = relative(output, target).split(sep).filter((segment) => segment.length > 0);
+  const walked: string[] = [];
+  for (const segment of segments) {
+    walked.push(segment);
+    let link: boolean;
+    try {
+      link = (await lstat(join(output, ...walked))).isSymbolicLink();
+    } catch (cause) {
+      const code = errorCode(cause);
+      if (code === "ENOENT") return;
+      throw new Error(`Cannot inspect "${label}" in the output directory before writing (${code ?? "UNKNOWN"})`);
+    }
+    if (link) {
+      throw new Error(
+        `Cannot write the generated file "${label}": "${walked.join("/")}" in the output directory is a symlink; writing it would follow the link`,
+      );
+    }
+  }
+}
+
+/**
  * Write a generated tree under the configured output directory, creating the folders
  * it needs. Returns the absolute paths written, in the order they were given.
  *
- * Containment is checked physically, not by spelling, at the moment of writing: the
- * output directory is resolved through any symlink on its way, and so is every
- * target. A file or folder inside the output that is itself a symlink is refused,
- * whatever it points at, because writing through it would change a file Mesh does
- * not own. Every target is checked before the first byte is written, so a refused
- * tree leaves the disk as it was. Nothing is deleted: a stale file from an earlier
- * build is the guard's business, not the writer's.
+ * Containment is checked physically, not by spelling, at the moment of writing:
+ * a target outside the output directory is refused, and so is any component inside
+ * it that is a symlink, whatever it points at, because writing through one would
+ * change a file Mesh does not own. Every target is checked before the first byte is
+ * written, so a refused tree leaves the disk as it was. Nothing is deleted: a stale
+ * file from an earlier build is the guard's business, not the writer's.
  */
 export async function writeGeneratedFiles(files: readonly GeneratedFile[], config: ResolvedConfig): Promise<string[]> {
   const output = resolve(config.output);
-  let realOutput: string;
-  try {
-    realOutput = await canonicalFuturePath(output);
-  } catch (cause) {
-    throw new Error(`Cannot resolve the output directory "${config.output}" for writing (${errorCode(cause) ?? "UNKNOWN"})`);
-  }
   const targets: string[] = [];
   for (const file of files) {
     if (!isProjectRelativePath(file.path)) {
@@ -105,27 +132,14 @@ export async function writeGeneratedFiles(files: readonly GeneratedFile[], confi
         `Cannot write the generated file "${file.path}": it resolves outside the output directory "${outputPrefix(config)}"`,
       );
     }
-    const relativeToOutput = normalizePath(relative(output, absolute));
-    // The physical location, with every symlink under the output directory followed.
-    let physical: string;
-    try {
-      physical = await canonicalFuturePath(absolute);
-    } catch (cause) {
-      throw new Error(`Cannot resolve the generated file "${file.path}" for writing (${errorCode(cause) ?? "UNKNOWN"})`);
-    }
-    const relativeToRealOutput = normalizePath(relative(realOutput, physical));
-    if (relativeToRealOutput !== relativeToOutput) {
-      throw new Error(
-        `Cannot write the generated file "${file.path}": writing it would follow a symlink to "${relativeToRealOutput}" inside the output directory`,
-      );
-    }
+    await assertNoSymlink(output, absolute, file.path);
     targets.push(absolute);
   }
   const written: string[] = [];
   for (const [index, absolute] of targets.entries()) {
     await mkdir(dirname(absolute), { recursive: true });
     await writeFile(absolute, files[index]!.contents, "utf8");
-    written.push(normalizePath(absolute));
+    written.push(absolute);
   }
   return written;
 }

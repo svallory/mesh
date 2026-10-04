@@ -39,19 +39,35 @@ export function outputPrefix(config: ResolvedConfig): string {
 }
 
 /**
- * One segment of a generated path, from a name the author wrote. A name that would
- * escape the output directory or name a hidden or parent folder is a build error at
- * the name, not a path that silently moves the file somewhere else.
+ * The one rule for an authored name that becomes a generated path segment: exactly
+ * one path segment, made of characters that are ordinary on every host. A name is
+ * rejected when it is empty, when it is `.` or `..`, when it holds a separator of
+ * either style, a NUL or a line terminator.
+ *
+ * The two separators matter separately. On POSIX a backslash is an ordinary
+ * character in a file name, so a name holding one is not a folder: reading it as
+ * one would put the generated file somewhere the author never named. A line
+ * terminator would end a comment that quotes the name, and a NUL cannot be in a
+ * path at all. Rejecting them here, before any path is built, keeps the rule in
+ * one place instead of leaving it to each caller.
  */
+const SEGMENT_FORBIDDEN = /[/\\\0\n\r\u2028\u2029]/;
+
+export function isPathSegment(value: string): boolean {
+  return value.length > 0 && value !== "." && value !== ".." && !SEGMENT_FORBIDDEN.test(value);
+}
+
+/** One segment of a generated path, from a name the author wrote. A name that is
+ * not one is a build error at the name, never a path that silently moves the file
+ * somewhere else. */
 export function pathSegment(name: Spanned<string>): string {
-  const value = name.value;
-  if (value === "" || value === "." || value === ".." || /[/\\]/.test(value) || value.includes("\0")) {
+  if (!isPathSegment(name.value)) {
     throw emitError(
       "MESH_EMIT_PATH",
-      `Name "${value}" cannot be used in a generated file path`,
+      `Name "${name.value}" cannot be used in a generated file path`,
       name.position,
-      "Use a name without a path separator, `.` or `..`",
+      "Use one name for the generated file: no `/` or `\\`, no NUL, no line break, and not `.` or `..`",
     );
   }
-  return value;
+  return name.value;
 }

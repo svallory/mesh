@@ -329,10 +329,25 @@ test("a resource name that captures a type the file uses is a positioned build e
   expect(error.diagnostic).toEqual({
     severity: "error",
     code: "MESH_EMIT_NAME",
-    message: 'Resource "date" generates the type name "Date", which would capture the `Date` the attribute types use',
+    message: 'Resource "date" generates the type name "Date", which would capture the `Date` this file uses',
     position: { file: "resources/date.mx", line: 1, column: 9, offset: 9 },
     fix: "Rename it so the generated type name does not shadow `Date`",
   });
+});
+
+test("M5: a resource may take a global's name where its file never uses that global", async () => {
+  const document = documentOf([
+    { file: "resources/date.mx", source: 'resource="date"\n  attributes\n    uuid-primary-key="id"\n' },
+  ]);
+  const { root, files } = await emitTo(document);
+  // No `datetime` attribute here, so nothing in the file refers to `Date`.
+  expect(typesFile(files).contents).toContain("export type Date = {\n  id: string;\n};");
+  expect(typeCheck(root, ["generated/date.types.ts"])).toEqual(clean);
+  await writeFile(
+    resolve(root, "consumer.ts"),
+    ['import type { Date } from "./generated/date.types";', 'const record: Date = { id: "a-uuid" };', "void record;", ""].join("\n"),
+  );
+  expect(typeCheck(root, ["generated/date.types.ts", "consumer.ts"])).toEqual(clean);
 });
 
 test("two resource names that read as one type name is a positioned build error", async () => {
@@ -442,15 +457,32 @@ test("H2: a destroy takes the selector alone when it accepts nothing, and the se
   expect(await checkConsumer(soft, softConsumer)).toEqual(clean);
 });
 
-test("a name that would escape the output folder is a positioned build error", async () => {
-  const source = 'resource="blog/post"\n  attributes\n    uuid-primary-key="id"\n';
-  const promise = generateFiles({ document: documentOf([{ file: "resources/post.mx", source }]), config: configOf("/project") });
-  const error = (await promise.catch((cause: unknown) => cause)) as EmitError;
-  expect(error.diagnostic).toMatchObject({
-    code: "MESH_EMIT_PATH",
-    message: 'Name "blog/post" cannot be used in a generated file path',
-    position: { file: "resources/post.mx", line: 1, column: 9, offset: 9 },
-  });
+test("a name that is not one safe path segment is a positioned build error", async () => {
+  const cases: [string, string][] = [
+    ["blog/post", "resources/post.mx"],
+    ["blog\\post", "resources/post.mx"],
+    ["blog\u0000post", "resources/post.mx"],
+    ["blog\npost", "resources/post.mx"],
+    ["blog\rpost", "resources/post.mx"],
+    ["blog\u2028post", "resources/post.mx"],
+    ["blog\u2029post", "resources/post.mx"],
+    [".", "resources/post.mx"],
+    ["..", "resources/post.mx"],
+  ];
+  for (const [name, file] of cases) {
+    const promise = generateFiles({
+      document: documentOf([{ file, source: `resource=${JSON.stringify(name)}\n  attributes\n    uuid-primary-key="id"\n` }]),
+      config: configOf("/project"),
+    });
+    const error = (await promise.catch((cause: unknown) => cause)) as EmitError;
+    expect(error).toBeInstanceOf(EmitError);
+    expect(error.diagnostic).toMatchObject({
+      code: "MESH_EMIT_PATH",
+      message: `Name "${name}" cannot be used in a generated file path`,
+      position: { file, line: 1, column: 9, offset: 9 },
+      fix: "Use one name for the generated file: no `/` or `\\`, no NUL, no line break, and not `.` or `..`",
+    });
+  }
 });
 
 test("the formatter configuration is fixed in the emitter, not read from the project", async () => {
@@ -613,14 +645,14 @@ test("H1: the writer refuses a symlinked file and leaves the file it points at u
   const config = configOf(root);
   const files = await generateFiles({ document: documentOf([tag()]), config });
   await expect(writeGeneratedFiles(files, config)).rejects.toThrow(
-    'Cannot write the generated file "generated/tag.types.ts": writing it would follow a symlink to',
+    'Cannot write the generated file "generated/tag.types.ts": "tag.types.ts" in the output directory is a symlink; writing it would follow the link',
   );
   expect(await readFile(valuable, "utf8")).toBe("ORIGINAL OUTSIDE FILE\n");
   // The whole tree is refused before the first write, so no other file is left half-built.
   await expect(readdir(resolve(root, "generated"))).resolves.toEqual(["tag.types.ts"]);
 });
 
-test("H1: the writer refuses a symlinked directory inside the output folder", async () => {
+test("H1: the writer refuses a symlinked intermediate directory inside the output folder", async () => {
   const outside = await directory("mesh-outside-");
   await mkdir(resolve(outside, "blog"));
   const root = await project();
@@ -629,10 +661,32 @@ test("H1: the writer refuses a symlinked directory inside the output folder", as
   const config = configOf(root);
   const files = await generateFiles({ document: documentOf([post()]), config });
   await expect(writeGeneratedFiles(files, config)).rejects.toThrow(
-    'Cannot write the generated file "generated/blog/post.types.ts": writing it would follow a symlink to',
+    'Cannot write the generated file "generated/blog/post.types.ts": "blog" in the output directory is a symlink; writing it would follow the link',
   );
   expect(await readdir(resolve(outside, "blog"))).toEqual([]);
   await expect(readdir(resolve(root, "generated"))).resolves.toEqual(["blog"]);
+});
+
+test("H1: a backslash in a file name on POSIX is that file's name, and the writer does not write through the symlink to it", async () => {
+  // The generated path is `generated/blog/post.types.ts`; on POSIX an unrelated
+  // regular file can be named `generated/blog\post.types.ts`, and the leaf is a
+  // symlink to it. Reading the backslash as a separator would make two different
+  // files look like one and overwrite the unrelated one.
+  const root = await project();
+  const config = configOf(root);
+  const unrelated = resolve(root, "generated/blog\\post.types.ts");
+  await mkdir(resolve(root, "generated"), { recursive: true });
+  await writeFile(unrelated, "KEEP UNRELATED FILE\n");
+  await mkdir(resolve(root, "generated/blog"), { recursive: true });
+  await symlink(unrelated, resolve(root, "generated/blog/post.types.ts"));
+  // An earlier write in the same tree, which must survive the refusal too.
+  await writeFile(resolve(root, "generated/model.json"), "{}\n");
+  const files = await generateFiles({ document: documentOf([post()]), config });
+  await expect(writeGeneratedFiles(files, config)).rejects.toThrow(
+    'Cannot write the generated file "generated/blog/post.types.ts": "blog/post.types.ts" in the output directory is a symlink; writing it would follow the link',
+  );
+  expect(await readFile(unrelated, "utf8")).toBe("KEEP UNRELATED FILE\n");
+  expect(await readFile(resolve(root, "generated/model.json"), "utf8")).toBe("{}\n");
 });
 
 test("the writer leaves a file it was not given alone", async () => {
