@@ -1,14 +1,18 @@
 import type { DataLayer, DataOperations, Key, Row, TableHandle } from "./data-layer.ts";
 
-/** A fresh isolated layer with an empty, prepared table. Supply a complete sample
- * row, its primary key, and non-key changes that change at least one value.
- * Every factory call must use the same schema and sample values.
+/** A fresh isolated layer with an empty, prepared table. Supply two complete rows
+ * with distinct primary keys, and non-key changes that change the sample row.
+ * Every factory call must use the same schema and values for both rows.
  */
 export interface DataLayerFixture {
   layer: DataLayer;
   table: TableHandle;
   sampleRow: Row;
   key: Key;
+  /** A second schema-valid row, whose primary key differs from the sample's. */
+  secondRow: Row;
+  /** The same primary-key attribute names as key, with at least one different value. */
+  secondKey: Key;
   changes: Row;
 }
 
@@ -23,9 +27,17 @@ function equalValue(left: unknown, right: unknown): boolean {
     : Object.is(left, right);
 }
 
+function sameRow(actual: Row | undefined, expected: Row): boolean {
+  return actual !== undefined && Object.keys(actual).length === Object.keys(expected).length &&
+    Object.keys(expected).every((name) => Object.hasOwn(actual, name) && equalValue(actual[name], expected[name]));
+}
+
 function rowEquals(actual: Row | undefined, expected: Row, message: string): void {
-  assert(actual !== undefined && Object.keys(actual).length === Object.keys(expected).length &&
-    Object.keys(expected).every((name) => Object.hasOwn(actual, name) && equalValue(actual[name], expected[name])), message);
+  assert(sameRow(actual, expected), message);
+}
+
+function rowsEqual(actual: Row[], expected: Row[], message: string): void {
+  assert(actual.length === expected.length && expected.every((row) => actual.some((other) => sameRow(other, row))), message);
 }
 
 /** Return named, runner-independent asynchronous checks for contract v0.
@@ -37,6 +49,12 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
     const fixture = await makeLayer();
     try {
       assert(Object.keys(fixture.key).length > 0, "fixture key must not be empty");
+      assert(Object.keys(fixture.key).length === Object.keys(fixture.secondKey).length &&
+        Object.keys(fixture.key).every((name) => Object.hasOwn(fixture.secondKey, name)), "fixture keys must name the same attributes");
+      assert(!sameRow(fixture.key, fixture.secondKey), "fixture rows must have distinct keys");
+      for (const [row, key] of [[fixture.sampleRow, fixture.key], [fixture.secondRow, fixture.secondKey]] as const) {
+        assert(Object.keys(key).every((name) => Object.hasOwn(row, name) && equalValue(row[name], key[name])), "fixture row must contain its key values");
+      }
       assert(Object.keys(fixture.changes).every((name) => !Object.hasOwn(fixture.key, name)), "fixture changes must not change the primary key");
       assert(Object.keys(fixture.changes).some((name) => !equalValue(fixture.changes[name], fixture.sampleRow[name])), "fixture changes must change a value");
       await fixture.layer.transaction(async (tx) => {
@@ -62,12 +80,59 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
         rowEquals(await tx.selectByKey(table, key), sampleRow, "selectByKey must find committed row");
       });
     }),
-    "selectAll returns stored rows": withLayer(async ({ layer, table, sampleRow }) => {
+    "selectAll returns stored rows": withLayer(async ({ layer, table, sampleRow, secondRow }) => {
+      await layer.transaction(async (tx) => {
+        await tx.insert(table, sampleRow);
+        await tx.insert(table, secondRow);
+      });
+      await layer.transaction(async (tx) => {
+        rowsEqual(await tx.selectAll(table), [sampleRow, secondRow], "selectAll must return both complete rows, in any order");
+      });
+    }),
+    "selectByKey selects only the named row": withLayer(async ({ layer, table, sampleRow, key, secondRow, secondKey }) => {
+      await layer.transaction(async (tx) => {
+        await tx.insert(table, sampleRow);
+        await tx.insert(table, secondRow);
+      });
+      await layer.transaction(async (tx) => {
+        rowEquals(await tx.selectByKey(table, secondKey), secondRow, "selectByKey must select the second row by key");
+        rowEquals(await tx.selectByKey(table, key), sampleRow, "selectByKey must select the first row by key");
+      });
+    }),
+    "updateByKey changes only the named row": withLayer(async ({ layer, table, sampleRow, secondRow, secondKey, changes }) => {
+      await layer.transaction(async (tx) => {
+        await tx.insert(table, sampleRow);
+        await tx.insert(table, secondRow);
+      });
+      const expected = { ...secondRow, ...changes };
+      await layer.transaction(async (tx) => {
+        rowEquals(await tx.updateByKey(table, secondKey, changes), expected, "updateByKey must return the named second row");
+      });
+      await layer.transaction(async (tx) => {
+        rowsEqual(await tx.selectAll(table), [sampleRow, expected], "updateByKey must leave the unrelated row unchanged");
+      });
+    }),
+    "deleteByKey deletes only the named row": withLayer(async ({ layer, table, sampleRow, secondRow, secondKey }) => {
+      await layer.transaction(async (tx) => {
+        await tx.insert(table, sampleRow);
+        await tx.insert(table, secondRow);
+      });
+      await layer.transaction(async (tx) => {
+        assert(await tx.deleteByKey(table, secondKey) === true, "deleteByKey must delete the named second row");
+      });
+      await layer.transaction(async (tx) => {
+        rowsEqual(await tx.selectAll(table), [sampleRow], "deleteByKey must leave the unrelated row unchanged");
+      });
+    }),
+    "missing key leaves unrelated rows unchanged": withLayer(async ({ layer, table, sampleRow, secondKey, changes }) => {
       await layer.transaction(async (tx) => { await tx.insert(table, sampleRow); });
       await layer.transaction(async (tx) => {
-        const rows = await tx.selectAll(table);
-        assert(rows.length === 1, "selectAll must return exactly one row");
-        rowEquals(rows[0], sampleRow, "selectAll must preserve TypeScript values");
+        assert(await tx.selectByKey(table, secondKey) === undefined, "missing select must not return an unrelated row");
+        assert(await tx.updateByKey(table, secondKey, changes) === undefined, "missing update must not change an unrelated row");
+        assert(await tx.deleteByKey(table, secondKey) === false, "missing delete must not delete an unrelated row");
+      });
+      await layer.transaction(async (tx) => {
+        rowsEqual(await tx.selectAll(table), [sampleRow], "missing key operations must preserve the unrelated row");
       });
     }),
     "updateByKey changes and returns the stored row": withLayer(async ({ layer, table, sampleRow, key, changes }) => {

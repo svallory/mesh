@@ -56,12 +56,11 @@ export function checkRuntime(root: string, rule: "imports" | "web"): string[] {
         if (index !== -1) report(file, source, index, `Runtime must not mention ${name}; move build-time or database-specific code out of runtime`);
       }
     } else {
-      // Deliberately textual, like M1: comments containing these forms also fail.
-      // Includes side-effect imports, re-exports and optional require calls.
-      const module = /\b(?:from\s*|import\s*(?:\(\s*)?|require\s*(?:\?\.\s*)?\(\s*)["'`](?:bun|node):/g;
-      const global = /\bBun\s*[.\[]/g;
-      for (const match of source.matchAll(module)) report(file, source, match.index, "Runtime must use web-standard APIs, not bun: or node: modules");
-      for (const match of source.matchAll(global)) report(file, source, match.index, "Runtime must use web-standard APIs, not the Bun global");
+      // Plain text on purpose, like M1: even comments and strings fail.
+      // No parsing or token adjacency assumptions: inter-token comments cannot hide a mention.
+      for (const match of source.matchAll(/bun:|node:|\bBun\b/g)) {
+        report(file, source, match.index, `Runtime must use web-standard APIs; forbidden text ${match[0]} (including comments and strings)`);
+      }
     }
   }
   if (rule === "imports") {
@@ -69,13 +68,10 @@ export function checkRuntime(root: string, rule: "imports" | "web"): string[] {
     if (!existsSync(file)) errors.push("packages/runtime/package.json: Missing runtime manifest");
     else {
       const source = readFileSync(file, "utf8");
-      const manifest = JSON.parse(source) as Record<string, unknown>;
-      for (const [field, value] of Object.entries(manifest)) {
-        if (!/dependencies$/i.test(field)) continue;
-        const names = Array.isArray(value) ? value : Object.keys(value as object);
-        for (const name of runtimeForbidden) if (names.includes(name)) {
-          report(file, source, source.indexOf(`\"${name}\"`), `Runtime must not depend on ${name} (${field})`);
-        }
+      // Scan the whole manifest text, including values such as npm: dependency aliases.
+      for (const name of runtimeForbidden) {
+        const index = source.indexOf(name);
+        if (index !== -1) report(file, source, index, `Runtime manifest must not mention ${name} anywhere, including keys and values`);
       }
     }
   }

@@ -90,6 +90,22 @@ test("parseInput rejects malformed failure with no issues rather than accepting 
   await expect(parseInput(schema(() => ({ issues: [] })), {})).rejects.toBeInstanceOf(FrameworkError);
 });
 
+for (const asynchronous of [false, true]) {
+  test.each([
+    ["empty object", {}], ["null", null], ["undefined", undefined],
+    ["number", 1], ["boolean", false], ["string", "bad"], ["array", []],
+    ["function", () => ({ value: 1 })], ["undefined issues without value", { issues: undefined }],
+    ["non-array issues", { issues: "bad" }],
+  ] as const)(`parseInput rejects malformed Standard Schema result (%s, async=${asynchronous})`, async (_label, malformed) => {
+    // Simulate an untyped or broken validator, which can violate the TS contract at run time.
+    const result = malformed as StandardSchemaV1.Result<unknown>;
+    const validator = schema(asynchronous ? async () => result : () => result);
+    const parsed = parseInput(validator, {});
+    await expect(parsed).rejects.toBeInstanceOf(FrameworkError);
+    await expect(parsed).rejects.toThrow("Malformed Standard Schema result:");
+  });
+}
+
 test("parseInput allows undefined output and main entry excludes conformance helper", async () => {
   expect(await parseInput(schema(() => ({ value: undefined })), {})).toBeUndefined();
   expect("dataLayerConformance" in runtime).toBe(false);
