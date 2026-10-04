@@ -19,6 +19,8 @@ bun run build      # static site into apps/docs/site/
 bun run validate   # check internal links
 ```
 
+A docmd plugin that `docmd.config.json` enables must also be declared in `apps/docs/package.json` (for example `@docmd/plugin-search`), or docmd shells out to npm at build time because it does not recognise Bun's text `bun.lock`.
+
 Run `bun run build` and `bun run validate` before you open a pull request. From the repository root, `bun run verify` runs them together with the tests and the type check. Stop the dev server when you are done.
 
 ## Layout and file names

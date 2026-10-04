@@ -8,7 +8,7 @@
   "workspaces": ["packages/*", "apps/*", "examples/*"],
   "scripts": {
     "test": "bun run --filter '*' test",
-    "typecheck": "bun run --filter '*' typecheck",
+    "typecheck": "tsc --noEmit && bun run --filter '*' typecheck",
     "verify": "bun scripts/verify.ts"
   },
   "devDependencies": {

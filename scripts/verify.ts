@@ -1,5 +1,6 @@
-// Runs test, typecheck, build and validate for every workspace package that defines them.
-// Keeps going after a failure so one run lists every broken step; exits 1 if any failed.
+// Runs test, typecheck, build and validate for every workspace package that defines them,
+// plus a type check of this script. Keeps going after a failure so one run lists every
+// broken step; exits 1 if any failed or if nothing ran.
 import { Glob } from "bun";
 import { dirname, join } from "node:path";
 
@@ -17,20 +18,27 @@ dirs.sort();
 
 const failed: string[] = [];
 let ran = 0;
+
+async function run(label: string, cmd: string[], cwd: string) {
+  console.log(`\n=== ${label} ===`);
+  ran++;
+  const proc = Bun.spawn(cmd, { cwd, stdout: "inherit", stderr: "inherit" });
+  if ((await proc.exited) !== 0) failed.push(label);
+}
+
+await run("mesh (.): typecheck scripts", ["bunx", "tsc", "--noEmit"], root);
+
 for (const dir of dirs) {
   const pkg = await Bun.file(join(root, dir, "package.json")).json();
   for (const step of STEPS) {
     if (!pkg.scripts?.[step]) continue;
-    const label = `${pkg.name} (${dir}): ${step}`;
-    console.log(`\n=== ${label} ===`);
-    ran++;
-    const proc = Bun.spawn(["bun", "run", step], {
-      cwd: join(root, dir),
-      stdout: "inherit",
-      stderr: "inherit",
-    });
-    if ((await proc.exited) !== 0) failed.push(label);
+    await run(`${pkg.name} (${dir}): ${step}`, ["bun", "run", step], join(root, dir));
   }
+}
+
+if (ran === 0) {
+  console.error("verify: no steps found");
+  process.exit(1);
 }
 
 console.log(`\n=== verify: ${ran - failed.length}/${ran} steps passed ===`);
