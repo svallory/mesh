@@ -20,6 +20,9 @@
     "examples/blog": {
       "name": "@mesh/example-blog",
       "version": "0.0.0",
+      "devDependencies": {
+        "@mesh/cli": "workspace:*",
+      },
     },
     "packages/cli": {
       "name": "@mesh/cli",

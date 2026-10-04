@@ -14,23 +14,23 @@ const check = (src: string) => checkSource(src, FILE, srcDir);
 
 describe("checkSource finds every way to import", () => {
   test.each([
-    ["static", 'import a from "@mxlang/data";'],
+    ["static", 'import a from "@external/data";'],
     ["type-only", 'import type { B } from "@mesh/compiler";'],
     ["side-effect", 'import "drizzle-orm";'],
-    ["re-export all", 'export * from "@mxlang/core";'],
-    ["re-export named", 'export { y } from "@mxlang/core";'],
-    ["re-export type", 'export type { Y } from "@mxlang/core";'],
+    ["re-export all", 'export * from "@external/core";'],
+    ["re-export named", 'export { y } from "@external/core";'],
+    ["re-export type", 'export type { Y } from "@external/core";'],
     ["dynamic", 'const z = await import("drizzle-orm/pg-core");'],
-    ["require", 'const w = require("@mxlang/data");'],
-    ["import = require", 'import w = require("@mxlang/data");'],
-    ["string binding name", 'import { "x-y" as c } from "@mxlang/core";'],
+    ["require", 'const w = require("@external/data");'],
+    ["import = require", 'import w = require("@external/data");'],
+    ["string binding name", 'import { "x-y" as c } from "@external/core";'],
     ["quote inside a comment", 'import { a /* it\'s */ } from "drizzle-orm";'],
-    ["multi-line", 'import {\n  a,\n  b,\n} from\n  "@mxlang/core";'],
+    ["multi-line", 'import {\n  a,\n  b,\n} from\n  "@external/core";'],
     ["node built-in", 'import { readFileSync } from "node:fs";'],
     ["bun built-in", 'import { test } from "bun:test";'],
     ["relative escape", 'import b from "../../compiler/src/contracts.ts";'],
     ["relative escape, dynamic", 'await import("../../compiler/src/contracts.ts");'],
-    ["template literal", "await import(`@mxlang/data`);"],
+    ["template literal", "await import(`@external/data`);"],
     ["computed dynamic", "await import(name);"],
     ["computed require", "require(name + 'x');"],
   ])("%s", (_label, src) => {
@@ -38,8 +38,8 @@ describe("checkSource finds every way to import", () => {
   });
 
   test("names the offending specifier", () => {
-    expect(check('import a from "@mxlang/data";')).toEqual([
-      `${FILE}: "@mxlang/data" is not a relative import`,
+    expect(check('import a from "@external/data";')).toEqual([
+      `${FILE}: "@external/data" is not a relative import`,
     ]);
     expect(check('import b from "../../compiler/src/contracts.ts";')).toEqual([
       `${FILE}: "../../compiler/src/contracts.ts" resolves outside packages/model/src`,
@@ -53,8 +53,8 @@ describe("checkSource allows what model may do", () => {
     ["sibling re-export", 'export * from "./position.ts";'],
     ["subdirectory", 'import { a } from "./sub/a.ts";'],
     ["parent inside src", 'import { a } from "../model.ts";'],
-    ["an import word in a comment", '// import x from "@mxlang/data"\nconst a = 1;'],
-    ["an import word in a block comment", '/* import x from "@mxlang/data" */ const a = 1;'],
+    ["an import word in a comment", '// import x from "@external/data"\nconst a = 1;'],
+    ["an import word in a block comment", '/* import x from "@external/data" */ const a = 1;'],
     ["no imports", "export const a = 1;"],
   ])("%s", (_label, src) => {
     const file = _label === "parent inside src" ? join(srcDir, "sub", "b.ts") : FILE;
