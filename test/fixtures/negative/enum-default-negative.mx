@@ -1,0 +1,3 @@
+resource="post"
+  attributes
+    attribute="s" type="enum" values=["a"] default=-1

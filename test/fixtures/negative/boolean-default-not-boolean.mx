@@ -1,0 +1,3 @@
+resource="post"
+  attributes
+    attribute="b" type="boolean" default="zzz"

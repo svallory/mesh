@@ -1,0 +1,3 @@
+resource="post"
+  attributes foo="x"
+    timestamps

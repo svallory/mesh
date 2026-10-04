@@ -1,0 +1,4 @@
+resource="post"
+  attributes
+    @foo
+    uuid-primary-key="id"

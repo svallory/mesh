@@ -1,0 +1,7 @@
+resource="post"
+  attributes
+    uuid-primary-key="id"
+  actions
+    read="all"
+      filter=({ post }) => true
+      filter=({ post }) => false
