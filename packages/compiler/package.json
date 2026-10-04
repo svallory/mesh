@@ -22,5 +22,8 @@
     "@mxlang/core": "link:@mxlang/core",
     "@mxlang/data": "link:@mxlang/data",
     "prettier": "3.6.2"
+  },
+  "devDependencies": {
+    "@babel/parser": "7.29.9"
   }
 }
