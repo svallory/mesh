@@ -33,9 +33,16 @@ export const themeStyles = `<style>
 
 // Recover the fence by its exact content, not a guessed preprocessing offset.
 // Only the error path reads the source; this uses the same APIs on Node and Bun.
-function fenceLocation(token, env, body) {
+function fenceLocation(token, env, captured) {
   const bodyLine = (token.map?.[0] ?? 0) + 1;
   const file = env?.filePath ?? '<markdown>';
+  // Recursive docmd renders dedent fragments and have no reliable page map.
+  // Never match their content to a later, identical top-level fence.
+  if (env?.isInsideContainer || captured?.isInsideContainer) {
+    return `FrameworkError: ${file}: mx block is inside a container ` +
+      `(line ${bodyLine} relative to that container's content)`;
+  }
+  let body = captured?.source;
   const unavailable = (reason) =>
     `FrameworkError: ${file}: mx block could not be located in the source ` +
     `(line ${bodyLine} relative to the page body after frontmatter; ${reason})`;
@@ -86,7 +93,12 @@ export function installMxHighlight(md, renderMx = highlightMx) {
   // A core rule observes it without modifying the body or the source file.
   const bodies = new WeakMap();
   md.core.ruler.push('mesh_mx_source', (state) => {
-    if (!state.inlineMode) bodies.set(state.env, state.src);
+    if (!state.inlineMode) {
+      bodies.set(state.env, {
+        source: state.src,
+        isInsideContainer: Boolean(state.env.isInsideContainer),
+      });
+    }
   });
   const previousHighlight = md.options.highlight;
   md.options.highlight = function (source, lang, ...args) {

@@ -128,6 +128,36 @@ test('a transformed body with one source match reports that unique fence', () =>
   }
 });
 
+for (const variant of [
+  { name: 'indented container fence cannot match a later identical top-level fence', indent: '  ', finalNewline: '\n' },
+  { name: 'container fragment suffix without a final newline cannot match a later top-level fence', indent: '', finalNewline: '' },
+]) {
+  test(variant.name, async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mesh-highlight-container-'));
+    try {
+      const filePath = join(dir, 'callout.md');
+      const source = ['---', 'title: Todo', '---', '', '::: callout info "One"',
+        `${variant.indent}\`\`\`mx`, `${variant.indent}resource="todo"`, `${variant.indent}\`\`\``,
+        ':::', '', '```mx', 'resource="todo"', '```'].join('\n') + variant.finalNewline;
+      writeFileSync(filePath, source);
+      let calls = 0;
+      const md = processor(() => {
+        calls++;
+        throw new Error('first container block failure');
+      });
+      const error = await processContentAsync(source, md, {}, { filePath }).catch((failure) => failure);
+      expect(error).toBeInstanceOf(Error);
+      expect(error.message).toContain(`FrameworkError: ${filePath}: mx block is inside a container (line 1 relative to that container's content)`);
+      expect(error.message).not.toContain(`${filePath}:11:1`);
+      expect(error.message).toContain('```mx\nresource="todo"\n```');
+      expect(error.cause.message).toBe('first container block failure');
+      expect(calls).toBe(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}
+
 test('duplicate setup keeps a single highlighter wrapper', () => {
   const md = processor();
   const highlight = md.options.highlight;
