@@ -6,7 +6,7 @@
   "description": "Mesh documentation site, built with docmd",
   "scripts": {
     "dev": "docmd dev",
-    "build": "docmd build",
+    "build": "rm -rf site .docmd && docmd build",
     "validate": "docmd validate"
   },
   "devDependencies": {
