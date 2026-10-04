@@ -1,0 +1,221 @@
+import { describe, expect, spyOn, test } from "bun:test";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { sql } from "drizzle-orm";
+import { SQLiteSyncDialect, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { pgTable, text as pgText } from "drizzle-orm/pg-core";
+import { FrameworkError, type DataOperations } from "@mesh/runtime";
+import { dataLayerConformance } from "@mesh/runtime/testing";
+import { createSchema, sqlite } from "../src/index.ts";
+import { sqliteState } from "../src/layer.ts";
+import { pushSchema } from "../src/push-schema.ts";
+
+const table = sqliteTable("records", {
+  id: text("id").primaryKey().notNull(), title: text("title").notNull(), count: integer("count").notNull(),
+  score: real("score").notNull(), active: integer("active", { mode: "boolean" }).notNull(),
+  at: integer("at", { mode: "timestamp_ms" }).notNull(), status: text("status", { enum: ["draft", "live"] }).notNull(),
+  optional: text("optional"),
+});
+const sampleRow = { id: "00000000-0000-4000-8000-000000000001", title: "First", count: 17, score: 1.25, active: false,
+  at: new Date("2026-01-01T00:00:00.123Z"), status: "draft", optional: null };
+const secondRow = { ...sampleRow, id: "00000000-0000-4000-8000-000000000002", title: "Second", active: true, optional: "present" };
+
+for (const kind of ["memory", "file"] as const) {
+  describe(`${kind} database conformance`, () => {
+    const checks = dataLayerConformance(async () => {
+      const dir = kind === "file" ? mkdtempSync(join(tmpdir(), "mesh-sqlite-")) : undefined;
+      const layer = sqlite({ file: dir ? join(dir, "test.db") : ":memory:" });
+      try { await createSchema(layer, { table }); }
+      catch (error) { await layer.close(); if (dir) rmSync(dir, { recursive: true, force: true }); throw error; }
+      return {
+        layer: { transaction: layer.transaction, close: async () => { await layer.close(); if (dir) rmSync(dir, { recursive: true, force: true }); } },
+        table, sampleRow, secondRow, key: { id: sampleRow.id }, secondKey: { id: secondRow.id },
+        changes: { title: "Changed", active: true, at: new Date("2026-02-01T00:00:00.456Z") },
+      };
+    });
+    for (const [name, check] of Object.entries(checks)) test(name, check);
+  });
+}
+
+async function withLayer(run: (layer: ReturnType<typeof sqlite>) => Promise<void>) {
+  const layer = sqlite({ file: ":memory:" });
+  try { await createSchema(layer, { table }); await run(layer); }
+  finally { await layer.close(); }
+}
+
+test("sqlite validates configuration and exposes frozen build metadata without opening a connection", async () => {
+  // SAFETY: invalid inputs deliberately exercise the JavaScript boundary.
+  for (const options of [undefined, {}, { file: "" }, { file: 1 }]) expect(() => sqlite(options as never)).toThrow(FrameworkError);
+  const dir = mkdtempSync(join(tmpdir(), "mesh-lazy-"));
+  try {
+    const options = { file: join(dir, "lazy.db") };
+    const layer = sqlite(options);
+    options.file = ":memory:";
+    expect(layer.adapter).toBe("sqlite");
+    expect(layer.build).toBe("@mesh/data-sqlite/build");
+    expect(layer.options.file).toBe(join(dir, "lazy.db"));
+    expect(Object.isFrozen(layer.options)).toBe(true);
+    expect(existsSync(layer.options.file)).toBe(false);
+    await createSchema(layer, { table });
+    expect(existsSync(layer.options.file)).toBe(true);
+    await layer.close();
+    await layer.close();
+    expect(() => layer.transaction(async () => {})).toThrow(FrameworkError);
+    await expect(createSchema(layer, { table })).rejects.toThrow(FrameworkError);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("closing before first use never opens a file", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "mesh-unopened-"));
+  try {
+    const file = join(dir, "no.db");
+    const layer = sqlite({ file });
+    await layer.close();
+    expect(existsSync(file)).toBe(false);
+    expect(() => layer.transaction(async () => {})).toThrow("closed");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("createSchema push API creates tables on the same connection and is idempotent", async () => {
+  await withLayer(async (layer) => {
+    await layer.transaction(async (tx) => expect(await tx.insert(table, sampleRow)).toEqual(sampleRow));
+    await createSchema(layer, { table });
+    await layer.transaction(async (tx) => expect(await tx.selectByKey(table, { id: sampleRow.id })).toEqual(sampleRow));
+  });
+});
+
+test("createSchema refuses data-losing statements and preserves existing rows", async () => {
+  await withLayer(async (layer) => {
+    await layer.transaction(async (tx) => { await tx.insert(table, sampleRow); });
+    await expect(createSchema(layer, {})).rejects.toThrow("DROP TABLE");
+    await layer.transaction(async (tx) => expect(await tx.selectAll(table)).toEqual([sampleRow]));
+  });
+});
+
+test("createSchema rejects a foreign layer and invalid table handles", async () => {
+  await expect(createSchema({ transaction: async () => { throw new Error("must not run"); }, close: async () => {} }, {})).rejects.toThrow("made by sqlite()");
+  await withLayer(async (layer) => {
+    const postgres = pgTable("wrong", { id: pgText("id") });
+    for (const invalid of [{}, postgres]) {
+      await expect(createSchema(layer, { invalid })).rejects.toThrow("Drizzle SQLite table");
+      await expect(layer.transaction((tx) => tx.selectAll(invalid))).rejects.toThrow("Drizzle SQLite table");
+    }
+  });
+});
+
+test("missing development tooling reports the exact installation instruction and cause", async () => {
+  await withLayer(async (layer) => {
+    const cause = new Error("module not found");
+    await sqliteState(layer).exclusive(async (db) => {
+      try { await pushSchema(db, { table }, async () => { throw cause; }); throw new Error("did not reject"); }
+      catch (error) {
+        expect(error).toBeInstanceOf(FrameworkError);
+        expect((error as Error).message).toBe("createSchema needs drizzle-kit, a development dependency. Run: bun add -d drizzle-kit@0.31.11. Production databases are prepared with migrations, not with createSchema.");
+        expect((error as Error).cause).toBe(cause);
+      }
+    });
+  });
+});
+
+test("synchronous throw rolls back and preserves the error object", async () => {
+  await withLayer(async (layer) => {
+    const cause = new Error("sync callback");
+    await expect(layer.transaction(() => { throw cause; })).rejects.toBe(cause);
+    await layer.transaction(async (tx) => expect(await tx.selectAll(table)).toEqual([]));
+  });
+});
+
+test("operations are revoked after success and failure", async () => {
+  await withLayer(async (layer) => {
+    for (const fail of [false, true]) {
+      let held: DataOperations | undefined;
+      const cause = new Error("rollback");
+      const pending = layer.transaction(async (tx) => { held = tx; if (fail) throw cause; });
+      if (fail) await expect(pending).rejects.toBe(cause); else await pending;
+      if (!held) throw new Error("callback not run");
+      for (const call of [() => held!.insert(table, sampleRow), () => held!.selectAll(table), () => held!.selectByKey(table, { id: sampleRow.id }),
+        () => held!.updateByKey(table, { id: sampleRow.id }, {}), () => held!.deleteByKey(table, { id: sampleRow.id })]) {
+        await expect(call()).rejects.toThrow("no longer active");
+      }
+    }
+  });
+});
+
+test("constraint errors are FrameworkError with the original driver error as cause", async () => {
+  await withLayer(async (layer) => {
+    await layer.transaction(async (tx) => { await tx.insert(table, sampleRow); });
+    try { await layer.transaction((tx) => tx.insert(table, sampleRow)); throw new Error("did not reject"); }
+    catch (error) { expect(error).toBeInstanceOf(FrameworkError); expect((error as Error).cause).toBeInstanceOf(Error); }
+    await layer.transaction(async (tx) => expect(await tx.selectAll(table)).toEqual([sampleRow]));
+  });
+});
+
+test("COMMIT failure rolls back the write and rethrows unchanged", async () => {
+  await withLayer(async (layer) => {
+    const db = await sqliteState(layer).exclusive(async (db) => db);
+    const original = db.run.bind(db);
+    const cause = new Error("commit failure");
+    const statements: string[] = [];
+    const spy = spyOn(db, "run").mockImplementation((statement) => {
+      const text = new SQLiteSyncDialect().sqlToQuery(typeof statement === "string" ? sql.raw(statement) : statement.getSQL()).sql;
+      statements.push(text);
+      if (text === "COMMIT") throw cause;
+      return original(statement);
+    });
+    try { await expect(layer.transaction((tx) => tx.insert(table, sampleRow))).rejects.toBe(cause); }
+    finally { spy.mockRestore(); }
+    expect(statements).toEqual(["BEGIN IMMEDIATE", "COMMIT", "ROLLBACK"]);
+    await layer.transaction(async (tx) => expect(await tx.selectAll(table)).toEqual([]));
+  });
+});
+
+test("ROLLBACK failure carries both errors", async () => {
+  await withLayer(async (layer) => {
+    const db = await sqliteState(layer).exclusive(async (db) => db);
+    const original = db.run.bind(db);
+    const transaction = new Error("callback failure");
+    const rollback = new Error("rollback failure");
+    const spy = spyOn(db, "run").mockImplementation((statement) => {
+      const text = new SQLiteSyncDialect().sqlToQuery(typeof statement === "string" ? sql.raw(statement) : statement.getSQL()).sql;
+      if (text === "ROLLBACK") throw rollback;
+      return original(statement);
+    });
+    try {
+      try { await layer.transaction(async () => { throw transaction; }); throw new Error("did not reject"); }
+      catch (error) { expect(error).toBeInstanceOf(FrameworkError); expect((error as Error).cause).toEqual({ transaction, rollback }); }
+    } finally { spy.mockRestore(); db.run(sql.raw("ROLLBACK")); }
+  });
+});
+
+test("close reports running and queued counts without closing a busy layer", async () => {
+  await withLayer(async (layer) => {
+    let release!: () => void;
+    let started!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const begin = new Promise<void>((resolve) => { started = resolve; });
+    const first = layer.transaction(async () => { started(); await gate; });
+    await begin;
+    const second = layer.transaction(async () => 2);
+    try { await expect(layer.close()).rejects.toThrow("1 running and 1 queued"); }
+    finally { release(); await first; expect(await second).toBe(2); }
+  });
+});
+
+test("a queued but not started transaction prevents close", async () => {
+  const layer = sqlite({ file: ":memory:" });
+  const pending = layer.transaction(async () => 1);
+  const closed = layer.close();
+  await expect(closed).rejects.toThrow("0 running and 1 queued");
+  expect(await pending).toBe(1);
+  await layer.close();
+});
+
+test("nested calls throw immediately rather than queuing behind themselves", async () => {
+  await withLayer(async (layer) => {
+    await layer.transaction(async () => {
+      await Promise.resolve();
+      expect(() => layer.transaction(async () => {})).toThrow("nested transactions are not supported");
+    });
+  });
+});

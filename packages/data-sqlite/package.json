@@ -1,0 +1,15 @@
+{
+  "name": "@mesh/data-sqlite",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "files": ["src"],
+  "exports": { ".": "./src/index.ts", "./build": "./src/build.ts" },
+  "description": "Mesh SQLite adapter on Bun and Drizzle, with a separate schema emitter",
+  "scripts": { "test": "bun test", "typecheck": "tsc --noEmit" },
+  "dependencies": { "@mesh/runtime": "workspace:*", "@mesh/data-drizzle": "workspace:*" },
+  "peerDependencies": { "drizzle-orm": "0.45.3", "drizzle-kit": "0.31.11", "@mesh/compiler": "workspace:*", "@mesh/model": "workspace:*" },
+  "peerDependenciesMeta": { "drizzle-kit": { "optional": true }, "@mesh/compiler": { "optional": true }, "@mesh/model": { "optional": true } },
+  "devDependencies": { "drizzle-orm": "0.45.3", "drizzle-kit": "0.31.11", "@mesh/compiler": "workspace:*", "@mesh/model": "workspace:*" }
+}
