@@ -1,0 +1,11 @@
+{
+  "name": "mesh-docs-image",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Pinned dependency set for the docs Docker image; see apps/docs/Dockerfile",
+  "devDependencies": {
+    "@docmd/core": "0.9.7",
+    "@docmd/plugin-search": "0.9.7"
+  }
+}

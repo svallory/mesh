@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "docmd dev",
     "build": "rm -rf site .docmd && docmd build",
-    "validate": "docmd validate"
+    "validate": "docmd validate && bun check-docker-lock.ts"
   },
   "devDependencies": {
     "@docmd/core": "0.9.7",
