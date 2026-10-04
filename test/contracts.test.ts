@@ -127,6 +127,7 @@ describe("the positive fixture", () => {
     const attrs = [
       'attribute="s" type="string" default="x"',
       'attribute="n" type="number" default=3',
+      'attribute="m" type="number" default=-1',
       'attribute="b" type="boolean" default=false',
       'attribute="e" type="enum" values=["a", "b"] default="b"',
     ];
@@ -384,8 +385,22 @@ const RULE_CLASSES: Record<string, Case[]> = {
     { file: "number-default-not-number", line: 3, column: 32, message: '`<attribute>`: `default` must be a number, got "1"' },
     { file: "string-default-not-string", line: 3, column: 32, message: '`<attribute>`: `default` must be a string for type "string", got 1' },
   ],
+  "analyze: defaults must be a string, number or boolean literal": [
+    { file: "default-negative-on-string", line: 3, column: 32, message: '`<attribute>`: `default` must be a string for type "string", got -1' },
+    { file: "default-null", line: 3, column: 32, message: "`<attribute>`: `default` must be a string, number or boolean literal" },
+    { file: "default-array", line: 3, column: 32, message: "`<attribute>`: `default` must be a string, number or boolean literal" },
+    { file: "default-object", line: 3, column: 32, message: "`<attribute>`: `default` must be a string, number or boolean literal" },
+    { file: "enum-default-negative", line: 3, column: 43, message: '`<attribute>`: `default` must be one of "a", got -1' },
+  ],
+  "analyze: lists have no repeated items and are not empty": [
+    { file: "enum-repeated-values", line: 3, column: 30, message: '`<attribute>`: `values` has a repeated item "a"' },
+    { file: "defaults-repeated-item", line: 5, column: 12, message: '`<defaults>`: `defaults` has a repeated item "read"' },
+    { file: "defaults-empty", line: 5, column: 12, message: "`<defaults>`: `defaults` may not be empty" },
+    { file: "sort-empty", line: 6, column: 10, message: "`<sort>`: `sort` may not be empty" },
+  ],
   "analyze: names may not be empty": [
     { file: "empty-name-attribute", line: 3, column: 13, message: "`<attribute>`: `value` may not be empty" },
+    { file: "whitespace-name", line: 3, column: 13, message: "`<attribute>`: `value` may not be empty" },
     { file: "empty-policy-action", line: 5, column: 11, message: "`<policy>`: `action` may not be empty" },
   ],
   "declarations run before analyze": [
@@ -633,18 +648,16 @@ describe("known gap in MX (reported to the lead; scratch/mx-bugs/data-unknown-ro
   });
 });
 
-describe("known gap: root cardinality (MX cannot declare it; Mesh's model-build stage will enforce it)", () => {
-  // Expected: a file holds exactly one `resource`. Got: no diagnostic for an
-  // empty file or for two `resource` tags, because MX contracts have no
-  // cardinality at `#root`. `test.failing` flips to red when that changes.
-  test.failing("an empty file is rejected", () => {
-    const result = parse("");
-    expect(result.diagnostics.filter((d) => d.severity === "error")).toHaveLength(1);
+describe("known gap: root cardinality", () => {
+  // A file should hold exactly one `resource`. MX contracts have no cardinality
+  // at `#root`, so parseData accepts both cases below. Mesh's model-build stage
+  // must reject them; these tests pin today's behaviour so a change is noticed.
+  test("MX accepts an empty file; Mesh model-build stage must reject (known gap)", () => {
+    expect(parse("").diagnostics).toEqual([]);
   });
 
-  test.failing("two resources in one file are rejected", () => {
+  test("MX accepts two resources in one file; Mesh model-build stage must reject (known gap)", () => {
     const one = 'resource="post"\n  attributes\n    timestamps\n';
-    const result = parse(one + one.replace("post", "comment"));
-    expect(result.diagnostics.filter((d) => d.severity === "error")).toHaveLength(1);
+    expect(parse(one + one.replace("post", "comment")).diagnostics).toEqual([]);
   });
 });

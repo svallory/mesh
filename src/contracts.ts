@@ -92,6 +92,8 @@ type Literal =
 interface LooseNode {
   type: string;
   value?: unknown;
+  operator?: string;
+  argument?: LooseNode;
   elements?: (LooseNode | null)[];
 }
 
@@ -111,6 +113,11 @@ function literalOf(attr: Attr | undefined): Literal | undefined {
     return { kind: "string", value: node.value as string };
   if (node?.type === "NumericLiteral")
     return { kind: "number", value: node.value as number };
+  if (node?.type === "UnaryExpression" && node.operator === "-") {
+    const arg = node.argument;
+    if (arg?.type === "NumericLiteral")
+      return { kind: "number", value: -(arg.value as number) };
+  }
   if (node?.type === "BooleanLiteral")
     return { kind: "boolean", value: node.value as boolean };
   return undefined;
@@ -143,7 +150,7 @@ function nonEmpty(...attrNames: string[]): Analyze {
       for (const attrName of attrNames) {
         const attr = attrNamed(call, attrName);
         const lit = literalOf(attr);
-        if (attr && lit?.kind === "string" && lit.value === "") {
+        if (attr && lit?.kind === "string" && lit.value.trim() === "") {
           ctx.fail(`\`${attrName}\` may not be empty`, attr.loc);
         }
       }
@@ -181,10 +188,14 @@ function analyzeAttribute(calls: readonly TagCall[], ctx: AnalyzeContext): void 
     if (values && options?.length === 0) {
       ctx.fail("an enum needs at least one value in `values`", values.loc);
     }
+    rejectRepeats("values", options, values, ctx);
 
     const def = attrNamed(call, "default");
+    if (!def) continue;
     const lit = literalOf(def);
-    if (!def || !lit) continue;
+    if (!lit) {
+      ctx.fail("`default` must be a string, number or boolean literal", def.loc);
+    }
     if (type.value === "enum") {
       const known = options?.filter((o): o is string => o !== undefined);
       if (
@@ -232,11 +243,40 @@ function analyzePolicy(calls: readonly TagCall[], ctx: AnalyzeContext): void {
   }
 }
 
-/** `defaults=["read", "destroy"]` names built-in actions; each item has to be one. */
+function rejectRepeats(
+  label: string,
+  items: (string | undefined)[] | undefined,
+  attr: Attr | undefined,
+  ctx: AnalyzeContext,
+): void {
+  const seen = new Set<string>();
+  for (const item of items ?? []) {
+    if (item === undefined) continue;
+    if (seen.has(item)) {
+      ctx.fail(`\`${label}\` has a repeated item "${item}"`, attr?.loc);
+    }
+    seen.add(item);
+  }
+}
+
+/** A list the tag exists to carry may not be empty. */
+function nonEmptyList(label: string): Analyze {
+  return (calls, ctx) => {
+    for (const call of calls) {
+      const attr = attrNamed(call, "value");
+      if (arrayOf(attr)?.length === 0) {
+        ctx.fail(`\`${label}\` may not be empty`, attr?.loc);
+      }
+    }
+  };
+}
+
+/** `defaults=["read", "destroy"]` names built-in actions; each item has to be one, once. */
 function analyzeDefaults(calls: readonly TagCall[], ctx: AnalyzeContext): void {
   for (const call of calls) {
     const attr = attrNamed(call, "value");
-    for (const item of arrayOf(attr) ?? []) {
+    const items = arrayOf(attr);
+    for (const item of items ?? []) {
       if (item !== undefined && !(ACTION_TYPES as readonly string[]).includes(item)) {
         ctx.fail(
           `\`defaults\` item "${item}" must be one of ${quoted(ACTION_TYPES)}`,
@@ -244,6 +284,7 @@ function analyzeDefaults(calls: readonly TagCall[], ctx: AnalyzeContext): void {
         );
       }
     }
+    rejectRepeats("defaults", items, attr, ctx);
   }
 }
 
@@ -326,7 +367,7 @@ export default {
   defaults: closed({
     parents: ["actions"],
     attributes: { value: strings({ required: true }) },
-    analyze: analyzeDefaults,
+    analyze: all(nonEmptyList("defaults"), analyzeDefaults),
   }),
   create: closed({
     parents: ["actions"],
@@ -367,6 +408,7 @@ export default {
   sort: closed({
     parents: ["read"],
     attributes: { value: strings({ required: true }) },
+    analyze: nonEmptyList("sort"),
   }),
 
   policies: closed({
