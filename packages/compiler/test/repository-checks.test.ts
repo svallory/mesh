@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { ACTION_TYPES, ATTRIBUTE_TYPES } from "@mesh/model";
 import { buildModel, loadConfig, loadProject } from "../src/index.ts";
 import { parse } from "./helpers.ts";
@@ -91,6 +91,16 @@ test("M1 test 8: only exact dependency, docs output/content and lock paths are e
       "apps/docs/site-other/bad.ts", "packages/model/src/node_modules.ts"])
       put(path, '"@mxlang/data"');
     expect(checkMxImports(dir)).toHaveLength(5);
+  });
+});
+
+test.skipIf(sep !== "/")("M1 test 8: POSIX literal backslashes do not create excluded path segments", () => {
+  workspace((dir, put) => {
+    put("apps/docs/site\\review-import.ts", 'import "@mxlang/data";');
+    put("apps/docs/site/review-import.ts", 'import "@mxlang/data";');
+    expect(checkMxImports(dir)).toEqual([
+      'apps/docs/site\\review-import.ts:1: Mention of @mxlang is forbidden here (ADR-0043), including comments and strings; move the code into packages/compiler or remove the mention',
+    ]);
   });
 });
 

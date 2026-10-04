@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { extname, join, relative } from "node:path";
+import { extname, join, relative, sep } from "node:path";
 import { parse } from "./helpers.ts";
 
 // ADR-0043: only packages declaring tag contracts may mention MX; extensions join in M6.
@@ -11,7 +11,8 @@ const within = (path: string, dir: string) => path === dir || path.startsWith(`$
 function walk(root: string, dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const file = join(dir, entry.name);
-    const path = relative(root, file).split("\\").join("/");
+    // Only host separators delimit segments; a POSIX backslash is a filename character.
+    const path = relative(root, file).split(sep).join("/");
     if (path.split("/").includes("node_modules") || within(path, "apps/docs/site") || within(path, "apps/docs/docs") ||
       MX_IMPORT_PACKAGES.some((pkg) => within(path, pkg))) return [];
     // Never follow symlinks into dependencies or outside the checkout.
@@ -29,7 +30,7 @@ export function checkMxImports(root: string): string[] {
     const source = readFileSync(file, "utf8");
     const first = source.indexOf("@mxlang");
     if (first === -1) return [];
-    const path = relative(root, file).split("\\").join("/");
+    const path = relative(root, file).split(sep).join("/");
     const line = source.slice(0, first).split(/\r\n|\r|\n/).length;
     return [`${path}:${line}: Mention of @mxlang is forbidden here (ADR-0043), including comments and strings; move the code into packages/compiler or remove the mention`];
   });
