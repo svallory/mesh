@@ -13,13 +13,13 @@ Until a release exists, the only way to try Mesh is to work on it.
 
 ## Run the tests
 
-The contracts depend on MX, a separate project, through `link:` entries in `package.json`. Link your MX checkout first, then install and test, from the repository root:
+The contracts live in the `packages/compiler` workspace package. They depend on MX, a separate project, through `link:` entries in `packages/compiler/package.json`. Register your MX checkout once by running `bun link` inside it. After that a plain `bun install` at the repository root resolves the `link:` entries, so no per-clone link step is needed (checked in a fresh clone). Do not run `bun link @mxlang/data @mxlang/core` at the root: `bun link <package>` writes a `link:` dependency into the `package.json` of the directory it runs in, which would add MX to the root. Then install and verify from the repository root:
 
 ```bash
-bun link @mxlang/data @mxlang/core
 bun install
-bun test
-bunx tsc --noEmit
+bun run verify      # tests, type check, docs build and link check
+bun run test        # tests only
+bun run typecheck   # type check only
 ```
 
 To build this documentation site, read [Contributing to these docs](../architecture/contributing.md).

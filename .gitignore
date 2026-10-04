@@ -1,2 +1,4 @@
 node_modules/
 *.tsbuildinfo
+apps/docs/site/
+.docmd/

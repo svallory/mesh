@@ -11,6 +11,7 @@
     "validate": "docmd validate"
   },
   "devDependencies": {
-    "@docmd/core": "0.9.7"
+    "@docmd/core": "0.9.7",
+    "@docmd/plugin-search": "0.9.7"
   }
 }

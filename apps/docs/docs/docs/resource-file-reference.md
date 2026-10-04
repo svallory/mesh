@@ -9,7 +9,7 @@ description: "The tags a Mesh resource file may use today. Provisional."
 These tags are the current draft of the Mesh resource-file vocabulary. They can change, be renamed or be removed without notice. Nothing reads these files yet except the parser's contract check.
 :::
 
-A resource file is a `.mx` file in Marko syntax, parsed by MX. Mesh chooses the tag names. The contracts in `src/contracts.ts` describe each tag. They take effect when a file is parsed with `parseData` from `@mxlang/data` using the options `structural: "reject"` and `unknownTags: "reject"` (`test/helpers.ts` shows the call). With those options, an unknown tag or a tag in the wrong place is rejected. Every contract is closed, so an attribute or child tag that is not listed here is an error.
+A resource file is a `.mx` file in Marko syntax, parsed by MX. Mesh chooses the tag names. The contracts in `packages/compiler/src/contracts.ts` describe each tag. They take effect when a file is parsed with `parseData` from `@mxlang/data` using the options `structural: "reject"` and `unknownTags: "reject"` (`packages/compiler/test/helpers.ts` shows the call). With those options, an unknown tag or a tag in the wrong place is rejected. Every contract is closed, so an attribute or child tag that is not listed here is an error.
 
 A default attribute, such as `resource="post"`, is written on the tag itself. Values Mesh reads statically must be literals. A bare identifier is rejected. The tags `change`, `validate`, `filter`, `authorize-if` and `value` are tags whose default attribute is a function.
 
@@ -125,4 +125,4 @@ Container. Parent: `resource`. Child: `count` (repeatable).
 
 ## Source
 
-The authoritative definition is `src/contracts.ts`, with its behaviour pinned by `test/contracts.test.ts`. If this page and the file disagree, the file wins; please fix the page.
+The authoritative definition is `packages/compiler/src/contracts.ts`, with its behaviour pinned by `packages/compiler/test/contracts.test.ts`. If this page and the file disagree, the file wins; please fix the page.

@@ -1,0 +1,23 @@
+{
+  "name": "@mesh/compiler",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/contracts.ts"
+  },
+  "description": "Mesh resource-file vocabulary as MX CustomTag contracts",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "mx": {
+    "target": "data",
+    "contracts": "./src/contracts.ts"
+  },
+  "dependencies": {
+    "@mxlang/data": "link:@mxlang/data",
+    "@mxlang/core": "link:@mxlang/core"
+  }
+}
