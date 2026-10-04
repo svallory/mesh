@@ -1,0 +1,6 @@
+resource="tag"
+  attributes
+    uuid-primary-key="id"
+    attribute="label" type="string" allow-nil=false
+  actions
+    create="create" accept=["label"]

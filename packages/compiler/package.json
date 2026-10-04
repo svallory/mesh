@@ -19,7 +19,8 @@
   },
   "dependencies": {
     "@mesh/model": "workspace:*",
+    "@mxlang/core": "link:@mxlang/core",
     "@mxlang/data": "link:@mxlang/data",
-    "@mxlang/core": "link:@mxlang/core"
+    "prettier": "3.6.2"
   }
 }

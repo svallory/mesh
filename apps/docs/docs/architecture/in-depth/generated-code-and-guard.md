@@ -5,7 +5,7 @@ description: "What Mesh generates and commits, why the behaviour lives there, an
 
 # Generated code and the guard
 
-Status: design; the model and types are built in M1, handlers and the Drizzle schema in M2, expression forms in M4, the contracts module in M6. Nothing described here is generated today. Tag names are today's working names ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md)).
+Status: design; the model and types are built in M1 (task `m1-emit`), handlers and the Drizzle schema in M2, expression forms in M4, the contracts module in M6. Nothing described here is generated today. Tag names are today's working names ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md)).
 
 ## The rule
 
@@ -21,8 +21,8 @@ The generated tree is committed and guarded ([roadmap](../roadmap/roadmap.md), s
 
 | File | What it is | Milestone |
 |---|---|---|
-| `generated/model.json` | One file holding one document per resource, with source positions | M1 |
-| `types.ts` per resource | TypeScript types for the resource | M1 |
+| `<output>/model.json` | One file holding one document per resource, with source positions | M1 |
+| `<output>/<domain>/<resource>.types.ts` | TypeScript types for the resource | M1 |
 | One handler file per resource | One exported function per action, for example `createPost(input, scope)` | M2 |
 | Input validators | Zod schemas, seen by the rest of Mesh only through Standard Schema ([ADR-0028](../decisions/0028-validation-zod-behind-standard-schema.md)) | M2 |
 | Drizzle schema file | Table definitions emitted by `data-sqlite`'s build half | M2 |
@@ -30,6 +30,16 @@ The generated tree is committed and guarded ([roadmap](../roadmap/roadmap.md), s
 | Contracts module | One self-contained module for MX tooling ([ADR-0021](../decisions/0021-composed-contracts-module.md)) | M6 |
 
 ([roadmap](../roadmap/roadmap.md), M1, M2, M4, M6.) The example's `mesh explain` output is also committed, as a guarded fixture; it is not stated that every project commits it (M5, acceptance test 5). The directory layout beyond `generated/model.json` and the rule that `domain` sets the output directory is not given by the roadmap. Whether migrations written by `mesh migrate generate` (M9) are under the guard is not stated.
+
+### The tree emitted in M1
+
+Built in M1 (task `m1-emit`). `<output>` is the configuration's `output` key, so the paths follow the project, not a fixed `generated/`.
+
+- **`<output>/model.json`.** The whole model document, one entry per resource, written by Mesh's own stable serialiser: keys in lexicographic order, two-space indentation, one trailing newline. A formatter is not involved, and nothing that varies per run may reach the file.
+- **One types file per resource**, at `<output>/<domain>/<resource>.types.ts` when the resource has a `domain` and `<output>/<resource>.types.ts` when it has not. The file opens with a do-not-edit header naming the resource file it came from, and imports nothing: not `model`, not `compiler`, not `model.json` ([ADR-0033](../decisions/0033-core-split-build-time-run-time.md)). It holds the record type (one member per attribute, with the TypeScript type its registry entry names, `T | null` when the attribute allows nil, and a union of string literals for an `atom` with `one_of`) and one input type per `create`, `update` and `destroy` action, built from its `accept` list. `read` has no input type in M1. `public` produces nothing ([ADR-0035](../decisions/0035-meaning-of-public.md)).
+- **Names.** A resource's record type is its name in PascalCase, and an input type is `<Action><Resource>Input`, so the names line up with the M2 handlers (`createPost`). An attribute whose name is not a TypeScript identifier is emitted as a quoted property, keeping the name the author wrote. A resource or action name that cannot become a type name, or two names that read as one, is a build error at the name: it is never renamed silently.
+- **The formatter.** Generated TypeScript is built from templates and passed through Prettier, pinned to an exact version, with the configuration fixed in `packages/compiler/src/format.ts`. The user's `.prettierrc` is not read: a project cannot change what Mesh writes, so an upgrade of the formatter is a deliberate edit that rewrites the committed tree on purpose.
+- **Determinism.** The same model gives the same bytes: resources are ordered by name, so the order of the resource files on disk or in `mesh.config.ts` does not reach the output, and no timestamp, absolute path, machine name or random id is written.
 
 ## Why the tree is a data literal
 
