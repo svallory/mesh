@@ -6,16 +6,22 @@ import { buildModel, error, positionAt, type BuildResult } from "./build.ts";
 import { absolutePath, canonicalFuturePath, confinedGlob, foreignAbsolute, inside, normalizePath, projectPath, resolveResource, errorCode } from "./paths.ts";
 
 export interface MeshConfig {
-  /** Glob or explicit list, relative to mesh.config.ts. */
+  /** Resource folder (recursive .mx discovery), glob or file list, relative to mesh.config.ts. */
   resources: string | string[];
-  /** Output directory, relative to mesh.config.ts; no files are emitted here. */
-  generatedDir: string;
+  /** Output folder, relative to mesh.config.ts; no files are emitted here. */
+  output: string;
+  /** Opaque until M2: accepted and preserved, not required or interpreted in M1. */
+  data?: unknown;
+  /** Opaque until M6: accepted and preserved without activating extensions in M1. */
+  extensions?: unknown;
 }
 export interface ResolvedConfig {
   root: string;
   configFile: string;
   resourceFiles: string[];
-  generatedDir: string;
+  output: string;
+  data?: unknown;
+  extensions?: unknown;
 }
 export interface ConfigResult { config: ResolvedConfig | null; diagnostics: Diagnostic[] }
 export function defineConfig(config: MeshConfig): MeshConfig { return config; }
@@ -38,7 +44,7 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
   let source: string;
   try { source = await readFile(configFile, "utf8"); }
   catch (cause) {
-    return { config: null, diagnostics: [error("MESH_CONFIG_READ", `Cannot read mesh.config.ts (${errorCode(cause) ?? "UNKNOWN"})`, start, "Create mesh.config.ts with resources and generatedDir")] };
+    return { config: null, diagnostics: [error("MESH_CONFIG_READ", `Cannot read mesh.config.ts (${errorCode(cause) ?? "UNKNOWN"})`, start, "Create mesh.config.ts with resources and output")] };
   }
   // Best-effort key positions: executable config may compute fields dynamically.
   // Regex keys are escaped, never interpreted as user-supplied pattern syntax.
@@ -66,30 +72,45 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
     return { config: null, diagnostics };
   }
   const config = value as Record<string, unknown>;
-  for (const key of Object.keys(config)) if (key !== "resources" && key !== "generatedDir") fail(key, `Unknown configuration field "${key}"`, "Remove the unknown field");
+  const keys = new Set(["resources", "output", "data", "extensions"]);
+  for (const key of Object.keys(config)) if (!keys.has(key)) fail(key, `Unknown configuration field "${key}"`, "Remove the unknown field");
   const resources = config.resources;
-  if (!nonEmpty(resources) && !(Array.isArray(resources) && resources.length > 0 && resources.every(nonEmpty))) fail("resources", "Configuration field `resources` must be a non-empty relative glob or list of relative file paths");
-  if (!nonEmpty(config.generatedDir)) fail("generatedDir", "Configuration field `generatedDir` must be a non-empty relative directory path");
+  if (!nonEmpty(resources) && !(Array.isArray(resources) && resources.length > 0 && resources.every(nonEmpty))) fail("resources", "Configuration field `resources` must be a non-empty relative folder, glob or list of relative file paths");
+  if (!nonEmpty(config.output)) fail("output", "Configuration field `output` must be a non-empty relative directory path");
   if (diagnostics.length) return { config: null, diagnostics };
 
-  const output = normalizePath(config.generatedDir as string);
-  const generatedDir = resolve(root, output);
-  if (absolutePath(output) || !inside(root, generatedDir) || generatedDir === root) {
-    fail("generatedDir", "Configuration field `generatedDir` must name a directory inside the project, not the project root");
+  const outputInput = normalizePath(config.output as string);
+  const output = resolve(root, outputInput);
+  if (absolutePath(outputInput) || !inside(root, output) || output === root) {
+    fail("output", "Configuration field `output` must name a directory inside the project, not the project root");
   } else {
     try {
-      const canonicalOutput = await canonicalFuturePath(generatedDir);
-      if (!inside(canonicalRoot, canonicalOutput) || canonicalOutput === canonicalRoot) fail("generatedDir", "Configuration field `generatedDir` resolves outside the project");
-    } catch (cause) { fail("generatedDir", `Cannot resolve generated directory (${errorCode(cause) ?? "UNKNOWN"})`); }
+      const canonicalOutput = await canonicalFuturePath(output);
+      if (!inside(canonicalRoot, canonicalOutput) || canonicalOutput === canonicalRoot) fail("output", "Configuration field `output` resolves outside the project");
+    } catch (cause) { fail("output", `Cannot resolve generated directory (${errorCode(cause) ?? "UNKNOWN"})`); }
   }
   let files: string[] = [];
   if (typeof resources === "string") {
-    const glob = normalizePath(resources);
-    if (!confinedGlob(glob)) fail("resources", "Configuration field `resources` must stay inside the project");
+    const input = normalizePath(resources);
+    if (!confinedGlob(input)) fail("resources", "Configuration field `resources` must stay inside the project");
     else {
       try {
-        for await (const file of new Bun.Glob(glob).scan({ cwd: root, onlyFiles: true, followSymlinks: true })) files.push(resolve(root, normalizePath(file)));
-        if (files.length === 0) fail("resources", "Configuration field `resources` matches no files");
+        const candidate = resolve(root, input);
+        let folder = false;
+        try { folder = (await stat(candidate)).isDirectory(); }
+        catch (cause) {
+          // A glob normally has no literal filesystem entry. Only that absence
+          // allows discovery to continue; permission and other I/O errors surface.
+          if (errorCode(cause) !== "ENOENT" && errorCode(cause) !== "ENOTDIR") throw cause;
+        }
+        if (folder && !inside(canonicalRoot, await realpath(candidate))) {
+          fail("resources", `Resource path "${projectPath(root, candidate)}" resolves outside the project`);
+        } else {
+          const cwd = folder ? candidate : root;
+          const glob = folder ? "**/*.mx" : input;
+          for await (const file of new Bun.Glob(glob).scan({ cwd, onlyFiles: true, followSymlinks: true })) files.push(resolve(cwd, normalizePath(file)));
+          if (files.length === 0) fail("resources", "Configuration field `resources` matches no files");
+        }
       } catch (cause) { fail("resources", `Cannot expand resource glob (${errorCode(cause) ?? "UNKNOWN"})`); }
     }
   } else {
@@ -108,7 +129,13 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
       if (!(await stat(file)).isFile()) fail("resources", `Resource path "${name}" is not a file`);
     } catch (cause) { fail("resources", `Cannot read resource file "${name}" (${errorCode(cause) ?? "UNKNOWN"})`); }
   }
-  return { config: diagnostics.length ? null : { root, configFile, resourceFiles: files, generatedDir }, diagnostics };
+  // These future-milestone fields are deliberately opaque. Preserve presence,
+  // references and even explicit undefined; do not serialize or interpret them.
+  const opaque = {
+    ...(Object.hasOwn(config, "data") ? { data: config.data } : {}),
+    ...(Object.hasOwn(config, "extensions") ? { extensions: config.extensions } : {}),
+  };
+  return { config: diagnostics.length ? null : { root, configFile, resourceFiles: files, output, ...opaque }, diagnostics };
 }
 
 export async function loadProject(config: ResolvedConfig): Promise<BuildResult> {

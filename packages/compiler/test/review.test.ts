@@ -50,11 +50,11 @@ test.each([String.raw`resources\post.mx`, "/project/resources/post.mx"])("M2: di
 
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
-async function project(resources: string | string[] = ["resources/post.mx"], generatedDir = "generated") {
+async function project(resources: string | string[] = ["resources/post.mx"], output = "generated") {
   const root = await mkdtemp(resolve(tmpdir(), "mesh-review-")); roots.push(root);
   await mkdir(resolve(root, "resources"));
   await writeFile(resolve(root, "resources/post.mx"), keyed);
-  const source = `export default {\n  resources: ${JSON.stringify(resources)},\n  generatedDir: ${JSON.stringify(generatedDir)}\n};\n`;
+  const source = `export default {\n  resources: ${JSON.stringify(resources)},\n  output: ${JSON.stringify(output)}\n};\n`;
   await writeFile(resolve(root, "mesh.config.ts"), source);
   return { root, source };
 }
@@ -63,8 +63,8 @@ test("M2: config normalizes backslash separators before file/glob/output resolut
   let result = await loadConfig(root);
   expect(result.diagnostics).toEqual([]);
   expect(result.config!.resourceFiles).toEqual([resolve(root, "resources/post.mx")]);
-  expect(result.config!.generatedDir).toBe(resolve(root, "generated/nested"));
-  await writeFile(resolve(root, "mesh.config.ts"), `export default { resources: ${JSON.stringify(String.raw`resources\*.mx`)}, generatedDir: "generated" }`);
+  expect(result.config!.output).toBe(resolve(root, "generated/nested"));
+  await writeFile(resolve(root, "mesh.config.ts"), `export default { resources: ${JSON.stringify(String.raw`resources\*.mx`)}, output: "generated" }`);
   result = await loadConfig(root);
   expect(result.diagnostics).toEqual([]);
 });
@@ -72,7 +72,7 @@ test.each([String.raw`C:\outside`, String.raw`\\server\share`, String.raw`..\out
   const { root, source } = await project(undefined, directory);
   const result = await loadConfig(root);
   expect(result.config).toBeNull();
-  exact(result.diagnostics[0], "MESH_CONFIG", "Configuration field `generatedDir` must name a directory inside the project, not the project root", source, "mesh.config.ts", "generatedDir");
+  exact(result.diagnostics[0], "MESH_CONFIG", "Configuration field `output` must name a directory inside the project, not the project root", source, "mesh.config.ts", "output");
   relativeDiagnostics(result.diagnostics, root);
 });
 test.each([String.raw`..\outside\*.mx`, "{resources,../outside}/*.mx", "resources/../../outside/*.mx"])("M2: config rejects escaping resource glob %s", async (glob) => {
@@ -89,8 +89,8 @@ test.each(["resource", "output", "missing-output-leaf"])("M3: config rejects out
   await symlink(other, resolve(root, "external"));
   const result = await loadConfig(root);
   expect(result.config).toBeNull();
-  const field = target === "resource" ? "resources" : "generatedDir";
-  const message = target === "resource" ? 'Resource path "external/resources/post.mx" resolves outside the project' : "Configuration field `generatedDir` resolves outside the project";
+  const field = target === "resource" ? "resources" : "output";
+  const message = target === "resource" ? 'Resource path "external/resources/post.mx" resolves outside the project' : "Configuration field `output` resolves outside the project";
   exact(result.diagnostics[0], "MESH_CONFIG", message, source, "mesh.config.ts", field);
   relativeDiagnostics(result.diagnostics, root);
 });
@@ -157,7 +157,7 @@ test("M3: dangling output symlink is not treated as a future ordinary directory"
   await symlink(`${root}-missing`, resolve(root, "external"));
   const result = await loadConfig(root);
   expect(result.config).toBeNull();
-  exact(result.diagnostics[0], "MESH_CONFIG", "Cannot resolve generated directory (ENOENT)", source, "mesh.config.ts", "generatedDir");
+  exact(result.diagnostics[0], "MESH_CONFIG", "Cannot resolve generated directory (ENOENT)", source, "mesh.config.ts", "output");
   relativeDiagnostics(result.diagnostics, root);
 });
 test("M4: missing project root is a relative configuration diagnostic", async () => {
