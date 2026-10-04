@@ -1,0 +1,18 @@
+{
+  "name": "@mesh/cli",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Mesh build-time developer command",
+  "exports": { ".": "./src/index.ts" },
+  "bin": { "mesh": "./src/bin.ts" },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mesh/compiler": "workspace:*",
+    "@mesh/model": "workspace:*"
+  }
+}

@@ -721,8 +721,8 @@ test("H1: a backslash in a file name on POSIX is that file's name, and the write
 });
 
 test("H1: the writer refuses to write through the output directory when it is itself a symlink", async () => {
-  // `generated -> real-output`, inside the project, so the configuration is valid:
-  // the stricter rule is the writer's, not the loader's.
+  // Direct callers may supply a resolved config without going through the
+  // loader. The writer must enforce the same no-output-symlink rule itself.
   const root = await project();
   await mkdir(resolve(root, "real-output"), { recursive: true });
   await writeFile(resolve(root, "real-output/blog"), "KEEP TARGET");

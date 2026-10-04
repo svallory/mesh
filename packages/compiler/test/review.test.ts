@@ -91,7 +91,12 @@ test.each(["resource", "output", "missing-output-leaf"])("M3: config rejects out
   expect(result.config).toBeNull();
   const field = target === "resource" ? "resources" : "output";
   const message = target === "resource" ? 'Resource path "external/resources/post.mx" resolves outside the project' : "Configuration field `output` resolves outside the project";
-  exact(result.diagnostics[0], "MESH_CONFIG", message, source, "mesh.config.ts", field);
+  if (target === "output") expect(result.diagnostics[0]).toEqual({
+    code: "MESH_OUTPUT_SYMLINK", severity: "error", fix: null,
+    message: "Symlink in the output tree; delete or move it and rebuild using real files and directories",
+    position: { file: "external", line: 1, column: 0, offset: 0 },
+  });
+  else exact(result.diagnostics[0], "MESH_CONFIG", message, source, "mesh.config.ts", field);
   relativeDiagnostics(result.diagnostics, root);
 });
 test("M3: in-project symlinks and a symlinked project root remain valid", async () => {
