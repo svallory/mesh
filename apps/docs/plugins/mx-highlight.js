@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { createHighlighterCoreSync } from 'shiki/core';
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript';
 import marko from 'shiki/langs/marko.mjs';
@@ -30,6 +31,38 @@ export const themeStyles = `<style>
 }
 </style>`;
 
+// Recover the fence by its exact content, not a guessed preprocessing offset.
+// Only the error path reads the source; this uses the same APIs on Node and Bun.
+function fenceLocation(token, env) {
+  const bodyLine = (token.map?.[0] ?? 0) + 1;
+  const file = env?.filePath ?? '<markdown>';
+  const unavailable = (reason) =>
+    `FrameworkError: ${file}: mx block could not be located in the source ` +
+    `(line ${bodyLine} relative to the page body; ${reason})`;
+  if (!env?.filePath) return unavailable('source path unavailable');
+  let source;
+  try {
+    source = readFileSync(file, 'utf8');
+  } catch (error) {
+    return unavailable(`source could not be read: ${error.message}`);
+  }
+  const lines = source.replace(/\r\n/g, '\n').split('\n');
+  const content = token.content.replace(/\r\n/g, '\n');
+  for (let start = bodyLine - 1; start < lines.length; start++) {
+    const opening = lines[start].match(/^ {0,3}(`{3,}|~{3,})[\t ]*mx(?:[\t ].*)?$/);
+    if (!opening) continue;
+    const marker = opening[1];
+    const closing = new RegExp(`^ {0,3}${marker[0]}{${marker.length},}[\\t ]*$`);
+    for (let end = start + 1; end < lines.length; end++) {
+      if (!closing.test(lines[end])) continue;
+      const rawBlock = lines.slice(start + 1, end).join('\n') + (end > start + 1 ? '\n' : '');
+      if (rawBlock === content) return `${file}:${start + 1}:1`;
+      break;
+    }
+  }
+  return unavailable('no matching mx fence with identical block content');
+}
+
 const installed = new WeakSet();
 export function installMxHighlight(md, renderMx = highlightMx) {
   // docmd 0.9.7 invokes markdownSetup twice on the same processor.
@@ -52,7 +85,7 @@ export function installMxHighlight(md, renderMx = highlightMx) {
     } catch (cause) {
       // Render-time errors escape docmd's isolated setup hooks and abort the build.
       throw new Error(
-        `${env?.filePath ?? '<markdown>'}:${(token.map?.[0] ?? 0) + 1}:1: ` +
+        `${fenceLocation(token, env)}: ` +
         `Failed to highlight mx block with Shiki's Marko grammar. Check the block and highlighter configuration.\n` +
         `\`\`\`mx\n${token.content}\`\`\``,
         { cause },

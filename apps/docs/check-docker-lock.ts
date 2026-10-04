@@ -2,6 +2,7 @@
 // Fails when the docs dependency versions pinned for Docker (docker/bun.lock) differ from
 // package.json, so the image cannot silently build with other versions than the workspace.
 import { join } from "node:path";
+import { sharedLockProblems } from "./shared-lock-check.js";
 
 const dir = import.meta.dir;
 const pkg = await Bun.file(join(dir, "package.json")).json();
@@ -26,9 +27,17 @@ for (const name of names) {
   if (locked !== want) problems.push(`docker/bun.lock resolves ${name}@${locked}, package.json has ${want}`);
 }
 
+const rootLockFile = Bun.file(join(dir, "../../bun.lock"));
+if (await rootLockFile.exists()) {
+  const rootLock = Bun.JSONC.parse(await rootLockFile.text()) as typeof lock;
+  problems.push(...sharedLockProblems(lock.packages, rootLock.packages));
+} else {
+  console.log("Root bun.lock unavailable in standalone docs copy; shared-package comparison not applicable.");
+}
+
 if (problems.length > 0) {
   console.error(`docker lockfile out of step:\n- ${problems.join("\n- ")}`);
-  console.error("Regenerate: copy package.json deps into docker/package.json, then run `bun install` in a copy of docker/ outside the workspace and copy bun.lock back.");
+  console.error("Regenerate incrementally: copy docker/package.json AND docker/bun.lock outside the workspace, sync manifest deps, run `bun install`, check shared versions against root bun.lock, then copy bun.lock back.");
   process.exit(1);
 }
 console.log(`docker lockfile matches package.json (${names.map((n) => `${n}@${pkg.devDependencies[n]}`).join(", ")})`);
