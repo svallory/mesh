@@ -1,129 +1,120 @@
 ---
 title: "Project structure"
-description: "Where resource files, generated code, configuration, extensions and migrations live, and which files are committed."
+description: "Where entity files, generated code, configuration, extensions and migrations live, and which files you commit."
 ---
 
 # Project structure
 
-::: callout warning "Live spec, not released"
-This page describes how Mesh **will** work, not how it works today. It is a live spec of the developer experience, written before the code. Mesh is not released: nothing here can be installed or run yet, and any detail may change.
+::: callout warning "Not released"
+Mesh is not released yet. These pages describe Mesh 1.0.
 :::
 
-Mesh does not own your project. You choose where resource files live and where generated files go; Mesh reads the first and writes the second. This page proposes the starter template's layout, using the `todo-app` project from [Example: a todo list](./example-todo-list.md).
-
-## The layout
-
-::: callout info "Not decided yet"
-Beyond `generated/model.json` and the rule that `domain` sets the output directory, [the architecture does not specify a directory layout](../architecture/in-depth/generated-code-and-guard.md). The folders and per-resource filenames below are this live spec's proposal; `index.ts` and its binding exports are specified by [ADR-0047](../architecture/decisions/0047-actions-are-bound-to-a-data-layer.md); the milestone column describes when their underlying features are planned, not an accepted filename contract.
-:::
+Mesh does not own your project. It reads the entity files you write and writes the code you call; everything else is yours. This page is the layout the starter creates, what each part is for, and what belongs in version control.
 
 ```text
 todo-app/
-  mesh.config.ts
-  package.json            "mx": { "contracts": "generated/mx-contracts.js" }
-  resources/              .mx files (one resource per file)
-    list.mx
-    todo.mx
-  generated/              written by `mesh build`, committed, guarded
-    model.json
-    index.ts              bind(), connect(), disconnect(), action functions and types
-    schema.ts             Drizzle table definitions (adapter's build half)
-    mx-contracts.js       composed contracts module for MX tooling (M6)
-    todos/                one folder per `domain`; no domain: generated/ itself
-      list.types.ts  list.actions.ts  list.validators.ts
-      todo.types.ts  todo.actions.ts  todo.validators.ts
-  migrations/             SQL from `mesh migrate generate`, committed
-  extensions/             project-local extensions, if any (build entry + run-time entry)
+  .mesh/                  generated; never edited; imported as "#mesh"
+  migrations/             SQL from `mesh migrate generate`
+  mesh.config.ts          what Mesh reads
+  package.json            "imports": { "#mesh": "./.mesh/index.ts" }
   src/
-    actor.ts              registers the actor type
+    domain/               your domain
+      accounts/
+        user.mx
+      todo/
+        list.mx
+        todo.mx
+        todo.helpers.ts    hand-written code that todo.mx calls
+    extensions/           project-local extensions, if any
+    context.ts             declares the action context type
     main.ts               the program
 ```
 
-## Resource files
+Mesh prescribes nothing under `src/`. `context.ts` and `main.ts` are the starter's names and are only convention; what matters is that the domain folder is where the `.mx` files are.
 
-One resource per `.mx` file, under the folder `resources` names in the configuration; nested folders are included. A [configured glob or file list](./configuration.md) can select a subset instead. A file holds exactly one `resource`; two resources in one file is a build error.
+## The domain
 
-Tag and attribute names follow Ash's DSL, in kebab-case with the trailing `?` dropped ([ADR-0034](../architecture/decisions/0034-vocabulary-copies-ash-dsl.md)). Every example is written in MX concise syntax, the indentation-based form ([ADR-0041](../architecture/decisions/0041-mx-concise-syntax.md)). The full list of tags is in the [Resource file reference](./resource-file-reference.md).
+`src/domain/` is the domain: everything your program stores. Inside it, each folder is a group of entities that belong together. `src/domain/todo/` holds `list.mx` and `todo.mx`; `src/domain/accounts/` holds `user.mx`.
 
-::: callout info "Not decided yet"
-In Ash a `belongs_to` creates its foreign-key attribute as `<name>_id` (`list_id`). The roadmap uses `listId`, following the fixture. Which name Mesh generates is settled when relationships are built. [The vocabulary mapping](../architecture/roadmap/vocabulary-mapping.md), row D12, records both.
-:::
+The folder is the module, so nothing in the file repeats it. `todo.mx` does not carry `domain="todos"`, and the generated code for a folder lands in one place.
 
-`table` stays an attribute of `resource` for now. It moves to a data-layer section, as in Ash, when the extension host exists at M6 or at the post-v1 vocabulary review. [The vocabulary mapping](../architecture/roadmap/vocabulary-mapping.md), exception X1, is closed for now.
+An entity file holds exactly one entity. Two entities in one file is a build error, as are two entities with the same name anywhere in the domain.
 
-## The generated tree
+A hand-written helper next to the entity that uses it is the ordinary way to keep an entity file small. `todo.helpers.ts` is a normal TypeScript module; a `change` or a `validate` in `todo.mx` calls into it.
 
-`mesh build` writes `generated/` and you commit it. The reason is review: a resource file is a small declarative change, and the committed TypeScript beside it is what the program actually runs. A reviewer reads the diff of both together.
+## Generated code
 
-| Proposed path | Written by | Feature milestone |
-|---|---|---|
-| `generated/model.json` | the compiler | M1 |
-| `generated/todos/todo.types.ts` | the compiler | M1 |
-| `generated/todos/todo.actions.ts` | the compiler | M2 |
-| `generated/todos/todo.validators.ts` | the compiler | M2 |
-| `generated/schema.ts` | the data adapter | M2 |
-| `generated/index.ts` | the compiler ([ADR-0047](../architecture/decisions/0047-actions-are-bound-to-a-data-layer.md)) | M2, with generated handlers |
-| `generated/mx-contracts.js` | the compiler, composed from core plus enabled extensions | M6 |
+`.mesh/` is written by `mesh build` and committed. You import it, and you never edit it: the guard in [the command line](./configuration.md#the-guard) fails the build if a file in it differs from what the build would write.
 
-Your program imports generated functions and types through `generated/index.ts`. It exports `bind`, `connect` and `disconnect`; top-level action functions delegate to the default binding ([ADR-0047](../architecture/decisions/0047-actions-are-bound-to-a-data-layer.md)).
+One entry point, in `package.json`:
 
-Two resources that would export the same action function name are a **build error naming both resources**. The check is on the resulting identifier after action and resource names are combined, including across domains. Mesh does not silently rename an export or add a domain prefix ([rulings before M2](../architecture/decisions/rulings-2026-10-04.md)).
+```json
+"imports": { "#mesh": "./.mesh/index.ts" }
+```
 
-The subfolder `todos/` is named after the `domain` attribute on the resource. A resource with no `domain` has its files directly in `generated/`. Grouping by domain keeps one feature's generated code in one folder.
+Your code imports `#mesh`. Never import a path into `.mesh`: the paths are an implementation detail and the entry point is what stays stable.
 
-**Column names equal attribute names.** Mesh does not transform names from camelCase to snake_case, so an attribute `dueOn` becomes a column `dueOn`. Drizzle quotes identifiers, so this works on both databases without a naming convention.
+What is inside, for the tutorial's two entities:
 
-This naming rule is recorded in [rulings before M2](../architecture/decisions/rulings-2026-10-04.md).
+| File | What it is |
+|:--|:--|
+| `.mesh/index.ts` | `connect`, `disconnect`, `bind`, and every action function and type, re-exported |
+| `.mesh/todo/list.types.ts` | `List` and the input types of its actions |
+| `.mesh/todo/list.actions.ts` | One function per action, with the whole lifecycle written out |
+| `.mesh/todo/list.validators.ts` | The schema each input is checked against |
+| `.mesh/todo/todo.types.ts` | `Todo`, `TodoInput`, and the same for each action |
+| `.mesh/todo/todo.actions.ts` | `createTodo`, `completeTodo`, `pendingTodo`, and the rest |
+| `.mesh/todo/todo.validators.ts` | The input schemas for those actions |
+| `.mesh/schema.ts` | The database tables, written by the data adapter |
+| `.mesh/model.json` | One document per entity, with the source position of every tag |
+| `.mesh/mx-contracts.js` | The composed tag contracts, for MX tooling in your editor |
+| `.mesh/rules.md` | A short description of your entities and of Mesh's vocabulary, for a coding agent to read |
 
-**The guard.** `mesh build --check` regenerates the tree in memory, writes nothing, and fails if the result differs from what is committed. It catches hand edits and stale trees. See [Generated code and the guard](../architecture/in-depth/generated-code-and-guard.md).
+That is the whole of it, plus `.mesh/rules.md`, which exists for agents and which [Working with AI agents](./ai-agents.md) covers. You should not have to think about any of it day to day, and you never have to edit it. Two reasons it is committed rather than hidden:
 
-::: callout info "Not decided yet"
-Whether the committed SQL in `migrations/` is covered by the guard is not stated. Until it is, a hand-edited migration and a stale `generated/schema.ts` can disagree.
-:::
+- **A reviewer reads what runs.** An entity file is a small declarative change. The TypeScript beside it is what the program actually executes, and reading the two diffs together is how you review a change to a rule.
+- **`git diff` is the record of behaviour.** Adding an attribute shows up as a new column, a new type field and a new input key in one diff, in the file you changed.
+
+Two entities that would export the same function name is a build error naming both. Mesh never renames an export behind your back.
 
 ## Configuration
 
-One file, `mesh.config.ts`, at the project root. It names the resource folder, the output folder, the data adapter and the enabled extensions. See [Configuration](./configuration.md).
-
-`package.json` carries one extra key, `"mx": { "contracts": "generated/mx-contracts.js" }`. That points MX tooling at the composed contracts module, which `mesh build` writes: one self-contained module holding the tag contracts of core plus every enabled extension ([ADR-0021](../architecture/decisions/0021-composed-contracts-module.md)). It arrives in M6; before that the contracts are composed in memory for the build only.
+`mesh.config.ts` at the project root names the data adapter, the folder holding your entity files, the output folder and the enabled extensions. [Configuration and the command line](./configuration.md) has it in full.
 
 ## Migrations
 
-`migrations/` holds plain SQL files that `mesh migrate generate` writes and you commit. They are the record of how the database got to its current shape, and they are how another machine or another environment reaches it. Nothing is applied automatically; `mesh migrate apply` is explicit.
-
-For a file-backed SQLite database in development, `mesh db push` is quicker. It is the same schema without a history, and it is a development tool.
+`migrations/` holds plain SQL files that `mesh migrate generate` writes and you commit. They are the record of how the database reached its current shape, and they are how another machine or another environment reaches the same shape. Nothing is ever applied automatically; `mesh migrate apply` is explicit.
 
 ## Extensions
 
-`extensions/` holds project-local extensions. An extension has two entries: a build-time one, which contributes tags, transforms, verifiers, emitters and `mesh` subcommands through a manifest, and a run-time one, which supplies behaviour. The run-time entry follows the same import rule as `@mesh/runtime`: no compiler, no model, no MX, so a deployed program never carries the build pipeline.
+`src/extensions/` holds a project-local extension, if you write one. An extension has two entries: a build-time half that contributes tags, transforms, verifiers, emitters and `mesh` subcommands, and a run-time half that supplies the behaviour. The run-time half imports only `@meshfw/runtime`, never the compiler, so a deployed program does not carry the build pipeline.
 
-First-party extensions are installed from npm instead, and are enabled by listing them in `mesh.config.ts`. `@mesh/ext-policies` is the one that exists in v1. See [Extension host](../architecture/in-depth/extension-host.md).
+First-party extensions are installed from npm and enabled by name in `mesh.config.ts`. `@meshfw/ext-policies` is the one that adds authorization, and the starter enables it. Without it, a `policies` block is not a valid tag and the build fails, so a rule cannot be written and quietly ignored.
 
 ## Your own code
 
-`src/` is yours. Mesh never reads it. In the example:
+Everything else under `src/` is yours, and Mesh never reads it. In the tutorial:
 
-- `src/actor.ts` registers the actor type by module augmentation, so `scope.actor` is typed as whatever your application says a caller is.
+- `src/context.ts` declares the action context's type, so every action's second argument is typed as whatever your application says it is. See [Calling actions](./calling-actions.md#the-action-context).
 - `src/main.ts` is the program: connect, call actions, disconnect.
-
-Nothing in `src/` must be named a particular way, and nothing in it is generated.
 
 ## What to commit
 
 | Path | Commit? |
-|---|---|
-| `resources/*.mx` | yes, always |
-| `generated/` | yes, always |
-| `migrations/*.sql` | yes, always |
+|:--|:--|
+| `src/**/*.mx` | yes |
+| `.mesh/` | yes |
+| `migrations/*.sql` | yes |
 | `mesh.config.ts`, `package.json`, `bun.lock` | yes |
-| `extensions/` | yes |
-| `src/` | yes, it is your code |
+| `src/**` (your TypeScript) | yes |
+| `*.db`, `*.db-journal` | no |
 | `node_modules/` | no |
-| `*.db`, `*.db-journal` (SQLite database files) | no |
 | `.env` | no |
+
+`.mesh/` is marked `linguist-generated` in `.gitattributes`, so GitHub and other viewers collapse it in a diff instead of showing a thousand lines of generated code.
 
 ## Next
 
-- [Example: a todo list](./example-todo-list.md) — the resources behind this layout.
-- [Configuration](./configuration.md).
-- [Usage](./usage.md) — the loop, including what the guard checks.
+- [Configuration and the command line](./configuration.md) — `mesh.config.ts` and every command.
+- [Testing](./testing.md) — where a test's files go.
+- [Customising generated code](./customising-generated-code.md) — a proposal for changing what the generators emit.

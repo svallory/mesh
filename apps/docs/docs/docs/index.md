@@ -1,45 +1,89 @@
 ---
-title: "Docs overview"
-description: "What Mesh is, how to read these pages, and what exists today."
+title: "Introduction"
+description: "What Mesh is, what one entity file gives you, and who it is for."
+layout: "full"
 ---
 
-# Docs overview
+# Introduction
 
-::: callout warning "Live spec, not released"
-This page describes how Mesh **will** work, not how it works today. It is a live spec of the developer experience, written before the code. Mesh is not released: nothing here can be installed or run yet, and any detail may change.
+::: callout warning "Not released"
+Mesh is not released yet. These pages describe Mesh 1.0.
 :::
 
-Mesh is a TypeScript framework modelled on [Ash](https://ash-hq.org), the declarative resource framework for Elixir. You describe a resource once, in one `.mx` file: its data, its actions and its rules. Mesh derives types, handlers and schema from that file. Mesh runs on Bun only.
+Mesh is a TypeScript framework: you describe each thing your program stores once, in one `.mx` file, and Mesh writes the TypeScript you call, the checks on what callers send, the rules about who may do it, and the database tables and migrations. The whole interface is one function call, and Mesh runs on [Bun](https://bun.sh).
 
-Mesh serves any kind of program: a command line, a daemon, a worker or a web app. There is no server in version 1 and no transport at all. An action is a generated TypeScript function, and calling it is the whole interface.
+## One file, and what each part gives you
 
-## How to read these pages
+This is a complete `todo.mx`, top to bottom, with the policies extension enabled (`@meshfw/ext-policies`, which the quick start's project has). Read the code beside the notes: every part of the file is something you would otherwise write by hand, and the note says what it buys you. The lines beginning `//` are the figure's own notes, not part of the file.
 
-These pages are written **before the code**, from the design, to model how using Mesh should feel. They are a live spec: a specific proposal, not a description of a shipped framework. Anything on them can change, and several details are marked "Not decided yet" with a link to the decision record that has to settle them.
+```mx-figure
+// @name: Name and table — `todo` lives in the `todos` table. The type, the functions and the migration come from this one line.
+entity="todo" table="todos"
+// @fields: Fields you send — `title` is a required string, `done` a boolean that starts false.
+  attributes
+    uuid-primary-key="id"
+    attribute="title" type="string" allow-nil=false
+    attribute="done" type="boolean" allow-nil=false default=false
+// @times: Fields the database fills — `insertedAt` on create, `updatedAt` on every write. No caller sets either.
+    create-timestamp="insertedAt"
+    update-timestamp="updatedAt"
+// @belongs: Linked to a list — `listId` becomes a field, the foreign key is created, and `todo.list` arrives when you ask.
+  relationships
+    belongs-to="list" destination="list"
+// @create: Calling createTodo — you call `createTodo(input, context)`. A field it does not accept never reaches your code, and an empty title is refused with your own message.
+  actions defaults=["read", "destroy"]
+    create="create" accept=["title", "listId"]
+      validate=({ todo }) => todo.title.length > 0 message="title must not be empty"
+// @complete: Two more actions — `completeTodo({ id }, context)` and `renameTodo({ id, title }, context)` each run as a single `UPDATE`.
+    update="complete"
+      change=({ todo }) => { todo.done = true }
+    update="rename" accept=["title"]
+// @pending: A query — `pendingTodo(input, context)` filters in SQL, and adds your own filter to it.
+    read="pending"
+      filter=({ todo }) => todo.done === false
+      sort=["insertedAt"]
+// @who: Who may do it — an action with no policy is forbidden, and the check rides along with the query.
+  policies
+    policy=action_type(["create", "read", "update", "destroy"])
+      authorize-if=({ todo, actor }) => todo.list.ownerId === actor.id
+// @derived: A computed value — ask for `label` and it is on the result; leave it out and it does not exist.
+  calculations
+    calculate="label" type="string"
+      value({ todo }) {
+        return (todo.done ? "[x] " : "[ ] ") + todo.title
+      }
 
-If you want to know what Mesh does rather than what it will do, read the [Architecture](../architecture/index.md) section: the roadmap, the decision records and the research behind them.
+```
 
-## The reading path
+## What you call
 
-1. **[Getting started](./getting-started.md)** — which page answers which question, and how to try Mesh today.
-2. **[Installation](./installation.md)** — Bun, and adding Mesh to a new or existing project.
-3. **[Example: a todo list](./example-todo-list.md)** — two resources, a relationship, a validation, a policy and a calculation, and a script that calls them. This is the page to read first if you want to see the shape of the thing.
-4. **[Usage](./usage.md)** — the loop: change a resource, build, let the type checker tell you what broke, update the database, check before committing.
-5. **[Project structure](./project-structure.md)** — which files live where, and which ones are committed.
-6. **[Calling actions](./calling-actions.md)** — the generated signatures, the scope argument, filters, `load`, the error classes and `can`.
-7. **[Configuration](./configuration.md)** — `mesh.config.ts`: the resource folder, the output folder, the data adapter, the extensions.
-8. **[Command-line tool](./command-line.md)** — every `mesh` command, the guard, and `explain`.
-9. **[Resource file reference](./resource-file-reference.md)** — the tags a resource file may use, one by one.
+An action becomes an ordinary TypeScript function with an ordinary signature:
 
-## What exists today
+```ts "src/main.ts (excerpt)"
+const todo = await createTodo({ title: "Buy milk", listId: list.id }, { actor });
+```
 
-Only two things:
+There is no server, no route and no client to generate. Mesh serves a command line, a worker, a daemon or an HTTP endpoint equally, because the function is the whole interface.
 
-- **Tag contracts for resource files.** The vocabulary of a resource file (`resource`, `attribute`, `create` and so on) is defined as contracts that MX, the parser Mesh builds on, enforces when it parses a `.mx` file. The code is `packages/compiler/src/contracts.ts` in the repository. See the [Resource file reference](./resource-file-reference.md).
-- **The resource model.** A plain-data representation of a resource: attributes, actions, relationships and their registries, with a diagnostic type. It is `packages/model` in the repository.
+The same file is built in the [tutorial](./tutorial.md), and every tag in it is in the [entity reference](./entities.md).
 
-There is no code generation, no runtime, no CLI and no package to install. Milestone M0 is done; M1, the build skeleton, is next. The order of work is the [roadmap](../architecture/roadmap/roadmap.md).
+You write one file per thing and edit that file. Adding a field adds a column, a type field and an input key, and one more thing to push or migrate. Removing an accepted field makes every caller that still passes it a type error.
 
-::: callout info "Names can still move"
-The vocabulary follows Ash's DSL for v1, in kebab-case with the trailing `?` dropped, and is reviewed after v1. `allow-nil`, `type="atom"`, `destination=` and `create-timestamp` are the current spellings in the aligned contracts and the Resource file reference. [The vocabulary mapping](../architecture/roadmap/vocabulary-mapping.md) lists every one and what Ash does.
-:::
+## Who it is for
+
+You are writing TypeScript on Bun and some of your program's data has rules attached to it: who may read it, what counts as valid, what a completed order means. Those rules usually live in a framework's models, or in hand-written handlers with hand-written tests.
+
+- **Backend services and APIs.** One declaration replaces a table definition, four DTOs, a validation layer and a controller. The HTTP layer stays yours.
+- **Command-line tools and workers.** The action is a function. Calling it from a task is the same code a request handler runs.
+- **Applications with an AI agent in them.** An agent editing one small declarative file, then running one command, is a much smaller job than an agent editing a model, a schema and a service layer together.
+
+## Where to go next
+
+- [Quick start](./quick-start.md) — a working project in five minutes.
+- [Tutorial: a todo list](./tutorial.md) — two entities and everything you can do with them.
+- [Entities](./entities.md) — every tag an entity file may use.
+- [Calling actions](./calling-actions.md) — the functions Mesh generates.
+- [Project structure](./project-structure.md) — where files live and which ones you commit.
+- [Configuration and the command line](./configuration.md) — `mesh.config.ts` and every `mesh` command.
+- [Testing](./testing.md) — a test that runs against a real database in memory.
+- [Working with AI agents](./ai-agents.md) — what an agent gets from Mesh.

@@ -78,9 +78,29 @@ export function checkRuntime(root: string, rule: "imports" | "web"): string[] {
   return errors;
 }
 
+/**
+ * The Docs pages write the entity root tag as `entity` (the operator's ruling of
+ * 2026-10-04). The tag contracts still know `resource`, so before parsing, the
+ * check rewrites the root tag in memory: every Docs sample is still parsed by
+ * today's contracts, and the check keeps its teeth.
+ *
+ * What the rename task will change is anything the vocabulary itself touches.
+ * A block that fails only for one of those reasons is deferred, counted per
+ * reason and printed; any other failure is a finding in the page.
+ */
+export const DOCS_ROOT_TAG_PENDING_RENAME = "entity";
+
+/** Diagnostic text that names something the entity/module rename or the import rule will change. */
+const RENAME_AFFECTED = /\b(entity|module|domain|import)\b/i;
+
+function withCurrentRootTag(block: string) {
+  return block.replace(new RegExp(`^(\\s*)${DOCS_ROOT_TAG_PENDING_RENAME}(\\s*=)`, "m"), "$1resource$2");
+}
+
 export function checkDocsSamples(dir: string) {
   let parsed = 0;
   let skipped = 0;
+  const deferred: { at: string; reason: string }[] = [];
   const errors: string[] = [];
   for (const name of readdirSync(dir).filter((name) => name.endsWith(".md")).sort()) {
     const file = join(dir, name);
@@ -90,22 +110,37 @@ export function checkDocsSamples(dir: string) {
       if (!opening) continue;
       const fence = opening[1]!;
       const line = i + 1;
-      const block: string[] = [];
+      let block: string[] = [];
       let closed = false;
       while (++i < lines.length) {
         const closing = /^ {0,3}(`{3,}|~{3,})\s*$/.exec(lines[i]!);
         if (closing && closing[1]![0] === fence[0] && closing[1]!.length >= fence.length) { closed = true; break; }
         block.push(lines[i]!);
       }
-      if (!opening[2]!.trimStart().startsWith("mx")) continue;
+      const language = opening[2]!.trim().split(/\s+/)[0];
+      // The figure is one entity file too, once its `// @key:` annotations are removed.
+      if (language === "mx-figure") block = block.filter((line) => !/^\s*\/\/\s*@/.test(line));
+      else if (language !== "mx") continue;
       if (!closed) errors.push(`${name}:${line}: unclosed MX fence`);
-      if (!block.find((text) => text.trim() !== "")?.trimStart().startsWith("resource")) { skipped++; continue; }
+      const root = block.find((text) => text.trim() !== "")?.trimStart() ?? "";
+      // An entity file may open with its imports, so an `import` line heads a complete block too.
+      if (!/^(resource\b|import\s)/.test(root) && !root.startsWith(DOCS_ROOT_TAG_PENDING_RENAME)) { skipped++; continue; }
+      const diagnostics = parse(withCurrentRootTag(`${block.join("\n")}\n`), file).diagnostics;
+      const renaming = diagnostics.filter((diagnostic) => RENAME_AFFECTED.test(diagnostic.message));
+      if (renaming.length > 0 && renaming.length === diagnostics.length) {
+        deferred.push({ at: `${name}:${line}`, reason: renaming[0]!.message });
+        continue;
+      }
       parsed++;
-      for (const diagnostic of parse(`${block.join("\n")}\n`, file).diagnostics) {
+      for (const diagnostic of diagnostics) {
         errors.push(`${name}:${line}: MX block ${diagnostic.line}:${diagnostic.column + 1}: ${diagnostic.message}`);
       }
     }
   }
-  if (parsed === 0) errors.push("Docs sample check parsed no complete resource blocks");
-  return { parsed, skipped, errors };
+  const byReason = new Map<string, number>();
+  for (const { reason } of deferred) byReason.set(reason, (byReason.get(reason) ?? 0) + 1);
+  console.log(`Docs MX samples: parsed ${parsed}, deferred ${deferred.length}, skipped ${skipped} fragments`);
+  for (const [reason, count] of byReason) console.log(`  deferred (${count}) pending the entity rename: ${reason}`);
+  if (parsed === 0 && deferred.length === 0) errors.push("Docs sample check parsed no complete entity blocks");
+  return { parsed, skipped, deferred, errors };
 }

@@ -11,7 +11,9 @@
   },
   "plugins": {
     "search": {},
-    "./plugins/mx-highlight.js": {}
+    "./plugins/mx-highlight.js": {},
+    "./plugins/mx-figure.js": {},
+    "ai": false
   },
   "navigation": [
     {
@@ -22,44 +24,44 @@
       "title": "Docs",
       "children": [
         {
-          "title": "About Docs",
+          "title": "Introduction",
           "path": "/docs/"
         },
         {
-          "title": "Getting started",
-          "path": "/docs/getting-started/"
+          "title": "Quick start",
+          "path": "/docs/quick-start/"
         },
         {
-          "title": "Installation",
-          "path": "/docs/installation/"
+          "title": "Tutorial: a todo list",
+          "path": "/docs/tutorial/"
         },
         {
-          "title": "Usage",
-          "path": "/docs/usage/"
-        },
-        {
-          "title": "Project structure",
-          "path": "/docs/project-structure/"
-        },
-        {
-          "title": "Example: a todo list",
-          "path": "/docs/example-todo-list/"
+          "title": "Entities",
+          "path": "/docs/entities/"
         },
         {
           "title": "Calling actions",
           "path": "/docs/calling-actions/"
         },
         {
-          "title": "Configuration",
+          "title": "Project structure",
+          "path": "/docs/project-structure/"
+        },
+        {
+          "title": "Configuration and the command line",
           "path": "/docs/configuration/"
         },
         {
-          "title": "Command-line tool",
-          "path": "/docs/command-line/"
+          "title": "Testing",
+          "path": "/docs/testing/"
         },
         {
-          "title": "Resource file reference",
-          "path": "/docs/resource-file-reference/"
+          "title": "Working with AI agents",
+          "path": "/docs/ai-agents/"
+        },
+        {
+          "title": "Customising generated code",
+          "path": "/docs/customising-generated-code/"
         }
       ]
     },
@@ -73,6 +75,10 @@
         {
           "title": "Contributing to these docs",
           "path": "/architecture/contributing/"
+        },
+        {
+          "title": "Open questions and findings",
+          "path": "/architecture/open-questions/"
         },
         {
           "title": "Roadmap",
