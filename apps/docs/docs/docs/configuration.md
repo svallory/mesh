@@ -79,7 +79,7 @@ An extension adds to Mesh through declared points: tags a resource file may use,
 `@mesh/ext-policies` is the first-party extension that fills the authorizer slot. With it enabled, an action with no matching policy is **forbidden** ([ADR-0036](../architecture/decisions/0036-deny-by-default-arrives-with-policies.md)). Without it, the `policies` block is not a valid tag and the build fails — which is the point: a resource cannot declare a policy that is quietly ignored.
 
 ::: callout info "Not decided yet"
-"Policies on by default" cannot be a core default, because core must not know about an extension it is not allowed to depend on, and extensions load only from this file. In this page it means what the starter template writes: `extensions: [policies()]`. Whether the ruling means something stronger is [exception X2](../architecture/roadmap/vocabulary-mapping.md) on the vocabulary mapping page; ADR-0036 is a working decision the operator may overrule.
+"Policies on by default" cannot be a core default, because core must not know about an extension it is not allowed to depend on, and extensions load only from this file. In this page it means what the starter template writes: `extensions: [policies()]`. Whether the ruling means something stronger is [exception X2](../architecture/roadmap/vocabulary-mapping.md) on the vocabulary mapping page; ADR-0036 remains a working decision.
 :::
 
 A project-local extension goes in `extensions/` with two entries, a build-time one and a run-time one, and is listed the same way.

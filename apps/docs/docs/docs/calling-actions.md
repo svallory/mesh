@@ -54,7 +54,7 @@ await t.createTodo(input, scope);
 
 Two bindings to two databases can live in one process. `bind` does not create tables: prepare the emitted schema on the same connection with the adapter's test/development function ([ADR-0048](../architecture/decisions/0048-schema-inside-the-process-for-tests.md)). Its public spelling is defined by the adapter implementation. A CLI in another process cannot prepare this private in-memory database.
 
-**Lifecycle and argument boundary** (roadmap author, 2026-10-04; the lead may overrule): `bind` takes a ready object implementing the run-time `DataLayer` contract of `@mesh/runtime` (`transaction` and `close`), not a configuration descriptor. `sqlite(options)` returns that object and opens its connection on first use; `bind` itself opens nothing and creates no table. Calling `connect` while a default binding exists throws `FrameworkError`, never silently replacing or reusing the connection. `disconnect()` closes the default data layer and clears the binding, so a top-level action afterwards throws the same `FrameworkError` as before `connect`. You may connect again after disconnecting; disconnecting without a default binding does nothing. You own a data layer you pass to `bind` and close it with its `close()` method; `disconnect()` never touches it ([ADR-0047](../architecture/decisions/0047-actions-are-bound-to-a-data-layer.md)).
+**Lifecycle and argument boundary**: `bind` takes a ready object implementing the run-time `DataLayer` contract of `@mesh/runtime` (`transaction` and `close`), not a configuration descriptor. `sqlite(options)` returns that object and opens its connection on first use; `bind` itself opens nothing and creates no table. Calling `connect` while a default binding exists throws `FrameworkError`, never silently replacing or reusing the connection. `disconnect()` closes the default data layer and clears the binding, so a top-level action afterwards throws the same `FrameworkError` as before `connect`. You may connect again after disconnecting; disconnecting without a default binding does nothing. You own a data layer you pass to `bind` and close it with its `close()` method; `disconnect()` never touches it ([ADR-0047](../architecture/decisions/0047-actions-are-bound-to-a-data-layer.md)).
 
 The data layer never goes in the scope; `{ actor, context }` stays a required plain argument on every call.
 
@@ -239,7 +239,7 @@ How a run-time error carries a `.mx` position. Mesh's working assumption is that
 :::
 
 ::: callout info "Not decided yet"
-What a denied write reports on an atomic action. Mesh's working assumption folds a record-reading policy into the statement, so a row the caller may not change reports **not found**; Ash compiles the same check and reports forbidden. On a non-atomic action (`require-atomic=false`) the check runs in memory and a denial is reported as forbidden with the breakdown. [ADR-0046](../architecture/decisions/0046-denied-atomic-write-outcome.md) records the asymmetry, and the operator may overrule it.
+What a denied write reports on an atomic action. Mesh's working assumption folds a record-reading policy into the statement, so a row the caller may not change reports **not found**; Ash compiles the same check and reports forbidden. On a non-atomic action (`require-atomic=false`) the check runs in memory and a denial is reported as forbidden with the breakdown. [ADR-0046](../architecture/decisions/0046-denied-atomic-write-outcome.md) records the proposed asymmetry.
 :::
 
 ## Asking instead of calling: `can`

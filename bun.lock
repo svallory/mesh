@@ -50,6 +50,10 @@
       "name": "@mesh/model",
       "version": "0.0.0",
     },
+    "packages/runtime": {
+      "name": "@mesh/runtime",
+      "version": "0.0.0",
+    },
   },
   "packages": {
     "@docmd/api": ["@docmd/api@0.9.7", "", { "dependencies": { "@docmd/parser": "^0.9.7", "@docmd/tui": "^0.9.7", "@docmd/utils": "^0.9.7" }, "optionalDependencies": { "@docmd/engine-js": "^0.9.7", "@docmd/engine-python": "^0.9.7", "@docmd/engine-rust": "^0.9.7" } }, "sha512-t+uojlDgbijUTZTyqsoXGfoKY1UmmIDtgPeYbDcpnsRZFVArxgAcTp8chxyNj6D3zb5YWFadydKEgCQRVaL0pA=="],
@@ -159,6 +163,8 @@
     "@mesh/example-blog": ["@mesh/example-blog@workspace:examples/blog"],
 
     "@mesh/model": ["@mesh/model@workspace:packages/model"],
+
+    "@mesh/runtime": ["@mesh/runtime@workspace:packages/runtime"],
 
     "@mxlang/core": ["@mxlang/core@link:@mxlang/core", {}],
 

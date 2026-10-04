@@ -58,7 +58,7 @@ Reading it top to bottom:
 - The policies block declares a check for each action. `action_type` accepts one name or a list of names, and a list means any of them, so `action_type(["read", "destroy"])` gives one policy for both actions. That is different from a list of checks, `policy=[a, b]`, where [all conditions in that list must hold](../architecture/research/ash-features.md). With the policies extension enabled, an action with no matching policy is forbidden. `authorize-if` returns a boolean; the expression is the record and the actor, and nothing else.
 - `count="todoCount" relationship-path="todos"` declares an aggregate: the number of related todos.
 
-By the operator's ruling of 2026-10-04, `table` stays an attribute of `resource` for now. It moves to a data-layer section, as in Ash, when the extension host exists at M6 or at the post-v1 vocabulary review. [The vocabulary mapping](../architecture/roadmap/vocabulary-mapping.md), exception X1, is closed for now.
+`table` stays an attribute of `resource` for now. It moves to a data-layer section, as in Ash, when the extension host exists at M6 or at the post-v1 vocabulary review. [The vocabulary mapping](../architecture/roadmap/vocabulary-mapping.md), exception X1, is closed for now.
 
 ::: callout info "Not decided yet"
 Ash's `belongs_to` creates its foreign-key attribute as `<name>_id`. The roadmap uses `listId`, matching the fixture. Which name Mesh generates is settled when relationships are built. [The vocabulary mapping](../architecture/roadmap/vocabulary-mapping.md), row D12.
@@ -117,11 +117,11 @@ Reading it:
 - `calculate="label"` is a derived value.
 
 ::: callout info "Proposed amendment: validation sees the changed record"
-The lead's 2026-10-04 amendment to [ADR-0017](../architecture/decisions/0017-atomic-by-default-and-classification.md) gives `validate` the proposed record after the action's changes and the input as a second parameter. The create validation above therefore sees the incoming title. On update it sees the resulting title, not only the old stored value.
+The proposed amendment to [ADR-0017](../architecture/decisions/0017-atomic-by-default-and-classification.md) gives `validate` the proposed record after the action's changes and the input as a second parameter. The create validation above therefore sees the incoming title. On update it sees the resulting title, not only the old stored value.
 :::
 
 ::: callout info "Proposed amendment: create policies run before insert"
-The lead's 2026-10-04 amendment to [ADR-0022](../architecture/decisions/0022-policies-simple-tier-as-extension.md) gives a create policy the proposed record. Reading `todo.list.ownerId` queries the related record inside the transaction, before the insert. See [the action lifecycle](../architecture/in-depth/action-lifecycle.md).
+The proposed amendment to [ADR-0022](../architecture/decisions/0022-policies-simple-tier-as-extension.md) gives a create policy the proposed record. Reading `todo.list.ownerId` queries the related record inside the transaction, before the insert. See [the action lifecycle](../architecture/in-depth/action-lifecycle.md).
 :::
 
 ::: callout info "Not decided yet"
@@ -222,7 +222,7 @@ What to notice:
 - **`createList` takes only `name`.** `ownerId` is not accepted, so a caller cannot become the owner of somebody else's list by sending it.
 - **`completeTodo({ id })` takes an id and nothing else.** The change sets `done`; the caller does not send `done`.
 - **`load: ["label"]`** is what makes `todo.label` typed on the returned array. Without it the property is a type error.
-- **Bob gets `NotFoundError`, not `ForbiddenError`.** The policy reads the stored record, so on an atomic update it folds into the statement as a filter, and a row the caller may not change is reported as not found. That is Mesh's choice: Ash compiles the same check into the statement but as an expression that raises, and reports forbidden. The asymmetry is the working assumption for v1 and the operator may overrule it.
+- **Bob gets `NotFoundError`, not `ForbiddenError`.** The policy reads the stored record, so on an atomic update it folds into the statement as a filter, and a row the caller may not change is reported as not found. That is Mesh's choice: Ash compiles the same check into the statement but as an expression that raises, and reports forbidden. The asymmetry is the working assumption for v1.
 
 ::: callout info "Not decided yet"
 What a denied write reports on an atomic action. The rule used above is that a record-reading policy folds into the statement and a row the caller may not change reports **not found**. Ash reports forbidden. [ADR-0046](../architecture/decisions/0046-denied-atomic-write-outcome.md) records the choice and the alternative; `canCompleteTodo` is the way to ask why either way.
