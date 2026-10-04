@@ -41,7 +41,7 @@ todo-app/
 
 ## Resource files
 
-One resource per `.mx` file, under the folder `resources` names in the configuration. A file holds exactly one `resource`; two resources in one file is a build error.
+One resource per `.mx` file, under the folder `resources` names in the configuration; nested folders are included. A [configured glob or file list](./configuration.md) can select a subset instead. A file holds exactly one `resource`; two resources in one file is a build error.
 
 Tag and attribute names follow Ash's DSL, in kebab-case with the trailing `?` dropped ([ADR-0034](../architecture/decisions/0034-vocabulary-copies-ash-dsl.md)). Every example is written in MX concise syntax, the indentation-based form ([ADR-0041](../architecture/decisions/0041-mx-concise-syntax.md)). The full list of tags is in the [Resource file reference](./resource-file-reference.md).
 

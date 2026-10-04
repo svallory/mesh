@@ -46,18 +46,11 @@ import type {
  */
 
 /** The action kinds a `defaults` list and the `action_type` check may name. */
-export const ACTION_TYPES = ["create", "read", "update", "destroy"] as const;
+export { ACTION_TYPES } from "@mesh/model";
+import { ACTION_TYPES, ATTRIBUTE_TYPES as ATTRIBUTE_REGISTRY } from "@mesh/model";
 
 /** The attribute types Mesh resource files may declare. */
-export const ATTRIBUTE_TYPES = [
-  "string",
-  "integer",
-  "float",
-  "boolean",
-  "atom",
-  "uuid",
-  "datetime",
-] as const;
+export const ATTRIBUTE_TYPES = ATTRIBUTE_REGISTRY.map((type) => type.name);
 
 /**
  * A calculation yields a value, never a choice from a list, so it takes the
@@ -104,6 +97,7 @@ type Literal =
 // Babel nodes are untyped in core (`Node`), so read them structurally.
 interface LooseNode {
   type: string;
+  loc?: { start: { line: number; column: number } };
   value?: unknown;
   name?: unknown;
   operator?: string;
@@ -188,7 +182,7 @@ function all(...rules: Analyze[]): Analyze {
  * with `undefined` entries where the item is not a string literal, or
  * `undefined` when there is no well-formed `one_of` list.
  */
-function oneOfItems(constraints: Attr | undefined): {
+function oneOfItems(constraints: Attr | undefined, ctx: AnalyzeContext): {
   items: (string | undefined)[] | undefined;
   problems: string[];
 } {
@@ -200,6 +194,7 @@ function oneOfItems(constraints: Attr | undefined): {
     return { items: undefined, problems };
   }
   let oneOf: LooseNode | undefined;
+  const seenKeys = new Set<unknown>();
   for (const prop of node.properties ?? []) {
     if (prop?.type !== "ObjectProperty" || prop.computed === true) {
       problems.push("`constraints` must be an object literal with `one_of`");
@@ -209,6 +204,10 @@ function oneOfItems(constraints: Attr | undefined): {
       prop.key?.type === "Identifier" || prop.key?.type === "StringLiteral"
         ? (prop.key.name ?? prop.key.value)
         : undefined;
+    if (seenKeys.has(key)) {
+      ctx.fail(`\`constraints\` has a duplicate key "${String(key)}"`, prop.key?.loc?.start ?? constraints.loc);
+    }
+    seenKeys.add(key);
     if (key !== "one_of") {
       problems.push(
         `\`constraints\` has an unknown constraint "${String(key)}"; only \`one_of\` is known`,
@@ -254,7 +253,7 @@ function analyzeAttribute(calls: readonly TagCall[], ctx: AnalyzeContext): void 
         constraints.loc,
       );
     }
-    const { items: options, problems } = oneOfItems(constraints);
+    const { items: options, problems } = oneOfItems(constraints, ctx);
     for (const problem of problems) {
       ctx.fail(problem, constraints?.loc);
     }
@@ -521,10 +520,7 @@ export default {
     parents: ["resource"],
     attributes: { defaults: strings() },
     children: {
-      create: { repeatable: true },
-      update: { repeatable: true },
-      read: { repeatable: true },
-      destroy: { repeatable: true },
+      ...Object.fromEntries(ACTION_TYPES.map((kind) => [kind, { repeatable: true }])),
     },
     analyze: all(nonEmptyList("defaults", "defaults"), analyzeDefaults),
   }),

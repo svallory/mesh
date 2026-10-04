@@ -30,10 +30,12 @@ export default defineConfig({
 
 | Key | Required | What it is |
 |---|---|---|
-| `resources` | yes | Folder holding the `.mx` files, relative to the project root |
+| `resources` | yes | Folder holding the `.mx` files recursively, relative to the project root; a relative glob or non-empty list of relative file paths is also accepted |
 | `output` | yes | Folder the generated tree is written to, relative to the project root |
-| `data` | yes | The data adapter for this project: exactly one |
-| `extensions` | no | The enabled extensions, each a call that returns one |
+| `data` | yes from M2; optional in M1 | The data adapter for this project: exactly one |
+| `extensions` | no | An array of enabled extensions, each a call that returns one |
+
+The folder form of `resources` is the primary form; it discovers every `.mx` file beneath that folder, including dot-prefixed files and folders, and sorts the paths. No folder is silently excluded, including `node_modules`. Globs and explicit file lists are alternatives for selecting a subset; glob matches also include dot-prefixed paths. In M1, `data` stays opaque and optional; `extensions`, when present, must be an array whose elements are carried through unchanged without evaluation. The data adapter is interpreted in M2, extension elements in M6. The helper is implemented by `@mesh/compiler`; the M1 command-line package re-exports it from `@mesh/cli`, as the examples above show.
 
 ## Choosing the database
 
