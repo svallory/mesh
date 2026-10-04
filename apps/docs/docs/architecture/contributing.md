@@ -75,3 +75,13 @@ description: "One sentence."
 ## Linking
 
 Link to other pages with a relative path to the `.md` file, for example `./roadmap/index.md` from `architecture/index.md`. `bun run validate` checks these, including links inside code spans, so use real paths in examples. Do not use absolute URLs for pages in this site.
+
+## Deployment
+
+The site is deployed at <https://mesh.saulo.tech> by a [Coolify](https://coolify.io) instance running on the operator's server. In Coolify it is the application `mesh-docs` in the project `mesh`, built from `https://github.com/svallory/mesh`, branch `main`, base directory `apps/docs`, build pack `dockerfile`. HTTPS is forced and the certificate is issued by Let's Encrypt through Coolify's Traefik proxy.
+
+The build is defined in the repository, not in the Coolify UI: `apps/docs/Dockerfile` (an `oven/bun:1.3.14` stage that installs `apps/docs` standalone and runs `bun run build`, then an `nginx:1.27-alpine` stage that serves `site/`) plus `apps/docs/nginx.conf`. The Dockerfile installs the docs app on its own — not through the root workspace — because the root `bun.lock` references the local `link:` MX packages of `packages/compiler`, which a build container does not have; the docs app only needs the pinned `@docmd/core` and `@docmd/plugin-search`.
+
+A deploy is triggered automatically by a push to `main`: a GitHub webhook on the repository (push events) calls the Coolify webhook endpoint, and Coolify rebuilds and redeploys the application. To redeploy by hand, press **Redeploy** on the `mesh-docs` application in the Coolify dashboard (<https://cool.saulo.tech>) or run `coolify deploy uuid <application-uuid>` with the `coolify` CLI and a Coolify API token.
+
+Changes to `apps/docs/Dockerfile`, `apps/docs/nginx.conf` or `apps/docs/.dockerignore` take effect on the next deploy; test them first with `docker build apps/docs` from the repository root.
