@@ -5,7 +5,7 @@ description: "The eight build stages that turn resource files into committed, gu
 
 # The build-time pipeline
 
-Status: design; stages 1, 2, 3, 7 and 8 are built in M1, expression conversion (part of stage 3) and stage 6 in M4, stages 4 and 5 in M6. The tag contracts in `packages/compiler` and the model types in `packages/model` exist today. Tag and attribute names quoted here are today's working names; aligning them with Ash's DSL is the first part of M1 ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md)).
+Status: stages 1 to 3 and the M1 checks step are built in M1 (`feat/m1-load`; PR pending). Stages 7 and 8 follow in the remaining M1 work; expression conversion (part of stage 3) and stage 6 arrive in M4, stages 4 and 5 in M6. The tag contracts in `packages/compiler` read the value registries in `packages/model`. Vocabulary alignment with Ash's DSL is complete ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md)).
 
 ## Why a pipeline
 
@@ -30,15 +30,17 @@ The pipeline is run by `mesh build` and lives in `packages/compiler`. Its output
 
 ### 1. Load
 
-Project configuration is one file, `mesh.config.ts`: it names where the resource files are and where generated files go; M2 adds the data adapter and M6 the enabled extensions. Every build check that depends on "the configured adapter" reads it ([roadmap](../roadmap/roadmap.md), M1). `compiler` calls MX's `parseData` and gets a static tree (see [mx-integration.md](./mx-integration.md)). Source positions are kept to the model so later errors can name a file and line.
+Built in M1 (`feat/m1-load`; PR pending). Project configuration is one trusted executable file, `mesh.config.ts`, whose default export is `defineConfig({ resources, generatedDir })` from `@mesh/compiler`. Both fields are required: `resources` is a relative glob or a non-empty list of relative file paths; `generatedDir` is a relative output directory. Paths resolve from the config file, must stay inside the project, and resource paths are deduplicated and sorted. An unmatched glob, an unreadable file, an unknown field or a wrong-typed field is an error; required fields have no silent defaults. M2 adds the data adapter and M6 the enabled extensions ([roadmap](../roadmap/roadmap.md), M1).
+
+`loadConfig(projectRoot)` resolves the project; `loadProject(config)` reads its files and calls `buildModel({ root, files })`. Callers with source text can call `buildModel` directly. Both build entry points return a model document plus diagnostics, with a null document on any error; neither emits files. `compiler` calls MX's `parseData` with directly imported contracts, `structural: "reject"` and `unknownTags: "reject"` (see [mx-integration.md](./mx-integration.md)). Source positions use project-relative paths, 1-based lines, 0-based columns and UTF-16 offsets.
 
 ### 2. Check structure
 
-In M1 MX does most of this: unknown tags, wrong attribute types, wrong nesting and missing required attributes are MX errors raised inside `parseData` ([roadmap](../roadmap/roadmap.md), M1). One rule is Mesh's own: exactly one `resource` per file, because MX has no root cardinality.
+Built in M1 (`feat/m1-load`; PR pending). MX does most of this: unknown tags, wrong attribute types, wrong nesting and missing required attributes are MX errors raised inside `parseData` ([roadmap](../roadmap/roadmap.md), M1). One rule is Mesh's own: exactly one `resource` per file, because MX has no root cardinality.
 
 ### 3. Build model
 
-The model is plain, JSON-serialisable data with source positions kept ([roadmap](../roadmap/roadmap.md), M1; section 3, `model` row). In M1 it holds resource name, `table`, `domain`, the attribute types of the registry, `uuid-primary-key`, `create-timestamp` and `update-timestamp` and the four action kinds with `accept` and `defaults`. Cross-file checks in M1: duplicate resource names, and `accept` naming a missing attribute. When M6 lands, these checks become the Verify stage. The M1 types are in `packages/model` (`Resource`, `ModelDocument`, `SourcePosition`, `Diagnostic`): absent optional values are `null`, never `undefined`, so a document survives a JSON round trip unchanged. The attribute type names (`string`, `integer`, `float`, `boolean`, `uuid`, `datetime`, `atom`) live in the registry there ([ADR-0037](../decisions/0037-vocabulary-source-of-truth.md)); `model` imports nothing from MX, `compiler` or Drizzle, and a test scans its sources for such imports.
+Built in M1 (`feat/m1-load`; PR pending). The model is plain, JSON-serialisable data with source positions kept ([roadmap](../roadmap/roadmap.md), M1; section 3, `model` row). In M1 it holds resource name, `table`, `domain`, the attribute types of the registry, `uuid-primary-key`, `create-timestamp` and `update-timestamp` and the four action kinds with `accept` and `defaults`. Checks in M1: duplicate resource names, duplicate attribute or explicit action names within a resource, a missing primary-key attribute ([vocabulary mapping](../roadmap/vocabulary-mapping.md), D31), and `accept` naming a missing attribute. A missing key points at the resource name and tells the author to declare `uuid-primary-key`; M1 has no opt-out. The builder runs `findNonJsonValue` before returning a document. When M6 lands, these checks become the Verify stage. The M1 types are in `packages/model` (`Resource`, `ModelDocument`, `SourcePosition`, `Diagnostic`): absent optional values are `null`, never `undefined`, so a document survives a JSON round trip unchanged. The attribute type names (`string`, `integer`, `float`, `boolean`, `uuid`, `datetime`, `atom`) live in the registry there ([ADR-0037](../decisions/0037-vocabulary-source-of-truth.md)); `model` imports nothing from MX, `compiler` or Drizzle, and a test scans its sources for such imports.
 
 From M4, stage 3 also converts each arrow function from MX's Babel node to an expression tree and classifies it as translatable or opaque. The tree and its class are part of the model, so transforms and verifiers see them ([roadmap](../roadmap/roadmap.md), M4). Conversion runs in `compiler`. A translatable expression may use only its parameters and registered functions; a free variable is a build error. Parameters such as the actor are bound from the scope and the input when the expression runs; the mechanism is not decided.
 
@@ -50,7 +52,7 @@ Extensions rewrite the model in named phases. A cycle between phases is a hard e
 
 ### 5. Verify
 
-Read-only checks across resources. A failure stops the build. A strictness setting for verifiers is out of scope for M6 ([roadmap](../roadmap/roadmap.md), M6), so every verifier failure is an error. Example: a policy's `action` names a real action (M8).
+The M1 checks step is built (`feat/m1-load`; PR pending); it collects errors across resources before returning. M6 turns it into the extensible Verify stage. Read-only checks across resources. A failure stops the build. A strictness setting for verifiers is out of scope for M6 ([roadmap](../roadmap/roadmap.md), M6), so every verifier failure is an error. Example: a policy's `action` names a real action (M8).
 
 ### 6. Compile expressions (produce the two forms)
 
@@ -70,16 +72,16 @@ Text from templates, passed through an established formatter pinned to an exact 
 
 ## The not-implemented rule
 
-The tag contracts accept the whole vocabulary before the compiler handles it. A tag or attribute the contracts accept but the compiler does not yet implement is a build error naming it and the milestone that will ([ADR-0018](../decisions/0018-not-implemented-is-a-build-error.md)). Reason: ignoring it is the silent fallback the roadmap forbids ([roadmap](../roadmap/roadmap.md), section 2, principle 2). The M1 list covers relationships, changes, validations, `filter`, `sort`, policies, calculations and aggregates; each milestone removes entries as it implements them, and the alignment with Ash's DSL, done first in M1, changes the names. The error is raised at the first unsupported tag (M1, acceptance test 5). `public` is not on the list: M1 records it in the model, and nothing in v1 reads it. What it will mean is open: [ADR-0035](../decisions/0035-meaning-of-public.md) is Proposed.
+The tag contracts accept the whole vocabulary before the compiler handles it. A tag or attribute the contracts accept but the compiler does not yet implement is a build error naming it and the milestone that will ([ADR-0018](../decisions/0018-not-implemented-is-a-build-error.md)). Reason: ignoring it is the silent fallback the roadmap forbids ([roadmap](../roadmap/roadmap.md), section 2, principle 2). The single milestone table is `packages/compiler/src/support.ts`: relationships, calculations and aggregates arrive in M7; changes, validations and `filter` in M4; `sort` in M3; policies in M8. Its implemented-tag list also names every consumed attribute. A coverage test compares these lists with the contracts, so a contract addition cannot be silently ignored. The builder walks MX's tree in source order and reports unsupported tags at their tag positions, without descending into an already unsupported subtree. The full fixture's first diagnostic is at `relationships` (M1, acceptance test 5). Each milestone removes entries as it implements their semantics. `public` is not on the list: M1 records it in the model, and nothing in v1 reads it. What it will mean is open: [ADR-0035](../decisions/0035-meaning-of-public.md) is Proposed.
 
 ## What a build error looks like
 
 Every build error names the file, the line and the fix ([roadmap](../roadmap/roadmap.md), section 2, principle 2). Two sources feed that:
 
 - MX diagnostics carry `severity`, `message`, `line`, `column` and `file`. Example for a misspelt root tag: `` `<resourse>` is not a known tag: it has no contract in `customTags`; did you mean `<resource>`? `` at line 1 (MX project notes, updates, entry of 2026-10-04 00:32).
-- Mesh's own errors (duplicate resource, unknown `accept` name, not-implemented tag) use the positions kept in the model. The message text is not decided; the roadmap fixes only that tests assert message, line and column for each case (section 2, principle 5; M1, acceptance test 4).
+- Mesh's own errors (duplicate resource, unknown `accept` name, not-implemented tag) use the positions kept in the model. Messages and stable diagnostic codes are pinned by the compiler tests, together with their exact source positions (M1, acceptance test 4).
 
-MX stops at the first error per file ([mx-integration.md](./mx-integration.md)); Mesh's own checks should report all of theirs at once (M1, risks). Whether errors from different files are collected or the build stops at the first failing file is not decided.
+MX stops at the first error per file ([mx-integration.md](./mx-integration.md)); the compiler preserves its message and position and continues through the other files. Mesh collects its own checks across all successfully parsed, supported resources. Any error makes the returned document null; diagnostics remain available to the caller.
 
 ## Determinism
 

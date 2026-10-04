@@ -193,7 +193,7 @@ interface Case {
   message: string;
 }
 
-const TYPES = '"string", "integer", "float", "boolean", "atom", "uuid", "datetime"';
+const TYPES = '"string", "integer", "float", "boolean", "uuid", "datetime", "atom"';
 const TYPE_MESSAGE = (got: string) =>
   `\`<attribute>\`: attribute \`type\` must be one of ${TYPES}, got "${got}"`;
 const CALC_TYPE_MESSAGE = (got: string) =>
@@ -448,7 +448,7 @@ const RULE_CLASSES: Record<string, Case[]> = {
   ],
   "the pre-alignment names are gone (renamed, not aliased)": [
     { file: "old-timestamps-tag", line: 3, column: 4, message: `\`<attributes>\`: \`<timestamps>\` is not allowed here; allowed children: ${ALLOWED_ATTRIBUTES}` },
-    { file: "old-defaults-child", line: 5, column: 4, message: "`<actions>`: `<defaults>` is not allowed here; allowed children: `<create>`, `<update>`, `<read>`, `<destroy>`" },
+    { file: "old-defaults-child", line: 5, column: 4, message: "`<actions>`: `<defaults>` is not allowed here; allowed children: `<create>`, `<read>`, `<update>`, `<destroy>`" },
     { file: "old-policy-action-attribute", line: 5, column: 11, message: "`<policy>`: unknown attribute `action`" },
     { file: "attribute-old-required-flag", line: 3, column: 32, message: "`<attribute>`: unknown attribute `required`" },
     { file: "attribute-old-type-number", line: 3, column: 18, message: TYPE_MESSAGE("number") },

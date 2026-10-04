@@ -5,7 +5,8 @@
   "license": "MIT",
   "type": "module",
   "exports": {
-    ".": "./src/contracts.ts"
+    ".": "./src/index.ts",
+    "./contracts": "./src/contracts.ts"
   },
   "description": "Mesh resource-file vocabulary as MX CustomTag contracts",
   "scripts": {
@@ -17,6 +18,7 @@
     "contracts": "./src/contracts.ts"
   },
   "dependencies": {
+    "@mesh/model": "workspace:*",
     "@mxlang/data": "link:@mxlang/data",
     "@mxlang/core": "link:@mxlang/core"
   }

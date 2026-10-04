@@ -46,18 +46,11 @@ import type {
  */
 
 /** The action kinds a `defaults` list and the `action_type` check may name. */
-export const ACTION_TYPES = ["create", "read", "update", "destroy"] as const;
+export { ACTION_TYPES } from "@mesh/model";
+import { ACTION_TYPES, ATTRIBUTE_TYPES as ATTRIBUTE_REGISTRY } from "@mesh/model";
 
 /** The attribute types Mesh resource files may declare. */
-export const ATTRIBUTE_TYPES = [
-  "string",
-  "integer",
-  "float",
-  "boolean",
-  "atom",
-  "uuid",
-  "datetime",
-] as const;
+export const ATTRIBUTE_TYPES = ATTRIBUTE_REGISTRY.map((type) => type.name);
 
 /**
  * A calculation yields a value, never a choice from a list, so it takes the
@@ -521,10 +514,7 @@ export default {
     parents: ["resource"],
     attributes: { defaults: strings() },
     children: {
-      create: { repeatable: true },
-      update: { repeatable: true },
-      read: { repeatable: true },
-      destroy: { repeatable: true },
+      ...Object.fromEntries(ACTION_TYPES.map((kind) => [kind, { repeatable: true }])),
     },
     analyze: all(nonEmptyList("defaults", "defaults"), analyzeDefaults),
   }),

@@ -25,6 +25,7 @@
       "name": "@mesh/compiler",
       "version": "0.0.0",
       "dependencies": {
+        "@mesh/model": "workspace:*",
         "@mxlang/core": "link:@mxlang/core",
         "@mxlang/data": "link:@mxlang/data",
       },
