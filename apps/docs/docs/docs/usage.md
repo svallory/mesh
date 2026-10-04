@@ -40,7 +40,7 @@ The build reads every `.mx` file under the configured resources folder, checks t
 | `generated/todos/todo.actions.ts` | One exported function per action, with the whole action lifecycle written out |
 | `generated/todos/todo.validators.ts` | The Zod schema each action's input is checked against |
 | `generated/schema.ts` | The Drizzle table definitions, written by the data adapter |
-| `generated/index.ts` | `connect`, `disconnect`, and proposed resource exports; [export-collision handling is not decided](./project-structure.md) |
+| `generated/index.ts` | `bind`, `connect`, `disconnect`, and resource exports; [colliding action function names fail the build](./project-structure.md) |
 
 **What the build checks** and refuses:
 
@@ -48,6 +48,7 @@ The build reads every `.mx` file under the configured resources folder, checks t
 - a tag the contracts accept but the compiler does not implement yet, naming the milestone that will;
 - `accept` naming an attribute the resource does not have;
 - two resources with the same name, or two resources in one file;
+- two resources that would export the same action function name, naming both resources;
 - a free variable in an expression: a translatable expression may use only its declared parameters and the registered functions;
 - a capability the configured adapter does not declare.
 
@@ -77,6 +78,23 @@ await disconnect();
 ```
 
 `{ actor, context }` is the **scope**: who is calling, plus anything else the call needs. It is a plain argument on every call, never ambient, so a test can pass a different actor in one line ([ADR-0007](../architecture/decisions/0007-scope-is-a-plain-argument.md)). [Calling actions](./calling-actions.md) has the full signatures.
+
+### Bind instead of connecting in tests
+
+`generated/index.ts` exports `bind(dataLayer)`: an object containing every action function of every resource with the same names and `(input, scope)` signatures. `connect(options)` creates the data layer using the adapter configured in `mesh.config.ts` and stores `bind(thatDataLayer)` as the default binding. Top-level functions such as `createTodo` delegate to it and throw `FrameworkError` before `connect`; `disconnect()` closes the default connection ([ADR-0047](../architecture/decisions/0047-actions-are-bound-to-a-data-layer.md)).
+
+A test binds its own database. This fragment assumes the test supplies `input` and `scope`:
+
+```ts
+import { sqlite } from "@mesh/data-sqlite";
+import { bind } from "../generated";
+
+const t = bind(sqlite({ file: ":memory:" }));
+// Prepare the emitted schema on this connection before calling an action.
+await t.createTodo(input, scope);
+```
+
+Two bindings to two databases can coexist in one process. Neither changes the default binding. `bind` does not create tables: use the adapter's in-process test/development schema function before calling actions, as specified in [ADR-0048](../architecture/decisions/0048-schema-inside-the-process-for-tests.md). The adapter implementation defines that helper's public spelling and implements the data layer's lifecycle API; you own cleanup of a data layer you supply to `bind`, using its `close()` method ([ADR-0047](../architecture/decisions/0047-actions-are-bound-to-a-data-layer.md), lifecycle and argument boundary). The scope remains `{ actor, context }`, with no data layer inside it.
 
 ## 4. Change the resource, rebuild
 

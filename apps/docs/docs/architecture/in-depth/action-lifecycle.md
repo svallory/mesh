@@ -5,7 +5,7 @@ description: "One action call from start to finish: the eight phases, atomic and
 
 # Action lifecycle
 
-Status: design; built in milestone M5 ([roadmap](../roadmap/roadmap.md), M5). A first four-step version (validate input, open a transaction, call the data layer, commit) arrives in M2 ([roadmap](../roadmap/roadmap.md), M2). Nothing on this page exists as code yet. Policies, which fill the authorizer slot, arrive in M8.
+Status: design; built in milestone M5 ([roadmap](../roadmap/roadmap.md), M5). A first four-step version (validate input, open a transaction, call the data layer, commit) arrives in M2 ([roadmap](../roadmap/roadmap.md), M2). Nothing on this page exists as code yet. Policies, which fill the authorizer slot, arrive in M8. Updated 2026-10-04 with the Proposed validation and create-policy amendments below.
 
 Vocabulary note: tag and attribute names on this page (for example `require-atomic=false`) are working names. For v1 the vocabulary copies Ash's DSL, and the final name follows the mapping in [vocabulary mapping](../roadmap/vocabulary-mapping.md) ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md)). Examples use MX concise syntax ([ADR-0041](../decisions/0041-mx-concise-syntax.md)).
 
@@ -49,8 +49,9 @@ Which phase runs each kind of rule is stated only in part:
 |---|---|
 | Translatable validation that reads only the input | In memory, before the statement ([roadmap](../roadmap/roadmap.md), M5). The phase is not decided. |
 | Translatable change that does not read the stored record, atomic update | Folded into the `UPDATE` statement's assignments, phase 6. |
-| Anything on a non-atomic update (opaque, or reads the stored record) | In memory, on the row read with a write lock, in one transaction. The phase is not decided. |
-| Change or validation on a create | Not stated by the roadmap: not decided. A create has no stored row to update. |
+| Anything on a non-atomic update (opaque, or reads the stored record) | In memory, in the locked transaction before writing. Changes apply once; `validate` sees the resulting proposed record and receives input as its second parameter (Proposed amendment to [ADR-0017](../decisions/0017-atomic-by-default-and-classification.md), 2026-10-04). |
+| Change or validation on a create | Changes form the proposed record; `validate` sees that record after changes, with input as its second parameter, before insert (same Proposed amendment). There is no stored row. |
+| Create policy reading a related record | Query the related record inside the transaction, before insert; evaluate against the proposed record (Proposed amendment to [ADR-0022](../decisions/0022-policies-simple-tier-as-extension.md), 2026-10-04). |
 
 This is the answer to Ash's bug #2969, fixed the day it was reported. In Ash a single-record update runs `change/3` when the changeset is built, then builds a second changeset and runs `atomic/3`. The second keeps attribute values but drops hooks and filters, so a `change filter(...)` stopped working on the atomic path and a non-matching row was written ([Ash runtime internals](../research/ash-runtime-internals.md), section 1.2 and 12.B item 21; [research synthesis](../research/synthesis.md), section 2.2). Mesh picks one strategy before anything runs, and a change is never run twice ([roadmap](../roadmap/roadmap.md), M5; [ADR-0017](../decisions/0017-atomic-by-default-and-classification.md)).
 
@@ -72,7 +73,9 @@ In Ash the decision is a ladder of `{:not_atomic, reason}` results scattered acr
 
 The authorizer slot has two places ([roadmap](../roadmap/roadmap.md), M5): one before the transaction for checks that need no data, one inside it for checks that read data. The slot is empty until M8, when `ext-policies` fills it ([ADR-0022](../decisions/0022-policies-simple-tier-as-extension.md)); until then nothing checks who calls ([ADR-0036](../decisions/0036-deny-by-default-arrives-with-policies.md)).
 
-From M8, a write policy that needs no record runs in memory before the statement. A check that reads the record is folded into the statement as a filter on an atomic action, so a row the caller may not change is reported as not found, as for reads. This is Mesh's choice: Ash also compiles the check into the statement, but as an expression that raises an error ([ADR-0022](../decisions/0022-policies-simple-tier-as-extension.md)). On a non-atomic action it is evaluated in memory on the locked row and a denial is reported as forbidden, with the breakdown ([roadmap](../roadmap/roadmap.md), M8).
+For creates, the Proposed amendment to [ADR-0022](../decisions/0022-policies-simple-tier-as-extension.md) (2026-10-04) gives policies the proposed record after changes. Reading `todo.list.ownerId` queries the related record inside the transaction, before the insert.
+
+From M8, an update or destroy policy that needs no record runs in memory before the statement. A check that reads the record is folded into the statement as a filter on an atomic action, so a row the caller may not change is reported as not found, as for reads. This is Mesh's choice: Ash also compiles the check into the statement, but as an expression that raises an error ([ADR-0022](../decisions/0022-policies-simple-tier-as-extension.md)). On a non-atomic action it is evaluated in memory on the locked row and a denial is reported as forbidden, with the breakdown ([roadmap](../roadmap/roadmap.md), M8).
 
 Ash authorizes writes in six places ([Ash runtime internals](../research/ash-runtime-internals.md), Summary): strict checks before the transaction; create filter checks after `after_action`; update and destroy runtime checks as a prepended `before_action` (or a pre-flight SELECT when the action does not transact); filter checks on non-atomic update and destroy as a SELECT before the transaction; checks compiled into an atomic statement; and generic actions. The fourth is a check-then-act gap. Mesh keeps the pre-transaction place only for checks that read nothing stored. The synthesis proposed one place inside the transaction ([research synthesis](../research/synthesis.md), section 8); the roadmap, which is the authority, has two.
 
@@ -114,6 +117,6 @@ policy action="publish"
 3. **Plan.** Fixed at build time: read with lock, then write. `explain` shows "read then write".
 4. **Pre-check.** The policy reads the stored post, so it does not run here.
 5. **Transaction.** Opens. The post is read with a write lock. A missing post is a not-found error. From M8 the policy is evaluated in memory on the locked row, and a denial is reported as forbidden with the breakdown ([roadmap](../roadmap/roadmap.md), M8).
-6. **Data layer.** (The phase that runs in-memory rules is not decided.) The validation runs in memory on the locked row; if `title` is empty the call fails with "title required" and writes nothing ([roadmap](../roadmap/roadmap.md), M5, test 2). Otherwise the change sets `state` and the row is written.
+6. **Data layer.** Under the Proposed amendment to ADR-0017 (2026-10-04), the change sets `state` on the proposed record once, then validation sees that record and receives input as its second parameter. If `title` is empty the call fails with "title required" and writes nothing ([roadmap](../roadmap/roadmap.md), M5, test 2). Otherwise the proposed row is written inside the locked transaction.
 7. **Commit.** No hooks are declared; the transaction closes.
 8. **After commit.** The typed record comes back.

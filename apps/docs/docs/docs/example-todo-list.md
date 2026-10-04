@@ -58,9 +58,7 @@ Reading it top to bottom:
 - The policies block declares a check for each action. `action_type` accepts one name or a list of names, and a list means any of them, so `action_type(["read", "destroy"])` gives one policy for both actions. That is different from a list of checks, `policy=[a, b]`, where [all conditions in that list must hold](../architecture/research/ash-features.md). With the policies extension enabled, an action with no matching policy is forbidden. `authorize-if` returns a boolean; the expression is the record and the actor, and nothing else.
 - `count="todoCount" relationship-path="todos"` declares an aggregate: the number of related todos.
 
-::: callout info "Not decided yet"
-`table` sits on the `resource` tag here. In Ash it lives in the data layer's own section. Mesh's recommendation is to keep it on `resource`, because a resource file does not name its adapter (a data adapter is replaceable) and both v1 SQL adapters use the same table name. [The vocabulary mapping](../architecture/roadmap/vocabulary-mapping.md), exception X1, records the options.
-:::
+By the operator's ruling of 2026-10-04, `table` stays an attribute of `resource` for now. It moves to a data-layer section, as in Ash, when the extension host exists at M6 or at the post-v1 vocabulary review. [The vocabulary mapping](../architecture/roadmap/vocabulary-mapping.md), exception X1, is closed for now.
 
 ::: callout info "Not decided yet"
 Ash's `belongs_to` creates its foreign-key attribute as `<name>_id`. The roadmap uses `listId`, matching the fixture. Which name Mesh generates is settled when relationships are built. [The vocabulary mapping](../architecture/roadmap/vocabulary-mapping.md), row D12.
@@ -115,15 +113,15 @@ Reading it:
 - `update="complete"` has no `accept`, so it changes nothing the caller sends; its change sets `done = true`. Because that change reads no stored value, it folds into the `UPDATE` statement and the action stays **atomic**: one statement, no read first, so two concurrent callers cannot both act on a stale row.
 - `update="rename" accept=["title"]` accepts `title`.
 - `read="pending"` filters to undone todos and sorts them oldest first. A `filter` must be translatable to SQL, so only the registered functions may appear in it.
-- The policy reads `todo.list.ownerId`. On an atomic update it becomes part of the statement's filter; it does not require loading the relationship into the returned record. The create case remains open below.
+- The policy reads `todo.list.ownerId`. On an atomic update it becomes part of the statement's filter; it does not require loading the relationship into the returned record. On create, the Proposed amendment below queries the related record inside the transaction before insert.
 - `calculate="label"` is a derived value.
 
-::: callout info "Not decided yet"
-What an expression's record parameter holds on a **create** is not stated. The `change` that sets `list.ownerId` reads the attributes already cast from the input; whether a `validate` on a create sees the same values, and how it reaches the incoming value of an accepted attribute on an update, has no designed form ([ADR-0017](../architecture/decisions/0017-atomic-by-default-and-classification.md) and the action lifecycle page both leave it open).
+::: callout info "Proposed amendment: validation sees the changed record"
+The lead's 2026-10-04 amendment to [ADR-0017](../architecture/decisions/0017-atomic-by-default-and-classification.md) gives `validate` the proposed record after the action's changes and the input as a second parameter. The create validation above therefore sees the incoming title. On update it sees the resulting title, not only the old stored value.
 :::
 
-::: callout info "Not decided yet"
-A create policy that reads a related record, as `todo.list.ownerId` does, has no stated place in the lifecycle. The lifecycle fixes where a policy check runs for reads and writes, and leaves creates undecided. [The action lifecycle](../architecture/in-depth/action-lifecycle.md), the table "Which phase runs each kind of rule".
+::: callout info "Proposed amendment: create policies run before insert"
+The lead's 2026-10-04 amendment to [ADR-0022](../architecture/decisions/0022-policies-simple-tier-as-extension.md) gives a create policy the proposed record. Reading `todo.list.ownerId` queries the related record inside the transaction, before the insert. See [the action lifecycle](../architecture/in-depth/action-lifecycle.md).
 :::
 
 ::: callout info "Not decided yet"

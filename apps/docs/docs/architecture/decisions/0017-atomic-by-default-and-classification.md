@@ -89,6 +89,16 @@ A and B differ in who pays: A makes a stored-value validation cost a lock; B mak
 Easier: concurrent updates (M5 test 1). Harder: stored-value validations pay a lock; adapters must offer atomic expressions ([ADR-0013](./0013-data-layer-contract-and-capabilities.md)) and a "read for update" call.
 **Policies (M8).** Record-reading write policies stay folded: on an atomic action they fold into the statement as a filter and a row the caller may not change is reported as not found; on a `require-atomic=false` action they are evaluated in memory on the locked row and reported as forbidden with the breakdown ([roadmap](../roadmap/roadmap.md), M8; [ADR-0022](./0022-policies-simple-tier-as-extension.md)). Ash compiles the check into the update statement as an expression that raises, so it reports a forbidden error ([Ash runtime internals](../research/ash-runtime-internals.md), sections 2.1 and 6.6); Mesh reports not found. That differs from Ash and is the working assumption, in line with reads. Revisit [ADR-0044](./0044-folding-record-reading-validations.md) and batched-atomic bulk after v1. Which outcome a denied atomic write reports is not settled: it is [ADR-0046](./0046-denied-atomic-write-outcome.md) (Proposed), and what this paragraph describes is the working assumption.
 
+## Amendment — 2026-10-04: the record seen by `validate`
+
+**Status: Proposed. Deciders: lead; the operator may overrule.** Source: [rulings before M2](./rulings-2026-10-04.md).
+
+A `validate` sees the record as it will be **after the action's changes are applied**, and receives the input as a second parameter. On create this is the proposed record, not a stored row; on update it includes the incoming values and the action's changes, not merely the old stored values. This amends the earlier reading above; the original decision is preserved as history.
+
+The atomicity rule still depends on whether computing the validation's values needs stored data. A validation that needs the stored row follows the locked non-atomic path in v1; one that needs only input can run before the statement. Changes are applied once, then validations inspect the resulting candidate before it is written. In `publish`, the proposed record has `state = "published"` when `title` is checked; an unchanged title still comes from the stored row.
+
+M5 must test that create rejects an invalid proposed value and that update validates the incoming value after changes, with the input available separately. This amendment does not introduce the post-v1 folding protocol of ADR-0044.
+
 ## Action items
 - [ ] M4: record the class of each change and validation in the model, including whether it reads the stored record.
 - [ ] M5: `require-atomic` attribute, build error, locked read, `explain` output.

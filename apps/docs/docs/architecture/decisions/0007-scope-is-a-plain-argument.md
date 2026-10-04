@@ -31,6 +31,8 @@ Decided by the lead, as recorded in [rulings of 2026-10-04](./rulings-2026-10-04
 
 The scope is never ambient. In the roadmap, the scope is the second argument of every generated function, `createPost(input, scope)`, required on every call; "a call without a scope is a type error" ([roadmap](../roadmap/roadmap.md), M2). Tenancy is not in this type; where it lives is open ([ADR-0009](./0009-tenancy-placement.md)). The operator may overrule.
 
+Connection handling, 2026-10-04: see [ADR-0047](./0047-actions-are-bound-to-a-data-layer.md). Actions are bound to a data layer by a factory; the scope stays `{ actor, context }` and never contains the data layer.
+
 ## Options considered
 
 ### Option A: A plain argument (chosen)

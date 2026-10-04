@@ -292,6 +292,14 @@
             {
               "title": "0046. What a denied write reports on an atomic action",
               "path": "/architecture/decisions/0046-denied-atomic-write-outcome/"
+            },
+            {
+              "title": "0047. Actions are bound to a data layer",
+              "path": "/architecture/decisions/0047-actions-are-bound-to-a-data-layer/"
+            },
+            {
+              "title": "0048. Schema inside the process for tests",
+              "path": "/architecture/decisions/0048-schema-inside-the-process-for-tests/"
             }
           ]
         },

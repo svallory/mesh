@@ -75,6 +75,14 @@ B costs most and the synthesis defers it. C cannot be assessed without a compari
 
 Easier: reading why a call was denied. Harder: users needing bypasses or field policies wait. Revisit if a project needs overlapping policies, or if an external tool is compared.
 
+## Amendment — 2026-10-04: create policies see the proposed record
+
+**Status: Proposed. Deciders: lead; the operator may overrule.** Source: [rulings before M2](./rulings-2026-10-04.md).
+
+A create policy sees the proposed record after the action's changes, not a stored row that does not exist yet. Reading a related record, such as `todo.list.ownerId`, is a query **inside the transaction, before the insert**. The generated action obtains the related data there and checks the policy before writing. It does not insert first and authorise afterwards, or query outside the transaction.
+
+This fills the create case that the earlier write-policy discussion left unstated; the update and destroy discussion remains historical and is not rewritten. M8 must test both an allowed create and a denied create that leaves no inserted row, including a check that reads a related record.
+
 ## Action items
 - [ ] M8: move policy tags into `ext-policies`; add `forbid-if`.
 - [ ] M8: structured breakdown, `can` per action, formula round-trip through `model.json`.
