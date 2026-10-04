@@ -49,7 +49,7 @@ Tag and attribute names follow Ash's DSL, in kebab-case with the trailing `?` dr
 In Ash a `belongs_to` creates its foreign-key attribute as `<name>_id` (`list_id`). The roadmap uses `listId`, following the fixture. Which name Mesh generates is settled when relationships are built. [The vocabulary mapping](../architecture/roadmap/vocabulary-mapping.md), row D12, records both.
 :::
 
-`table` stays an attribute of `resource` for now (operator ruling, 2026-10-04). It moves to a data-layer section, as in Ash, when the extension host exists at M6 or at the post-v1 vocabulary review. [The vocabulary mapping](../architecture/roadmap/vocabulary-mapping.md), exception X1, is closed for now.
+`table` stays an attribute of `resource` for now. It moves to a data-layer section, as in Ash, when the extension host exists at M6 or at the post-v1 vocabulary review. [The vocabulary mapping](../architecture/roadmap/vocabulary-mapping.md), exception X1, is closed for now.
 
 ## The generated tree
 
@@ -67,13 +67,13 @@ In Ash a `belongs_to` creates its foreign-key attribute as `<name>_id` (`list_id
 
 Your program imports generated functions and types through `generated/index.ts`. It exports `bind`, `connect` and `disconnect`; top-level action functions delegate to the default binding ([ADR-0047](../architecture/decisions/0047-actions-are-bound-to-a-data-layer.md)).
 
-Two resources that would export the same action function name are a **build error naming both resources**. The check is on the resulting identifier after action and resource names are combined, including across domains. Mesh does not silently rename an export or add a domain prefix (lead ruling, 2026-10-04; [rulings before M2](../architecture/decisions/rulings-2026-10-04.md)).
+Two resources that would export the same action function name are a **build error naming both resources**. The check is on the resulting identifier after action and resource names are combined, including across domains. Mesh does not silently rename an export or add a domain prefix ([rulings before M2](../architecture/decisions/rulings-2026-10-04.md)).
 
 The subfolder `todos/` is named after the `domain` attribute on the resource. A resource with no `domain` has its files directly in `generated/`. Grouping by domain keeps one feature's generated code in one folder.
 
 **Column names equal attribute names.** Mesh does not transform names from camelCase to snake_case, so an attribute `dueOn` becomes a column `dueOn`. Drizzle quotes identifiers, so this works on both databases without a naming convention.
 
-This is the lead's ruling of 2026-10-04, not a naming-convention proposal: [rulings before M2](../architecture/decisions/rulings-2026-10-04.md).
+This naming rule is recorded in [rulings before M2](../architecture/decisions/rulings-2026-10-04.md).
 
 **The guard.** `mesh build --check` regenerates the tree in memory, writes nothing, and fails if the result differs from what is committed. It catches hand edits and stale trees. See [Generated code and the guard](../architecture/in-depth/generated-code-and-guard.md).
 
