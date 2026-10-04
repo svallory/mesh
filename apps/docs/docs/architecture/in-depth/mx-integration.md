@@ -5,13 +5,17 @@ description: "How Mesh reads resource files through MX and what each side enforc
 
 # How Mesh uses MX
 
-Status: design; the `parseData` call and the contracts exist as tests on `main`. M0 moved them into `packages/compiler`; M1 aligned the vocabulary with Ash's DSL; the composed contracts module is built in M6.
+Status: the M1 loader and contracts are built, and `verify` checks the MX import boundary and complete MX samples in the Docs pages. M0 moved the contracts into `packages/compiler`; M1 aligned the vocabulary with Ash's DSL; the composed contracts module is built in M6.
 
 ## What MX is, and why it is core
 
 MX is a separate project that parses Marko-syntax files. For Mesh it offers a "data" target: `@mxlang/data` returns a static tree of tags and attributes with contracts enforced at parse time. Nothing in the file is executed; Mesh decides what the tree means (MX project notes, getting-started, section 1). Mesh invents tag names, not syntax ([ADR-0002](../decisions/0002-resource-files-are-mx.md)).
 
-MX is core, not an adapter: it is not replaceable, there is no front-end slot and no front-end package, and the tag contracts live in `packages/compiler` ([ADR-0043](../decisions/0043-mx-is-core.md)). `compiler` depends on MX; `model` and `runtime` never import it. Resource files use MX concise syntax ([ADR-0041](../decisions/0041-mx-concise-syntax.md)).
+MX is core, not an adapter: it is not replaceable, there is no front-end slot and no front-end package, and the tag contracts live in `packages/compiler` ([ADR-0043](../decisions/0043-mx-is-core.md)). `compiler` depends on MX; `model` and `runtime` never import it. `packages/compiler/test/repository-checks.test.ts` checks this boundary as **M1 test 8**, so the compiler's `test` script makes it part of root `verify`. It parses source imports under `packages/*/src`, `packages/*/test`, `apps/*` and `examples/*`, excluding dependencies, build output and docs content. Static, type-only, dynamic and CommonJS imports and re-exports of `@mxlang` or `@mxlang/*` are forbidden outside the one allow-list constant, currently `packages/compiler`; tag-contract extensions join in M6. Planted violations in a temporary workspace prove the check fails.
+
+The same test file reads every `apps/docs/docs/docs/*.md` page and parses complete `mx` fenced blocks with the contracts and both rejection options. Blocks whose first non-blank line does not start with `resource` are fragments and are skipped. The check prints parsed/skipped counts, rejects an empty set of complete blocks and names the page, fence line and MX diagnostic on failure; a planted invalid sample tests that failure path.
+
+Resource files use MX concise syntax ([ADR-0041](../decisions/0041-mx-concise-syntax.md)).
 
 ## The vocabulary
 
