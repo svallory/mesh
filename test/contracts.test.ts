@@ -9,7 +9,8 @@ import descriptor from "@mxlang/data/descriptor";
 import contracts from "../src/contracts.ts";
 import { fixture, fixtureDir, parse, parseFixture } from "./helpers.ts";
 
-/** The 25 distinct tag names the Ash resource fixture uses (31 tag calls). */
+/** The 25 distinct tag names the Ash resource fixture uses (31 tag calls), plus `destroy`
+ * (declared with `create`, `update` and `read`; the fixture only lists it in `defaults`). */
 const TAG_NAMES = [
   "actions",
   "aggregates",
@@ -23,6 +24,7 @@ const TAG_NAMES = [
   "count",
   "create",
   "defaults",
+  "destroy",
   "filter",
   "has-many",
   "policies",
@@ -39,13 +41,33 @@ const TAG_NAMES = [
 ];
 
 describe("the contract module", () => {
-  test("declares one contract per tag name the fixture uses, and no others", () => {
+  test("declares one contract per tag name (the fixture's 25 plus `destroy`), and no others", () => {
     expect(Object.keys(contracts).sort()).toEqual(TAG_NAMES);
   });
 
-  test("declares no transform, finalize or template (decision 142: declarations and analyze only)", () => {
+  test("declares only contract keys: no transform, finalize or template (decision 142)", () => {
+    const allowed = ["parseOptions", "attributes", "attributeTags", "children", "parents", "analyze"];
     for (const [name, tag] of Object.entries(contracts)) {
-      expect(Object.keys(tag).filter((k) => k === "transform" || k === "finalize"), name).toEqual([]);
+      for (const key of Object.keys(tag)) {
+        expect(allowed, `${name}.${key}`).toContain(key);
+      }
+    }
+  });
+
+  test("every contract is closed: attributes, attributeTags and children are all declared", () => {
+    for (const [name, tag] of Object.entries(contracts)) {
+      expect(tag.attributes, `${name}.attributes`).toBeDefined();
+      expect(tag.attributeTags, `${name}.attributeTags`).toEqual({});
+      expect(tag.children, `${name}.children`).toBeDefined();
+    }
+  });
+
+  test("every string-valued attribute is literalOnly; only `function` attributes are not", () => {
+    for (const [name, tag] of Object.entries(contracts)) {
+      for (const [attr, decl] of Object.entries(tag.attributes ?? {})) {
+        if (decl.type === "function") continue;
+        expect(decl.literalOnly, `${name}.${attr}`).toBe(true);
+      }
     }
   });
 
@@ -82,6 +104,41 @@ describe("the positive fixture", () => {
     expect(parse(src).diagnostics).toEqual([]);
   });
 
+  test("destroy takes a name and change/validate children, like update", () => {
+    const src = [
+      'resource="post"',
+      "  attributes",
+      '    uuid-primary-key="id"',
+      "  actions",
+      '    destroy="remove"',
+      "      change=({ post }) => { post.deleted = true }",
+      '      validate=({ post }) => post.draft message="only drafts"',
+      "",
+    ].join("\n");
+    expect(parse(src).diagnostics).toEqual([]);
+  });
+
+  test("defaults may name any built-in action kind", () => {
+    const src = 'resource="post"\n  attributes\n    timestamps\n  actions\n    defaults=["create", "read", "update", "destroy"]\n';
+    expect(parse(src).diagnostics).toEqual([]);
+  });
+
+  test("a literal default that fits the type is accepted", () => {
+    const attrs = [
+      'attribute="s" type="string" default="x"',
+      'attribute="n" type="number" default=3',
+      'attribute="b" type="boolean" default=false',
+      'attribute="e" type="enum" values=["a", "b"] default="b"',
+    ];
+    const src = `resource="post"\n  attributes\n${attrs.map((a) => `    ${a}`).join("\n")}\n`;
+    expect(parse(src).diagnostics).toEqual([]);
+  });
+
+  test("empty sections are allowed: attributes, relationships, actions may hold nothing", () => {
+    const src = 'resource="post"\n  attributes\n  relationships\n  actions\n';
+    expect(parse(src).diagnostics).toEqual([]);
+  });
+
   test("a repeatable tag may repeat", () => {
     const src = [
       'resource="post"',
@@ -102,6 +159,9 @@ interface Case {
   column: number;
   message: string;
 }
+
+const CALC_TYPE_MESSAGE = (got: string) =>
+  `\`<calculate>\`: attribute \`type\` must be one of "string", "number", "boolean", "uuid", "datetime", got "${got}"`;
 
 const ALLOWED_RESOURCE =
   "`<attributes>`, `<relationships>`, `<actions>`, `<policies>`, `<calculations>`, `<aggregates>`";
@@ -291,6 +351,46 @@ const RULE_CLASSES: Record<string, Case[]> = {
       message: "`<policy>`: takes `action` or `action-type`, not both",
     },
   ],
+  "attribute tag where none is declared": [
+    { file: "attribute-tag-on-leaf", line: 4, column: 6, message: "`<attribute>`: unknown attribute tag `<@foo>`" },
+    { file: "attribute-tag-on-section", line: 3, column: 4, message: "`<attributes>`: unknown attribute tag `<@foo>`" },
+  ],
+  "identifier where a literal is required (`literalOnly`)": [
+    { file: "literal-only-value", line: 1, column: 8, message: "`<resource>`: attribute `value` must be a literal" },
+    { file: "literal-only-array", line: 3, column: 30, message: "`<attribute>`: attribute `values` must be a literal" },
+    { file: "literal-only-boolean", line: 3, column: 32, message: "`<attribute>`: attribute `required` must be a literal" },
+    { file: "literal-only-accept", line: 5, column: 15, message: "`<create>`: attribute `accept` must be a literal" },
+  ],
+  "closed contracts (no children, no attributes by omission)": [
+    { file: "attribute-with-child", line: 4, column: 6, message: "`<attribute>`: `<timestamps>` is not allowed here; allowed children: none" },
+    { file: "section-unknown-attribute", line: 2, column: 13, message: "`<attributes>`: accepts no attributes" },
+    { file: "timestamps-unknown-attribute", line: 3, column: 15, message: "`<timestamps>`: accepts no attributes" },
+  ],
+  "calculation type": [
+    { file: "calculate-bad-type", line: 5, column: 24, message: CALC_TYPE_MESSAGE("strnig") },
+    { file: "calculate-enum-type", line: 5, column: 24, message: CALC_TYPE_MESSAGE("enum") },
+  ],
+  "destroy action": [
+    { file: "destroy-missing-value", line: 5, column: 4, message: "`<destroy>`: missing required attribute `value`" },
+    { file: "destroy-bad-child", line: 6, column: 6, message: "`<destroy>`: `<filter>` is not allowed here; allowed children: `<change>`, `<validate>`" },
+  ],
+  "analyze: `defaults` items name built-in actions": [
+    { file: "defaults-bad-item", line: 5, column: 12, message: '`<defaults>`: `defaults` item "reed" must be one of "create", "read", "update", "destroy"' },
+  ],
+  "analyze: enums need values, and a literal default must fit the type": [
+    { file: "enum-empty-values", line: 3, column: 30, message: "`<attribute>`: an enum needs at least one value in `values`" },
+    { file: "enum-default-not-in-values", line: 3, column: 43, message: '`<attribute>`: `default` must be one of "a", got "zzz"' },
+    { file: "boolean-default-not-boolean", line: 3, column: 33, message: '`<attribute>`: `default` must be true or false, got "zzz"' },
+    { file: "number-default-not-number", line: 3, column: 32, message: '`<attribute>`: `default` must be a number, got "1"' },
+    { file: "string-default-not-string", line: 3, column: 32, message: '`<attribute>`: `default` must be a string for type "string", got 1' },
+  ],
+  "analyze: names may not be empty": [
+    { file: "empty-name-attribute", line: 3, column: 13, message: "`<attribute>`: `value` may not be empty" },
+    { file: "empty-policy-action", line: 5, column: 11, message: "`<policy>`: `action` may not be empty" },
+  ],
+  "declarations run before analyze": [
+    { file: "policy-declaration-before-analyze", line: 5, column: 4, message: "`<policy>`: missing required child `<authorize-if>`" },
+  ],
   "text where it is not allowed (`#text` is declared nowhere)": [
     {
       file: "text-in-resource",
@@ -387,15 +487,34 @@ describe("analyze rules run under a direct parseData call with customTags and st
     });
   });
 
-  test("analyze: the policy rule is reported by the hook, and only when declarations pass first", () => {
+  test("analyze: the policy rule is reported by the hook", () => {
     const source = fixture("negative/analyze-policy-neither.mx").source;
     const result = parseData(source, "direct.mx", {
       customTags: contracts,
       structural: "reject",
     });
-    expect(result.diagnostics.map((d) => d.message)).toEqual([
-      "`<policy>`: requires `action` or `action-type`",
-    ]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]).toMatchObject({
+      line: 5,
+      column: 4,
+      message: "`<policy>`: requires `action` or `action-type`",
+    });
+  });
+
+  test("declarations run before analyze: a policy breaking both reports only the declaration error", () => {
+    // `policy-declaration-before-analyze.mx` has neither `action` nor `action-type`
+    // (analyze would fail) and no `authorize-if` (declaration fails).
+    const source = fixture("negative/policy-declaration-before-analyze.mx").source;
+    const result = parseData(source, "direct.mx", {
+      customTags: contracts,
+      structural: "reject",
+    });
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]).toMatchObject({
+      line: 5,
+      column: 4,
+      message: "`<policy>`: missing required child `<authorize-if>`",
+    });
   });
 
   test("without the contracts the same files parse (so the diagnostics above come from analyze)", () => {
@@ -416,15 +535,21 @@ describe("analyze rules, edge cases", () => {
     const result = parse(wrap('attribute="x" type=kind values=["a"]'));
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0]).toMatchObject({ line: 3, column: 18 });
-    expect(result.diagnostics[0]?.message).toContain("`type` must be a static value from");
+    expect(result.diagnostics[0]?.message).toBe("`<attribute>`: attribute `type` must be a literal");
   });
 
   test("enum with values is accepted", () => {
     expect(parse(wrap('attribute="s" type="enum" values=["a", "b"]')).diagnostics).toEqual([]);
   });
 
-  test("an empty `values` array on an enum is accepted (presence, not content, is the rule)", () => {
-    expect(parse(wrap('attribute="s" type="enum" values=[]')).diagnostics).toEqual([]);
+  test("an empty `values` array on an enum is rejected", () => {
+    const result = parse(wrap('attribute="s" type="enum" values=[]'));
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]).toMatchObject({
+      line: 3,
+      column: 30,
+      message: "`<attribute>`: an enum needs at least one value in `values`",
+    });
   });
 
   test("`values` on a non-enum is rejected even when it is the first attribute written", () => {
@@ -465,15 +590,14 @@ describe("edge cases", () => {
     });
   });
 
-  test("an empty file parses (no resource is not a contract violation)", () => {
-    const result = parse("");
-    expect(result.diagnostics).toEqual([]);
-  });
-
   test("a `-- text` line in a resource is rejected, not ignored", () => {
     const result = parse('resource="post"\n  attributes\n    timestamps\n  -- note\n');
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0]?.message).toContain("text is not allowed here");
+    expect(result.diagnostics[0]).toMatchObject({
+      line: 4,
+      column: 5,
+      message: `\`<resource>\`: text is not allowed here; it accepts only the child tags ${ALLOWED_RESOURCE}`,
+    });
   });
 
   test("a comment is rejected under structural: reject, like any non-tag node", () => {
@@ -489,7 +613,11 @@ describe("edge cases", () => {
   test("a top-level <for> is rejected under structural: reject", () => {
     const result = parse('for|x| of=[1]\n  resource="post"\n    attributes\n      timestamps\n');
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0]?.message).toContain("does not evaluate `<for>`");
+    expect(result.diagnostics[0]).toMatchObject({
+      line: 1,
+      column: 0,
+      message: "the data tree is static; this file's consumer does not evaluate `<for>`",
+    });
   });
 });
 
@@ -501,6 +629,22 @@ describe("known gap in MX (reported to the lead; scratch/mx-bugs/data-unknown-ro
   test.failing("an unknown top-level tag is rejected", () => {
     const { source } = fixture("negative/unknown-tag-top-level.mx");
     const result = parse(source, "unknown-root.mx");
+    expect(result.diagnostics.filter((d) => d.severity === "error")).toHaveLength(1);
+  });
+});
+
+describe("known gap: root cardinality (MX cannot declare it; Mesh's model-build stage will enforce it)", () => {
+  // Expected: a file holds exactly one `resource`. Got: no diagnostic for an
+  // empty file or for two `resource` tags, because MX contracts have no
+  // cardinality at `#root`. `test.failing` flips to red when that changes.
+  test.failing("an empty file is rejected", () => {
+    const result = parse("");
+    expect(result.diagnostics.filter((d) => d.severity === "error")).toHaveLength(1);
+  });
+
+  test.failing("two resources in one file are rejected", () => {
+    const one = 'resource="post"\n  attributes\n    timestamps\n';
+    const result = parse(one + one.replace("post", "comment"));
     expect(result.diagnostics.filter((d) => d.severity === "error")).toHaveLength(1);
   });
 });

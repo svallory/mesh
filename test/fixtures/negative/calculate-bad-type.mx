@@ -1,0 +1,6 @@
+resource="post"
+  attributes
+    uuid-primary-key="id"
+  calculations
+    calculate="excerpt" type="strnig"
+      value({ post }) { return 1 }
