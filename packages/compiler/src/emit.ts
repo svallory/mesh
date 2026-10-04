@@ -2,12 +2,13 @@ import { lstat, mkdir, open, rename, unlink } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname, join, relative, resolve, sep } from "node:path";
-import { isProjectRelativePath, type ModelDocument } from "@mesh/model";
+import { isProjectRelativePath, type Diagnostic, type ModelDocument } from "@mesh/model";
 import type { ResolvedConfig } from "./config.ts";
 import { errorCode, inside } from "./paths.ts";
 import { EmitError } from "./emit-error.ts";
 import { modelJsonEmitter } from "./emitters/model-json.ts";
 import { resourceTypesEmitter } from "./emitters/resource-types.ts";
+import { resourceValidatorsEmitter } from "./emitters/resource-validators.ts";
 import { compareText, outputPrefix } from "./emitters/order.ts";
 
 export { EmitError } from "./emit-error.ts";
@@ -39,11 +40,28 @@ export interface EmitInput {
 export interface Emitter {
   /** Stable name, used in the error that two emitters wrote the same path. */
   readonly name: string;
+  /** Bare packages imported by generated code, resolved from the consumer root. */
+  readonly requires?: readonly string[];
   emit(input: EmitInput): Promise<readonly GeneratedFile[]>;
 }
 
 /** The emitters of the core build, in a fixed order. The result is sorted by path anyway. */
-export const EMITTERS: readonly Emitter[] = Object.freeze([modelJsonEmitter, resourceTypesEmitter]);
+export const EMITTERS: readonly Emitter[] = Object.freeze([modelJsonEmitter, resourceTypesEmitter, resourceValidatorsEmitter]);
+
+/** Preflight every generated import before writing; check/inspect need no installed runtime dependencies. */
+export function generatedImportDiagnostics(projectRoot: string, emitters: readonly Emitter[] = EMITTERS): Diagnostic[] {
+  const diagnostics: Diagnostic[] = [];
+  const required = new Set(emitters.flatMap((emitter) => [...emitter.requires ?? []]));
+  for (const specifier of [...required].sort(compareText)) {
+    try { Bun.resolveSync(specifier, projectRoot); }
+    catch {
+      diagnostics.push({ severity: "error", code: "MESH_GENERATED_IMPORT",
+        message: `generated code imports "${specifier}", which is not installed in this project. Run: bun add ${specifier}`,
+        position: { file: "mesh.config.ts", line: 1, column: 0, offset: 0 }, fix: null });
+    }
+  }
+  return diagnostics;
+}
 
 /**
  * Run every emitter and return the whole generated tree as text, sorted by path.

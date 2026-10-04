@@ -6,6 +6,7 @@ import type { DataAttr, DataNode, DataTag } from "@mxlang/data/tree";
 import { findNonJsonValue, type Action, type ActionKind, type Attribute, type AttributeSource, type AttributeTypeName, type Diagnostic, type JsonPrimitive, type ModelDocument, type Resource, type SourcePosition, type Spanned } from "@mesh/model";
 import contracts from "./contracts.ts";
 import { unsupportedMilestone } from "./support.ts";
+import { nearestName } from "./nearest-name.ts";
 
 export interface ResourceFile { file: string; source: string }
 export interface ProjectDescription { root: string; files: readonly ResourceFile[] }
@@ -175,7 +176,10 @@ export function buildModel(project: ProjectDescription): BuildResult {
       if (actionNames.has(action.name.value)) diagnostics.push(error("MESH_DUPLICATE_ACTION", `Duplicate action name \"${action.name.value}\"`, action.name.position));
       actionNames.add(action.name.value);
       if (action.kind !== "read") for (const item of action.accept) {
-        if (!names.has(item.value)) diagnostics.push(error("MESH_UNKNOWN_ACCEPT", `Unknown attribute \"${item.value}\" in \`accept\``, item.position, "Name an attribute declared in this resource"));
+        if (!names.has(item.value)) {
+          const suggestion = nearestName(item.value, names);
+          diagnostics.push(error("MESH_UNKNOWN_ACCEPT", `\`accept\` names "${item.value}", which is not an attribute of ${resource.name.value}.${suggestion === undefined ? "" : ` Did you mean "${suggestion}"?`}`, item.position, "Name an attribute declared in this resource"));
+        }
       }
     }
   }

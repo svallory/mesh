@@ -5,7 +5,7 @@ description: "What Mesh generates and commits, why the behaviour lives there, an
 
 # Generated code and the guard
 
-Status: the M1 model, types, `mesh build`, `mesh build --check` and `mesh inspect` are built (tasks `m1-emit` and `m1-cli`); the reduced blog example's committed tree is guarded and type-checked by `verify` (task `m1-example`). Handlers and the Drizzle schema come in M2, expression forms in M4, the contracts module in M6. Updated 2026-10-04 with M2 bindings and export-collision handling. Tag names are today's working names ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md)).
+Status: M2 input validators and generated-import preflight are built; the M1 model, types, `mesh build`, `mesh build --check` and `mesh inspect` are built (tasks `m1-emit` and `m1-cli`); the reduced blog example's committed tree is guarded and type-checked by `verify` (task `m1-example`). Handlers and the Drizzle schema come in M2, expression forms in M4, the contracts module in M6. Updated 2026-10-04 with M2 bindings and export-collision handling. Tag names are today's working names ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md)).
 
 ## The rule
 
@@ -25,7 +25,7 @@ The generated tree is committed and guarded ([roadmap](../roadmap/roadmap.md), s
 | `<output>/<domain>/<resource>.types.ts` | TypeScript types for the resource | M1 |
 | One handler file per resource | One exported function per action, for example `createPost(input, scope)` | M2 |
 | `<output>/index.ts` | `bind`, `connect`, `disconnect` and default-bound action exports ([ADR-0047](../decisions/0047-actions-are-bound-to-a-data-layer.md)) | M2 |
-| Input validators | Zod schemas, seen by the rest of Mesh only through Standard Schema ([ADR-0028](../decisions/0028-validation-zod-behind-standard-schema.md)) | M2 |
+| `<output>/<domain>/<resource>.validators.ts` | Zod schemas, seen by the rest of Mesh only through Standard Schema ([ADR-0028](../decisions/0028-validation-zod-behind-standard-schema.md)) | M2 |
 | Drizzle schema file | Table definitions emitted by `data-sqlite`'s build half | M2 |
 | Expression forms | For each translatable expression, the tree as a data literal and the in-memory form as TypeScript; the class (translatable or opaque) is recorded in `model.json` | M4 |
 | Contracts module | One self-contained module for MX tooling ([ADR-0021](../decisions/0021-composed-contracts-module.md)) | M6 |
@@ -45,6 +45,14 @@ Built in M1 (task `m1-emit`). `<output>` is the configuration's `output` key, so
 - **The formatter.** Generated TypeScript is built from templates and passed through Prettier, pinned to an exact version, with the configuration fixed in `packages/compiler/src/format.ts`. The user's `.prettierrc`, `.editorconfig` or a `prettier` plugin is not read: a project cannot change what Mesh writes, so an upgrade of the formatter is a deliberate edit that rewrites the committed tree on purpose.
 - **Determinism.** The same model gives the same bytes: resources are ordered by name, so the order of the resource files on disk or in `mesh.config.ts` does not reach the output, and no timestamp, absolute path, machine name or random id is written. A finite number keeps its spelling through the round trip, a negative zero included.
 - **Writing is confined and never destructive.** The writer joins each generated path with the host separator and never rewrites it: on POSIX a backslash in a file name is that file's name. It then inspects, with `lstat`, which does not follow links, every existing component **from the output directory itself down to the target**: a symlinked output folder is refused as firmly as a symlinked directory in the middle of the path or a symlinked file at the leaf, whatever any of them points at, and the error names the folder and says to point `output` at a real directory. Every existing target must be a regular file, and every existing component above it, from the output directory down, must be a directory. The whole tree is preflighted before the first write: FIFOs, sockets, devices and directory/file obstructions are refused with their path and type, without opening them. Each target is then replaced, never truncated: the writer exclusively creates a temporary file in the same directory, sets its mode to `0644`, writes the bytes and renames it over the target. This breaks hard-link aliases and restores readable permissions. Temporary names cannot be produced paths; a failed write or rename cleans up its temporary file and reports the target. A crash-left temporary file is an ordinary stray. Replacement is atomic per file, not a transaction across the tree: a later I/O failure can follow earlier replacements. No existing stray is deleted.
+
+### Input validators (M2)
+
+Each resource has a `.validators.ts` file beside its `.types.ts` file, with the same header and pinned formatter. Each input type has one exported schema with a lower-case first letter (`CreatePostInput` becomes `createPostInput`). Both emitters consume one shared input plan: accepted fields, selector, nullability and optionality cannot diverge through separate field-selection logic.
+
+The schemas use Zod 4.6.5 `strictObject`: unknown fields are errors, never dropped. Registry types map to string, integer, number, boolean, UUID and Date schemas; an atom's `one_of` becomes an enum in declared order. Nullable and optional modifiers follow the generated types, in that order. Generated schemas satisfy `z.ZodType<Input>` and also check assignability in both directions between `z.output<typeof schema>` and the input type. The reverse check catches a required schema for an optional field or a non-nullable schema for a nullable field, which the one-way `satisfies` check alone permits. Negative type tests prove both checks fail on drift.
+
+The compiler emits text and never loads Zod. The consuming application installs Zod as an ordinary dependency. Emitters declare imported packages through `requires`; before writing, `mesh build` resolves every requirement from the project root and reports all missing packages at `mesh.config.ts:1:1`, with a `bun add` fix. `--check` and `inspect` do not require those packages to be installed. The validators are guarded and type-checked with the rest of the example tree; run-time consumers call only `schema["~standard"].validate` ([ADR-0028](../decisions/0028-validation-zod-behind-standard-schema.md)).
 
 ## Why the tree is a data literal
 
