@@ -188,7 +188,7 @@ function analyzeAttribute(calls: readonly TagCall[], ctx: AnalyzeContext): void 
     if (values && options?.length === 0) {
       ctx.fail("an enum needs at least one value in `values`", values.loc);
     }
-    rejectRepeats("values", options, values, ctx);
+    checkItems("values", options, values, ctx);
 
     const def = attrNamed(call, "default");
     if (!def) continue;
@@ -243,7 +243,8 @@ function analyzePolicy(calls: readonly TagCall[], ctx: AnalyzeContext): void {
   }
 }
 
-function rejectRepeats(
+/** Items of a string list: none blank, none repeated. */
+function checkItems(
   label: string,
   items: (string | undefined)[] | undefined,
   attr: Attr | undefined,
@@ -252,6 +253,9 @@ function rejectRepeats(
   const seen = new Set<string>();
   for (const item of items ?? []) {
     if (item === undefined) continue;
+    if (item.trim() === "") {
+      ctx.fail(`\`${label}\` has a blank item`, attr?.loc);
+    }
     if (seen.has(item)) {
       ctx.fail(`\`${label}\` has a repeated item "${item}"`, attr?.loc);
     }
@@ -271,20 +275,34 @@ function nonEmptyList(label: string): Analyze {
   };
 }
 
+/** The items of the list in attribute `attrName` (default: the tag's own value). */
+function listItems(label: string, attrName = "value"): Analyze {
+  return (calls, ctx) => {
+    for (const call of calls) {
+      const attr = attrNamed(call, attrName);
+      checkItems(label, arrayOf(attr), attr, ctx);
+    }
+  };
+}
+
 /** `defaults=["read", "destroy"]` names built-in actions; each item has to be one, once. */
 function analyzeDefaults(calls: readonly TagCall[], ctx: AnalyzeContext): void {
   for (const call of calls) {
     const attr = attrNamed(call, "value");
     const items = arrayOf(attr);
     for (const item of items ?? []) {
-      if (item !== undefined && !(ACTION_TYPES as readonly string[]).includes(item)) {
+      if (
+        item !== undefined &&
+        item.trim() !== "" &&
+        !(ACTION_TYPES as readonly string[]).includes(item)
+      ) {
         ctx.fail(
           `\`defaults\` item "${item}" must be one of ${quoted(ACTION_TYPES)}`,
           attr?.loc,
         );
       }
     }
-    rejectRepeats("defaults", items, attr, ctx);
+    checkItems("defaults", items, attr, ctx);
   }
 }
 
@@ -373,13 +391,13 @@ export default {
     parents: ["actions"],
     attributes: { ...name(), accept: strings() },
     children: { change: { repeatable: true } },
-    analyze: nonEmpty("value"),
+    analyze: all(nonEmpty("value"), listItems("accept", "accept")),
   }),
   update: closed({
     parents: ["actions"],
     attributes: { ...name(), accept: strings() },
     children: { change: { repeatable: true }, validate: { repeatable: true } },
-    analyze: nonEmpty("value"),
+    analyze: all(nonEmpty("value"), listItems("accept", "accept")),
   }),
   destroy: closed({
     parents: ["actions"],
@@ -400,6 +418,7 @@ export default {
   validate: closed({
     parents: ["update", "destroy"],
     attributes: { value: code(), message: str() },
+    analyze: nonEmpty("message"),
   }),
   filter: closed({
     parents: ["read"],
@@ -408,7 +427,7 @@ export default {
   sort: closed({
     parents: ["read"],
     attributes: { value: strings({ required: true }) },
-    analyze: nonEmptyList("sort"),
+    analyze: all(nonEmptyList("sort"), listItems("sort")),
   }),
 
   policies: closed({
