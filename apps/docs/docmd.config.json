@@ -51,6 +51,22 @@
             {
               "title": "About the roadmap",
               "path": "/architecture/roadmap/"
+            },
+            {
+              "title": "Roadmap",
+              "path": "/architecture/roadmap/roadmap/"
+            },
+            {
+              "title": "Roadmap",
+              "path": "/architecture/roadmap/roadmap/"
+            },
+            {
+              "title": "Vocabulary mapping: Ash DSL to Mesh",
+              "path": "/architecture/roadmap/vocabulary-mapping/"
+            },
+            {
+              "title": "Plan revision 2 (superseded)",
+              "path": "/architecture/roadmap/plan-revision-2/"
             }
           ]
         },
@@ -64,6 +80,194 @@
             {
               "title": "Template",
               "path": "/architecture/decisions/_template/"
+            },
+            {
+              "title": "Rulings of 2026-10-04",
+              "path": "/architecture/decisions/rulings-2026-10-04/"
+            },
+            {
+              "title": "0001. Core, adapters and extensions (three rings)",
+              "path": "/architecture/decisions/0001-three-rings/"
+            },
+            {
+              "title": "0002. Resource files are `.mx`, read as a data tree through MX",
+              "path": "/architecture/decisions/0002-resource-files-are-mx/"
+            },
+            {
+              "title": "0003. Generated code carries the behaviour",
+              "path": "/architecture/decisions/0003-generated-code-carries-behaviour/"
+            },
+            {
+              "title": "0004. Mesh is built regardless; the agent-benefit measurement is not a gate",
+              "path": "/architecture/decisions/0004-no-measurement-gate/"
+            },
+            {
+              "title": "0005. The core's interface is an in-process function call",
+              "path": "/architecture/decisions/0005-core-interface-is-a-function-call/"
+            },
+            {
+              "title": "0006. The first transport is a command line",
+              "path": "/architecture/decisions/0006-cli-first-transport/"
+            },
+            {
+              "title": "0007. The scope is a plain argument on every action call",
+              "path": "/architecture/decisions/0007-scope-is-a-plain-argument/"
+            },
+            {
+              "title": "0008. Every transport obtains the scope through an actor-resolver adapter",
+              "path": "/architecture/decisions/0008-actor-resolver-adapter/"
+            },
+            {
+              "title": "0009. Where multitenancy lives",
+              "path": "/architecture/decisions/0009-tenancy-placement/"
+            },
+            {
+              "title": "0010. One expression tree, two evaluators",
+              "path": "/architecture/decisions/0010-one-expression-tree-two-evaluators/"
+            },
+            {
+              "title": "0011. Translatable expressions run only as SQL",
+              "path": "/architecture/decisions/0011-sql-only-expressions/"
+            },
+            {
+              "title": "0012. Which semantics a Mesh expression has",
+              "path": "/architecture/decisions/0012-expression-semantics/"
+            },
+            {
+              "title": "0013. Data-layer contract with declared capabilities",
+              "path": "/architecture/decisions/0013-data-layer-contract-and-capabilities/"
+            },
+            {
+              "title": "0014. SQL adapters are built on Drizzle and drizzle-kit",
+              "path": "/architecture/decisions/0014-sql-adapters-on-drizzle/"
+            },
+            {
+              "title": "0015. SQL printed by Mesh",
+              "path": "/architecture/decisions/0015-sql-printed-by-mesh/"
+            },
+            {
+              "title": "0016. Tests use SQLite in-memory mode, not a hand-written in-memory adapter",
+              "path": "/architecture/decisions/0016-in-memory-data-via-sqlite/"
+            },
+            {
+              "title": "0017. Updates are atomic by default; changes and validations are classified",
+              "path": "/architecture/decisions/0017-atomic-by-default-and-classification/"
+            },
+            {
+              "title": "0018. A valid but unimplemented tag is a build error",
+              "path": "/architecture/decisions/0018-not-implemented-is-a-build-error/"
+            },
+            {
+              "title": "0019. Where version 1 ends",
+              "path": "/architecture/decisions/0019-v1-scope/"
+            },
+            {
+              "title": "0020. Extensions contribute to each other only through declared points",
+              "path": "/architecture/decisions/0020-extension-contributions-through-declared-points/"
+            },
+            {
+              "title": "0021. One composed contracts module, generated from core plus enabled extensions",
+              "path": "/architecture/decisions/0021-composed-contracts-module/"
+            },
+            {
+              "title": "0022. Policies start as a simple tier, in a first-party extension",
+              "path": "/architecture/decisions/0022-policies-simple-tier-as-extension/"
+            },
+            {
+              "title": "0023. Workflows, jobs and the outbox are deferred; the adapter interface stays a design document",
+              "path": "/architecture/decisions/0023-workflows-and-jobs-deferred/"
+            },
+            {
+              "title": "0024. The in-process runner is the first workflow adapter",
+              "path": "/architecture/decisions/0024-in-process-runner-first/"
+            },
+            {
+              "title": "0025. Mesh runs on Bun only",
+              "path": "/architecture/decisions/0025-bun-only/"
+            },
+            {
+              "title": "0026. Node parity as an adapter and a v1 milestone",
+              "path": "/architecture/decisions/0026-node-parity/"
+            },
+            {
+              "title": "0027. No MCP server; agents get a rules file and, later, a generated CLI",
+              "path": "/architecture/decisions/0027-no-mcp-agent-surface/"
+            },
+            {
+              "title": "0028. Generated validators are Zod schemas, seen through Standard Schema",
+              "path": "/architecture/decisions/0028-validation-zod-behind-standard-schema/"
+            },
+            {
+              "title": "0029. Generated handlers call the OpenTelemetry API directly",
+              "path": "/architecture/decisions/0029-tracing-opentelemetry-api/"
+            },
+            {
+              "title": "0030. Established tools first, each behind a Mesh contract",
+              "path": "/architecture/decisions/0030-established-tools-first/"
+            },
+            {
+              "title": "0031. No continuous integration until MX is published",
+              "path": "/architecture/decisions/0031-no-ci-until-mx-is-published/"
+            },
+            {
+              "title": "0032. Docs site in the repository, decisions as ADRs",
+              "path": "/architecture/decisions/0032-docs-site-and-decision-records/"
+            },
+            {
+              "title": "0033. Core is split by when the code runs",
+              "path": "/architecture/decisions/0033-core-split-build-time-run-time/"
+            },
+            {
+              "title": "0034. The resource vocabulary copies Ash's DSL for v1",
+              "path": "/architecture/decisions/0034-vocabulary-copies-ash-dsl/"
+            },
+            {
+              "title": "0035. What `public` means on an attribute",
+              "path": "/architecture/decisions/0035-meaning-of-public/"
+            },
+            {
+              "title": "0036. Deny by default arrives with the policies extension",
+              "path": "/architecture/decisions/0036-deny-by-default-arrives-with-policies/"
+            },
+            {
+              "title": "0037. Where the vocabulary is defined: contracts for tags, registries for values",
+              "path": "/architecture/decisions/0037-vocabulary-source-of-truth/"
+            },
+            {
+              "title": "0038. Elysia is not core; it stays a candidate HTTP adapter",
+              "path": "/architecture/decisions/0038-elysia-is-not-core/"
+            },
+            {
+              "title": "0039. Run-time errors carry `.mx` positions as embedded data",
+              "path": "/architecture/decisions/0039-run-time-error-positions/"
+            },
+            {
+              "title": "0040. Package scope and command name",
+              "path": "/architecture/decisions/0040-package-and-command-names/"
+            },
+            {
+              "title": "0041. Resource files and examples use MX concise syntax",
+              "path": "/architecture/decisions/0041-mx-concise-syntax/"
+            },
+            {
+              "title": "0042. Mesh is open source under the MIT licence",
+              "path": "/architecture/decisions/0042-open-source-mit/"
+            },
+            {
+              "title": "0043. MX is core, not an adapter",
+              "path": "/architecture/decisions/0043-mx-is-core/"
+            },
+            {
+              "title": "0044. Folding record-reading validations into the atomic statement",
+              "path": "/architecture/decisions/0044-folding-record-reading-validations/"
+            },
+            {
+              "title": "0045. How `has-one` is kept to one row",
+              "path": "/architecture/decisions/0045-has-one-uniqueness/"
+            },
+            {
+              "title": "0046. What a denied write reports on an atomic action",
+              "path": "/architecture/decisions/0046-denied-atomic-write-outcome/"
             }
           ]
         },
@@ -73,6 +277,10 @@
             {
               "title": "About the overview",
               "path": "/architecture/overview/"
+            },
+            {
+              "title": "Architecture overview",
+              "path": "/architecture/overview/architecture/"
             }
           ]
         },
@@ -82,6 +290,38 @@
             {
               "title": "About in-depth pages",
               "path": "/architecture/in-depth/"
+            },
+            {
+              "title": "Action lifecycle",
+              "path": "/architecture/in-depth/action-lifecycle/"
+            },
+            {
+              "title": "The build-time pipeline",
+              "path": "/architecture/in-depth/build-pipeline/"
+            },
+            {
+              "title": "Data layer: contract and capabilities",
+              "path": "/architecture/in-depth/data-layer/"
+            },
+            {
+              "title": "Expressions: one tree, two evaluators",
+              "path": "/architecture/in-depth/expressions/"
+            },
+            {
+              "title": "Extension host and composed contracts",
+              "path": "/architecture/in-depth/extension-host/"
+            },
+            {
+              "title": "Generated code and the guard",
+              "path": "/architecture/in-depth/generated-code-and-guard/"
+            },
+            {
+              "title": "How Mesh uses MX",
+              "path": "/architecture/in-depth/mx-integration/"
+            },
+            {
+              "title": "Core, adapters and extensions",
+              "path": "/architecture/in-depth/three-rings/"
             }
           ]
         },
