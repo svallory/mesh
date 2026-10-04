@@ -1,0 +1,3 @@
+resource table="posts"
+  attributes
+    uuid-primary-key="id"
