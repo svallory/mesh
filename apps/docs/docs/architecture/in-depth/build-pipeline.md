@@ -1,0 +1,86 @@
+---
+title: "The build-time pipeline"
+description: "The eight build stages that turn resource files into committed, guarded generated code."
+---
+
+# The build-time pipeline
+
+Status: design; stages 1, 2, 3, 7 and 8 are built in M1, expression conversion (part of stage 3) and stage 6 in M4, stages 4 and 5 in M6. Only the tag contracts in `packages/compiler` exist today. Tag and attribute names quoted here are today's working names; aligning them with Ash's DSL is the first part of M1 ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md)).
+
+## Why a pipeline
+
+The pipeline is what makes Mesh a framework rather than a library ([roadmap](../roadmap/roadmap.md), section 3, `compiler` row). It is also where Ash's worst extension problems showed up: transformers ordered by module name with contradictions dropped silently, and verifier errors that only print warnings ([research synthesis](../research/synthesis.md), section 2.1). Extensions plug in at named points (section 16 of the same file).
+
+The pipeline is run by `mesh build` and lives in `packages/compiler`. Its output is committed files (see [generated-code-and-guard.md](./generated-code-and-guard.md)).
+
+## The eight stages
+
+| # | Stage | Consumes | Produces | Milestone | Extension point |
+|---|---|---|---|---|---|
+| 1 | Load | `.mx` source text, found through `mesh.config.ts` | Declarations with source positions | M1 | None: MX is core ([ADR-0043](../decisions/0043-mx-is-core.md)) |
+| 2 | Check structure | Declarations | The same, or a structural error | M1 | Vocabulary, types |
+| 3 | Build model | Checked declarations | One plain-data document per resource; from M4 each expression's tree and class are part of it | M1, M4 | Core |
+| 4 | Transform | The model | A rewritten model | M6 | Model transforms |
+| 5 | Verify (the checks step; before M6 the M1 checks) | The model | Nothing, or a stopped build | M6 | Verifiers |
+| 6 | Compile expressions (produce the two forms) | The model's trees and classes | The tree literals and in-memory forms | M4 | Expression functions |
+| 7 | Emit | The model | Files | M1, M2, M4, M6 | Emitters |
+| 8 | Guard | Freshly emitted and committed files | Pass, or a named difference | M1 | Core |
+
+(Stage names, purposes and extension points: [research synthesis](../research/synthesis.md), section 16, where stage 1's extension point was "front end"; that slot was dropped by [ADR-0043](../decisions/0043-mx-is-core.md). Milestones: [roadmap](../roadmap/roadmap.md), M1, M4, M5, M6. The "consumes" and "produces" columns for stages 2 to 5 are inferred; the roadmap has no data-flow table.)
+
+### 1. Load
+
+Project configuration is one file, `mesh.config.ts`: it names where the resource files are and where generated files go; M2 adds the data adapter and M6 the enabled extensions. Every build check that depends on "the configured adapter" reads it ([roadmap](../roadmap/roadmap.md), M1). `compiler` calls MX's `parseData` and gets a static tree (see [mx-integration.md](./mx-integration.md)). Source positions are kept to the model so later errors can name a file and line.
+
+### 2. Check structure
+
+In M1 MX does most of this: unknown tags, wrong attribute types, wrong nesting and missing required attributes are MX errors raised inside `parseData` ([roadmap](../roadmap/roadmap.md), M1). One rule is Mesh's own: exactly one `resource` per file, because MX has no root cardinality.
+
+### 3. Build model
+
+The model is plain, JSON-serialisable data with source positions kept ([roadmap](../roadmap/roadmap.md), M1; section 3, `model` row). In M1 it holds resource name, `table`, `domain`, six attribute types, `uuid-primary-key`, `timestamps` and the four action kinds with `accept` and `defaults`. Cross-file checks in M1: duplicate resource names, and `accept` naming a missing attribute. When M6 lands, these checks become the Verify stage.
+
+From M4, stage 3 also converts each arrow function from MX's Babel node to an expression tree and classifies it as translatable or opaque. The tree and its class are part of the model, so transforms and verifiers see them ([roadmap](../roadmap/roadmap.md), M4). Conversion runs in `compiler`. A translatable expression may use only its parameters and registered functions; a free variable is a build error. Parameters such as the actor are bound from the scope and the input when the expression runs; the mechanism is not decided.
+
+Every tool reads this one model. Ash's map-based state shows the approach scales to 20+ extensions ([research synthesis](../research/synthesis.md), section 8, "Copy from Ash").
+
+### 4. Transform
+
+Extensions rewrite the model in named phases. A cycle between phases is a hard error and the resolved order is printed ([research synthesis](../research/synthesis.md), section 16; [roadmap](../roadmap/roadmap.md), M6). Reason: Ash orders transformers by `before?`/`after?` against module names and silently drops contradictions (section 2.1). A transform may write to another extension's part of the model only through a contribution point the owner publishes and the contributor declares; anything else is a build error ([ADR-0020](../decisions/0020-extension-contributions-through-declared-points.md)).
+
+### 5. Verify
+
+Read-only checks across resources. A failure stops the build. A strictness setting for verifiers is out of scope for M6 ([roadmap](../roadmap/roadmap.md), M6), so every verifier failure is an error. Example: a policy's `action` names a real action (M8).
+
+### 6. Compile expressions (produce the two forms)
+
+Stage 6 only produces the two forms of each translatable expression; conversion and classification already happened in stage 3 ([ADR-0010](../decisions/0010-one-expression-tree-two-evaluators.md); [roadmap](../roadmap/roadmap.md), M4). Each translatable expression is written into the generated file twice: as the tree itself, a data literal that the data adapter compiles into Drizzle's builder when a query runs, and as its in-memory form, emitted TypeScript. Opaque expressions are emitted as TypeScript by slicing the authored text at MX's span. The build checks that every function used has a SQL form in the configured adapter (detail in [expressions.md](./expressions.md)). What "equal" means where SQL and JavaScript disagree is open: [ADR-0012](../decisions/0012-expression-semantics.md) is Proposed and must be ruled before M4 starts.
+
+Errors that depend on the class are raised by the checks step, which is the Verify stage from M6 ([roadmap](../roadmap/roadmap.md), M4). They are: a `filter` that is not translatable (M4), an opaque change without `require-atomic=false` and an atomic change against an adapter lacking the capability (M5), and a read policy that is not translatable (M8). The classification rule: `filter` must be translatable; `change` and `validate` may be either.
+
+How an expression contributed by an extension gets a tree is not decided.
+
+### 7. Emit
+
+Text from templates, passed through an established formatter pinned to an exact version ([roadmap](../roadmap/roadmap.md), M1). M1 emits `generated/model.json` and one `types.ts` per resource; `domain` sets the output directory. M2 adds handlers, Zod validators and the Drizzle schema; M4 adds the tree literals and in-memory forms (stage 6); M6 adds the contracts module and makes core and data-adapter emitters register through the same interface extensions use. The output of `mesh explain` is printed by that command; only the example's output is committed and guarded (M5). Migrations are written by `mesh migrate generate` (M9), a separate command.
+
+### 8. Guard
+
+`mesh build --check` regenerates in memory and fails on any difference, naming the file; `verify` runs it ([roadmap](../roadmap/roadmap.md), M1). Detail in [generated-code-and-guard.md](./generated-code-and-guard.md).
+
+## The not-implemented rule
+
+The tag contracts accept the whole vocabulary before the compiler handles it. A tag or attribute the contracts accept but the compiler does not yet implement is a build error naming it and the milestone that will ([ADR-0018](../decisions/0018-not-implemented-is-a-build-error.md)). Reason: ignoring it is the silent fallback the roadmap forbids ([roadmap](../roadmap/roadmap.md), section 2, principle 2). The M1 list covers relationships, changes, validations, `filter`, `sort`, policies, calculations and aggregates; each milestone removes entries as it implements them, and the alignment with Ash's DSL, done first in M1, changes the names. The error is raised at the first unsupported tag (M1, acceptance test 5). `public` is not on the list: M1 records it in the model, and nothing in v1 reads it. What it will mean is open: [ADR-0035](../decisions/0035-meaning-of-public.md) is Proposed.
+
+## What a build error looks like
+
+Every build error names the file, the line and the fix ([roadmap](../roadmap/roadmap.md), section 2, principle 2). Two sources feed that:
+
+- MX diagnostics carry `severity`, `message`, `line`, `column` and `file`. Example for a misspelt root tag: `` `<resourse>` is not a known tag: it has no contract in `customTags`; did you mean `<resource>`? `` at line 1 (MX project notes, updates, entry of 2026-10-04 00:32).
+- Mesh's own errors (duplicate resource, unknown `accept` name, not-implemented tag) use the positions kept in the model. The message text is not decided; the roadmap fixes only that tests assert message, line and column for each case (section 2, principle 5; M1, acceptance test 4).
+
+MX stops at the first error per file ([mx-integration.md](./mx-integration.md)); Mesh's own checks should report all of theirs at once (M1, risks). Whether errors from different files are collected or the build stops at the first failing file is not decided.
+
+## Determinism
+
+Same input, same bytes ([roadmap](../roadmap/roadmap.md), M1). The formatter is pinned to an exact version, and acceptance test 2 builds twice and compares. Without determinism the guard would fail on harmless differences. File ordering and key order in `model.json` are not stated in the roadmap.
