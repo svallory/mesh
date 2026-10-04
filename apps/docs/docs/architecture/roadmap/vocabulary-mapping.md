@@ -41,7 +41,7 @@ Sources used on this page: [Ash features](../research/ash-features.md) (cited by
 
 ## 3. The mapping
 
-**The "Contract check" column** is machine-readable and is what the acceptance test reads (`contracts.test.ts`, describe "roadmap M1 acceptance test 7"). Every row whose status says "on main" carries one or more specs separated by `;`; any other row carries `-`. A spec is `tag: tokens`: a plain token is an attribute the contract declares and a clean fixture uses; `>name` is a child tag the contract declares and a clean fixture nests in that tag; `attr=v1,v2` is an attribute that a clean fixture sets to each of those values. A row marked "on main" whose cell does not parse fails the test, and so does a tag, attribute, child or value no clean fixture uses.
+**The "Contract check" column** is machine-readable and is what the acceptance test reads (`contracts.test.ts`, describe "roadmap M1 acceptance test 7"). Every row whose status says "on main" carries one or more specs separated by `;`, or an explicit `n/a (reason)` when the row is not about a tag or attribute (today only row 110, recorded deviation D37: an expression's contents are not vocabulary); any other row carries `-`. The test pins the list of `n/a` rows, so a row cannot leave the check by being relabelled. A spec is `tag: tokens`: a plain token is an attribute the contract declares and a clean fixture uses; `>name` is a child tag the contract declares and a clean fixture nests in that tag; `attr=v1,v2` is an attribute that a clean fixture sets to each of those values. A row marked "on main" whose cell does not parse fails the test, and so does a tag, attribute, child or value no clean fixture uses.
 
 The "On main today" column and its line numbers describe the contracts before the alignment (`a3b52f4`). "On main (aligned)" means the Mesh name column is now what the contracts declare, with a positive and a negative test.
 
@@ -78,7 +78,7 @@ The "On main today" column and its line numbers describe the contracts before th
 | 22 | option `public?` (default `false`) | [Ash features](../research/ash-features.md) §2.2 | `public` | `public` flag, `contracts.ts:349` | on main; recorded in the model as Ash records it, nothing in v1 reads it ([roadmap](./roadmap.md) M1; [ADR-0035](../decisions/0035-meaning-of-public.md)) | `attribute: public` |
 | 23 | option `default` (no default; "Value set on create") | [Ash features](../research/ash-features.md) §2.2 | `default` | `default: { literalOnly: true }`, `contracts.ts:351` | on main Checked (G5, Ash 3.34.0, checked 2026-10-04, https://hexdocs.pm/ash/dsl-ash-resource.html): `default`'s type is `(-> any) \| mfa \| any`: a zero-arity function, an MFA tuple or a literal. The contract keeps literals only (R14); a function default is for the milestone that evaluates defaults. | `attribute: default` |
 | 24 | option `update_default` | [Ash features](../research/ash-features.md) §2.2 | `update-default` | none | not in roadmap Checked (G5): `update_default` has the same type `(-> any) \| mfa \| any`. | - |
-| 25 | option `constraints` (type-specific, for example `one_of`, `max_length`) | [Ash features](../research/ash-features.md) §2.2, §2.4 | `constraints` | `constraints` with `one_of` (before the alignment: `values`) | on main (aligned): `constraints` with `one_of` on atoms; other constraints not in roadmap | `attribute: constraints` |
+| 25 | option `constraints` (type-specific, for example `one_of`, `max_length`) | [Ash features](../research/ash-features.md) §2.2, §2.4 | `constraints` | none (today `values` plays the `one_of` role) | on main (aligned): `constraints` with `one_of` on atoms; other constraints not in roadmap | `attribute: constraints` |
 | 26 | options `description`, `sensitive?` (false), `source` | [Ash features](../research/ash-features.md) §2.2 | `description`, `sensitive`, `source` | none | not in roadmap | - |
 | 27 | options `primary_key?` (false), `writable?` (true), `generated?` (false) | [Ash features](../research/ash-features.md) §2.2 | `primary-key`, `writable`, `generated` | none | not in roadmap | - |
 | 28 | options `select_by_default?` (true), `always_select?` (false) | [Ash features](../research/ash-features.md) §2.2 | `select-by-default`, `always-select` | none | not in roadmap | - |
@@ -200,7 +200,7 @@ Ash writes a translatable expression as `expr(...)` and refers to the caller and
 | 107 | template `^context(:key)` | [Ash features](../research/ash-features.md) §5.5 | the declared parameter `context`, from the scope ([ADR-0007](../decisions/0007-scope-is-a-plain-argument.md)); exact form designed in M4 | none | M4 | - |
 | 108 | template `^ref(:key)`, `^ref([:path], :key)` | [Ash features](../research/ash-features.md) §5.5 | none | none | not in roadmap | - |
 | 109 | template `^tenant()` | [Ash features](../research/ash-features.md) §5.5 | none | none | after v1 (multitenancy) | - |
-| 110 | a reference to an attribute inside `expr(...)` is a bare name (`public == true`) | [Ash features](../research/ash-features.md) §6.1 | a property of a declared parameter: `post.state` | the same, `post.mx:24` | M4: the contracts do not look inside an expression; recorded deviation D37 | - |
+| 110 | a reference to an attribute inside `expr(...)` is a bare name (`public == true`) | [Ash features](../research/ash-features.md) §6.1 | a property of a declared parameter: `post.state` | the same, `post.mx:24` | on main; recorded deviation D37 | `n/a (the contracts do not look inside an expression; the form is designed in M4)` |
 
 That is 110 rows.
 
@@ -275,7 +275,7 @@ Each row is a rule in `contracts.ts` that is not a name. "Ash" is what the resea
 
 ### 4.3 Roadmap text that changes with the alignment
 
-These are edits to [roadmap](./roadmap.md), listed so none is forgotten. They are not made here.
+These are edits to [roadmap](./roadmap.md), listed so none is forgotten. The first item was made in the alignment pull request; the others are not made here.
 
 - **Done in the alignment pull request:** the roadmap's section 1 item 6 and M1's "Vocabulary alignment first" bullet now say the alignment is done, and the M1 model bullet quotes the aligned names (seven types, `allow-nil`, `constraints`, `create-timestamp`, `update-timestamp`, the `defaults` attribute). The "M1, model" item below is kept as the record of what changed.
 - **M1, alignment.** The alignment is the first part of M1; its acceptance test ("every row marked 'on main' has a contract and a fixture that match it") is checked against Section 3 with the naming rule of Section 0.

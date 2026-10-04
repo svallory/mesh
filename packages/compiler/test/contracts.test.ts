@@ -872,7 +872,11 @@ describe("roadmap M1 acceptance test 7: every row of the mapping page marked 'on
       return { row: Number(cells[1]), onMain: cells[6]!.includes("on main"), check: cells[7]! };
     });
 
+  /** `n/a (reason)`: an on-main row that is not about a tag or an attribute. */
+  const naReason = (row: PageRow) => /^`?n\/a \((.*\S.*)\)`?$/.exec(row.check)?.[1];
+
   function parseCheck(row: PageRow): Spec[] {
+    if (naReason(row) !== undefined) return [];
     const m = /^`([^`]+)`$/.exec(row.check);
     if (!m) throw new Error(`row ${row.row} is on main and its Contract check cell is not one backticked spec: "${row.check}"`);
     return m[1]!.split(";").map((part) => {
@@ -936,6 +940,21 @@ describe("roadmap M1 acceptance test 7: every row of the mapping page marked 'on
     expect(rows).toHaveLength(110);
     expect(rows.map((r) => r.row)).toEqual(Array.from({ length: 110 }, (_, i) => i + 1));
     expect(rows.filter((r) => r.onMain).length).toBeGreaterThan(30);
+  });
+
+  test("the rows that opt out with `n/a (reason)` are exactly these, each with a reason", () => {
+    const optedOut = rows.filter((r) => /^`?n\/a\b/.test(r.check));
+    expect(optedOut.map((r) => r.row)).toEqual([110]);
+    for (const r of optedOut) {
+      expect(r.onMain, `row ${r.row}`).toBe(true);
+      expect(naReason(r)?.trim().length, `row ${r.row} needs a reason`).toBeGreaterThan(10);
+    }
+  });
+
+  test("`n/a` without a reason is rejected", () => {
+    for (const bad of ["n/a", "`n/a`", "`n/a ()`", "n/a ( )"]) {
+      expect(() => parseCheck({ row: 0, onMain: true, check: bad }), bad).toThrow();
+    }
   });
 
   test("a row that is not on main carries `-`, so no row is checked by accident or skipped by silence", () => {
