@@ -5,7 +5,7 @@ description: "What Mesh generates and commits, why the behaviour lives there, an
 
 # Generated code and the guard
 
-Status: design; the model and types are built in M1 (task `m1-emit`) — `model.json` and one types file per resource are generated today, by the emit stage, which `mesh build` will call — while handlers and the Drizzle schema come in M2, expression forms in M4, the contracts module in M6. Tag names are today's working names ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md)).
+Status: the M1 model, types, `mesh build`, `mesh build --check` and `mesh inspect` are built (tasks `m1-emit` and `m1-cli`). Handlers and the Drizzle schema come in M2, expression forms in M4, the contracts module in M6. Tag names are today's working names ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md)).
 
 ## The rule
 
@@ -90,10 +90,13 @@ Hand edits to generated files, or a stale tree after a resource file changes, wo
 
 How it works:
 
-1. `mesh build --check` runs the whole pipeline but regenerates in memory, writing nothing.
-2. It compares the result with the committed files.
-3. Any difference fails the check and names the file ([roadmap](../roadmap/roadmap.md), M1, acceptance test 3).
-4. `verify`, the one local script that runs every check, runs it (M1).
+1. `mesh build --check` runs the same load, checks and emit as `mesh build`, but regenerates in memory and writes nothing, even on failure.
+2. It compares exact bytes with the generated tree on disk, which the project commits: missing produced files, changed bytes and stray regular files all fail. A missing output directory means every produced file is missing. It does not query Git's index or history.
+3. The walk uses `lstat` from the output directory itself down. Every symlink is an error, including a symlinked output directory, nested directory or file; the guard never descends into or reads through one. The blocking path is reported, rather than claiming to have checked its descendants. Unsupported filesystem entries and unreadable paths also fail. Like the writer, the walk assumes files are not concurrently replaced during a build.
+4. Every difference names its project-relative path, with `/` separators, in the [command-line diagnostic shape](../../docs/command-line.md). Diagnostics go to standard error, ordered by file, line, column and message, then one count summary. A difference exits 1; a matching tree exits 0 ([roadmap](../roadmap/roadmap.md), M1, acceptance test 3).
+5. Wiring the guard into the repository's `verify` script and reduced example is the next M1 task, `m1-example`.
+
+A **stray file** is a regular file under the output directory that this build does not produce. `mesh build` deletes nothing: after writing successfully, it walks the output tree and reports each stray file as an error telling you to delete or move it. Symlinks and unsupported entries also fail. Thus, with unchanged inputs and disk, **after `mesh build` exits 0, `mesh build --check` exits 0**. Removing or renaming a resource may leave an old generated file to remove explicitly; the build never assumes it owns that file.
 
 The guard depends on determinism: same input, same bytes, from templates plus a pinned formatter (see [build-pipeline.md](./build-pipeline.md)). It grows with the milestones: handlers and the schema in M2, the example's `explain` output in M5, the contracts module in M6 (M2 test 6, M5 test 5, M6 test 4).
 
