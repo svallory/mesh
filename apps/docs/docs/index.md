@@ -11,6 +11,8 @@ Mesh is a planned TypeScript framework modelled on [Ash](https://ash-hq.org), th
 Mesh does not have a release yet. There is nothing to install and no runtime. The pages under **Docs** describe only what exists today.
 :::
 
+Mesh is open source under the MIT licence.
+
 ## Where to go
 
 ::: grids

@@ -2,6 +2,7 @@
   "name": "mesh-docs",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Mesh documentation site, built with docmd",
   "scripts": {
