@@ -24,6 +24,10 @@ import { highlightMx } from './mx-highlight.js';
 const NOTE = /^\/\/\s*@([a-z][a-z0-9-]*):\s*(.+?)\s+—\s+(.+)$/;
 const EMPTY_SEGMENT = 'a segment must hold at least one line of the file';
 
+function indentOf(line) {
+  return line.length - line.trimStart().length;
+}
+
 export function parseMxFigure(source, file = '<markdown>') {
   const segments = [];
   const problems = [];
@@ -49,6 +53,22 @@ export function parseMxFigure(source, file = '<markdown>') {
     }
     current.code.push(line);
   });
+  // A segment must not end with a line less indented than the first line of the next
+  // one: that means a block was left open at the end of the previous segment, so the
+  // note beside it describes the wrong lines. A note placed above the section tag it
+  // heads is the other way round and is fine. The file's root line is exempt: it is
+  // the only line that legitimately stands above everything that follows it.
+  for (let i = 1; i < segments.length; i++) {
+    const previous = segments[i - 1].code[segments[i - 1].code.length - 1] ?? "";
+    const first = segments[i].code[0] ?? "";
+    const root = segments[i - 1].code.length === 1 && indentOf(previous) === 0;
+    if (!root && indentOf(previous) < indentOf(first)) {
+      problems.push(
+        `${file}:${segments[i].line}: mx-figure note "${segments[i].key}" starts at ${indentOf(first)} spaces ` +
+        `but the previous segment ends at ${indentOf(previous)}: that segment kept a section tag its note does not head`,
+      );
+    }
+  }
   const kept = segments.filter((segment) => {
     if (segment.code.length > 0) return true;
     problems.push(`${file}:${segment.line}: mx-figure note "${segment.key}" has ${EMPTY_SEGMENT}`);

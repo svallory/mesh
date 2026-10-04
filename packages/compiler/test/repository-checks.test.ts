@@ -282,11 +282,11 @@ test("Docs MX samples: complete entity blocks parse with the contracts", () => {
 
 test("Docs MX samples: a planted invalid resource fails with page, fence line and diagnostic", () => {
   temporary((dir) => {
-    writeFileSync(join(dir, "bad.md"), '# Bad\n\n```mx "resources/bad.mx"\n\nresource="bad"\n  attributes\n    attribute="x" type="strnig"\n```\n');
+    writeFileSync(join(dir, "bad.md"), '# Bad\n\n```mx "resources/bad.mx"\nresource="bad"\n  attributes\n    attribute="x" type="strnig"\n```\n');
     const checked = checkDocsSamples(dir);
     expect(checked.parsed).toBe(1);
     expect(checked.errors).toHaveLength(1);
-    expect(checked.errors[0]).toBe('bad.md:3: MX block 4:19: `<attribute>`: attribute `type` must be one of "string", "integer", "float", "boolean", "uuid", "datetime", "atom", got "strnig"');
+    expect(checked.errors[0]).toBe('bad.md:3: MX block 3:19: `<attribute>`: attribute `type` must be one of "string", "integer", "float", "boolean", "uuid", "datetime", "atom", got "strnig"');
   });
 });
 

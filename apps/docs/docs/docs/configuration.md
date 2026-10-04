@@ -67,19 +67,10 @@ Mesh does not read anything about your database from an entity file; the project
 
 **SQLite** is what the quick start and the tutorial use. It needs no server, and the file is yours:
 
-Only the `data` line changes:
+Only the `data` line changes, from `postgres` to `sqlite` or back:
 
-```ts "mesh.config.ts"
-import { defineConfig } from "@meshfw/cli";
-import { sqlite } from "@meshfw/data-sqlite";
-import { policies } from "@meshfw/ext-policies";
-
-export default defineConfig({
-  domain: "src/domain",
-  output: ".mesh",
-  data: sqlite({ file: "todo.db" }),
-  extensions: [policies()],
-});
+```ts "mesh.config.ts (excerpt)"
+data: sqlite({ file: "todo.db" }),
 ```
 
 **Postgres** reads a URL. There is no default: if the variable is unset, `connect()` throws rather than guessing.
@@ -99,7 +90,7 @@ export default defineConfig({
 });
 ```
 
-Then, in that project's environment, set `DATABASE_URL` to the database you want, create the database, and bring the schema to it:
+Set `DATABASE_URL` in that project's environment, create the database, and bring the schema to it:
 
 ```bash
 export DATABASE_URL="postgres://localhost:5432/todo_app"
@@ -108,7 +99,7 @@ bunx mesh migrate generate
 bunx mesh migrate apply
 ```
 
-There is no default URL: if `DATABASE_URL` is unset, `connect()` throws rather than guessing. Nothing in Mesh creates a Postgres server or a database for you; `migrate apply` runs against the one you named.
+Nothing in Mesh creates a Postgres server or a database for you; `migrate apply` runs against the one you named.
 
 SQLite in its in-memory mode is what tests use. See [Testing](./testing.md).
 
@@ -195,7 +186,7 @@ Prints the plan the generated handler follows. The plan is chosen at build time;
 todo.complete (update)
   strategy     atomic: one UPDATE, no read first
   changes      done = true                 folded into the statement
-  policy       list.ownerId = actor.id     folded into the statement as a filter
+  policy       todo.list.ownerId === actor.id   folded into the statement as a filter
   validations  none
 ```
 

@@ -35,9 +35,9 @@ entity="todo" table="todos"
 
 `attributes` is the only required block. Every block is optional after that, and every block may be empty.
 
-**Values Mesh reads are literals.** A string, a number, `true`, `false`, a list or an object literal written out in full. A bare identifier is a build error, not an import: an entity file declares data, it does not run code. The exceptions are the five tags whose value is a function — `change`, `validate`, `filter`, `authorize-if` and `value` — and those take an arrow function or a method.
+**Values Mesh reads are literals.** A string, a number, `true`, `false`, a list or an object literal written out in full. The exceptions are the five tags whose value is a function — `change`, `validate`, `filter`, `authorize-if` and `value` — and those take an arrow function or a method.
 
-**Hand-written code lives next to the file.** `src/domain/todo/todo.helpers.ts` is a normal TypeScript module beside the entity, and a `change` or a `validate` reaches it by relative path from the `.mx` file:
+**Hand-written code is imported.** An `.mx` file opens with ordinary `import` lines, and the imported functions are usable inside its expressions. The helper sits beside the entity and is a normal TypeScript module:
 
 ```ts "src/domain/todo/todo.helpers.ts"
 export function titleIsLongEnough(title: string): boolean {
@@ -45,11 +45,22 @@ export function titleIsLongEnough(title: string): boolean {
 }
 ```
 
-```mx
-    validate=({ todo }) => titleIsLongEnough(todo.title) message="title must not be empty"
+```mx "src/domain/todo/todo.mx"
+import { titleIsLongEnough } from "./todo.helpers"
+
+entity="todo" table="todos"
+  attributes
+    uuid-primary-key="id"
+    attribute="title" type="string" allow-nil=false
+
+  actions
+    create="create" accept=["title"]
+      validate=({ todo }) => titleIsLongEnough(todo.title) message="title must not be empty"
 ```
 
-**What a function body may use.** The record, `actor`, `context`, the action's `input`, and Mesh's registered functions: comparisons and boolean operators, arithmetic, string `length`, and assignment to a field. Nothing else, so the build can say when a rule cannot run in the database and needs a read first.
+Three rules, and nothing more: only relative imports, only of files inside `src/domain/`, only named imports; and an imported function must be pure — it may not read the clock, the network or anything Mesh did not hand it, because Mesh runs it in its own checks and again at run time.
+
+**What else a function body may use.** The record, `actor`, `context`, the action's `input`, and Mesh's own registered functions, which are the built-in operations a rule may use without writing them: comparisons, boolean operators, arithmetic, string `length` and assignment to a field. Anything outside that set is what makes the build tell you a rule cannot run in the database and needs a read first.
 
 ## The entity line
 
@@ -58,7 +69,7 @@ export function titleIsLongEnough(title: string): boolean {
 | default, as in `entity="todo"` | yes | The entity's name. Every generated function is named after it, and it must be unique across the domain |
 | `table` | no | The database table. Defaults to the entity's name |
 
-The folder that holds the file is the group: entities in `src/domain/todo/` belong together, and no attribute in the file repeats the folder's name.
+The folder that holds the file is the module: entities in `src/domain/todo/` belong together, and no attribute in the file repeats the folder's name.
 
 ## attributes
 
@@ -156,7 +167,7 @@ One per action. A function that edits the record before it is written. On an upd
       change=({ todo }) => { todo.done = true }
 ```
 
-The body receives one object, destructured in the tag. It holds the record under the entity's name (`todo` here), the caller under `actor`, the rest of the caller's context under `context`, and the caller's input under `input`. The same four parameters are what `validate` gets, and a validation sees the record as it will be after the action's changes. See [the action context](./calling-actions.md#the-action-context).
+The body receives one object, destructured in the tag. It holds the record under the entity's name (`todo` here), the caller under `actor`, the rest of the caller's context under `context`, and the caller's input under `input`. The same four parameters are what `validate` gets. See [the action context](./calling-actions.md#the-action-context).
 
 ### validate
 
@@ -245,7 +256,7 @@ Children: `count`, repeatable. A number Mesh computes from stored rows, asked fo
 bunx mesh build
 ```
 
-The build rejects a tag, an attribute or a value outside this reference, a tag it does not implement, an `accept` naming a field the entity does not have, two entities with the same name, two entities in one file, a free variable in an expression, and a data-layer capability the configured adapter does not declare. Every diagnostic names the file, the line and the column:
+The build rejects a tag, an attribute or a value outside this reference, a tag it does not implement, an `accept` naming a field the entity does not have, two entities with the same name, two entities in one file, an expression that uses something no rule may use, and a data-layer capability the configured adapter does not declare. Every diagnostic names the file, the line and the column:
 
 ```text
 src/domain/todo/todo.mx:11:21 error `accept` names "titel", which is not an attribute of todo. Did you mean "title"?

@@ -43,7 +43,7 @@ bunx mesh explain todo complete
 todo.complete (update)
   strategy     atomic: one UPDATE, no read first
   changes      done = true                 folded into the statement
-  policy       list.ownerId = actor.id     folded into the statement as a filter
+  policy       todo.list.ownerId === actor.id   folded into the statement as a filter
   validations  none
 ```
 

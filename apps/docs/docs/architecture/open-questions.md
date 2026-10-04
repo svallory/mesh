@@ -45,6 +45,9 @@ The findings below came from writing the Docs pages against the design. Each nam
 
 ## New open points
 
+- **Importing hand-written code from an `.mx` file.** The Entities page states one design: an entity file opens with ordinary `import` lines, and only relative, named imports of files inside `src/domain/` are allowed. Today's contracts parse with `structural: "reject"`, which rejects an import line outright, so this needs a change in how Mesh calls MX and the MX lead's agreement. The sample check parses the example with the root tag rewritten and defers it under a named reason until that lands.
+- **No page on writing an extension.** Three pages describe what an extension may contribute and none shows how to write one. It is its own piece of work.
+
 - **The action context's type.** The operator ruled on 2026-10-04 that the second argument is one flat `ActionContext` the user declares by declaration merging. Two records still describe the older shape and have to be amended in the rename task: [ADR-0007](decisions/0007-scope-is-a-plain-argument.md) and [ADR-0047](decisions/0047-actions-are-bound-to-a-data-layer.md) both say "scope" and describe `{ actor, context }`.
 - **Generator templates as an escape hatch.** `mesh export generators` would copy the templates into the project so an advanced user could edit them, and the templates would be written in [Jig](https://jig.saulo.engineer/docs/introduction). It is undecided. The user page [Customising generated code](../docs/customising-generated-code.md) is written as a proposal so the operator can judge the developer experience, and it recommends a named mixin hook in each template instead of a copy of the whole template. A copy means the project owns the generated output and upgrades stop applying; a hook keeps the escape hatch small.
 - **What "what exists today" covers.** The contributor page holds it, but nothing states when it is rewritten as each milestone lands.

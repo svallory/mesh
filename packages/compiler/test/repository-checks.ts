@@ -90,8 +90,8 @@ export function checkRuntime(root: string, rule: "imports" | "web"): string[] {
  */
 export const DOCS_ROOT_TAG_PENDING_RENAME = "entity";
 
-/** Diagnostic text that names something the entity/module rename will change. */
-const RENAME_AFFECTED = /\b(entity|module|domain)\b/;
+/** Diagnostic text that names something the entity/module rename or the import rule will change. */
+const RENAME_AFFECTED = /\b(entity|module|domain|import)\b/i;
 
 function withCurrentRootTag(block: string) {
   return block.replace(new RegExp(`^(\\s*)${DOCS_ROOT_TAG_PENDING_RENAME}(\\s*=)`, "m"), "$1resource$2");
@@ -110,18 +110,21 @@ export function checkDocsSamples(dir: string) {
       if (!opening) continue;
       const fence = opening[1]!;
       const line = i + 1;
-      const block: string[] = [];
+      let block: string[] = [];
       let closed = false;
       while (++i < lines.length) {
         const closing = /^ {0,3}(`{3,}|~{3,})\s*$/.exec(lines[i]!);
         if (closing && closing[1]![0] === fence[0] && closing[1]!.length >= fence.length) { closed = true; break; }
         block.push(lines[i]!);
       }
-      // An exact "mx" language only: "mx-figure" is the docs figure container, not a resource.
-      if (opening[2]!.trim().split(/\s+/)[0] !== "mx") continue;
+      const language = opening[2]!.trim().split(/\s+/)[0];
+      // The figure is one entity file too, once its `// @key:` annotations are removed.
+      if (language === "mx-figure") block = block.filter((line) => !/^\s*\/\/\s*@/.test(line));
+      else if (language !== "mx") continue;
       if (!closed) errors.push(`${name}:${line}: unclosed MX fence`);
       const root = block.find((text) => text.trim() !== "")?.trimStart() ?? "";
-      if (!root.startsWith("resource") && !root.startsWith(DOCS_ROOT_TAG_PENDING_RENAME)) { skipped++; continue; }
+      // An entity file may open with its imports, so an `import` line heads a complete block too.
+      if (!/^(resource\b|import\s)/.test(root) && !root.startsWith(DOCS_ROOT_TAG_PENDING_RENAME)) { skipped++; continue; }
       const diagnostics = parse(withCurrentRootTag(`${block.join("\n")}\n`), file).diagnostics;
       const renaming = diagnostics.filter((diagnostic) => RENAME_AFFECTED.test(diagnostic.message));
       if (renaming.length > 0 && renaming.length === diagnostics.length) {

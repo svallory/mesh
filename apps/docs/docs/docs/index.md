@@ -19,38 +19,40 @@ This is a complete `todo.mx`, top to bottom, with the policies extension enabled
 ```mx-figure
 // @name: Name and table — `todo` lives in the `todos` table. The type, the functions and the migration come from this one line.
 entity="todo" table="todos"
-  attributes
 // @fields: Fields you send — `title` is a required string, `done` a boolean that starts false.
+  attributes
     uuid-primary-key="id"
     attribute="title" type="string" allow-nil=false
     attribute="done" type="boolean" allow-nil=false default=false
-    create-timestamp="insertedAt"
 // @times: Fields the database fills — `insertedAt` on create, `updatedAt` on every write. No caller sets either.
+    create-timestamp="insertedAt"
     update-timestamp="updatedAt"
-  relationships
 // @belongs: Linked to a list — `listId` becomes a field, the foreign key is created, and `todo.list` arrives when you ask.
+  relationships
     belongs-to="list" destination="list"
+// @create: Calling createTodo — you call `createTodo(input, context)`. A field it does not accept never reaches your code, and an empty title is refused with your own message.
   actions defaults=["read", "destroy"]
-// @create: Calling createTodo — you call `createTodo(input, context)`. A field it does not accept never reaches your code.
     create="create" accept=["title", "listId"]
-// @checked: Input, checked — an empty title is refused with your own message, before anything is written.
       validate=({ todo }) => todo.title.length > 0 message="title must not be empty"
-// @complete: One more action — `completeTodo({ id }, context)` finishes a todo in a single `UPDATE`.
+// @complete: Two more actions — `completeTodo({ id }, context)` and `renameTodo({ id, title }, context)` each run as a single `UPDATE`.
     update="complete"
       change=({ todo }) => { todo.done = true }
+    update="rename" accept=["title"]
 // @pending: A query — `pendingTodo(input, context)` filters in SQL, and adds your own filter to it.
     read="pending"
       filter=({ todo }) => todo.done === false
-  policies
+      sort=["insertedAt"]
 // @who: Who may do it — an action with no policy is forbidden, and the check rides along with the query.
+  policies
     policy=action_type(["create", "read", "update", "destroy"])
-      authorize-if=({ todo, actor, context }) => todo.list.ownerId === actor.id
-  calculations
+      authorize-if=({ todo, actor }) => todo.list.ownerId === actor.id
 // @derived: A computed value — ask for `label` and it is on the result; leave it out and it does not exist.
+  calculations
     calculate="label" type="string"
       value({ todo }) {
         return (todo.done ? "[x] " : "[ ] ") + todo.title
       }
+
 ```
 
 ## What you call
@@ -65,7 +67,7 @@ There is no server, no route and no client to generate. Mesh serves a command li
 
 The same file is built in the [tutorial](./tutorial.md), and every tag in it is in the [entity reference](./entities.md).
 
-You write one file per thing and edit that file. Adding a field adds a column, a type field and an input key, and one more column to push or migrate. Removing an accepted field makes every caller that still passes it a type error.
+You write one file per thing and edit that file. Adding a field adds a column, a type field and an input key, and one more thing to push or migrate. Removing an accepted field makes every caller that still passes it a type error.
 
 ## Who it is for
 
