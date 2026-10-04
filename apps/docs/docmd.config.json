@@ -17,7 +17,7 @@
       "title": "Home",
       "path": "/"
     },
-{
+    {
       "title": "Docs",
       "children": [
         {
@@ -79,14 +79,6 @@
             {
               "title": "About the roadmap",
               "path": "/architecture/roadmap/"
-            },
-            {
-              "title": "Roadmap",
-              "path": "/architecture/roadmap/roadmap/"
-            },
-            {
-              "title": "Roadmap",
-              "path": "/architecture/roadmap/roadmap/"
             },
             {
               "title": "Roadmap",

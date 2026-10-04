@@ -22,7 +22,7 @@ The vocabulary follows Ash's DSL in kebab-case with the trailing `?` dropped ([A
 
 ## `resources/list.mx`
 
-```mx
+```mx "resources/list.mx"
 resource="list" table="lists" domain="todos"
   attributes
     uuid-primary-key="id"
@@ -40,7 +40,9 @@ resource="list" table="lists" domain="todos"
   policies
     policy=action_type("create")
       authorize-if=() => true
-    policy=action_type(["read", "destroy"])
+    policy=action_type("read")
+      authorize-if=({ list, actor }) => list.ownerId === actor.id
+    policy=action_type("destroy")
       authorize-if=({ list, actor }) => list.ownerId === actor.id
 
   aggregates
@@ -54,8 +56,8 @@ Reading it top to bottom:
 - `allow-nil=false` says the column is not nullable. Attribute types are `string`, `integer`, `float`, `boolean`, `atom`, `uuid` and `datetime`; a uuid arrives in TypeScript as a `string` and a datetime as a `Date`.
 - `create-timestamp="insertedAt"` declares an attribute the database fills on insert and the caller never sets.
 - `actions defaults=["read", "destroy"]` asks for a `read` action and a `destroy` action, each named after its type, without declaring them.
-- `create="create" accept=["name"]` declares a create action named `create`, which accepts only `name`. `ownerId` is filled by the change, not by the caller: `change` receives the record being built and the scope, and sets `list.ownerId` from the actor.
-- The policies block declares a check for each action. With the policies extension enabled, an action with no matching policy is forbidden. `authorize-if` returns a boolean; the expression is the record and the actor, and nothing else.
+- `create="create" accept=["name"]` declares a create action named `create`, which accepts only `name`. `ownerId` is filled by the change, not by the caller: `change` receives one object argument, destructured here as `{ list, actor }`, and sets `list.ownerId` from the actor. The meaning of the record on a create is still open, as noted below.
+- The policies block declares a check for each action. `action_type` accepts one string, so a check shared by several action types is repeated under each type's policy. With the policies extension enabled, an action with no matching policy is forbidden. `authorize-if` returns a boolean; the expression is the record and the actor, and nothing else.
 - `count="todoCount" relationship-path="todos"` declares an aggregate: the number of related todos.
 
 ::: callout info "Not decided yet"
@@ -68,7 +70,7 @@ Ash's `belongs_to` creates its foreign-key attribute as `<name>_id`. The roadmap
 
 ## `resources/todo.mx`
 
-```mx
+```mx "resources/todo.mx"
 resource="todo" table="todos" domain="todos"
   attributes
     uuid-primary-key="id"
@@ -94,7 +96,13 @@ resource="todo" table="todos" domain="todos"
       sort=["insertedAt"]
 
   policies
-    policy=action_type(["create", "read", "update", "destroy"])
+    policy=action_type("create")
+      authorize-if=({ todo, actor }) => todo.list.ownerId === actor.id
+    policy=action_type("read")
+      authorize-if=({ todo, actor }) => todo.list.ownerId === actor.id
+    policy=action_type("update")
+      authorize-if=({ todo, actor }) => todo.list.ownerId === actor.id
+    policy=action_type("destroy")
       authorize-if=({ todo, actor }) => todo.list.ownerId === actor.id
 
   calculations
@@ -104,6 +112,10 @@ resource="todo" table="todos" domain="todos"
       }
 ```
 
+::: callout info "Not decided yet"
+The `sort` child tag is the current contract form, not a settled v1 design. Ash sorts a read through a `prepare build(sort: ...)` call; [the vocabulary mapping](../architecture/roadmap/vocabulary-mapping.md), D17/G1, leaves Mesh's form to M3/M5.
+:::
+
 Reading it:
 
 - `belongs-to="list" destination="list"` declares the relationship, and `listId` is the foreign-key attribute it adds. The `todoCount` aggregate on `list` and this relationship are the two sides.
@@ -111,7 +123,7 @@ Reading it:
 - `update="complete"` has no `accept`, so it changes nothing the caller sends; its change sets `done = true`. Because that change reads no stored value, it folds into the `UPDATE` statement and the action stays **atomic**: one statement, no read first, so two concurrent callers cannot both act on a stale row.
 - `update="rename" accept=["title"]` accepts `title`.
 - `read="pending"` filters to undone todos and sorts them oldest first. A `filter` must be translatable to SQL, so only the registered functions may appear in it.
-- The policy reads `todo.list.ownerId`, which means the relationship is loaded before the check runs.
+- The policy reads `todo.list.ownerId`. On an atomic update it becomes part of the statement's filter; it does not require loading the relationship into the returned record. The create case remains open below.
 - `calculate="label"` is a derived value.
 
 ::: callout info "Not decided yet"
@@ -139,12 +151,20 @@ An opaque calculation runs in memory, after the rows are loaded. Two things foll
 
 The actor is your application's idea of a caller. Mesh does not decide what one is; you register the type once, and every `scope.actor` is typed from it.
 
-```ts
+```ts "src/actor.ts"
+import "@mesh/runtime";
+
 declare module "@mesh/runtime" {
   interface Register {
-    actor: { id: string }
+    actor: { id: string };
   }
+}
+
+export const alice = { id: "00000000-0000-4000-8000-000000000001" };
+export const bob = { id: "00000000-0000-4000-8000-000000000002" };
 ```
+
+The import and exports make this file a module, so the declaration augments Mesh's existing `Register` interface. The example actors use UUIDs because `list.ownerId` has type `uuid`.
 
 An application with anonymous callers registers `User | null`. A tenant is not part of the actor: where multitenancy lives is [open](../architecture/decisions/0009-tenancy-placement.md), and until it is decided a tenant travels in `scope.context`.
 
@@ -152,7 +172,8 @@ An application with anonymous callers registers `User | null`. A tenant is not p
 
 The whole program. It connects, creates a list as one actor, adds todos, completes one, prints the pending todos, then shows what happens when somebody else tries.
 
-```ts
+```ts "src/main.ts"
+import { InvalidInputError, NotFoundError } from "@mesh/runtime";
 import {
   connect,
   disconnect,
@@ -161,10 +182,7 @@ import {
   completeTodo,
   pendingTodo,
 } from "../generated";
-import { alice } from "./actor";
-
-const alice = { id: "alice" };
-const bob = { id: "bob" };
+import { alice, bob } from "./actor";
 
 await connect({ file: "todo.db" });
 
@@ -186,13 +204,15 @@ for (const todo of await pendingTodo({ load: ["label"] }, { actor: alice })) {
 try {
   await completeTodo({ id: milk.id }, { actor: bob });
 } catch (error) {
+  if (!(error instanceof NotFoundError)) throw error;
   console.log(error.code); // "not_found"
 }
 
 try {
   await createTodo({ title: "", listId: list.id }, { actor: alice });
 } catch (error) {
-  console.log(error.issues); // one entry: title must not be empty
+  if (!(error instanceof InvalidInputError)) throw error;
+  console.log(error.issues.map((issue) => issue.message).join("; "));
 }
 
 await disconnect();
@@ -203,6 +223,8 @@ Output:
 ```text
 [ ] Buy bread
 [ ] Buy coffee
+not_found
+title must not be empty
 ```
 
 What to notice:
@@ -224,7 +246,9 @@ How a run-time error carries the position of the `.mx` tag that failed. Mesh's w
 
 ## The generated functions
 
-One exported function per action, named after the action and the resource in PascalCase:
+One exported function per action, named after the action and the resource in PascalCase. The table shows action functions, not their authorization helpers; every action also has a `can` function, such as `canCompleteTodo(input, scope)`, returning `{ allowed: boolean; breakdown }`.
+
+The return types below are the values the promises resolve to:
 
 | Resource file | Action | Function | Returns |
 |---|---|---|---|
@@ -237,7 +261,6 @@ One exported function per action, named after the action and the resource in Pas
 | `todo.mx` | `update="complete"` | `completeTodo(input, scope)` | `Todo` |
 | `todo.mx` | `update="rename"` | `renameTodo(input, scope)` | `Todo` |
 | `todo.mx` | `destroy` (default) | `destroyTodo(input, scope)` | `void` |
-| `todo.mx` | `update="complete"` | `canCompleteTodo(input, scope)` | `{ allowed: boolean; breakdown }` |
 
 The `Todo` type is derived from the resource file:
 

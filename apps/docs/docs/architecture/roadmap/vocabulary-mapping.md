@@ -321,7 +321,7 @@ The fact-check said the first lookups' quoted sentences for G1, G2, G3, G5, G6, 
 
 This is `post.mx` as it is on main after the alignment: `packages/compiler/test/fixtures/post.mx`, and the identical `examples/blog/post.mx`. It carries every alignment of Section 4 that is on main and the naming rule of Section 0 (tag names and attribute names only). Expressions keep arrow functions with declared parameters until M4 is designed (D16, D37); the author-chosen names (`authorId`, `insertedAt`, `commentCount`) are values and stay as in the file before the alignment (D33). Concise syntax.
 
-```
+```mx
 resource="post" table="posts" domain="blog"
   attributes
     uuid-primary-key="id"

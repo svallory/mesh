@@ -17,17 +17,9 @@ Until the policies extension arrives, **every action is open to every caller**. 
 
 ## 1. Write a resource file
 
-A resource is one `.mx` file: Marko syntax, read by MX. Mesh chooses the tag names; the syntax is MX's. The file is indentation-based, with no angle brackets.
+Copy the complete `resources/list.mx`, `resources/todo.mx` and `src/actor.ts` files from [Example: a todo list](./example-todo-list.md). Keep the actions, relationships and policies, not just the attributes: step 3 calls the `create` actions on both resources and the `pending` read on `todo`.
 
-```mx
-resource="todo" table="todos" domain="todos"
-  attributes
-    uuid-primary-key="id"
-    attribute="title" type="string" allow-nil=false
-    attribute="done" type="boolean" allow-nil=false default=false
-    create-timestamp="insertedAt"
-    update-timestamp="updatedAt"
-```
+A resource is one `.mx` file: Marko syntax, read by MX. Mesh chooses the tag names; the syntax is MX's. The file is indentation-based, with no angle brackets.
 
 MX does not run any of this. It reads the file as a static tree of tags and attributes, so every value Mesh needs without executing code must be a literal. A bare identifier is a build error, not an import.
 
@@ -39,7 +31,7 @@ bunx mesh build
 
 The build reads every `.mx` file under the configured resources folder, checks the structure, builds a model, transforms it, verifies it, compiles the expressions and writes the generated tree. It also writes the database schema file, from the build half of the data adapter.
 
-**What the build commits** (all of it goes into version control, see [Project structure](./project-structure.md)):
+**What the build writes for you to commit** (using this spec's proposed layout; see [Project structure](./project-structure.md)):
 
 | File | What it is |
 |---|---|
@@ -65,14 +57,16 @@ Nothing is silently dropped and nothing silently downgraded. The [roadmap](../ar
 
 An action is a generated function. The signature is always `(input, scope)`, and both arguments are required. There is no server and no route: calling the function is the whole interface ([ADR-0005](../architecture/decisions/0005-core-interface-is-a-function-call.md)).
 
-```ts
-import { connect, disconnect, createTodo, pendingTodo } from "./generated";
+Create the development database first with `bunx mesh db push`, then save this as `src/main.ts` and run `bun run src/main.ts`:
+
+```ts "src/main.ts"
+import { connect, disconnect, createList, createTodo, pendingTodo } from "../generated";
 import { alice } from "./actor";
 
 await connect({ file: "todo.db" });
 
 const list = await createList({ name: "Groceries" }, { actor: alice });
-const todo = await createTodo(
+await createTodo(
   { title: "Buy milk", listId: list.id },
   { actor: alice },
 );
@@ -86,10 +80,10 @@ await disconnect();
 
 ## 4. Change the resource, rebuild
 
-Add a column:
+Add this line inside the `attributes` block of `resources/todo.mx`. This is an insertion, not a complete resource file:
 
-```mx
-    attribute="dueOn" type="datetime"
+```diff "resources/todo.mx"
++    attribute="dueOn" type="datetime"
 ```
 
 ```bash
@@ -151,7 +145,7 @@ This runs the whole build again, regenerates in memory, writes nothing, and fail
 
 Two builds of the same input give the same bytes: the output comes from templates through a pinned formatter. That is what makes the check meaningful.
 
-In your own project, run it in your test script so it runs with the rest of your checks. Mesh's own repository has no continuous integration until the MX packages are published ([ADR-0031](../architecture/decisions/0031-no-ci-until-mx-is-published.md)), so a skipped run is invisible.
+In your own project, add `"test": "bunx mesh build --check && bun test"` to `package.json`'s `scripts` object, then run `bun run test`. That checks the generated tree before running your tests. Mesh's own repository has no continuous integration until the MX packages are published ([ADR-0031](../architecture/decisions/0031-no-ci-until-mx-is-published.md)), so a skipped run is invisible.
 
 ## Next
 

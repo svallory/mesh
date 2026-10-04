@@ -13,9 +13,9 @@ This page shows the two ways to start: a new project, and a project you already 
 
 ## Prerequisites
 
-Mesh runs on [Bun](https://bun.sh) only. Node is dropped from the roadmap: see [ADR-0025](../architecture/decisions/0026-node-parity.md), which records the ruling and the Node record it supersedes.
+Mesh runs on [Bun](https://bun.sh) only. Node is dropped from the roadmap: see [ADR-0025](../architecture/decisions/0025-bun-only.md), which supersedes [ADR-0026: Node parity](../architecture/decisions/0026-node-parity.md).
 
-- **Bun.** The minimum version is fixed at the first release. Nothing else: no build step, no global install, no separate runtime.
+- **Bun.** The minimum version is fixed at the first release. No global Mesh install or separate runtime is needed; the generated code is built in your project.
 - **Postgres**, only if you use the Postgres adapter. The example on these pages uses SQLite, which needs no server. See [Configuration](./configuration.md).
 
 `bun`, `bunx`, `bun run` and `bun create` below are Bun's own commands. Use Bun for every package command in this project; npm and yarn are not supported.
@@ -32,6 +32,8 @@ Then:
 
 ```bash
 cd todo-app
+bunx mesh build
+bunx mesh db push
 bun run src/main.ts
 ```
 
@@ -51,7 +53,7 @@ bun add -d @mesh/cli drizzle-kit
 bun add @mesh/runtime @mesh/data-sqlite @mesh/ext-policies
 ```
 
-**Peer dependencies.** Generated code imports these packages directly, so your project needs them too:
+**Application dependencies required by generated code.** Install these as ordinary dependencies of your application. They satisfy the libraries needed by the generated code and adapters:
 
 ```bash
 bun add zod drizzle-orm @opentelemetry/api
@@ -78,15 +80,15 @@ bunx mesh build
 
 | Package | Kind | Why you need it |
 |---|---|---|
-| `@mesh/cli` | dev dependency | The `mesh` command: `build`, `check`, `inspect`, `explain`, and whatever commands an enabled extension or the data adapter adds. It brings the compiler, the model and MX. |
+| `@mesh/cli` | dev dependency | The `mesh` command: `init`, `build`, `build --check`, `inspect`, `explain`, and whatever commands an enabled extension or the data adapter adds. It brings the compiler, the model and MX. |
 | `@mesh/runtime` | run-time | What generated code imports. Deliberately thin: the scope type, the error classes, the data-layer contract. It never reads the resource model. |
 | `@mesh/data-sqlite`, `@mesh/data-postgres` | run-time | One data adapter. Its build half emits the database schema as a generated file; its run-time half talks to the database. |
 | `@mesh/ext-policies` | run-time | The first-party extension that fills the authorizer slot. Without it, no action checks who is calling. |
-| `zod`, `drizzle-orm`, `@opentelemetry/api` | peer dependencies | Imported by generated code and by the adapters. |
+| `zod`, `drizzle-orm`, `@opentelemetry/api` | application dependencies | Imported by generated code and by the adapters. |
 | `drizzle-kit` | dev dependency | Generates and applies schema and migrations. Never needed at run time, so it does not ship to production. |
 
 ::: callout info "Not decided yet"
-Whether generated code should import `zod`, `drizzle-orm` and `@opentelemetry/api` from the user's project, or from re-exports inside `@mesh/runtime`, is not settled. The versions Mesh pins can also clash with the versions you already have. [ADR-0014](../architecture/decisions/0014-sql-adapters-on-drizzle.md) and [ADR-0028](../architecture/decisions/0028-validation-zod-behind-standard-schema.md) are the records; the peer-dependency arrangement shown here is the reading this page commits to.
+Whether generated code should import `zod`, `drizzle-orm` and `@opentelemetry/api` from the user's project, or from re-exports inside `@mesh/runtime`, is not settled. The versions Mesh pins can also clash with the versions you already have. [ADR-0014](../architecture/decisions/0014-sql-adapters-on-drizzle.md) and [ADR-0028](../architecture/decisions/0028-validation-zod-behind-standard-schema.md) are the records; the application-dependency arrangement shown here is this spec's proposal.
 :::
 
 ## Next

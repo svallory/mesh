@@ -13,13 +13,24 @@ An action is one named operation on a resource. In v1 an action is a generated T
 
 ## Connect first
 
-Generated handlers reach the database through module state, so a program connects once at start-up:
+These examples use the resources and `src/actor.ts` from [the todo example](./example-todo-list.md), after `mesh build` and `mesh db push`. Each program block is a separate replacement for `src/main.ts`, not code to concatenate.
 
-```ts
-import { connect, disconnect } from "./generated";
+Generated handlers reach the database through module state, so a program connects once at start-up. With the SQLite adapter:
 
-await connect({ file: "todo.db" });              // SQLite
-await connect({ url: process.env.DATABASE_URL }); // Postgres
+```ts "src/main.ts"
+import { connect, disconnect } from "../generated";
+
+await connect({ file: "todo.db" });
+await disconnect();
+```
+
+With the Postgres adapter instead:
+
+```ts "src/main.ts"
+import { connect, disconnect } from "../generated";
+
+await connect({ url: process.env.DATABASE_URL });
+await disconnect();
 ```
 
 For Postgres, `DATABASE_URL` has no default: if it is undefined, `connect` throws. The SQLite form is what the [todo example](./example-todo-list.md) uses, because it needs no server. Call `disconnect()` when the program ends.
@@ -55,7 +66,11 @@ Reading `<action><Resource>` aloud is awkward for a named read (`pendingTodo`), 
 The second argument says who is calling:
 
 ```ts
-type Scope = {
+import type { Register } from "@mesh/runtime";
+import "./actor";
+
+type Actor = Register["actor"];
+export type Scope = {
   actor: Actor;
   context?: Record<string, unknown>;
 };
@@ -63,23 +78,35 @@ type Scope = {
 
 `actor` is your application's type. You register it once, in your own code, by module augmentation:
 
-```ts
+```ts "src/actor.ts"
+import "@mesh/runtime";
+
 declare module "@mesh/runtime" {
   interface Register {
     actor: { id: string };
   }
 }
+
+export const alice = { id: "00000000-0000-4000-8000-000000000001" };
+export const bob = { id: "00000000-0000-4000-8000-000000000002" };
 ```
 
 Every `scope.actor` is then typed as `{ id: string }`. An application with anonymous callers registers `User | null`.
 
-`context` carries anything else the call needs. It is never read by Mesh core; it is there so your own changes, validations and policy checks can reach request-scoped data.
+`context` carries anything else the call needs. It is never read by Mesh core; it is there so your own changes, validations and policy checks can reach per-call data.
 
 The scope is always explicit and never ambient. That is deliberate: Ash removed its ambient actor in 3.0 because of subtle bugs it could not explain, and Mesh does not repeat it ([ADR-0007](../architecture/decisions/0007-scope-is-a-plain-argument.md)). In a test, this is what makes "log in as somebody else" one argument:
 
-```ts
-const todo = await createTodo({ title: "Buy milk", listId: list.id }, { actor: alice });
-const same = await createTodo({ title: "Buy milk", listId: list.id }, { actor: bob });
+```ts "src/main.ts"
+import { connect, disconnect, createList, createTodo } from "../generated";
+import { alice, bob } from "./actor";
+
+await connect({ file: "todo.db" });
+const aliceList = await createList({ name: "Alice's errands" }, { actor: alice });
+const bobList = await createList({ name: "Bob's errands" }, { actor: bob });
+await createTodo({ title: "Buy milk", listId: aliceList.id }, { actor: alice });
+await createTodo({ title: "Buy milk", listId: bobList.id }, { actor: bob });
+await disconnect();
 ```
 
 A call without a scope is a type error, checked when you type-check the project.
@@ -102,28 +129,50 @@ An unknown field is an error, never dropped. A value of the wrong type is an err
 
 A caller's filter is plain data: an attribute name, an operator and a literal.
 
-```ts
+```ts "src/main.ts"
+import { connect, disconnect, createList, readTodo } from "../generated";
+import { alice } from "./actor";
+
+await connect({ file: "todo.db" });
+const list = await createList({ name: "Groceries" }, { actor: alice });
 const mine = await readTodo({ filter: { listId: { eq: list.id } } }, { actor: alice });
+console.log(mine);
+await disconnect();
 ```
 
 Operators: `eq`, `ne`, `lt`, `lte`, `gt`, `gte`, `in`, `isNil`. Fields combine with `and` and `or`. A filter is a value, not a string, so a typo in an attribute name is a type error.
 
-```ts
+```ts "src/main.ts"
+import { connect, disconnect, readTodo } from "../generated";
+import { alice } from "./actor";
+
+await connect({ file: "todo.db" });
 const page = await readTodo(
   { filter: { done: { eq: false } }, sort: ["-insertedAt"], limit: 20, offset: 0 },
   { actor: alice },
 );
+console.log(page);
+await disconnect();
 ```
 
 `sort` uses the same strings as the `sort` tag in a resource file: no prefix is ascending, `-` is descending.
+
+::: callout info "Not decided yet"
+The resource-side `sort` tag stays only until M3/M5 decides between it and Ash's `prepare build(sort: ...)` form ([vocabulary mapping](../architecture/roadmap/vocabulary-mapping.md), D17/G1). The caller's `sort` array above is this spec's proposal, not a settled query API.
+:::
 
 ## Loading relationships, calculations and aggregates
 
 Anything derived is computed only when you name it in `load`:
 
-```ts
+```ts "src/main.ts"
+import { connect, disconnect, readTodo } from "../generated";
+import { alice } from "./actor";
+
+await connect({ file: "todo.db" });
 const todos = await readTodo({ load: ["label"] }, { actor: alice });
-todos[0].label; // typed
+for (const todo of todos) console.log(todo.label); // typed, even if the array is empty
+await disconnect();
 ```
 
 `load` also takes relationships (`load: ["list"]`) and aggregates (`load: ["todoCount"]` on a list).
@@ -145,22 +194,28 @@ Every action throws on failure. All of Mesh's errors extend `MeshError` and carr
 
 They all come from `@mesh/runtime`.
 
-`InvalidInputError` collects **every** problem, not the first, so one call tells you everything that is wrong:
+`InvalidInputError.issues` holds the collected validation failures. Narrow a caught error before reading its properties; a catch variable has type `unknown` in strict TypeScript.
 
-```ts
+```ts "src/main.ts"
+import { InvalidInputError } from "@mesh/runtime";
+import { connect, disconnect, createList, createTodo } from "../generated";
+import { alice } from "./actor";
+
+await connect({ file: "todo.db" });
 try {
-  await createTodo({ title: "", listId: "not-a-uuid" }, { actor: alice });
+  const list = await createList({ name: "Groceries" }, { actor: alice });
+  await createTodo({ title: "", listId: list.id }, { actor: alice });
 } catch (error) {
-  if (error instanceof InvalidInputError) {
-    error.issues;
-    // [
-    //   { path: ["title"], message: "title must not be empty",
-    //     source: { file: "resources/todo.mx", line: 12, column: 5 } },
-    //   { path: ["listId"], message: "not a uuid" },
-    // ]
+  if (!(error instanceof InvalidInputError)) throw error;
+  for (const issue of error.issues) {
+    console.log(issue.path, issue.message, issue.source);
   }
+} finally {
+  await disconnect();
 }
 ```
+
+For this declared validation, an issue has `path: ["title"]`, `message: "title must not be empty"` and a proposed `source` of `{ file: "resources/todo.mx", line: 14, column: 7 }`. A structural input failure, such as a value that is not a UUID, need not have a declared-rule source.
 
 Each issue names the path in the input, a message, and, when the failure came from a rule you declared, the `.mx` position that declared it. Line and column are 1-based, the same as the build's diagnostics.
 
@@ -178,10 +233,17 @@ What a denied write reports on an atomic action. Mesh's working assumption folds
 
 Every action has a `can` function that answers the question without changing anything:
 
-```ts
+```ts "src/main.ts"
+import { connect, disconnect, createList, createTodo, canCompleteTodo } from "../generated";
+import { alice, bob } from "./actor";
+
+await connect({ file: "todo.db" });
+const list = await createList({ name: "Groceries" }, { actor: alice });
+const todo = await createTodo({ title: "Buy milk", listId: list.id }, { actor: alice });
 const answer = await canCompleteTodo({ id: todo.id }, { actor: bob });
-answer.allowed; // false
-answer.breakdown; // every check, and which one decided
+console.log(answer.allowed); // false
+console.log(answer.breakdown); // every check, and which one decided
+await disconnect();
 ```
 
 `can` returns `{ allowed: boolean; breakdown }`. It is the supported way to explain a denial: the decision is compared, not the error class, so a change in the policy engine does not break your test.

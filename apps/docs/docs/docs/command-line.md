@@ -1,6 +1,6 @@
 ---
 title: "Command-line tool"
-description: "Every mesh command: build, check, inspect, explain, and the database adapter's commands."
+description: "Every mesh command: init, build, build --check, inspect, explain, and the database adapter's commands."
 ---
 
 # Command-line tool

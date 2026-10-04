@@ -41,5 +41,5 @@ Only two things:
 There is no code generation, no runtime, no CLI and no package to install. Milestone M0 is done; M1, the build skeleton, is next. The order of work is the [roadmap](../architecture/roadmap/roadmap.md).
 
 ::: callout info "Names can still move"
-The vocabulary follows Ash's DSL for v1, in kebab-case with the trailing `?` dropped, and is reviewed after v1. `allow-nil`, `type="atom"`, `destination=` and `create-timestamp` are the current spellings; some are still being aligned. [The vocabulary mapping](../architecture/roadmap/vocabulary-mapping.md) lists every one and what Ash does.
+The vocabulary follows Ash's DSL for v1, in kebab-case with the trailing `?` dropped, and is reviewed after v1. `allow-nil`, `type="atom"`, `destination=` and `create-timestamp` are the current spellings in the aligned contracts and the Resource file reference. [The vocabulary mapping](../architecture/roadmap/vocabulary-mapping.md) lists every one and what Ash does.
 :::

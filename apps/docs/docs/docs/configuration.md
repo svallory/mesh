@@ -11,7 +11,7 @@ This page describes how Mesh **will** work, not how it works today. It is a live
 
 One file, `mesh.config.ts`, at the project root. It is ordinary TypeScript, so it is checked by your type checker and can read environment variables.
 
-```ts
+```ts "mesh.config.ts"
 import { defineConfig } from "@mesh/cli";
 import { sqlite } from "@mesh/data-sqlite";
 import { policies } from "@mesh/ext-policies";
@@ -39,22 +39,23 @@ export default defineConfig({
 
 The data adapter is one replaceable implementation of a core contract. Mesh does not read anything about the database from a resource file; the project configuration is what names the adapter ([ADR-0001](../architecture/decisions/0001-three-rings.md)).
 
-**SQLite**, which is what the [todo example](./example-todo-list.md) uses, needs no server:
-
-```ts
-import { sqlite } from "@mesh/data-sqlite";
-
-data: sqlite({ file: "todo.db" }),
-```
+**SQLite**, which is what the [todo example](./example-todo-list.md) uses, needs no server. The complete configuration above selects it with `data: sqlite({ file: "todo.db" })`.
 
 SQLite is also what tests use, in its in-memory mode, instead of a hand-written in-memory adapter ([ADR-0016](../architecture/decisions/0016-in-memory-data-via-sqlite.md)).
 
-**Postgres** reads a URL:
+**Postgres** reads a URL. Replace the SQLite configuration with this complete file:
 
-```ts
+```ts "mesh.config.ts"
+import { defineConfig } from "@mesh/cli";
 import { postgres } from "@mesh/data-postgres";
+import { policies } from "@mesh/ext-policies";
 
-data: postgres({ url: process.env.DATABASE_URL }),
+export default defineConfig({
+  resources: "resources",
+  output: "generated",
+  data: postgres({ url: process.env.DATABASE_URL }),
+  extensions: [policies()],
+});
 ```
 
 There is no default URL. If `DATABASE_URL` is unset, `connect` throws rather than guessing. Postgres needs a running server; nothing in Mesh creates one.

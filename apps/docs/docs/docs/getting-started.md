@@ -13,16 +13,7 @@ There is no install step to run yet: Mesh has no release. This page is therefore
 
 ## Where to start
 
-If you have never seen Mesh, read **[Example: a todo list](./example-todo-list.md)**. It is the shortest complete picture: two resource files, a relationship, a validation, a policy, a calculation, and a plain TypeScript script that calls the generated functions. Everything else in this section can wait.
-
-Then work through the loop:
-
-1. **[Installation](./installation.md)** — Bun only, and adding Mesh to a new project or to one you already have.
-2. **[Project structure](./project-structure.md)** — where resource files, generated code, configuration and migrations live, and which of them you commit.
-3. **[Usage](./usage.md)** — the working loop: write a resource, build, call an action, change the resource, rebuild, check before committing.
-4. **[Calling actions](./calling-actions.md)** — the generated function signatures, the scope argument, filters, `load`, and the errors an action throws.
-5. **[Configuration](./configuration.md)** — `mesh.config.ts`, and **[Command-line tool](./command-line.md)** — every `mesh` command.
-6. **[Resource file reference](./resource-file-reference.md)** — the tags, one by one, when you need the exact spelling.
+Follow the numbered [reading path in the Docs overview](./index.md#the-reading-path). After this page, it goes from Installation to the todo example, Usage and Project structure, then the action, configuration, command-line and resource references. Keeping the list in one place avoids competing routes through the same material.
 
 ## The shape in one paragraph
 
@@ -30,7 +21,7 @@ One `.mx` file declares a resource: its attributes, its relationships, its actio
 
 ## Trying Mesh today
 
-Nothing is installed, so the only way to try Mesh is to work on it. The parts that exist are the resource vocabulary, enforced as tag contracts when MX parses a `.mx` file, and the plain-data resource model built from that tree.
+Nothing is installed, so the only way to try Mesh is to work on it. The parts that exist are the resource vocabulary, enforced as tag contracts when MX parses a `.mx` file, and the plain-data types and registries for the resource model. The builder that turns the tree into that model is not implemented yet.
 
 The contracts live in the `packages/compiler` workspace package. They depend on MX, a separate project, through `link:` entries in `packages/compiler/package.json`. Register your MX checkout once by running `bun link` inside it. After that a plain `bun install` at the repository root resolves the `link:` entries, so there is no per-clone link step. Do not run `bun link @mxlang/data @mxlang/core` at the repository root: `bun link <package>` writes a `link:` dependency into the `package.json` of the directory it runs in, which would add MX to the root package.
 

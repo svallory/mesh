@@ -9,9 +9,13 @@ description: "Where resource files, generated code, configuration, extensions an
 This page describes how Mesh **will** work, not how it works today. It is a live spec of the developer experience, written before the code. Mesh is not released: nothing here can be installed or run yet, and any detail may change.
 :::
 
-Mesh does not own your project. You choose where resource files live and where generated files go; Mesh reads the first and writes the second. This page shows the layout the starter template writes, using the `todo-app` project from [Example: a todo list](./example-todo-list.md).
+Mesh does not own your project. You choose where resource files live and where generated files go; Mesh reads the first and writes the second. This page proposes the starter template's layout, using the `todo-app` project from [Example: a todo list](./example-todo-list.md).
 
 ## The layout
+
+::: callout info "Not decided yet"
+Beyond `generated/model.json` and the rule that `domain` sets the output directory, [the architecture does not specify a directory layout](../architecture/in-depth/generated-code-and-guard.md). The folders, per-resource filenames and `index.ts` below are this live spec's proposal; the milestone column describes when their underlying features are planned, not an accepted filename contract.
+:::
 
 ```text
 todo-app/
@@ -39,7 +43,7 @@ todo-app/
 
 One resource per `.mx` file, under the folder `resources` names in the configuration. A file holds exactly one `resource`; two resources in one file is a build error.
 
-The names a resource file carries, and the expressions inside it, follow Ash's DSL, in kebab-case with the trailing `?` dropped ([ADR-0034](../architecture/decisions/0034-vocabulary-copies-ash-dsl.md)). Every example is written in MX concise syntax, the indentation-based form ([ADR-0041](../architecture/decisions/0041-mx-concise-syntax.md)). The full list of tags is in the [Resource file reference](./resource-file-reference.md).
+Tag and attribute names follow Ash's DSL, in kebab-case with the trailing `?` dropped ([ADR-0034](../architecture/decisions/0034-vocabulary-copies-ash-dsl.md)). Every example is written in MX concise syntax, the indentation-based form ([ADR-0041](../architecture/decisions/0041-mx-concise-syntax.md)). The full list of tags is in the [Resource file reference](./resource-file-reference.md).
 
 ::: callout info "Not decided yet"
 In Ash a `belongs_to` creates its foreign-key attribute as `<name>_id` (`list_id`). The roadmap uses `listId`, following the fixture. Which name Mesh generates is settled when relationships are built. [The vocabulary mapping](../architecture/roadmap/vocabulary-mapping.md), row D12, records both.
@@ -53,16 +57,21 @@ In Ash a `belongs_to` creates its foreign-key attribute as `<name>_id` (`list_id
 
 `mesh build` writes `generated/` and you commit it. The reason is review: a resource file is a small declarative change, and the committed TypeScript beside it is what the program actually runs. A reviewer reads the diff of both together.
 
-| Path | Written by | Milestone |
+| Proposed path | Written by | Feature milestone |
 |---|---|---|
 | `generated/model.json` | the compiler | M1 |
 | `generated/todos/todo.types.ts` | the compiler | M1 |
 | `generated/todos/todo.actions.ts` | the compiler | M2 |
 | `generated/todos/todo.validators.ts` | the compiler | M2 |
 | `generated/schema.ts` | the data adapter | M2 |
+| `generated/index.ts` | the compiler (this spec's proposal) | M2, with generated handlers |
 | `generated/mx-contracts.js` | the compiler, composed from core plus enabled extensions | M6 |
 
-`generated/index.ts` is the only module your program imports. It exports `connect` and `disconnect`, and re-exports every action function and every type, so a resource added later appears in the same import statement.
+In this proposal, your program imports generated functions and types through `generated/index.ts`. It exports `connect` and `disconnect` and re-exports the resource modules.
+
+::: callout info "Not decided yet"
+The flat export surface needs a collision rule. The [roadmap](../architecture/roadmap/roadmap.md) rejects duplicate resource names, even across domains, but does not settle collisions after action and resource names are combined into exported identifiers; adding a domain prefix or requiring unique export names are still options. Do not assume a new resource can always be added to the same import without a naming check.
+:::
 
 The subfolder `todos/` is named after the `domain` attribute on the resource. A resource with no `domain` has its files directly in `generated/`. Grouping by domain keeps one feature's generated code in one folder.
 
