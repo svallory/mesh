@@ -457,6 +457,15 @@ const RULE_CLASSES: Record<string, Case[]> = {
       column: 0,
       message: "`<resourse>` is not a known tag: it has no contract in `customTags`; did you mean `<resource>`?",
     },
+    {
+      // Realistic typo: the misspelt root has a body. The ordering is MX's: existing
+      // tag-rule errors come before the unknown-tag check, so no hint is given here.
+      // Lead has asked the MX lead whether the unknown root tag should be reported first.
+      file: "unknown-tag-near-miss-with-body",
+      line: 2,
+      column: 2,
+      message: "`<attributes>` must be inside `<resource>`; found inside `<resourse>`",
+    },
   ],
   "syntax error": [
     {
