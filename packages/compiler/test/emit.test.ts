@@ -392,24 +392,54 @@ test("two action names that read as one input type name is a positioned build er
   });
 });
 
-test("a destroy that accepts attributes is a positioned build error", async () => {
-  const source = [
-    'resource="post"',
-    "  attributes",
-    '    uuid-primary-key="id"',
-    '    attribute="title" type="string" allow-nil=false',
-    "  actions",
-    '    destroy="remove" accept=["title"]',
+test("H2: a destroy takes the selector alone when it accepts nothing, and the selector with its accepted attributes when it does", async () => {
+  const plain = documentOf([
+    {
+      file: "resources/post.mx",
+      source: [
+        'resource="post"',
+        "  attributes",
+        '    uuid-primary-key="id"',
+        '    attribute="title" type="string" allow-nil=false',
+        "  actions",
+        '    destroy="remove" accept=[]',
+        "",
+      ].join("\n"),
+    },
+  ]);
+  expect(typesFile(await generateFiles({ document: plain, config: configOf("/project") })).contents).toContain(
+    "export type RemovePostInput = {\n  id: string;\n};",
+  );
+  const plainConsumer = ['import type { RemovePostInput } from "./generated/post.types";', 'const remove: RemovePostInput = { id: "a-uuid" };', ""].join("\n");
+  expect(await checkConsumer(plain, plainConsumer)).toEqual(clean);
+
+  // Ash's destroy accepts attributes, for example for a soft destroy; Mesh keeps
+  // `accept` on it (mapping deviation D14), and the input carries them, optional.
+  const soft = documentOf([
+    {
+      file: "resources/post.mx",
+      source: [
+        'resource="post"',
+        "  attributes",
+        '    uuid-primary-key="id"',
+        '    attribute="archived" type="boolean"',
+        '    attribute="reason" type="string" allow-nil=false',
+        "  actions",
+        '    destroy="remove" accept=["archived", "reason"]',
+        "",
+      ].join("\n"),
+    },
+  ]);
+  expect(typesFile(await generateFiles({ document: soft, config: configOf("/project") })).contents).toContain(
+    "export type RemovePostInput = {\n  id: string;\n  archived?: boolean | null;\n  reason?: string;\n};",
+  );
+  const softConsumer = [
+    'import type { RemovePostInput } from "./generated/post.types";',
+    'const full: RemovePostInput = { id: "a-uuid", archived: true, reason: "spam" };',
+    'const partial: RemovePostInput = { id: "a-uuid" };',
     "",
   ].join("\n");
-  const promise = generateFiles({ document: documentOf([{ file: "resources/post.mx", source }]), config: configOf("/project") });
-  const error = (await promise.catch((cause: unknown) => cause)) as EmitError;
-  expect(error.diagnostic).toMatchObject({
-    code: "MESH_EMIT_INPUT",
-    message: 'Destroy action "remove" accepts "title", but a destroy\'s input is the row selector alone ("{ id }")',
-    position: { file: "resources/post.mx", line: 6, column: 4, offset: 121 },
-    fix: "Remove `accept` from this destroy, or wait for M2, where destroy inputs are settled",
-  });
+  expect(await checkConsumer(soft, softConsumer)).toEqual(clean);
 });
 
 test("a name that would escape the output folder is a positioned build error", async () => {
@@ -458,9 +488,9 @@ const mutations = () =>
         '    attribute="views" type="integer"',
         "  actions",
         '    create="create" accept=["title"]',
-        '    update="edit" accept=["title", "views"]',
-        '    destroy="remove"',
-        "",
+'    update="edit" accept=["title", "views"]',
+    '    destroy="remove"',
+    "",
       ].join("\n"),
     },
   ]);

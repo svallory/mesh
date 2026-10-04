@@ -51,7 +51,7 @@ Every action has the same shape: `(input, scope)`, and both arguments are requir
 | read | `readTodo(input, scope)` | `{ filter?, sort?, limit?, offset?, load? }` | `Todo[]` |
 | read, named `pending` | `pendingTodo(input, scope)` | the same | `Todo[]` |
 | update | `completeTodo(input, scope)` | `{ id, ...accepted }` | `Todo` |
-| destroy | `destroyTodo(input, scope)` | `{ id }` | `void` |
+| destroy | `destroyTodo(input, scope)` | `{ id, ...accepted }`, where `accepted` is empty unless the action accepts attributes | `void` |
 
 **The name** is the action's name followed by the resource's name in PascalCase: `createTodo`, `completeTodo`, `pendingTodo`, `readTodo`. An action asked for by `defaults` is named after its type, so the default read is `readTodo` and the default destroy is `destroyTodo`.
 
@@ -117,7 +117,7 @@ Where a tenant lives. It is not in the actor and not in the scope as a Mesh conc
 
 **Update** takes `{ id, ...accepted }`. The id is separate from the accepted attributes, so `completeTodo({ id: todo.id })` reads well even though the action accepts nothing.
 
-**Destroy** takes `{ id }` and returns `void`. If you need the row back, read it first.
+**Destroy** takes `{ id }` and returns `void`. A destroy that accepts attributes takes them too, after the id and all optional, which is how a soft destroy carries the reason. If you need the row back, read it first.
 
 An unknown field is an error, never dropped. A value of the wrong type is an error too: generated validators are Zod schemas, seen by the rest of Mesh only through Standard Schema ([ADR-0028](../architecture/decisions/0028-validation-zod-behind-standard-schema.md)). An attribute whose type has constraints, such as an `atom` with `one_of`, is checked against them.
 

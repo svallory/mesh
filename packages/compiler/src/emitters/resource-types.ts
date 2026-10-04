@@ -160,24 +160,15 @@ function recordType(resource: Resource, name: string): string {
  *   nil or carries a default, because the runtime can supply either.
  * - `update`: `{ id, ...accepted }`; the selector is required, every accepted
  *   attribute optional.
- * - `destroy`: `{ id }`, the selector alone. The page describes no other field, so a
- *   destroy that accepts attributes has no input shape in M1 and is reported at the
- *   action rather than silently reduced to the selector.
+ * - `destroy`: `{ id }`, or `{ id, ...accepted }` when it accepts attributes, which
+ *   Ash's destroy does for a soft destroy and Mesh keeps (mapping deviation D14).
+ *   The accepted part is built exactly as an update's is.
  * - `read`: no input type in M1.
  *
  * In M2 the generated validator checks the same list.
  */
 function inputType(resource: Resource, action: EffectiveAction, recordName: string): string {
   const accepted = acceptedAttributes(resource, action);
-  if (action.kind === "destroy" && accepted.length > 0) {
-    const names = accepted.map((attribute) => `"${attribute.name.value}"`).join(", ");
-    throw emitError(
-      "MESH_EMIT_INPUT",
-      `Destroy action "${action.name.value}" accepts ${names}, but a destroy's input is the row selector alone ("{ ${selectorOf(resource).name.value} }")`,
-      action.position,
-      "Remove `accept` from this destroy, or wait for M2, where destroy inputs are settled",
-    );
-  }
   const members =
     action.kind === "create"
       ? accepted.map((attribute) =>
