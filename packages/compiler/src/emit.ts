@@ -75,35 +75,45 @@ export async function generateFiles(input: EmitInput): Promise<GeneratedFile[]> 
 }
 
 /**
- * Refuse to write through a symlink, at any level under the output directory. Each
- * existing component from the output folder down to the target is inspected with
- * `lstat`, which does not follow links: a directory symlink in the middle of the
- * path is refused as firmly as a symlinked file at the leaf, and whatever it points
- * at is left alone. A component that does not exist yet is where the writer will
- * create it, so it ends the walk.
+ * Refuse to write through a symlink, at any level of the path being written,
+ * starting at the output directory itself. Every existing component from the output
+ * folder down to the target is inspected with `lstat`, which does not follow links:
+ * an output folder that is a symlink is refused as firmly as a directory symlink in
+ * the middle of the path or a symlinked file at the leaf, and whatever any of them
+ * points at is left alone. A component that does not exist yet is where the writer
+ * will create it, so it ends the walk.
  *
  * Nothing here rewrites separators. A generated path arrives with `/` from the
  * emitters, and the host path is joined with the host separator; on POSIX a
  * backslash in a file name is a character of that name, not a folder, so treating
  * it as one would compare two different files as if they were one.
  */
-async function assertNoSymlink(output: string, target: string, label: string): Promise<void> {
-  const segments = relative(output, target).split(sep).filter((segment) => segment.length > 0);
+async function assertNoSymlink(output: string, target: string, label: string, outputName: string): Promise<void> {
+  const below = relative(output, target).split(sep).filter((segment) => segment.length > 0);
   const walked: string[] = [];
-  for (const segment of segments) {
-    walked.push(segment);
+  const refuse = async (path: string, isOutput: boolean): Promise<boolean> => {
     let link: boolean;
     try {
-      link = (await lstat(join(output, ...walked))).isSymbolicLink();
+      link = (await lstat(path)).isSymbolicLink();
     } catch (cause) {
       const code = errorCode(cause);
-      if (code === "ENOENT") return;
+      // A component that does not exist yet is where the writer will create it.
+      if (code === "ENOENT") return false;
       throw new Error(`Cannot inspect "${label}" in the output directory before writing (${code ?? "UNKNOWN"})`);
     }
-    if (link) {
-      throw new Error(
-        `Cannot write the generated file "${label}": "${walked.join("/")}" in the output directory is a symlink; writing it would follow the link`,
-      );
+    if (!link) return true;
+    throw new Error(
+      isOutput
+        ? `Cannot write the generated tree: the output directory "${outputName}" is a symlink; point \`output\` at a real directory`
+        : `Cannot write the generated file "${label}": "${walked.join("/")}" in the output directory is a symlink; writing it would follow the link`,
+    );
+  };
+  // The output directory is the first component: a symlink there would be followed
+  // by every write below it, and `output` names a directory, not a link.
+  if (await refuse(output, true)) {
+    for (const segment of below) {
+      walked.push(segment);
+      if (!(await refuse(join(output, ...walked), false))) return;
     }
   }
 }
@@ -121,6 +131,7 @@ async function assertNoSymlink(output: string, target: string, label: string): P
  */
 export async function writeGeneratedFiles(files: readonly GeneratedFile[], config: ResolvedConfig): Promise<string[]> {
   const output = resolve(config.output);
+  const outputName = outputPrefix(config);
   const targets: string[] = [];
   for (const file of files) {
     if (!isProjectRelativePath(file.path)) {
@@ -129,10 +140,10 @@ export async function writeGeneratedFiles(files: readonly GeneratedFile[], confi
     const absolute = resolve(config.root, file.path);
     if (!inside(output, absolute)) {
       throw new Error(
-        `Cannot write the generated file "${file.path}": it resolves outside the output directory "${outputPrefix(config)}"`,
+        `Cannot write the generated file "${file.path}": it resolves outside the output directory "${outputName}"`,
       );
     }
-    await assertNoSymlink(output, absolute, file.path);
+    await assertNoSymlink(output, absolute, file.path, outputName);
     targets.push(absolute);
   }
   const written: string[] = [];

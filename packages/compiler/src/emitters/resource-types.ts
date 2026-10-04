@@ -225,11 +225,16 @@ function declaredTypes(resource: Resource): DeclaredType[] {
   ];
 }
 
-/** The names the rendered type expressions of one generated file use. */
-function referencedGlobals(declared: readonly DeclaredType[]): ReadonlySet<string> {
+/** The global type names the attribute types of one resource's file refer to, taken
+ * from the registry as data, while the file's types are rendered. Today that is
+ * `Date`, from `datetime`. A property name, a string literal in a `one_of` union
+ * and anything in a comment are values, not references to a global type, so they
+ * can never trigger the check. The templates' own words (`string`, `never`) are
+ * keywords no generated name can be, since a generated name is PascalCase. */
+function referencedGlobals(resource: Resource): ReadonlySet<string> {
   const referenced = new Set<string>();
-  for (const type of declared) {
-    for (const line of type.members) for (const name of line.match(TYPE_IDENTIFIER) ?? []) referenced.add(name);
+  for (const attribute of resource.attributes) {
+    for (const name of attributeTypeInfo(attribute.type).tsType.match(TYPE_IDENTIFIER) ?? []) referenced.add(name);
   }
   return referenced;
 }
@@ -279,7 +284,7 @@ export const resourceTypesEmitter: Emitter = {
       const domain = resource.domain ? `${pathSegment(resource.domain)}/` : "";
       const nameSegment = pathSegment(resource.name);
       const declared = declaredTypes(resource);
-      const globals = referencedGlobals(declared);
+      const globals = referencedGlobals(resource);
       const inFile = new Map<string, Spanned<string>>();
       for (const type of declared) {
         if (globals.has(type.name)) {

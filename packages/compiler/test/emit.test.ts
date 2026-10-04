@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ModelDocument } from "@mesh/model";
 import { buildModel, type ResourceFile } from "../src/build.ts";
-import type { ResolvedConfig } from "../src/config.ts";
+import { loadConfig, loadProject, type ResolvedConfig } from "../src/config.ts";
 import { EmitError, generateFiles, writeGeneratedFiles, type GeneratedFile } from "../src/emit.ts";
 import { FORMATTER_OPTIONS } from "../src/format.ts";
 import { fixture } from "./helpers.ts";
@@ -228,19 +228,50 @@ test("an atom with one_of is the union of its allowed values, nullable when it a
 });
 
 test("atom values that need escaping are written as string literals, not as code", async () => {
-  const source = [
-    'resource="odd"',
-    "  attributes",
-    '    uuid-primary-key="id"',
-    '    attribute="label" type="atom" constraints={ one_of: ["say \\"hi\\"", "back\\\\slash", "two\\nlines", "astral \\u{1F600}", "tab\\there"] }',
-    "  actions",
-    '    create="create" accept=["label"]',
+  // Every awkward character an author may put in a `one_of` value: quotes, a
+  // backslash, a line break, a tab, a NUL, the two Unicode line separators, an
+  // astral character, accented text and a lone surrogate.
+  const values = ['say "hi"', "back\\slash", "two\nlines", "tab\there", "nul\0byte", "sep\u2028parate", "sep\u2029parate", "astral \u{1F600}", "café", "lone \ud800"];
+  // The resource file spells them the way a source file can: escapes, not raw
+  // control characters.
+  const escapeForSource = (value: string): string =>
+    value
+      .replace(/[\\"\n\t\0\u2028\u2029]/g, (match) =>
+        ({ "\\": "\\\\", '"': '\\"', "\n": "\\n", "\t": "\\t", "\0": "\\u0000", "\u2028": "\\u2028", "\u2029": "\\u2029" })[match]!,
+      )
+      .replace(/[\uD800-\uDFFF]/g, (match) => `\\u${match.charCodeAt(0).toString(16)}`);
+  const document = documentOf([
+    {
+      file: "odd.mx",
+      source: [
+        'resource="odd"',
+        "  attributes",
+        '    uuid-primary-key="id"',
+        `    attribute="label" type="atom" constraints={ one_of: [${values.map((value) => `"${escapeForSource(value)}"`).join(", ")}] }`,
+        "  actions",
+        '    create="create" accept=["label"]',
+        "",
+      ].join("\n"),
+    },
+  ]);
+  const contents = typesFile(await generateFiles({ document, config: configOf("/project") })).contents;
+  // Every value survives as a literal: the input's union has one member per value
+  // plus `| null`, and the awkward characters are escaped rather than written raw.
+  const start = contents.indexOf("export type CreateOddInput");
+  const block = contents.slice(start, contents.indexOf("};", start));
+  expect(block.split("|")).toHaveLength(values.length + 2);
+  expect(block).toContain('"nul\\u0000byte"');
+  expect(block).toContain('"lone \\ud800"');
+  // A Unicode line separator stays as itself inside the literal, which TypeScript
+  // allows; the consumer check below proves each value is the one authored.
+  expect(block).toContain(`"sep\u2028parate"`);
+  expect(block).toContain(`"sep\u2029parate"`);
+  // And every one of them is assignable, checked by the real compiler.
+  const consumer = [
+    'import type { CreateOddInput } from "./generated/odd.types";',
+    ...values.map((value, index) => `const v${index}: CreateOddInput = { label: ${JSON.stringify(value)} };`),
     "",
   ].join("\n");
-  const document = documentOf([{ file: "odd.mx", source }]);
-  const contents = typesFile(await generateFiles({ document, config: configOf("/project") })).contents;
-  expect(contents).toContain("label?: 'say \"hi\"' | \"back\\\\slash\" | \"two\\nlines\" | \"astral \u{1F600}\" | \"tab\\there\" | null;");
-  const consumer = `import type { CreateOddInput } from "./generated/odd.types";\nconst value: CreateOddInput = { label: "tab\\there" };\n`;
   expect(await checkConsumer(document, consumer)).toEqual(clean);
 });
 
@@ -689,6 +720,40 @@ test("H1: a backslash in a file name on POSIX is that file's name, and the write
   expect(await readFile(resolve(root, "generated/model.json"), "utf8")).toBe("{}\n");
 });
 
+test("H1: the writer refuses to write through the output directory when it is itself a symlink", async () => {
+  // `generated -> real-output`, inside the project, so the configuration is valid:
+  // the stricter rule is the writer's, not the loader's.
+  const root = await project();
+  await mkdir(resolve(root, "real-output"), { recursive: true });
+  await writeFile(resolve(root, "real-output/blog"), "KEEP TARGET");
+  await symlink(resolve(root, "real-output"), resolve(root, "generated"));
+  const config = configOf(root);
+  const files = await generateFiles({ document: documentOf([post()]), config });
+  await expect(writeGeneratedFiles(files, config)).rejects.toThrow(
+    'Cannot write the generated tree: the output directory "generated" is a symlink; point `output` at a real directory',
+  );
+  expect(await readFile(resolve(root, "real-output/blog"), "utf8")).toBe("KEEP TARGET");
+  await expect(readdir(resolve(root, "real-output"))).resolves.toEqual(["blog"]);
+});
+
+test("H1: a symlink inside the output folder is refused even when it points inside it, and a dangling one too", async () => {
+  const root = await project();
+  const config = configOf(root);
+  await mkdir(resolve(root, "generated/blog"), { recursive: true });
+  await writeFile(resolve(root, "generated/blog/other.types.ts"), "ANOTHER GENERATED FILE\n");
+  // A link whose target is inside the output folder: writing through it would still
+  // change a file this tree was not asked to write.
+  await symlink(resolve(root, "generated/blog/other.types.ts"), resolve(root, "generated/blog/post.types.ts"));
+  const files = await generateFiles({ document: documentOf([post()]), config });
+  await expect(writeGeneratedFiles(files, config)).rejects.toThrow('"blog/post.types.ts" in the output directory is a symlink');
+  expect(await readFile(resolve(root, "generated/blog/other.types.ts"), "utf8")).toBe("ANOTHER GENERATED FILE\n");
+
+  await rm(resolve(root, "generated/blog/post.types.ts"));
+  await symlink(resolve(root, "generated/blog/gone.types.ts"), resolve(root, "generated/blog/post.types.ts"));
+  await expect(writeGeneratedFiles(files, config)).rejects.toThrow('"blog/post.types.ts" in the output directory is a symlink');
+  expect(await readFile(resolve(root, "generated/blog/other.types.ts"), "utf8")).toBe("ANOTHER GENERATED FILE\n");
+});
+
 test("the writer leaves a file it was not given alone", async () => {
   const root = await project();
   const config = configOf(root);
@@ -709,9 +774,184 @@ test("L2: a source filename with a line terminator in it is spelled out in the h
     // The name is still the exact project-relative source file, and the comment it
     // sits in still ends where it did: the terminator cannot leave the line.
     expect(contents.split("\n")[1]).toBe(
-      "// It is generated by `mesh build` from resources/line" + escaped + "break.mx; change that file and rebuild.",
+      `// It is generated by \`mesh build\` from resources/line${escaped}break.mx; change that file and rebuild.`,
     );
     expect(contents.split("\n")).toHaveLength(7);
     expect(contents).toContain("export type Tag = {\n  id: string;\n};");
   }
+});
+test("M6: a property name and a one_of value that read like a generated type name are values, not references", async () => {
+  const property = documentOf([
+    {
+      file: "resources/post.mx",
+      source: ['resource="post"', "  attributes", '    uuid-primary-key="id"', '    attribute="Post" type="string"', ""].join("\n"),
+    },
+  ]);
+  const propertyFiles = await generateFiles({ document: property, config: configOf("/project") });
+  expect(typesFile(propertyFiles).contents).toContain("export type Post = {\n  id: string;\n  Post: string | null;\n};");
+  expect(await checkConsumer(property, ['import type { Post } from "./generated/post.types";', 'const record: Post = { id: "a-uuid", Post: null };', ""].join("\n"))).toEqual(clean);
+
+  const literal = documentOf([
+    {
+      file: "resources/post.mx",
+      source: [
+        'resource="post"',
+        "  attributes",
+        '    uuid-primary-key="id"',
+        '    attribute="state" type="atom" constraints={ one_of: ["Post", "Other"] }',
+        "  actions",
+        '    update="edit" accept=["state"]',
+        "",
+      ].join("\n"),
+    },
+  ]);
+  const literalFiles = await generateFiles({ document: literal, config: configOf("/project") });
+  expect(typesFile(literalFiles).contents).toContain('state: "Post" | "Other" | null;');
+  expect(typesFile(literalFiles).contents).toContain('state?: "Post" | "Other" | null;');
+  expect(await checkConsumer(literal, ['import type { Post, EditPostInput } from "./generated/post.types";', 'const record: Post = { id: "a-uuid", state: "Other" };', 'const edit: EditPostInput = { id: "a-uuid", state: "Post" };', ""].join("\n"))).toEqual(clean);
+});
+
+test("H2: the selector is the resource's own key attribute, quoted when it is not an identifier", async () => {
+  const source = [
+    'resource="post"',
+    "  attributes",
+    '    uuid-primary-key="post-key"',
+    '    attribute="title" type="string" allow-nil=false',
+    "  actions",
+    '    update="edit" accept=["title"]',
+    "",
+  ].join("\n");
+  const document = documentOf([{ file: "resources/post.mx", source }]);
+  const contents = typesFile(await generateFiles({ document, config: configOf("/project") })).contents;
+  expect(contents).toContain('"post-key": string;');
+  expect(contents).toContain("export type EditPostInput = {\n  \"post-key\": string;\n  title?: string;\n};");
+  expect(await checkConsumer(document, ['import type { EditPostInput } from "./generated/post.types";', 'const edit: EditPostInput = { "post-key": "a-uuid", title: "new" };', ""].join("\n"))).toEqual(clean);
+});
+
+test("H2: a destroy accepting the key and a timestamp carries them only as the selector, never as payload", async () => {
+  const source = [
+    'resource="post"',
+    "  attributes",
+    '    uuid-primary-key="id"',
+    '    create-timestamp="insertedAt"',
+    '    attribute="title" type="string" allow-nil=false',
+    "  actions",
+    '    destroy="remove" accept=["id", "insertedAt", "title"]',
+    "",
+  ].join("\n");
+  const contents = typesFile(await generateFiles({ document: documentOf([{ file: "resources/post.mx", source }]), config: configOf("/project") })).contents;
+  expect(contents).toContain("export type RemovePostInput = {\n  id: string;\n  title?: string;\n};");
+});
+
+test("L4: a resource may declare several actions of one kind, and each keeps its own input type", async () => {
+  const document = documentOf([
+    {
+      file: "resources/post.mx",
+      source: [
+        'resource="post"',
+        "  attributes",
+        '    uuid-primary-key="id"',
+        '    attribute="title" type="string" allow-nil=false',
+        '  actions defaults=["update"]',
+        '    update="edit" accept=["title"]',
+        '    update="publish" accept=[]',
+        "",
+      ].join("\n"),
+    },
+  ]);
+  const contents = typesFile(await generateFiles({ document, config: configOf("/project") })).contents;
+  expect(contents).toContain("export type EditPostInput = {\n  id: string;\n  title?: string;\n};");
+  expect(contents).toContain("export type PublishPostInput = {\n  id: string;\n};");
+  expect(contents).not.toContain("UpdatePostInput");
+});
+
+test("L2: each source name with a line terminator in it still produces a file tsc reads", async () => {
+  for (const [raw, escaped] of [["\n", "\\n"], ["\r", "\\r"], ["\r\n", "\\r\\n"], ["\u2028", "\\u2028"], ["\u2029", "\\u2029"]] as const) {
+    const file = `resources/line${raw}break.mx`;
+    const document = documentOf([{ file, source: 'resource="tag"\n  attributes\n    uuid-primary-key="id"\n' }]);
+    const { root, files } = await emitTo(document);
+    expect(typesFile(files).contents.split("\n")[1]).toBe(
+      `// It is generated by \`mesh build\` from resources/line${escaped}break.mx; change that file and rebuild.`,
+    );
+    expect(typeCheck(root, ["generated/tag.types.ts"])).toEqual(clean);
+  }
+});
+
+test("a domain is held to the same one-segment rule as a resource name", async () => {
+  for (const domain of ["blog/post", "blog\\post", "..", ".", "blog\u0000post", "blog\npost"]) {
+    const promise = generateFiles({
+      document: documentOf([
+        { file: "resources/post.mx", source: `resource="post" domain=${JSON.stringify(domain)}\n  attributes\n    uuid-primary-key="id"\n` },
+      ]),
+      config: configOf("/project"),
+    });
+    const error = (await promise.catch((cause: unknown) => cause)) as EmitError;
+    expect(error.diagnostic).toMatchObject({
+      code: "MESH_EMIT_PATH",
+      message: `Name "${domain}" cannot be used in a generated file path`,
+      position: { file: "resources/post.mx", line: 1, column: 23, offset: 23 },
+    });
+  }
+});
+
+test("model.json writes keys in lexicographic order whatever order they were built in, and keeps every finite number", async () => {
+  const source = [
+    'resource="score"',
+    "  attributes",
+    '    uuid-primary-key="id"',
+    '    attribute="big" type="float" default=1e21',
+    '    attribute="small" type="float" default=1e-7',
+    '    attribute="tiny" type="float" default=5e-324',
+    '    attribute="plain" type="integer" default=42',
+    "",
+  ].join("\n");
+  const document = documentOf([{ file: "resources/score.mx", source }]);
+  const files = await generateFiles({ document, config: configOf("/project") });
+  const json = files.find((file) => file.path.endsWith("model.json"))!;
+  const parsed = JSON.parse(json.contents) as ModelDocument;
+  // JSON.parse keeps the order of the text, so every object's keys are in the file's
+  // own order: each one is lexicographic.
+  const checkOrder = (value: unknown): void => {
+    if (Array.isArray(value)) return value.forEach(checkOrder);
+    if (value === null || typeof value !== "object") return;
+    const keys = Object.keys(value as object);
+    expect(keys).toEqual([...keys].sort());
+    Object.values(value as object).forEach(checkOrder);
+  };
+  checkOrder(parsed);
+  const defaults = parsed.resources[0]!.attributes.map((attribute) => attribute.default?.value);
+  expect(defaults.slice(1)).toEqual([1e21, 1e-7, 5e-324, 42]);
+  // The same document built with every object's keys inserted in the other order
+  // serialises to the same bytes.
+  const reversed = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(reversed);
+    if (value === null || typeof value !== "object") return value;
+    return Object.fromEntries(
+      Object.entries(value as object).reverse().map(([key, item]) => [key, reversed(item)]),
+    );
+  };
+  expect(await generateFiles({ document: reversed(parsed) as ModelDocument, config: configOf("/project") })).toEqual(files);
+});
+
+test("M1 test 2: two projects loaded and built separately emit identical files", async () => {
+  const build = async (): Promise<GeneratedFile[]> => {
+    const root = await project();
+    await mkdir(resolve(root, "resources"));
+    await writeFile(resolve(root, "mesh.config.ts"), 'export default { resources: "resources/*.mx", output: "generated" }\n');
+    await writeFile(resolve(root, "resources/post.mx"), 'resource="post" table="posts" domain="blog"\n  attributes\n    uuid-primary-key="id"\n    attribute="title" type="string" allow-nil=false\n  actions defaults=["read", "destroy"]\n    create="create" accept=["title"]\n');
+    await writeFile(resolve(root, "resources/tag.mx"), 'resource="tag"\n  attributes\n    uuid-primary-key="id"\n');
+    const loaded = await loadConfig(root);
+    expect(loaded.diagnostics).toEqual([]);
+    const built = await loadProject(loaded.config!);
+    expect(built.diagnostics).toEqual([]);
+    return generateFiles({ document: built.document!, config: loaded.config! });
+  };
+  const first = await build();
+  const second = await build();
+  expect(second).toEqual(first);
+  expect(first.map((file) => file.path)).toEqual([
+    "generated/blog/post.types.ts",
+    "generated/model.json",
+    "generated/tag.types.ts",
+  ]);
 });
