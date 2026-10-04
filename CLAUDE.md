@@ -8,6 +8,8 @@ Bun workspace (`workspaces`: `packages/*`, `apps/*`, `examples/*`), one root `bu
 - `packages/compiler` (`@mesh/compiler`): MX tag contracts for the resource vocabulary (`src/contracts.ts`, tests in `test/`)
 - `packages/model` (`@mesh/model`): plain-data resource model, attribute-type and action-type registries, diagnostic type; imports nothing
 - `packages/runtime` (`@mesh/runtime`): scope, errors, Standard Schema input validation and data-layer contract v0; zero run-time dependencies; adapter conformance checks at `@mesh/runtime/testing`
+- `packages/data-drizzle` (`@mesh/data-drizzle`): shared SQL-adapter operations, column validation and compound-key conditions
+- `packages/data-sqlite` (`@mesh/data-sqlite`): lazy SQLite data layer and in-process `createSchema`; separate `/build` entry emits `schema.ts`; exact Drizzle pins, no compiler imports from the run-time entry
 - `packages/cli` (`@mesh/cli`): the Bun-only `mesh` developer command, a thin compiler shell; re-exports `defineConfig` for project configuration
 - `apps/docs`: the docs site (docmd)
 - `examples/blog`: example app, grows milestone by milestone
