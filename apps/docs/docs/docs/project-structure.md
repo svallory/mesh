@@ -70,7 +70,7 @@ In Ash a `belongs_to` creates its foreign-key attribute as `<name>_id` (`list_id
 In this proposal, your program imports generated functions and types through `generated/index.ts`. It exports `connect` and `disconnect` and re-exports the resource modules.
 
 ::: callout info "Not decided yet"
-The flat export surface needs a collision rule. The [roadmap](../architecture/roadmap/roadmap.md) rejects duplicate resource names, even across domains, but does not settle collisions after action and resource names are combined into exported identifiers; adding a domain prefix or requiring unique export names are still options. Do not assume a new resource can always be added to the same import without a naming check.
+The flat export surface needs a collision rule. The [roadmap](../architecture/roadmap/roadmap.md) rejects duplicate resource names, but does not settle collisions after action and resource names are combined into exported identifiers; adding a domain prefix or requiring unique export names are still options. Do not assume a new resource can always be added to the same import without a naming check.
 :::
 
 The subfolder `todos/` is named after the `domain` attribute on the resource. A resource with no `domain` has its files directly in `generated/`. Grouping by domain keeps one feature's generated code in one folder.

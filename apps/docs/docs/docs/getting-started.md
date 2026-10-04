@@ -13,7 +13,7 @@ There is no install step to run yet: Mesh has no release. This page is therefore
 
 ## Where to start
 
-Follow the numbered [reading path in the Docs overview](./index.md#the-reading-path). After this page, it goes from Installation to the todo example, Usage and Project structure, then the action, configuration, command-line and resource references. Keeping the list in one place avoids competing routes through the same material.
+Follow the numbered [reading path in the Docs overview](./index.md). After this page, it goes from Installation to the todo example, Usage and Project structure, then the action, configuration, command-line and resource references. Keeping the list in one place avoids competing routes through the same material.
 
 ## The shape in one paragraph
 

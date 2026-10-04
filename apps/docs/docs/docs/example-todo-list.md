@@ -57,7 +57,7 @@ Reading it top to bottom:
 - `create-timestamp="insertedAt"` declares an attribute the database fills on insert and the caller never sets.
 - `actions defaults=["read", "destroy"]` asks for a `read` action and a `destroy` action, each named after its type, without declaring them.
 - `create="create" accept=["name"]` declares a create action named `create`, which accepts only `name`. `ownerId` is filled by the change, not by the caller: `change` receives one object argument, destructured here as `{ list, actor }`, and sets `list.ownerId` from the actor. The meaning of the record on a create is still open, as noted below.
-- The policies block declares a check for each action. `action_type` accepts one string, so a check shared by several action types is repeated under each type's policy. With the policies extension enabled, an action with no matching policy is forbidden. `authorize-if` returns a boolean; the expression is the record and the actor, and nothing else.
+- The policies block declares a check for each action. The contract also accepts a list of checks, but [all conditions in that list must hold](../architecture/research/ash-features.md), so it cannot express “read or destroy”. Since `action_type` currently accepts only one string, the shared ownership policy is repeated per action type. With the policies extension enabled, an action with no matching policy is forbidden. `authorize-if` returns a boolean; the expression is the record and the actor, and nothing else.
 - `count="todoCount" relationship-path="todos"` declares an aggregate: the number of related todos.
 
 ::: callout info "Not decided yet"

@@ -40,7 +40,7 @@ The build reads every `.mx` file under the configured resources folder, checks t
 | `generated/todos/todo.actions.ts` | One exported function per action, with the whole action lifecycle written out |
 | `generated/todos/todo.validators.ts` | The Zod schema each action's input is checked against |
 | `generated/schema.ts` | The Drizzle table definitions, written by the data adapter |
-| `generated/index.ts` | `connect`, `disconnect`, and a re-export of every action function and every type |
+| `generated/index.ts` | `connect`, `disconnect`, and proposed resource exports; [export-collision handling is not decided](./project-structure.md) |
 
 **What the build checks** and refuses:
 

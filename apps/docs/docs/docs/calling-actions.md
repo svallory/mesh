@@ -63,17 +63,13 @@ Reading `<action><Resource>` aloud is awkward for a named read (`pendingTodo`), 
 
 ## The scope
 
-The second argument says who is calling:
+The second argument says who is calling. `@mesh/runtime` declares `Scope` with the shape `{ actor: Register["actor"]; context?: Record<string, unknown> }`; import it rather than declaring your own:
 
 ```ts
-import type { Register } from "@mesh/runtime";
-import "./actor";
+import type { Scope } from "@mesh/runtime";
+import { alice } from "./actor";
 
-type Actor = Register["actor"];
-export type Scope = {
-  actor: Actor;
-  context?: Record<string, unknown>;
-};
+export const scope: Scope = { actor: alice };
 ```
 
 `actor` is your application's type. You register it once, in your own code, by module augmentation:

@@ -52,7 +52,7 @@ There is no `mesh watch` and no watch mode of any kind; the roadmap lists it as 
 Every diagnostic names the file, the line and the column, both 1-based, and says what to do:
 
 ```text
-resources/todo.mx:12:5 error `accept` names "titel", which is not an attribute of todo. Did you mean "title"?
+resources/todo.mx:13:21 error `accept` names "titel", which is not an attribute of todo. Did you mean "title"?
 ```
 
 The same shape is used for a tag the vocabulary does not allow, a tag the compiler does not implement yet (which names the milestone that will), a duplicate resource name, a free variable in an expression, and a capability the configured adapter does not declare. Nothing is silently ignored.
