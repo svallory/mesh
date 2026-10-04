@@ -1,0 +1,38 @@
+{
+  "title": "Mesh",
+  "url": "https://docs.mesh.invalid",
+  "src": "docs",
+  "out": "site",
+  "theme": { "appearance": "system" },
+  "layout": { "spa": true },
+  "plugins": { "search": {} },
+  "navigation": [
+    { "title": "Home", "path": "/" },
+    {
+      "title": "Docs",
+      "children": [
+        { "title": "Overview", "path": "/docs/" },
+        { "title": "Getting started", "path": "/docs/getting-started/" },
+        { "title": "Resource file reference", "path": "/docs/resource-file-reference/" }
+      ]
+    },
+    {
+      "title": "Architecture",
+      "children": [
+        { "title": "Overview of Architecture", "path": "/architecture/" },
+        { "title": "Contributing to these docs", "path": "/architecture/contributing/" },
+        { "title": "Roadmap", "path": "/architecture/roadmap/" },
+        {
+          "title": "Decisions",
+          "children": [
+            { "title": "About decisions", "path": "/architecture/decisions/" },
+            { "title": "Template", "path": "/architecture/decisions/_template/" }
+          ]
+        },
+        { "title": "Overview", "path": "/architecture/overview/" },
+        { "title": "In depth", "path": "/architecture/in-depth/" },
+        { "title": "Research", "path": "/architecture/research/" }
+      ]
+    }
+  ]
+}
