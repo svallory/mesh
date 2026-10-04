@@ -5,7 +5,7 @@ description: "The data-layer contract, declared capabilities, the conformance su
 
 # Data layer: contract and capabilities
 
-Status: design; built in milestone M3 ([roadmap](../roadmap/roadmap.md), M3). A first small contract arrives in M2, capabilities are first used in M5 and M7, and Postgres and migrations arrive in M9 ([roadmap](../roadmap/roadmap.md), M2, M5, M7, M9). Nothing on this page exists as code yet. Updated 2026-10-04 with M2 column naming, binding and in-process schema decisions.
+Status: contract v0 is implemented in `@mesh/runtime` (M2). M3 replaces it with the full contract below; capabilities are first used in M5 and M7, and Postgres and migrations arrive in M9 ([roadmap](../roadmap/roadmap.md), M2, M3, M5, M7, M9). Updated 2026-10-04 with M2 column naming, binding and in-process schema decisions.
 
 Vocabulary note: tag and attribute names are working names. For v1 the vocabulary copies Ash's DSL, and the final name follows [vocabulary mapping](../roadmap/vocabulary-mapping.md) ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md)). Examples use MX concise syntax ([ADR-0041](../decisions/0041-mx-concise-syntax.md)).
 
@@ -16,6 +16,37 @@ The data layer stores and fetches records. Related: [overview](../overview/archi
 A contract that covers Drizzle, Kysely, TypeORM and Prisma can cover select, insert, update, delete, transactions and raw SQL. Filters, joins and aggregates have four different shapes there, and relation loading, schema ownership, migrations and pooling cannot be covered. So the contract is Mesh's own, at the level of resources, as Ash's is. The query library inside an adapter is that adapter's private choice ([research synthesis](../research/synthesis.md), section 11; [ADR-0013](../decisions/0013-data-layer-contract-and-capabilities.md)).
 
 The contract and its query and expression-tree types live in `runtime`, which a deployed program carries. `runtime` imports no Drizzle ([roadmap](../roadmap/roadmap.md), section 3 and M3, test 5; [ADR-0033](../decisions/0033-core-split-build-time-run-time.md)).
+
+## Contract v0 (M2)
+
+`@mesh/runtime` exports this deliberately small contract for generated handlers and adapters. Operations exist only inside `transaction`; a handler always opens one. M3 replaces this version with the full contract, including filters, sorting, pagination and capabilities ([roadmap](../roadmap/roadmap.md), M2 and M3).
+
+```ts "packages/runtime/src/data-layer.ts"
+export type Row = Record<string, unknown>;
+export type Key = Readonly<Record<string, unknown>>;
+export type TableHandle = object;
+
+export interface DataOperations {
+  insert(table: TableHandle, row: Row): Promise<Row>;
+  selectByKey(table: TableHandle, key: Key): Promise<Row | undefined>;
+  selectAll(table: TableHandle): Promise<Row[]>;
+  updateByKey(table: TableHandle, key: Key, changes: Row): Promise<Row | undefined>;
+  deleteByKey(table: TableHandle, key: Key): Promise<boolean>;
+}
+
+export interface DataLayer {
+  transaction<T>(run: (tx: DataOperations) => Promise<T>): Promise<T>;
+  close(): Promise<void>;
+}
+```
+
+Rows use attribute names and generated TypeScript values: `Date` for datetime, `boolean`, and `string` for UUID. The adapter converts these to and from storage. `Key` maps primary-key attribute names to values. `TableHandle` is opaque to handlers: the emitted schema exports it and only the adapter interprets it. No query-library type, SQL string or filter crosses this version of the contract.
+
+Insert and update return the stored row. A missing select or update returns `undefined`; delete returns `false` when absent and `true` when removed. A transaction commits when its callback resolves, returning that result; it rolls back every write and rethrows the same error when the callback rejects. The caller closes the layer when finished.
+
+The separate `@mesh/runtime/testing` entry exports `dataLayerConformance(makeLayer)`, a record of named async checks to register with an adapter's test runner. The factory supplies a fresh isolated layer, an empty prepared table, a complete sample row, its key, and non-key changes that change a value. Every call uses the same schema and sample values. Checks cover CRUD, missing keys, commit, rollback and isolation; each closes its layers even on failure. The runtime tests use a test-only double, not a shipped in-memory adapter.
+
+`verify` enforces the runtime half of M2 test 4 and test 7 in the compiler's repository checks: runtime source mentions no model, compiler or Drizzle package, its dependency fields list none of them, and its source uses no `bun:` or `node:` module or `Bun` global. Planted violations prove each rule. Generated-handler and adapter import checks arrive with those later M2 tasks.
 
 ## Mandatory set and declared capabilities
 
@@ -41,7 +72,7 @@ A reader cannot predict which applies. Mesh keeps one reaction, the build-time h
 
 ## Conformance suite
 
-A suite every data adapter must pass, written in M3 ([roadmap](../roadmap/roadmap.md), M3). It includes a throwing transaction leaving no row, and keyset pagination under concurrent inserts returning each row that existed at the start exactly once (M3, tests 3 and 4). The M4 function tables are part of what each adapter runs (M9, test 5). The roadmap names the risk that M3 has one real implementation until M9, and its answer is that M9 may start right after M5 ([roadmap](../roadmap/roadmap.md), M3, risks).
+Contract v0 provides the small suite above; M3 expands it into the full suite every data adapter must pass ([roadmap](../roadmap/roadmap.md), M3). It includes a throwing transaction leaving no row, and keyset pagination under concurrent inserts returning each row that existed at the start exactly once (M3, tests 3 and 4). The M4 function tables are part of what each adapter runs (M9, test 5). The roadmap names the risk that M3 has one real implementation until M9, and its answer is that M9 may start right after M5 ([roadmap](../roadmap/roadmap.md), M3, risks).
 
 ## The capability rule across parallel milestones
 

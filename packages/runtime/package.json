@@ -1,0 +1,16 @@
+{
+  "name": "@mesh/runtime",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
+  },
+  "description": "Mesh run-time scope, errors, validation and data-layer contracts",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p test/augmented/tsconfig.json"
+  }
+}

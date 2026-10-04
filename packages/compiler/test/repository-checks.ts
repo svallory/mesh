@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { extname, join, relative, sep } from "node:path";
 import { parse } from "./helpers.ts";
 
@@ -8,16 +8,16 @@ const sourceExtensions = new Set([".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", 
 const lockFiles = new Set(["bun.lock", "bun.lockb", "bun.lock.json", "package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml"]);
 const within = (path: string, dir: string) => path === dir || path.startsWith(`${dir}/`);
 
-function walk(root: string, dir: string): string[] {
+function walk(root: string, dir: string, allFiles = false): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const file = join(dir, entry.name);
     // Only host separators delimit segments; a POSIX backslash is a filename character.
     const path = relative(root, file).split(sep).join("/");
-    if (path.split("/").includes("node_modules") || within(path, "apps/docs/site") || within(path, "apps/docs/docs") ||
-      MX_IMPORT_PACKAGES.some((pkg) => within(path, pkg))) return [];
+    if (!allFiles && (path.split("/").includes("node_modules") || within(path, "apps/docs/site") || within(path, "apps/docs/docs") ||
+      MX_IMPORT_PACKAGES.some((pkg) => within(path, pkg)))) return [];
     // Never follow symlinks into dependencies or outside the checkout.
-    if (entry.isDirectory()) return walk(root, file);
-    return entry.isFile() && sourceExtensions.has(extname(file)) && !lockFiles.has(entry.name) ? [file] : [];
+    if (entry.isDirectory()) return walk(root, file, allFiles);
+    return entry.isFile() && (allFiles || (sourceExtensions.has(extname(file)) && !lockFiles.has(entry.name))) ? [file] : [];
   });
 }
 
@@ -34,6 +34,52 @@ export function checkMxImports(root: string): string[] {
     const line = source.slice(0, first).split(/\r\n|\r|\n/).length;
     return [`${path}:${line}: Mention of @mxlang is forbidden here (ADR-0043), including comments and strings; move the code into packages/compiler or remove the mention`];
   });
+}
+
+const runtimeForbidden = ["@mesh/model", "@mesh/compiler", "drizzle-orm", "drizzle-kit"];
+
+/** M2's text rules reuse M1's directory walker, scanning every runtime source file. */
+export function checkRuntime(root: string, rule: "imports" | "web"): string[] {
+  const dir = join(root, "packages/runtime/src");
+  const files = existsSync(dir) ? walk(root, dir, true).sort() : [];
+  const errors: string[] = [];
+  if (files.length === 0) errors.push("packages/runtime/src: No runtime source files scanned");
+  const report = (file: string, source: string, index: number, reason: string) => {
+    const path = relative(root, file).split(sep).join("/");
+    errors.push(`${path}:${source.slice(0, index).split(/\r\n|\r|\n/).length}: ${reason}`);
+  };
+  for (const file of files) {
+    const source = readFileSync(file, "utf8");
+    if (rule === "imports") {
+      for (const name of runtimeForbidden) {
+        const index = source.indexOf(name);
+        if (index !== -1) report(file, source, index, `Runtime must not mention ${name}; move build-time or database-specific code out of runtime`);
+      }
+    } else {
+      // Deliberately textual, like M1: comments containing these forms also fail.
+      // Includes side-effect imports, re-exports and optional require calls.
+      const module = /\b(?:from\s*|import\s*(?:\(\s*)?|require\s*(?:\?\.\s*)?\(\s*)["'`](?:bun|node):/g;
+      const global = /\bBun\s*[.\[]/g;
+      for (const match of source.matchAll(module)) report(file, source, match.index, "Runtime must use web-standard APIs, not bun: or node: modules");
+      for (const match of source.matchAll(global)) report(file, source, match.index, "Runtime must use web-standard APIs, not the Bun global");
+    }
+  }
+  if (rule === "imports") {
+    const file = join(root, "packages/runtime/package.json");
+    if (!existsSync(file)) errors.push("packages/runtime/package.json: Missing runtime manifest");
+    else {
+      const source = readFileSync(file, "utf8");
+      const manifest = JSON.parse(source) as Record<string, unknown>;
+      for (const [field, value] of Object.entries(manifest)) {
+        if (!/dependencies$/i.test(field)) continue;
+        const names = Array.isArray(value) ? value : Object.keys(value as object);
+        for (const name of runtimeForbidden) if (names.includes(name)) {
+          report(file, source, source.indexOf(`\"${name}\"`), `Runtime must not depend on ${name} (${field})`);
+        }
+      }
+    }
+  }
+  return errors;
 }
 
 export function checkDocsSamples(dir: string) {

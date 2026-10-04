@@ -5,7 +5,7 @@ description: "Core, adapters and extensions: the test for each ring and where ev
 
 # Core, adapters and extensions
 
-Status: design; the ring split is applied from M0 and fully exercised by M6 (extension host) and M8 (first extension). M0 is done: `packages/compiler` holds the tag contracts and their tests; the other packages do not exist yet ([roadmap](../roadmap/roadmap.md), M0).
+Status: the ring split is applied from M0 and fully exercised by M6 (extension host) and M8 (first extension). The build-time packages (`compiler`, `model`, `cli`) exist after M1; M2 adds `runtime` with scope, errors, input validation and [data-layer contract v0](./data-layer.md). The remaining package roles below describe the design ([roadmap](../roadmap/roadmap.md), M0–M2).
 
 ## Why rings
 

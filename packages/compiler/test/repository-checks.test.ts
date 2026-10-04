@@ -4,7 +4,7 @@ import { join, sep } from "node:path";
 import { ACTION_TYPES, ATTRIBUTE_TYPES } from "@mesh/model";
 import { buildModel, loadConfig, loadProject } from "../src/index.ts";
 import { parse } from "./helpers.ts";
-import { checkDocsSamples, checkMxImports } from "./repository-checks.ts";
+import { checkDocsSamples, checkMxImports, checkRuntime } from "./repository-checks.ts";
 
 const root = new URL("../../../", import.meta.url).pathname;
 function temporary(run: (dir: string) => void) {
@@ -143,6 +143,86 @@ test.each(["dependencies", "devDependencies", "peerDependencies", "optionalDepen
     });
   },
 );
+
+test("M2 test 4: runtime imports no model, compiler or Drizzle", () => {
+  expect(checkRuntime(root, "imports")).toEqual([]);
+});
+
+test("M2 test 7: runtime uses web-standard APIs only", () => {
+  expect(checkRuntime(root, "web")).toEqual([]);
+});
+
+test.each(["@mesh/model", "@mesh/compiler", "drizzle-orm", "drizzle-kit"])(
+  "M2 test 4: planted source mention of %s fails", (name) => {
+    workspace((dir, put) => {
+      put("packages/runtime/package.json", "{}");
+      put("packages/runtime/src/nested/file.unusual", `\n// ${name}`);
+      expect(checkRuntime(dir, "imports")).toEqual([
+        `packages/runtime/src/nested/file.unusual:2: Runtime must not mention ${name}; move build-time or database-specific code out of runtime`,
+      ]);
+    });
+  },
+);
+
+test.each(["dependencies", "devDependencies", "peerDependencies", "optionalDependencies", "bundledDependencies", "bundleDependencies"])(
+  "M2 test 4: planted forbidden dependencies fail in %s", (field) => {
+    workspace((dir, put) => {
+      put("packages/runtime/src/index.ts", "export {};");
+      const names = ["@mesh/model", "@mesh/compiler", "drizzle-orm", "drizzle-kit"];
+      put("packages/runtime/package.json", JSON.stringify({ [field]: field.startsWith("bundle") ? names : Object.fromEntries(names.map((name) => [name, "*"])) }));
+      expect(checkRuntime(dir, "imports")).toHaveLength(4);
+      expect(checkRuntime(dir, "imports").every((error) => error.startsWith("packages/runtime/package.json:1:"))).toBe(true);
+    });
+  },
+);
+
+const nonWebForms = ["bun", "node"].flatMap((host) => ["'", '"', "`"].flatMap((quote) => [
+  `import { x } from ${quote}${host}:test${quote};`,
+  `export { x } from ${quote}${host}:test${quote};`,
+  `import( ${quote}${host}:test${quote});`,
+  `require( ${quote}${host}:test${quote});`,
+  `import ${quote}${host}:test${quote};`,
+]));
+test.each([...nonWebForms, "Bun.file('x')", "Bun [ 'file' ]('x')", "Bun\n.write('x', '')"])(
+  "M2 test 7: planted non-web API fails: %s", (source) => {
+    workspace((dir, put) => {
+      put("packages/runtime/src/nested/bad.ts", `\n${source}`);
+      const errors = checkRuntime(dir, "web");
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toStartWith("packages/runtime/src/nested/bad.ts:2:");
+    });
+  },
+);
+
+test.each(["imports", "web"] as const)("M2 runtime %s scan fails closed with no source files", (rule) => {
+  workspace((dir, put) => {
+    put("packages/runtime/package.json", "{}");
+    expect(checkRuntime(dir, rule)).toContain("packages/runtime/src: No runtime source files scanned");
+    mkdirSync(join(dir, "packages/runtime/src"));
+    expect(checkRuntime(dir, rule)).toContain("packages/runtime/src: No runtime source files scanned");
+  });
+});
+
+test("M2 runtime scans every regular file under src regardless of extension or directory name", () => {
+  workspace((dir, put) => {
+    put("packages/runtime/package.json", "{}");
+    for (const path of ["build/bad.ts", "node_modules/bad.js", "bun.lock", "nested/text", "site/bad.json"]) {
+      put(`packages/runtime/src/${path}`, '// @mesh/model\nimport "bun:test";');
+    }
+    expect(checkRuntime(dir, "imports")).toHaveLength(5);
+    expect(checkRuntime(dir, "web")).toHaveLength(5);
+  });
+});
+
+test("M2 runtime checks exclude tests and accept ordinary web-standard code", () => {
+  workspace((dir, put) => {
+    put("packages/runtime/package.json", "{}");
+    put("packages/runtime/test/allowed.test.ts", 'import { test } from "bun:test"; // @mesh/model');
+    put("packages/runtime/src/index.ts", 'export const parsed = JSON.parse("{}"); const notBun = {};');
+    expect(checkRuntime(dir, "web")).toEqual([]);
+    expect(checkRuntime(dir, "imports")).toEqual([]);
+  });
+});
 
 test("Docs MX samples: complete resource blocks parse with the contracts", () => {
   const checked = checkDocsSamples(join(root, "apps/docs/docs/docs"));
