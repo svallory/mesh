@@ -9,9 +9,9 @@ description: "The tags a Mesh resource file may use today. Provisional."
 These tags are the current draft of the Mesh resource-file vocabulary. They can change, be renamed or be removed without notice. Nothing reads these files yet except the parser's contract check.
 :::
 
-A resource file is a `.mx` file in Marko syntax, parsed by MX. Mesh chooses the tag names. MX checks each file against the contracts in `src/contracts.ts`: unknown tags are rejected, and so are tags in the wrong place. Every contract is closed, so an attribute or child tag that is not listed here is an error.
+A resource file is a `.mx` file in Marko syntax, parsed by MX. Mesh chooses the tag names. The contracts in `src/contracts.ts` describe each tag. They take effect when a file is parsed with `parseData` from `@mxlang/data` using the options `structural: "reject"` and `unknownTags: "reject"` (`test/helpers.ts` shows the call). With those options, an unknown tag or a tag in the wrong place is rejected. Every contract is closed, so an attribute or child tag that is not listed here is an error.
 
-A default attribute, such as `resource="post"`, is written on the tag itself. Values Mesh reads statically must be literals. A bare identifier is rejected. The attributes that hold code (`change`, `validate`, `filter`, `authorize-if`, `value` on `calculate`) take a function.
+A default attribute, such as `resource="post"`, is written on the tag itself. Values Mesh reads statically must be literals. A bare identifier is rejected. The tags `change`, `validate`, `filter`, `authorize-if` and `value` are tags whose default attribute is a function.
 
 Each file is expected to have one `resource` at the root. The contracts cannot express that, so a later stage will enforce it. Nothing does yet.
 
@@ -63,7 +63,7 @@ Container. Parent: `resource`. Children: `belongs-to`, `has-many` (both repeatab
 
 ## actions
 
-Container. Parent: `resource`. Children: `defaults`, `create`, `update`, `read`, `destroy`.
+Container. Parent: `resource`. Children: `defaults` (at most once); `create`, `update`, `read`, `destroy` (each repeatable).
 
 ### defaults
 

@@ -1,6 +1,8 @@
 ---
 title: "Decision record template"
 description: "Copy this page to start a decision record."
+noindex: true
+llms: false
 ---
 
 # NNNN. Title of the decision

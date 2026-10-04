@@ -52,14 +52,14 @@ description: "One sentence."
 ## Add a page
 
 1. Create the `.md` file in the right folder.
-2. Add it to `navigation` in `apps/docs/docmd.config.json`. A page that is not listed is built but not shown in the sidebar.
+2. Add it to `navigation` in `apps/docs/docmd.config.json`. A page that is not listed is built but not shown in the sidebar. Each area is a group with an "About …" first entry; add your page as another object in that group's `children` array: `{ "title": "Durable engines", "path": "/architecture/research/durable-engines/" }`.
 3. Link to it from the folder's `index.md`.
 4. Run `bun run build` and `bun run validate`.
 
 ## Add a decision record
 
 1. Copy [the template](./decisions/_template.md) to `decisions/NNNN-short-title.md`, with the next free number.
-2. Fill in every heading. Write "none" rather than deleting one.
+2. Replace the template's frontmatter `title` and `description`, and delete its `noindex: true` and `llms: false` lines. Fill in every heading. Write "none" rather than deleting one.
 3. Set the status to `Proposed`. Change it to `Accepted`, `Rejected` or `Superseded by NNNN` when it is settled; never delete a record.
 4. Add it to `navigation` under **Decisions** and to the list in `decisions/index.md`.
 
