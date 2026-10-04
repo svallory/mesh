@@ -5,7 +5,7 @@ description: "How Mesh reads resource files through MX and what each side enforc
 
 # How Mesh uses MX
 
-Status: design; the `parseData` call and the contracts exist as tests on `main`. M0 moved them into `packages/compiler`; M1 starts by aligning the vocabulary with Ash's DSL; the composed contracts module is built in M6.
+Status: design; the `parseData` call and the contracts exist as tests on `main`. M0 moved them into `packages/compiler`; M1 aligned the vocabulary with Ash's DSL; the composed contracts module is built in M6.
 
 ## What MX is, and why it is core
 
@@ -48,7 +48,7 @@ This is why there is no expression-parser slot: MX already did the parsing.
 
 A *tag contract* tells MX which attributes, children and parents a tag allows. Contracts can declare attribute `type` (`string`, `number`, `boolean`, `enum` with `values`, `array` with `items`, `function`) and `required`; `attributeTags`; `children` (closed once present); `parents`, including `"#root"`; and attributes on attribute tags (MX project notes, getting-started, section 1; MX project notes, updates, entry of 2026-10-03 17:45).
 
-Rules a declaration cannot express go in an `analyze` hook that reports positioned errors. Examples: `values` required only when `type="enum"`; a `policy` takes exactly one of `action` or `action-type` (Mesh's answers to MX on `mx.contracts`, 2026-10-04, "What Mesh is"). `analyze` runs under `parseData` with directly passed `customTags` and `structural: "reject"` (MX project notes, updates, entry of 2026-10-03 22:10).
+Rules a declaration cannot express go in an `analyze` hook that reports positioned errors. Examples: `constraints` allowed only when `type="atom"`, with a `one_of` list; a `policy` condition is a check call (`action("publish")`, `action_type("read")`) or a list of them (Mesh's answers to MX on `mx.contracts`, 2026-10-04, "What Mesh is", as aligned by the [vocabulary mapping](../roadmap/vocabulary-mapping.md)). `analyze` runs under `parseData` with directly passed `customTags` and `structural: "reject"` (MX project notes, updates, entry of 2026-10-03 22:10).
 
 The contracts in `packages/compiler/src/contracts.ts` make every contract closed and every statically read value `literalOnly`: a static tree has no scope, so an identifier would reach Mesh as an unevaluable expression. Function attributes (`change=`, `validate=`) are the exception, because they are code.
 

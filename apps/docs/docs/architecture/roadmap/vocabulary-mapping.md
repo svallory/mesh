@@ -5,17 +5,17 @@ description: "How each part of Ash's resource DSL maps to a Mesh tag or attribut
 
 # Vocabulary mapping: Ash DSL to Mesh
 
-Date: 2026-10-04. Status: the mapping covers everything the roadmap touches. The alignment edits to the contracts are the first part of milestone M1 ([roadmap](./roadmap.md), M1, "Vocabulary alignment first"); this page changes no code.
+Date: 2026-10-04. Status: the mapping covers everything the roadmap touches. The alignment of the contracts (the first part of milestone M1, [roadmap](./roadmap.md), "Vocabulary alignment first") is done for every row that is on main: rows marked "on main (aligned)" in Section 3 and rows marked "Done" in Section 4 are applied in `packages/compiler/src/contracts.ts`, with tests. The rows for later milestones are not applied. Two rows are held for the operator (X1, X2, Section 5) and the research gaps stay open until the lookups are fact-checked (Section 6).
 
 ## 0. The naming rule
 
-**Mesh names are Ash's names in kebab-case with the trailing `?` dropped.** `belongs_to` becomes `belongs-to`, `uuid_primary_key` becomes `uuid-primary-key`, `allow_nil?` becomes `allow-nil`, `require_atomic?` becomes `require-atomic`. The mapping is mechanical and one-to-one: `_` becomes `-`, a trailing `?` is dropped, nothing else changes. A trailing `?` is impossible in MX: the MX maintainers measured on MX `main` at `7a404916` on 2026-10-04 (recorded in [rulings of 2026-10-04](../decisions/rulings-2026-10-04.md), section "Lead decisions of the architecture-docs brief") that an attribute name takes letters, digits and `._:-` (Marko's syntax rule) and never `?`; `_` would be accepted in tag and attribute names. **Scope of the rule.** It applies to *tag names and attribute names* only: the vocabulary. Three things are not vocabulary and the rule does not touch them. (1) Attribute values are strings the author writes: `insertedAt` in `create-timestamp="insertedAt"` is a value. (2) The names a resource author chooses for attributes, relationships and actions (the fixture's `authorId`, `commentCount`) are values too; they stay as the author writes them. (3) Everything inside an expression is JavaScript, parsed by Babel, and must be valid JavaScript: a call name keeps Ash's snake_case as an identifier (`action_type("read")`, `before_action(...)`, `set_attribute(...)`), because `action-type("read")` would parse as a subtraction. Ash's `^actor`, `^arg`, `^context`, `^ref` and `^tenant` templates have no valid JavaScript spelling; Section 3.9 maps them to the declared parameters of the arrow function.
+**Mesh names are Ash's names in kebab-case with the trailing `?` dropped.** `belongs_to` becomes `belongs-to`, `uuid_primary_key` becomes `uuid-primary-key`, `allow_nil?` becomes `allow-nil`, `require_atomic?` becomes `require-atomic`. The mapping is mechanical and one-to-one: `_` becomes `-`, a trailing `?` is dropped, nothing else changes. A trailing `?` is disallowed by ruling, not by MX. The MX maintainers first measured on MX `main` at `7a404916` that an attribute name takes letters, digits and `._:-` and never `?` (recorded in [rulings of 2026-10-04](../decisions/rulings-2026-10-04.md), section "Lead decisions of the architecture-docs brief"), and later confirmed that the data target could allow it in attribute names; MX still allows it in tag names, as Marko does, and MX decision 144 reserves `?=` as a future attribute operator and bans a trailing `?` in attribute names on every target. The operator ruled on 2026-10-04 (table "Rulings after the decision review", row "Trailing `?` in attribute names") that Mesh does not use it, in attribute names or in tag names. Reasons: in TypeScript `name?` means optional, so `allow-nil?` reads wrong; it would permanently block a future `name?=expr` syntax; it diverges from Marko's translator; and a bare boolean attribute already carries the predicate meaning (`public`, `allow-nil=false`). The spelling is unchanged: Ash names in kebab-case with `?` dropped. Mesh declares no tag and no attribute whose name ends in `?` or contains `_`; a test asserts it (`contracts.test.ts`, "no tag name and no attribute name ends in `?` or contains `_`"). `_` would be accepted by MX in tag and attribute names; Mesh does not use it. **Scope of the rule.** It applies to *tag names and attribute names* only: the vocabulary. Three things are not vocabulary and the rule does not touch them. (1) Attribute values are strings the author writes: `insertedAt` in `create-timestamp="insertedAt"` is a value. (2) The names a resource author chooses for attributes, relationships and actions (the fixture's `authorId`, `commentCount`) are values too; they stay as the author writes them. (3) Everything inside an expression is JavaScript, parsed by Babel, and must be valid JavaScript: a call name keeps Ash's snake_case as an identifier (`action_type("read")`, `before_action(...)`, `set_attribute(...)`), because `action-type("read")` would parse as a subtraction. Ash's `^actor`, `^arg`, `^context`, `^ref` and `^tenant` templates have no valid JavaScript spelling; Section 3.9 maps them to the declared parameters of the arrow function.
 
 **Decision record.** 2026-10-04, recorded in [rulings of 2026-10-04](../decisions/rulings-2026-10-04.md), section "Lead decisions of the architecture-docs brief"; a working decision (not an operator ruling); the operator may overrule. Alternative considered: Ash's exact spelling with `_` where MX allows it (`belongs_to`) and a different spelling only for booleans, which would have renamed every tag on `main` and left two conventions. Kebab-case matches what is on `main`, avoids renaming twice, and the operator revisits naming for MX after v1 ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md)). Consequence: names that differ from Ash only by this rule are not deviations and are not listed in Section 4.
 
 ## 1. Introduction
 
-The **vocabulary** of Mesh is the set of tag and attribute names a *resource file* may use. A resource file is a `.mx` file: Marko syntax, parsed by MX, a separate project. Mesh invents tag names, not syntax. For each tag name there is one MX **tag contract** (`CustomTag`) that says which attributes, children and parents the tag allows, plus `analyze` hooks for rules a declaration cannot express. MX is core in Mesh, not an adapter ([ADR-0043](../decisions/0043-mx-is-core.md)), so the 26 contracts live in the compiler package, `packages/compiler/src/contracts.ts`, with tests in `packages/compiler/test/`. (M0 moved them there; the line numbers below are those of the file before the alignment, which changes them.) They are the only vocabulary code so far. PR #1 (https://github.com/svallory/mesh/pull/1) added them; PR #2 (https://github.com/svallory/mesh/pull/2) adopted MX's `unknownTags` option; PR #4 (https://github.com/svallory/mesh/pull/4) changed one test.
+The **vocabulary** of Mesh is the set of tag and attribute names a *resource file* may use. A resource file is a `.mx` file: Marko syntax, parsed by MX, a separate project. Mesh invents tag names, not syntax. For each tag name there is one MX **tag contract** (`CustomTag`) that says which attributes, children and parents the tag allows, plus `analyze` hooks for rules a declaration cannot express. MX is core in Mesh, not an adapter ([ADR-0043](../decisions/0043-mx-is-core.md)), so the 26 contracts live in the compiler package, `packages/compiler/src/contracts.ts`, with tests in `packages/compiler/test/`. (M0 moved them there. The alignment kept the count at 26: `defaults` and `timestamps` left, `create-timestamp` and `update-timestamp` arrived. The `contracts.ts:N` line numbers on this page are those of the file before the alignment, at `a3b52f4`; rows marked aligned describe the new form in the Mesh name column and the old one in the "On main today" column.) They are the only vocabulary code so far. PR #1 (https://github.com/svallory/mesh/pull/1) added them; PR #2 (https://github.com/svallory/mesh/pull/2) adopted MX's `unknownTags` option; PR #4 (https://github.com/svallory/mesh/pull/4) changed one test.
 
 **Where the 26 came from.** The names were copied from an MX test fixture (`packages/targets/data/fixtures/ash-resource/post.mx` in the MX repository; MX project notes, getting-started section 1). The Mesh copy is `packages/compiler/test/fixtures/post.mx`; it has 31 tag occurrences and 25 distinct names. The 26th contract, `destroy`, was added in round 2 of the review of PR #1. Several rules were inferred by the developer in PR #1 or required in four rounds of review of PR #1. The operator never ruled on them.
 
@@ -41,6 +41,8 @@ Sources used on this page: [Ash features](../research/ash-features.md) (cited by
 
 ## 3. The mapping
 
+The "On main today" column and its line numbers describe the contracts before the alignment (`a3b52f4`). "On main (aligned)" means the Mesh name column is now what the contracts declare, with a positive and a negative test.
+
 ### 3.1 Resource level
 
 | # | Ash section / entity / option (default, type) | Source | Mesh name | On main today | Status |
@@ -64,13 +66,13 @@ Sources used on this page: [Ash features](../research/ash-features.md) (cited by
 | # | Ash section / entity / option (default, type) | Source | Mesh name | On main today | Status |
 |---|---|---|---|---|---|
 | 14 | section `attributes` | [Ash features](../research/ash-features.md) §1.1 row 1 | `attributes` | `contracts.ts:330-337`; required child of `resource` (320) | on main |
-| 15 | `uuid_primary_key name` (sets `writable? false`, `public? true`, `primary_key? true`; no `generated?`) | [Ash features](../research/ash-features.md) §2.3 | `uuid-primary-key="id"` | `uuid-primary-key`, `contracts.ts:338-342` | on main (kebab-case form is today's) |
+| 15 | `uuid_primary_key name` (sets `writable? false`, `public? true`, `primary_key? true`; no `generated?`) | [Ash features](../research/ash-features.md) §2.3 | `uuid-primary-key="id"` | `uuid-primary-key`, `contracts.ts:338-342` | on main (aligned) |
 | 16 | `uuid_v7_primary_key` | [Ash features](../research/ash-features.md) §2.3 | `uuid-v7-primary-key` | none | not in roadmap |
 | 17 | `integer_primary_key` (type integer, `generated? true`) | [Ash features](../research/ash-features.md) §2.3 | `integer-primary-key` | none | not in roadmap |
-| 18 | `create_timestamp name` (`writable? false`, `match_other_defaults? true`, `allow_nil? false`), used as `create_timestamp :inserted_at` | [Ash features](../research/ash-features.md) §2.3, §12.1 | `create-timestamp="insertedAt"` | `timestamps`, `contracts.ts:355` | on main (replace) |
-| 19 | `update_timestamp name` (same options), used as `update_timestamp :updated_at` | [Ash features](../research/ash-features.md) §2.3, §12.1 | `update-timestamp="updatedAt"` | `timestamps`, `contracts.ts:355` | on main (replace) |
+| 18 | `create_timestamp name` (`writable? false`, `match_other_defaults? true`, `allow_nil? false`), used as `create_timestamp :inserted_at` | [Ash features](../research/ash-features.md) §2.3, §12.1 | `create-timestamp="insertedAt"` | `timestamps`, `contracts.ts:355` | on main (aligned): `create-timestamp` |
+| 19 | `update_timestamp name` (same options), used as `update_timestamp :updated_at` | [Ash features](../research/ash-features.md) §2.3, §12.1 | `update-timestamp="updatedAt"` | `timestamps`, `contracts.ts:355` | on main (aligned): `update-timestamp` |
 | 20 | `attribute name, type` | [Ash features](../research/ash-features.md) §2.2, §12 | `attribute="subject" type="string"` | `contracts.ts:343-354` | on main |
-| 21 | option `allow_nil?` (default `true`) | [Ash features](../research/ash-features.md) §2.2 | `allow-nil=false` | `required` flag, `contracts.ts:348` (opposite polarity) | on main (replace) |
+| 21 | option `allow_nil?` (default `true`) | [Ash features](../research/ash-features.md) §2.2 | `allow-nil=false` | `required` flag, `contracts.ts:348` (opposite polarity) | on main (aligned): `allow-nil=false` |
 | 22 | option `public?` (default `false`) | [Ash features](../research/ash-features.md) §2.2 | `public` | `public` flag, `contracts.ts:349` | on main; recorded in the model as Ash records it, nothing in v1 reads it ([roadmap](./roadmap.md) M1; [ADR-0035](../decisions/0035-meaning-of-public.md)) |
 | 23 | option `default` (no default; "Value set on create") | [Ash features](../research/ash-features.md) §2.2 | `default` | `default: { literalOnly: true }`, `contracts.ts:351` | on main |
 | 24 | option `update_default` | [Ash features](../research/ash-features.md) §2.2 | `update-default` | none | not in roadmap |
@@ -80,8 +82,8 @@ Sources used on this page: [Ash features](../research/ash-features.md) (cited by
 | 28 | options `select_by_default?` (true), `always_select?` (false) | [Ash features](../research/ash-features.md) §2.2 | `select-by-default`, `always-select` | none | not in roadmap |
 | 29 | options `filterable?` (true, or `:simple_equality`), `sortable?` (true), `match_other_defaults?` (false) | [Ash features](../research/ash-features.md) §2.2 | `filterable`, `sortable`, `match-other-defaults` | none | not in roadmap |
 | 30 | types `string`, `boolean`, `uuid`, `datetime` (short names in the registry) | [Ash features](../research/ash-features.md) §2.1 | `type="string"` etc. | `ATTRIBUTE_TYPES`, `contracts.ts:43-50` | on main |
-| 31 | types `integer`, `float` | [Ash features](../research/ash-features.md) §2.1 | `type="integer"`, `type="float"` | `number`, `contracts.ts:45` | on main as `number` (replace) |
-| 32 | enumerated values: `:atom` with `constraints [one_of: [...]]` ([Ash features](../research/ash-features.md) §12, get-started 236-261), or a module using `Ash.Type.Enum` (declares `values/0`, [Ash features](../research/ash-features.md) §2.1) | [Ash features](../research/ash-features.md) §2.1, §12 | `type="atom" constraints={ one_of: ["draft", "published"] }` | `type="enum" values=[...]`, `contracts.ts:47, 348` | on main (replace) |
+| 31 | types `integer`, `float` | [Ash features](../research/ash-features.md) §2.1 | `type="integer"`, `type="float"` | `number`, `contracts.ts:45` | on main (aligned): `integer`, `float` |
+| 32 | enumerated values: `:atom` with `constraints [one_of: [...]]` ([Ash features](../research/ash-features.md) §12, get-started 236-261), or a module using `Ash.Type.Enum` (declares `values/0`, [Ash features](../research/ash-features.md) §2.1) | [Ash features](../research/ash-features.md) §2.1, §12 | `type="atom" constraints={ one_of: ["draft", "published"] }` | `type="enum" values=[...]`, `contracts.ts:47, 348` | on main (aligned): `type="atom"` with `constraints={ one_of: [...] }` |
 | 33 | the other built-in types (`decimal`, `date`, `map`, `utc_datetime`, `ci_string`, and so on; 31 short names) | [Ash features](../research/ash-features.md) §2.1 | the Ash names in kebab-case | none | not in roadmap |
 | 34 | `{:array, type}` composite | [Ash features](../research/ash-features.md) §2.1 | none | none | not in roadmap |
 | 35 | `NewType`, embedded resources | [Ash features](../research/ash-features.md) §2.1, §2.4 | none | none | not planned ([roadmap](./roadmap.md) section 6) |
@@ -108,14 +110,14 @@ Sources used on this page: [Ash features](../research/ash-features.md) (cited by
 | # | Ash section / entity / option (default, type) | Source | Mesh name | On main today | Status |
 |---|---|---|---|---|---|
 | 48 | section `actions` | [Ash features](../research/ash-features.md) §1.1 row 3 | `actions` | `contracts.ts:375-384` | on main |
-| 49 | section option `defaults` (list of action types; "creates a simple action of each specified type, with the same name as the type") | [Ash features](../research/ash-features.md) §1.2 | attribute of `actions`: `actions defaults=["read", "destroy"]` | child tag `defaults`, `contracts.ts:378, 385-389` | on main (move) |
+| 49 | section option `defaults` (list of action types; "creates a simple action of each specified type, with the same name as the type") | [Ash features](../research/ash-features.md) §1.2 | attribute of `actions`: `actions defaults=["read", "destroy"]` | child tag `defaults`, `contracts.ts:378, 385-389` | on main (aligned): attribute of `actions` |
 | 50 | section option `default_accept` (Ash 3 default: no attributes accepted) | [Ash features](../research/ash-features.md) §1.2 | `default-accept` on `actions` | none | not in roadmap |
 | 51 | `create name` | [Ash features](../research/ash-features.md) §4.1 | `create="open"` | `contracts.ts:390-395` | on main |
 | 52 | `update name` | [Ash features](../research/ash-features.md) §4.1 | `update="close"` | `contracts.ts:396-401` | on main |
 | 53 | `destroy name` | [Ash features](../research/ash-features.md) §4.1 | `destroy="archive"` | `contracts.ts:402-407` (not in the fixture; added in review of PR #1, round 2, item 6) | on main |
 | 54 | `read name` | [Ash features](../research/ash-features.md) §4.1 | `read="published"` | `contracts.ts:408-413` | on main |
 | 55 | generic `action` (`returns`, `run`, `constraints`) | [Ash features](../research/ash-features.md) §4.1 | none | none | not planned ([roadmap](./roadmap.md) section 6) |
-| 56 | option `accept` (create, update, destroy only; `:*` = all public attributes; `accept []` is valid) | [Ash features](../research/ash-features.md) §4.1, §12 (get-started 317-335) | `accept=["title", "body"]` | create (392), update (398); none on destroy (404) | on main (add destroy) |
+| 56 | option `accept` (create, update, destroy only; `:*` = all public attributes; `accept []` is valid) | [Ash features](../research/ash-features.md) §4.1, §12 (get-started 317-335) | `accept=["title", "body"]` | create (392), update (398); none on destroy (404) | on main (aligned): `accept` on create, update and destroy |
 | 57 | option `primary?` (`defaults` are primary unless one exists) | [Ash features](../research/ash-features.md) §1.2, §4.1 | `primary` | none | not in roadmap |
 | 58 | options `description`, `public?`, `skip_unknown_inputs`, `touches_resources`, `transaction?` (reads default false, writes true) | [Ash features](../research/ash-features.md) §4.1 | the Ash names in kebab-case | none | not in roadmap |
 | 59 | option `require_atomic?` (update and destroy, default `true`; `require_atomic? false` appears in [Ash features](../research/ash-features.md) §12.1) | [Ash features](../research/ash-features.md) §4.9, §12.1 | `require-atomic=false` | none | M5 ([roadmap](./roadmap.md) M5 already uses Ash's name; it is required on an action with an opaque change or one that reads the stored record) |
@@ -126,7 +128,7 @@ Sources used on this page: [Ash features](../research/ash-features.md) (cited by
 | 64 | destroy option `soft?` | [Ash features](../research/ash-features.md) §4.13 | `soft` | none | not in roadmap |
 | 65 | options `error_handler`, `notifiers`, `action_select`, `require_attributes`, `allow_nil_input`, `delay_global_validations?`, `skip_global_validations?`, `multitenancy` | [Ash features](../research/ash-features.md) §4.1 | the Ash names in kebab-case | none | not in roadmap (notifiers: outbox, after v1) |
 | 66 | nested `change` entity (24 built-ins such as `set_attribute`, `relate_actor`; a module; `change {Module, opts}`) | [Ash features](../research/ash-features.md) §4.3, §2.5, §12 | `change=` taking a call or an arrow function | `contracts.ts:414-417`; in create (393), update (399), destroy (405) | on main; the expression form is deviation D16 |
-| 67 | nested `validate` entity (24 built-ins; `message` inside the block); allowed in create, update, destroy, read and generic | [Ash features](../research/ash-features.md) §4.4, §1.2, §12 | `validate=` with `message=` | `contracts.ts:418-422`; in update (399) and destroy (405) only | on main (add create, read) |
+| 67 | nested `validate` entity (24 built-ins; `message` inside the block); allowed in create, update, destroy, read and generic | [Ash features](../research/ash-features.md) §4.4, §1.2, §12 | `validate=` with `message=` | `contracts.ts:418-422`; in update (399) and destroy (405) only | on main (aligned): in create, update, destroy and read |
 | 68 | validation options: resource-level `validate` has `where`, `on`, `only_when_valid?`, `message`, `description`, `before_action?`, `always_atomic?`; the action-level options are not in the research | [Ash features](../research/ash-features.md) §9 | `where`, `on`, `only-when-valid`, `message`, `description`, `before-action`, `always-atomic` | only `message` (`contracts.ts:420`) | `message` on main; `always_atomic?` relates to the M5 protocol; the rest not in roadmap; G7 |
 | 69 | nested `argument name, type`; options `description`, `constraints`, `allow_nil?`, `public?`, `sensitive?`, `default` (defaults of these: not in the research) | [Ash features](../research/ash-features.md) §4.2, §1.2 | `argument="title" type="string"` | none | M5 |
 | 70 | nested `prepare` on read (built-ins: `set_context`, `build`, `before_action`, `after_action`; "preparations take no action-input arguments, they rewrite a query") | [Ash features](../research/ash-features.md) §4.5, §1.2 | `prepare=` | none | M5 |
@@ -160,7 +162,7 @@ Sources used on this page: [Ash features](../research/ash-features.md) (cited by
 | # | Ash section / entity / option (default, type) | Source | Mesh name | On main today | Status |
 |---|---|---|---|---|---|
 | 85 | section `aggregates` | [Ash features](../research/ash-features.md) §1.1 row 11 | `aggregates` | `contracts.ts:469-472` | on main |
-| 86 | `count name, relationship_path` (`count :assigned_ticket_count, :reported_tickets`; the name `relationship_path` for the second positional is this page's inference, Section 2) | [Ash features](../research/ash-features.md) §5.2 | `count="comment_count" relationship-path="comments"` | `count`, attribute `relationship`, `contracts.ts:473-477` | on main (rename attribute) |
+| 86 | `count name, relationship_path` (`count :assigned_ticket_count, :reported_tickets`; the name `relationship_path` for the second positional is this page's inference, Section 2) | [Ash features](../research/ash-features.md) §5.2 | `count="comment_count" relationship-path="comments"` | `count`, attribute `relationship`, `contracts.ts:473-477` | on main (aligned): `relationship-path` |
 | 87 | kinds `exists`, `first`, `sum`, `list`, `max`, `min`, `avg`, `custom` (example `sum :duration_seconds, :tracks, :duration_seconds`) | [Ash features](../research/ash-features.md) §5.2, §12.1 | the Ash names (kebab-case), with `field` | none | M7 ("`count` and the other aggregates"; which ones is not stated) |
 | 88 | shared options `relationship_path`, `read_action`, `filter`, `description`, `default`, `public?`, `filterable?`, `sortable?`, `sensitive?`, `authorize?`, `multitenancy`; kind options `field` (all but `exists`), `uniq?`, `include_nil?`, `sort`, `join_filter` | [Ash features](../research/ash-features.md) §5.2 | the Ash names in kebab-case | none | not in roadmap |
 
@@ -169,7 +171,7 @@ Sources used on this page: [Ash features](../research/ash-features.md) (cited by
 | # | Ash section / entity / option (default, type) | Source | Mesh name | On main today | Status |
 |---|---|---|---|---|---|
 | 89 | section `policies`; option `default_access_type` (`:filter`) | [Ash features](../research/ash-features.md) §1.4, §6.1-6.2 | `policies` | `contracts.ts:433-436` | on main; moves to `ext-policies` in M8 ([roadmap](./roadmap.md) M8) |
-| 90 | `policy condition do ... end` (options `description`, `access_type`, `condition`, `error_message`; the condition is "a check or list of checks") | [Ash features](../research/ash-features.md) §6.1 | `policy=action_type("read")`; several: `policy=[action_type("read"), ...]` | `policy action-type="read"` / `policy action="publish"`, `contracts.ts:437-445` | on main (change form, D22) |
+| 90 | `policy condition do ... end` (options `description`, `access_type`, `condition`, `error_message`; the condition is "a check or list of checks") | [Ash features](../research/ash-features.md) §6.1 | `policy=action_type("read")`; several: `policy=[action_type("read"), ...]` | `policy action-type="read"` / `policy action="publish"`, `contracts.ts:437-445` | on main (aligned): a check call or a list, D22 |
 | 91 | built-in checks (22), among them `action(:name)` and `action_type(:read)` or `action_type([:update, :destroy])`, `always`, `actor_attribute_equals`, `relates_to_actor_via` | [Ash features](../research/ash-features.md) §6.3, §12.1 | `action("publish")`, `action_type("read")` (call names, JavaScript identifiers) | `action`, `action-type` attributes (440-441) | `action` and `action_type` on main; the other 20 not in roadmap |
 | 92 | `authorize_if check` | [Ash features](../research/ash-features.md) §1.4, §6.1 | `authorize-if=` | `authorize-if`, `contracts.ts:446-449` | on main |
 | 93 | `forbid_if check` | [Ash features](../research/ash-features.md) §1.4, §6.1 | `forbid-if=` | none | M8 |
@@ -208,33 +210,33 @@ That is 110 rows.
 
 | # | Mesh now | Ash | Alignment |
 |---|---|---|---|
-| D1 | kebab-case names (`uuid-primary-key`, `belongs-to`, `authorize-if`, `action-type`) and booleans without `?` (`public`, `required`) against Ash's snake_case and `?` | `uuid_primary_key`, `belongs_to`, `authorize_if`, `action_type`, `allow_nil?`, `public?` | Not a deviation: the naming rule of Section 0 maps one to the other. Only the names that differ by more than the rule (`required` against `allow-nil`, `timestamps`, `number`, `enum`) are listed below. |
+| D1 | kebab-case names (`uuid-primary-key`, `belongs-to`, `authorize-if`, `action-type`) and booleans without `?` (`public`, `required`) against Ash's snake_case and `?` | `uuid_primary_key`, `belongs_to`, `authorize_if`, `action_type`, `allow_nil?`, `public?` | Not a deviation: the naming rule of Section 0 maps one to the other. Only the names that differ by more than the rule (`required` against `allow-nil`, `timestamps`, `number`, `enum`) are listed below. **Done:** the names in `contracts.ts` follow the rule; a test checks every tag and attribute name. |
 | D3 | `attribute="title" type="string"`: name as the default attribute, `type` as a named attribute | `attribute :subject, :string` ([Ash features](../research/ash-features.md) §12) | Aligned in the only way MX holds positionals (Section 2). |
 | D4 | `uuid-primary-key="id"` (338-342) | `uuid_primary_key :id`, with `writable? false`, `public? true` ([Ash features](../research/ash-features.md) §2.3) | The name follows the rule; the model applies the same defaults. |
-| D5 | one `timestamps` tag (355) | two entities, `create_timestamp name` and `update_timestamp name` ([Ash features](../research/ash-features.md) §2.3, §12.1). Whether Ash also has a combined entity: not in the research. | Align: replace with the two entities, each with an explicit name. |
-| D6 | `required` (348), a flag meaning "not null" | `allow_nil?`, default `true` ([Ash features](../research/ash-features.md) §2.2) | Align: replace with `allow-nil=false`. The default (nullable) is the same. |
-| D7 | `public` flag (349) | `public?`, default `false` ([Ash features](../research/ash-features.md) §2.2) | The name follows the rule. The roadmap already treats the meaning as Ash does: recorded, not read in v1 ([roadmap](./roadmap.md) M1; [ADR-0035](../decisions/0035-meaning-of-public.md)). |
-| D8 | type `number` (45) | `integer`, `float`, `decimal` ([Ash features](../research/ash-features.md) §2.1); no `number` | Align: replace `number` with `integer` and `float`. `decimal` is not in the roadmap. |
-| D9 | type `enum` with `values` (47, 348); `calculate.type` excludes it (57, 459) | an atom with `constraints [one_of: [...]]` ([Ash features](../research/ash-features.md) §12), or an `Ash.Type.Enum` module with `values/0` ([Ash features](../research/ash-features.md) §2.1) | Align: `type="atom"` with `constraints={ one_of: [...] }`. MX can express it: a contract attribute may omit its `type` (`contracts.ts:351` does), and `analyze` reads the object literal's Babel node. Whether the untyped attribute may keep `literalOnly` for an object literal is not checked; if not, drop `literalOnly` for `constraints` and check it in `analyze`. The `calculate.type` list (R9) then excludes `atom`. |
-| D10 | `belongs-to="author" resource="user"` (366) | `belongs_to :name, Destination`, the destination being a module ([Ash features](../research/ash-features.md) §12) | Aligned: `resource=` is the named attribute for Ash's second positional (Section 2, inferred name). |
+| D5 | one `timestamps` tag (355) | two entities, `create_timestamp name` and `update_timestamp name` ([Ash features](../research/ash-features.md) §2.3, §12.1). Whether Ash also has a combined entity: not in the research. | Align: replace with the two entities, each with an explicit name. **Done:** `create-timestamp` and `update-timestamp`, each optional and at most once, each with a required name. |
+| D6 | `required` (348), a flag meaning "not null" | `allow_nil?`, default `true` ([Ash features](../research/ash-features.md) §2.2) | Align: replace with `allow-nil=false`. The default (nullable) is the same. **Done:** `allow-nil=false`; `required` is gone. |
+| D7 | `public` flag (349) | `public?`, default `false` ([Ash features](../research/ash-features.md) §2.2) | The name follows the rule. The roadmap already treats the meaning as Ash does: recorded, not read in v1 ([roadmap](./roadmap.md) M1; [ADR-0035](../decisions/0035-meaning-of-public.md)). **Done:** `public` is unchanged. |
+| D8 | type `number` (45) | `integer`, `float`, `decimal` ([Ash features](../research/ash-features.md) §2.1); no `number` | Align: replace `number` with `integer` and `float`. `decimal` is not in the roadmap. **Done:** `integer` and `float`; `number` is gone. |
+| D9 | type `enum` with `values` (47, 348); `calculate.type` excludes it (57, 459) | an atom with `constraints [one_of: [...]]` ([Ash features](../research/ash-features.md) §12), or an `Ash.Type.Enum` module with `values/0` ([Ash features](../research/ash-features.md) §2.1) | Align: `type="atom"` with `constraints={ one_of: [...] }`. MX can express it: a contract attribute may omit its `type` (`contracts.ts:351` does), and `analyze` reads the object literal's Babel node. Whether the untyped attribute may keep `literalOnly` for an object literal is not checked; if not, drop `literalOnly` for `constraints` and check it in `analyze`. The `calculate.type` list (R9) then excludes `atom`. **Done:** `type="atom"` with `constraints={ one_of: [...] }`; `values` and `enum` are gone. An untyped contract attribute keeps `literalOnly` for an object literal: the negative fixture `literal-only-constraints` shows an identifier is rejected and every positive fixture with `constraints` parses (Appendix B). `analyze` reads the object literal's Babel node, rejects a `constraints` that is not an object literal, has no `one_of` or has an unknown constraint, and rejects `one_of` that is not a list of non-blank, non-repeated strings, at least one. |
+| D10 | `belongs-to="author" resource="user"` (366) | `belongs_to :name, Destination`, the destination being a module ([Ash features](../research/ash-features.md) §12) | Aligned: `resource=` is the named attribute for Ash's second positional (Section 2, inferred name). **Done:** `resource=` stays: the lookup G9 that names Ash's own positional (`destination`) is not yet fact-checked (Section 6). |
 | D11 | `has_one` absent (358-362); [roadmap](./roadmap.md) M7 adds it | `has_one` ([Ash features](../research/ash-features.md) §3) | Align: add `has-one`, same shape as `has-many`, in M7. |
 | D12 | foreign key: [roadmap](./roadmap.md) M7 says a `belongs-to` adds its foreign-key attribute (the fixture's `authorId`) | `belongs_to :representative` creates `representative_id` ([Ash features](../research/ash-features.md) §12, get-started 561-567) | Not vocabulary: the generated name is a value (Section 0). Ash's rule is `<name>_id`; the roadmap uses `authorId`. Which one Mesh generates is settled when M7 is designed. |
-| D13 | `defaults=[...]` is a child tag of `actions` (378, 385-389) | an option of the `actions` section ([Ash features](../research/ash-features.md) §1.2) | Align: an attribute of `actions`; remove the `defaults` tag. |
-| D14 | no `accept` on `destroy` (404) | `accept` on create, update and destroy ([Ash features](../research/ash-features.md) §4.1) | Align: add `accept` to `destroy`. |
-| D15 | `validate` allowed in update and destroy only (399, 405, 419); none in create (393) or read (411) | `validate` nested in create, read, update, destroy and generic ([Ash features](../research/ash-features.md) §1.2) | Align: allow `validate` in create and read. The review of PR #1 records no reason for the omission. |
+| D13 | `defaults=[...]` is a child tag of `actions` (378, 385-389) | an option of the `actions` section ([Ash features](../research/ash-features.md) §1.2) | Align: an attribute of `actions`; remove the `defaults` tag. **Done:** `defaults` is an attribute of `actions`; the `defaults` tag is gone. |
+| D14 | no `accept` on `destroy` (404) | `accept` on create, update and destroy ([Ash features](../research/ash-features.md) §4.1) | Align: add `accept` to `destroy`. **Done:** `accept` on `destroy`, checked like the others. |
+| D15 | `validate` allowed in update and destroy only (399, 405, 419); none in create (393) or read (411) | `validate` nested in create, read, update, destroy and generic ([Ash features](../research/ash-features.md) §1.2) | Align: allow `validate` in create and read. The review of PR #1 records no reason for the omission. **Done:** `validate` allowed in `create` and `read`. |
 | D16 | `change`, `validate`, `filter`, `authorize-if` take an arrow function with destructured parameters, `({ post, actor }) => ...` (78, 415-416, 419, 424, 447); the roadmap converts arrow functions ([roadmap](./roadmap.md) M4) | `change`/`validate` take a built-in call (24 changes, 24 validations, [Ash features](../research/ash-features.md) §4.3-4.4), a module, or `{Module, opts}` ([Ash features](../research/ash-features.md) §12); `filter`, calculations and policy checks take `expr(...)` ([Ash features](../research/ash-features.md) §5.1, §6.1) | Align in form where the research documents the helper: built-in calls with Ash's snake_case names as JavaScript identifiers (`set_attribute(...)`). MX can express it: a call is accepted by `function` attributes (MX project notes, contract-extensions §5, table, last row). The form of a translatable expression (arrow function with declared parameters, or an `expr(...)` call around one) is designed in M4 (D37); an arrow function stays the form of code that is not a built-in (Ash's custom change module, [Ash features](../research/ash-features.md) §2.5). Because [roadmap](./roadmap.md) M4 and M5 are written around arrow functions, Section 7 keeps arrow functions until then. Roadmap edits: Section 4.3. |
 | D17 | `sort=["-insertedAt"]` as a child of `read` (411, 427-431) | no `sort` entity on a read action ([Ash features](../research/ash-features.md) §1.2) | Open: G1. |
 | D18 | pagination named only as "new vocabulary" ([roadmap](./roadmap.md) M3) | nested `pagination` with 9 options ([Ash features](../research/ash-features.md) §4.11) | Align: a `pagination` child of `read` with Ash's option names; M3 implements `offset` and `keyset`. |
 | D19 | preparations ([roadmap](./roadmap.md) M5): no name given | nested `prepare` on read ([Ash features](../research/ash-features.md) §1.2, §4.5) | Align: a `prepare` child of `read`. |
 | D20 | arguments ([roadmap](./roadmap.md) M5): no shape given | `argument name, type` with options ([Ash features](../research/ash-features.md) §4.2) | Align: an `argument` child of every action. |
 | D21 | [roadmap](./roadmap.md) M5: an action with an opaque change, or a change or validation that reads the stored record, is not atomic and must say Ash's `require_atomic?` set to false | `require_atomic?`, default `true`, update and destroy ([Ash features](../research/ash-features.md) §4.9) | Already aligned in the roadmap; spelled `require-atomic=false` (Section 0). The contracts add it in M5. The aligned `post.mx` carries it on `publish`, which validates `post.title`. |
-| D22 | `policy` takes `action` or `action-type` as string attributes (440-441) | the policy's condition is a check call, `action_type(:read)`, `action(:name)`, "a check or list of checks" ([Ash features](../research/ash-features.md) §6.1, §6.3) | Align: `policy=action_type("read")`, a list for several (call names are JavaScript identifiers, Section 0). MX can express it: the default attribute may be untyped and take a call (MX project notes, contract-extensions §5; `contracts.ts:351` for an untyped attribute); `analyze` reads the call. |
-| D23 | exactly one of `action`, `action-type`; both is an error (`analyzePolicy`, 233-244) | conditions combine as a list ([Ash features](../research/ash-features.md) §6.1) | Align: the "not both" rule goes; a list of checks replaces it (D22). |
+| D22 | `policy` takes `action` or `action-type` as string attributes (440-441) | the policy's condition is a check call, `action_type(:read)`, `action(:name)`, "a check or list of checks" ([Ash features](../research/ash-features.md) §6.1, §6.3) | Align: `policy=action_type("read")`, a list for several (call names are JavaScript identifiers, Section 0). MX can express it: the default attribute may be untyped and take a call (MX project notes, contract-extensions §5; `contracts.ts:351` for an untyped attribute); `analyze` reads the call. **Done:** `policy=action_type("read")`, `policy=action("publish")`, or a list. `analyze` accepts the two checks on main (row 91), each with one string argument; an unknown check, a non-call, a call with another argument count or type, and an empty list are errors. |
+| D23 | exactly one of `action`, `action-type`; both is an error (`analyzePolicy`, 233-244) | conditions combine as a list ([Ash features](../research/ash-features.md) §6.1) | Align: the "not both" rule goes; a list of checks replaces it (D22). **Done:** the "not both" rule is gone; a list of checks replaces it. |
 | D24 | `authorize-if` required, at least one, in every `policy` (443) | a policy's entities are four check forms ([Ash features](../research/ash-features.md) §6.1); whether a policy may have zero checks is not in the research (G8) | Align at M8: "at least one check of any of the four kinds" as an `analyze` rule. Until then keep. |
 | D25 | `forbid-if` ([roadmap](./roadmap.md) M8) | `forbid_if` ([Ash features](../research/ash-features.md) §6.1) | The name follows the rule. `authorize-unless` and `forbid-unless` are not in the roadmap. |
 | D26 | `action-type` limited to create, read, update, destroy (`ACTION_TYPES`, 40) | five action types including generic `action` ([Ash features](../research/ash-features.md) §4.1) | Align when generic actions arrive (not planned, [roadmap](./roadmap.md) section 6). |
 | D27 | `calculate="excerpt" type="string"` with a child tag `value` holding the body (455-467; fixture lines 36-39) | `calculate :name, :type, expr(...)` in one line ([Ash features](../research/ash-features.md) §5.1) | Open: G2. |
-| D28 | `count` with attribute `relationship` (475) | `count name, relationship_path` ([Ash features](../research/ash-features.md) §5.2; the positional's name is inferred, Section 2) | Align: rename the attribute to `relationship-path`. |
+| D28 | `count` with attribute `relationship` (475) | `count name, relationship_path` ([Ash features](../research/ash-features.md) §5.2; the positional's name is inferred, Section 2) | Align: rename the attribute to `relationship-path`. **Done:** `relationship-path`. |
 | D29 | only `count` (471-472); [roadmap](./roadmap.md) M7 says "`count` and the other aggregates" | 9 kinds ([Ash features](../research/ash-features.md) §5.2) | Align: M7 names the kinds it implements from Ash's list, with `field` on all but `exists`. |
 | D30 | `table` on `resource` (317) | `table` in the data layer's section (rows 3-4) | Exception X1. (`domain` is aligned: row 1.) |
 | D31 | `attributes` required in a `resource` (320); no primary-key rule | `ValidatePrimaryKey` and `VerifyPrimaryKeyPresent` verifiers exist ([Ash DSL and extensions](../research/ash-dsl-and-extensions.md) §2.7); when the key is required is not in the research | Align: a build verifier "a primary key is present" in M1 ([roadmap](./roadmap.md) M2 selects by key). |
@@ -252,20 +254,20 @@ Each row is a rule in `contracts.ts` that is not a name. "Ash" is what the resea
 
 | # | Rule and origin | Mesh now | Ash | Alignment |
 |---|---|---|---|---|
-| R1 | `values` required for `enum`, and rejected for any other type. Origin: "required" from MX project notes, contract-extensions §10; the reverse is the developer's inference | `analyzeAttribute`, 178-186 | `constraints` depend on the type ([Ash features](../research/ash-features.md) §2.4); whether an inapplicable one is an error: not in the research | Replaced by D9: `constraints` allowed only for types that accept them. |
-| R2 | `policy` exactly one of `action`, `action-type`. Origin: "one of" in MX project notes, contract-extensions §10; "exactly one" is the developer's | 233-244 | see D23 | Align (D23). |
-| R3 | closed type list of six and closed action list of four. Origin: the developer ("the notes say 'fixed list' but give no list") | 43-50, 40 | 31 short names plus custom types ([Ash features](../research/ash-features.md) §2.1) | Align (D8, D26). |
+| R1 | `values` required for `enum`, and rejected for any other type. Origin: "required" from MX project notes, contract-extensions §10; the reverse is the developer's inference | `analyzeAttribute`, 178-186 | `constraints` depend on the type ([Ash features](../research/ash-features.md) §2.4); whether an inapplicable one is an error: not in the research | Replaced by D9: `constraints` allowed only for types that accept them. **Done:** `analyzeAttribute` checks `constraints` by type. |
+| R2 | `policy` exactly one of `action`, `action-type`. Origin: "one of" in MX project notes, contract-extensions §10; "exactly one" is the developer's | 233-244 | see D23 | Align (D23). **Done:** D23. |
+| R3 | closed type list of six and closed action list of four. Origin: the developer ("the notes say 'fixed list' but give no list") | 43-50, 40 | 31 short names plus custom types ([Ash features](../research/ash-features.md) §2.1) | Align (D8, D26). **Done:** the type list (D8). The action list stays four (D26). |
 | R4 | `authorize-if` required in `policy`; child `value` required in `calculate`. Origin: the developer | 443, 461 | not in the research | Keep for now; D24 and G2 revisit them. |
 | R5 | `table` optional on `resource`. Origin: the developer, from MX project notes, contract-extensions / the MX data-target note | 317 | not in the research | Keep; X1. |
 | R6 | `accept` allowed on `update`; `change` and `validate` repeatable on `update`. Origin: the developer | 398-399 | `accept` on update ([Ash features](../research/ash-features.md) §4.1) | Already consistent. |
 | R7 | every contract closed: `closed()` fills `attributes`, `attributeTags`, `children` (leaf tags take no children, no attribute tags). Origin: review of PR #1, round 1 correction and round 2 items 1, 3, 4 | 62-64; header 18-21 | not in the research | Keep: an MX-contract rule with no Ash counterpart; M6 composes contracts for extensions ([ADR-0021](../decisions/0021-composed-contracts-module.md)). |
 | R8 | every non-function attribute is `literalOnly`, so `resource=post` is an error. Origin: review of PR #1, round 2 item 2 | 18-23, 66-77 | not in the research | Keep: MX's static tree cannot evaluate an identifier. |
-| R9 | `calculate.type` excludes `enum`. Origin: review of PR #1, round 2 item 5 | 57, 459 | not in the research | Keep; follows D9. |
-| R10 | `destroy` contract with `change` and `validate`. Origin: review of PR #1, round 2 item 6 | 402-407 | destroy is an Ash action type ([Ash features](../research/ash-features.md) §4.1) | Align (adds `accept`, D14). |
+| R9 | `calculate.type` excludes `enum`. Origin: review of PR #1, round 2 item 5 | 57, 459 | not in the research | Keep; follows D9. **Done:** `calculate.type` excludes `atom`. |
+| R10 | `destroy` contract with `change` and `validate`. Origin: review of PR #1, round 2 item 6 | 402-407 | destroy is an Ash action type ([Ash features](../research/ash-features.md) §4.1) | Align (adds `accept`, D14). **Done:** `destroy` has `accept`. |
 | R11 | one `resource` per file, not in the contracts (MX has no root cardinality); enforced by the model. Origin: review of PR #1, round 2 item 7, round 3 item 2 | header 34-36 | "one module per resource" ([research synthesis](../research/synthesis.md) §1, first paragraph) | Already consistent. |
-| R12 | `defaults` items must be action types, no repeats, no blanks, not empty. Origin: rounds 2 (item 8), 3 (items 3, 5), 4 (item 2) | 288-307, 267-276 | `defaults` names action types ([Ash features](../research/ash-features.md) §1.2) | Align the type check; keep the rest (not in the research). |
-| R13 | list items: no blank, no repeats, in `values`, `defaults`, `accept`, `sort`; `sort=[]`, `defaults=[]` and `values=[]` rejected, `accept=[]` accepted | 247-264, 266-276, 188-190 | `accept []` is valid in Ash ([Ash features](../research/ash-features.md) §12, get-started 317-335); the rest not in the research | Keep. |
-| R14 | `default`: a string, number or boolean literal; negative numbers read; `null`, arrays, objects rejected; checked against the type; an enum default must be in `values`. Origin: round 2 item 9, round 3 item 1 | 106-124, 193-224 | `default` is "Value set on create" ([Ash features](../research/ash-features.md) §2.2); whether it can be a function: not in the research (G5) | Keep; the enum check follows D9. |
+| R12 | `defaults` items must be action types, no repeats, no blanks, not empty. Origin: rounds 2 (item 8), 3 (items 3, 5), 4 (item 2) | 288-307, 267-276 | `defaults` names action types ([Ash features](../research/ash-features.md) §1.2) | Align the type check; keep the rest (not in the research). **Done:** the `defaults` type check is unchanged; it reads the `actions` attribute. |
+| R13 | list items: no blank, no repeats, in `one_of` (was `values`), `defaults`, `accept`, `sort`; `sort=[]`, `defaults=[]` and `values=[]` rejected, `accept=[]` accepted | 247-264, 266-276, 188-190 | `accept []` is valid in Ash ([Ash features](../research/ash-features.md) §12, get-started 317-335); the rest not in the research | Keep. |
+| R14 | `default`: a string, number or boolean literal; negative numbers read; `null`, arrays, objects rejected; checked against the type; an atom default must be in `one_of`. Origin: round 2 item 9, round 3 item 1 | 106-124, 193-224 | `default` is "Value set on create" ([Ash features](../research/ash-features.md) §2.2); whether it can be a function: not in the research (G5) | Keep; the enum check follows D9. |
 | R15 | names may not be empty or whitespace; empty sections allowed; `validate` `message` may not be empty. Origin: round 2 item 10, round 3 item 4, round 4 item 3 | 146-159, 32-36, 421 | not in the research | Keep. |
 | R16 | unknown tags rejected at any depth (`unknownTags: "reject"`). Origin: PR #2 (https://github.com/svallory/mesh/pull/2), MX `e65707a0` (MX project notes, updates) | tests | not in the research | Keep. |
 
@@ -297,6 +299,8 @@ Exceptions removed by the test: names with `_` and `?` (answered by the MX maint
 
 These are gaps in the research, not questions for the operator. Each needs a lookup in the Ash source or documentation; the alignment follows the answer.
 
+**State of the lookups (2026-10-04).** Answers for G1 to G9 were fetched from Ash's documentation and source (Ash 3.34.0). They are being fact-checked against hexdocs and the source, and only a confirmed fact (or the corrected fact of a partly right or wrong answer) is recorded on this page. Until the check is back, every gap below stays open, no row or deviation depends on an unchecked answer, and the inferred positional names of Section 2 stay as they are (`resource=` on `belongs-to` and `has-many`). When the check arrives, a confirmed G9 is expected to rename `resource=` to Ash's own `destination=` on both tags (D10, rows 37 and 38); no other change is pending.
+
 | # | What must be looked up | Where it bites |
 |---|---|---|
 | G1 | How a read action is sorted in Ash: the options of the `build` preparation ([Ash features](../research/ash-features.md) §4.5 names it only), and the string form of sort directions | `sort` on `read` (D17; M3) |
@@ -311,7 +315,7 @@ These are gaps in the research, not questions for the operator. Each needs a loo
 
 ## 7. The fixture after alignment
 
-This is `post.mx` with the alignments of Section 4 applied and the naming rule of Section 0 (tag and attribute names only). Expressions keep arrow functions with declared parameters until M4 is designed (D16, D37); the author-chosen names (`authorId`, `insertedAt`, `commentCount`) are values and stay as in the file on `main` (D33). The `publish` action carries `require-atomic=false`: it validates `post.title`, which reads the stored record, so in v1 it is not atomic and must say so ([roadmap](./roadmap.md) M5; D21). It is a proposal for the alignment part of M1, not a file on `main`. Concise syntax.
+This is `post.mx` as it is on main after the alignment: `packages/compiler/test/fixtures/post.mx`, and the identical `examples/blog/post.mx`. It carries every alignment of Section 4 that is on main and the naming rule of Section 0 (tag names and attribute names only). Expressions keep arrow functions with declared parameters until M4 is designed (D16, D37); the author-chosen names (`authorId`, `insertedAt`, `commentCount`) are values and stay as in the file before the alignment (D33). Concise syntax.
 
 ```
 resource="post" table="posts" domain="blog"
@@ -332,7 +336,7 @@ resource="post" table="posts" domain="blog"
     create="create" accept=["title", "body"]
       change=({ post, actor }) => { post.authorId = actor.id }
 
-    update="publish" require-atomic=false
+    update="publish"
       change=({ post }) => { post.state = "published" }
       validate=({ post }) => post.title.length > 0 message="title required"
 
@@ -358,99 +362,51 @@ resource="post" table="posts" domain="blog"
     count="commentCount" relationship-path="comments"
 ```
 
-`action_type("read")` and `action("publish")` are Ash's check calls `action_type(:read)` and `action(:publish)`. They sit inside an expression, so they are JavaScript identifiers and keep Ash's snake_case (Section 0). Differences from the file on `main` (Appendix A): `allow-nil`, `create-timestamp` and `update-timestamp`; `type="atom"` with `constraints`; `defaults` as an attribute of `actions`; the policy condition as a check call; `relationship-path`; `require-atomic=false` on `publish`.
+**One difference from the proposal this section first held.** The proposal put `require-atomic=false` on `publish` (D21). `require-atomic` is vocabulary for M5, not on main, so the fixture keeps the pre-alignment form of `publish` (no such attribute); the contracts reject the attribute until M5 adds it. `action_type("read")` and `action("publish")` are Ash's check calls `action_type(:read)` and `action(:publish)`. They sit inside an expression, so they are JavaScript identifiers and keep Ash's snake_case (Section 0). Differences from the file before the alignment (Appendix A): `allow-nil`, `create-timestamp` and `update-timestamp`; `type="atom"` with `constraints`; `defaults` as an attribute of `actions`; the policy condition as a check call; `relationship-path`.
 
 ---
 
-## Appendix A. The current vocabulary on `main`
+## Appendix A. The vocabulary on `main`, after the alignment
 
-Everything here is read from `contracts.ts` as it is. Helpers: `str()` is a string attribute with `literalOnly` (`contracts.ts:66-70`); `strings()` is an array of strings, `literalOnly` (71-76); `flag()` is a boolean, `literalOnly` (77); `code()` is a `function` attribute, required (78); `name()` is the default attribute `value`, a required literal string (80-82). `literalOnly` means the authored value must be a literal, not an identifier (header comment, 18-23). `closed()` makes every contract list its `attributes`, `attributeTags` and `children` explicitly; an empty record means none (61-64). Child cardinality: `{}` is optional and at most once; `{ repeatable: true }` any number; `{ required: true }` exactly once; both flags at least once (the negative fixtures of PR #1 cover missing required child, duplicate section, duplicate `timestamps`/`filter`, `policy` without `authorize-if`). Analyze helpers: `nonEmpty(...)` rejects an empty or whitespace string (146-159); `nonEmptyList` rejects `[]` (266-276); `listItems` rejects blank or repeated items (278-286, `checkItems` 246-264).
+Everything here is read from `contracts.ts` as it is now (26 tags). Line numbers are not given: the file is the authority, and the tests in `packages/compiler/test/contracts.test.ts` pin each row. Helpers: `str()` is a string attribute with `literalOnly`; `strings()` is an array of strings, `literalOnly`; `flag()` is a boolean, `literalOnly`; `code()` is a `function` attribute, required; `name()` is the default attribute `value`, a required literal string. `literalOnly` means the authored value must be a literal, not an identifier (header comment of the file). It accepts an object or array literal, which is what `constraints={ one_of: [...] }` relies on. The exceptions to `literalOnly` are the `function` attributes and the `policy` condition, which is a call. `closed()` makes every contract list its `attributes`, `attributeTags` and `children` explicitly; an empty record means none. Child cardinality: `{}` is optional and at most once; `{ repeatable: true }` any number; `{ required: true }` exactly once; both flags at least once. Analyze helpers: `nonEmpty(...)` rejects an empty or whitespace string; `nonEmptyList` rejects `[]`; `listItems`/`checkItems` reject blank or repeated items.
 
-| Tag | Lines | Parents | Attributes (type, required, literal-only) | Children (cardinality) | Analyze |
-|---|---|---|---|---|---|
-| `resource` | 312-328 | `#root` | `value` string, required, literal; `table` string, literal; `domain` string, literal (314-318) | `attributes` required once; `relationships`, `actions`, `policies`, `calculations`, `aggregates` optional once (319-326) | `nonEmpty("value", "table", "domain")` (327) |
-| `attributes` | 330-337 | `resource` | none | `uuid-primary-key` optional once; `attribute` optional, repeatable; `timestamps` optional once (332-336) | none |
-| `uuid-primary-key` | 338-342 | `attributes` | `value` string, required, literal (`name()`) | none | `nonEmpty("value")` |
-| `attribute` | 343-354 | `attributes` | `value` string required; `type` string required, enum of `ATTRIBUTE_TYPES` (`string`, `number`, `boolean`, `enum`, `uuid`, `datetime`, 43-50); `values` array of string, literal; `required` boolean, literal; `public` boolean, literal; `default` untyped, literal (345-351) | none | `nonEmpty("value")` and `analyzeAttribute` (173-226): `enum` requires `values` (178-180), `values` only for `enum` (181-186), `values` not empty (188-190), no blank or repeated values (191), `default` must be a string, number or boolean literal (196-198) that fits the type (199-224) |
-| `timestamps` | 355 | `attributes` | none | none | none |
-| `relationships` | 357-363 | `resource` | none | `belongs-to` repeatable; `has-many` repeatable | none |
-| `belongs-to` | 364-368 | `relationships` | `value` required; `resource` string, required, literal | none | `nonEmpty("value", "resource")` |
-| `has-many` | 369-373 | `relationships` | same as `belongs-to` | none | same |
-| `actions` | 375-384 | `resource` | none | `defaults` optional once; `create`, `update`, `read`, `destroy` repeatable | none |
-| `defaults` | 385-389 | `actions` | `value` array of string, required, literal | none | `nonEmptyList("defaults")`; `analyzeDefaults` (288-307): each item one of `create`, `read`, `update`, `destroy` (`ACTION_TYPES`, 40), no blank or repeated items |
-| `create` | 390-395 | `actions` | `value` required; `accept` array of string, literal | `change` repeatable | `nonEmpty("value")`; `listItems("accept", "accept")` |
-| `update` | 396-401 | `actions` | `value`; `accept` | `change` repeatable; `validate` repeatable | same as `create` |
-| `destroy` | 402-407 | `actions` | `value` | `change` repeatable; `validate` repeatable | `nonEmpty("value")` |
-| `read` | 408-413 | `actions` | `value` | `filter` optional once; `sort` optional once | `nonEmpty("value")` |
-| `change` | 414-417 | `create`, `update`, `destroy` | `value` function, required | none | none |
-| `validate` | 418-422 | `update`, `destroy` | `value` function, required; `message` string, literal | none | `nonEmpty("message")` |
-| `filter` | 423-426 | `read` | `value` function, required | none | none |
-| `sort` | 427-431 | `read` | `value` array of string, required, literal | none | `nonEmptyList("sort")`; `listItems("sort")` |
-| `policies` | 433-436 | `resource` | none | `policy` repeatable | none |
-| `policy` | 437-445 | `policies` | `action` string, literal; `action-type` string, literal, enum of `ACTION_TYPES` (440-441) | `authorize-if` repeatable, required (at least one, 443) | `analyzePolicy` (233-244): one of `action`, `action-type`, not both; `nonEmpty("action")` |
-| `authorize-if` | 446-449 | `policy` | `value` function, required | none | none |
-| `calculations` | 451-454 | `resource` | none | `calculate` repeatable | none |
-| `calculate` | 455-463 | `calculations` | `value` string, required; `type` string, required, enum of `CALCULATION_TYPES` (the attribute types without `enum`, 57) | `value` required once (461) | `nonEmpty("value")` |
-| `value` | 464-467 | `calculate` | `value` function, required | none | none |
-| `aggregates` | 469-472 | `resource` | none | `count` repeatable | none |
-| `count` | 473-477 | `aggregates` | `value` required; `relationship` string, required, literal | none | `nonEmpty("value", "relationship")` |
+| Tag | Parents | Attributes (type, required, literal-only) | Children (cardinality) | Analyze |
+|---|---|---|---|---|
+| `resource` | `#root` | `value` string, required, literal; `table` string, literal; `domain` string, literal | `attributes` required once; `relationships`, `actions`, `policies`, `calculations`, `aggregates` optional once | `nonEmpty("value", "table", "domain")` |
+| `attributes` | `resource` | none | `uuid-primary-key`, `create-timestamp`, `update-timestamp` optional once; `attribute` optional, repeatable | none |
+| `uuid-primary-key` | `attributes` | `value` string, required, literal (`name()`) | none | `nonEmpty("value")` |
+| `attribute` | `attributes` | `value` string required; `type` string required, enum of `ATTRIBUTE_TYPES` (`string`, `integer`, `float`, `boolean`, `atom`, `uuid`, `datetime`); `constraints` untyped, literal; `allow-nil` boolean, literal; `public` boolean, literal; `default` untyped, literal | none | `nonEmpty("value")` and `analyzeAttribute`: `constraints` only for `atom` and required for it, an object literal naming `one_of` and nothing else, `one_of` a non-empty list of non-blank, non-repeated strings; `default` a string, number or boolean literal that fits the type (an integer for `integer`, one of `one_of` for `atom`) |
+| `create-timestamp`, `update-timestamp` | `attributes` | `value` string, required, literal (`name()`) | none | `nonEmpty("value")` |
+| `relationships` | `resource` | none | `belongs-to` repeatable; `has-many` repeatable | none |
+| `belongs-to`, `has-many` | `relationships` | `value` required; `resource` string, required, literal | none | `nonEmpty("value", "resource")` |
+| `actions` | `resource` | `defaults` array of string, literal | `create`, `update`, `read`, `destroy` repeatable | `nonEmptyList("defaults")`; `analyzeDefaults`: each item one of `create`, `read`, `update`, `destroy` (`ACTION_TYPES`), no blank or repeated items |
+| `create`, `update`, `destroy` | `actions` | `value` required; `accept` array of string, literal | `change` repeatable; `validate` repeatable | `nonEmpty("value")`; `listItems("accept", "accept")` |
+| `read` | `actions` | `value` required | `filter` optional once; `sort` optional once; `validate` repeatable | `nonEmpty("value")` |
+| `change` | `create`, `update`, `destroy` | `value` function, required | none | none |
+| `validate` | `create`, `update`, `destroy`, `read` | `value` function, required; `message` string, literal | none | `nonEmpty("message")` |
+| `filter` | `read` | `value` function, required | none | none |
+| `sort` | `read` | `value` array of string, required, literal | none | `nonEmptyList("sort")`; `listItems("sort")` |
+| `policies` | `resource` | none | `policy` repeatable | none |
+| `policy` | `policies` | `value` untyped, required (a check call or a list of them) | `authorize-if` repeatable, required (at least one) | `analyzePolicy`: each check is a call to `action` or `action_type` with exactly one string argument; `action_type` takes one of `ACTION_TYPES`; `action` is not empty; a list is not empty |
+| `authorize-if` | `policy` | `value` function, required | none | none |
+| `calculations` | `resource` | none | `calculate` repeatable | none |
+| `calculate` | `calculations` | `value` string, required; `type` string, required, enum of `CALCULATION_TYPES` (the attribute types without `atom`) | `value` required once | `nonEmpty("value")` |
+| `value` | `calculate` | `value` function, required | none | none |
+| `aggregates` | `resource` | none | `count` repeatable | none |
+| `count` | `aggregates` | `value` required; `relationship-path` string, required, literal | none | `nonEmpty("value", "relationship-path")` |
 
-Rules that are not in any tag: exactly one `resource` per file, and "an empty file" are not in the contracts; MX has no root cardinality, so Mesh's model stage enforces them (header comment, 34-36; PR #1 review round 3, item 2, with two tests that pin MX accepting both).
+Rules that are not in any tag: exactly one `resource` per file, and "an empty file" are not in the contracts; MX has no root cardinality, so Mesh's model stage enforces them (header comment of the file; PR #1 review round 3, item 2, with two tests that pin MX accepting both).
 
-### The fixture as it is
+### The fixture
 
-`packages/compiler/test/fixtures/post.mx`, a byte-identical copy of MX's fixture. It parses with zero diagnostics.
-
-```
-resource="post" table="posts" domain="blog"
-  attributes
-    uuid-primary-key="id"
-    attribute="title" type="string" required public
-    attribute="body" type="string" public
-    attribute="state" type="enum" values=["draft", "published"] default="draft"
-    timestamps
-
-  relationships
-    belongs-to="author" resource="user"
-    has-many="comments" resource="comment"
-
-  actions
-    defaults=["read", "destroy"]
-
-    create="create" accept=["title", "body"]
-      change=({ post, actor }) => { post.authorId = actor.id }
-
-    update="publish"
-      change=({ post }) => { post.state = "published" }
-      validate=({ post }) => post.title.length > 0 message="title required"
-
-    read="published"
-      filter=({ post }) => post.state === "published"
-      sort=["-insertedAt"]
-
-  policies
-    policy action-type="read"
-      authorize-if=({ post }) => post.state === "published"
-      authorize-if=({ post, actor }) => post.authorId === actor.id
-
-    policy action="publish"
-      authorize-if=({ post, actor }) => post.authorId === actor.id
-
-  calculations
-    calculate="excerpt" type="string"
-      value({ post }) {
-        return post.body.slice(0, 200)
-      }
-
-  aggregates
-    count="commentCount" relationship="comments"
-```
+The fixture is Section 7: `packages/compiler/test/fixtures/post.mx`, identical to `examples/blog/post.mx`. It parses with zero diagnostics. Its first version was a copy of MX's own fixture; the alignment replaced that form (`required`, `type="enum" values=[...]`, `timestamps`, `defaults` as a child, `policy action-type="read"`, `relationship="comments"`).
 
 How the expressions in this file are treated: every expression is converted to one expression tree when it can be (*translatable*) and is otherwise kept as TypeScript (*opaque*). `filter` must be translatable. `change`, `validate` and calculations are *classified*, and the class is recorded in the model; the file's `publish` change and validation are both translatable ([roadmap](./roadmap.md) M4 and M5; [ADR-0010](../decisions/0010-one-expression-tree-two-evaluators.md), [ADR-0017](../decisions/0017-atomic-by-default-and-classification.md)).
 
 ## Appendix B. What this page did not verify
 
-- Whether an untyped contract attribute may keep `literalOnly` for an object literal (D9).
+- Checked by the alignment (no longer open): an untyped contract attribute keeps `literalOnly` for an object literal (D9). An identifier is rejected (`literal-only-constraints`) and an object literal is accepted (every fixture with `constraints`).
+- Two values `@mesh/model` records where this page is silent: a `uuid-primary-key` attribute is allow-nil false, and `create-timestamp` and `update-timestamp` attributes are public false. Ash's research says `create_timestamp` has `allow_nil? false` (row 18) and that `uuid_primary_key` sets `public? true` (row 15), so the model's `public` false on the timestamps is not confirmed here, and neither is its allow-nil false on the key. Open lookups; no checked lookup covers them.
 - The Ash details listed in Section 6 (G1 to G9).
 - Where adapters and extensions are enabled for a project in the Ash sense (rows 3 and 5): the roadmap places it in the project configuration, M1 and M6.
 - Who proposed each finding in rounds 1 to 4 of the review of PR #1: the PR records what changed, not the author of each finding.
