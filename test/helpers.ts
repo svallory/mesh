@@ -9,11 +9,12 @@ export function fixture(name: string): { source: string; file: string } {
   return { source: readFileSync(file, "utf8"), file };
 }
 
-/** Direct call: contracts passed as `customTags`, structural rejection on. */
+/** Direct call: contracts passed as `customTags`, structural and unknown-tag rejection on. */
 export function parse(source: string, file = "resource.mx") {
   return parseData(source, file, {
     customTags: contracts,
     structural: "reject",
+    unknownTags: "reject",
   });
 }
 

@@ -443,6 +443,21 @@ const RULE_CLASSES: Record<string, Case[]> = {
       message: "the data tree is static; this file's consumer does not evaluate `<if>`",
     },
   ],
+  "unknown tags are rejected (`unknownTags: \"reject\"`)": [
+    {
+      file: "unknown-tag-top-level",
+      line: 1,
+      column: 0,
+      message: "`<widget>` is not a known tag: it has no contract in `customTags`",
+    },
+    {
+      // Near miss: the nearest declared name is offered as a hint.
+      file: "unknown-tag-near-miss",
+      line: 1,
+      column: 0,
+      message: "`<resourse>` is not a known tag: it has no contract in `customTags`; did you mean `<resource>`?",
+    },
+  ],
   "syntax error": [
     {
       file: "syntax-error",
@@ -487,11 +502,11 @@ describe("negative fixtures: one specific diagnostic each, with position", () =>
       .map((f) => f.replace(/\.mx$/, ""));
     const uncovered = onDisk.filter((f) => !covered.has(f));
     // These parse cleanly or warn; they have dedicated tests below.
-    expect(uncovered.sort()).toEqual(["duplicate-attribute", "unknown-tag-top-level"]);
+    expect(uncovered.sort()).toEqual(["duplicate-attribute"]);
   });
 });
 
-describe("analyze rules run under a direct parseData call with customTags and structural: reject", () => {
+describe("analyze rules run under a direct parseData call with customTags, structural: reject and unknownTags: reject", () => {
   // The MX lead gates `mx.contracts` on this: analyze must run when customTags
   // are handed straight to parseData (no scan, no package.json lookup).
   test("analyze: `values` on a non-enum attribute is reported by the hook", () => {
@@ -499,6 +514,7 @@ describe("analyze rules run under a direct parseData call with customTags and st
     const result = parseData(source, "direct.mx", {
       customTags: contracts,
       structural: "reject",
+      unknownTags: "reject",
     });
     expect(result.tree).toBeUndefined();
     expect(result.diagnostics).toHaveLength(1);
@@ -515,6 +531,7 @@ describe("analyze rules run under a direct parseData call with customTags and st
     const result = parseData(source, "direct.mx", {
       customTags: contracts,
       structural: "reject",
+      unknownTags: "reject",
     });
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0]).toMatchObject({
@@ -531,6 +548,7 @@ describe("analyze rules run under a direct parseData call with customTags and st
     const result = parseData(source, "direct.mx", {
       customTags: contracts,
       structural: "reject",
+      unknownTags: "reject",
     });
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0]).toMatchObject({
@@ -541,6 +559,7 @@ describe("analyze rules run under a direct parseData call with customTags and st
   });
 
   test("without the contracts the same files parse (so the diagnostics above come from analyze)", () => {
+    // Control call: no `customTags`, so `unknownTags: "reject"` is left off (it would reject every tag).
     const source = fixture("negative/analyze-values-on-non-enum.mx").source;
     const result = parseData(source, "direct.mx", { structural: "reject" });
     expect(result.diagnostics).toEqual([]);
@@ -641,18 +660,6 @@ describe("edge cases", () => {
       column: 0,
       message: "the data tree is static; this file's consumer does not evaluate `<for>`",
     });
-  });
-});
-
-describe("known gap in MX (reported to the lead; scratch/mx-bugs/data-unknown-root-tag.md)", () => {
-  // Expected: an unknown tag at the top level is an error. Got: no diagnostic,
-  // because no contract exists for the name and the data target delegates every
-  // name. `test.failing` flips to red the day MX closes the gap, so this test
-  // gets rewritten into a normal one then.
-  test.failing("an unknown top-level tag is rejected", () => {
-    const { source } = fixture("negative/unknown-tag-top-level.mx");
-    const result = parse(source, "unknown-root.mx");
-    expect(result.diagnostics.filter((d) => d.severity === "error")).toHaveLength(1);
   });
 });
 
