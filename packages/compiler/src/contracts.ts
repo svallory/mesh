@@ -350,31 +350,34 @@ function checkPolicyCheck(
     );
   }
   const args = check.arguments ?? [];
-  const arg = args.length === 1 ? literalArgOf(args[0]) : undefined;
-  if (arg === undefined || arg.kind !== "string") {
-    ctx.fail(`\`${checkName}\` takes exactly one string argument`, value?.loc);
+  const arg = args[0];
+  if (args.length !== 1 || (arg?.type !== "StringLiteral" && arg?.type !== "ArrayExpression")) {
+    ctx.fail(`\`${checkName}\` takes exactly one string literal or non-empty array of string literals`, value?.loc);
   }
-  if (checkName === "action_type") {
-    if (!(ACTION_TYPES as readonly string[]).includes(arg.value)) {
-      ctx.fail(
-        `\`action_type\` must be one of ${quoted(ACTION_TYPES)}, got "${arg.value}"`,
-        value?.loc,
-      );
+  const isList = arg.type === "ArrayExpression";
+  const items = isList ? (arg.elements ?? []) : [arg];
+  if (items.length === 0) {
+    ctx.fail(`\`${checkName}\` argument list may not be empty`, value?.loc);
+  }
+  const names = items.map((item, index) => {
+    if (item?.type !== "StringLiteral") {
+      ctx.fail(`\`${checkName}\` argument item ${index + 1} must be a string literal`, value?.loc);
     }
-  } else if (arg.value.trim() === "") {
-    ctx.fail("`action` may not be empty", value?.loc);
+    return item.value as string;
+  });
+  if (isList) checkItems(checkName, names, value, ctx);
+  for (const name of names) {
+    if (checkName === "action_type") {
+      if (!(ACTION_TYPES as readonly string[]).includes(name)) {
+        ctx.fail(
+          `\`action_type\` must be one of ${quoted(ACTION_TYPES)}, got "${name}"`,
+          value?.loc,
+        );
+      }
+    } else if (name.trim() === "") {
+      ctx.fail("`action` may not be empty", value?.loc);
+    }
   }
-}
-
-/** The literal a call argument is written as, if it is one. */
-function literalArgOf(node: LooseNode | undefined): Literal | undefined {
-  if (node?.type === "StringLiteral")
-    return { kind: "string", value: node.value as string };
-  if (node?.type === "NumericLiteral")
-    return { kind: "number", value: node.value as number };
-  if (node?.type === "BooleanLiteral")
-    return { kind: "boolean", value: node.value as boolean };
-  return undefined;
 }
 
 /** Items of a string list: none blank, none repeated. */

@@ -1,0 +1,6 @@
+resource="post"
+  attributes
+    uuid-primary-key="id"
+  policies
+    policy=action(["publish", "publish"])
+      authorize-if=({ actor }) => actor.admin

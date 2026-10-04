@@ -111,6 +111,16 @@ describe("the contract module", () => {
 });
 
 describe("the positive fixture", () => {
+  for (const check of ["action", "action_type"]) {
+    for (const shape of ["single", "list-two", "list-one"]) {
+      test(`policy-${check}-${shape} accepts a literal name or name list`, () => {
+        const result = parseFixture(`policy-${check}-${shape}.mx`);
+        expect(result.diagnostics).toEqual([]);
+        expect(result.tree).toBeDefined();
+      });
+    }
+  }
+
   test("post.mx parses with zero diagnostics and yields a tree", () => {
     const result = parseFixture("post.mx");
     expect(result.diagnostics).toEqual([]);
@@ -412,9 +422,30 @@ const RULE_CLASSES: Record<string, Case[]> = {
     { file: "policy-list-bad-item", line: 5, column: 10, message: `\`<policy>\`: \`action_type\` must be one of ${ACTION_TYPE_LIST}, got "explode"` },
     { file: "policy-unknown-check", line: 5, column: 10, message: '`<policy>`: unknown policy check `bogus`; the checks are "action", "action_type"' },
     { file: "policy-not-a-call", line: 5, column: 10, message: '`<policy>`: takes a check call, for example `action_type("read")` or `action("publish")`' },
-    { file: "policy-check-without-argument", line: 5, column: 10, message: "`<policy>`: `action_type` takes exactly one string argument" },
-    { file: "policy-check-number-argument", line: 5, column: 10, message: "`<policy>`: `action` takes exactly one string argument" },
+    { file: "policy-check-without-argument", line: 5, column: 10, message: "`<policy>`: `action_type` takes exactly one string literal or non-empty array of string literals" },
+    { file: "policy-check-number-argument", line: 5, column: 10, message: "`<policy>`: `action` takes exactly one string literal or non-empty array of string literals" },
     { file: "policy-empty-list", line: 5, column: 10, message: "`<policy>`: a policy needs at least one check call" },
+  ],
+  "policy check arguments: literal non-empty name lists": [
+    ...["action", "action_type"].flatMap((check): Case[] => {
+      const first = check === "action" ? "publish" : "read";
+      const shapes = [
+        ["empty-array", `\`${check}\` argument list may not be empty`],
+        ["non-string-item", `\`${check}\` argument item 2 must be a string literal`],
+        ["non-literal-item", `\`${check}\` argument item 2 must be a string literal`],
+        ["spread-item", `\`${check}\` argument item 2 must be a string literal`],
+        ["hole", `\`${check}\` argument item 2 must be a string literal`],
+        ["blank-item", `\`${check}\` has a blank item`],
+        ["repeated-item", `\`${check}\` has a repeated item "${first}"`],
+        ["non-literal", `\`${check}\` takes exactly one string literal or non-empty array of string literals`],
+        ["multiple-arguments", `\`${check}\` takes exactly one string literal or non-empty array of string literals`],
+      ];
+      return shapes.map(([shape, message]) => ({
+        file: `policy-${check}-${shape}`, line: 5, column: 10,
+        message: `\`<policy>\`: ${message}`,
+      }));
+    }),
+    { file: "policy-action_type-invalid-list-item", line: 5, column: 10, message: `\`<policy>\`: \`action_type\` must be one of ${ACTION_TYPE_LIST}, got "explode"` },
   ],
   "attribute tag where none is declared": [
     { file: "attribute-tag-on-leaf", line: 4, column: 6, message: "`<attribute>`: unknown attribute tag `<@foo>`" },
@@ -716,7 +747,7 @@ describe("analyze rules, edge cases", () => {
   test("a check call with two arguments is rejected", () => {
     const result = parse(policy('action("a", "b")'));
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0]?.message).toBe("`<policy>`: `action` takes exactly one string argument");
+    expect(result.diagnostics[0]?.message).toBe("`<policy>`: `action` takes exactly one string literal or non-empty array of string literals");
   });
 
   test("a list holding something that is not a call is rejected", () => {
@@ -855,6 +886,7 @@ describe("roadmap M1 acceptance test 7: every row of the mapping page marked 'on
     attrs: string[];
     children: string[];
     values: { attr: string; values: string[] }[];
+    checks: string[];
   }
   interface PageRow {
     row: number;
@@ -884,9 +916,15 @@ describe("roadmap M1 acceptance test 7: every row of the mapping page marked 'on
       if (!tag || tokens === undefined || rest.length > 0 || !/^[a-z][a-z0-9-]*$/.test(tag) || tokens === "") {
         throw new Error(`row ${row.row}: cannot parse spec "${part.trim()}"`);
       }
-      const spec: Spec = { tag, attrs: [], children: [], values: [] };
+      const spec: Spec = { tag, attrs: [], children: [], values: [], checks: [] };
       for (const token of tokens.split(/\s+/)) {
-        if (token.startsWith(">")) spec.children.push(token.slice(1));
+        if (token.startsWith("@")) {
+          const check = token.slice(1);
+          if (tag !== "policy" || !["action", "action_type"].includes(check)) {
+            throw new Error(`row ${row.row}: unknown policy check token "${token}"`);
+          }
+          spec.checks.push(check);
+        } else if (token.startsWith(">")) spec.children.push(token.slice(1));
         else if (token.includes("=")) {
           const [attr, list] = token.split("=");
           spec.values.push({ attr: attr!, values: list!.split(",") });
@@ -989,6 +1027,13 @@ describe("roadmap M1 acceptance test 7: every row of the mapping page marked 'on
             tags.some((t) => t.children?.some((x) => x.name === c)),
             `no clean fixture nests <${c}> in <${spec.tag}>`,
           ).toBe(true);
+        }
+        for (const check of spec.checks) {
+          for (const shape of ["single", "list-two", "list-one"]) {
+            const result = parseFixture(`policy-${check}-${shape}.mx`);
+            expect(result.diagnostics).toEqual([]);
+            expect(result.tree).toBeDefined();
+          }
         }
         for (const { attr, values } of spec.values) {
           for (const value of values) {
