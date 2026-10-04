@@ -17,7 +17,7 @@
       "title": "Home",
       "path": "/"
     },
-    {
+{
       "title": "Docs",
       "children": [
         {
@@ -27,6 +27,34 @@
         {
           "title": "Getting started",
           "path": "/docs/getting-started/"
+        },
+        {
+          "title": "Installation",
+          "path": "/docs/installation/"
+        },
+        {
+          "title": "Usage",
+          "path": "/docs/usage/"
+        },
+        {
+          "title": "Project structure",
+          "path": "/docs/project-structure/"
+        },
+        {
+          "title": "Example: a todo list",
+          "path": "/docs/example-todo-list/"
+        },
+        {
+          "title": "Calling actions",
+          "path": "/docs/calling-actions/"
+        },
+        {
+          "title": "Configuration",
+          "path": "/docs/configuration/"
+        },
+        {
+          "title": "Command-line tool",
+          "path": "/docs/command-line/"
         },
         {
           "title": "Resource file reference",

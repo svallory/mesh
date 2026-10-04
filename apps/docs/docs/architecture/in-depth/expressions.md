@@ -15,7 +15,7 @@ Related: [overview](../overview/architecture.md), [MX integration](./mx-integrat
 
 In a resource file an expression is an arrow function. From `packages/compiler/test/fixtures/post.mx`:
 
-```text
+```mx
 read="published"
   filter=({ post }) => post.state === "published"
   sort=["-insertedAt"]
@@ -23,7 +23,7 @@ read="published"
 
 and, on the `publish` action:
 
-```text
+```mx
 change=({ post }) => { post.state = "published" }
 validate=({ post }) => post.title.length > 0 message="title required"
 ```
