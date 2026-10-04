@@ -16,7 +16,13 @@ const INDENT = "  ";
 /** JSON has one way to write a key: quoted, with JSON's own escaping. */
 
 function write(value: unknown, depth: number, path: string, out: string[]): void {
-  if (value === null || typeof value === "boolean" || typeof value === "number") {
+  if (typeof value === "number") {
+    // `JSON.stringify(-0)` is "0": JSON can hold a negative zero, and the model
+    // keeps the value the author wrote, so it is written out and read back as -0.
+    out.push(Object.is(value, -0) ? "-0" : JSON.stringify(value));
+    return;
+  }
+  if (value === null || typeof value === "boolean") {
     out.push(JSON.stringify(value));
     return;
   }

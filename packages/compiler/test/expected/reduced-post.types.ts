@@ -21,7 +21,10 @@ export type CreatePostInput = {
 };
 
 export type PublishPostInput = {
+  id: string;
   state?: "draft" | "published" | null;
 };
 
-export type ArchivePostInput = {};
+export type ArchivePostInput = {
+  id: string;
+};
