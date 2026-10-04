@@ -6,12 +6,14 @@
   "type": "module",
   "description": "Mesh documentation site, built with docmd",
   "scripts": {
+    "test": "bun test test/",
     "dev": "docmd dev",
     "build": "rm -rf site .docmd && docmd build",
     "validate": "docmd validate && bun check-docker-lock.ts"
   },
   "devDependencies": {
     "@docmd/core": "0.9.7",
-    "@docmd/plugin-search": "0.9.7"
+    "@docmd/plugin-search": "0.9.7",
+    "shiki": "4.5.0"
   }
 }

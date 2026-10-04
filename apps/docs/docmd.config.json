@@ -10,7 +10,8 @@
     "spa": true
   },
   "plugins": {
-    "search": {}
+    "search": {},
+    "./plugins/mx-highlight.js": {}
   },
   "navigation": [
     {
