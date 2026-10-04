@@ -1,6 +1,7 @@
 /**
  * The attribute type registry: the single source of attribute type names
- * (ADR-0037). The tag contract's `type` enum is built from it.
+ * (ADR-0037). The tag contract's `type` enum is to be built from it, with a drift
+ * test (roadmap M1, test 6); that is not done yet.
  *
  * Names follow the vocabulary mapping page, section 3.2:
  * - `string`, `boolean`, `uuid`, `datetime`: row 30
@@ -10,7 +11,15 @@
  */
 export interface AttributeTypeInfo {
   readonly name: string;
-  /** The TypeScript type a value of this attribute has in generated code. */
+  /**
+   * The TypeScript type a value of this attribute has in generated code. Free text the
+   * emitter pastes into generated files, so keep it a valid type expression.
+   *
+   * `datetime` is `string` (an ISO 8601 timestamp), not `Date`: a `default` literal in
+   * the model is a string, and the same generated type must hold across a JSON boundary
+   * (API, client, `model.json`) without a conversion. A data adapter that wants `Date`
+   * (Drizzle's default timestamp mode) converts at its own edge.
+   */
   readonly tsType: string;
   /** Whether the `constraints` attribute is accepted for this type. */
   readonly takesConstraints: boolean;
@@ -22,7 +31,7 @@ export const ATTRIBUTE_TYPES = Object.freeze([
   Object.freeze({ name: "float", tsType: "number", takesConstraints: false }),
   Object.freeze({ name: "boolean", tsType: "boolean", takesConstraints: false }),
   Object.freeze({ name: "uuid", tsType: "string", takesConstraints: false }),
-  Object.freeze({ name: "datetime", tsType: "Date", takesConstraints: false }),
+  Object.freeze({ name: "datetime", tsType: "string", takesConstraints: false }),
   Object.freeze({ name: "atom", tsType: "string", takesConstraints: true }),
 ] as const satisfies readonly AttributeTypeInfo[]);
 
