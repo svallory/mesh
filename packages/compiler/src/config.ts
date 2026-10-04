@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { readFile, stat, realpath } from "node:fs/promises";
+import { readFile, stat, realpath, lstat } from "node:fs/promises";
 import type { Diagnostic } from "@mesh/model";
 import { buildModel, error, positionAt, type BuildResult } from "./build.ts";
 import { absolutePath, canonicalFuturePath, confinedGlob, foreignAbsolute, inside, normalizePath, projectPath, resolveResource, errorCode } from "./paths.ts";
@@ -28,8 +28,9 @@ export function defineConfig(config: MeshConfig): MeshConfig { return config; }
 const nonEmpty = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
 
 /** mesh.config.ts is trusted executable project code, not a resource declaration.
- * Path containment is nevertheless physical as well as lexical: resource and
- * output symlinks must resolve inside the canonical project root. */
+ * Path containment is nevertheless physical as well as lexical: resource
+ * symlinks and output ancestors must resolve inside the canonical project root.
+ * The output directory itself must not be a symlink. */
 export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
   const diagnostics: Diagnostic[] = [];
   const start = positionAt("", "mesh.config.ts", 0);
@@ -87,8 +88,19 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
     fail("output", "Configuration field `output` must name a directory inside the project, not the project root");
   } else {
     try {
-      const canonicalOutput = await canonicalFuturePath(output);
-      if (!inside(canonicalRoot, canonicalOutput) || canonicalOutput === canonicalRoot) fail("output", "Configuration field `output` resolves outside the project");
+      let outputIsLink = false;
+      try { outputIsLink = (await lstat(output)).isSymbolicLink(); }
+      catch (cause) { if (errorCode(cause) !== "ENOENT") throw cause; }
+      if (outputIsLink) {
+        // Do not resolve a link first: dangling, cyclic and external targets
+        // must receive the same path-specific diagnostic as an internal link.
+        diagnostics.push(error("MESH_OUTPUT_SYMLINK",
+          "Symlink in the output tree; delete or move it and rebuild using real files and directories",
+          positionAt("", projectPath(root, output), 0)));
+      } else {
+        const canonicalOutput = await canonicalFuturePath(output);
+        if (!inside(canonicalRoot, canonicalOutput) || canonicalOutput === canonicalRoot) fail("output", "Configuration field `output` resolves outside the project");
+      }
     } catch (cause) { fail("output", `Cannot resolve generated directory (${errorCode(cause) ?? "UNKNOWN"})`); }
   }
   let files: string[] = [];

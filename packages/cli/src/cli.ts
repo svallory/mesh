@@ -74,7 +74,9 @@ export async function runCli(args: string[], root = process.cwd(), io = {
         } else {
           errorFile = projectPath(root, config.output);
           if (!command.check) await writeGeneratedFiles(files, config);
-          diagnostics.push(...await checkGeneratedFiles(files, config, command.check));
+          // A successful build must establish the same readable-byte invariant
+          // as --check, not just the absence of stray files.
+          diagnostics.push(...await checkGeneratedFiles(files, config));
         }
       }
     }

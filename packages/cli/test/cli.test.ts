@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile, rename, lstat } from "node:fs/promises";
+import { chmod, link, mkdtemp, mkdir, readFile, readdir, readlink, rm, symlink, writeFile, rename, lstat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { stableJsonStringify } from "@mesh/compiler";
@@ -210,12 +210,121 @@ test("emit diagnostics fail build and inspect without writing or printing JSON",
   }
 });
 
-test("filesystem write errors name project-relative paths, not absolute exception prose", async () => {
+test("filesystem preflight errors name project-relative paths and the entry type", async () => {
   const root = await project();
   await mkdir(join(root, "generated/model.json"), { recursive: true });
   expect(run(root, "build")).toEqual({ code: 1, stdout: "", stderr:
-    "generated/model.json:1:1 error Cannot access generated path (EISDIR); fix the output path or permissions and rebuild\n1 error, 0 warnings\n" });
+    'generated/model.json:1:1 error Cannot write generated path "generated/model.json": expected a regular file, found a directory; delete or move it and rebuild\n1 error, 0 warnings\n' });
   expect(await Bun.file(join(root, file)).exists()).toBe(false);
+});
+
+/** A regression must fail, not hang, when the writer accidentally opens a FIFO. */
+async function runBounded(root: string, ...args: string[]) {
+  const child = Bun.spawn([process.execPath, command, ...args], { cwd: root, stdout: "pipe", stderr: "pipe" });
+  const timer = setTimeout(() => child.kill("SIGKILL"), 3000);
+  try {
+    const [code, stdout, stderr] = await Promise.all([
+      child.exited, new Response(child.stdout).text(), new Response(child.stderr).text(),
+    ]);
+    return { code, stdout, stderr };
+  } finally { clearTimeout(timer); }
+}
+
+/** No symlink following or special-file reads, and no atimes (reads may change them). */
+async function treeSnapshot(root: string): Promise<unknown[]> {
+  const entries: unknown[] = [];
+  const walk = async (path: string) => {
+    const absolute = join(root, path);
+    const info = await lstat(absolute);
+    entries.push({ path, mode: info.mode, ino: info.ino, size: info.size, nlink: info.nlink,
+      mtime: info.mtimeMs, ctime: info.ctimeMs,
+      contents: info.isFile() ? (await readFile(absolute)).toString("base64") : null,
+      link: info.isSymbolicLink() ? await readlink(absolute) : null });
+    if (info.isDirectory()) for (const name of (await readdir(absolute)).sort()) await walk(`${path}/${name}`);
+  };
+  await walk("generated");
+  return entries;
+}
+
+test("round 2 M1: replacing a write-only generated file restores the build/check invariant", async () => {
+  const root = await builtProject();
+  const path = join(root, file);
+  await chmod(path, 0o200);
+  let readDenied = false;
+  try { await readFile(path); }
+  catch (cause) {
+    if (!(cause instanceof Error) || !("code" in cause) || cause.code !== "EACCES") throw cause;
+    readDenied = true;
+  }
+  if (readDenied) expect(run(root, "build", "--check").stderr).toBe(
+    `${file}:1:1 error Cannot read generated file (EACCES); fix its permissions and rebuild\n1 error, 0 warnings\n`);
+  else console.warn("permissions capability: this user can read mode-0200 files; testing fresh mode/inode and invariant without EACCES assertion");
+  const before = await lstat(path);
+  expect(run(root, "build").code).toBe(0);
+  expect(run(root, "build", "--check").code).toBe(0);
+  const after = await lstat(path);
+  expect(after.mode & 0o777).toBe(0o644);
+  expect(after.ino).not.toBe(before.ino);
+  expect(after.nlink).toBe(1);
+});
+
+test("round 2 M1: replacing hard-linked generated paths restores the build/check invariant", async () => {
+  const root = await builtProject();
+  const model = join(root, "generated/model.json");
+  const original = await readFile(model);
+  await link(model, join(root, "unrelated.json"));
+  await rm(join(root, file));
+  await link(model, join(root, file));
+  expect(run(root, "build").code).toBe(0);
+  expect(run(root, "build", "--check").code).toBe(0);
+  expect(await readFile(join(root, "unrelated.json"))).toEqual(original);
+  expect((await lstat(model)).nlink).toBe(1);
+  expect((await lstat(join(root, file))).nlink).toBe(1);
+  const before = await treeSnapshot(root);
+  expect(run(root, "build", "--check").code).toBe(0);
+  expect(await treeSnapshot(root)).toEqual(before);
+});
+
+test("round 2 M2: a FIFO produced target is rejected without opening it or hanging", async () => {
+  const root = await project();
+  await mkdir(join(root, "generated"));
+  expect(Bun.spawnSync(["mkfifo", join(root, "generated/model.json")]).exitCode).toBe(0);
+  const before = await treeSnapshot(root);
+  const checked = await runBounded(root, "build", "--check");
+  expect(checked.code).toBe(1);
+  expect(checked.stderr).toContain("generated/model.json:1:1 error Unsupported filesystem entry");
+  expect(await treeSnapshot(root)).toEqual(before);
+  const built = await runBounded(root, "build");
+  expect(built.code).toBe(1);
+  expect(built.stderr).toBe('generated/model.json:1:1 error Cannot write generated path "generated/model.json": expected a regular file, found a FIFO; delete or move it and rebuild\n1 error, 0 warnings\n');
+  expect(await treeSnapshot(root)).toEqual(before);
+}, 10000);
+
+test("round 2 M2: a later directory target refuses the whole write before any generated bytes change", async () => {
+  const root = await builtProject();
+  await rm(join(root, file));
+  await mkdir(join(root, file));
+  await writeFile(join(root, "resources/todo.mx"), source.replace('type="string"', 'type="integer"'));
+  const before = await treeSnapshot(root);
+  const result = run(root, "build");
+  expect(result.code).toBe(1);
+  expect(await treeSnapshot(root)).toEqual(before);
+  expect(result.stderr).toBe(`${file}:1:1 error Cannot write generated path "${file}": expected a regular file, found a directory; delete or move it and rebuild\n1 error, 0 warnings\n`);
+});
+
+test.each(["inside", "outside", "dangling", "cyclic"])("round 2 L1: a %s output-root symlink is named without resolving its target", async (kind) => {
+  const root = await project();
+  const outside = await project(false);
+  await mkdir(join(root, "real-output"));
+  const target = kind === "inside" ? join(root, "real-output") : kind === "outside" ? outside :
+    kind === "dangling" ? join(root, "absent") : join(root, "generated");
+  await symlink(target, join(root, "generated"));
+  const before = await treeSnapshot(root);
+  for (const args of [["build"], ["build", "--check"], ["inspect"]]) {
+    expect(run(root, ...args)).toEqual({ code: 1, stdout: "", stderr:
+      "generated:1:1 error Symlink in the output tree; delete or move it and rebuild using real files and directories\n1 error, 0 warnings\n" });
+    expect(await treeSnapshot(root)).toEqual(before);
+  }
 });
 
 test("help lists only implemented commands and needs no config", async () => {
