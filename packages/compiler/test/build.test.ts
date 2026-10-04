@@ -112,9 +112,11 @@ test("UTF-16 positions preserve astral characters, CRLF and authored literal nod
   expect(good.document!.resources[0]!.attributes[0]!.default).toEqual({ value: -1.5, position: positionOf(source, "post.mx", "-1.5") });
 });
 test("a non-finite default becomes a JSON diagnostic instead of silently emitting null", () => {
-  const result = build(bare.replace('  attributes\n', '  attributes\n    attribute="x" type="float" default=1e999\n'));
+  const source = bare.replace('  attributes\n', '  attributes\n    attribute="x" type="float" default=1e999\n');
+  const result = build(source);
   expect(result.document).toBeNull();
-  expect(result.diagnostics[0]!.code).toBe("MESH_NON_JSON");
+  expect(result.diagnostics).toHaveLength(1);
+  expect(result.diagnostics[0]).toMatchObject({ code: "MESH_NON_JSON", message: "Model is not JSON-compatible: $.resources[0].attributes[0].default.value", position: positionOf(source, "post.mx", "1e999"), fix: "Use a finite JSON-compatible value" });
 });
 test("D31: a resource without a key fails at its name with the declaration fix", () => {
   const result = build('resource="post"\n  attributes\n');

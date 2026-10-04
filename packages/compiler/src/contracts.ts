@@ -97,6 +97,7 @@ type Literal =
 // Babel nodes are untyped in core (`Node`), so read them structurally.
 interface LooseNode {
   type: string;
+  loc?: { start: { line: number; column: number } };
   value?: unknown;
   name?: unknown;
   operator?: string;
@@ -181,7 +182,7 @@ function all(...rules: Analyze[]): Analyze {
  * with `undefined` entries where the item is not a string literal, or
  * `undefined` when there is no well-formed `one_of` list.
  */
-function oneOfItems(constraints: Attr | undefined): {
+function oneOfItems(constraints: Attr | undefined, ctx: AnalyzeContext): {
   items: (string | undefined)[] | undefined;
   problems: string[];
 } {
@@ -193,6 +194,7 @@ function oneOfItems(constraints: Attr | undefined): {
     return { items: undefined, problems };
   }
   let oneOf: LooseNode | undefined;
+  const seenKeys = new Set<unknown>();
   for (const prop of node.properties ?? []) {
     if (prop?.type !== "ObjectProperty" || prop.computed === true) {
       problems.push("`constraints` must be an object literal with `one_of`");
@@ -202,6 +204,10 @@ function oneOfItems(constraints: Attr | undefined): {
       prop.key?.type === "Identifier" || prop.key?.type === "StringLiteral"
         ? (prop.key.name ?? prop.key.value)
         : undefined;
+    if (seenKeys.has(key)) {
+      ctx.fail(`\`constraints\` has a duplicate key "${String(key)}"`, prop.key?.loc?.start ?? constraints.loc);
+    }
+    seenKeys.add(key);
     if (key !== "one_of") {
       problems.push(
         `\`constraints\` has an unknown constraint "${String(key)}"; only \`one_of\` is known`,
@@ -247,7 +253,7 @@ function analyzeAttribute(calls: readonly TagCall[], ctx: AnalyzeContext): void 
         constraints.loc,
       );
     }
-    const { items: options, problems } = oneOfItems(constraints);
+    const { items: options, problems } = oneOfItems(constraints, ctx);
     for (const problem of problems) {
       ctx.fail(problem, constraints?.loc);
     }

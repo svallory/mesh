@@ -1,4 +1,6 @@
-import { relative, resolve } from "node:path";
+import { resolve } from "node:path";
+import { foreignAbsolute, normalizePath, resolveResource } from "./paths.ts";
+export { projectPath } from "./paths.ts";
 import { parseData } from "@mxlang/data";
 import type { DataAttr, DataNode, DataTag } from "@mxlang/data/tree";
 import { findNonJsonValue, type Action, type ActionKind, type Attribute, type AttributeSource, type AttributeTypeName, type Diagnostic, type JsonPrimitive, type ModelDocument, type Resource, type SourcePosition, type Spanned } from "@mesh/model";
@@ -14,9 +16,6 @@ export function positionAt(source: string, file: string, offset: number): Source
   const before = source.slice(0, offset);
   const line = before.split("\n").length;
   return { file, line, column: offset - (before.lastIndexOf("\n") + 1), offset };
-}
-export function projectPath(root: string, file: string): string {
-  return relative(resolve(root), resolve(root, file)).split("\\").join("/");
 }
 export function error(code: string, message: string, position: SourcePosition, fix: string | null = null): Diagnostic {
   return { severity: "error", code, message, position, fix };
@@ -43,7 +42,17 @@ function literal(node: LiteralNode): JsonPrimitive {
 }
 const tags = (nodes: readonly DataNode[]): DataTag[] => nodes.filter((n): n is DataTag => n.kind === "tag");
 
-function buildResource(root: DataTag, source: string, file: string): Resource {
+function buildResource(root: DataTag, source: string, file: string, diagnostics: Diagnostic[]): Resource | null {
+  const projectElement = <T>(element: DataTag, build: () => T): T | null => {
+    try { return build(); }
+    catch (cause) {
+      // A passing contract is not permission to crash. Keep independently
+      // projectable elements available to the remaining checks in this file.
+      diagnostics.push(error("MESH_MODEL_SHAPE", `Cannot build element \`${element.name}\`: ${cause instanceof Error ? cause.message : String(cause)}`, positionAt(source, file, element.nameSpan.sourceStart), "Report this contract/model shape mismatch"));
+      return null;
+    }
+  };
+  return projectElement(root, () => {
   const at = (offset: number) => positionAt(source, file, offset);
   const spNode = <T>(node: LiteralNode): Spanned<T> => ({ value: literal(node) as T, position: at(node.loc!.start.index) });
   const sp = <T>(a: DataAttr): Spanned<T> => {
@@ -57,7 +66,7 @@ function buildResource(root: DataTag, source: string, file: string): Resource {
     const a = attr(tag, name); return a ? sp<T>(a) : null;
   };
   const sections = tags(root.children);
-  const attributes = tags(sections.find((t) => t.name === "attributes")!.children).map((tag): Attribute => {
+  const attributes = tags(sections.find((t) => t.name === "attributes")!.children).map((tag) => projectElement<Attribute>(tag, () => {
     const declared = tag.name === "attribute";
     const key = tag.name === "uuid-primary-key";
     const type = declared ? sp<AttributeTypeName>(attr(tag, "type")!).value : key ? "uuid" : "datetime";
@@ -74,13 +83,13 @@ function buildResource(root: DataTag, source: string, file: string): Resource {
       return { ...base, type, constraints: { oneOf: (oneOf.elements ?? []).map((n) => spNode<string>(n)) } };
     }
     return { ...base, type, constraints: null };
-  });
+  })).filter((value): value is Attribute => value !== null);
   const actionSection = sections.find((t) => t.name === "actions");
-  const actions = tags(actionSection?.children ?? []).map((tag): Action => {
+  const actions = tags(actionSection?.children ?? []).map((tag) => projectElement<Action>(tag, () => {
     const kind = tag.name as ActionKind;
     const base = { name: sp<string>(attr(tag, "value")!), position: at(tag.nameSpan.sourceStart) };
     return kind === "read" ? { ...base, kind } : { ...base, kind, accept: list<string>(attr(tag, "accept")) };
-  });
+  })).filter((value): value is Action => value !== null);
   const defaults = actionSection && attr(actionSection, "defaults");
   return {
     name: sp<string>(attr(root, "value")!), table: optional<string>(root, "table"), domain: optional<string>(root, "domain"),
@@ -88,6 +97,7 @@ function buildResource(root: DataTag, source: string, file: string): Resource {
     defaults: defaults ? { kinds: list<ActionKind>(defaults), position: at(defaults.kind === "spread" ? defaults.value.span.sourceStart : defaults.nameSpan!.sourceStart) } : null,
     position: at(root.nameSpan.sourceStart),
   };
+  });
 }
 
 function checkSupport(tag: DataTag, source: string, file: string, diagnostics: Diagnostic[]): void {
@@ -104,12 +114,34 @@ function checkSupport(tag: DataTag, source: string, file: string, diagnostics: D
   for (const child of tags(tag.children)) checkSupport(child, source, file, diagnostics);
 }
 
+function collectJsonErrors(value: unknown, path: string, owner: SourcePosition, diagnostics: Diagnostic[]): void {
+  if (findNonJsonValue(value, path) === null) return;
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => collectJsonErrors(item, `${path}[${index}]`, owner, diagnostics));
+    return;
+  }
+  if (value !== null && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype) {
+    const record = value as Record<string, unknown>;
+    const position = record.position as SourcePosition | undefined;
+    for (const [key, item] of Object.entries(record)) collectJsonErrors(item, `${path}.${key}`, position ?? owner, diagnostics);
+    return;
+  }
+  diagnostics.push(error("MESH_NON_JSON", `Model is not JSON-compatible: ${path}`, owner, "Use a finite JSON-compatible value"));
+}
+
 /** M1 load, structure, model and checks. Collect errors across all files. */
 export function buildModel(project: ProjectDescription): BuildResult {
   const diagnostics: Diagnostic[] = [];
   const document: ModelDocument = { resources: [] };
+  if (foreignAbsolute(project.root)) return { document: null, diagnostics: [error("MESH_PROJECT_PATH", "Project root must be a host-compatible path", positionAt("", "mesh.config.ts", 0))] };
+  const rootPath = resolve(normalizePath(project.root));
   for (const input of project.files) {
-    const file = projectPath(project.root, input.file);
+    const path = resolveResource(rootPath, input.file);
+    if (!path) {
+      diagnostics.push(error("MESH_RESOURCE_PATH", "Resource file path must resolve inside the project", positionAt("", "mesh.config.ts", 0), "Use a resource path inside the project"));
+      continue;
+    }
+    const file = path.file;
     const parsed = parseData(input.source, file, { customTags: contracts, structural: "reject", unknownTags: "reject" });
     diagnostics.push(...parsed.diagnostics.map((d): Diagnostic => ({
       severity: d.severity, code: "MX", message: d.message,
@@ -119,12 +151,14 @@ export function buildModel(project: ProjectDescription): BuildResult {
     const roots = tags(parsed.tree.children);
     if (roots.length !== 1) {
       diagnostics.push(error("MESH_ROOT_COUNT", "A resource file must contain exactly one `resource`", positionAt(input.source, file, roots[1]?.nameSpan.sourceStart ?? 0), "Declare exactly one resource in this file"));
-      continue;
     }
-    const before = diagnostics.length;
-    checkSupport(roots[0]!, input.source, file, diagnostics);
-    if (diagnostics.length !== before) continue;
-    document.resources.push(buildResource(roots[0]!, input.source, file));
+    // Every Mesh check runs on every parsed resource regardless of errors in
+    // this file or other files. Only an MX error (no tree) suppresses its checks.
+    for (const root of roots) {
+      checkSupport(root, input.source, file, diagnostics);
+      const resource = buildResource(root, input.source, file, diagnostics);
+      if (resource) document.resources.push(resource);
+    }
   }
   const resourceNames = new Set<string>();
   for (const resource of document.resources) {
@@ -145,7 +179,8 @@ export function buildModel(project: ProjectDescription): BuildResult {
       }
     }
   }
-  const invalid = findNonJsonValue(document);
-  if (invalid) diagnostics.push(error("MESH_NON_JSON", `Model is not JSON-compatible: ${invalid}`, document.resources[0]?.position ?? { file: "mesh.config.ts", line: 1, column: 0, offset: 0 }));
+  // Keep the whole-document guard, then locate every offending leaf at the
+  // nearest positioned holder (a Spanned default owns its authored token).
+  if (findNonJsonValue(document)) collectJsonErrors(document, "$", { file: "mesh.config.ts", line: 1, column: 0, offset: 0 }, diagnostics);
   return { document: diagnostics.some((d) => d.severity === "error") ? null : document, diagnostics };
 }
