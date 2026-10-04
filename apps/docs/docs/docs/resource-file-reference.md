@@ -11,7 +11,7 @@ These tags are the current draft of the Mesh resource-file vocabulary. They can 
 
 A resource file is a `.mx` file in Marko syntax, parsed by MX. Mesh chooses the tag names. The contracts in `packages/compiler/src/contracts.ts` describe each tag. They take effect when a file is parsed with `parseData` from `@mxlang/data` using the options `structural: "reject"` and `unknownTags: "reject"` (`packages/compiler/test/helpers.ts` shows the call). With those options, an unknown tag or a tag in the wrong place is rejected. Every contract is closed, so an attribute or child tag that is not listed here is an error.
 
-A default attribute, such as `resource="post"`, is written on the tag itself. Values Mesh reads statically must be literals. A bare identifier is rejected. The tags `change`, `validate`, `filter`, `authorize-if` and `value` are tags whose default attribute is a function.
+The names are Ash's names in kebab-case with a trailing `?` dropped (`belongs_to` is `belongs-to`, `allow_nil?` is `allow-nil`). No tag or attribute name ends in `?`, by the operator's ruling of 2026-10-04, and none contains `_`. Names you choose yourself (an attribute called `authorId`) and everything inside an expression are not vocabulary and stay as written. A default attribute, such as `resource="post"`, is written on the tag itself. Values Mesh reads statically must be literals. A bare identifier is rejected. The tags `change`, `validate`, `filter`, `authorize-if` and `value` are tags whose default attribute is a function.
 
 Each file is expected to have one `resource` at the root. The contracts cannot express that, so a later stage will enforce it. Nothing does yet.
 
@@ -29,7 +29,7 @@ Children: `attributes` (required); `relationships`, `actions`, `policies`, `calc
 
 ## attributes
 
-Container for the data fields. Parent: `resource`. Children: `uuid-primary-key`, `attribute` (repeatable), `timestamps`. It may be empty today; whether a resource needs an attribute is a later model rule.
+Container for the data fields. Parent: `resource`. Children: `uuid-primary-key`, `attribute` (repeatable), `create-timestamp`, `update-timestamp` (each at most once). It may be empty today; whether a resource needs an attribute is a later model rule.
 
 ### uuid-primary-key
 
@@ -40,15 +40,15 @@ Default attribute: the field name (required).
 | Attribute | Required | Meaning |
 |:--|:--|:--|
 | default | yes | Field name |
-| `type` | yes | One of `string`, `number`, `boolean`, `enum`, `uuid`, `datetime` |
-| `values` | when `type` is `enum` | List of allowed strings. Not allowed for other types. Non-empty, no blanks, no repeats |
-| `required` | no | Boolean flag |
+| `type` | yes | One of `string`, `integer`, `float`, `boolean`, `atom`, `uuid`, `datetime` |
+| `constraints` | when `type` is `atom` | An object literal with `one_of`, the list of allowed strings (`constraints={ one_of: ["draft", "published"] }`). Not allowed for other types. `one_of` is non-empty, with no blanks and no repeats. No other constraint is known yet |
+| `allow-nil` | no | Boolean. Nullable unless `allow-nil=false` |
 | `public` | no | Boolean flag |
-| `default` | no | Literal that fits `type`. For `enum`, one of `values` |
+| `default` | no | Literal that fits `type`: an integer for `integer`, a number for `float`, one of `one_of` for `atom` |
 
-### timestamps
+### create-timestamp, update-timestamp
 
-No attributes.
+Default attribute: the field name (required), for example `create-timestamp="insertedAt"`. No other attributes.
 
 ## relationships
 
@@ -59,31 +59,25 @@ Container. Parent: `resource`. Children: `belongs-to`, `has-many` (both repeatab
 | Attribute | Required | Meaning |
 |:--|:--|:--|
 | default | yes | Relationship name |
-| `resource` | yes | Name of the related resource |
+| `destination` | yes | Name of the related resource |
 
 ## actions
 
-Container. Parent: `resource`. Children: `defaults` (at most once); `create`, `update`, `read`, `destroy` (each repeatable).
-
-### defaults
-
-Default attribute: a list of built-in actions to generate, each one of `create`, `read`, `update`, `destroy`, no repeats. Not empty.
+Container. Parent: `resource`. Attribute: `defaults`, a list of built-in actions to generate, each one of `create`, `read`, `update`, `destroy`, no repeats, not empty (`actions defaults=["read", "destroy"]`). Children: `create`, `update`, `read`, `destroy` (each repeatable).
 
 ### create, update, destroy, read
 
-Each takes a default attribute (the action name, required). `create` and `update` also take `accept`, a list of attribute names without blanks or repeats.
+Each takes a default attribute (the action name, required). `create`, `update` and `destroy` also take `accept`, a list of attribute names without blanks or repeats (`accept=[]` is valid).
 
 | Tag | Child tags |
 |:--|:--|
-| `create` | `change` (repeatable) |
-| `update` | `change`, `validate` (repeatable) |
-| `destroy` | `change`, `validate` (repeatable) |
-| `read` | `filter`, `sort` |
+| `create`, `update`, `destroy` | `change`, `validate` (repeatable) |
+| `read` | `filter`, `sort` (each at most once), `validate` (repeatable) |
 
 ### change, validate, filter, sort
 
 - `change`: default attribute is a function. Parents: `create`, `update`, `destroy`.
-- `validate`: default attribute is a function; `message` is an optional non-empty string. Parents: `update`, `destroy`.
+- `validate`: default attribute is a function; `message` is an optional non-empty string. Parents: `create`, `update`, `destroy`, `read`.
 - `filter`: default attribute is a function. Parent: `read`.
 - `sort`: default attribute is a non-empty list of field names, no blanks or repeats. Parent: `read`.
 
@@ -93,7 +87,7 @@ Container. Parent: `resource`. Child: `policy` (repeatable).
 
 ### policy
 
-Takes `action` (an action name) or `action-type` (one of `create`, `read`, `update`, `destroy`). Exactly one of the two is required. Needs at least one `authorize-if` child.
+The default attribute is the policy's condition, required: a check call, or a list of check calls. The checks are `action("publish")` (an action name) and `action_type("read")` (one of `create`, `read`, `update`, `destroy`), each with exactly one string argument (`policy=action_type("read")`, `policy=[action_type("update"), action("publish")]`). The call names are JavaScript identifiers, so they keep Ash's underscore. Needs at least one `authorize-if` child.
 
 ### authorize-if
 
@@ -108,7 +102,7 @@ Container. Parent: `resource`. Child: `calculate` (repeatable).
 | Attribute | Required | Meaning |
 |:--|:--|:--|
 | default | yes | Calculation name |
-| `type` | yes | The attribute types except `enum` |
+| `type` | yes | The attribute types except `atom` |
 
 Needs one `value` child, a tag whose default attribute is a function.
 
@@ -121,7 +115,7 @@ Container. Parent: `resource`. Child: `count` (repeatable).
 | Attribute | Required | Meaning |
 |:--|:--|:--|
 | default | yes | Aggregate name |
-| `relationship` | yes | Name of the relationship to count |
+| `relationship-path` | yes | Name of the relationship to count |
 
 ## Source
 

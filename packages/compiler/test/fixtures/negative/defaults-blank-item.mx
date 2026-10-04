@@ -1,5 +1,4 @@
 resource="post"
   attributes
     uuid-primary-key="id"
-  actions
-    defaults=[" "]
+  actions defaults=[" "]

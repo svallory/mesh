@@ -2,5 +2,5 @@ resource="post"
   attributes
     uuid-primary-key="id"
   relationships
-    belongs-to="author" resource="user"
+    belongs-to="author" destination="user"
       -- stray text

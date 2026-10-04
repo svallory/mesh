@@ -1,0 +1,6 @@
+resource="post"
+  attributes
+    uuid-primary-key="id"
+  actions
+    read="all"
+      validate=({ post }) => true message=" "

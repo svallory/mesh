@@ -1,0 +1,5 @@
+resource="post"
+  attributes
+    uuid-primary-key="id"
+  actions
+    destroy="remove" accept=[""]

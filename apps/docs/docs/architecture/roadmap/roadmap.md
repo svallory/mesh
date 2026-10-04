@@ -67,9 +67,9 @@ Terms:
    Order of work).
 6. **The resource vocabulary copies Ash's DSL for v1**, names and structure, always in MX
    concise syntax, and is reviewed after v1 (review ruling: Vocabulary; [ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md), [ADR-0041](../decisions/0041-mx-concise-syntax.md)). The
-   contracts on `main` predate that ruling; M1 starts by aligning them, following the mapping page
-   ([vocabulary mapping](./vocabulary-mapping.md)). Tag and attribute names in this roadmap are today's
-   and change with that alignment.
+   contracts predated that ruling; the first part of M1 aligned them, following the mapping page
+   ([vocabulary mapping](./vocabulary-mapping.md)), and that is done. Tag and attribute names in this
+   roadmap are the aligned ones; the names of vocabulary that later milestones add are the mapping page's.
 7. **Mesh is open source under the MIT licence** and its docs are public ([ADR-0042](../decisions/0042-open-source-mit.md)).
 
 ## 2. Principles every milestone is checked against
@@ -185,9 +185,10 @@ into tasks by whoever leads it. Sizes are scope, not time.
 - **Goal.** `mesh build` reads `.mx` files and writes a committed model and TypeScript types:
   build stages 1, 2, 3, 7 and 8 of Synthesis section 16 in their simplest form.
 - **In scope.**
-  - *Vocabulary alignment first.* The contracts, fixtures and tests are changed to follow
-    Ash's DSL as the vocabulary mapping page lists ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md)), before anything is built on
-    them. It rewrites tests that were reviewed four times, so it is reviewed as new code.
+  - *Vocabulary alignment first (done).* The contracts, fixtures and tests were changed to follow
+    Ash's DSL as the vocabulary mapping page lists ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md)), before anything was built on
+    them. It rewrote tests that were reviewed four times, so it was reviewed as new code. It is
+    done in the `m1-align` pull request.
   - *Load and check structure.* `compiler` calls `parseData(source, file, { customTags,
     structural: "reject", unknownTags: "reject" })` with the contracts imported directly, so a
     stray local tag file cannot change the build. An undeclared tag at any depth is MX's error
@@ -196,12 +197,12 @@ into tasks by whoever leads it. Sizes are scope, not time.
     MX's HTML-style form is not decided ([ADR-0041](../decisions/0041-mx-concise-syntax.md)).
   - *Build model.* One plain-data document per resource, source positions kept. In M1:
     resource name, `table`, `domain` (optional grouping; it sets the output directory);
-    attributes of the six types the contracts allow, with `required`, `default` and `public`
+    attributes of the seven types the contracts allow (`string`, `integer`, `float`, `boolean`, `atom`, `uuid`, `datetime`), with `allow-nil`, `constraints` (`one_of` for an atom), `default` and `public`
     (recorded in the model as Ash records `public?`; nothing in v1 reads it, and what it will
     mean for a transport is [ADR-0035](../decisions/0035-meaning-of-public.md));
-    `uuid-primary-key`; `timestamps`; the four action kinds (create, read, update, destroy)
-    with `accept`; and `defaults`, which names the action kinds a resource gets without
-    declaring them.
+    `uuid-primary-key`; `create-timestamp` and `update-timestamp`; the four action kinds (create,
+    read, update, destroy) with `accept` (not on read); and the `defaults` attribute of `actions`, which
+    names the action kinds a resource gets without declaring them.
   - The tag contracts are the source of tag names; value vocabularies (attribute types, later
     expression functions) live in the registries in `model`, and the contract's `type` enum is
     built from the registry, with a test that fails if they differ ([ADR-0037](../decisions/0037-vocabulary-source-of-truth.md), proposed).

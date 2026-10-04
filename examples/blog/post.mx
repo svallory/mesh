@@ -1,17 +1,17 @@
 resource="post" table="posts" domain="blog"
   attributes
     uuid-primary-key="id"
-    attribute="title" type="string" required public
+    attribute="title" type="string" allow-nil=false public
     attribute="body" type="string" public
-    attribute="state" type="enum" values=["draft", "published"] default="draft"
-    timestamps
+    attribute="state" type="atom" constraints={ one_of: ["draft", "published"] } default="draft"
+    create-timestamp="insertedAt"
+    update-timestamp="updatedAt"
 
   relationships
-    belongs-to="author" resource="user"
-    has-many="comments" resource="comment"
+    belongs-to="author" destination="user"
+    has-many="comments" destination="comment"
 
-  actions
-    defaults=["read", "destroy"]
+  actions defaults=["read", "destroy"]
 
     create="create" accept=["title", "body"]
       change=({ post, actor }) => { post.authorId = actor.id }
@@ -25,11 +25,11 @@ resource="post" table="posts" domain="blog"
       sort=["-insertedAt"]
 
   policies
-    policy action-type="read"
+    policy=action_type("read")
       authorize-if=({ post }) => post.state === "published"
       authorize-if=({ post, actor }) => post.authorId === actor.id
 
-    policy action="publish"
+    policy=action("publish")
       authorize-if=({ post, actor }) => post.authorId === actor.id
 
   calculations
@@ -39,4 +39,4 @@ resource="post" table="posts" domain="blog"
       }
 
   aggregates
-    count="commentCount" relationship="comments"
+    count="commentCount" relationship-path="comments"

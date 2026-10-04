@@ -1,0 +1,5 @@
+resource="post"
+  attributes
+    uuid-primary-key="id"
+  aggregates
+    count="n"

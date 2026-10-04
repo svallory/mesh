@@ -13,23 +13,23 @@ Mesh is a TypeScript framework modelled on Ash, a declarative resource framework
 
 A resource file is a `.mx` file in MX concise syntax, which is indentation-based ([ADR-0041](../decisions/0041-mx-concise-syntax.md)). MX is a separate project that parses Marko-syntax files. Mesh invents tag names, not syntax, and reads the result as a static tree of tags and attributes ([ADR-0002](../decisions/0002-resource-files-are-mx.md)). MX is a core dependency, not an adapter ([ADR-0043](../decisions/0043-mx-is-core.md)). An *action* is one named operation on a resource (create, read, update, destroy). In v1 an action is a generated TypeScript function, and calling it is the whole interface ([ADR-0005](../decisions/0005-core-interface-is-a-function-call.md)).
 
-This is the test fixture `post.mx`, quoted exactly:
+This is the test fixture `post.mx`, quoted exactly (it is the fixture of [vocabulary mapping](../roadmap/vocabulary-mapping.md), section 7):
 
 ```text
 resource="post" table="posts" domain="blog"
   attributes
     uuid-primary-key="id"
-    attribute="title" type="string" required public
+    attribute="title" type="string" allow-nil=false public
     attribute="body" type="string" public
-    attribute="state" type="enum" values=["draft", "published"] default="draft"
-    timestamps
+    attribute="state" type="atom" constraints={ one_of: ["draft", "published"] } default="draft"
+    create-timestamp="insertedAt"
+    update-timestamp="updatedAt"
 
   relationships
-    belongs-to="author" resource="user"
-    has-many="comments" resource="comment"
+    belongs-to="author" destination="user"
+    has-many="comments" destination="comment"
 
-  actions
-    defaults=["read", "destroy"]
+  actions defaults=["read", "destroy"]
 
     create="create" accept=["title", "body"]
       change=({ post, actor }) => { post.authorId = actor.id }
@@ -43,11 +43,11 @@ resource="post" table="posts" domain="blog"
       sort=["-insertedAt"]
 
   policies
-    policy action-type="read"
+    policy=action_type("read")
       authorize-if=({ post }) => post.state === "published"
       authorize-if=({ post, actor }) => post.authorId === actor.id
 
-    policy action="publish"
+    policy=action("publish")
       authorize-if=({ post, actor }) => post.authorId === actor.id
 
   calculations
@@ -57,10 +57,10 @@ resource="post" table="posts" domain="blog"
       }
 
   aggregates
-    count="commentCount" relationship="comments"
+    count="commentCount" relationship-path="comments"
 ```
 
-The tag names follow Ash's DSL and are aligned with it at the start of M1; these are today's working names, not final ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md)).
+The tag names follow Ash's DSL, spelled in kebab-case with a trailing `?` dropped, and were aligned with it at the start of M1 ([vocabulary mapping](../roadmap/vocabulary-mapping.md)); they are reviewed again after v1 ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md)).
 
 ## Design goals
 
