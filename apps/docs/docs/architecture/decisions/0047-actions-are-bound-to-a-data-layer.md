@@ -52,6 +52,15 @@ These fragments illustrate binding; `input` and `scope` are supplied by the call
 
 [ADR-0007](./0007-scope-is-a-plain-argument.md) remains in force: the scope stays `{ actor, context }`, explicit on every call. The data layer is not in the scope and is not a third action argument.
 
+### Lifecycle and argument boundary (roadmap author, 2026-10-04; the lead may overrule)
+
+These details supplement the operator's binding ruling; they are attributed to the roadmap author, not to the operator's original decision.
+
+1. `bind` takes a ready object implementing the run-time `DataLayer` contract of `@mesh/runtime` (`transaction` and `close`), not an adapter/configuration descriptor for `bind` to initialise. `sqlite(options)` returns such an object, opening its connection on first use. `bind` itself opens nothing and creates no table.
+2. Calling `connect` while a default binding exists throws `FrameworkError`. It never silently replaces or reuses a connection.
+3. `disconnect` closes the default data layer and clears the default binding. A top-level action called afterwards throws the same `FrameworkError` as before `connect`. `connect` may be called again after `disconnect`; `disconnect` without a default binding does nothing.
+4. A data layer passed to `bind` is owned by the caller, who closes it with its `close()` method. `disconnect` never touches it.
+
 ## Options considered
 
 ### Option A: Module state only
@@ -99,4 +108,5 @@ Applications connect once and use top-level functions. Tests can bind independen
 
 - [ ] M2: emit `bind`, `connect`, `disconnect` and default action delegates.
 - [ ] M2: test a top-level call before `connect` and two independent bindings.
+- [ ] M2: test duplicate `connect` rejection, action calls after `disconnect`, reconnect, a no-op `disconnect`, lazy connection opening, and caller-owned cleanup of explicit bindings.
 - [ ] M2: prepare test schemas on the binding's own connection, following ADR-0048.

@@ -58,9 +58,7 @@ Reading it top to bottom:
 - The policies block declares a check for each action. `action_type` accepts one name or a list of names, and a list means any of them, so `action_type(["read", "destroy"])` gives one policy for both actions. That is different from a list of checks, `policy=[a, b]`, where [all conditions in that list must hold](../architecture/research/ash-features.md). With the policies extension enabled, an action with no matching policy is forbidden. `authorize-if` returns a boolean; the expression is the record and the actor, and nothing else.
 - `count="todoCount" relationship-path="todos"` declares an aggregate: the number of related todos.
 
-::: callout info "Not decided yet"
-`table` sits on the `resource` tag here. In Ash it lives in the data layer's own section. Mesh's recommendation is to keep it on `resource`, because a resource file does not name its adapter (a data adapter is replaceable) and both v1 SQL adapters use the same table name. [The vocabulary mapping](../architecture/roadmap/vocabulary-mapping.md), exception X1, records the options.
-:::
+By the operator's ruling of 2026-10-04, `table` stays an attribute of `resource` for now. It moves to a data-layer section, as in Ash, when the extension host exists at M6 or at the post-v1 vocabulary review. [The vocabulary mapping](../architecture/roadmap/vocabulary-mapping.md), exception X1, is closed for now.
 
 ::: callout info "Not decided yet"
 Ash's `belongs_to` creates its foreign-key attribute as `<name>_id`. The roadmap uses `listId`, matching the fixture. Which name Mesh generates is settled when relationships are built. [The vocabulary mapping](../architecture/roadmap/vocabulary-mapping.md), row D12.

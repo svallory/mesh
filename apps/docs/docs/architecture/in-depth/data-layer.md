@@ -61,7 +61,9 @@ What a dialect adds beyond its driver is not detailed in the roadmap: not decide
 
 Each adapter has two halves: a build-time half that emits Drizzle table definitions as a guarded generated file, and a run-time half that implements the contract with Drizzle ([roadmap](../roadmap/roadmap.md), M2). Guarded means `mesh build --check` regenerates the file and fails on any difference ([generated code and the guard](./generated-code-and-guard.md)).
 
-**Names (lead ruling, 2026-10-04).** A column is named exactly like its attribute: `dueOn` stays `dueOn`, with no camelCase-to-snake_case transform. `table` stays an attribute of `resource` until M6 or the post-v1 vocabulary review ([rulings before M2](../decisions/rulings-2026-10-04.md)).
+**Column names (lead ruling, 2026-10-04).** A column is named exactly like its attribute: `dueOn` stays `dueOn`, with no camelCase-to-snake_case transform.
+
+**Table placement (operator ruling, 2026-10-04).** `table` stays an attribute of `resource` until M6 or the post-v1 vocabulary review ([rulings before M2](../decisions/rulings-2026-10-04.md)).
 
 **Isolation rule.** Drizzle is imported only under `packages/data-*` and in the emitted schema file. Generated handlers never import Drizzle, the model or `model.json`; `verify` checks it ([roadmap](../roadmap/roadmap.md), M2, test 4).
 

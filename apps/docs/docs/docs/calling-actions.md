@@ -54,7 +54,9 @@ await t.createTodo(input, scope);
 
 Two bindings to two databases can live in one process. `bind` does not create tables: prepare the emitted schema on the same connection with the adapter's test/development function ([ADR-0048](../architecture/decisions/0048-schema-inside-the-process-for-tests.md)). Its public spelling is defined by the adapter implementation. A CLI in another process cannot prepare this private in-memory database.
 
-`disconnect()` closes the default connection, not independently supplied bindings. Explicit bindings use the supplied data layer's lifetime. The data layer never goes in the scope; `{ actor, context }` stays a required plain argument on every call.
+**Lifecycle and argument boundary** (roadmap author, 2026-10-04; the lead may overrule): `bind` takes a ready object implementing the run-time `DataLayer` contract of `@mesh/runtime` (`transaction` and `close`), not a configuration descriptor. `sqlite(options)` returns that object and opens its connection on first use; `bind` itself opens nothing and creates no table. Calling `connect` while a default binding exists throws `FrameworkError`, never silently replacing or reusing the connection. `disconnect()` closes the default data layer and clears the binding, so a top-level action afterwards throws the same `FrameworkError` as before `connect`. You may connect again after disconnecting; disconnecting without a default binding does nothing. You own a data layer you pass to `bind` and close it with its `close()` method; `disconnect()` never touches it ([ADR-0047](../architecture/decisions/0047-actions-are-bound-to-a-data-layer.md)).
+
+The data layer never goes in the scope; `{ actor, context }` stays a required plain argument on every call.
 
 ## Signatures
 

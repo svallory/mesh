@@ -94,7 +94,7 @@ const t = bind(sqlite({ file: ":memory:" }));
 await t.createTodo(input, scope);
 ```
 
-Two bindings to two databases can coexist in one process. Neither changes the default binding. `bind` does not create tables: use the adapter's in-process test/development schema function before calling actions, as specified in [ADR-0048](../architecture/decisions/0048-schema-inside-the-process-for-tests.md). The adapter implementation defines that helper's public spelling and manages explicitly supplied data layers' lifetimes. The scope remains `{ actor, context }`, with no data layer inside it.
+Two bindings to two databases can coexist in one process. Neither changes the default binding. `bind` does not create tables: use the adapter's in-process test/development schema function before calling actions, as specified in [ADR-0048](../architecture/decisions/0048-schema-inside-the-process-for-tests.md). The adapter implementation defines that helper's public spelling and implements the data layer's lifecycle API; you own cleanup of a data layer you supply to `bind`, using its `close()` method ([ADR-0047](../architecture/decisions/0047-actions-are-bound-to-a-data-layer.md), lifecycle and argument boundary). The scope remains `{ actor, context }`, with no data layer inside it.
 
 ## 4. Change the resource, rebuild
 
