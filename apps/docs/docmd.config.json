@@ -1,0 +1,100 @@
+{
+  "title": "Mesh",
+  "url": "https://mesh.saulo.tech",
+  "src": "docs",
+  "out": "site",
+  "theme": {
+    "appearance": "system"
+  },
+  "layout": {
+    "spa": true
+  },
+  "plugins": {
+    "search": {}
+  },
+  "navigation": [
+    {
+      "title": "Home",
+      "path": "/"
+    },
+    {
+      "title": "Docs",
+      "children": [
+        {
+          "title": "About Docs",
+          "path": "/docs/"
+        },
+        {
+          "title": "Getting started",
+          "path": "/docs/getting-started/"
+        },
+        {
+          "title": "Resource file reference",
+          "path": "/docs/resource-file-reference/"
+        }
+      ]
+    },
+    {
+      "title": "Architecture",
+      "children": [
+        {
+          "title": "About Architecture",
+          "path": "/architecture/"
+        },
+        {
+          "title": "Contributing to these docs",
+          "path": "/architecture/contributing/"
+        },
+        {
+          "title": "Roadmap",
+          "children": [
+            {
+              "title": "About the roadmap",
+              "path": "/architecture/roadmap/"
+            }
+          ]
+        },
+        {
+          "title": "Decisions",
+          "children": [
+            {
+              "title": "About decisions",
+              "path": "/architecture/decisions/"
+            },
+            {
+              "title": "Template",
+              "path": "/architecture/decisions/_template/"
+            }
+          ]
+        },
+        {
+          "title": "Overview",
+          "children": [
+            {
+              "title": "About the overview",
+              "path": "/architecture/overview/"
+            }
+          ]
+        },
+        {
+          "title": "In depth",
+          "children": [
+            {
+              "title": "About in-depth pages",
+              "path": "/architecture/in-depth/"
+            }
+          ]
+        },
+        {
+          "title": "Research",
+          "children": [
+            {
+              "title": "About research",
+              "path": "/architecture/research/"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

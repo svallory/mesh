@@ -1,0 +1,16 @@
+{
+  "name": "mesh-docs",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Mesh documentation site, built with docmd",
+  "scripts": {
+    "dev": "docmd dev",
+    "build": "rm -rf site .docmd && docmd build",
+    "validate": "docmd validate"
+  },
+  "devDependencies": {
+    "@docmd/core": "0.9.7"
+  }
+}
