@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { buildModel, EmitError, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@mesh/compiler";
+import { buildModel, EmitError, generatedImportDiagnostics, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@mesh/compiler";
 import { ATTRIBUTE_TYPES, type ModelDocument } from "@mesh/model";
 import type { TableHandle } from "@mesh/runtime";
 import { getTableColumns } from "drizzle-orm";
@@ -30,6 +31,19 @@ async function fails(document: ModelDocument, message: string, file: string, lin
     expect((error as EmitError).diagnostic).toMatchObject({ message, position: { file, line, column } });
   }
 }
+
+test("schema emitter requires Drizzle and the compiler reports a missing consumer dependency", async () => {
+  expect(sqliteSchemaEmitter.requires).toEqual(["drizzle-orm"]);
+  expect(generatedImportDiagnostics(packageRoot, [sqliteSchemaEmitter])).toEqual([]);
+  const root = await mkdtemp(resolve(tmpdir(), "mesh-schema-import-"));
+  try {
+    expect(generatedImportDiagnostics(root, [sqliteSchemaEmitter])).toEqual([{
+      severity: "error", code: "MESH_GENERATED_IMPORT",
+      message: 'generated code imports "drizzle-orm", which is not installed in this project. Run: bun add drizzle-orm',
+      position: { file: "mesh.config.ts", line: 1, column: 0, offset: 0 }, fix: null,
+    }]);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
 
 test("schema type mapping covers every registered attribute type", () => {
   expect(Object.keys(SQLITE_TYPES).sort()).toEqual(ATTRIBUTE_TYPES.map((type) => type.name).sort());
