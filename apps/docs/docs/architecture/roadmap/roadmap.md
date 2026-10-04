@@ -6,7 +6,7 @@ description: "The order in which Mesh is built: ten milestones for v1, then what
 # Roadmap
 
 Date: 2026-10-04. This is revision 3 of the implementation plan. It replaces
-[plan revision 2 (superseded)](./plan-revision-2.md) (revision 2), which is kept as history.
+[plan revision 2 (superseded)](./plan-revision-2.md), which is kept as history.
 
 ## 0. What this page is
 
@@ -21,9 +21,9 @@ Sources, with the short names used below:
 
 | Short name | File | What it is |
 |---|---|---|
-| **Rulings** | [[rulings of 2026-10-04](../decisions/rulings-2026-10-04.md)](../decisions/rulings-2026-10-04.md) | The decisions of 2026-10-04 by the operator (the project owner, Saulo Vallory). Four parts are cited: the table of eight rulings ("Ruling 4" is row 4), the "Review note", the table "Rulings after the decision review" ("review ruling: Expressions" names a row), and the sections named "Lead decisions": choices made by the team lead, which the project owner may overrule. Where parts disagree, the later one wins. |
-| **Synthesis** | [[research synthesis](../research/synthesis.md)](../research/synthesis.md) | Summary of seven research documents on Ash and on TypeScript tools. Its Step 3 (sections 14–19) is the architecture proposal: three rings, an eight-stage build pipeline, an eight-phase action lifecycle, extension points. |
-| **Durable engines** | [[durable engines](../research/durable-engines.md)](../research/durable-engines.md) | Comparison of eleven workflow and job tools with a proposed adapter interface. Design input for work after v1. It was written when a command-line transport, an in-process runner and Node support were still planned; those premises are superseded ([ADR-0005](../decisions/0005-core-interface-is-a-function-call.md), [ADR-0023](../decisions/0023-workflows-and-jobs-deferred.md), [ADR-0025](../decisions/0025-bun-only.md)). |
+| **Rulings** | [rulings of 2026-10-04](../decisions/rulings-2026-10-04.md) | The decisions of 2026-10-04 by the operator (the project owner, Saulo Vallory). Four parts are cited: the table of eight rulings ("Ruling 4" is row 4), the "Review note", the table "Rulings after the decision review" ("review ruling: Expressions" names a row), and the sections named "Lead decisions": choices made by the team lead, which the project owner may overrule. Where parts disagree, the later one wins. |
+| **Synthesis** | [research synthesis](../research/synthesis.md) | Summary of seven research documents on Ash and on TypeScript tools. Its Step 3 (sections 14–19) is the architecture proposal: three rings, an eight-stage build pipeline, an eight-phase action lifecycle, extension points. |
+| **Durable engines** | [durable engines](../research/durable-engines.md) | Comparison of eleven workflow and job tools with a proposed adapter interface. Design input for work after v1. It was written when a command-line transport, an in-process runner and Node support were still planned; those premises are superseded ([ADR-0005](../decisions/0005-core-interface-is-a-function-call.md), [ADR-0023](../decisions/0023-workflows-and-jobs-deferred.md), [ADR-0025](../decisions/0025-bun-only.md)). |
 | **PR #1, PR #2** | <https://github.com/svallory/mesh/pull/1>, <https://github.com/svallory/mesh/pull/2>; report [PR #1](https://github.com/svallory/mesh/pull/1) and its report | The first Mesh code, both merged to `main`: the resource vocabulary as 26 MX tag contracts with their tests, and the adoption of MX's `unknownTags` option. |
 | **MX notes** | MX project notes, getting-started, MX project notes, updates | How Mesh consumes MX and what has landed in it. |
 

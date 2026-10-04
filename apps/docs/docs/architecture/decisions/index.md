@@ -31,9 +31,9 @@ How to read the status:
 - **Superseded**: reversed by a later record. Kept so that nobody proposes it again without
   knowing it was tried and why it was dropped.
 
-The roadmap ([[roadmap](../roadmap/roadmap.md)](../roadmap/roadmap.md)) says in which milestone each decision
+The roadmap ([roadmap](../roadmap/roadmap.md)) says in which milestone each decision
 is built; its section 8 maps every ruling to its ADR and milestone. The rulings themselves are
-recorded in [[rulings of 2026-10-04](./rulings-2026-10-04.md)](./rulings-2026-10-04.md).
+recorded in [rulings of 2026-10-04](./rulings-2026-10-04.md).
 
 ## Foundations
 
