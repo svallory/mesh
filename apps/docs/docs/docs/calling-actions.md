@@ -136,6 +136,8 @@ Where a tenant lives. It is not in the actor and not in the scope as a Mesh conc
 
 **Destroy** takes `{ id }` and returns `void`. A destroy that accepts attributes takes them too, after the id and all optional, which is how a soft destroy carries the reason. If you need the row back, read it first.
 
+An optional input field may be omitted or passed as `undefined`; both mean "not provided", while `null` is accepted only for a nullable field.
+
 An unknown field is an error, never dropped. A value of the wrong type is an error too: generated validators are Zod schemas, seen by the rest of Mesh only through Standard Schema ([ADR-0028](../architecture/decisions/0028-validation-zod-behind-standard-schema.md)). An attribute whose type has constraints, such as an `atom` with `one_of`, is checked against them.
 
 ## Filters, sort and paging on a read

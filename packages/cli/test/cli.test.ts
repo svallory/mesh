@@ -137,6 +137,12 @@ test.each(["build", "inspect"])("%s errors have exact positions and write no fil
   expect(await Bun.file(join(root, "generated/model.json")).exists()).toBe(false);
 });
 
+test.each([["titel", ' Did you mean "title"?'], ["unknown", ""]])("unknown accept %s prints the exact documented diagnostic without a fix suffix", async (name, tail) => {
+  const root = await project();
+  await writeFile(join(root, "resources/todo.mx"), source.replace('accept=["title"]', `accept=["${name}"]`));
+  expect(run(root, "build")).toEqual({ code: 1, stdout: "", stderr: `resources/todo.mx:6:29 error \`accept\` names "${name}", which is not an attribute of todo.${tail}\n1 error, 0 warnings\n` });
+});
+
 test("missing config is exit 1 with a diagnostic, with no upward search", async () => {
   const root = await project();
   expect(run(join(root, "resources"), "build")).toEqual({ code: 1, stdout: "", stderr: "mesh.config.ts:1:1 error Cannot read mesh.config.ts (ENOENT) (fix: Create mesh.config.ts with resources and output)\n1 error, 0 warnings\n" });

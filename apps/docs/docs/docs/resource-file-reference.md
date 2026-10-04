@@ -35,6 +35,8 @@ Children: `attributes` (required); `relationships`, `actions`, `policies`, `calc
 
 Container for the data fields. Parent: `resource`. Children: `uuid-primary-key`, `attribute` (repeatable), `create-timestamp`, `update-timestamp` (each at most once). It may be empty today; whether a resource needs an attribute is a later model rule.
 
+Attribute names declared by `attribute`, `uuid-primary-key`, `create-timestamp` or `update-timestamp` must not be `__proto__`, `constructor`, `prototype`, `hasOwnProperty`, `isPrototypeOf`, `propertyIsEnumerable`, `toLocaleString`, `toString`, `valueOf`, `__defineGetter__`, `__defineSetter__`, `__lookupGetter__` or `__lookupSetter__`, because these built-in object property names cannot be validated safely.
+
 ### uuid-primary-key
 
 Default attribute: the field name (required).

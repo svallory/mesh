@@ -8,6 +8,13 @@ import contracts from "./contracts.ts";
 import { unsupportedMilestone } from "./support.ts";
 import { nearestName } from "./nearest-name.ts";
 
+/** Fixed forbidden names: never derive this contract from the host's prototype. */
+export const BUILTIN_OBJECT_PROPERTY_NAMES = Object.freeze([
+  "__proto__", "constructor", "prototype", "hasOwnProperty", "isPrototypeOf",
+  "propertyIsEnumerable", "toLocaleString", "toString", "valueOf",
+  "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__",
+] as const);
+
 export interface ResourceFile { file: string; source: string }
 export interface ProjectDescription { root: string; files: readonly ResourceFile[] }
 export interface BuildResult { document: ModelDocument | null; diagnostics: Diagnostic[] }
@@ -168,6 +175,9 @@ export function buildModel(project: ProjectDescription): BuildResult {
     if (!resource.attributes.some((attribute) => attribute.primaryKey)) diagnostics.push(error("MESH_PRIMARY_KEY", "Resource must declare a primary key; declare `uuid-primary-key`", resource.name.position, "Declare uuid-primary-key in attributes"));
     const names = new Set<string>();
     for (const attribute of resource.attributes) {
+      if (BUILTIN_OBJECT_PROPERTY_NAMES.some((name) => name === attribute.name.value)) {
+        diagnostics.push(error("MESH_ATTRIBUTE_NAME", `attribute "${attribute.name.value}" cannot be used: it is the name of a built-in object property. Choose another name.`, attribute.name.position));
+      }
       if (names.has(attribute.name.value)) diagnostics.push(error("MESH_DUPLICATE_ATTRIBUTE", `Duplicate attribute name \"${attribute.name.value}\"`, attribute.name.position));
       names.add(attribute.name.value);
     }
@@ -178,7 +188,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
       if (action.kind !== "read") for (const item of action.accept) {
         if (!names.has(item.value)) {
           const suggestion = nearestName(item.value, names);
-          diagnostics.push(error("MESH_UNKNOWN_ACCEPT", `\`accept\` names "${item.value}", which is not an attribute of ${resource.name.value}.${suggestion === undefined ? "" : ` Did you mean "${suggestion}"?`}`, item.position, "Name an attribute declared in this resource"));
+          diagnostics.push(error("MESH_UNKNOWN_ACCEPT", `\`accept\` names "${item.value}", which is not an attribute of ${resource.name.value}.${suggestion === undefined ? "" : ` Did you mean "${suggestion}"?`}`, item.position, null));
         }
       }
     }

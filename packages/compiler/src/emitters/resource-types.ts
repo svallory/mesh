@@ -104,7 +104,7 @@ function valueType(attribute: Attribute): string {
 
 /** `name: type` or `name?: type`. */
 function member(attribute: Attribute, optional: boolean): string {
-  return `${propertyName(attribute.name.value)}${optional ? "?" : ""}: ${valueType(attribute)};`;
+  return `${propertyName(attribute.name.value)}${optional ? "?" : ""}: ${valueType(attribute)}${optional ? " | undefined" : ""};`;
 }
 
 /** The row selector every update and destroy takes: the primary key, with its own

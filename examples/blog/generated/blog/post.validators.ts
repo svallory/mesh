@@ -5,24 +5,42 @@ import { z } from "zod";
 
 import type { CreatePostInput, PublishPostInput, ArchivePostInput } from "./post.types";
 
-type SameShape<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
+type Keys<T> = T extends Record<string, never> ? never : keyof T;
+
+type SameShape<A, B> = [Keys<A>] extends [Keys<B>]
+  ? [Keys<B>] extends [Keys<A>]
+    ? [A] extends [B]
+      ? [B] extends [A]
+        ? true
+        : false
+      : false
+    : false
+  : false;
+
+type Assert<T extends true> = T;
 
 export const createPostInput = z.strictObject({
   title: z.string(),
   body: z.string().nullable().optional(),
 }) satisfies z.ZodType<CreatePostInput>;
 
-const createPostInputShape: SameShape<z.output<typeof createPostInput>, CreatePostInput> = true;
+export type CreatePostInputShape = Assert<
+  SameShape<z.output<typeof createPostInput>, CreatePostInput>
+>;
 
 export const publishPostInput = z.strictObject({
   id: z.uuid(),
   state: z.enum(["draft", "published"]).nullable().optional(),
 }) satisfies z.ZodType<PublishPostInput>;
 
-const publishPostInputShape: SameShape<z.output<typeof publishPostInput>, PublishPostInput> = true;
+export type PublishPostInputShape = Assert<
+  SameShape<z.output<typeof publishPostInput>, PublishPostInput>
+>;
 
 export const archivePostInput = z.strictObject({
   id: z.uuid(),
 }) satisfies z.ZodType<ArchivePostInput>;
 
-const archivePostInputShape: SameShape<z.output<typeof archivePostInput>, ArchivePostInput> = true;
+export type ArchivePostInputShape = Assert<
+  SameShape<z.output<typeof archivePostInput>, ArchivePostInput>
+>;

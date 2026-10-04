@@ -34,13 +34,15 @@ export const resourceValidatorsEmitter: Emitter = {
       const parts = [header(resource)];
       if (inputs.length) {
         parts.push('import { z } from "zod";', `import type { ${inputs.map((input) => input.name).join(", ")} } from ${JSON.stringify(`./${segment}.types`)};`,
-          // Assignability in only one direction permits a required schema for an
-          // optional member. Check both directions, without widening the schema.
-          "type SameShape<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;");
+          // Compare keys too: mutual assignability alone permits optional-key drift.
+          // Empty inputs deliberately use a never index signature in types.
+          "type Keys<T> = T extends Record<string, never> ? never : keyof T;",
+          "type SameShape<A, B> = [Keys<A>] extends [Keys<B>] ? ([Keys<B>] extends [Keys<A>] ? ([A] extends [B] ? ([B] extends [A] ? true : false) : false) : false) : false;",
+          "type Assert<T extends true> = T;");
         for (const input of inputs) {
           const name = input.name.charAt(0).toLowerCase() + input.name.slice(1);
           parts.push(`export const ${name} = z.strictObject({\n${input.fields.map(({ attribute, optional }) => `  ${propertyName(attribute.name.value)}: ${schemaFor(attribute, optional)},`).join("\n")}\n}) satisfies z.ZodType<${input.name}>;`,
-            `const ${name}Shape: SameShape<z.output<typeof ${name}>, ${input.name}> = true;`);
+            `export type ${input.name}Shape = Assert<SameShape<z.output<typeof ${name}>, ${input.name}>>;`);
         }
       }
       try {
