@@ -5,7 +5,7 @@ Today the repo holds MX tag contracts for the resource vocabulary (`src/contract
 
 ## Commands
 
-- `bun install`, `bun test`, `bunx tsc --noEmit` (run from the repo root)
+- First link MX once: `bun link @mxlang/data @mxlang/core` (needs a local MX checkout that has been registered with `bun link`; MX is a separate project). Then `bun install`, `bun test`, `bunx tsc --noEmit` (run from the repo root)
 - Docs site, from `apps/docs`: `bun install`, then `bun run dev` (preview), `bun run build` (static site into `apps/docs/site/`), `bun run validate` (link check). Run build and validate before a PR. How to add pages: `apps/docs/docs/architecture/contributing.md`.
 
 ## Rules
