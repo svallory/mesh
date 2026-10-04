@@ -1,25 +1,18 @@
 {
-  "name": "mesh-resource-contracts",
+  "name": "mesh",
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
   "type": "module",
   "packageManager": "bun@1.3.14",
-  "description": "Mesh resource-file vocabulary as MX CustomTag contracts",
+  "workspaces": ["packages/*", "apps/*", "examples/*"],
   "scripts": {
-    "test": "bun test",
-    "typecheck": "tsc --noEmit"
-  },
-  "mx": {
-    "target": "data",
-    "contracts": "./src/contracts.ts"
+    "test": "bun run --filter '*' test",
+    "typecheck": "bun run --filter '*' typecheck",
+    "verify": "bun scripts/verify.ts"
   },
   "devDependencies": {
     "@types/bun": "^1.4.2",
     "typescript": "^7.0.2"
-  },
-  "dependencies": {
-    "@mxlang/data": "link:@mxlang/data",
-    "@mxlang/core": "link:@mxlang/core"
   }
 }

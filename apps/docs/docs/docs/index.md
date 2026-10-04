@@ -13,8 +13,8 @@ You cannot build an application with Mesh yet. This section grows as features sh
 
 ## What exists today
 
-- **Tag contracts for resource files.** The vocabulary of a resource file (`resource`, `attribute`, `create` and so on) is defined as contracts that MX (the parser Mesh builds on) enforces when it parses a `.mx` file. The code is in `src/contracts.ts` in the repository. See the [Resource file reference](./resource-file-reference.md).
-- **Tests for those contracts.** They live in `test/` and run with `bun test`.
+- **Tag contracts for resource files.** The vocabulary of a resource file (`resource`, `attribute`, `create` and so on) is defined as contracts that MX (the parser Mesh builds on) enforces when it parses a `.mx` file. The code is in `packages/compiler/src/contracts.ts` in the repository. See the [Resource file reference](./resource-file-reference.md).
+- **Tests for those contracts.** They live in `packages/compiler/test/` and run with `bun run test`.
 
 ## What does not exist yet
 
