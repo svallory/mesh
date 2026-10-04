@@ -29,6 +29,10 @@
         "@mxlang/data": "link:@mxlang/data",
       },
     },
+    "packages/model": {
+      "name": "@mesh/model",
+      "version": "0.0.0",
+    },
   },
   "packages": {
     "@docmd/api": ["@docmd/api@0.9.7", "", { "dependencies": { "@docmd/parser": "^0.9.7", "@docmd/tui": "^0.9.7", "@docmd/utils": "^0.9.7" }, "optionalDependencies": { "@docmd/engine-js": "^0.9.7", "@docmd/engine-python": "^0.9.7", "@docmd/engine-rust": "^0.9.7" } }, "sha512-t+uojlDgbijUTZTyqsoXGfoKY1UmmIDtgPeYbDcpnsRZFVArxgAcTp8chxyNj6D3zb5YWFadydKEgCQRVaL0pA=="],
@@ -134,6 +138,8 @@
     "@mesh/compiler": ["@mesh/compiler@workspace:packages/compiler"],
 
     "@mesh/example-blog": ["@mesh/example-blog@workspace:examples/blog"],
+
+    "@mesh/model": ["@mesh/model@workspace:packages/model"],
 
     "@mxlang/core": ["@mxlang/core@link:@mxlang/core", {}],
 

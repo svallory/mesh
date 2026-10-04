@@ -5,7 +5,7 @@ description: "The eight build stages that turn resource files into committed, gu
 
 # The build-time pipeline
 
-Status: design; stages 1, 2, 3, 7 and 8 are built in M1, expression conversion (part of stage 3) and stage 6 in M4, stages 4 and 5 in M6. Only the tag contracts in `packages/compiler` exist today. Tag and attribute names quoted here are today's working names; aligning them with Ash's DSL is the first part of M1 ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md)).
+Status: design; stages 1, 2, 3, 7 and 8 are built in M1, expression conversion (part of stage 3) and stage 6 in M4, stages 4 and 5 in M6. The tag contracts in `packages/compiler` and the model types in `packages/model` exist today. Tag and attribute names quoted here are today's working names; aligning them with Ash's DSL is the first part of M1 ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md)).
 
 ## Why a pipeline
 
@@ -38,7 +38,7 @@ In M1 MX does most of this: unknown tags, wrong attribute types, wrong nesting a
 
 ### 3. Build model
 
-The model is plain, JSON-serialisable data with source positions kept ([roadmap](../roadmap/roadmap.md), M1; section 3, `model` row). In M1 it holds resource name, `table`, `domain`, six attribute types, `uuid-primary-key`, `timestamps` and the four action kinds with `accept` and `defaults`. Cross-file checks in M1: duplicate resource names, and `accept` naming a missing attribute. When M6 lands, these checks become the Verify stage.
+The model is plain, JSON-serialisable data with source positions kept ([roadmap](../roadmap/roadmap.md), M1; section 3, `model` row). In M1 it holds resource name, `table`, `domain`, six attribute types, `uuid-primary-key`, `timestamps` and the four action kinds with `accept` and `defaults`. Cross-file checks in M1: duplicate resource names, and `accept` naming a missing attribute. When M6 lands, these checks become the Verify stage. The M1 types are in `packages/model` (`Resource`, `ModelDocument`, `SourcePosition`, `Diagnostic`): absent optional values are `null`, never `undefined`, so a document survives a JSON round trip unchanged. The attribute type names (`string`, `integer`, `float`, `boolean`, `uuid`, `datetime`, `atom`) live in the registry there ([ADR-0037](../decisions/0037-vocabulary-source-of-truth.md)); `model` imports nothing from MX, `compiler` or Drizzle, and a test scans its sources for such imports.
 
 From M4, stage 3 also converts each arrow function from MX's Babel node to an expression tree and classifies it as translatable or opaque. The tree and its class are part of the model, so transforms and verifiers see them ([roadmap](../roadmap/roadmap.md), M4). Conversion runs in `compiler`. A translatable expression may use only its parameters and registered functions; a free variable is a build error. Parameters such as the actor are bound from the scope and the input when the expression runs; the mechanism is not decided.
 
