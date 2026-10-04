@@ -13,7 +13,7 @@ Mesh is a TypeScript framework modelled on Ash, a declarative resource framework
 
 A resource file is a `.mx` file in MX concise syntax, which is indentation-based ([ADR-0041](../decisions/0041-mx-concise-syntax.md)). MX is a separate project that parses Marko-syntax files. Mesh invents tag names, not syntax, and reads the result as a static tree of tags and attributes ([ADR-0002](../decisions/0002-resource-files-are-mx.md)). MX is a core dependency, not an adapter ([ADR-0043](../decisions/0043-mx-is-core.md)). An *action* is one named operation on a resource (create, read, update, destroy). In v1 an action is a generated TypeScript function, and calling it is the whole interface ([ADR-0005](../decisions/0005-core-interface-is-a-function-call.md)).
 
-This is the test fixture `post.mx`, quoted exactly (it is the aligned form of the vocabulary mapping, with one difference: the mapping's version also carries `require-atomic=false` on `publish`, which arrives with M5):
+This is the test fixture `post.mx`, quoted exactly (it is the fixture of [vocabulary mapping](../roadmap/vocabulary-mapping.md), section 7):
 
 ```text
 resource="post" table="posts" domain="blog"

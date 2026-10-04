@@ -454,6 +454,13 @@ const RULE_CLASSES: Record<string, Case[]> = {
     { file: "attribute-old-type-number", line: 3, column: 18, message: TYPE_MESSAGE("number") },
     { file: "attribute-old-type-enum", line: 3, column: 18, message: TYPE_MESSAGE("enum") },
     { file: "count-old-relationship-attribute", line: 5, column: 14, message: "`<count>`: unknown attribute `relationship`" },
+    { file: "old-belongs-to-resource-attribute", line: 5, column: 24, message: "`<belongs-to>`: unknown attribute `resource`" },
+    { file: "old-has-many-resource-attribute", line: 5, column: 24, message: "`<has-many>`: unknown attribute `resource`" },
+    { file: "attribute-old-values-attribute", line: 3, column: 30, message: "`<attribute>`: unknown attribute `values`" },
+  ],
+  "array-typed attributes: the array and its item type are declared (MX `array` + `items`)": [
+    { file: "sort-not-array", line: 6, column: 10, message: "`<sort>`: attribute `value` must be array, got string" },
+    { file: "sort-item-not-string", line: 6, column: 17, message: "`<sort>`: attribute `value` item 2 must be string, got number" },
   ],
   "analyze: `defaults` items name built-in actions": [
     { file: "defaults-bad-item", line: 4, column: 10, message: `\`<actions>\`: \`defaults\` item "reed" must be one of ${ACTION_TYPE_LIST}` },
@@ -832,60 +839,62 @@ describe("known gap: root cardinality", () => {
 });
 
 describe("roadmap M1 acceptance test 7: every row of the mapping page marked 'on main' has a contract and a fixture that match it", () => {
-  // The rows of apps/docs/docs/architecture/roadmap/vocabulary-mapping.md,
-  // section 3, whose status column says "on main". Each names the tag, the
-  // attributes and the child tags the row puts on main. A row passes when the
-  // contract declares them and a file that parses with zero diagnostics uses them.
-  interface Row {
-    row: number;
-    tag: string;
-    attrs?: string[];
-    children?: string[];
-    /** Attribute values that must appear in a clean file, for example a type name. */
-    values?: { attr: string; value: string }[];
-  }
-  const ROWS: Row[] = [
-    { row: 1, tag: "resource", attrs: ["value", "domain"] },
-    { row: 4, tag: "resource", attrs: ["table"] },
-    { row: 14, tag: "attributes", children: ["attribute"] },
-    { row: 15, tag: "uuid-primary-key", attrs: ["value"] },
-    { row: 18, tag: "create-timestamp", attrs: ["value"] },
-    { row: 19, tag: "update-timestamp", attrs: ["value"] },
-    { row: 20, tag: "attribute", attrs: ["value", "type"] },
-    { row: 21, tag: "attribute", attrs: ["allow-nil"] },
-    { row: 22, tag: "attribute", attrs: ["public"] },
-    { row: 23, tag: "attribute", attrs: ["default"] },
-    { row: 30, tag: "attribute", values: ["string", "boolean", "uuid", "datetime"].map((value) => ({ attr: "type", value })) },
-    { row: 31, tag: "attribute", values: ["integer", "float"].map((value) => ({ attr: "type", value })) },
-    { row: 32, tag: "attribute", attrs: ["constraints"], values: [{ attr: "type", value: "atom" }] },
-    { row: 36, tag: "relationships", children: ["belongs-to", "has-many"] },
-    { row: 37, tag: "belongs-to", attrs: ["value", "destination"] },
-    { row: 38, tag: "has-many", attrs: ["value", "destination"] },
-    { row: 48, tag: "actions", children: ["create", "update", "destroy", "read"] },
-    { row: 49, tag: "actions", attrs: ["defaults"] },
-    { row: 51, tag: "create", attrs: ["value"] },
-    { row: 52, tag: "update", attrs: ["value"] },
-    { row: 53, tag: "destroy", attrs: ["value"] },
-    { row: 54, tag: "read", attrs: ["value"] },
-    { row: 56, tag: "destroy", attrs: ["accept"] },
-    { row: 66, tag: "change", attrs: ["value"] },
-    { row: 67, tag: "validate", attrs: ["value"] },
-    { row: 68, tag: "validate", attrs: ["message"] },
-    { row: 74, tag: "filter", attrs: ["value"] },
-    { row: 75, tag: "sort", attrs: ["value"] },
-    { row: 80, tag: "calculations", children: ["calculate"] },
-    { row: 81, tag: "calculate", attrs: ["value", "type"], children: ["value"] },
-    { row: 81, tag: "value" },
-    { row: 85, tag: "aggregates", children: ["count"] },
-    { row: 86, tag: "count", attrs: ["value", "relationship-path"] },
-    { row: 89, tag: "policies", children: ["policy"] },
-    { row: 90, tag: "policy", attrs: ["value"], children: ["authorize-if"] },
-    { row: 91, tag: "policy", attrs: ["value"] },
-    { row: 92, tag: "authorize-if", attrs: ["value"] },
-  ];
+  // The rows come from the mapping page itself, never from a list kept here:
+  // section 3 of apps/docs/docs/architecture/roadmap/vocabulary-mapping.md.
+  // Its last column, "Contract check", is machine-readable (see the page, the
+  // paragraph before 3.1): `tag: attr attr >child attr=v1,v2; tag: ...`.
+  // A row whose status says "on main" with a cell that does not parse fails.
+  const page = readFileSync(
+    new URL("../../../apps/docs/docs/architecture/roadmap/vocabulary-mapping.md", import.meta.url),
+    "utf8",
+  );
+  const section3 = page.slice(page.indexOf("## 3. The mapping"), page.indexOf("## 4. Deviations"));
 
-  // What post.mx does not use: `destroy` (and `accept` on it), `validate` in
-  // create and read, and the attribute types other than string and atom.
+  interface Spec {
+    tag: string;
+    attrs: string[];
+    children: string[];
+    values: { attr: string; values: string[] }[];
+  }
+  interface PageRow {
+    row: number;
+    onMain: boolean;
+    check: string;
+  }
+
+  const rows: PageRow[] = section3
+    .split("\n")
+    .filter((line) => /^\| \d+ \|/.test(line))
+    .map((line) => {
+      const cells = line.split(/(?<!\\)\|/).map((c) => c.trim());
+      // ["", "#", ash, source, mesh, today, status, check, ""]
+      if (cells.length !== 9) throw new Error(`mapping row has ${cells.length - 2} cells, expected 7: ${line.slice(0, 60)}`);
+      return { row: Number(cells[1]), onMain: cells[6]!.includes("on main"), check: cells[7]! };
+    });
+
+  function parseCheck(row: PageRow): Spec[] {
+    const m = /^`([^`]+)`$/.exec(row.check);
+    if (!m) throw new Error(`row ${row.row} is on main and its Contract check cell is not one backticked spec: "${row.check}"`);
+    return m[1]!.split(";").map((part) => {
+      const [tag, tokens, ...rest] = part.split(":").map((x) => x.trim());
+      if (!tag || tokens === undefined || rest.length > 0 || !/^[a-z][a-z0-9-]*$/.test(tag) || tokens === "") {
+        throw new Error(`row ${row.row}: cannot parse spec "${part.trim()}"`);
+      }
+      const spec: Spec = { tag, attrs: [], children: [], values: [] };
+      for (const token of tokens.split(/\s+/)) {
+        if (token.startsWith(">")) spec.children.push(token.slice(1));
+        else if (token.includes("=")) {
+          const [attr, list] = token.split("=");
+          spec.values.push({ attr: attr!, values: list!.split(",") });
+        } else spec.attrs.push(token);
+      }
+      return spec;
+    });
+  }
+
+  // What post.mx does not use: `destroy` (with `accept` and `validate`), `accept` on
+  // update, `validate` in create and read, and the attribute types other than
+  // string and atom.
   const EXTRA = [
     'resource="extra"',
     "  attributes",
@@ -898,7 +907,9 @@ describe("roadmap M1 acceptance test 7: every row of the mapping page marked 'on
     "  actions",
     '    create="open"',
     '      validate=({ extra }) => extra.ok message="not ok"',
+    '    update="close" accept=["flag"]',
     '    destroy="remove" accept=["flag"]',
+    '      validate=({ extra }) => extra.ok message="not ok"',
     '    read="all"',
     '      validate=({ extra }) => extra.ok message="not ok"',
     "",
@@ -915,43 +926,89 @@ describe("roadmap M1 acceptance test 7: every row of the mapping page marked 'on
     for (const child of node.children ?? []) collect(child, into);
     return into;
   };
-  const used = () => {
-    const sources = [fixture("post.mx").source, EXTRA];
-    return sources.flatMap((source) => {
-      const result = parse(source);
-      expect(result.diagnostics).toEqual([]);
-      return collect(result.tree as unknown as TagNode);
-    });
-  };
+  const used = [fixture("post.mx").source, EXTRA].flatMap((source) => {
+    const result = parse(source);
+    expect(result.diagnostics).toEqual([]);
+    return collect(result.tree as unknown as TagNode);
+  });
 
-  for (const r of ROWS) {
-    test(`row ${r.row}: <${r.tag}> ${[...(r.attrs ?? []), ...(r.children ?? [])].join(", ")}`, () => {
-      const contract = contracts[r.tag as keyof typeof contracts] as CustomTag;
-      expect(contract, `contract <${r.tag}>`).toBeDefined();
-      for (const a of r.attrs ?? []) expect(Object.keys(contract.attributes ?? {}), a).toContain(a);
-      for (const c of r.children ?? []) expect(Object.keys(contract.children ?? {}), c).toContain(c);
+  test("the page's section 3 is read: 110 rows, each with a status and a check cell", () => {
+    expect(rows).toHaveLength(110);
+    expect(rows.map((r) => r.row)).toEqual(Array.from({ length: 110 }, (_, i) => i + 1));
+    expect(rows.filter((r) => r.onMain).length).toBeGreaterThan(30);
+  });
 
-      const tags = used().filter((t) => t.name === r.tag);
-      for (const a of r.attrs ?? []) {
-        expect(tags.some((t) => t.attrs?.some((x) => x.name === a)), `no clean fixture uses ${r.tag}.${a}`).toBe(true);
-      }
-      for (const c of r.children ?? []) {
-        expect(
-          tags.some((t) => t.children?.some((x) => x.name === c)),
-          `no clean fixture nests <${c}> in <${r.tag}>`,
-        ).toBe(true);
-      }
-      for (const v of r.values ?? []) {
-        expect(
-          tags.some((t) => t.attrs?.some((x) => x.name === v.attr && x.value === v.value)),
-          `no clean fixture sets ${r.tag}.${v.attr}="${v.value}"`,
-        ).toBe(true);
+  test("a row that is not on main carries `-`, so no row is checked by accident or skipped by silence", () => {
+    for (const r of rows.filter((x) => !x.onMain)) expect(r.check, `row ${r.row}`).toBe("-");
+  });
+
+  test("the parser rejects a malformed check cell instead of skipping it", () => {
+    for (const bad of ["", "-", "`resource`", "`: value`", "`Resource: value`", "`a: b: c`", "resource: value"]) {
+      expect(() => parseCheck({ row: 0, onMain: true, check: bad }), bad).toThrow();
+    }
+  });
+
+  for (const r of rows.filter((x) => x.onMain)) {
+    test(`row ${r.row} (${r.check})`, () => {
+      for (const spec of parseCheck(r)) {
+        const contract = contracts[spec.tag as keyof typeof contracts] as CustomTag | undefined;
+        expect(contract, `no contract <${spec.tag}>`).toBeDefined();
+        const declaredAttrs = Object.keys(contract!.attributes ?? {});
+        const declaredChildren = Object.keys(contract!.children ?? {});
+        const tags = used.filter((t) => t.name === spec.tag);
+        expect(tags.length, `no clean fixture uses <${spec.tag}>`).toBeGreaterThan(0);
+        for (const a of [...spec.attrs, ...spec.values.map((v) => v.attr)]) {
+          expect(declaredAttrs, `<${spec.tag}> does not declare \`${a}\``).toContain(a);
+          expect(
+            tags.some((t) => t.attrs?.some((x) => x.name === a)),
+            `no clean fixture uses ${spec.tag}.${a}`,
+          ).toBe(true);
+        }
+        for (const c of spec.children) {
+          expect(declaredChildren, `<${spec.tag}> does not declare child <${c}>`).toContain(c);
+          expect(
+            tags.some((t) => t.children?.some((x) => x.name === c)),
+            `no clean fixture nests <${c}> in <${spec.tag}>`,
+          ).toBe(true);
+        }
+        for (const { attr, values } of spec.values) {
+          for (const value of values) {
+            expect(
+              tags.some((t) => t.attrs?.some((x) => x.name === attr && x.value === value)),
+              `no clean fixture sets ${spec.tag}.${attr}="${value}"`,
+            ).toBe(true);
+          }
+        }
       }
     });
   }
 
-  test("no tag on main is outside the list: every contract is named by at least one row", () => {
-    const named = new Set(ROWS.map((r) => r.tag));
+  test("no tag on main is outside the page: every contract is named by a row, as a tag or as a child", () => {
+    const named = new Set<string>();
+    for (const r of rows.filter((x) => x.onMain)) {
+      for (const spec of parseCheck(r)) {
+        named.add(spec.tag);
+        for (const c of spec.children) named.add(c);
+      }
+    }
+    // `value` (the body of `calculate`) is named as a child of `calculate`.
     expect([...named].sort()).toEqual(Object.keys(contracts).sort());
+  });
+
+  test("no attribute on main is outside the page: every declared attribute is named by a row for its tag", () => {
+    const named = new Map<string, Set<string>>();
+    for (const r of rows.filter((x) => x.onMain)) {
+      for (const spec of parseCheck(r)) {
+        const set = named.get(spec.tag) ?? new Set<string>();
+        for (const a of [...spec.attrs, ...spec.values.map((v) => v.attr)]) set.add(a);
+        named.set(spec.tag, set);
+      }
+    }
+    for (const [tag, contract] of Object.entries(contracts)) {
+      for (const attr of Object.keys((contract as CustomTag).attributes ?? {})) {
+        if (tag === "value" && attr === "value") continue; // the body of `calculate`, code
+        expect(named.get(tag)?.has(attr), `<${tag}> declares \`${attr}\` but no on-main row names it`).toBe(true);
+      }
+    }
   });
 });
