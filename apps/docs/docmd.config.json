@@ -91,6 +91,79 @@
             {
               "title": "About research",
               "path": "/architecture/research/"
+            },
+            {
+              "title": "Research synthesis",
+              "path": "/architecture/research/synthesis/"
+            },
+            {
+              "title": "Ash core feature inventory",
+              "path": "/architecture/research/ash-features/"
+            },
+            {
+              "title": "Ash DSL and extension system",
+              "path": "/architecture/research/ash-dsl-and-extensions/"
+            },
+            {
+              "title": "Ash run-time architecture",
+              "path": "/architecture/research/ash-runtime-internals/"
+            },
+            {
+              "title": "The Ash ecosystem packages",
+              "path": "/architecture/research/ash-ecosystem-packages/"
+            },
+            {
+              "title": "Ash strengths and weaknesses",
+              "path": "/architecture/research/ash-strengths-weaknesses/"
+            },
+            {
+              "title": "TypeScript prior art",
+              "path": "/architecture/research/ts-prior-art/"
+            },
+            {
+              "title": "Candidate foundation libraries",
+              "path": "/architecture/research/ts-foundation-candidates/"
+            },
+            {
+              "title": "Durable workflow engines",
+              "path": "/architecture/research/durable-engines/"
+            },
+            {
+              "title": "Reviews",
+              "children": [
+                {
+                  "title": "Review: Ash core feature inventory",
+                  "path": "/architecture/research/reviews/ash-features-review/"
+                },
+                {
+                  "title": "Review: Ash DSL and extension system",
+                  "path": "/architecture/research/reviews/ash-dsl-and-extensions-review/"
+                },
+                {
+                  "title": "Review: Ash run-time architecture",
+                  "path": "/architecture/research/reviews/ash-runtime-internals-review/"
+                },
+                {
+                  "title": "Review: The Ash ecosystem packages",
+                  "path": "/architecture/research/reviews/ash-ecosystem-packages-review/"
+                },
+                {
+                  "title": "Review: Ash strengths and weaknesses",
+                  "path": "/architecture/research/reviews/ash-strengths-weaknesses-review/"
+                },
+                {
+                  "title": "Review: TypeScript prior art",
+                  "path": "/architecture/research/reviews/ts-prior-art-review/"
+                },
+                {
+                  "title": "Review: Candidate foundation libraries",
+                  "path": "/architecture/research/reviews/ts-foundation-candidates-review/"
+                },
+                {
+                  "title": "Review: Durable workflow engines",
+                  "path": "/architecture/research/reviews/durable-engines-review/"
+                }
+              ]
             }
           ]
         }
