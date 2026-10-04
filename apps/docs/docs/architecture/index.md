@@ -17,6 +17,7 @@ If a reader can learn it by opening one file, put it in that file as a comment o
 
 | Area | What belongs there |
 |:--|:--|
+| [Open questions and findings](./open-questions.md) | What the user docs deliberately leave out, and what the docs had to invent |
 | [Roadmap](./roadmap/index.md) | What is planned, in what order, and what is done |
 | [Decisions](./decisions/index.md) | One record per decision, in ADR format |
 | [Overview](./overview/index.md) | How the parts fit together, at a glance |

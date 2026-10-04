@@ -11,19 +11,30 @@ The site is a [docmd](https://docmd.io) project in `apps/docs`. Pages are Markdo
 
 **Docs** is for people who will use Mesh. **Architecture** is for contributors: what cannot be understood by looking at a single code file.
 
-**Architecture** documents what exists. If a milestone adds a contract, a pipeline stage or a cross-package rule, its Architecture page is updated in the same pull request.
+**Docs** is written as if Mesh 1.0 were released. There is no "exists today", no milestone number, no "not decided yet" callout and no link to a decision record in the flow of a page. Every Docs page carries one short callout, identical on every page:
 
-**Docs** is a **live spec**: pages under Docs are written *before* the implementation, and sometimes before the architecture is settled, to model how using Mesh should feel. This replaces the earlier practice, "the pages under Docs describe only what exists today".
+```markdown
+::: callout warning "Not released"
+Mesh is not released yet. These pages describe Mesh 1.0.
+:::
+```
+
+The same line on every page is deliberate: a per-page reworded warning is what made the earlier pages contradict each other.
+
+**Architecture** documents everything else, in particular what a Docs page could not say. Anything the Docs pages removed as "not decided", and every point where writing a page forced an invention, belongs on [Open questions and findings](./open-questions.md) with the record it touches. A contributor-only page may also say what exists today; a user page may not.
+
+The practice is unchanged from the earlier ruling: **user docs are written first, in the 1.0 voice, and the code follows them or changes them in the same pull request.** A pull request that adds behaviour adds or edits the Docs page for it. A pull request that finds the page wrong changes the page and the design together, or records on the open-questions page that the page is now wrong and why.
 
 The reason is that writing the page is a test of the design. A page that has to say "the architecture does not say what this command is called" has found a gap; a page that has to contradict two architecture pages has found a contradiction. Neither shows up by reading the architecture.
 
-Two things follow from that rule:
+## What the checks enforce
 
-- Every page under Docs opens with the same warning callout, saying it is a live spec of how things **will** be and that Mesh is not released. Copy it verbatim from another Docs page.
-- Where a decision is Proposed or open, the page takes the option the decision record recommends and adds a short `::: callout info "Not decided yet"` linking to the record. Never pick silently.
-- Where nothing is decided at all, design the simplest thing a TypeScript developer would expect and record it in the task report as an invention, with the alternative you rejected. Those are the most valuable output of the work.
+Two checks run over the pages, and both are in `bun run verify`:
 
-The ruling is in the [rulings of 2026-10-04](./decisions/rulings-2026-10-04.md), row "User docs as live spec".
+- **Complete `.mx` samples** are parsed by the compiler test in `packages/compiler/test/repository-checks.ts`. A Docs block whose root tag is `entity` is counted as *deferred* and skipped, because the tag contracts still spell the tag `resource`; re-enable it in the rename task. The check prints the deferred count on every run.
+- **TypeScript samples** are type-checked by `apps/docs/test/docs-samples.test.ts` against `apps/docs/samples/mesh-api.d.ts`, the declarations of the API the pages describe. Every `ts` block must be a complete file: it declares what it uses and its calls match the documented signatures. A fence titled `excerpt` is a signature shown in prose and is not compiled.
+
+Neither check runs any sample. They are not a claim that Mesh exists as a runtime.
 
 ## Build and preview locally
 
@@ -37,9 +48,44 @@ bun run build      # static site into apps/docs/site/
 bun run validate   # check internal links
 ```
 
-A docmd plugin that `docmd.config.json` enables must also be declared in `apps/docs/package.json` (for example `@docmd/plugin-search`), or docmd shells out to npm at build time because it does not recognise Bun's text `bun.lock`.
+A docmd plugin that `docmd.config.json` enables must also be declared in `apps/docs/package.json` (for example `@docmd/plugin-search`), or docmd shells out to npm at build time because it does not recognise Bun's text `bun.lock`. The `ai` plugin is a docmd core plugin that is auto-loaded on every build; `"ai": false` in `plugins` opts out of it, which is why this site has no floating assistant bar.
 
 Run `bun run build` and `bun run validate` before you open a pull request. From the repository root, `bun run verify` runs them together with the tests and the type check. Stop the dev server when you are done.
+
+## What exists today
+
+This section is for contributors. Nothing under [Docs](../docs/index.md) says any of it, because those pages are written as if 1.0 were released.
+
+- **`packages/compiler`** holds the tag contracts for entity files (`src/contracts.ts`) and the loader, model builder and emitters written so far. Its tests include the Docs `.mx` sample check described above.
+- **`packages/model`** holds the plain-data entity model: fields, actions, relationships, the type registries and the diagnostic type. It imports nothing.
+- **`packages/runtime`** holds the run-time library generated code will import: the action context's type, the error classes and the data-layer contract, with conformance checks under `@mesh/runtime/testing`.
+- **`packages/cli`** holds the Bun-only `mesh` developer command, still a thin compiler shell. It re-exports `defineConfig`.
+- **`examples/blog`** is the fixture project. `bunx mesh build` there writes its generated tree, which is committed.
+- **`apps/docs`** is this site.
+
+From the repository root:
+
+```bash
+bun install        # MX must be registered on the machine once, with `bun link` inside the MX checkout
+bun run verify      # every package's tests, type check, build and validate, plus the docs checks
+bun run test        # tests only
+bun run typecheck   # type checks only
+```
+
+MX is a separate project whose packages the compiler resolves through `link:` entries. Register the local MX checkout once by running `bun link` inside it; after that a plain `bun install` resolves them. Never run `bun link @mxlang/data @mxlang/core` at the repository root: `bun link <package>` writes a `link:` dependency into the `package.json` of the directory it runs in.
+
+To try the example:
+
+```bash
+cd examples/blog
+bunx mesh build
+```
+
+With `@mesh/cli` installed, the command runs from the project root containing `mesh.config.ts`, with no upward search. For another project in this checkout, invoke it as `bun /absolute/path/to/packages/cli/src/bin.ts` from that project. `mesh build` never deletes files; move stray output yourself. Exit codes: `0` success, `1` build, configuration or guard errors, `2` usage errors.
+
+## The vocabulary gap
+
+The Docs pages use the terms the operator ruled on 2026-10-04 (`entity`, module, `.mesh/`, the action context). The code and the architecture pages still use the older ones (`resource`, the `domain` attribute, `generated/`, `scope`). The note at the top of [Open questions and findings](./open-questions.md) says so, and the rename task sweeps both sides in one pull request. Do not fix half of it in a documentation pull request.
 
 ## Layout and file names
 
