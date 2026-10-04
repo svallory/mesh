@@ -14,7 +14,7 @@ You will build a small program: lists of todos, where a list belongs to somebody
 Start from the project in the [quick start](./quick-start.md), or from a new one:
 
 ```bash
-bun create mesh todo-app
+bun create meshfw todo-app
 cd todo-app
 ```
 
@@ -116,9 +116,9 @@ What this gives you:
 `src/context.ts`. Every action takes the caller's context as its second argument. Mesh does not decide what a caller is; you declare the type once, and every generated function is typed from it.
 
 ```ts "src/context.ts"
-import "@mesh/runtime";
+import "@meshfw/runtime";
 
-declare module "@mesh/runtime" {
+declare module "@meshfw/runtime" {
   interface ActionContext {
     actor: { id: string };
   }
@@ -135,7 +135,7 @@ The two ids are UUIDs because `ownerId` has type `uuid`. An application with sig
 `src/main.ts`:
 
 ```ts "src/main.ts"
-import { InvalidInputError, NotFoundError } from "@mesh/runtime";
+import { InvalidInputError, NotFoundError } from "@meshfw/runtime";
 import {
   connect,
   disconnect,
@@ -199,7 +199,7 @@ bunx mesh db push
 bun run src/main.ts
 ```
 
-Run it twice and the second run reuses the database file. Delete `todo.db` to start over, or keep the schema through migrations instead of pushing it ([the command line](./configuration.md#migrations)).
+Run it twice and the second run reuses `todo.db`, the SQLite file from `mesh.config.ts`. Delete it to start over, or keep the schema through migrations instead of pushing it ([the command line](./configuration.md#migrations)).
 
 ## A test
 
@@ -209,14 +209,14 @@ A test binds its own database. Nothing global is connected, no file is touched, 
 
 ```ts "test/todo.test.ts"
 import { expect, test } from "bun:test";
-import { pushSQLiteSchema, sqlite } from "@mesh/data-sqlite";
-import { InvalidInputError } from "@mesh/runtime";
+import { createSchema, sqlite } from "@meshfw/data-sqlite";
+import { InvalidInputError } from "@meshfw/runtime";
 import { bind } from "#mesh";
 import { alice, bob } from "../src/context";
 
 test("only the owner sees a todo", async () => {
   const db = sqlite({ file: ":memory:" });
-  await pushSQLiteSchema(db);
+  await createSchema(db);
   const todo = bind(db);
 
   const list = await todo.createList({ name: "Groceries" }, { actor: alice });
@@ -233,7 +233,7 @@ test("only the owner sees a todo", async () => {
 
 test("a title cannot be empty", async () => {
   const db = sqlite({ file: ":memory:" });
-  await pushSQLiteSchema(db);
+  await createSchema(db);
   const todo = bind(db);
 
   const list = await todo.createList({ name: "Groceries" }, { actor: alice });
@@ -252,10 +252,10 @@ test("a title cannot be empty", async () => {
 bun test
 ```
 
-Three rules make this work, and they are worth knowing before you write the next test:
+[Testing](./testing.md) has the rules in full, and the next three are the ones you will meet first:
 
 - **Bind, do not connect.** A test that calls a top-level function without `bind` throws `FrameworkError`, because there is no default binding.
-- **The schema must exist on that connection.** `pushSQLiteSchema(db)` creates the emitted tables on the connection you just opened. `mesh db push` runs in another process and cannot reach a private in-memory database.
+- **The schema must exist on that connection.** `createSchema(db)` creates the emitted tables on the connection you just opened. `mesh db push` runs in another process and cannot reach a private in-memory database.
 - **Close what you opened.** `db.close()` is yours to call; `disconnect()` never touches a data layer you passed to `bind`.
 
 ## What to build next

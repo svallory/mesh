@@ -275,9 +275,9 @@ test("M2 runtime checks exclude tests and accept ordinary web-standard code", ()
 
 test("Docs MX samples: complete entity blocks parse with the contracts", () => {
   const checked = checkDocsSamples(join(root, "apps/docs/docs/docs"));
-  console.log(`Docs MX samples: parsed ${checked.parsed}, deferred ${checked.deferred} (root tag "${DOCS_ROOT_TAG_PENDING_RENAME}"), skipped ${checked.skipped} fragments`);
+  console.log(`Docs MX samples: parsed ${checked.parsed}, deferred ${checked.deferred.length} (root tag "${DOCS_ROOT_TAG_PENDING_RENAME}"), skipped ${checked.skipped} fragments`);
   expect(checked.errors).toEqual([]);
-  expect(checked.parsed + checked.deferred).toBeGreaterThan(0);
+  expect(checked.parsed).toBeGreaterThan(0);
 });
 
 test("Docs MX samples: a planted invalid resource fails with page, fence line and diagnostic", () => {
@@ -293,17 +293,30 @@ test("Docs MX samples: a planted invalid resource fails with page, fence line an
 test("Docs MX samples: fragments are skipped, other languages ignored, longer fences supported", () => {
   temporary((dir) => {
     writeFileSync(join(dir, "good.md"), '```mx\nattribute="x" type="string"\n```\n```ts\nresource="bad"\n```\n~~~~mx title\n\nresource="ok"\n  attributes\n~~~~\n');
-    expect(checkDocsSamples(dir)).toEqual({ parsed: 1, skipped: 1, deferred: 0, errors: [] });
+    expect(checkDocsSamples(dir)).toMatchObject({ parsed: 1, skipped: 1, deferred: [], errors: [] });
     writeFileSync(join(dir, "good.md"), '```mx\nattributes\n```\n');
     expect(checkDocsSamples(dir).errors).toEqual(["Docs sample check parsed no complete entity blocks"]);
   });
 });
 
-test("Docs MX samples: an entity-rooted block is deferred, not parsed, until the contracts learn the tag", () => {
+test("Docs MX samples: an entity-rooted block is rewritten and parsed, and only a rename failure is deferred", () => {
   expect(DOCS_ROOT_TAG_PENDING_RENAME).toBe("entity");
   temporary((dir) => {
-    writeFileSync(join(dir, "good.md"), '```mx "src/domain/todo/todo.mx"\nentity="todo" table="todos"\n  attributes\n    attribute="x" type="strnig"\n```\n');
-    expect(checkDocsSamples(dir)).toEqual({ parsed: 0, skipped: 0, deferred: 1, errors: [] });
+    // Parsed, not skipped: the entity misspelling the rewrite cannot fix is still found.
+    writeFileSync(join(dir, "good.md"), '```mx\nentity="todo" table="todos"\n  attributes\n    attribute="x" type="strnig"\n```\n');
+    const misspelled = checkDocsSamples(dir);
+    expect(misspelled).toMatchObject({ parsed: 1, deferred: [] });
+    expect(misspelled.errors).toHaveLength(1);
+    expect(misspelled.errors[0]).toStartWith('good.md:1: MX block 3:19:');
+    // A diagnostic that only names something the rename will change is deferred, with its reason.
+    writeFileSync(join(dir, "renaming.md"), '```mx\nentity="todo"\n  attributes\n    module="todo"\n```\n');
+    rmSync(join(dir, "good.md"));
+    const deferred = checkDocsSamples(dir);
+    expect(deferred.parsed).toBe(0);
+    expect(deferred.deferred).toHaveLength(1);
+    expect(deferred.deferred[0]!.at).toBe("renaming.md:1");
+    expect(deferred.deferred[0]!.reason).toContain("module");
+    expect(deferred.errors).toEqual([]);
     writeFileSync(join(dir, "fragment.md"), '```mx\nattributes\n```\n');
     expect(checkDocsSamples(dir).skipped).toBe(1);
   });

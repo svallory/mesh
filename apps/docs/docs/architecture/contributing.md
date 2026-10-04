@@ -21,7 +21,9 @@ Mesh is not released yet. These pages describe Mesh 1.0.
 
 The same line on every page is deliberate: a per-page reworded warning is what made the earlier pages contradict each other.
 
-**Architecture** documents everything else, in particular what a Docs page could not say. Anything the Docs pages removed as "not decided", and every point where writing a page forced an invention, belongs on [Open questions and findings](./open-questions.md) with the record it touches. A contributor-only page may also say what exists today; a user page may not.
+**Architecture** documents everything else, in particular what a Docs page could not say. If a change adds a contract, a pipeline stage or a cross-package rule, its Architecture page is updated in the same pull request.
+
+**Docs** is written as if Mesh 1.0 were released. Where a decision is Proposed or open, the page takes the option the decision record recommends and never picks silently. Where nothing is decided at all, design the simplest thing a TypeScript developer would expect, write it into the page, and record it on [Open questions and findings](./open-questions.md) with the alternative you rejected: that list is the most valuable output of the work. Anything the Docs pages removed as "not decided", and every point where writing a page forced an invention, belongs on [Open questions and findings](./open-questions.md) with the record it touches. A contributor-only page may also say what exists today; a user page may not.
 
 The practice is unchanged from the earlier ruling: **user docs are written first, in the 1.0 voice, and the code follows them or changes them in the same pull request.** A pull request that adds behaviour adds or edits the Docs page for it. A pull request that finds the page wrong changes the page and the design together, or records on the open-questions page that the page is now wrong and why.
 
@@ -31,7 +33,7 @@ The reason is that writing the page is a test of the design. A page that has to 
 
 Two checks run over the pages, and both are in `bun run verify`:
 
-- **Complete `.mx` samples** are parsed by the compiler test in `packages/compiler/test/repository-checks.ts`. A Docs block whose root tag is `entity` is counted as *deferred* and skipped, because the tag contracts still spell the tag `resource`; re-enable it in the rename task. The check prints the deferred count on every run.
+- **Complete `.mx` samples** are parsed by the compiler test in `packages/compiler/test/repository-checks.ts`. Because the contracts still spell the root tag `resource`, the check rewrites `entity=` to `resource=` in memory and parses the result, so every sample is validated. Only a diagnostic that names something the rename itself will change is deferred; those are counted per reason and printed, and any other diagnostic fails the check and is a bug in the page.
 - **TypeScript samples** are type-checked by `apps/docs/test/docs-samples.test.ts` against `apps/docs/samples/mesh-api.d.ts`, the declarations of the API the pages describe. Every `ts` block must be a complete file: it declares what it uses and its calls match the documented signatures. A fence titled `excerpt` is a signature shown in prose and is not compiled.
 
 Neither check runs any sample. They are not a claim that Mesh exists as a runtime.

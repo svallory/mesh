@@ -15,17 +15,17 @@ Most of the code a framework asks you to write is code an agent has to read befo
 
 An entity file is short, declarative and in one place. To add a field, an action or a rule, an agent edits that file and nothing else: no schema object, no migration by hand, no DTO, no controller, no service layer to keep in step. The types, the input checks, the table and the migration all follow from the edit.
 
-Two entities in the tutorial are 24 and 27 lines. That is the whole surface an agent has to understand before it can add an action to a program with a list, a todo, ownership rules and derived values.
+The tutorial's two entity files are 22 and 33 lines. That is the whole surface an agent has to understand before it can add an action to a program with a list, a todo, ownership rules and derived values.
 
 ## The rules file
 
-`mesh build` writes `.mesh/rules.md`: a short description of your entities and the vocabulary your project uses — the field types, the action types, the tags an extension adds, and which actions exist and what they accept. It is generated, so it cannot drift from the code.
+`mesh build` writes `.mesh/rules.md`: a short description of your entities — which actions exist and what they accept — and of Mesh's vocabulary: the field types, the action types and the tags an extension adds. It is generated, so it cannot drift from the code.
 
 Point your agent at it, the way Ash's `usage_rules` assembles a package's rules into `AGENTS.md`. If your agent reads `AGENTS.md`, have it read `.mesh/rules.md` too.
 
 The file is an addition to whatever guidance you already give your agent, not a replacement. It knows Mesh; it does not know your domain. A short project note saying what a list is for is still yours to write.
 
-## Two commands an agent can run
+## Three commands an agent can run
 
 **`mesh inspect`** prints the model as JSON, with the source position of every tag. An agent that is unsure whether `filter` or `validate` landed on the right action, or what a policy actually says, gets an answer instead of a guess:
 

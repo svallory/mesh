@@ -11,14 +11,34 @@ Mesh is not released yet. These pages describe Mesh 1.0.
 
 Mesh's configuration is one file, and its whole developer interface is one command, `mesh`. This page has both: the file every command reads, and the commands themselves.
 
+## What is installed
+
+The starter installs everything below. Adding Mesh to a project you already have means these commands:
+
+```bash
+bun add -d @meshfw/cli
+bun add @meshfw/runtime @meshfw/data-sqlite @meshfw/ext-policies zod drizzle-orm @opentelemetry/api
+bun add -d drizzle-kit
+```
+
+| Package | What it is |
+|:--|:--|
+| `@meshfw/cli` | The `mesh` command: `init`, `build`, `build --check`, `inspect`, `explain`, plus what the adapter and extensions add |
+| `@meshfw/runtime` | What generated code imports: the action context's type, the error classes, the data-layer contract |
+| `@meshfw/data-sqlite` or `@meshfw/data-postgres` | Exactly one data adapter. `@meshfw/ext-policies` is what checks who is calling |
+| `zod`, `drizzle-orm`, `@opentelemetry/api` | Imported by generated code itself, so they are ordinary dependencies of your project, not hidden behind `@meshfw/runtime` |
+| `drizzle-kit` (dev) | The schema and migration work behind `mesh db push` and `mesh migrate` |
+
+For Postgres, swap `@meshfw/data-sqlite` for `@meshfw/data-postgres` in the second command.
+
 ## mesh.config.ts
 
 One file at the project root, written in TypeScript, so your editor checks it and it can read the environment.
 
 ```ts "mesh.config.ts"
-import { defineConfig } from "@mesh/cli";
-import { sqlite } from "@mesh/data-sqlite";
-import { policies } from "@mesh/ext-policies";
+import { defineConfig } from "@meshfw/cli";
+import { sqlite } from "@meshfw/data-sqlite";
+import { policies } from "@meshfw/ext-policies";
 
 export default defineConfig({
   domain: "src/domain",
@@ -47,10 +67,12 @@ Mesh does not read anything about your database from an entity file; the project
 
 **SQLite** is what the quick start and the tutorial use. It needs no server, and the file is yours:
 
+Only the `data` line changes:
+
 ```ts "mesh.config.ts"
-import { defineConfig } from "@mesh/cli";
-import { sqlite } from "@mesh/data-sqlite";
-import { policies } from "@mesh/ext-policies";
+import { defineConfig } from "@meshfw/cli";
+import { sqlite } from "@meshfw/data-sqlite";
+import { policies } from "@meshfw/ext-policies";
 
 export default defineConfig({
   domain: "src/domain",
@@ -62,10 +84,12 @@ export default defineConfig({
 
 **Postgres** reads a URL. There is no default: if the variable is unset, `connect()` throws rather than guessing.
 
+Only the import and the `data` line change:
+
 ```ts "mesh.config.ts"
-import { defineConfig } from "@mesh/cli";
-import { postgres } from "@mesh/data-postgres";
-import { policies } from "@mesh/ext-policies";
+import { defineConfig } from "@meshfw/cli";
+import { postgres } from "@meshfw/data-postgres";
+import { policies } from "@meshfw/ext-policies";
 
 export default defineConfig({
   domain: "src/domain",
@@ -75,7 +99,16 @@ export default defineConfig({
 });
 ```
 
-Nothing in Mesh creates a Postgres server for you.
+Then, in that project's environment, set `DATABASE_URL` to the database you want, create the database, and bring the schema to it:
+
+```bash
+export DATABASE_URL="postgres://localhost:5432/todo_app"
+createdb todo_app
+bunx mesh migrate generate
+bunx mesh migrate apply
+```
+
+There is no default URL: if `DATABASE_URL` is unset, `connect()` throws rather than guessing. Nothing in Mesh creates a Postgres server or a database for you; `migrate apply` runs against the one you named.
 
 SQLite in its in-memory mode is what tests use. See [Testing](./testing.md).
 
@@ -85,7 +118,7 @@ If your entity file uses something your adapter cannot do, the build fails and n
 
 An extension adds to Mesh through declared points: the tags an entity file may use, transforms and verifiers, emitted files, expression functions, field types, `mesh` subcommands and named run-time behaviour. Extensions are listed here explicitly. Nothing is discovered by scanning `node_modules`, so nothing changes under you.
 
-`@mesh/ext-policies` is the first-party extension that adds authorization. With it enabled, an action with no matching policy is forbidden. Without it, a `policies` block is not a valid tag and the build fails.
+`@meshfw/ext-policies` is the first-party extension that adds authorization. With it enabled, an action with no matching policy is forbidden. Without it, a `policies` block is not a valid tag and the build fails.
 
 A project-local extension goes in `src/extensions/` and is listed the same way.
 
@@ -112,7 +145,7 @@ bunx mesh <command> [options]
 | `mesh migrate generate [--allow <change>]` | Writes a SQL migration into `migrations/` |
 | `mesh migrate apply` | Applies the migrations that have not been applied |
 
-The last three come from the data adapter, which is why `@mesh/cli` never imports a query library. `mesh --help` lists the commands your enabled extensions add.
+The last three come from the data adapter, which is why `@meshfw/cli` never imports a query library. `mesh --help` lists the commands your enabled extensions add.
 
 Exit codes: `0` success, `1` errors were found, `2` usage error.
 
@@ -148,7 +181,7 @@ Put it in the same script as your tests:
 bunx mesh inspect todo
 ```
 
-Prints the model as JSON: every field with its type and constraints, every action with what it accepts, every relationship, calculation, aggregate and policy, each with the source position of the tag it came from. It is the first thing to look at when a build error mentions a rule you did not expect, and it is what to paste into a bug report.
+Prints the model as JSON: every field with its type and constraints, every action with what it accepts, every relationship, calculation, aggregate and policy, each with the source position of the tag it came from. It is the first thing to look at when a build error mentions a rule you did not expect, and it is what to paste into a [bug report](https://github.com/svallory/mesh/issues).
 
 ## explain
 

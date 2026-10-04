@@ -36,7 +36,7 @@ Mesh prescribes nothing under `src/`. `context.ts` and `main.ts` are the starter
 
 `src/domain/` is the domain: everything your program stores. Inside it, each folder is a group of entities that belong together. `src/domain/todo/` holds `list.mx` and `todo.mx`; `src/domain/accounts/` holds `user.mx`.
 
-The folder is the group, so nothing in the file repeats it. `todo.mx` does not carry `domain="todos"` or `module="todo"`, and the generated code for a folder lands in one place.
+The folder is the module, so nothing in the file repeats it. `todo.mx` does not carry `domain="todos"`, and the generated code for a folder lands in one place.
 
 An entity file holds exactly one entity. Two entities in one file is a build error, as are two entities with the same name anywhere in the domain.
 
@@ -68,8 +68,9 @@ What is inside, for the tutorial's two entities:
 | `.mesh/schema.ts` | The database tables, written by the data adapter |
 | `.mesh/model.json` | One document per entity, with the source position of every tag |
 | `.mesh/mx-contracts.js` | The composed tag contracts, for MX tooling in your editor |
+| `.mesh/rules.md` | A short description of your entities and of Mesh's vocabulary, for a coding agent to read |
 
-That is the whole of it. You should not have to think about it day to day, and you never have to edit it. Two reasons it is committed rather than hidden:
+That is the whole of it, plus `.mesh/rules.md`, which exists for agents and which [Working with AI agents](./ai-agents.md) covers. You should not have to think about any of it day to day, and you never have to edit it. Two reasons it is committed rather than hidden:
 
 - **A reviewer reads what runs.** An entity file is a small declarative change. The TypeScript beside it is what the program actually executes, and reading the two diffs together is how you review a change to a rule.
 - **`git diff` is the record of behaviour.** Adding an attribute shows up as a new column, a new type field and a new input key in one diff, in the file you changed.
@@ -86,9 +87,9 @@ Two entities that would export the same function name is a build error naming bo
 
 ## Extensions
 
-`src/extensions/` holds a project-local extension, if you write one. An extension has two entries: a build-time half that contributes tags, transforms, verifiers, emitters and `mesh` subcommands, and a run-time half that supplies the behaviour. The run-time half imports only `@mesh/runtime`, never the compiler, so a deployed program does not carry the build pipeline.
+`src/extensions/` holds a project-local extension, if you write one. An extension has two entries: a build-time half that contributes tags, transforms, verifiers, emitters and `mesh` subcommands, and a run-time half that supplies the behaviour. The run-time half imports only `@meshfw/runtime`, never the compiler, so a deployed program does not carry the build pipeline.
 
-First-party extensions are installed from npm and enabled by name in `mesh.config.ts`. `@mesh/ext-policies` is the one that adds authorization, and the starter enables it. Without it, a `policies` block is not a valid tag and the build fails, so a rule cannot be written and quietly ignored.
+First-party extensions are installed from npm and enabled by name in `mesh.config.ts`. `@meshfw/ext-policies` is the one that adds authorization, and the starter enables it. Without it, a `policies` block is not a valid tag and the build fails, so a rule cannot be written and quietly ignored.
 
 ## Your own code
 

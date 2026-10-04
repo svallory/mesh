@@ -13,7 +13,7 @@ Five minutes: one command to create a project, one file to edit, one command to 
 
 ## Install Bun
 
-Mesh runs on [Bun](https://bun.sh) and on nothing else.
+Mesh runs on [Bun](https://bun.sh) and on nothing else. `bun`, `bunx`, `bun run` and `bun test` below are Bun's own commands: `bunx` runs a command from a package you depend on, so `bunx mesh build` is this project's `mesh build`.
 
 ```bash
 curl -fsSL https://bun.sh/install | bash
@@ -30,7 +30,7 @@ Use `bun` for every package command in a Mesh project. `npm` and `yarn` are not 
 ## Create the project
 
 ```bash
-bun create mesh todo-app
+bun create meshfw todo-app
 cd todo-app
 ```
 
@@ -44,7 +44,7 @@ That entry is how your code reaches generated code. You always import `#mesh`, n
 
 ## Replace the entity file
 
-Open `src/domain/todo/todo.mx` and make it exactly this:
+Replace the files in `src/domain/todo/` so `todo.mx` says exactly this, and delete anything else in that folder:
 
 ```mx "src/domain/todo/todo.mx"
 entity="todo" table="todos"
@@ -80,7 +80,7 @@ bunx mesh db push
 
 `mesh build` reads the entity file, checks it, and writes the TypeScript you call: types, handlers, input validators, the database schema, and the file your `imports` entry points at. It reports any problem with the file, the line and the column.
 
-`mesh db push` creates the table. In development it is the quick path; for anything you keep, use migrations ([the command line](./configuration.md#migrations)).
+`mesh db push` creates the table and the SQLite file `todo.db` beside it, which is where the data goes from then on. In development it is the quick path; for anything you keep, use migrations ([the command line](./configuration.md#migrations)).
 
 ## Call an action
 
@@ -105,9 +105,9 @@ await disconnect();
 And this as `src/context.ts`, if the starter did not write it for you. It declares the type of every action's second argument, once, for the whole program:
 
 ```ts "src/context.ts"
-import "@mesh/runtime";
+import "@meshfw/runtime";
 
-declare module "@mesh/runtime" {
+declare module "@meshfw/runtime" {
   interface ActionContext {
     actor: { id: string };
   }
@@ -123,7 +123,7 @@ bun run src/main.ts
 ```
 
 ```
-clx3n8k2p0000q0f1r9v2x4t6a clx3n8k2p0001q0f1r9v2x4t6b Buy milk false 2026-03-04 09:12:31.004
+8a3f5c10-0000-4000-8000-000000000001 Buy milk false 2026-10-04 09:12:31.004
 Buy milk
 ```
 

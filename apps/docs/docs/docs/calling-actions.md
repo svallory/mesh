@@ -57,9 +57,9 @@ await disconnect();
 You decide what goes in it. Declare the type once, by adding to Mesh's `ActionContext` interface, and every generated function is typed from that declaration:
 
 ```ts "src/context.ts"
-import "@mesh/runtime";
+import "@meshfw/runtime";
 
-declare module "@mesh/runtime" {
+declare module "@meshfw/runtime" {
   interface ActionContext {
     actor: { id: string; role: "admin" | "member" };
     tenantId: string;
@@ -93,7 +93,7 @@ entity="todo" table="todos"
 
   policies
     policy=action_type("create")
-      authorize-if=({ todo, actor, context }) => context.tenantId === actor.tenantId
+      authorize-if=({ todo, actor, context }) => context.tenantId === context.actor.tenantId
 ```
 
 ## Signatures
@@ -112,7 +112,7 @@ A read returns an array even when the filter can match one row. There is no sepa
 
 ### Create
 
-The input has exactly the fields in `accept`. In the tutorial, `createTodo` takes `title` and `listId`:
+The input has exactly the fields in `accept`. With the tutorial's `todo.mx`, `createTodo` takes `title` and `listId`:
 
 ```ts "src/main.ts"
 import { connect, createList, createTodo, disconnect } from "#mesh";
@@ -130,10 +130,10 @@ await disconnect();
 
 Two calls that do not compile:
 
-| Call | Error |
-|:--|:--|
-| `createTodo({ title, listId, done: true }, …)` | `done` is not an accepted field, so it is not on the input type |
-| `createTodo({ title: "Buy milk" })` | `listId` is missing |
+| Call | With the tutorial's `todo.mx` | With the quick start's `todo.mx` |
+|:--|:--|:--|
+| `createTodo({ title, listId, done: true }, …)` | `done` is not an accepted field, so it is not on the input type | the same |
+| `createTodo({ title: "Buy milk" }, …)` | `listId` is missing | compiles: that entity accepts `title` only |
 
 An unknown field is an error at run time, not a field dropped. If a call gets past the type checker anyway, the generated validator rejects it.
 
@@ -147,7 +147,7 @@ import { alice } from "./context";
 
 await connect();
 
-await completeTodo({ id: "clx3n8k2p0000q0f1r9v2x4t6a" }, { actor: alice });
+await completeTodo({ id: "00000000-0000-4000-8000-0000000000aa" }, { actor: alice });
 
 await disconnect();
 ```
@@ -182,7 +182,7 @@ await disconnect();
 | `eq`, `ne` | Equal, not equal |
 | `lt`, `lte`, `gt`, `gte` | Ordered comparisons |
 | `in` | One of a list of values |
-| `isNil` | Null, or `isNil: false` for not null |
+| `isNil` | Null, or `isNil: false` for not null. This one operator is camelCase; the rest are lowercase |
 
 Filters combine with `and` and `or`:
 
@@ -238,7 +238,7 @@ The three are not one thing:
 
 ## Errors
 
-Every action throws on failure. All four classes come from `@mesh/runtime`, extend `MeshError` and carry a `code`, so a program can switch on the code without importing the class.
+Every action throws on failure. All four classes come from `@meshfw/runtime`, extend `MeshError` and carry a `code`, so a program can switch on the code without importing the class.
 
 | Class | `code` | Thrown when |
 |:--|:--|:--|
@@ -250,7 +250,7 @@ Every action throws on failure. All four classes come from `@mesh/runtime`, exte
 `InvalidInputError.issues` holds every failure it collected. Each issue has a `path` into the input, a `message`, and, when the failure came from a rule you declared, the file, line and column of the `validate` tag that declared it.
 
 ```ts "src/main.ts"
-import { InvalidInputError } from "@mesh/runtime";
+import { InvalidInputError } from "@meshfw/runtime";
 import { connect, disconnect, createList, createTodo } from "#mesh";
 import { alice } from "./context";
 
@@ -262,7 +262,8 @@ try {
 } catch (error) {
   if (!(error instanceof InvalidInputError)) throw error;
   for (const issue of error.issues) {
-    console.log(issue.path.join("."), issue.message, issue.source);
+    console.log(issue.path.join("."), issue.message);
+    if (issue.source) console.log(issue.source.file, issue.source.line, issue.source.column);
   }
 } finally {
   await disconnect();
@@ -270,7 +271,8 @@ try {
 ```
 
 ```
-title title must not be empty src/domain/todo/todo.mx:14:7
+title title must not be empty
+src/domain/todo/todo.mx 14 7
 ```
 
 A caught error has type `unknown` in strict TypeScript, so narrow it before reading `issues`.
@@ -297,10 +299,17 @@ await disconnect();
 
 ```
 false
-[check: todo.list.ownerId = actor.id, result: false]
+[
+  {
+    policy: "action_type([\"create\", \"read\", \"update\", \"destroy\"])",
+    check: "todo.list.ownerId === actor.id",
+    result: false,
+    decisive: true,
+  },
+]
 ```
 
-`breakdown` names every policy that applied, every check inside it, and which one decided. It is data, so a test can assert on it. Prefer it to asserting on an error class: when a call is denied on an atomic action the row is reported as not found, and `can` is where the reason is.
+`breakdown` is a list, one entry per check: `{ policy, check, result, decisive }`. `policy` is the condition that carried the check, `check` is the condition as written, `result` is whether it held, and `decisive` marks the one that decided the answer. It is data, so a test can assert on it. Prefer it to asserting on an error class: when a call is denied on an atomic action the row is reported as not found, and `can` is where the reason is.
 
 ## Next
 

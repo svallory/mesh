@@ -16,9 +16,9 @@ const app = new URL("../", import.meta.url).pathname;
 const root = new URL("../../../", import.meta.url).pathname;
 const tsc = join(root, "node_modules/.bin/tsc");
 
-const actorModule = `import "@mesh/runtime";
+const actorModule = `import "@meshfw/runtime";
 
-declare module "@mesh/runtime" {
+declare module "@meshfw/runtime" {
   interface ActionContext {
     actor: { id: string };
   }
@@ -42,11 +42,11 @@ const tsconfig = {
     typeRoots: ["../../../../node_modules/@types"],
     paths: {
       "#mesh": ["../../samples/mesh-api.d.ts"],
-      "@mesh/runtime": ["../../samples/mesh-api.d.ts"],
-      "@mesh/data-sqlite": ["../../samples/mesh-api.d.ts"],
-      "@mesh/data-postgres": ["../../samples/mesh-api.d.ts"],
-      "@mesh/cli": ["../../samples/mesh-api.d.ts"],
-      "@mesh/ext-policies": ["../../samples/mesh-api.d.ts"],
+      "@meshfw/runtime": ["../../samples/mesh-api.d.ts"],
+      "@meshfw/data-sqlite": ["../../samples/mesh-api.d.ts"],
+      "@meshfw/data-postgres": ["../../samples/mesh-api.d.ts"],
+      "@meshfw/cli": ["../../samples/mesh-api.d.ts"],
+      "@meshfw/ext-policies": ["../../samples/mesh-api.d.ts"],
     },
   },
   files: [] as string[],

@@ -19,13 +19,13 @@ Your application calls `connect()` once at start-up. A test does not: it binds i
 
 ```ts "test/todo.test.ts"
 import { expect, test } from "bun:test";
-import { pushSQLiteSchema, sqlite } from "@mesh/data-sqlite";
+import { createSchema, sqlite } from "@meshfw/data-sqlite";
 import { bind } from "#mesh";
 import { alice } from "../src/context";
 
 test("a new todo starts pending", async () => {
   const db = sqlite({ file: ":memory:" });
-  await pushSQLiteSchema(db);
+  await createSchema(db);
   const todo = bind(db);
 
   const list = await todo.createList({ name: "Groceries" }, { actor: alice });
@@ -43,7 +43,7 @@ Three lines of setup, and they are always the same three:
 | Line | Why |
 |:--|:--|
 | `sqlite({ file: ":memory:" })` | A private database. Two tests in the same file, and two test files, never see each other's rows |
-| `await pushSQLiteSchema(db)` | Creates the tables on **this** connection. `mesh db push` runs in another process and cannot reach a private in-memory database |
+| `await createSchema(db)` | Creates the tables on **this** connection. `mesh db push` runs in another process and cannot reach a private in-memory database |
 | `bind(db)` | The action functions bound to it. `connect()` is not used, so nothing global changes and tests can run in parallel |
 
 You own the data layer you pass to `bind`, so you close it. `disconnect()` never touches one.
@@ -54,13 +54,13 @@ Actions return the record, or an array of records, typed from the entity file. A
 
 ```ts "test/todo.test.ts"
 import { expect, test } from "bun:test";
-import { pushSQLiteSchema, sqlite } from "@mesh/data-sqlite";
+import { createSchema, sqlite } from "@meshfw/data-sqlite";
 import { bind } from "#mesh";
 import { alice } from "../src/context";
 
 test("completing a todo takes it out of the pending list", async () => {
   const db = sqlite({ file: ":memory:" });
-  await pushSQLiteSchema(db);
+  await createSchema(db);
   const todo = bind(db);
 
   const list = await todo.createList({ name: "Groceries" }, { actor: alice });
@@ -85,14 +85,14 @@ Actions throw. Narrow the caught error before reading it, then assert on the cla
 
 ```ts "test/todo.test.ts"
 import { expect, test } from "bun:test";
-import { pushSQLiteSchema, sqlite } from "@mesh/data-sqlite";
-import { InvalidInputError } from "@mesh/runtime";
+import { createSchema, sqlite } from "@meshfw/data-sqlite";
+import { InvalidInputError } from "@meshfw/runtime";
 import { bind } from "#mesh";
 import { alice } from "../src/context";
 
 test("an empty title is rejected", async () => {
   const db = sqlite({ file: ":memory:" });
-  await pushSQLiteSchema(db);
+  await createSchema(db);
   const todo = bind(db);
 
   const list = await todo.createList({ name: "Groceries" }, { actor: alice });
@@ -112,13 +112,13 @@ An action with no matching policy is forbidden, and a record-reading policy fold
 
 ```ts "test/todo.test.ts"
 import { expect, test } from "bun:test";
-import { pushSQLiteSchema, sqlite } from "@mesh/data-sqlite";
+import { createSchema, sqlite } from "@meshfw/data-sqlite";
 import { bind } from "#mesh";
 import { alice, bob } from "../src/context";
 
 test("another actor may not complete a todo", async () => {
   const db = sqlite({ file: ":memory:" });
-  await pushSQLiteSchema(db);
+  await createSchema(db);
   const todo = bind(db);
 
   const list = await todo.createList({ name: "Groceries" }, { actor: alice });
@@ -126,7 +126,7 @@ test("another actor may not complete a todo", async () => {
 
   const answer = await todo.canCompleteTodo({ id: milk.id }, { actor: bob });
   expect(answer.allowed).toBe(false);
-  expect(answer.breakdown.length).toBeGreaterThan(0);
+  expect(answer.breakdown[0]?.decisive).toBe(true);
 
   await db.close();
 });

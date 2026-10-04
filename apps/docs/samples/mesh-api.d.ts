@@ -11,16 +11,25 @@
 // The per-entity filter types are spelled out here because the real generator emits
 // them per entity. `anyField` is the union a reader would expect from the entity file.
 
-declare module "@mesh/runtime" {
+declare module "@meshfw/runtime" {
   /** Declared by the user's own `src/context.ts`; nothing is declared by default. */
   export interface ActionContext {
     [key: string]: unknown;
   }
 
+  /** A structural failure that no declared rule produced carries `source: null`. */
   export interface Issue {
     path: (string | number)[];
     message: string;
-    source?: { file: string; line: number; column: number };
+    source: { file: string; line: number; column: number } | null;
+  }
+
+  /** One check from a policy's breakdown, as `can` returns it. */
+  export interface PolicyCheck {
+    policy: string;
+    check: string;
+    result: boolean;
+    decisive: boolean;
   }
 
   export class MeshError extends Error {
@@ -38,7 +47,7 @@ declare module "@mesh/runtime" {
 
   export class ForbiddenError extends MeshError {
     override code: "forbidden";
-    breakdown: string[];
+    breakdown: PolicyCheck[];
   }
 
   export class FrameworkError extends MeshError {
@@ -46,8 +55,8 @@ declare module "@mesh/runtime" {
   }
 }
 
-declare module "@mesh/data-sqlite" {
-  import type {} from "@mesh/runtime";
+declare module "@meshfw/data-sqlite" {
+  import type {} from "@meshfw/runtime";
 
   /** A live connection to a SQLite database, owned by whoever opened it. */
   export interface SqliteDataLayer {
@@ -57,11 +66,11 @@ declare module "@mesh/data-sqlite" {
   export function sqlite(options: { file: string }): SqliteDataLayer;
 
   /** Creates the tables of the emitted schema on this connection. Tests and development only. */
-  export function pushSQLiteSchema(dataLayer: SqliteDataLayer): Promise<void>;
+  export function createSchema(dataLayer: SqliteDataLayer): Promise<void>;
 }
 
-declare module "@mesh/data-postgres" {
-  import type {} from "@mesh/runtime";
+declare module "@meshfw/data-postgres" {
+  import type {} from "@meshfw/runtime";
 
   export interface PostgresDataLayer {
     close(): Promise<void>;
@@ -70,9 +79,9 @@ declare module "@mesh/data-postgres" {
   export function postgres(options: { url: string | undefined }): PostgresDataLayer;
 }
 
-declare module "@mesh/cli" {
-  import type { PostgresDataLayer } from "@mesh/data-postgres";
-  import type { SqliteDataLayer } from "@mesh/data-sqlite";
+declare module "@meshfw/cli" {
+  import type { PostgresDataLayer } from "@meshfw/data-postgres";
+  import type { SqliteDataLayer } from "@meshfw/data-sqlite";
 
   export interface MeshConfig {
     domain: string;
@@ -84,14 +93,14 @@ declare module "@mesh/cli" {
   export function defineConfig(config: MeshConfig): MeshConfig;
 }
 
-declare module "@mesh/ext-policies" {
+declare module "@meshfw/ext-policies" {
   export function policies(): unknown;
 }
 
 declare module "#mesh" {
-  import type { ActionContext } from "@mesh/runtime";
-  import type { PostgresDataLayer } from "@mesh/data-postgres";
-  import type { SqliteDataLayer } from "@mesh/data-sqlite";
+  import type { ActionContext } from "@meshfw/runtime";
+  import type { PostgresDataLayer } from "@meshfw/data-postgres";
+  import type { SqliteDataLayer } from "@meshfw/data-sqlite";
 
   export type Condition = {
     eq?: string | number | boolean | Date | null;
@@ -127,7 +136,7 @@ declare module "#mesh" {
 
   export interface Decision {
     allowed: boolean;
-    breakdown: string[];
+    breakdown: PolicyCheck[];
   }
 
   export type TodoField = "id" | "title" | "done" | "listId" | "insertedAt" | "updatedAt";

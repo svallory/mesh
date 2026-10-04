@@ -12,6 +12,7 @@
   "plugins": {
     "search": {},
     "./plugins/mx-highlight.js": {},
+    "./plugins/mx-figure.js": {},
     "ai": false
   },
   "navigation": [

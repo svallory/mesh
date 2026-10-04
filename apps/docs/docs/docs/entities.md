@@ -37,7 +37,19 @@ entity="todo" table="todos"
 
 **Values Mesh reads are literals.** A string, a number, `true`, `false`, a list or an object literal written out in full. A bare identifier is a build error, not an import: an entity file declares data, it does not run code. The exceptions are the five tags whose value is a function — `change`, `validate`, `filter`, `authorize-if` and `value` — and those take an arrow function or a method.
 
-**Hand-written code lives next to the file.** `src/domain/todo/todo.helpers.ts` is a normal TypeScript module. An action names the helper it needs with a `change` or a `validate` whose body calls it, and the expression may only use its declared parameters and the functions Mesh registers. See [expressions](../architecture/in-depth/expressions.md).
+**Hand-written code lives next to the file.** `src/domain/todo/todo.helpers.ts` is a normal TypeScript module beside the entity, and a `change` or a `validate` reaches it by relative path from the `.mx` file:
+
+```ts "src/domain/todo/todo.helpers.ts"
+export function titleIsLongEnough(title: string): boolean {
+  return title.trim().length > 0;
+}
+```
+
+```mx
+    validate=({ todo }) => titleIsLongEnough(todo.title) message="title must not be empty"
+```
+
+**What a function body may use.** The record, `actor`, `context`, the action's `input`, and Mesh's registered functions: comparisons and boolean operators, arithmetic, string `length`, and assignment to a field. Nothing else, so the build can say when a rule cannot run in the database and needs a read first.
 
 ## The entity line
 
@@ -69,7 +81,7 @@ These three take the field name as their value and nothing else. An entity has o
 | default | yes | The field name |
 | `type` | yes | One of `string`, `integer`, `float`, `boolean`, `uuid`, `datetime`, `atom` |
 | `allow-nil` | no | `false` makes the column not nullable. Nullable unless you say otherwise |
-| `constraints` | when `type="atom"` | The allowed values, as `constraints={ one_of: ["draft", "published"] }`. An empty list, a blank or a repeat is a build error |
+| `constraints` | when `type="atom"` | The allowed values, as `constraints={ one_of: ["draft", "published"] }`. This one key is `one_of`, not `one-of`: it is a fixed spelling, not a tag or an attribute name. An empty list, a blank or a repeat is a build error |
 | `default` | no | A literal that fits the type: an integer, a number, one of the `one_of` values, `true` or `false` |
 
 The TypeScript type follows: `string` and `uuid` are `string`, `integer` and `float` are `number`, `boolean` is `boolean`, `datetime` is `Date`, and `atom` is the union of its `one_of` values.
@@ -105,6 +117,9 @@ The other side is not automatic. If `todo` declares `belongs-to="list"`, the lis
 
 ```mx
 entity="todo" table="todos"
+  attributes
+    uuid-primary-key="id"
+
   relationships
     belongs-to="list" destination="list"
 ```
@@ -126,7 +141,7 @@ An action asked for by `defaults` is named after its type, which is why the defa
 | Tag | Extra attributes | Children |
 |:--|:--|:--|
 | `create` | `accept` | `change`, `validate` |
-| `update` | `accept` | `change`, `validate` |
+| `update` | `accept`, `require-atomic` | `change`, `validate` |
 | `destroy` | `accept` | `change`, `validate` |
 | `read` | none | `filter`, `sort`, `validate` |
 
@@ -141,7 +156,7 @@ One per action. A function that edits the record before it is written. On an upd
       change=({ todo }) => { todo.done = true }
 ```
 
-The body receives one object, destructured in the tag. It holds the record under the entity's name (`todo` here), the caller under `actor`, and the rest of the caller's context under `context`. A change may also take `input`, which is the caller's input. See [the action context](./calling-actions.md#the-action-context).
+The body receives one object, destructured in the tag. It holds the record under the entity's name (`todo` here), the caller under `actor`, the rest of the caller's context under `context`, and the caller's input under `input`. The same four parameters are what `validate` gets, and a validation sees the record as it will be after the action's changes. See [the action context](./calling-actions.md#the-action-context).
 
 ### validate
 

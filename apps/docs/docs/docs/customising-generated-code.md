@@ -1,6 +1,6 @@
 ---
 title: "Customising generated code"
-description: "A proposal: export Mesh's generator templates into your project and edit them. Draft, for review."
+description: "Exporting Mesh's generator templates into your project, what it costs, and the smaller alternative."
 ---
 
 # Customising generated code
@@ -10,7 +10,7 @@ Mesh is not released yet. These pages describe Mesh 1.0.
 :::
 
 ::: callout warning "This page is a proposal"
-Nothing on this page is decided. It is written as a proposal so it can be judged as a developer experience rather than as a design note: what the command does, what it costs, when it is worth it and what it breaks. Read it, then rule on it.
+Nothing here is decided yet. It describes what `mesh export generators` would do if it were built, what it would cost you, and the smaller alternative. Judge it as a developer experience, not as a design note.
 :::
 
 Mesh's generators are templates. Out of the box they emit ordinary TypeScript: one handler per action, with the lifecycle written out, so the code you run is code you can read and a bug in your application is a stack trace in your own generated file.
@@ -39,9 +39,9 @@ From then on `mesh build` runs your templates instead of Mesh's. You edit them, 
 
 If the templates are [Jig](https://jig.saulo.engineer/docs/introduction) templates, the syntax is Jig's: data in, text out, with helpers for indentation, casing and composition. A template receives the entity's model — the same plain data `mesh inspect` prints — so anything you can read there you can branch on.
 
-## What it would cost
+## What it costs you
 
-The cost is the one thing worth deciding on honestly.
+This is the honest price of the copy, and it is the whole argument against it.
 
 **You own the output from then on.** When you upgrade Mesh, your generators do not improve. A fix to the action lifecycle — a bug in how a denied write is reported, a missing tracing span, a change in how validations fold into a statement — reaches every project except yours. The template you copied is a fork with no merge path.
 
@@ -57,22 +57,29 @@ The cost is the one thing worth deciding on honestly.
 
 If none of those is your situation, the generated code is better left alone. The interesting cases are the ones Mesh should fix rather than escape: a house convention belongs in an extension, which contributes behaviour through a declared point without forking the generators.
 
-## What the alternatives are
+## The alternative: a hook in each template
 
-| Option | What it gives you | What it costs |
+The command above hands you the whole template. The smaller form is a **named hook** in each one: Mesh keeps the template, and an extension or a project file fills the seam.
+
+A hook is not a fork, so the cost above disappears: a later fix to how a denied write is reported, or a missing trace span, still reaches your project, because your contribution is a piece of the template rather than a copy of it. What you give up is reach: you can only change what the seam allows, and Mesh has to design and keep that seam stable, which is a promise to maintain forever.
+
+Both are escape hatches, and neither is the path of least resistance if a team leans on it. The difference is who pays later:
+
+| | `mesh export generators` | A hook per template |
 |:--|:--|:--|
-| Nothing | Nothing to maintain, upgrades apply to you | No customisation |
-| An extension point | Contribute behaviour through a declared extension point, upgrades still apply | Only what the extension system can express |
-| Export the generators | Anything | You own the output; upgrades stop applying |
-| Mixins in the templates | A hook without a full fork, so upgrades keep working up to the seam | A new API surface in the build, and a seam to design and keep stable |
-
-The fourth is the one this page would recommend if the third is wanted at all: a named hook in each template that an extension or a project file can fill, rather than a copy of the whole template. It keeps the escape hatch small enough that a copy is not tempting.
+| You can change | the whole template | only what the seam allows |
+| Mesh upgrades | do not reach your project | reach you |
+| Mesh owes you | a stable template syntax and a documented data contract | a stable seam, designed with you |
+| When a rule grows awkward | it is a one-line diff in your copy | it needs a new seam in Mesh |
+| Best when | you are extending Mesh, or a house standard must reach every generated file | the change is a handful of lines at a known place |
 
 ## The question to decide
 
-Should advanced users be able to export and edit generator templates?
+Should advanced users be able to export the generator templates and edit them?
 
-If yes, the templates need a stable syntax and a documented data contract, and the answer to "what happens on upgrade" has to be written down before anyone exports one. If no, the alternative to publish is the mixin seam, which is a smaller promise to keep.
+If yes, the templates need a stable syntax and a documented data contract, and the answer to "what happens on upgrade" has to be written down before anyone exports one. If a hook is offered too, it should be offered first: it keeps the escape hatch small enough that copying a template is a choice rather than a habit.
+
+If no, the hook is the whole answer, and it is a much smaller promise to keep.
 
 ## Next
 
