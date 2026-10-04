@@ -6,6 +6,7 @@
   "description": "Pinned dependency set for the docs Docker image; see apps/docs/Dockerfile",
   "devDependencies": {
     "@docmd/core": "0.9.7",
-    "@docmd/plugin-search": "0.9.7"
+    "@docmd/plugin-search": "0.9.7",
+    "shiki": "4.5.0"
   }
 }

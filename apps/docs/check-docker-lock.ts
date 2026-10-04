@@ -1,4 +1,5 @@
-// Fails when the docmd versions pinned for the Docker image (docker/bun.lock) differ from
+/// <reference types="bun" />
+// Fails when the docs dependency versions pinned for Docker (docker/bun.lock) differ from
 // package.json, so the image cannot silently build with other versions than the workspace.
 import { join } from "node:path";
 
@@ -12,7 +13,7 @@ const lock = Bun.JSONC.parse(await Bun.file(join(dir, "docker/bun.lock")).text()
 };
 
 const problems: string[] = [];
-const names = Object.keys(pkg.devDependencies ?? {}).filter((n) => n.startsWith("@docmd/"));
+const names = Object.keys(pkg.devDependencies ?? {});
 if (names.length === 0) problems.push("no @docmd/* dependencies found in package.json");
 
 for (const name of names) {
