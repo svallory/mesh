@@ -15,6 +15,8 @@ export interface SQLiteLayer extends DataLayer {
    * Nested transactions are unsupported. There is no callback timeout: a callback
    * that never settles holds the queue; close rejects with running/queued counts
    * and leaves the layer open rather than rolling back under a running callback.
+   * A failed rollback is fatal: queued and later work rejects until the caller
+   * closes this layer and creates a new one. Other failures release the queue.
    */
   transaction<T>(run: (tx: DataOperations) => Promise<T>): Promise<T>;
 }
@@ -36,6 +38,21 @@ export function sqliteState(layer: DataLayer): State {
   return state;
 }
 
+function connectionError(operation: string, file: string, cause: unknown): FrameworkError {
+  const seen = new Set<object>();
+  let current = cause;
+  let busy = false;
+  while (current !== null && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    if ("code" in current && current.code === "SQLITE_BUSY") busy = true;
+    current = "cause" in current ? current.cause : undefined;
+  }
+  const advice = busy
+    ? " The queue serialises one layer only; another connection holds the write lock. The caller decides whether to retry."
+    : " Check the database path, permissions and connection state.";
+  return new FrameworkError(`Cannot ${operation} for SQLite file ${JSON.stringify(file)}.${advice}`, { cause });
+}
+
 export function sqlite(options: SQLiteOptions): SQLiteLayer {
   if (!options || typeof options.file !== "string" || options.file.length === 0) {
     throw new FrameworkError('sqlite requires a non-empty file; pass { file: ":memory:" } or a database path');
@@ -44,6 +61,11 @@ export function sqlite(options: SQLiteOptions): SQLiteLayer {
   let connection: Database | undefined;
   let db: BunSQLiteDatabase | undefined;
   let closed = false;
+  let unusable: { transaction: unknown; rollback: unknown } | undefined;
+  const healthError = () => unusable === undefined ? undefined : new FrameworkError(
+    "this data layer is unusable: a rollback failed, so its connection may still be inside a transaction. Close it and create a new one.",
+    { cause: unusable },
+  );
   let running = 0;
   let queued = 0;
   let tail: Promise<void> = Promise.resolve();
@@ -52,6 +74,8 @@ export function sqlite(options: SQLiteOptions): SQLiteLayer {
   const state: State = {
     exclusive(run) {
       assertOpen();
+      const fatal = healthError();
+      if (fatal) return Promise.reject(fatal);
       if (context.getStore()?.active) throw new FrameworkError("nested transactions are not supported");
       queued++;
       const work = tail.then(async () => {
@@ -59,9 +83,13 @@ export function sqlite(options: SQLiteOptions): SQLiteLayer {
         running++;
         const token = { active: true };
         try {
+          const fatal = healthError();
+          if (fatal) throw fatal;
           if (!db) {
-            connection = new Database(configured.file);
-            db = drizzle(connection);
+            try {
+              connection = new Database(configured.file);
+              db = drizzle(connection);
+            } catch (cause) { throw connectionError("open a connection", configured.file, cause); }
           }
           return await context.run(token, () => run(db!));
         } finally { token.active = false; running--; }
@@ -76,7 +104,8 @@ export function sqlite(options: SQLiteOptions): SQLiteLayer {
     adapter: "sqlite", build: "@mesh/data-sqlite/build", options: configured,
     transaction(run) {
       return state.exclusive(async (database) => {
-        database.run(sql.raw("BEGIN IMMEDIATE"));
+        try { database.run(sql.raw("BEGIN IMMEDIATE")); }
+        catch (cause) { throw connectionError("run BEGIN IMMEDIATE", configured.file, cause); }
         let active = true;
         const operations = drizzleOperations({
           table: sqliteTable,
@@ -94,7 +123,8 @@ export function sqlite(options: SQLiteOptions): SQLiteLayer {
           active = false;
           try { database.run(sql.raw("ROLLBACK")); }
           catch (rollback) {
-            throw new FrameworkError("Transaction failed and ROLLBACK failed", { cause: { transaction: cause, rollback } });
+            unusable = { transaction: cause, rollback };
+            throw new FrameworkError("Transaction failed and ROLLBACK failed", { cause: unusable });
           }
           throw cause;
         } finally { active = false; }

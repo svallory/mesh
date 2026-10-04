@@ -6,7 +6,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { buildModel, EmitError, generatedImportDiagnostics, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@mesh/compiler";
 import { ATTRIBUTE_TYPES, type ModelDocument } from "@mesh/model";
 import type { TableHandle } from "@mesh/runtime";
-import { getTableColumns } from "drizzle-orm";
+import { getTableColumns, getTableName } from "drizzle-orm";
+import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import { SQLITE_TYPES, sqliteSchemaEmitter } from "../src/build.ts";
 import { createSchema, sqlite } from "../src/index.ts";
 
@@ -86,6 +87,81 @@ export const writeRow = (row: Post): typeof postTable.$inferInsert => row;
     expect(text).not.toContain(".default(");
     expect(text).not.toContain("$default");
   } finally { await layer.close(); await rm(root, { recursive: true, force: true }); }
+});
+
+async function withEmittedSchema(document: ModelDocument, run: (schema: { tables: Record<string, SQLiteTable>; sqliteTable?: SQLiteTable }, layer: ReturnType<typeof sqlite>) => Promise<void>) {
+  const root = await mkdtemp(resolve(packageRoot, ".schema-test-"));
+  const layer = sqlite({ file: ":memory:" });
+  try {
+    const config = configOf(root);
+    await writeGeneratedFiles(await sqliteSchemaEmitter.emit({ document, config }), config);
+    const typecheck = Bun.spawnSync([resolve(workspace, "node_modules/.bin/tsc"), "--ignoreConfig", "--noEmit", "--strict", "--target", "es2022",
+      "--module", "esnext", "--moduleResolution", "bundler", "--skipLibCheck", "generated/schema.ts"], { cwd: root });
+    expect(new TextDecoder().decode(typecheck.stderr) + new TextDecoder().decode(typecheck.stdout)).toBe("");
+    expect(typecheck.exitCode).toBe(0);
+    const schema = await import(pathToFileURL(resolve(root, "generated/schema.ts")).href);
+    await createSchema(layer, schema.tables);
+    await run(schema, layer);
+  } finally { await layer.close(); await rm(root, { recursive: true, force: true }); }
+}
+
+test("resource sqlite has a collision-free builder alias and its emitted schema type-checks and runs", async () => {
+  await withEmittedSchema(documentOf(resource("sqlite", "items")), async (schema, layer) => {
+    expect(schema.sqliteTable).toBe(schema.tables.sqlite);
+    const table = schema.tables.sqlite!;
+    await layer.transaction(async (tx) => {
+      expect(await tx.insert(table, { id: "id" })).toEqual({ id: "id" });
+      expect(await tx.selectAll(table)).toEqual([{ id: "id" }]);
+    });
+  });
+});
+
+test("double quotes, spaces, dots and other safe punctuation round-trip as declared names", async () => {
+  const tableName = 'has "quotes" spaces.dots; -- punctuation []';
+  const columnName = 'field "quoted" with.dots; -- []';
+  const document = documentOf(resource("post", tableName) + `    attribute=${JSON.stringify(columnName)} type="string"\n`);
+  await withEmittedSchema(document, async ({ tables }, layer) => {
+    const table = tables.post!;
+    expect(getTableName(table)).toBe(tableName);
+    expect(getTableColumns(table)[columnName]?.name).toBe(columnName);
+    const row = { id: "id", [columnName]: 'value with quotes " and backticks `' };
+    await layer.transaction(async (tx) => {
+      expect(await tx.insert(table, row)).toEqual(row);
+      expect(await tx.selectByKey(table, { id: "id" })).toEqual(row);
+    });
+  });
+});
+
+test("schema emitter rejects backticks and every ASCII control at the authored table or column name", async () => {
+  const names = ["injected` (id text, hacked text); --", ...Array.from({ length: 32 }, (_, i) => `bad${String.fromCharCode(i)}name`), "bad\x7fname"];
+  for (const name of names) {
+    const suffix = "name: it contains a character that the schema tools cannot quote safely (backtick or control character)";
+    await fails(documentOf(resource("post", name)), `"${name}" cannot be used as a SQLite table ${suffix}`, "resources/0.mx", 1, 22);
+    await fails(documentOf(resource("post", "posts") + `    attribute=${JSON.stringify(name)} type="string"\n`),
+      `"${name}" cannot be used as a SQLite column ${suffix}`, "resources/0.mx", 4, 14);
+  }
+});
+
+test("ASCII-case table collisions name both resources", async () => {
+  await fails(documentOf(resource("first", "Items"), resource("second", "items")),
+    'Resources "first" and "second" both use table "items"', "resources/1.mx", 1, 0);
+});
+
+test("ASCII-case column collisions name both attributes at the later name", async () => {
+  await fails(documentOf(resource("post", "items") + '    attribute="ID" type="string"\n'),
+    'Attributes "id" and "ID" in resource "post" both use the SQLite column "ID"', "resources/0.mx", 4, 14);
+});
+
+test("SQLite physical-name comparison folds ASCII only and preserves Unicode spelling", async () => {
+  const document = documentOf(resource("first", "Ä") + '    attribute="İ" type="string"\n    attribute="i" type="string"\n', resource("second", "ä"));
+  await withEmittedSchema(document, async ({ tables }, layer) => {
+    expect(getTableName(tables.first!)).toBe("Ä");
+    expect(getTableName(tables.second!)).toBe("ä");
+    await layer.transaction(async (tx) => {
+      expect(await tx.insert(tables.first!, { id: "id", İ: "upper", i: "lower" })).toEqual({ id: "id", İ: "upper", i: "lower" });
+      expect(await tx.selectAll(tables.second!)).toEqual([]);
+    });
+  });
 });
 
 test("missing table is positioned at the resource tag", async () => {

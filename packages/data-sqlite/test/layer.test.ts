@@ -1,5 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { sql } from "drizzle-orm";
@@ -170,22 +170,47 @@ test("COMMIT failure rolls back the write and rethrows unchanged", async () => {
   });
 });
 
-test("ROLLBACK failure carries both errors", async () => {
-  await withLayer(async (layer) => {
+test.each(["memory", "file"])("ROLLBACK failure fails closed for queued and later work (%s)", async (kind) => {
+  const dir = mkdtempSync(join(tmpdir(), "mesh-fatal-"));
+  const file = kind === "memory" ? ":memory:" : join(dir, "fatal.db");
+  const layer = sqlite({ file });
+  try {
+    await createSchema(layer, { table });
     const db = await sqliteState(layer).exclusive(async (db) => db);
     const original = db.run.bind(db);
     const transaction = new Error("callback failure");
     const rollback = new Error("rollback failure");
+    const statements: string[] = [];
+    let rejectRollback = true;
     const spy = spyOn(db, "run").mockImplementation((statement) => {
       const text = new SQLiteSyncDialect().sqlToQuery(typeof statement === "string" ? sql.raw(statement) : statement.getSQL()).sql;
-      if (text === "ROLLBACK") throw rollback;
+      statements.push(text);
+      if (text === "ROLLBACK" && rejectRollback) { rejectRollback = false; throw rollback; }
       return original(statement);
     });
     try {
-      try { await layer.transaction(async () => { throw transaction; }); throw new Error("did not reject"); }
-      catch (error) { expect(error).toBeInstanceOf(FrameworkError); expect((error as Error).cause).toEqual({ transaction, rollback }); }
-    } finally { spy.mockRestore(); db.run(sql.raw("ROLLBACK")); }
-  });
+      const first = layer.transaction(async (tx) => { await tx.insert(table, sampleRow); throw transaction; });
+      let callbacks = 0;
+      const successors = [layer.transaction(async () => { callbacks++; }), layer.transaction(async () => { callbacks++; })];
+      const results = await Promise.allSettled([first, ...successors]);
+      for (const [index, result] of results.entries()) {
+        if (result.status !== "rejected") throw new Error("expected rejection");
+        expect(result.reason).toBeInstanceOf(FrameworkError);
+        expect(result.reason.cause.transaction).toBe(transaction);
+        expect(result.reason.cause.rollback).toBe(rollback);
+        expect(result.reason.message).toBe(index === 0 ? "Transaction failed and ROLLBACK failed" :
+          "this data layer is unusable: a rollback failed, so its connection may still be inside a transaction. Close it and create a new one.");
+      }
+      await expect(layer.transaction(async () => { callbacks++; })).rejects.toThrow("this data layer is unusable");
+      await expect(createSchema(layer, { table })).rejects.toThrow("this data layer is unusable");
+      expect(callbacks).toBe(0);
+      expect(statements).toEqual(["BEGIN IMMEDIATE", "ROLLBACK"]);
+    } finally { spy.mockRestore(); }
+    // No out-of-band rollback: closing is the only permitted cleanup/recovery.
+    await layer.close();
+    await layer.close();
+    expect(() => layer.transaction(async () => {})).toThrow("SQLite data layer is closed");
+  } finally { await layer.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 
 test("close reports running and queued counts without closing a busy layer", async () => {
@@ -209,6 +234,86 @@ test("a queued but not started transaction prevents close", async () => {
   await expect(closed).rejects.toThrow("0 running and 1 queued");
   expect(await pending).toBe(1);
   await layer.close();
+});
+
+async function frameworkFailure(promise: Promise<unknown>): Promise<FrameworkError> {
+  try { await promise; } catch (error) {
+    if (!(error instanceof FrameworkError)) throw error;
+    return error;
+  }
+  throw new Error("expected FrameworkError");
+}
+
+test("lazy-open failure names the operation and file, retains cause, and permits later recovery", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "mesh-open-failure-"));
+  const parent = join(dir, "missing");
+  const file = join(parent, "data.db");
+  const layer = sqlite({ file });
+  try {
+    let calls = 0;
+    const failed = await Promise.all([
+      frameworkFailure(layer.transaction(async () => { calls++; })),
+      frameworkFailure(layer.transaction(async () => { calls++; })),
+    ]);
+    for (const error of failed) {
+      expect(error.message).toContain(`Cannot open a connection for SQLite file ${JSON.stringify(file)}`);
+      expect(error.cause).toBeInstanceOf(Error);
+      expect(error.cause).toMatchObject({ code: "SQLITE_CANTOPEN" });
+    }
+    expect(calls).toBe(0);
+    mkdirSync(parent);
+    await createSchema(layer, { table });
+    await layer.transaction(async (tx) => expect(await tx.insert(table, sampleRow)).toEqual(sampleRow));
+  } finally { await layer.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("BEGIN busy failure explains the per-layer lock boundary and the queue recovers", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "mesh-busy-"));
+  const file = join(dir, "shared.db");
+  const first = sqlite({ file });
+  const second = sqlite({ file });
+  let release!: () => void;
+  let started!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const entered = new Promise<void>((resolve) => { started = resolve; });
+  let pending: Promise<void> | undefined;
+  try {
+    await createSchema(first, { table });
+    pending = first.transaction(async (tx) => { await tx.insert(table, sampleRow); started(); await gate; });
+    await entered;
+    let calls = 0;
+    const failures = await Promise.all([
+      frameworkFailure(second.transaction(async () => { calls++; })),
+      frameworkFailure(second.transaction(async () => { calls++; })),
+    ]);
+    for (const error of failures) {
+      expect(error.message).toBe(`Cannot run BEGIN IMMEDIATE for SQLite file ${JSON.stringify(file)}. The queue serialises one layer only; another connection holds the write lock. The caller decides whether to retry.`);
+      expect(error.cause).toBeInstanceOf(Error);
+      expect(error.cause).toMatchObject({ cause: { code: "SQLITE_BUSY" } });
+    }
+    expect(calls).toBe(0);
+    release();
+    await pending;
+    await second.transaction(async (tx) => expect(await tx.selectAll(table)).toEqual([sampleRow]));
+  } finally { release(); await pending; await first.close(); await second.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("createSchema rejects unsafe direct table and column names before opening a connection", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "mesh-unsafe-name-"));
+  const file = join(dir, "untouched.db");
+  const layer = sqlite({ file });
+  try {
+    const names = ["injected` (id text, hacked text); --", ...Array.from({ length: 32 }, (_, i) => `bad${String.fromCharCode(i)}name`), "bad\x7fname"];
+    for (const name of names) {
+      for (const kind of ["table", "column"] as const) {
+        const unsafe = kind === "table" ? sqliteTable(name, { id: text("id") }) : sqliteTable("unsafe", { field: text(name) });
+        const error = await frameworkFailure(createSchema(layer, { safe: table, unsafe }));
+        expect(error.message).toBe(`"${name}" cannot be used as a SQLite ${kind} name: it contains a character that the schema tools cannot quote safely (backtick or control character)`);
+        expect(existsSync(file)).toBe(false);
+      }
+    }
+    await sqliteState(layer).exclusive(async (db) => expect(db.all(sql`SELECT name FROM sqlite_master WHERE type = 'table'`)).toEqual([]));
+  } finally { await layer.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 
 test("nested calls throw immediately rather than queuing behind themselves", async () => {
