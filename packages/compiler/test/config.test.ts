@@ -63,7 +63,7 @@ test.each([
   ['export default { resources: "resources/*.mx", generatedDir: ".." }', "Configuration field `generatedDir` must name a directory inside the project, not the project root", "generatedDir"],
   ['export default { resources: "resources/*.mx", generatedDir: "." }', "Configuration field `generatedDir` must name a directory inside the project, not the project root", "generatedDir"],
   ['export default { resources: ["../outside.mx"], generatedDir: "generated" }', "Resource file path must resolve inside the project", "resources"],
-  ['throw new Error("broken config");', "Cannot load mesh.config.ts: broken config", "module"],
+  ['throw new Error("broken config");', "Cannot load mesh.config.ts: Error: broken config", "module"],
 ])("config rejects malformed, unreadable and escaping paths: %s", async (source, message, field) => {
   const root = await project(source);
   const result = await loadConfig(root);

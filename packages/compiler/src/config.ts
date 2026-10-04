@@ -3,7 +3,7 @@ import { pathToFileURL } from "node:url";
 import { readFile, stat, realpath } from "node:fs/promises";
 import type { Diagnostic } from "@mesh/model";
 import { buildModel, error, positionAt, type BuildResult } from "./build.ts";
-import { absolutePath, canonicalFuturePath, confinedGlob, foreignAbsolute, inside, normalizePath, projectPath, resolveResource, safeCause } from "./paths.ts";
+import { absolutePath, canonicalFuturePath, confinedGlob, foreignAbsolute, inside, normalizePath, projectPath, resolveResource, errorCode } from "./paths.ts";
 
 export interface MeshConfig {
   /** Glob or explicit list, relative to mesh.config.ts. */
@@ -32,13 +32,13 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
   let canonicalRoot: string;
   try { canonicalRoot = await realpath(root); }
   catch (cause) {
-    return { config: null, diagnostics: [error("MESH_CONFIG_ROOT", `Cannot resolve project root${safeCause(cause, process.cwd())}`, start, "Use an existing project directory")] };
+    return { config: null, diagnostics: [error("MESH_CONFIG_ROOT", `Cannot resolve project root (${errorCode(cause) ?? "UNKNOWN"})`, start, "Use an existing project directory")] };
   }
   const configFile = resolve(root, "mesh.config.ts");
   let source: string;
   try { source = await readFile(configFile, "utf8"); }
   catch (cause) {
-    return { config: null, diagnostics: [error("MESH_CONFIG_READ", `Cannot read mesh.config.ts${safeCause(cause, root)}`, start, "Create mesh.config.ts with resources and generatedDir")] };
+    return { config: null, diagnostics: [error("MESH_CONFIG_READ", `Cannot read mesh.config.ts (${errorCode(cause) ?? "UNKNOWN"})`, start, "Create mesh.config.ts with resources and generatedDir")] };
   }
   // Best-effort key positions: executable config may compute fields dynamically.
   // Regex keys are escaped, never interpreted as user-supplied pattern syntax.
@@ -54,7 +54,12 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
     delete require.cache[resolve(canonicalRoot, "mesh.config.ts")];
     value = (await import(pathToFileURL(configFile).href)).default;
   } catch (cause) {
-    return { config: null, diagnostics: [error("MESH_CONFIG_LOAD", `Cannot load mesh.config.ts${safeCause(cause, root)}`, start, "Fix the config module and export default defineConfig({...})")] };
+    // Only paths Mesh produces from structured values are made relative. The
+    // name/message of an exception from executable config is external text:
+    // preserve it verbatim, including paths, rather than rewriting its meaning.
+    // Its diagnostic position remains the project-relative config filename.
+    const detail = cause instanceof Error ? `${cause.name}: ${cause.message}` : `Thrown value: ${String(cause)}`;
+    return { config: null, diagnostics: [error("MESH_CONFIG_LOAD", `Cannot load mesh.config.ts: ${detail}`, start, "Fix the config module and export default defineConfig({...})")] };
   }
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     fail("default", "mesh.config.ts must default-export a configuration object");
@@ -75,7 +80,7 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
     try {
       const canonicalOutput = await canonicalFuturePath(generatedDir);
       if (!inside(canonicalRoot, canonicalOutput) || canonicalOutput === canonicalRoot) fail("generatedDir", "Configuration field `generatedDir` resolves outside the project");
-    } catch (cause) { fail("generatedDir", `Cannot resolve generated directory${safeCause(cause, root)}`); }
+    } catch (cause) { fail("generatedDir", `Cannot resolve generated directory (${errorCode(cause) ?? "UNKNOWN"})`); }
   }
   let files: string[] = [];
   if (typeof resources === "string") {
@@ -85,7 +90,7 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
       try {
         for await (const file of new Bun.Glob(glob).scan({ cwd: root, onlyFiles: true, followSymlinks: true })) files.push(resolve(root, normalizePath(file)));
         if (files.length === 0) fail("resources", "Configuration field `resources` matches no files");
-      } catch (cause) { fail("resources", `Cannot expand resource glob${safeCause(cause, root)}`); }
+      } catch (cause) { fail("resources", `Cannot expand resource glob (${errorCode(cause) ?? "UNKNOWN"})`); }
     }
   } else {
     for (const item of resources as string[]) {
@@ -101,7 +106,7 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
       const canonicalFile = await realpath(file);
       if (!inside(canonicalRoot, canonicalFile)) { fail("resources", `Resource path "${name}" resolves outside the project`); continue; }
       if (!(await stat(file)).isFile()) fail("resources", `Resource path "${name}" is not a file`);
-    } catch (cause) { fail("resources", `Cannot read resource file "${name}"${safeCause(cause, root)}`); }
+    } catch (cause) { fail("resources", `Cannot read resource file "${name}" (${errorCode(cause) ?? "UNKNOWN"})`); }
   }
   return { config: diagnostics.length ? null : { root, configFile, resourceFiles: files, generatedDir }, diagnostics };
 }
@@ -112,7 +117,7 @@ export async function loadProject(config: ResolvedConfig): Promise<BuildResult> 
   let canonicalRoot: string;
   try { canonicalRoot = await realpath(config.root); }
   catch (cause) {
-    return { document: null, diagnostics: [error("MESH_CONFIG_ROOT", `Cannot resolve project root${safeCause(cause, process.cwd())}`, positionAt("", "mesh.config.ts", 0), "Use an existing project directory")] };
+    return { document: null, diagnostics: [error("MESH_CONFIG_ROOT", `Cannot resolve project root (${errorCode(cause) ?? "UNKNOWN"})`, positionAt("", "mesh.config.ts", 0), "Use an existing project directory")] };
   }
   for (const file of config.resourceFiles) {
     const path = resolveResource(config.root, file);
@@ -126,7 +131,7 @@ export async function loadProject(config: ResolvedConfig): Promise<BuildResult> 
         continue;
       }
       files.push({ file: path.absolute, source: await readFile(path.absolute, "utf8") });
-    } catch (cause) { diagnostics.push(error("MESH_RESOURCE_READ", `Cannot read resource file "${path.file}"${safeCause(cause, config.root)}`, positionAt("", path.file, 0), "Restore the resource file or fix the resources list")); }
+    } catch (cause) { diagnostics.push(error("MESH_RESOURCE_READ", `Cannot read resource file "${path.file}" (${errorCode(cause) ?? "UNKNOWN"})`, positionAt("", path.file, 0), "Restore the resource file or fix the resources list")); }
   }
   const result = buildModel({ root: config.root, files });
   return { document: diagnostics.length ? null : result.document, diagnostics: [...diagnostics, ...result.diagnostics] };

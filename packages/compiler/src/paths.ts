@@ -26,19 +26,6 @@ export function errorCode(cause: unknown): string | null {
   if (cause && typeof cause === "object" && "code" in cause && typeof cause.code === "string") return cause.code;
   return null;
 }
-/** Strip absolute paths from executable-config error text as well as filesystem
- * causes. Preserve project-relative identity, or cwd-relative identity outside it. */
-export function safeCause(cause: unknown, root: string): string {
-  const code = errorCode(cause);
-  if (code) return ` (${code})`;
-  const message = cause instanceof Error ? cause.message : String(cause);
-  return `: ${message.replace(/(?:file:\/\/)?(?:[a-z]:[\\/]|\/)[^\s'"<>),;]+/gi, (path) => {
-    const normalized = normalizePath(path.replace(/^file:\/\//, ""));
-    if (foreignAbsolute(normalized)) return "[external path]";
-    const base = inside(root, normalized) ? root : process.cwd();
-    return normalizePath(relative(base, normalized)) || ".";
-  })}`;
-}
 /** Canonicalise an output that may not exist yet, following the nearest existing
  * ancestor. Errors other than a missing leaf must not become containment success. */
 export async function canonicalFuturePath(path: string): Promise<string> {

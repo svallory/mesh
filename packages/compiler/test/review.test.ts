@@ -122,12 +122,27 @@ test("M4: resource removed after config loading has stable exact read diagnostic
   expect(result.diagnostics[0]).toMatchObject({ code: "MESH_RESOURCE_READ", message: 'Cannot read resource file "resources/post.mx" (ENOENT)', position: { file: "resources/post.mx", line: 1, column: 0, offset: 0 } });
   relativeDiagnostics(result.diagnostics, root);
 });
-test("M4: config import failures redact absolute paths in thrown messages", async () => {
+test("M4 round 3: config exceptions preserve POSIX path text with a relative diagnostic position", async () => {
   const { root } = await project();
-  await writeFile(resolve(root, "mesh.config.ts"), `throw new Error(${JSON.stringify(`Cannot open ${root}/secret.txt`)});`);
+  const message = `Cannot open ${root}/secret.txt`;
+  await writeFile(resolve(root, "mesh.config.ts"), `throw new Error(${JSON.stringify(message)});`);
   const result = await loadConfig(root);
-  expect(result.diagnostics[0]!.message).toBe("Cannot load mesh.config.ts: Cannot open secret.txt");
-  relativeDiagnostics(result.diagnostics, root);
+  expect(result.config).toBeNull();
+  expect(result.diagnostics[0]).toMatchObject({ code: "MESH_CONFIG_LOAD", message: `Cannot load mesh.config.ts: Error: ${message}`, position: { file: "mesh.config.ts", line: 1, column: 0, offset: 0 } });
+  expect(isProjectRelativePath(result.diagnostics[0]!.position.file)).toBe(true);
+});
+test.each([
+  String.raw`Cannot open \\server\share\secret.txt`,
+  "Cannot open resources/post.mx",
+  "Cannot open ../resources/post.mx",
+])("M4 round 3: config exception message is verbatim: %s", async (message) => {
+  const { root } = await project();
+  await writeFile(resolve(root, "mesh.config.ts"), `throw new TypeError(${JSON.stringify(message)});`);
+  const result = await loadConfig(root);
+  expect(result.config).toBeNull();
+  expect(result.diagnostics).toHaveLength(1);
+  expect(result.diagnostics[0]).toMatchObject({ code: "MESH_CONFIG_LOAD", message: `Cannot load mesh.config.ts: TypeError: ${message}`, position: { file: "mesh.config.ts", line: 1, column: 0, offset: 0 }, fix: "Fix the config module and export default defineConfig({...})" });
+  expect(isProjectRelativePath(result.diagnostics[0]!.position.file)).toBe(true);
 });
 
 test.each(["/outside/post.mx", String.raw`C:\outside\post.mx`, String.raw`\\server\share\post.mx`])("M2: config rejects portable absolute resource list item %s", async (file) => {
