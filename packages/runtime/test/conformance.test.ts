@@ -5,7 +5,7 @@ import { dataLayerConformance } from "@mesh/runtime/testing";
 import type { DataLayerFixture } from "@mesh/runtime/testing";
 
 // Only a test double for the suite: never shipped as an adapter.
-function fake(mode: "correct" | "no rollback" | "wrong error" | "no commit" | "bad update" | "ignores keys" | "ignores select key" | "ignores update key" | "ignores delete key" | "interleaves" | "closes while busy" | "allows nesting" = "correct"): DataLayerFixture & { closed: () => boolean } {
+function fake(mode: "correct" | "no rollback" | "wrong error" | "no commit" | "bad update" | "ignores keys" | "ignores select key" | "ignores update key" | "ignores delete key" | "interleaves" | "closes while busy" | "allows nesting" | "poisoned queue" = "correct"): DataLayerFixture & { closed: () => boolean } {
   let rows = new Map<unknown, Row>();
   let closed = false;
   const table = {};
@@ -54,8 +54,11 @@ function fake(mode: "correct" | "no rollback" | "wrong error" | "no commit" | "b
         finally { token.active = false; pendingCount--; }
       };
       if (mode === "interleaves") return start();
-      const result = tail.then(start);
-      tail = result.then(() => undefined, () => undefined);
+      const result = tail.then(start, (error) => { pendingCount--; throw error; });
+      tail = mode === "poisoned queue" ? result.then(() => undefined) : result.then(() => undefined, () => undefined);
+      // Observe, but do not repair, the deliberately poisoned tail. Successors
+      // reject promptly and release their count: this broken fake never hangs.
+      if (mode === "poisoned queue") void tail.catch(() => undefined);
       return result;
     },
     async close() {
@@ -89,6 +92,18 @@ test.each([
   const fixture = fake(mode);
   const checks = dataLayerConformance(async () => fixture);
   await expect(checks[name]!()).rejects.toThrow(message);
+  expect(fixture.closed()).toBe(true);
+});
+
+test.each([
+  ["throw after a write leaves no row", "no rollback", "throw after write must leave no row"],
+  ["throw after a write leaves no row", "wrong error", "throw after write must rethrow the same error"],
+  ["rejected promise after a write leaves no row", "no rollback", "rejected promise must leave no row"],
+  ["rejected promise after a write leaves no row", "wrong error", "rejected promise must rethrow the same error"],
+  ["queue continues after a failed transaction", "poisoned queue", "failed transaction must not poison the queue"],
+] as const)("conformance negative proof: %s rejects %s", async (name, mode, message) => {
+  const fixture = fake(mode);
+  await expect(dataLayerConformance(async () => fixture)[name]!()).rejects.toThrow(`Data-layer conformance: ${message}`);
   expect(fixture.closed()).toBe(true);
 });
 
