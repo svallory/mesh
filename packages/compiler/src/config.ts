@@ -12,8 +12,8 @@ export interface MeshConfig {
   output: string;
   /** Opaque until M2: accepted and preserved, not required or interpreted in M1. */
   data?: unknown;
-  /** Opaque until M6: accepted and preserved without activating extensions in M1. */
-  extensions?: unknown;
+  /** Array shape checked in M1; elements stay opaque until M6, never activated here. */
+  extensions?: readonly unknown[];
 }
 export interface ResolvedConfig {
   root: string;
@@ -21,7 +21,7 @@ export interface ResolvedConfig {
   resourceFiles: string[];
   output: string;
   data?: unknown;
-  extensions?: unknown;
+  extensions?: readonly unknown[];
 }
 export interface ConfigResult { config: ResolvedConfig | null; diagnostics: Diagnostic[] }
 export function defineConfig(config: MeshConfig): MeshConfig { return config; }
@@ -77,6 +77,8 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
   const resources = config.resources;
   if (!nonEmpty(resources) && !(Array.isArray(resources) && resources.length > 0 && resources.every(nonEmpty))) fail("resources", "Configuration field `resources` must be a non-empty relative folder, glob or list of relative file paths");
   if (!nonEmpty(config.output)) fail("output", "Configuration field `output` must be a non-empty relative directory path");
+  const extensions = config.extensions;
+  if (Object.hasOwn(config, "extensions") && !Array.isArray(extensions)) fail("extensions", "Configuration field `extensions` must be an array");
   if (diagnostics.length) return { config: null, diagnostics };
 
   const outputInput = normalizePath(config.output as string);
@@ -108,7 +110,7 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
         } else {
           const cwd = folder ? candidate : root;
           const glob = folder ? "**/*.mx" : input;
-          for await (const file of new Bun.Glob(glob).scan({ cwd, onlyFiles: true, followSymlinks: true })) files.push(resolve(cwd, normalizePath(file)));
+          for await (const file of new Bun.Glob(glob).scan({ cwd, onlyFiles: true, followSymlinks: true, dot: true })) files.push(resolve(cwd, normalizePath(file)));
           if (files.length === 0) fail("resources", "Configuration field `resources` matches no files");
         }
       } catch (cause) { fail("resources", `Cannot expand resource glob (${errorCode(cause) ?? "UNKNOWN"})`); }
@@ -129,11 +131,12 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
       if (!(await stat(file)).isFile()) fail("resources", `Resource path "${name}" is not a file`);
     } catch (cause) { fail("resources", `Cannot read resource file "${name}" (${errorCode(cause) ?? "UNKNOWN"})`); }
   }
-  // These future-milestone fields are deliberately opaque. Preserve presence,
-  // references and even explicit undefined; do not serialize or interpret them.
+  // Data and individual extension elements remain opaque. Preserve data presence
+  // (including explicit undefined) and valid extension-array references. The
+  // array assertion follows the outer-shape validation above, not a fallback.
   const opaque = {
     ...(Object.hasOwn(config, "data") ? { data: config.data } : {}),
-    ...(Object.hasOwn(config, "extensions") ? { extensions: config.extensions } : {}),
+    ...(Object.hasOwn(config, "extensions") ? { extensions: extensions as readonly unknown[] } : {}),
   };
   return { config: diagnostics.length ? null : { root, configFile, resourceFiles: files, output, ...opaque }, diagnostics };
 }
