@@ -91,7 +91,9 @@ Container. Parent: `resource`. Child: `policy` (repeatable).
 
 ### policy
 
-The default attribute is the policy's condition, required: a check call, or a list of check calls. The checks are `action("publish")` (an action name) and `action_type("read")` (one of `create`, `read`, `update`, `destroy`), each with exactly one string argument (`policy=action_type("read")`, `policy=[action_type("update"), action("publish")]`). The call names are JavaScript identifiers, so they keep Ash's underscore. Needs at least one `authorize-if` child.
+The default attribute is the policy's condition, required: a check call, or a non-empty list of check calls. A list of checks means **all** must match: `policy=[action_type("update"), action("publish")]` applies to the `publish` action when its type is `update`, not to either check as an alternative.
+
+The checks are `action("publish")` (an action name) and `action_type("read")` (one of `create`, `read`, `update`, `destroy`). Each takes exactly one string literal or a non-empty array of string literals, with no blanks or repeats. A list argument means **any** listed name matches: `policy=action_type(["read", "destroy"])` applies to read or destroy actions; `action(["publish", "archive"])` matches either named action. This follows [Ash 3.34.0's built-in checks](https://github.com/ash-project/ash/blob/v3.34.0/lib/ash/policy/check/built_in_checks.ex). The call names are JavaScript identifiers, so they keep Ash's underscore. Needs at least one `authorize-if` child.
 
 ### authorize-if
 

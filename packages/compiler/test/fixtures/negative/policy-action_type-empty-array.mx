@@ -1,0 +1,6 @@
+resource="post"
+  attributes
+    uuid-primary-key="id"
+  policies
+    policy=action_type([])
+      authorize-if=({ actor }) => actor.admin
