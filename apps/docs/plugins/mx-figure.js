@@ -16,12 +16,13 @@
 //     ```
 //
 // Segments are highlighted with the same Marko grammar, themes and dark-mode
-// handling as every `mx` fence on the site (see ./mx-highlight.js). The layout
-// is a grid at container widths of 600px and above — the notes sit beside their
-// lines, joined by the rule the code block draws, and a line too long for the
-// code column scrolls rather than squeezing the notes below 280px — and one
-// column under that, measured on the container so it does not depend on the
-// viewport.
+// handling as every `mx` fence on the site (see ./mx-highlight.js). At container
+// widths of 1000px and above the layout is a grid: the code column takes its
+// content width, so a long line is never clipped, and the notes sit with their
+// lines. Under 1000px each note stacks under the lines it describes and a line
+// too long for the column wraps instead of scrolling, so no code is ever clipped
+// at any width. The threshold is measured on the container, not the viewport:
+// the Docs layout leaves about 695px of content column at 1280px, which stacks.
 import { highlightMx } from './mx-highlight.js';
 
 const NOTE = /^\/\/\s*@([a-z][a-z0-9-]*):\s*(.+?)\s+—\s+(.+)$/;
@@ -107,7 +108,7 @@ export function renderMxFigure(source, file) {
 
 export const figureStyles = `<style>
 .mx-figure-wrap{container-type:inline-size}
-.mx-figure{display:grid;grid-template-columns:minmax(0,22rem) minmax(18rem,1fr);gap:0 2.25rem;margin:2rem 0;align-items:start}
+.mx-figure{display:grid;grid-template-columns:minmax(0,max-content) minmax(13rem,1fr);gap:0 2.25rem;margin:2rem 0;align-items:start}
 .mx-figure .mx-row{min-width:0}
 .mx-figure .mx-code{position:relative}
 .mx-figure .mx-code::after{content:"";position:absolute;top:1.1rem;left:100%;width:2.25rem;border-top:1px solid color-mix(in srgb,currentColor 40%,transparent)}
@@ -118,11 +119,13 @@ export const figureStyles = `<style>
 .mx-figure .mx-note p{margin:0;max-width:34rem}
 .mx-figure .mx-note strong::after{content:" —";font-weight:400}
 .mx-figure .mx-badge{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;min-width:1.5rem;height:1.5rem;border:1px solid color-mix(in srgb,currentColor 45%,transparent);border-radius:999px;font-size:.75rem;font-weight:600;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-@container (max-width:600px){
+@container (max-width:1000px){
   .mx-figure{grid-template-columns:1fr;gap:.1rem}
   .mx-figure .mx-code::after{display:none}
   .mx-figure .mx-note{border-top:0;padding:.1rem 0 .7rem}
-  .mx-figure pre.shiki{font-size:.82rem}
+  /* Below the threshold the code column is the full width, so a long line wraps
+     instead of scrolling sideways out of the box. Nothing is ever clipped. */
+  .mx-figure pre.shiki{font-size:.78rem;white-space:pre-wrap}
 }
 </style>`;
 
