@@ -23,7 +23,6 @@ import {
   classesOf,
   escapeHtml,
   parseMx,
-  renderFence,
 } from '@mxlang/tree-sitter-mx/docmd';
 
 /**
@@ -115,7 +114,13 @@ export function mxParseProblems(source, file = '<mx block>') {
 export function highlightMx(source) {
   const problems = mxParseProblems(source);
   if (problems.length > 0) throw new Error(problems.join('\n'));
-  return renderFence(withAtomSetLines(source));
+  // The classes come from the rewritten source (the grammar cannot read a
+  // tagless `:field=value` line yet) and the text from the author's own, so a
+  // fence shows `:status=:sent` and not the `#status=:sent` it was rewritten
+  // to. `renderFence` is the same wrapper the package emits, which is what
+  // docmd's own `mx` styling expects.
+  const inner = mxHighlighter(source)(0, source.replace(/\n$/, '').length);
+  return `<pre class="hljs mx-hl"><code class="language-mx">${inner}</code></pre>`;
 }
 
 /**
