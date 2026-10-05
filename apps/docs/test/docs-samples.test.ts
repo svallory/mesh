@@ -16,11 +16,18 @@ const app = new URL("../", import.meta.url).pathname;
 const root = new URL("../../../", import.meta.url).pathname;
 const tsc = join(root, "node_modules/.bin/tsc");
 
+// The context a project's own `src/context.ts` would declare: `actor` is the one
+// key Mesh reads, and a project adds whatever else its calls need. Keys that the
+// pages pass optionally (a tenant, a locale) are declared optional here, so a
+// sample that passes them and one that does not both compile, exactly as they do
+// in a real project.
 const actorModule = `import "@meshfw/runtime";
 
 declare module "@meshfw/runtime" {
   interface ActionContext {
-    actor: { id: string };
+    actor: { id: string; role?: string };
+    tenantId?: string;
+    locale?: string;
   }
 }
 

@@ -15,7 +15,7 @@ Most of the code a framework asks you to write is code an agent has to read befo
 
 An entity file is short, declarative and in one place. To add a field, an action or a rule, an agent edits that file and nothing else: no schema object, no migration by hand, no DTO, no controller, no service layer to keep in step. The types, the input checks, the table and the migration all follow from the edit.
 
-The tutorial's two entity files are 26 and 39 lines. That is the whole surface an agent has to understand before it can add an action to a program with a list, a todo, ownership rules and derived values.
+The tutorial's two entity files are 25 and 39 lines. That is the whole surface an agent has to understand before it can add an action to a program with a list, a todo, ownership rules and derived values.
 
 ## The rules file
 
@@ -50,13 +50,13 @@ bunx mesh explain Todo complete
 
 ```text
 Todo.complete (update)
-  strategy     atomic: one UPDATE, no read first
-  steps        done = true                 folded into the statement
+  strategy     read-then-write: check notDoneYet reads self
+  steps        done = true
   policy       self.list.ownerId === actor.id   folded into the statement as a filter
   checks       notDoneYet
 ```
 
-That turns "why did this update do two queries" into a build-time answer rather than an investigation.
+That turns "why did this update run two queries" into a build-time answer rather than an investigation: Mesh prints the check that made it read first.
 
 **`bun test`** runs the suite against a real database in memory, which is the check that catches a change that builds and does the wrong thing. See [Testing](./testing.md).
 

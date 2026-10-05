@@ -180,15 +180,15 @@ Prints the plan the generated handler follows. The plan is chosen at build time;
 
 ```text
 Todo.complete (update)
-  strategy     atomic: one UPDATE, no read first
-  steps        done = true                 folded into the statement
+  strategy     read-then-write: check notDoneYet reads self
+  steps        done = true
   policy       self.list.ownerId === actor.id   folded into the statement as a filter
-  checks       none
+  checks       notDoneYet
 ```
 
 Two lines are worth learning:
 
-- **`strategy`** is `atomic` (one statement, no read first) or read-then-write. An update with a `run(…) { }` step, or with any expression Mesh cannot translate to SQL, is read-then-write.
+- **`strategy`** is one statement (`atomic`) or `read-then-write`, and `explain` says why: a `check` or `when` that reads `self`, a `run` step, or an expression Mesh cannot translate. `Todo.complete` is the first because `check :notDoneYet` reads `self.done`; `Todo.rename` is one statement because it has no check.
 - **`folded into the statement`** means the rule costs no extra query. A rule that cannot fold runs in memory on the row read inside the transaction instead.
 
 `explain` prints a plan, not SQL. Queries are assembled at run time from the entity's filter, the caller's filter and the policies, because which of those apply is only known when the call arrives.

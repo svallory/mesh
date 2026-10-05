@@ -17,7 +17,7 @@ Every function has the same shape:
 const todo = await createTodo({ title: "Buy milk", listId: list.id }, { actor });
 ```
 
-**The input, and the action context.** Both are required. A call with one argument does not compile.
+**The input, and the action context.** The input is always required. The context is a plain object too, and it is required as soon as your project has declared a required key on it: `@meshfw/runtime` exports an empty `ActionContext` interface, your project adds its keys, and while every key you declare is optional the parameter is optional too. A call with no context at all compiles exactly when a call with one does.
 
 ## Connect once
 
@@ -81,7 +81,7 @@ await createList({ name: "Groceries" }, { actor: alice, tenantId: "t1", locale: 
 await disconnect();
 ```
 
-An extension that needs a key of its own states which one it reads, and two extensions claiming the same key is a build error. Optionality is yours as well: declare `actor: User | null` and anonymous callers type-check; declare nothing at all and the context is `{ actor?: unknown } & Record<string, unknown>`.
+An extension that needs a key of its own states which one it reads, and two extensions claiming the same key is a build error. Optionality is yours as well: declare `actor: User | null` and anonymous callers type-check. Declare nothing at all and the context is an empty object, and in your rules `actor` is `unknown` — which is Mesh saying it has nothing for you to compare it against.
 
 Inside an entity file, the functions receive four parameters: the record as `self`, the caller's own object as `input`, the caller as `actor`, and everything else the call carries as `context`. `context` is what you declared above, and it does not carry `actor` again — the caller is `actor`, and only `actor`. Here a tenant-scoped policy reads the record's own tenant and the call's:
 
@@ -170,7 +170,7 @@ await completeTodo({ id: "00000000-0000-4000-8000-0000000000aa" }, { actor: alic
 await disconnect();
 ```
 
-An update is one statement unless it uses `run` or an expression Mesh cannot translate. Steps and checks written as one-expression arrows are folded into the statement the adapter sends, so there is no read before the write. `mesh explain` says which one an action is, and you never get a silent read-then-write where you expected one statement.
+**One statement or two.** A create is always one `INSERT`. An update or a destroy is one statement when its checks and `when` conditions read only `input`, `actor` and `context`, and its `set` values translate. A check or a `when` that reads `self` makes the action read the row first, locked, in the same transaction, and then write it. `completeTodo` is in the second case, because `check :notDoneYet` reads `self.done`; `renameTodo`, which has no check, is in the first. `mesh explain` prints which one an action is, so you never get a read-then-write where you expected one statement, or the other way round.
 
 ### Destroy
 

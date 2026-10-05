@@ -47,8 +47,7 @@ entity #List table="lists"
     count #todoCount of="todos"
 
   actions auto=["read", "destroy"]
-    create #create
-      accept=["name"]
+    create #create accept=["name"]
       do
         set
           #ownerId=({ actor }) => actor.id
@@ -116,9 +115,9 @@ entity #Todo table="todos"
 What this gives you:
 
 - **`listId` was not declared.** `belongs-to=List #list` adds the foreign-key attribute and the relationship that reads it. `todo.list` is there when you ask for it.
-- **`min=1` is the whole of "a todo needs a title"**, and it is a type as well as a check: `title: ""` does not compile.
+- **`min=1` is the whole of "a todo needs a title"**, and it is checked twice: the input validator refuses it before the call, and the column refuses it.
 - **`check :notDoneYet` is about state, not about one field**, which is what a `check` is for. It runs on the record with the caller's input applied, so it fails with the message you wrote before anything is written.
-- **`complete` accepts nothing.** It takes an id and a context, and its one step is a value Mesh already knows how to write, so it runs as a single `UPDATE`. Two callers completing the same todo cannot both win on a stale copy.
+- **`complete` accepts nothing.** It takes an id and a context, and its check reads the todo it was given, so Mesh reads that row, locked, and writes it in the same transaction rather than running one blind `UPDATE`. Two callers completing the same todo cannot both win on a stale copy. `rename`, which has no check, is the one that runs as a single `UPDATE`.
 - **`pending` is a query, not a filter you remember to apply.** The filter runs in SQL, combined with whatever the caller passed.
 - **`label` is computed, not stored.** It concatenates a string, so Mesh cannot run it in SQL and computes it after the rows load. Ask for it by name, or the property does not exist on the result.
 
@@ -182,7 +181,7 @@ try {
   await createTodo({ title: "", listId: list.id }, { actor: alice });
 } catch (error) {
   if (!(error instanceof InvalidInputError)) throw error;
-  console.log(error.code, error.issues[0]?.message);
+  console.log(error.code, error.issues[0]?.code, error.issues[0]?.message);
 }
 
 await disconnect();
@@ -192,17 +191,17 @@ await disconnect();
 [ ] Buy bread
 [ ] Buy coffee
 not_found
-invalid_input a todo needs a title
+invalid_input too_short must be at least 1 character
 ```
 
-Wait — `min=1` refuses an empty title at the type level *and* at run time, so where does `invalid_input` come from? It is the code of the error, and it is always that: `invalid_input` says the call was refused, and the issue carries the detail — the message the rule wrote, and the position of the `string #title min=1` line that wrote it. A `check` of your own fails the same way and adds its label and its own `code` to the issue.
+An empty title is refused at run time by `string #title min=1`, with Mesh's own code and message — a line rule has nowhere to write a custom one — and the issue points at that line in the `.mesh.mx` file. A `check` of your own fails the same way and carries the label and code you gave it.
 
 Five things to notice:
 
 - **`createList` takes only `name`.** `ownerId` is not in the input type, so a call that sends it does not compile.
 - **`load: ["label"]` is what types `todo.label`.** Without it, reading the property is a type error rather than `undefined`.
 - **Bob gets `NotFoundError`, not `ForbiddenError`.** The policy reads the stored row, so it becomes a filter on the statement, and a row he may not change does not exist as far as he is concerned. Ask first and you get the reason instead: `canCompleteTodo({ id }, { actor: bob })` returns `{ allowed: false, breakdown }`.
-- **The empty title is caught before anything is written**, with the message from the rule and the position of the line that carries it.
+- **The empty title is refused before anything is written**, with Mesh's standard code and message and the position of the line that carries the rule.
 
 ## Build and run
 
@@ -276,5 +275,4 @@ bun test
 
 - Add a `title` filter to the pending read and sort it by title. [Calling actions](./calling-actions.md) has the filter form.
 - Load `todo.list` and `list.todoCount` in one call. [Loading](./calling-actions.md#loading-relationships-and-computed-fields) has the rules.
-- Add a `dueOn` date to the todo and a rollup of overdue todos on the list. [Computed fields](./entities.md#computed) has both.
-- Read the entity's declarations one by one. [Entities](./entities.md) is the reference.
+- Add a `dueOn` date to the todo, and a `count` of the list's todos you can read on the list. [Computed fields](./entities.md#computed) has both.

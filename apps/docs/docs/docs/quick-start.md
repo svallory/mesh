@@ -1,6 +1,6 @@
 ---
 title: "Quick start"
-description: "Install Bun, create a project, declare two entities, build them, and call an action."
+description: "Install Bun, create a project, write four small files, build them, and call an action."
 ---
 
 # Quick start
@@ -9,7 +9,7 @@ description: "Install Bun, create a project, declare two entities, build them, a
 Mesh is not released yet. These pages describe Mesh 1.0.
 :::
 
-Five minutes: one command to create a project, two files to write, one command to build, one file to run. This page assumes nothing. If you already know what an entity file is, read [the tutorial](./tutorial.md) instead.
+One command to create a project, four small files to write, one command to build, one to run. This page assumes nothing. If you already know what an entity file is, read [the tutorial](./tutorial.md) instead.
 
 ## Install Bun
 
@@ -44,9 +44,9 @@ The starter installs the packages and writes a project that already builds. It c
 
 That entry is how your code reaches generated code. You always import `#mesh`, never a path into `.mesh`.
 
-## Write the entity files
+## Replace the entity files
 
-Replace the files in `src/domain/todo/` with these two, and delete anything else in that folder. `list.mesh.mx` is the list a todo belongs to; `todo.mesh.mx` is the same file the [tutorial](./tutorial.md) and the [Introduction](./index.md) use.
+Write these two files in `src/domain/todo/`, and delete anything else in that folder. `list.mesh.mx` is the list a todo belongs to; `todo.mesh.mx` is the same file the [tutorial](./tutorial.md) and the [Introduction](./index.md) use.
 
 ```mx "src/domain/todo/list.mesh.mx"
 entity #List table="lists"
@@ -57,8 +57,7 @@ entity #List table="lists"
     timestamp #insertedAt on="create"
 
   actions auto=["read", "destroy"]
-    create #create
-      accept=["name"]
+    create #create accept=["name"]
       do
         set
           #ownerId=({ actor }) => actor.id

@@ -38,7 +38,7 @@ entity #Todo table="todos"
 // @create: Calling createTodo — you call `createTodo(input, context)`. A field it does not accept never reaches your code, and a rule about one field is one word on that field's line.
   actions auto=["read", "destroy"]
     create #create accept=["title", "listId"]
-// @complete: Rule and change — `completeTodo({ id }, context)` refuses a todo that is already done, and runs as a single `UPDATE`.
+// @complete: Rule and change — `completeTodo({ id }, context)` refuses a todo that is already done, then writes it in one turn.
     update #complete
       validate
         check :notDoneYet [
@@ -85,7 +85,7 @@ You are writing TypeScript on Bun and some of your program's data has rules atta
 
 ## Where to go next
 
-- [Quick start](./quick-start.md) — a working project in five minutes.
+- [Quick start](./quick-start.md) — a working project from nothing: install Bun, four small files, one build.
 - [Tutorial: a todo list](./tutorial.md) — two entities and everything you can do with them.
 - [Entities](./entities.md) — every declaration an entity file may use.
 - [Calling actions](./calling-actions.md) — the functions Mesh generates.

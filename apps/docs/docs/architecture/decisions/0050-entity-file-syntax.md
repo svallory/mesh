@@ -107,24 +107,33 @@ entity #Invoice table="invoices"
         set
           #status="sent"
 
-    update #pay
-      arguments
-        datetime #paidAt
+    update #pay accept=["paidAt"]
       validate
-        check :invoiceNotSent [
+        check :invoiceIsSent [
           that=({ self }) => self.status === "sent"
           code="invalid_state"
           message="only a sent invoice can be paid"
         ]
+        check :invoiceHasLines [
+          that=({ self }) => self.lineCount > 0
+          code="invalid_state"
+          message="an invoice needs at least one line"
+        ]
       do
         set
           #status="paid"
-          #paidAt=({ input }) => input.paidAt
           #paidById=({ actor }) => actor.id
         when=({ self }) => self.amount > 10000
           set
             #needsReview=true
         load=["customer"]
+
+    update #applyDiscount
+      arguments
+        decimal #percent min=0 max=100
+      do
+        set
+          #amount=({ self, input }) => self.amount * (1 - input.percent / 100)
 
     read #visible
       filter=({ self }) => self.status !== "cancelled"
@@ -193,7 +202,7 @@ Option A minimises what a user must remember, which the operator ranks first. It
 - `required` by default inverts Ash's `allow_nil? true` default. A missing `nullable` is a build-time and type-level error, never a silent null.
 - `self` replaces the record name derived from the entity (`post`, `todo`) in every function.
 - New attribute types (`integer`, `float`, `decimal`, `date`, `timestamp`) and the rollups `sum`, `avg`, `min`, `max` enter the registry.
-- The reference file was corrected after the review of the user docs: the one-field rule `amountNotNegative` became `decimal #amount min=0`, the `always` example became the cross-field check `dueAfterIssue` (which needed `date #issuedOn`), the `send` action's check `invoiceHasNoLines` became `invoiceHasLines` (the label said the opposite of its condition, [rulings of 2026-10-04](./rulings-2026-10-04.md), section "Rulings after the review of the contributor docs (2026-10-05, lead under delegation)"). `#label` keeps its single `return`: it calls `formatMoney(self.total)`, cannot be translated, and so runs in memory, which is not an error for a computed field ([ADR-0056](./0056-translated-expressions-are-one-expression-arrows.md)).
+- The reference file was corrected after the review of the user docs: the one-field rule `amountNotNegative` became `decimal #amount min=0`, the `always` example became the cross-field check `dueAfterIssue` (which needed `date #issuedOn`), the `send` action's check `invoiceHasNoLines` became `invoiceHasLines` (the label said the opposite of its condition, [rulings of 2026-10-04](./rulings-2026-10-04.md), section "Rulings after the review of the contributor docs (2026-10-05, lead under delegation)"). `#label` keeps its single `return`: it calls `formatMoney(self.total)`, cannot be translated, and so runs in memory, which is not an error for a computed field ([ADR-0056](./0056-translated-expressions-are-one-expression-arrows.md)). It was corrected once more after the second review of the user docs: `update #pay` accepts `paidAt` instead of taking it as an argument, because a value stored in a field as it was sent is accepted; its checks are named for the rules they carry (`invoiceIsSent`, `invoiceHasLines`); and `update #applyDiscount` is the `arguments` example ([rulings of 2026-10-04](./rulings-2026-10-04.md), section "Rulings after the second review of the user docs").
 - The code on `main` still has the M1 vocabulary until the realignment task ([ADR-0064](./0064-order-of-work-after-approval.md)).
 
 ## Action items

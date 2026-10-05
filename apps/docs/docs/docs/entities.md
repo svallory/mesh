@@ -79,7 +79,7 @@ export function isStaff(actor: { role: string }): boolean {
 }
 ```
 
-```mx "src/domain/invoice/invoice.mesh.mx"
+```mx "src/domain/billing/invoice.mesh.mx"
 import { isStaff } from "./invoice.helpers"
 
 entity #Invoice
@@ -194,10 +194,13 @@ The other side is not automatic. If `todo` declares `belongs-to=List #list`, the
 
 Values Mesh derives rather than stores. Two kinds of line, one section.
 
-```mx "src/domain/invoice/invoice.mesh.mx"
+```mx "src/domain/billing/invoice.mesh.mx"
+import { formatMoney } from "./invoice.helpers"
+
 entity #Invoice
   attributes
     uuid #id primary-key
+    string #number
     string #status
     decimal #amount
     date #dueOn nullable
@@ -210,7 +213,7 @@ entity #Invoice
       return self.status === "sent" && self.dueOn < today()
     }
     string #label({ self }) {
-      return self.number + " · " + formatMoney(self.total)
+      return self.number + " · " + formatMoney(self.amount)
     }
     count #lineCount of="lines"
 ```
@@ -235,7 +238,7 @@ Mesh decides at build time whether an expression can be translated, and one that
 
 The operations. `auto` lists the plain actions Mesh generates for you, and every action you write yourself is `type #name`.
 
-```mx "src/domain/invoice/invoice.mesh.mx"
+```mx "src/domain/billing/invoice.mesh.mx"
 entity #Invoice
   attributes
     uuid #id primary-key
@@ -254,34 +257,35 @@ entity #Invoice
 
 **`accept`.** A list of field names, with no blanks and no repeats; `accept=[]` is valid and means the action takes only an id. On a **create**, every accepted field that is required and has no default must be sent. On an **update**, accepted fields are optional: the caller sends only what changes. A `validate` block says what a particular action insists on; see [`require`](#validate). On a create, a required attribute that is not accepted, has no default, is not filled by Mesh and is not set by a step is a build error, not a field silently left empty.
 
+**Every option goes on the declaration line.** `accept=`, `auto=`, `on:load=`, `types=` and `actions=` are written next to the name they belong to, as in `create #create accept=["title", "listId"]` and `policy #owner types=["read"]`. The only two options that live on their own lines are a read's `filter=` and `sort=`, because they have bodies: what the query must select, and in what order.
+
 ### arguments
 
-An `arguments` line is for a value the action needs that is not one of the entity's stored fields, written with the same shape as an attribute:
+An `arguments` line is for a value the action needs that is **not stored as it was sent**, written with the same shape as an attribute:
 
-```mx "src/domain/todo/todo.mesh.mx"
-entity #Todo
+```mx "src/domain/billing/invoice.mesh.mx"
+entity #Invoice
   attributes
     uuid #id primary-key
-    boolean #done default=false
-    datetime #completedAt nullable
+    decimal #amount min=0
+    decimal #percent default=0
 
   actions
-    update #complete
+    update #applyDiscount
       arguments
-        string #reason max=200
+        decimal #percent min=0 max=100
       do
         set
-          #done=true
-          #completedAt=({ input }) => input.completedAt
+          #amount=({ self, input }) => self.amount * (1 - input.percent / 100)
 ```
 
-`completeTodo` is then called as `completeTodo({ id, reason }, context)`. An argument is required unless it is `nullable`, exactly like an attribute, and it reaches your code as `input.reason` — it is not a field, so a step that stores it names a field and takes its value from `input`. Use `accept` when the caller sends a value that belongs on the record as sent; use `arguments` when it does not.
+`applyDiscountInvoice` is then called as `applyDiscountInvoice({ id, percent: 10 }, context)`. An argument is required unless it is `nullable`, exactly like an attribute, and it reaches your code as `input.percent`. Use `accept` for a value that belongs on the record as the caller sent it — `update #pay accept=["paidAt"]` stores what was sent — and `arguments` when it is not: here the percentage is a number the action needs to compute with, and no field holds "10% off".
 
 ### validate
 
 The checks that run before anything is written, on the record with the accepted input applied — see [What `self` holds](#what-self-holds).
 
-```mx "src/domain/invoice/invoice.mesh.mx"
+```mx "src/domain/billing/invoice.mesh.mx"
 entity #Invoice
   attributes
     uuid #id primary-key
@@ -290,6 +294,7 @@ entity #Invoice
     date #issuedOn
     date #dueOn
     string #status
+    string #notes nullable
 
   actions
     create #create accept=["number", "amount", "issuedOn", "dueOn"]
@@ -315,6 +320,8 @@ entity #Invoice
 
 **A rule about one field goes on that field's line**, with `min`, `max` or `match`: `decimal #amount min=0` is the whole of "the amount cannot be negative". A `check` is for a rule across fields, like `#dueAfterIssue`, or about the state the row is in, like `#notSentYet`.
 
+A line rule carries Mesh's own message, because there is nowhere in `min=0` to write your own: `string #title min=1` reports `too_short` and "must be at least 1 character", and the error's code is `invalid_input` like any other. The code and message are Mesh's in v1; a line rule of your own is where you choose them.
+
 **`require=[...]`** lists accepted fields this action insists on, which is how an update says what a caller must send.
 
 **`check :label [ … ]`** is one rule. The word after `check` is its **label**, written with `:` because it labels a failure for the caller rather than naming anything in the entity; the brackets are what let its options run on separate lines. Inside them:
@@ -331,32 +338,33 @@ A check that fails throws `InvalidInputError`, whose own `code` is always `inval
 
 The steps, run top to bottom after the checks pass. Each step sees the record as the earlier steps left it.
 
-```mx "src/domain/invoice/invoice.mesh.mx"
+```mx "src/domain/billing/invoice.mesh.mx"
+import { recordAuditEvent } from "./invoice.helpers"
+
 entity #Invoice
   attributes
     uuid #id primary-key
     string #status
     decimal #amount
     datetime #paidAt nullable
+    uuid #paidById nullable
     boolean #needsReview default=false
 
   relationships
     belongs-to=Customer #customer
 
   actions
-    update #pay
-      arguments
-        datetime #paidAt
+    update #pay accept=["paidAt"]
       do
         set
           #status="paid"
-          #paidAt=({ input }) => input.paidAt
+          #paidById=({ actor }) => actor.id
         when=({ self }) => self.amount > 10000
           set
             #needsReview=true
         load=["customer"]
         run({ self, input, actor }) {
-          audit.record("invoice.paid", { id: self.id, by: actor.id });
+          recordAuditEvent("invoice.paid", { id: self.id, by: actor.id });
         }
 ```
 
@@ -367,13 +375,15 @@ entity #Invoice
 | `load=[...]` | Loads relationships and computed fields onto the record this action returns. It writes nothing |
 | `run(…) { }` | Plain code inside the transaction, for the one thing a `set` cannot say. It cannot be translated, so the action reads the record first and writes second |
 
-Reach for `run` only when the work is not a field assignment: calling something outside the database, recording an event, formatting a value another system will read. If the work is a value on a field, it is a `set` line, and the action stays a single statement. An expression Mesh cannot translate in a `check`, a `when` or a `set` value is not an error either — it runs in memory and makes the action read first, then write; `mesh explain` says which expression caused it.
+A `run` body is your own code and may call anything, including a function that writes to a log or sends a message: the rule that imported helpers must be pure applies to **translated expressions**, because Mesh may run those inside the database query. `run` is never translated, so the purity rule does not apply to it.
+
+Reach for `run` only when the work is not a field assignment: calling something outside the database, recording an event, formatting a value another system will read. If the work is a value on a field, it is a `set` line. A `run` step always makes the action read first and write second, and so does an expression Mesh cannot translate in a `check`, a `when` or a `set` value — that is not an error either; `mesh explain` names the expression that caused it. The rule for whether an update is one statement or two is in [Calling actions](./calling-actions.md#update).
 
 ### Reads: filter and sort
 
 A read has two options of its own, and nothing else:
 
-```mx "src/domain/invoice/invoice.mesh.mx"
+```mx "src/domain/billing/invoice.mesh.mx"
 entity #Invoice
   attributes
     uuid #id primary-key
@@ -394,7 +404,7 @@ entity #Invoice
 
 `always` takes the body of an action and applies it to every action in its scope. It is how a rule that applies to everything is written once. Its checks run before the action's own checks, and its steps before the action's own steps.
 
-```mx "src/domain/invoice/invoice.mesh.mx"
+```mx "src/domain/billing/invoice.mesh.mx"
 entity #Invoice
   attributes
     uuid #id primary-key
@@ -420,7 +430,7 @@ entity #Invoice
 
 One policy per line, with a name, a scope and checks.
 
-```mx "src/domain/invoice/invoice.mesh.mx"
+```mx "src/domain/billing/invoice.mesh.mx"
 import { isStaff } from "./invoice.helpers"
 
 entity #Invoice
@@ -503,7 +513,8 @@ If you want one table and nothing else, this is the whole file.
 
 One file that puts most of the above together: `src/domain/invoice/invoice.mesh.mx`. It is not a file to copy; it is here because a reader who has followed the sections can check their understanding against it.
 
-```mx "src/domain/invoice/invoice.mesh.mx"
+```mx "src/domain/billing/invoice.mesh.mx"
+// src/domain/billing/invoice.mesh.mx
 import { formatMoney, isStaff } from "./invoice.helpers"
 
 entity #Invoice table="invoices"
@@ -549,7 +560,7 @@ entity #Invoice table="invoices"
 
     update #send
       validate
-        check :invoiceHasNoLines [
+        check :invoiceHasLines [
           that=({ self }) => self.lineCount > 0
           code="invalid_state"
           message="an invoice needs at least one line"
@@ -558,24 +569,33 @@ entity #Invoice table="invoices"
         set
           #status="sent"
 
-    update #pay
-      arguments
-        datetime #paidAt
+    update #pay accept=["paidAt"]
       validate
-        check :invoiceNotSent [
+        check :invoiceIsSent [
           that=({ self }) => self.status === "sent"
           code="invalid_state"
           message="only a sent invoice can be paid"
         ]
+        check :invoiceHasLines [
+          that=({ self }) => self.lineCount > 0
+          code="invalid_state"
+          message="an invoice needs at least one line"
+        ]
       do
         set
           #status="paid"
-          #paidAt=({ input }) => input.paidAt
           #paidById=({ actor }) => actor.id
         when=({ self }) => self.amount > 10000
           set
             #needsReview=true
         load=["customer"]
+
+    update #applyDiscount
+      arguments
+        decimal #percent min=0 max=100
+      do
+        set
+          #amount=({ self, input }) => self.amount * (1 - input.percent / 100)
 
     read #visible
       filter=({ self }) => self.status !== "cancelled"

@@ -13,7 +13,7 @@ Mesh's generators are [Jig](https://jig.saulo.engineer/docs/introduction) templa
 
 Sometimes that is not enough. You may want a different function signature, a house convention for error handling, a trace attribute, a comment at the top of every file. Rewriting generated files by hand does not work — the next `mesh build` overwrites them, and `mesh build --check` fails on your edit.
 
-This page is about the way out that does not involve a fork.
+This page is about the way out short of forking Mesh.
 
 ## The command
 
@@ -58,7 +58,7 @@ If none of those is your situation, the generated code is better left alone. The
 You do not have to copy all four. Delete the ones you are not changing and keep one:
 
 ```bash
-rm .mesh-generators/types.ts.jig .mesh-generators/validators.ts.jig
+rm .mesh-generators/types.ts.jig .mesh-generators/validators.ts.jig .mesh-generators/schema.ts.jig
 ```
 
 The build now uses your `action.ts.jig` and Mesh's own for the rest, and a Mesh release that improves the other three reaches you as usual. Start there: copy one template when one template is what does not fit, and only copy the rest when you have a reason for each.

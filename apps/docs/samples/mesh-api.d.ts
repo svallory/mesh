@@ -12,10 +12,12 @@
 // them per entity. `anyField` is the union a reader would expect from the entity file.
 
 declare module "@meshfw/runtime" {
-  /** Declared by the user's own `src/context.ts`; nothing is declared by default. */
-  export interface ActionContext {
-    [key: string]: unknown;
-  }
+  /**
+   * Empty in the runtime, as ruled: the project adds its keys, `actor` included,
+   * by declaration merging in `src/context.ts`. Declaring `actor` here would make
+   * the project's own declaration a duplicate-property error.
+   */
+  export interface ActionContext {}
 
   /**
    * One failure. A failure a declared rule produced carries the label and the code

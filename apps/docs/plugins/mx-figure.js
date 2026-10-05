@@ -18,8 +18,10 @@
 // Segments are highlighted with the same Marko grammar, themes and dark-mode
 // handling as every `mx` fence on the site (see ./mx-highlight.js). The layout
 // is a grid at container widths of 600px and above — the notes sit beside their
-// lines, joined by the rule the code block draws — and one column under that,
-// measured on the container so it does not depend on the viewport.
+// lines, joined by the rule the code block draws, and a line too long for the
+// code column scrolls rather than squeezing the notes below 280px — and one
+// column under that, measured on the container so it does not depend on the
+// viewport.
 import { highlightMx } from './mx-highlight.js';
 
 const NOTE = /^\/\/\s*@([a-z][a-z0-9-]*):\s*(.+?)\s+—\s+(.+)$/;
@@ -105,7 +107,7 @@ export function renderMxFigure(source, file) {
 
 export const figureStyles = `<style>
 .mx-figure-wrap{container-type:inline-size}
-.mx-figure{display:grid;grid-template-columns:minmax(0,26rem) minmax(13rem,1fr);gap:0 2.25rem;margin:2rem 0;align-items:start}
+.mx-figure{display:grid;grid-template-columns:minmax(0,22rem) minmax(18rem,1fr);gap:0 2.25rem;margin:2rem 0;align-items:start}
 .mx-figure .mx-row{min-width:0}
 .mx-figure .mx-code{position:relative}
 .mx-figure .mx-code::after{content:"";position:absolute;top:1.1rem;left:100%;width:2.25rem;border-top:1px solid color-mix(in srgb,currentColor 40%,transparent)}
