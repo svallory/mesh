@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseMxFigure, renderMxFigure, figureStyles, figureScript, noScriptStyles, installMxFigure } from '../plugins/mx-figure.js';
+import figurePlugin, { parseMxFigure, renderMxFigure, figureStyles, figureScript, noScriptStyles, installMxFigure } from '../plugins/mx-figure.js';
 
 // Resolve docmd's own parser, rather than pinning a second markdown implementation.
 const require = createRequire(import.meta.url);
@@ -237,4 +237,13 @@ test('a render failure is a build failure, not a silent fallback', () => {
   expect(figureStyles).toContain('@container');
   expect(() => renderMxFigure('entity #Todo\n', 'todo.md')).toThrow(/todo\.md: mx-figure starts with code/);
   expect(writeFileSync).toBeTypeOf('function');
+});
+// docmd 0.9.7 hides <html> until its theme script runs, so without JavaScript every
+// page would be blank. The fix rides in this plugin's head output, which docmd adds
+// to every page of the site.
+test('every page gets the rule that shows the page without JavaScript', () => {
+  const head = figurePlugin.generateMetaTags();
+  expect(head).toContain(noScriptStyles);
+  expect(head).toContain(figureStyles);
+  expect(head).toContain(figureScript);
 });
