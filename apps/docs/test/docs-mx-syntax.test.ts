@@ -7,9 +7,10 @@
 // `bun run verify` with the rest of the Docs checks.
 //
 // It is deliberately stricter than the compiler's own Docs check: a fence whose
-// root is not `entity :Name` is a finding here, so a page cannot drift back to
-// another syntax without failing the build. An old-syntax fence (`entity #Todo`,
-// `accept=["title"]`) is such a drift and fails.
+// root is not `entity :Name` is a finding here, and so is a fence that writes a
+// name as a string in any option, in the old `#name` spelling, or with a read's
+// `sort=` option instead of a `sort` section (`quotedNameInV3`, next door), so a
+// page cannot drift back to the old syntax without failing the build.
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { checkDocsSyntaxV3 } from "../../../packages/compiler/test/repository-checks.ts";

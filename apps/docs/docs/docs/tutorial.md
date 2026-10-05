@@ -105,7 +105,8 @@ entity :Todo table="todos"
 
     read :pending
       filter=({ self }) => self.done === false
-      sort=[:insertedAt]
+      sort
+        asc :insertedAt
 
   policies
     policy :owner types=[:create, :read, :update, :destroy]
@@ -196,7 +197,7 @@ invalid_input too_short must be at least 1 character
 
 An empty title is refused at run time by `string :title min=1`, with Mesh's own code and message — a line rule has nowhere to write a custom one — and the issue points at that line in the `.mesh.mx` file. A `check` of your own fails the same way and carries the label and code you gave it.
 
-Five things to notice:
+Four things to notice:
 
 - **`createList` takes only `name`.** `ownerId` is not in the input type, so a call that sends it does not compile.
 - **`load: ["label"]` is what types `todo.label`.** Without it, reading the property is a type error rather than `undefined`.
@@ -275,4 +276,4 @@ bun test
 
 - Add a `title` filter to the pending read and sort it by title. [Calling actions](./calling-actions.md) has the filter form.
 - Load `todo.list` and `list.todoCount` in one call. [Loading](./calling-actions.md#loading-relationships-and-computed-fields) has the rules.
-- Add a `dueOn` date to the todo, and a `count` of the list's todos you can read on the list. [Computed fields](./entities.md#computed) has both.
+- Add a `dueOn` date to the todo, and a `sum` of what the list's todos cost. [Computed fields](./entities.md#computed) has both.

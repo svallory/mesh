@@ -1,9 +1,11 @@
 ---
-title: "0050. Entity file syntax: `kind #name options`"
+title: "0050. Entity file syntax: `kind #name options` (amended by ADR-0066)"
 description: "Decision record 0050: the line shape, sections, attributes, relationships and computed fields of an entity file, with the reference file. Status: Accepted."
 ---
 
 # 0050. Entity file syntax: `kind #name options`
+
+Amended by [ADR-0066](./0066-names-and-references-are-atoms.md): a declaration is now `kind :name options`.
 
 ## Status
 
@@ -142,7 +144,8 @@ entity :Invoice table="invoices"
 
     read :overdue
       filter=({ self }) => self.isOverdue
-      sort=[:dueOn]
+      sort
+        asc :dueOn
 
     read :forCustomer
       arguments

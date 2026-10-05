@@ -244,33 +244,57 @@ export function normaliseV3(source: string): string {
 }
 
 /**
- * The options whose value is a name, a list of names or an enum value, and so
- * takes atoms and not strings ([ADR-0066](./0066-names-and-references-are-atoms.md)).
- * A quoted value in one of them is the old spelling, and a Docs page must not
- * carry it: `accept=["title"]` is the example the ruling calls out.
+ * An option whose value is a single name or enum value, written as a string:
+ * `accept="title"`, `default="draft"`, `on:load="visible"`. A list is handled
+ * by `V3_LIST_OF_QUOTED_NAMES` below.
  */
-const V3_ATOM_OPTIONS =
-  /(?:^|[\s])(accept|auto|types|actions|load|sort|require|values|default|on|on:load|belongs-to|has-many|has-one)=("[^"]*"|\[[^\]]*"])/;
+const V3_QUOTED_NAME =
+  /(?:^|[\s])(accept|auto|types|actions|load|sort|require|default|on|on:load|belongs-to|has-many|has-one)=("[^"]*")/;
 
 /**
- * The first line of a block that still writes a name as a string, or `null`.
+ * An option whose value is a list written as quoted identifiers: `fields=[
+ * "status", "amount"]`, `accept=["title"]`. Any option may hold such a list,
+ * including one an extension adds (`audit fields=[...]`), because a list of
+ * quoted identifiers is a list of names wherever it appears.
  *
- * The parser cannot see this: `accept=["title"]` is perfectly good input to
- * MX, so the block would parse and the page would drift back to v2 without any
- * check noticing. Rule 2 of the syntax says this is an error, and this is where
- * the docs enforce it.
+ * The one exclusion is an option whose value is genuinely a list of text.
+ * None of the v1 vocabulary has one — `table`, `message`, `code`, `of`,
+ * `match` and `domain` are all single strings, and `values` holds enum values,
+ * which are atoms, not text — so the set is empty and is kept as a named,
+ * auditable place to add one. A *single* quoted value is not caught here: for
+ * an option nobody has declared, `"some text"` and a name look the same, and
+ * guessing would produce false findings on ordinary text.
+ */
+const V3_TEXT_LIST_OPTIONS = new Set<string>();
+const V3_LIST_OF_QUOTED_NAMES =
+  /(\b[a-z][a-z0-9-]*)=(\[\s*(?:"[\w-]+"\s*,?\s*)+\])/g;
+
+/**
+ * The first line of a block that is not written in syntax v3, or `null`.
+ *
+ * The parser cannot see any of this: `accept=["title"]` and `sort=[:dueOn]`
+ * are perfectly good input to MX, so the block would parse and the page would
+ * drift back to the old syntax without any check noticing. These are the rules
+ * of the syntax the docs enforce, and this is where it enforces them.
  */
 export function quotedNameInV3(block: string): string | null {
   for (const [index, line] of block.split("\n").entries()) {
     const text = line.trim();
     if (text === "" || text.startsWith("//")) continue;
-    // A `set` step's own line names a field with an atom, not an option, and the
-    // first rule of the syntax is checked by the `entity :Name` root above.
+    // A `set` step's own line names a field with an atom, not an option.
     if (/^set\b/.test(text)) continue;
-    const option = V3_ATOM_OPTIONS.exec(text);
-    if (option) {
-      const value = option[2]!;
-      return `line ${index + 1}: \`${option[1]}\` takes ${value.startsWith("[") ? "names" : "a name"} as atoms, not strings (${text})`;
+    // A read's order is a `sort` section with `asc`/`desc` lines (ADR-0066).
+    if (/(?:^|[\s])sort=/.test(text)) {
+      return `line ${index + 1}: a read's order is a \`sort\` section with \`asc :field\` and \`desc :field\` lines, not a \`sort=\` option (${text})`;
+    }
+    const name = V3_QUOTED_NAME.exec(text);
+    if (name) {
+      return `line ${index + 1}: \`${name[1]}\` takes a name as an atom, not a string (${text})`;
+    }
+    V3_LIST_OF_QUOTED_NAMES.lastIndex = 0;
+    for (let list = V3_LIST_OF_QUOTED_NAMES.exec(text); list; list = V3_LIST_OF_QUOTED_NAMES.exec(text)) {
+      if (V3_TEXT_LIST_OPTIONS.has(list[1]!)) continue;
+      return `line ${index + 1}: \`${list[1]}\` takes a list of names as atoms, not strings (${text})`;
     }
     const oldName = /^[a-z][a-z0-9-]*\s+#(\w+)/.exec(text);
     if (oldName) return `line ${index + 1}: a declaration is \`kind :name options\`; \`#${oldName[1]}\` is the old spelling (${text})`;

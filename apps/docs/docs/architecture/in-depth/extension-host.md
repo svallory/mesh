@@ -56,7 +56,7 @@ A **contribution point** is a place in the model or the vocabulary that its owne
 entity :Invoice table="invoices"
   attributes
     uuid :id primary-key
-  audit fields=["status", "amount"]
+  audit fields=[:status, :amount]
 ```
 
 The extension declares the `audit` tag and, in its manifest, that it uses core's point on `entity`. With the extension listed in `mesh.config.ts`, the file builds; without it, `audit` is an unknown tag and the build fails at that line ([roadmap](../roadmap/roadmap.md), M6, test 1: a test extension adds a child tag to the root tag through a declared point). What a published point looks like in the manifest is not decided.

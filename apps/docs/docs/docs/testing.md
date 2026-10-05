@@ -112,7 +112,7 @@ Await the assertion. A promise you do not await can settle after the test is ove
 
 If you care which rule failed, catch the error and read `issues`. Each entry names the `check` that declared it, the code that check declared, its message, and the line of the `.mesh.mx` file it is on. See [Errors](./calling-actions.md#errors).
 
-A rule written on an attribute line, such as `string :title min=1`, fails the same way: the error's code is `invalid_input` and the issue points at that line. There is no label for it, because a line about one field has no name to give.
+A rule written on an attribute line, such as `string :title min=1`, fails the same way: the error's code is `invalid_input` and the issue points at that line. There is no label for it, because only a `check` carries a label; the issue's `path` names the field..
 
 ## Asserting on what another actor may see
 

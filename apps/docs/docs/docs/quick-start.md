@@ -104,7 +104,8 @@ entity :Todo table="todos"
 
     read :pending
       filter=({ self }) => self.done === false
-      sort=[:insertedAt]
+      sort
+        asc :insertedAt
 
   policies
     policy :owner types=[:create, :read, :update, :destroy]

@@ -16,7 +16,8 @@ An entity file holds small functions. From the reference file of [ADR-0050](../d
 ```mx
 read :overdue
   filter=({ self }) => self.isOverdue
-  sort=[:dueOn]
+  sort
+    asc :dueOn
 ```
 
 ```mx

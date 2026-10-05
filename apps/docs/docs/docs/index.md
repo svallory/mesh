@@ -17,7 +17,7 @@ Mesh is a TypeScript framework: you describe each thing your program stores once
 This is a complete `src/domain/todo/todo.mesh.mx`, top to bottom, as your editor shows it. Point at a numbered marker, or at the lines it sits on, to read what that part gives you; every part is something you would otherwise write by hand.
 
 ```mx-figure
-// @name: Name and table — `:Todo` is an atom, the entity's name; it lives in the `todos` table. The type, the functions and the migration come from this one line.
+// @name: Name and table — a name is written `:name`, so this is `:Todo`; it lives in the `todos` table. The type, the functions and the migration come from this one line.
 entity :Todo table="todos"
 // @fields: Fields you send — `title` is a string of at least one character, `done` a boolean that starts false.
   attributes
@@ -54,7 +54,8 @@ entity :Todo table="todos"
 // @pending: A query — `pendingTodo(input, context)` filters in SQL, and your call can narrow it with its own `filter`.
     read :pending
       filter=({ self }) => self.done === false
-      sort=[:insertedAt]
+      sort
+        asc :insertedAt
 // @who: Who may do it — an action no policy covers is forbidden, and a todo in someone else's list is simply not found.
   policies
     policy :owner types=[:create, :read, :update, :destroy]
