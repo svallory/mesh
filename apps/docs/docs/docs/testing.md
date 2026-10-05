@@ -90,25 +90,58 @@ import { InvalidInputError } from "@meshfw/runtime";
 import { bind } from "#mesh";
 import { alice } from "../src/context";
 
-test("an empty title is rejected", async () => {
+test("a todo must have a title, and must not be completed twice", async () => {
   const db = sqlite({ file: ":memory:" });
   await createSchema(db);
   const todo = bind(db);
 
   const list = await todo.createList({ name: "Groceries" }, { actor: alice });
+  const milk = await todo.createTodo({ title: "Buy milk", listId: list.id }, { actor: alice });
 
-  const call = todo.createTodo({ title: "", listId: list.id }, { actor: alice });
-  await expect(call).rejects.toBeInstanceOf(InvalidInputError);
+  await expect(todo.createTodo({ title: "", listId: list.id }, { actor: alice }))
+    .rejects.toBeInstanceOf(InvalidInputError);
+  await expect(todo.completeTodo({ id: milk.id }, { actor: alice })).resolves.toBeTruthy();
+  await expect(todo.completeTodo({ id: milk.id }, { actor: alice }))
+    .rejects.toBeInstanceOf(InvalidInputError);
 
   await db.close();
 });
 ```
 
+Await the assertion. A promise you do not await can settle after the test is over, and the database can be closed while the call is still running.
+
 If you care which rule failed, catch the error and read `issues`. Each entry names the `check` that declared it, the code that check declared, its message, and the line of the `.mesh.mx` file it is on. See [Errors](./calling-actions.md#errors).
 
-## Asserting a denial
+A rule written on an attribute line, such as `string #title min=1`, fails the same way: the error's code is `invalid_input` and the issue points at that line. There is no label for it, because a line about one field has no name to give.
 
-An action with no matching policy is forbidden, and a record-reading policy folds into the statement, so a row the caller may not change is reported as not found. Assert on `can`, which is data, rather than on which of the two error classes a call produced.
+## Asserting on what another actor may see
+
+An action that no policy covers is forbidden, and a policy that reads the stored row becomes part of the query, so a row the caller may not change is reported as not found. For a read, the same policy simply narrows the result: the call succeeds and returns fewer rows.
+
+```ts "test/todo.test.ts"
+import { expect, test } from "bun:test";
+import { createSchema, sqlite } from "@meshfw/data-sqlite";
+import { NotFoundError } from "@meshfw/runtime";
+import { bind } from "#mesh";
+import { alice, bob } from "../src/context";
+
+test("another actor sees no todos and may not complete one", async () => {
+  const db = sqlite({ file: ":memory:" });
+  await createSchema(db);
+  const todo = bind(db);
+
+  const list = await todo.createList({ name: "Groceries" }, { actor: alice });
+  const milk = await todo.createTodo({ title: "Buy milk", listId: list.id }, { actor: alice });
+
+  expect(await todo.pendingTodo({}, { actor: bob })).toEqual([]);
+  await expect(todo.completeTodo({ id: milk.id }, { actor: bob }))
+    .rejects.toBeInstanceOf(NotFoundError);
+
+  await db.close();
+});
+```
+
+For a write, `can` is the better thing to assert on, because it is data rather than an error class:
 
 ```ts "test/todo.test.ts"
 import { expect, test } from "bun:test";

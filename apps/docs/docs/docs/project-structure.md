@@ -26,8 +26,10 @@ todo-app/
         todo.mesh.mx
         todo.helpers.ts    hand-written code that todo.mesh.mx calls
     extensions/           project-local extensions, if any
-    context.ts             declares the action context type
-    main.ts               the program
+    context.ts            declares the action context type
+    main.ts               the program (Mesh does not prescribe this)
+  test/
+    todo.test.ts          tests, which bind their own database
 ```
 
 Mesh prescribes nothing under `src/`. `context.ts` and `main.ts` are the starter's names and are only convention; what matters is that the domain folder is where the `.mesh.mx` files are.
@@ -67,10 +69,10 @@ What is inside, for the tutorial's two entities:
 | `.mesh/todo/todo.validators.ts` | The input schemas for those actions |
 | `.mesh/schema.ts` | The database tables, written by the data adapter |
 | `.mesh/model.json` | One document per entity, with the source position of every declaration |
-| `.mesh/mx-contracts.js` | The composed tag contracts, for MX tooling in your editor |
+| `.mesh/mx-contracts.js` | The tag contracts for the editor extension that highlights and checks `.mesh.mx` files |
 | `.mesh/rules.md` | A short description of your entities and of Mesh's vocabulary, for a coding agent to read |
 
-That is the whole of it, plus `.mesh/rules.md`, which exists for agents and which [Working with AI agents](./ai-agents.md) covers. You should not have to think about any of it day to day, and you never have to edit it. Two reasons it is committed rather than hidden:
+That is the whole of it. You should not have to think about any of it day to day, and you never have to edit it. Two reasons it is committed rather than hidden:
 
 - **A reviewer reads what runs.** An entity file is a small declarative change. The TypeScript beside it is what the program actually executes, and reading the two diffs together is how you review a change to a rule.
 - **`git diff` is the record of behaviour.** Adding an attribute shows up as a new column, a new type field and a new input key in one diff, in the file you changed.
@@ -107,6 +109,7 @@ Everything else under `src/` is yours, and Mesh never reads it. In the tutorial:
 | `migrations/*.sql` | yes |
 | `mesh.config.ts`, `package.json`, `bun.lock` | yes |
 | `src/**` (your TypeScript) | yes |
+| `test/**` | yes |
 | `*.db`, `*.db-journal` | no |
 | `node_modules/` | no |
 | `.env` | no |

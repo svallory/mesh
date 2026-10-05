@@ -16,9 +16,10 @@
 //     ```
 //
 // Segments are highlighted with the same Marko grammar, themes and dark-mode
-// handling as every `mx` fence on the site (see ./mx-highlight.js). The layout is
-// a grid at wide widths and one column under 760px, measured on the container so
-// it does not depend on the viewport.
+// handling as every `mx` fence on the site (see ./mx-highlight.js). The layout
+// is a grid at container widths of 600px and above — the notes sit beside their
+// lines, joined by the rule the code block draws — and one column under that,
+// measured on the container so it does not depend on the viewport.
 import { highlightMx } from './mx-highlight.js';
 
 const NOTE = /^\/\/\s*@([a-z][a-z0-9-]*):\s*(.+?)\s+—\s+(.+)$/;
@@ -104,7 +105,7 @@ export function renderMxFigure(source, file) {
 
 export const figureStyles = `<style>
 .mx-figure-wrap{container-type:inline-size}
-.mx-figure{display:grid;grid-template-columns:minmax(0,max-content) minmax(14rem,1fr);gap:0 2.25rem;margin:2rem 0;align-items:start}
+.mx-figure{display:grid;grid-template-columns:minmax(0,26rem) minmax(13rem,1fr);gap:0 2.25rem;margin:2rem 0;align-items:start}
 .mx-figure .mx-row{min-width:0}
 .mx-figure .mx-code{position:relative}
 .mx-figure .mx-code::after{content:"";position:absolute;top:1.1rem;left:100%;width:2.25rem;border-top:1px solid color-mix(in srgb,currentColor 40%,transparent)}
@@ -113,8 +114,9 @@ export const figureStyles = `<style>
 .mx-figure .mx-note{display:flex;gap:.6rem;align-items:baseline;padding:.55rem 0;border-top:1px solid color-mix(in srgb,currentColor 14%,transparent)}
 .mx-figure .mx-note:first-of-type{border-top:0}
 .mx-figure .mx-note p{margin:0;max-width:34rem}
+.mx-figure .mx-note strong::after{content:" —";font-weight:400}
 .mx-figure .mx-badge{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;min-width:1.5rem;height:1.5rem;border:1px solid color-mix(in srgb,currentColor 45%,transparent);border-radius:999px;font-size:.75rem;font-weight:600;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-@container (max-width:860px){
+@container (max-width:600px){
   .mx-figure{grid-template-columns:1fr;gap:.1rem}
   .mx-figure .mx-code::after{display:none}
   .mx-figure .mx-note{border-top:0;padding:.1rem 0 .7rem}

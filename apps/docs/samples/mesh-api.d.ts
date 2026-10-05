@@ -18,12 +18,12 @@ declare module "@meshfw/runtime" {
   }
 
   /**
-   * One failure. A failure a declared rule produced carries the name and the code
-   * of the `check` that produced it and the position of its line; a structural
-   * failure carries no name, no code and no source.
+   * One failure. A failure a declared rule produced carries the label and the code
+   * of the `check` that produced it and the position of its line; a failure with no
+   * rule behind it (a `min=1` on an attribute line, say) carries no label or code.
    */
   export interface Issue {
-    name: string | null;
+    label: string | null;
     code: string | null;
     path: (string | number)[];
     message: string;
@@ -125,7 +125,7 @@ declare module "#mesh" {
     id: string;
     title: string;
     done: boolean;
-    listId?: string;
+    listId: string;
     insertedAt: Date;
     updatedAt: Date;
   }
@@ -137,6 +137,30 @@ declare module "#mesh" {
     insertedAt: Date;
     updatedAt: Date;
   }
+
+  /** Enough of the Invoice entity for the read-with-an-argument sample on the pages. */
+  export interface Invoice {
+    id: string;
+    number: string;
+    customerId: string;
+    amount: number;
+    status: "draft" | "sent" | "paid" | "cancelled";
+    issuedOn: Date;
+    dueOn: Date;
+    insertedAt: Date;
+    updatedAt: Date;
+  }
+
+  export type InvoiceField =
+    | "id"
+    | "number"
+    | "customerId"
+    | "amount"
+    | "status"
+    | "issuedOn"
+    | "dueOn"
+    | "insertedAt"
+    | "updatedAt";
 
   export interface Decision {
     allowed: boolean;
@@ -158,21 +182,32 @@ declare module "#mesh" {
   /** A computed field is a property only when the read asked for it: two signatures say so. */
   export interface PendingTodo {
     (input: { load: readonly ["label"] }, context: ActionContext): Promise<TodoOrLabelled[]>;
-    (input: { load?: readonly string[] }, context: ActionContext): Promise<Todo[]>;
+    (input: { filter?: Filter<TodoField>; load?: readonly string[] }, context: ActionContext): Promise<Todo[]>;
+  }
+
+  /** A read's `arguments` sit in the same input object as `filter`, `sort` and the rest. */
+  export interface ReadInvoiceInput {
+    customerId: string;
+    filter?: Filter<InvoiceField>;
+    sort?: string[];
+    limit?: number;
+    offset?: number;
+    load?: readonly string[];
   }
 
   export type Bound = {
     createList(input: { name: string }, context: ActionContext): Promise<List>;
     readList(input: ReadTodoInput, context: ActionContext): Promise<List[]>;
     destroyList(input: { id: string }, context: ActionContext): Promise<void>;
-    /** `listId` is optional here: the quick start's todo has no `belongs-to` to add it. */
-    createTodo(input: { title: string; listId?: string }, context: ActionContext): Promise<Todo>;
+    /** `listId` is required: it comes from `belongs-to=List #list` and a create must send it. */
+    createTodo(input: { title: string; listId: string }, context: ActionContext): Promise<Todo>;
     readTodo(input: ReadTodoInput, context: ActionContext): Promise<Todo[]>;
     pendingTodo: PendingTodo;
     completeTodo(input: { id: string }, context: ActionContext): Promise<Todo>;
     renameTodo(input: { id: string; title: string }, context: ActionContext): Promise<Todo>;
     destroyTodo(input: { id: string }, context: ActionContext): Promise<void>;
-    canCreateTodo(input: { title: string; listId?: string }, context: ActionContext): Promise<Decision>;
+    forCustomerInvoice(input: ReadInvoiceInput, context: ActionContext): Promise<Invoice[]>;
+    canCreateTodo(input: { title: string; listId: string }, context: ActionContext): Promise<Decision>;
     canPendingTodo(input: { load?: readonly string[] }, context: ActionContext): Promise<Decision>;
     canCompleteTodo(input: { id: string }, context: ActionContext): Promise<Decision>;
   };
@@ -192,6 +227,7 @@ declare module "#mesh" {
   export const completeTodo: Bound["completeTodo"];
   export const renameTodo: Bound["renameTodo"];
   export const destroyTodo: Bound["destroyTodo"];
+  export const forCustomerInvoice: Bound["forCustomerInvoice"];
   export const canCreateTodo: Bound["canCreateTodo"];
   export const canPendingTodo: Bound["canPendingTodo"];
   export const canCompleteTodo: Bound["canCompleteTodo"];

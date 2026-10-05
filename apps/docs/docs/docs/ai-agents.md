@@ -15,13 +15,22 @@ Most of the code a framework asks you to write is code an agent has to read befo
 
 An entity file is short, declarative and in one place. To add a field, an action or a rule, an agent edits that file and nothing else: no schema object, no migration by hand, no DTO, no controller, no service layer to keep in step. The types, the input checks, the table and the migration all follow from the edit.
 
-The tutorial's two entity files are 27 and 39 lines. That is the whole surface an agent has to understand before it can add an action to a program with a list, a todo, ownership rules and derived values.
+The tutorial's two entity files are 26 and 39 lines. That is the whole surface an agent has to understand before it can add an action to a program with a list, a todo, ownership rules and derived values.
 
 ## The rules file
 
-`mesh build` writes `.mesh/rules.md`: a short description of your entities — which actions exist and what they accept — and of Mesh's vocabulary: the field types, the action types and the declarations an extension adds. It is generated, so it cannot drift from the code.
+`mesh build` writes `.mesh/rules.md`: a short description of your entities — which actions exist and what they accept — and of Mesh's vocabulary: the field types, the action types and the declarations an extension adds. It is generated, so it cannot drift from the code. Condensed onto three lines, the todo above looks like this:
 
-Point your agent at it, the way Ash's `usage_rules` assembles a package's rules into `AGENTS.md`. If your agent reads `AGENTS.md`, have it read `.mesh/rules.md` too.
+```text
+entity Todo (table "todos")
+  attributes: id uuid primary-key, title string min=1, done boolean default=false
+  actions: auto read destroy; create accept=("title", "listId"); update complete, rename
+  policy owner types=(create read update destroy): authorize-if self.list.ownerId == actor.id
+```
+
+(That is the shape of the content, not the file's exact text: the real file is longer and lists every entity.)
+
+Point your agent at it. If your agent reads a project file such as `AGENTS.md`, have it read `.mesh/rules.md` too.
 
 The file is an addition to whatever guidance you already give your agent, not a replacement. It knows Mesh; it does not know your domain. A short project note saying what a list is for is still yours to write.
 
@@ -44,7 +53,7 @@ Todo.complete (update)
   strategy     atomic: one UPDATE, no read first
   steps        done = true                 folded into the statement
   policy       self.list.ownerId === actor.id   folded into the statement as a filter
-  checks       none
+  checks       notDoneYet
 ```
 
 That turns "why did this update do two queries" into a build-time answer rather than an investigation.

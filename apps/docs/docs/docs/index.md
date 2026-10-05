@@ -14,50 +14,51 @@ Mesh is a TypeScript framework: you describe each thing your program stores once
 
 ## One file, and what each part gives you
 
-This is a complete `src/domain/todo/todo.mesh.mx`, top to bottom. Read the code beside the notes: every part of the file is something you would otherwise write by hand, and the note says what it buys you. The lines beginning `//` are the figure's own notes, not part of the file.
+This is a complete `src/domain/todo/todo.mesh.mx`, top to bottom, cut into its parts. Each note sits beside the lines it describes, and every part of the file is something you would otherwise write by hand. At a phone width the notes come after their lines instead of beside them.
 
 ```mx-figure
-// @name: Name and table — `todo` lives in the `todos` table. The type, the functions and the migration come from this one line.
+// @name: Name and table — Todo lives in the `todos` table. The type, the functions and the migration come from this one line.
 entity #Todo table="todos"
-// @fields: Fields you send — `title` is a required string, `done` a boolean that starts false.
+// @fields: Fields you send — `title` is a string of at least one character, `done` a boolean that starts false.
   attributes
     uuid #id primary-key
-    string #title
+    string #title min=1
     boolean #done default=false
 // @times: Fields the database fills — `insertedAt` on create, `updatedAt` on every write. No caller sets either.
     timestamp #insertedAt on="create"
     timestamp #updatedAt on="update"
 // @belongs: Linked to a list — `listId` becomes a field and the foreign key is created, and `todo.list` arrives when you ask.
   relationships
-    belongs-to=List #list nullable
-// @create: Calling createTodo — you call `createTodo(input, context)`. A field it does not accept never reaches your code, and an empty title is refused with your own message.
-  actions auto=["read", "destroy"]
-    create #create accept=["title", "listId"]
-      validate
-        check :titleNotEmpty [
-          that=({ self }) => self.title.length > 0
-          code="empty_title"
-          message="title must not be empty"
-        ]
-// @complete: Two more actions — `completeTodo({ id }, context)` and `renameTodo({ id, title }, context)` each run as a single `UPDATE`.
-    update #complete
-      do
-        set
-          #done=true
-    update #rename accept=["title"]
-// @pending: A query — `pendingTodo(input, context)` filters in SQL, and adds your own filter to it.
-    read #pending
-      filter=({ self }) => self.done === false
-      sort=["insertedAt"]
-// @who: Who may do it — an action no policy covers is forbidden, and the check rides along with the query.
-  policies
-    policy #owner types=["create", "read", "update", "destroy"]
-      authorize-if=({ self, actor }) => self.list.ownerId === actor.id
+    belongs-to=List #list
 // @derived: A computed value — ask for `label` and it is on the result; leave it out and it does not exist.
   computed
     string #label({ self }) {
       return (self.done ? "[x] " : "[ ] ") + self.title
     }
+// @create: Calling createTodo — you call `createTodo(input, context)`. A field it does not accept never reaches your code, and a rule about one field is one word on that field's line.
+  actions auto=["read", "destroy"]
+    create #create accept=["title", "listId"]
+// @complete: Rule and change — `completeTodo({ id }, context)` refuses a todo that is already done, and runs as a single `UPDATE`.
+    update #complete
+      validate
+        check :notDoneYet [
+          that=({ self }) => !self.done
+          code="already_done"
+          message="this todo is already complete"
+        ]
+      do
+        set
+          #done=true
+// @rename: One more action — `renameTodo({ id, title }, context)` accepts a field and changes nothing else.
+    update #rename accept=["title"]
+// @pending: A query — `pendingTodo(input, context)` filters in SQL, and your call can narrow it with its own `filter`.
+    read #pending
+      filter=({ self }) => self.done === false
+      sort=["insertedAt"]
+// @who: Who may do it — an action no policy covers is forbidden, and a todo in someone else's list is simply not found.
+  policies
+    policy #owner types=["create", "read", "update", "destroy"]
+      authorize-if=({ self, actor }) => self.list.ownerId === actor.id
 ```
 
 ## What you call

@@ -46,7 +46,7 @@ export default defineConfig({
 });
 ```
 
-`bunx mesh init` writes this file and asks the same questions.
+`bunx mesh init` writes this file and asks the same questions the starter asked.
 
 | Key | Required | What it is |
 |:--|:--|:--|
@@ -63,9 +63,7 @@ export default defineConfig({
 
 Mesh does not read anything about your database from an entity file; the project configuration names the adapter. Two are shipped.
 
-**SQLite** is what the quick start and the tutorial use. It needs no server, and the file is yours:
-
-Only the `data` line changes, from `postgres` to `sqlite` or back:
+**SQLite** is what the quick start and the tutorial use. It needs no server, and the file is yours. Only the `data` line changes, from `postgres` to `sqlite` or back:
 
 ```ts "mesh.config.ts (excerpt)"
 data: sqlite({ file: "todo.db" }),
@@ -103,9 +101,13 @@ If your entity file uses something your adapter cannot do, the build fails and n
 
 ## Enabling extensions
 
-An extension adds to Mesh through declared points: the tags an entity file may use, transforms and verifiers, emitted files, expression functions, field types, `mesh` subcommands and named run-time behaviour. Extensions are listed here explicitly. Nothing is discovered by scanning `node_modules`, so nothing changes under you.
+An extension adds to Mesh through declared points: the tags an entity file may use, transforms and verifiers, emitted files, expression functions, field types, `mesh` subcommands and named run-time behaviour. Extensions are listed here explicitly, each one a call that returns an extension:
 
-A project-local extension goes in `src/extensions/` and is listed the same way. Authorization is not an extension: `policies` is a section of the entity file, and an entity with no `policies` section forbids every action it has.
+```ts "mesh.config.ts (excerpt)"
+extensions: [audit()],
+```
+
+Nothing is discovered by scanning `node_modules`, so nothing changes under you. A project-local extension goes in `src/extensions/` and is listed the same way. Authorization is not an extension: `policies` is a section of the entity file, and an entity with no `policies` section forbids every action it has.
 
 Mesh reads nothing else: no `tsconfig.json` paths, no `.env` of its own. That is what makes `mesh build` give the same result in your editor, in a container and on a colleague's machine.
 
@@ -187,7 +189,7 @@ Todo.complete (update)
 Two lines are worth learning:
 
 - **`strategy`** is `atomic` (one statement, no read first) or read-then-write. An update with a `run(…) { }` step, or with any expression Mesh cannot translate to SQL, is read-then-write.
-- **`folded into the statement`** means the rule costs no extra query. A rule that cannot fold runs in memory on the locked row instead.
+- **`folded into the statement`** means the rule costs no extra query. A rule that cannot fold runs in memory on the row read inside the transaction instead.
 
 `explain` prints a plan, not SQL. Queries are assembled at run time from the entity's filter, the caller's filter and the policies, because which of those apply is only known when the call arrives.
 
@@ -211,8 +213,10 @@ bunx mesh migrate apply
 `mesh migrate generate` compares the committed schema with the model, and refuses a destructive or ambiguous change unless you name it: dropping a column, changing its type, renaming it, making an optional column required.
 
 ```bash
-bunx mesh migrate generate --allow drop:todo.dueOn
+bunx mesh migrate generate --allow drop:Todo.title
 ```
+
+The name after the colon is the entity and the column, as the entity file spells them.
 
 The migration is a plain SQL file in `migrations/`, and you commit it. Generating never applies anything; applying is a separate, explicit command. So a new machine, and your production environment, reach the same shape with `mesh migrate apply`.
 
