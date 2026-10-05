@@ -15,15 +15,16 @@
 //         uuid-primary-key="id"
 //     ```
 //
-// Segments are highlighted with the same Marko grammar, themes and dark-mode
-// handling as every `mx` fence on the site (see ./mx-highlight.js). At container
-// widths of 1000px and above the layout is a grid: the code column takes its
-// content width, so a long line is never clipped, and the notes sit with their
-// lines. Under 1000px each note stacks under the lines it describes and a line
-// too long for the column wraps instead of scrolling, so no code is ever clipped
-// at any width. The threshold is measured on the container, not the viewport:
-// the Docs layout leaves about 695px of content column at 1280px, which stacks.
-import { highlightMx } from './mx-highlight.js';
+// Segments are highlighted by MX's own highlighter, with the same two themes
+// and dark-mode handling as every `mx` fence on the site (see
+// ./mx-highlight.js). At container widths of 1000px and above the layout is a grid: the code
+// column takes its content width, so a long line is never clipped, and the
+// notes sit with their lines. Under 1000px each note stacks under the lines it
+// describes and a line too long for the column wraps instead of scrolling, so
+// no code is ever clipped at any width. The threshold is measured on the
+// container, not the viewport: the Docs layout leaves about 695px of content
+// column at 1280px, which stacks.
+import { mxHighlighter } from './mx-highlight.js';
 
 const NOTE = /^\/\/\s*@([a-z][a-z0-9-]*):\s*(.+?)\s+—\s+(.+)$/;
 const EMPTY_SEGMENT = 'a segment must hold at least one line of the file';
@@ -32,12 +33,18 @@ function indentOf(line) {
   return line.length - line.trimStart().length;
 }
 
+/** The fence content as lines: no CRLF, no trailing empty line. */
+function sourceLines(source) {
+  const lines = source.replace(/\r\n?/g, '\n').split('\n');
+  if (lines.at(-1) === '') lines.pop();
+  return lines;
+}
+
 export function parseMxFigure(source, file = '<markdown>') {
   const segments = [];
   const problems = [];
   let current = null;
-  const lines = source.replace(/\r\n?/g, '\n').split('\n');
-  if (lines.at(-1) === '') lines.pop();
+  const lines = sourceLines(source);
   lines.forEach((line, index) => {
     const note = NOTE.exec(line);
     if (note) {
@@ -45,17 +52,21 @@ export function parseMxFigure(source, file = '<markdown>') {
       if (title.split(/\s+/).length > 4) {
         problems.push(`${file}: mx-figure note "${note[1]}" has a ${title.split(/\s+/).length}-word title; use two to four words`);
       }
-      current = { key: note[1], title, body: note[3], code: [], line: index + 1 };
+      current = { key: note[1], title, body: note[3], code: [], line: index + 1, start: index + 1, end: index + 1 };
       segments.push(current);
       return;
     }
     if (!current) {
       if (line.trim() === '') return;
       problems.push(`${file}: mx-figure starts with code, before any "// @key: Title — Body" note`);
-      current = { key: 'untitled', title: 'Untitled', body: '', code: [], line: index + 1 };
+      current = { key: 'untitled', title: 'Untitled', body: '', code: [], line: index + 1, start: index + 1, end: index + 1 };
       segments.push(current);
     }
     current.code.push(line);
+    // The half-open line range this segment occupies in the whole file, so the
+    // renderer can highlight the file once and read this segment out of it.
+    current.start = Math.min(current.start, index);
+    current.end = index + 1;
   });
   // A segment must not end with a line less indented than the first line of the next
   // one: that means a block was left open at the end of the previous segment, so the
@@ -81,8 +92,14 @@ export function parseMxFigure(source, file = '<markdown>') {
   return { segments: kept, problems };
 }
 
+// The same four characters the vendored renderer escapes, so a title, a note
+// and a code line are all safe in the HTML this file builds by hand.
 function escapeHtml(text) {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 /** Inline code spans and emphasis only: a note is a sentence, not a page. */
@@ -95,9 +112,37 @@ function noteBody(body) {
 export function renderMxFigure(source, file) {
   const { segments, problems } = parseMxFigure(source, file);
   if (problems.length > 0) throw new Error(problems.join('\n'));
+  // One parse of the whole file, then each segment reads its own line range out
+  // of it: a segment that starts at an indented section tag is not a document on
+  // its own and would colour as nothing (see ./mx-highlight.js).
+  //
+  // The `// @key:` lines are this figure's own notation, not part of the entity
+  // file, so they are blanked before the file is parsed (the line count stays, so
+  // every segment keeps its range, and no annotation is ever rendered). Blanking
+  // them is also what keeps the parse whole: in concise syntax a line at the
+  // left margin ends the root tag's block, a comment included, so an author who
+  // wrote one of these notes at the left margin inside the entity would end the
+  // entity there and leave every line below it uncoloured.
+  const lines = sourceLines(source).map((line) => (NOTE.test(line) ? '' : line));
+  const whole = lines.join('\n');
+  const lineStart = [];
+  let at = 0;
+  for (const line of lines) {
+    lineStart.push(at);
+    at += line.length + 1;
+  }
+  const render = mxHighlighter(whole);
   const rows = segments
     .map((segment, index) => {
-      const code = highlightMx(`${segment.code.join('\n')}\n`);
+      const from = lineStart[segment.start] ?? 0;
+      let to = segment.end >= lineStart.length ? whole.length : lineStart[segment.end];
+      // The range stops at the first character of the line after the segment, so
+      // it ends with the newline that closed the segment's last line. Trim that,
+      // and any blank lines the author left at the end of the segment: a plain
+      // fence strips one trailing newline, and a segment must not render a
+      // trailing empty line either.
+      while (to > from && whole[to - 1] === '\n') to--;
+      const code = `<pre class="hljs mx-hl"><code class="language-mx">${render(from, to)}</code></pre>`;
       const note = `<div class="mx-row mx-note"><span class="mx-badge">${index + 1}</span>` +
         `<p><strong>${escapeHtml(segment.title)}</strong> ${noteBody(segment.body)}</p></div>`;
       return `<div class="mx-row mx-code">${code}</div>${note}`;
@@ -112,8 +157,8 @@ export const figureStyles = `<style>
 .mx-figure .mx-row{min-width:0}
 .mx-figure .mx-code{position:relative}
 .mx-figure .mx-code::after{content:"";position:absolute;top:1.1rem;left:100%;width:2.25rem;border-top:1px solid color-mix(in srgb,currentColor 40%,transparent)}
-.mx-figure pre.shiki{margin:0;padding:.55rem .85rem;border-radius:8px;overflow-x:auto;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.8rem;line-height:1.6;white-space:pre;tab-size:2}
-.mx-figure pre.shiki code{font:inherit;background:none}
+.mx-figure pre.mx-hl{margin:0;padding:.55rem .85rem;border-radius:8px;overflow-x:auto;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.8rem;line-height:1.6;white-space:pre;tab-size:2}
+.mx-figure pre.mx-hl code{font:inherit;background:none}
 .mx-figure .mx-note{display:flex;gap:.6rem;align-items:baseline;padding:.55rem 0;border-top:1px solid color-mix(in srgb,currentColor 14%,transparent)}
 .mx-figure .mx-note:first-of-type{border-top:0}
 .mx-figure .mx-note p{margin:0;max-width:34rem}
@@ -125,7 +170,7 @@ export const figureStyles = `<style>
   .mx-figure .mx-note{border-top:0;padding:.1rem 0 .7rem}
   /* Below the threshold the code column is the full width, so a long line wraps
      instead of scrolling sideways out of the box. Nothing is ever clipped. */
-  .mx-figure pre.shiki{font-size:.78rem;white-space:pre-wrap}
+  .mx-figure pre.mx-hl{font-size:.78rem;white-space:pre-wrap}
 }
 </style>`;
 

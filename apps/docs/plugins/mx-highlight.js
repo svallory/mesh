@@ -1,34 +1,140 @@
+// `mx` fences on the docs site are highlighted with MX's own highlighter: the
+// tree-sitter grammar, queries and TypeScript injection vendored under ./mx (see
+// ./mx/SOURCE.md), run through web-tree-sitter at build time. Nothing is parsed
+// in the browser; the page gets static spans ([ADR-0065]).
+//
+// This module is the single docmd entry point for `mx`:
+//   - it routes every ```mx fence through the vendored `renderFence`, through
+//     `md.options.highlight` (not `renderer.rules.fence`), so docmd's own
+//     ```lang "title" wrapper, header and copy button keep working;
+//   - it wraps the fence rule to turn a highlight failure into a build failure
+//     that names the page and the line;
+//   - it emits the stylesheet that maps the grammar's capture names to the two
+//     themes docmd highlights every other language with, so an `mx` block sits
+//     beside a `ts` block without a seam in either theme.
+//
+// `mx-figure` fences import `highlightMx` from here, so the annotated figure and
+// ordinary fences can never drift apart.
 import { readFileSync } from 'node:fs';
-import { createHighlighterCoreSync } from 'shiki/core';
-import { createJavaScriptRegexEngine } from 'shiki/engine/javascript';
-import marko from 'shiki/langs/marko.mjs';
-import light from 'shiki/themes/github-light.mjs';
-import dark from 'shiki/themes/github-dark.mjs';
+import { classesOf, captureNames, classOf, escapeHtml, renderFence } from './mx/mx-highlight.mjs';
 
-// Eager, synchronous initialization: docmd's markdown-it highlight hook cannot await.
-// Module loading happens once, not once per page or fenced block.
-const highlighter = createHighlighterCoreSync({
-  langs: [marko],
-  themes: [light, dark],
-  engine: createJavaScriptRegexEngine(),
-});
-
+/** One `<pre>` for one `mx` fence or one figure segment. */
 export function highlightMx(source) {
-  return highlighter.codeToHtml(source, {
-    lang: 'marko',
-    themes: { light: 'github-light', dark: 'github-dark' },
-  });
+  return renderFence(source);
 }
 
-export const themeStyles = `<style>
-:root[data-theme="dark"] .shiki,
-:root[data-theme="dark"] .shiki span {
-  color: var(--shiki-dark) !important;
-  background-color: var(--shiki-dark-bg) !important;
-  font-style: var(--shiki-dark-font-style) !important;
-  font-weight: var(--shiki-dark-font-weight) !important;
-  text-decoration: var(--shiki-dark-text-decoration) !important;
+/**
+ * A renderer for slices of one parsed `source`.
+ *
+ * The annotated figure is one entity file cut into consecutive segments, and a
+ * segment that starts at an indented section tag (`  attributes`) is not a
+ * document on its own: parsed alone it is an error tree and colours nothing.
+ * So the figure parses the whole file once and each segment reads its own line
+ * range out of the result, which is also what makes a segment look exactly like
+ * the same lines in a full-file fence.
+ *
+ * @param {string} source
+ * @returns {(start: number, end: number) => string} highlighted HTML of
+ *   `source.slice(start, end)`, the same markup `renderFence` would produce.
+ */
+export function mxHighlighter(source) {
+  const classes = classesOf(source);
+  return (start, end) => {
+    let html = '';
+    let at = start;
+    while (at < end) {
+      const cls = classes[at] ?? null;
+      let stop = at + 1;
+      while (stop < end && (classes[stop] ?? null) === cls) stop++;
+      const text = escapeHtml(source.slice(at, stop));
+      html += cls ? `<span class="${cls}">${text}</span>` : text;
+      at = stop;
+    }
+    return html;
+  };
 }
+
+/**
+ * Capture name -> [light colour, dark colour].
+ *
+ * The hexes are the ones docmd's own highlight stylesheets use, the light and
+ * the dark variant of the same theme (`assets/css/docmd-highlight-light.css`
+ * and `-dark.css` in `@docmd/ui`, the classes `.hljs-keyword`, `.hljs-string`,
+ * `.hljs-attr`, `.hljs-title`, `.hljs-literal`, `.hljs-number`,
+ * `.hljs-built_in`, `.hljs-comment`). docmd highlights every language except
+ * `mx` with those two stylesheets, so borrowing their hexes is what makes an
+ * `mx` block and the `ts` block beside it one piece of page: same keyword
+ * purple, same string green, same background, in both themes.
+ *
+ * `none` (the grammar's deliberately unstyled text) and `embedded` produce no
+ * span, and the captures listed as `null` below inherit docmd's `pre` colour,
+ * which is what the other blocks use for a plain word.
+ */
+const PALETTE = {
+  // MX syntax.
+  tag: ['#a626a4', '#c678dd'], //        a tag name, like hljs-keyword
+  keyword: ['#a626a4', '#c678dd'], //    `return`, `static`
+  operator: ['#a626a4', '#c678dd'], //   `=`, `=>`, `===`
+  label: ['#4078f2', '#61aeee'], //     `:label` after a tag
+  constant: ['#0184bb', '#56b6c2'], //  `#name` after a space
+  attribute: ['#986801', '#d19a66'], // an attribute name
+  string: ['#50a14f', '#98c379'],
+  // A regex literal: TypeScript captures its body as `string.special`, and the
+  // theme colours a regex like a string, so the italic is what tells them apart.
+  'string.special': ['#50a14f', '#98c379'],
+  comment: ['#a0a1a7', '#5c6370'],
+  'punctuation.bracket': ['#a0a1a7', '#5c6370'],
+  'punctuation.delimiter': ['#a0a1a7', '#5c6370'],
+  'punctuation.special': ['#a0a1a7', '#5c6370'],
+  // TypeScript injected into MX: a function body, an attribute value, a pattern.
+  function: ['#4078f2', '#61aeee'],
+  'function.method': ['#4078f2', '#61aeee'],
+  type: ['#c18401', '#e6c07b'],
+  'type.builtin': ['#c18401', '#e6c07b'],
+  'function.builtin': ['#c18401', '#e6c07b'],
+  'constant.builtin': ['#c18401', '#e6c07b'], // `true`, `false`, `null`
+  'variable.builtin': ['#c18401', '#e6c07b'],
+  number: ['#c18401', '#e6c07b'],
+  // A plain word: a variable, a parameter, a property. docmd's `pre` colour
+  // already is the plain colour, so these need no rule.
+  variable: null,
+  'variable.parameter': null,
+  property: null,
+};
+
+/** Capture names the vendored queries can produce that need no colour. */
+const UNSTYLED = ['none', 'embedded'];
+
+/** Captures set in italic, so a regex literal reads apart from a plain string. */
+const ITALIC = new Set(['string.special', 'comment']);
+
+/**
+ * The capture names with neither a colour nor a deliberate blank, for the tests:
+ * a refreshed grammar that adds a capture fails on this until it is placed.
+ */
+export function unstyledCaptureNames() {
+  return captureNames.filter((name) => !(name in PALETTE) && !UNSTYLED.includes(name));
+}
+
+const COLOURED = captureNames.filter((name) => PALETTE[name]);
+
+/**
+ * The whole stylesheet: one rule per capture in the light theme, one in the
+ * dark. It colours spans and nothing else, so the `pre` itself is docmd's box
+ * with docmd's background in both themes.
+ */
+export const themeStyles = `<style>
+/* Colours for the mx highlighter's capture classes, in the two themes docmd
+   switches with :root[data-theme="dark"]. Generated from PALETTE above. */
+${COLOURED.map(
+  (name) =>
+    `.mx-hl .${classOf(name)}{color:${PALETTE[name][0]}` +
+    (ITALIC.has(name) ? ';font-style:italic' : '') +
+    '}',
+).join('\n')}
+${COLOURED.map(
+  (name) => `:root[data-theme="dark"] .mx-hl .${classOf(name)}{color:${PALETTE[name][1]}}`,
+).join('\n')}
 </style>`;
 
 // Recover the fence by its exact content, not a guessed preprocessing offset.
@@ -118,7 +224,8 @@ export function installMxHighlight(md, renderMx = highlightMx) {
       // Render-time errors escape docmd's isolated setup hooks and abort the build.
       throw new Error(
         `${fenceLocation(token, env, bodies.get(env))}: ` +
-        `Failed to highlight mx block with Shiki's Marko grammar. Check the block and highlighter configuration.\n` +
+        `Failed to highlight mx block with MX's tree-sitter highlighter (plugins/mx). ` +
+        `Check the block and the vendored grammar.\n` +
         `\`\`\`mx\n${token.content}\`\`\``,
         { cause },
       );

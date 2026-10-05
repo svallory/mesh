@@ -7,7 +7,8 @@ description: "Decision record 0065: how `mx` fences are highlighted, how the hig
 
 ## Status
 
-Accepted. Not built yet.
+Accepted. Built: the highlighter is vendored under `apps/docs/plugins/mx/` and wired into the docs
+build. Switching to the published `@mxlang/tree-sitter-mx` package is still ahead.
 
 ## Date
 
@@ -34,6 +35,10 @@ The `@mxlang` packages are not published, and the docs image is built from the p
 - When `@mxlang/tree-sitter-mx` is published (subpath `@mxlang/tree-sitter-mx/docmd`), Mesh imports it and deletes the vendored copy.
 - The work is one docs task after the `docs/syntax-v2` branch merges, because both touch `apps/docs`. It must probe a regex-literal attribute value (`match=/^INV-\d+$/`), which MX did not test.
 
+Implemented in one detail differently from the wording above: docmd highlights every other language
+with highlight.js and the two stylesheets it ships, not with Shiki, so the `mx` capture names are
+mapped to docmd's own light and dark hexes rather than to a Shiki theme ([contributing](../contributing.md)).
+
 ## Options considered
 
 ### Option A: MX's tree-sitter highlighter, vendored until published (chosen)
@@ -57,10 +62,23 @@ Only Option A highlights the syntax the docs show. The vendored copy is temporar
 
 ## Consequences
 
-- The `mx-highlight` plugin of PR #19 is replaced for `mx` fences; other fences keep Shiki.
+- The `mx-highlight` plugin of PR #19 is replaced for `mx` fences; every other fence is highlighted by
+  docmd, as before, and the dark-mode switch the old plugin carried is gone with it.
+- The grammar is line-tolerant in a way a TextMate grammar is not: a fence is read as one file, so a
+  line it cannot read can leave the lines below it uncoloured, with no error anywhere. The build still
+  fails loudly on a missing or unreadable grammar, not on a line the grammar dislikes.
 - Open, the operator's call: a private package registry (Verdaccio on the operator's server, the lead's recommendation over GitHub Packages) to share unpublished `@mxlang` and `@meshfw` packages; it would remove the vendoring step.
 
 ## Action items
 
-- [ ] After `docs/syntax-v2` merges: vendor the highlighter, wire it into docmd, probe a regex-literal attribute value.
+- [x] Vendor the highlighter, wire it into docmd, probe a regex-literal attribute value (done in the
+  `docs/mx-highlighter` branch: `match=/^INV-\d+$/` colours as a regex literal, the `docs` tests cover
+  it, and the grammar was not changed to get there).
+- [ ] One query gap confirmed by the MX lead and queued there: the names in a destructured lambda
+  parameter (`that=({ self }) => …`) get no capture, and neither do the `?` and `:` of a ternary.
+- [ ] MX will mark a column-0 line inside an entity as an error. It is the language's rule, not a
+  grammar bug: in concise syntax a line at the left margin ends the root tag's block, a comment
+  included, so a comment inside an entity has to be indented with the block it sits in. The docs site
+  is unaffected (the annotated figure blanks its own annotation lines), but the highlighter currently
+  leaves the lines below such a comment uncoloured without saying why.
 - [ ] When `@mxlang/tree-sitter-mx` is published: import it and delete `apps/docs/plugins/mx/`.
