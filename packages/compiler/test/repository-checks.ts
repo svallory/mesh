@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { extname, join, relative, sep } from "node:path";
+import { parseData, type DataDiagnostic } from "@mxlang/data";
 import { parse } from "./helpers.ts";
 
 // ADR-0043: only packages declaring tag contracts may mention MX; extensions join in M6.
@@ -97,14 +98,22 @@ function withCurrentRootTag(block: string) {
   return block.replace(new RegExp(`^(\\s*)${DOCS_ROOT_TAG_PENDING_RENAME}(\\s*=)`, "m"), "$1resource$2");
 }
 
-export function checkDocsSamples(dir: string) {
-  let parsed = 0;
-  let skipped = 0;
-  const deferred: { at: string; reason: string }[] = [];
-  const errors: string[] = [];
-  for (const name of readdirSync(dir).filter((name) => name.endsWith(".md")).sort()) {
-    const file = join(dir, name);
-    const lines = readFileSync(file, "utf8").split(/\r?\n/);
+interface DocsBlock {
+  /** Page the fence is on. */
+  name: string;
+  /** 1-based line of the opening fence. */
+  line: number;
+  /** The fence's lines, with a figure's `// @key:` annotations removed. */
+  block: string[];
+  /** False when the fence was never closed. */
+  closed: boolean;
+}
+
+/** Every ```mx and ```mx-figure fence on the Docs pages, in page and file order. */
+function docsMxBlocks(dir: string): DocsBlock[] {
+  const blocks: DocsBlock[] = [];
+  for (const name of readdirSync(dir).filter((entry) => entry.endsWith(".md")).sort()) {
+    const lines = readFileSync(join(dir, name), "utf8").split(/\r?\n/);
     for (let i = 0; i < lines.length; i++) {
       const opening = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(lines[i]!);
       if (!opening) continue;
@@ -119,28 +128,139 @@ export function checkDocsSamples(dir: string) {
       }
       const language = opening[2]!.trim().split(/\s+/)[0];
       // The figure is one entity file too, once its `// @key:` annotations are removed.
-      if (language === "mx-figure") block = block.filter((line) => !/^\s*\/\/\s*@/.test(line));
+      if (language === "mx-figure") block = block.filter((text) => !/^\s*\/\/\s*@/.test(text));
       else if (language !== "mx") continue;
-      if (!closed) errors.push(`${name}:${line}: unclosed MX fence`);
-      const root = block.find((text) => text.trim() !== "")?.trimStart() ?? "";
-      // An entity file may open with its imports, so an `import` line heads a complete block too.
-      if (!/^(resource\b|import\s)/.test(root) && !root.startsWith(DOCS_ROOT_TAG_PENDING_RENAME)) { skipped++; continue; }
-      const diagnostics = parse(withCurrentRootTag(`${block.join("\n")}\n`), file).diagnostics;
-      const renaming = diagnostics.filter((diagnostic) => RENAME_AFFECTED.test(diagnostic.message));
-      if (renaming.length > 0 && renaming.length === diagnostics.length) {
-        deferred.push({ at: `${name}:${line}`, reason: renaming[0]!.message });
-        continue;
-      }
+      blocks.push({ name, line, block, closed });
+    }
+  }
+  return blocks;
+}
+
+/**
+ * The operator's entity file syntax v2 (ruling of 2026-10-05): a declaration is
+ * `kind #name`, so every Docs sample is a v2 entity file and today's contracts
+ * cannot read one. Two rules keep the check honest while the rename task has not
+ * run:
+ *
+ *  - a v2 block is parsed for real, by `parseData` with no contracts, after one
+ *    in-memory normalisation of the spellings MX does not parse yet;
+ *  - its parse with the contracts is deferred, counted and printed under one name.
+ *
+ * The rules of v2 that the normalisation covers are the ones MX has queued
+ * (decision 146): `#name` after a space, and the `:label` sugar.
+ */
+export const DOCS_SYNTAX = "syntax v2";
+
+/** The one named reason a v2 block's contracts parse is deferred under. */
+export const DOCS_SYNTAX_PENDING_RENAME = `${DOCS_SYNTAX}, pending the rename task`;
+
+/** A complete v2 entity file: comments and imports may come first, then `entity #Name`. */
+export function isV2EntityFile(block: string): boolean {
+  for (const line of block.split("\n")) {
+    const text = line.trim();
+    if (text === "" || text.startsWith("//")) continue;
+    if (text.startsWith("import ")) continue;
+    return /^entity\s+#\w+/.test(text);
+  }
+  return false;
+}
+
+/**
+ * Rewrites the v2 spellings MX cannot parse yet into today's, in memory only:
+ *
+ *  - `kind #name` becomes `kind#name`, the form that parses today;
+ *  - `kind=Destination #name` becomes `kind#name="Destination"`, because a value
+ *    cannot be glued to a name (the same gap, and the same decision);
+ *  - `check :label` becomes `check`, dropping the `:label` sugar.
+ *
+ * Indentation, literals, arrow functions and block bodies are already today's
+ * syntax and are left exactly as written, as is every comment.
+ */
+export function normaliseV2(source: string): string {
+  return source.split("\n").map((line) => {
+    if (line.trim() === "" || line.trimStart().startsWith("//")) return line;
+    const indent = line.slice(0, line.length - line.trimStart().length);
+    const rest = line.trimStart();
+    const valued = /^([a-z][a-z0-9-]*)=([A-Za-z][\w]*)\s+#(\w+)(.*)$/.exec(rest);
+    if (valued) return `${indent}${valued[1]}#${valued[3]}="${valued[2]}"${valued[4]}`;
+    const named = /^([a-z][a-z0-9-]*)\s+#(\w+)(.*)$/.exec(rest);
+    if (named) return `${indent}${named[1]}#${named[2]}${named[3]}`;
+    return `${indent}${rest.replace(/(^|\s):[a-z][a-z0-9-]*/g, "$1")}`;
+  }).join("\n");
+}
+
+/** Parses a v2 block with no contracts; a parser crash is a finding, not an exception. */
+export function parseV2(source: string, file: string): DataDiagnostic[] {
+  try {
+    return parseData(normaliseV2(source), file).diagnostics;
+  } catch (cause) {
+    return [{ severity: "error", message: `MX could not parse the block at all: ${(cause as Error).message.split("\n")[0]}`, line: 1, column: 0, offset: 0 }];
+  }
+}
+
+/**
+ * The stricter companion: every MX fence on the Docs pages must be a complete v2
+ * entity file, so a page cannot drift back to another syntax, and every one of them
+ * must parse. A block whose root is not `entity #Name` fails here.
+ */
+export function checkDocsSyntaxV2(dir: string) {
+  let checked = 0;
+  const errors: string[] = [];
+  for (const { name, line, block, closed } of docsMxBlocks(dir)) {
+    const where = `${name}:${line}`;
+    if (!closed) { errors.push(`${where}: unclosed MX fence`); continue; }
+    if (!isV2EntityFile(block.join("\n"))) {
+      errors.push(`${where}: MX fence is not a complete ${DOCS_SYNTAX} entity file: its root must be \`entity #Name\``);
+      continue;
+    }
+    checked++;
+    for (const diagnostic of parseV2(`${block.join("\n")}\n`, where)) {
+      errors.push(`${where}: MX block ${diagnostic.line}:${diagnostic.column + 1}: ${diagnostic.message}`);
+    }
+  }
+  console.log(`Docs ${DOCS_SYNTAX} entity files: ${checked} checked with parseData, no contracts, ${errors.length} findings`);
+  if (checked === 0) errors.push(`Docs ${DOCS_SYNTAX} check found no entity file on any Docs page`);
+  return { checked, errors };
+}
+
+export function checkDocsSamples(dir: string) {
+  let parsed = 0;
+  let skipped = 0;
+  let v2 = 0;
+  const deferred: { at: string; reason: string }[] = [];
+  const errors: string[] = [];
+  for (const { name, line, block, closed } of docsMxBlocks(dir)) {
+    const where = `${name}:${line}`;
+    if (!closed) errors.push(`${where}: unclosed MX fence`);
+    // A v2 entity file is parsed here for real, without the contracts, and its
+    // contracts parse is deferred under one name rather than counted as a finding.
+    if (isV2EntityFile(block.join("\n"))) {
+      v2++;
       parsed++;
-      for (const diagnostic of diagnostics) {
-        errors.push(`${name}:${line}: MX block ${diagnostic.line}:${diagnostic.column + 1}: ${diagnostic.message}`);
+      deferred.push({ at: where, reason: DOCS_SYNTAX_PENDING_RENAME });
+      for (const diagnostic of parseV2(`${block.join("\n")}\n`, where)) {
+        errors.push(`${where}: MX block ${diagnostic.line}:${diagnostic.column + 1}: ${diagnostic.message}`);
       }
+      continue;
+    }
+    const root = block.find((text) => text.trim() !== "")?.trimStart() ?? "";
+    // An entity file may open with its imports, so an `import` line heads a complete block too.
+    if (!/^(resource\b|import\s)/.test(root) && !root.startsWith(DOCS_ROOT_TAG_PENDING_RENAME)) { skipped++; continue; }
+    const diagnostics = parse(withCurrentRootTag(`${block.join("\n")}\n`), join(dir, name)).diagnostics;
+    const renaming = diagnostics.filter((diagnostic) => RENAME_AFFECTED.test(diagnostic.message));
+    if (renaming.length > 0 && renaming.length === diagnostics.length) {
+      deferred.push({ at: where, reason: renaming[0]!.message });
+      continue;
+    }
+    parsed++;
+    for (const diagnostic of diagnostics) {
+      errors.push(`${where}: MX block ${diagnostic.line}:${diagnostic.column + 1}: ${diagnostic.message}`);
     }
   }
   const byReason = new Map<string, number>();
   for (const { reason } of deferred) byReason.set(reason, (byReason.get(reason) ?? 0) + 1);
-  console.log(`Docs MX samples: parsed ${parsed}, deferred ${deferred.length}, skipped ${skipped} fragments`);
-  for (const [reason, count] of byReason) console.log(`  deferred (${count}) pending the entity rename: ${reason}`);
+  console.log(`Docs MX samples: parsed ${parsed} (${v2} of them ${DOCS_SYNTAX} entity files, parsed without contracts), deferred ${deferred.length}, skipped ${skipped} fragments`);
+  for (const [reason, count] of byReason) console.log(`  deferred (${count}): ${reason}`);
   if (parsed === 0 && deferred.length === 0) errors.push("Docs sample check parsed no complete entity blocks");
   return { parsed, skipped, deferred, errors };
 }
