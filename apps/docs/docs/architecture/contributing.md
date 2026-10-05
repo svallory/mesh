@@ -25,9 +25,18 @@ The same line on every page is deliberate: a per-page reworded warning is what m
 
 Where a decision is Proposed or open, a page takes the option the decision record recommends and never picks silently. Where nothing is decided at all, design the simplest thing a TypeScript developer would expect, write it into the page, and record it on [Open questions and findings](./open-questions.md) with the alternative you rejected: that list is the most valuable output of the work. Anything the Docs pages removed as "not decided", and every point where writing a page forced an invention, belongs on [Open questions and findings](./open-questions.md) with the record it touches. A contributor-only page may also say what exists today; a user page may not.
 
-The practice is unchanged from the earlier ruling: **user docs are written first, in the 1.0 voice, and the code follows them or changes them in the same pull request.** A pull request that adds behaviour adds or edits the Docs page for it. A pull request that finds the page wrong changes the page and the design together, or records on the open-questions page that the page is now wrong and why.
+The practice: **user docs are written first, in the 1.0 voice, and the code follows them or changes them in the same pull request** ([ADR-0063](./decisions/0063-user-docs-first-and-the-hold.md)). A pull request that adds behaviour adds or edits the Docs page for it. A pull request that finds the page wrong changes the page and the design together, or records on the open-questions page that the page is now wrong and why.
 
 The reason is that writing the page is a test of the design. A page that has to say "the architecture does not say what this command is called" has found a gap; a page that has to contradict two architecture pages has found a contradiction. Neither shows up by reading the architecture.
+
+## The hold, and who decides
+
+All development is on hold until the operator approves the user docs; only documentation work proceeds, and open feature pull requests wait ([ADR-0063](./decisions/0063-user-docs-first-and-the-hold.md)). After approval the order is the realignment task, the Jig port, then M2 ([ADR-0064](./decisions/0064-order-of-work-after-approval.md); [roadmap](./roadmap/roadmap.md)).
+
+- The **operator** (the project owner) rules on design. On 2026-10-05 he delegated every open decision to the **lead**.
+- The **lead** decides what is delegated and records it. Contributors never ask the operator; questions go to the lead.
+- Every decision is a record under [Decisions](./decisions/index.md). Past records are never rewritten: a changed decision gets a new record, and the old one is marked Superseded or Amended with one line linking its successor.
+- Where a decision is open and you need an answer to write a page, take the simplest consistent option, write it, and list it on [open questions and findings](./open-questions.md) with the alternative.
 
 ## What the checks enforce
 
@@ -60,7 +69,7 @@ This section is for contributors. Nothing under [Docs](../docs/index.md) says an
 
 - **`packages/compiler`** holds the tag contracts for entity files (`src/contracts.ts`) and the loader, model builder and emitters written so far. Its tests include the Docs `.mx` sample check described above.
 - **`packages/model`** holds the plain-data entity model: fields, actions, relationships, the type registries and the diagnostic type. It imports nothing.
-- **`packages/runtime`** holds the run-time library generated code will import: the action context's type, the error classes and the data-layer contract, with conformance checks under `@mesh/runtime/testing`.
+- **`packages/runtime`** holds the run-time library generated code will import: the second argument's type (still `Scope` in code), the error classes and the data-layer contract, with conformance checks under its `testing` entry.
 - **`packages/cli`** holds the Bun-only `mesh` developer command, still a thin compiler shell. It re-exports `defineConfig`.
 - **`examples/blog`** is the fixture project. `bunx mesh build` there writes its generated tree, which is committed.
 - **`apps/docs`** is this site.
@@ -87,7 +96,13 @@ With `@mesh/cli` installed, the command runs from the project root containing `m
 
 ## The vocabulary gap
 
-The Docs pages use the terms the operator ruled on 2026-10-04 (`entity`, module, `.mesh/`, the action context). The code and the architecture pages still use the older ones (`resource`, the `domain` attribute, `generated/`, `scope`). The note at the top of [Open questions and findings](./open-questions.md) says so, and the rename task sweeps both sides in one pull request. Do not fix half of it in a documentation pull request.
+The Docs pages and the Architecture section use the current terms and entity file syntax v2 (`entity`, `.mesh.mx`, modules under `src/domain/`, `.mesh/` imported as `#mesh`, the `ActionContext`, `@meshfw/*`). The code on `main` still uses the older ones (`resource`, Ash-style tags, the `domain=` attribute, `generated/`, `scope`, `@mesh/*`) until the realignment task ([ADR-0064](./decisions/0064-order-of-work-after-approval.md)). Architecture pages that describe code say so once, in a callout at the top. Do not rename code in a documentation pull request.
+
+The [Ash-to-Mesh mapping](./roadmap/vocabulary-mapping.md) keeps the M1 spelling in its section 3 on purpose: a compiler test reads that table.
+
+## Code highlighting
+
+`mx` fences are highlighted by the `mx-highlight` plugin (`apps/docs/plugins/mx-highlight.js`), which runs Shiki with its Marko grammar on `mx` fences only. The Marko grammar does not know entity file syntax v2 (`#name` after a space, `:label`), so `mx` fences move to MX's own tree-sitter highlighter, vendored under `apps/docs/plugins/mx/` until `@mxlang/tree-sitter-mx` is published; Shiki stays for every other language ([ADR-0065](./decisions/0065-mx-highlighting-on-the-docs-site.md)). That change is its own docs task after the `docs/syntax-v2` branch merges.
 
 ## Layout and file names
 

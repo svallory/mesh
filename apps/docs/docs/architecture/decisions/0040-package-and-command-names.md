@@ -1,13 +1,15 @@
 ---
 title: "0040. Package scope and command name"
-description: "Decision record 0040: Package scope and command name. Status: Proposed."
+description: "Decision record 0040: Package scope and command name. Status: Superseded by ADR-0060."
 ---
 
 # 0040. Package scope and command name
 
+> **Superseded** by [ADR-0060](./0060-meshfw-package-scope.md) on 2026-10-04. The body below is kept as history.
+
 ## Status
 
-Proposed
+Superseded by [ADR-0060](./0060-meshfw-package-scope.md) (it was Proposed)
 
 ## Date
 

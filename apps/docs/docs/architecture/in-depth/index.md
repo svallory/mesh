@@ -7,7 +7,7 @@ description: "Full descriptions of single subsystems and mechanisms."
 
 This area holds one page per subsystem or mechanism, described in full: the build-time pipeline, the run-time action lifecycle, extension points and similar topics that span several files.
 
-Each page says what the thing is, how it works, and which code implements it. Link the [decision records](../decisions/index.md) that explain why. Nothing has been written here yet.
+Each page says what the thing is, how it works, and which code implements it. Link the [decision records](../decisions/index.md) that explain why. Where a page describes code on `main` that still uses names from before the rulings of 2026-10-04 evening and 2026-10-05, it says so once, in a callout at the top.
 
 <!-- pages:start -->
 
@@ -23,4 +23,4 @@ Each page says what the thing is, how it works, and which code implements it. Li
 - [Core, adapters and extensions](./three-rings.md)
 
 
-Each in-depth page is written in the milestone that builds the thing it describes. Pages for relationships, calculations and aggregates (M7) and for policies (M8) come with those milestones.
+Each in-depth page is written in the milestone that builds the thing it describes. Pages for relationships and computed fields (M7) and for policies (M8) come with those milestones; until then [ADR-0050](../decisions/0050-entity-file-syntax.md) and [ADR-0055](../decisions/0055-policies-are-core.md) hold their design.

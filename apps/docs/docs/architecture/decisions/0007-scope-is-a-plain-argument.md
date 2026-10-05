@@ -1,13 +1,15 @@
 ---
 title: "0007. The scope is a plain argument on every action call"
-description: "Decision record 0007: The scope is a plain argument on every action call. Status: Accepted."
+description: "Decision record 0007: The scope is a plain argument on every action call. Status: Superseded by ADR-0059."
 ---
 
 # 0007. The scope is a plain argument on every action call
 
+> **Superseded** by [ADR-0059](./0059-action-context.md) on 2026-10-04. The body below is kept as history.
+
 ## Status
 
-Accepted
+Superseded by [ADR-0059](./0059-action-context.md)
 
 ## Date
 
