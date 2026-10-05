@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-**Mesh** is a planned TypeScript framework modelled on Ash (Elixir): one `.mx` resource file declares data, actions and rules, and Mesh derives types, handlers and schema from it. It runs on Bun only.
+**Mesh** is a planned TypeScript framework modelled on Ash (Elixir): one entity file (`.mesh.mx`, entity file syntax v2) declares data, actions and rules, and Mesh derives types, handlers and schema from it. It runs on Bun only. The code on `main` still uses the M1 names (`resource`, Ash-style tags, `generated/`, `scope`, `@mesh/*`) until the realignment task; the design and its decision records are in `apps/docs/docs/architecture/` (ADR-0049 to ADR-0065 for the rulings of 2026-10-04/05). All development is on hold until the operator approves the user docs (ADR-0063).
 
 ## Layout
 
