@@ -476,6 +476,14 @@
               "path": "/architecture/research/durable-engines/"
             },
             {
+              "title": "Expression language",
+              "path": "/architecture/research/expression-language/"
+            },
+            {
+              "title": "Validation library",
+              "path": "/architecture/research/validation-library/"
+            },
+            {
               "title": "Reviews",
               "children": [
                 {
@@ -509,6 +517,10 @@
                 {
                   "title": "Review: Durable workflow engines",
                   "path": "/architecture/research/reviews/durable-engines-review/"
+                },
+                {
+                  "title": "Review: Expression language",
+                  "path": "/architecture/research/reviews/expression-language-review/"
                 }
               ]
             }
