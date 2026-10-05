@@ -77,13 +77,15 @@ This section is for contributors. Nothing under [Docs](../docs/index.md) says an
 From the repository root:
 
 ```bash
-bun install        # MX must be registered on the machine once, with `bun link` inside the MX checkout
+bun install        # at the repository root; the @mxlang scope resolves from the registry
 bun run verify      # every package's tests, type check, build and validate, plus the docs checks
 bun run test        # tests only
 bun run typecheck   # type checks only
 ```
 
-MX is a separate project whose packages the compiler resolves through `link:` entries. Register the local MX checkout once by running `bun link` inside it; after that a plain `bun install` resolves them. Never run `bun link @mxlang/data @mxlang/core` at the repository root: `bun link <package>` writes a `link:` dependency into the `package.json` of the directory it runs in.
+`bun install` at the repository root is all there is. The compiler's two MX dependencies, `@mxlang/core` and `@mxlang/data`, are pinned to an exact version and installed from the registry; there is no `bun link` step, no local MX checkout and no token. See [Continuous integration](#continuous-integration) for what that buys and what does not exist yet.
+
+To work against an MX commit that is not published yet — the MX lead's own workflow, and useful when a change to MX has to land in Mesh the same day — run `bun link` inside the MX checkout once, then point the two `@mxlang` dependencies in `packages/compiler/package.json` at `link:@mxlang/core` and `link:@mxlang/data` and run `bun install`. That edit is local and never committed: a committed `link:` entry breaks every machine that has no MX checkout, including the CI runner. Revert it and re-run `bun install` before you commit or push. Never run `bun link @mxlang/...` at the repository root: `bun link <package>` writes a `link:` dependency into the `package.json` of the directory it runs in.
 
 To try the example:
 
@@ -151,16 +153,31 @@ repository's `bunfig.toml` says so, once:
 
 It is read-only for everyone and has no uplink to the public registry, so an `@mxlang` version that is
 not published there cannot be installed by accident, and nothing outside the `@mxlang` scope is resolved
-from it: every other package comes from the default registry. `@mxlang/core` and `@mxlang/data` are not
-published at all and never will be from this checkout; `packages/compiler` depends on them through
-`link:`, which the scope entry leaves alone, because a `link:` dependency is resolved from this machine
-and not from any registry.
+from it: every other package comes from the default registry. `@mxlang/core` and `@mxlang/data` are
+published there as pre-release versions, and `packages/compiler` depends on them by exact version (no
+range, so a new pre-release is never pulled in silently). `bun.lock` records the registry URL and the
+integrity hash of each tarball, which is what lets `bun install --frozen-lockfile` reproduce the
+install without asking the registry for a version range, on this machine and on a CI runner.
 
 The docs Docker image is the one place that needs the entry twice: it builds from `apps/docs` and never
 sees the repository root, so `apps/docs/docker/bunfig.toml` repeats the same two lines, and the
 Dockerfile copies it next to the manifest it installs from. The two lockfiles — the workspace's and
 `apps/docs/docker/bun.lock` — record the registry URL and the integrity hash of the package, so an
 install from either is reproducible without asking the registry for a version range.
+
+## Continuous integration
+
+There is no continuous integration on `main` yet, and the reason ADR-0031 recorded is nearly gone. The
+`@mxlang` packages the compiler needs are published on a registry any machine can read, so a hosted
+runner can now do what this page describes for a contributor: `bun install --frozen-lockfile`, then
+`bun run verify`. Everything else `verify` needs — Bun, `tsc`, docmd's build and link check — is either
+in the lockfile or in the Bun distribution, so nothing would have to be skipped or split out on a runner.
+
+The workflow is written and lands in the next pull request: one job on `ubuntu-latest`, checkout, Bun
+1.3.14 (the version `package.json#packageManager` pins), `bun install --frozen-lockfile`, `bun run
+verify`; `permissions: contents: read`, no secrets, actions pinned by commit SHA with the version in a
+comment, superseded runs on the same ref cancelled. Until that pull request is merged, `verify` runs when
+a contributor runs it, and the review protocol is what catches a skipped run.
 
 ## Layout and file names
 
@@ -219,7 +236,7 @@ Link to other pages with a relative path to the `.md` file, for example `./roadm
 
 The site is deployed at <https://mesh.saulo.tech> by a [Coolify](https://coolify.io) instance running on the operator's server. In Coolify it is the application `mesh-docs` in the project `mesh`, built from `https://github.com/svallory/mesh`, branch `main`, base directory `apps/docs`, build pack `dockerfile`. HTTPS is forced and the certificate is issued by Let's Encrypt through Coolify's Traefik proxy.
 
-The build is defined in the repository, not in the Coolify UI: `apps/docs/Dockerfile` (an `oven/bun:1.3.14` stage that installs the docs app and runs `bun run build`, then an unprivileged `nginxinc/nginx-unprivileged` stage that serves `site/` on port 8080) plus `apps/docs/nginx.conf`. Both base images are pinned by version and `sha256` digest; bump the tag and the digest together. The Dockerfile installs the docs app on its own, not through the root workspace, because the root `bun.lock` references the local `link:` MX packages of `packages/compiler`, which a build container does not have. The image therefore has its own lockfile: `apps/docs/docker/package.json` and `apps/docs/docker/bun.lock`, installed with `bun install --frozen-lockfile`, so every dependency version is pinned. `bun run validate` fails when the docmd versions in that lockfile differ from `apps/docs/package.json`; after changing a docmd version, update `docker/package.json` to match and regenerate `docker/bun.lock` with `bun install` in a copy of `docker/` outside the workspace. The image build never sees the workspace root, so root-level `overrides`, `patchedDependencies` and `trustedDependencies` do not apply to it.
+The build is defined in the repository, not in the Coolify UI: `apps/docs/Dockerfile` (an `oven/bun:1.3.14` stage that installs the docs app and runs `bun run build`, then an unprivileged `nginxinc/nginx-unprivileged` stage that serves `site/` on port 8080) plus `apps/docs/nginx.conf`. Both base images are pinned by version and `sha256` digest; bump the tag and the digest together. The Dockerfile installs the docs app on its own, not through the root workspace, because the deployment builds from `apps/docs` alone (Coolify's base directory) and the build context never contains the repository root. The image therefore has its own lockfile: `apps/docs/docker/package.json` and `apps/docs/docker/bun.lock`, installed with `bun install --frozen-lockfile`, so every dependency version is pinned. `bun run validate` fails when the docmd versions in that lockfile differ from `apps/docs/package.json`; after changing a docmd version, update `docker/package.json` to match and regenerate `docker/bun.lock` with `bun install` in a copy of `docker/` outside the workspace. The image build never sees the workspace root, so root-level `overrides`, `patchedDependencies` and `trustedDependencies` do not apply to it, and it repeats the `@mxlang` scope entry in `apps/docs/docker/bunfig.toml`.
 
 The application depends on these Coolify settings: build pack `dockerfile`, base directory `/apps/docs`, branch `main`, exposed port 8080, health check path `/` on port 8080, and watch paths `apps/docs/**`. Coolify stores the proxy labels when the application is created and does not regenerate them when the exposed port changes. After a port change, reset or edit the stored labels so they point at the new port; otherwise the proxy returns 502 even though the container is healthy.
 

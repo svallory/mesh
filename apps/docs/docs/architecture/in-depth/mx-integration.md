@@ -94,7 +94,9 @@ Extensions add tags, but `entity.children` is closed in the contract. MX merges 
 
 ## How Mesh consumes MX today
 
-MX is not yet published. Mesh consumes MX's `main` branch through a local link, with nothing pinned, until the packages are published; a breaking MX change stops Mesh the same day ([roadmap](../roadmap/roadmap.md), section 9, risk 2). There is no CI for the same reason ([ADR-0031](../decisions/0031-no-ci-until-mx-is-published.md)). Consequence for contributors: until the `@mxlang` packages are published, building and testing Mesh needs access to an MX checkout, and this page names no public way to get one. That is a known gap.
+MX is published as pre-release versions on `https://npm.saulo.tech`, the registry the repository's `bunfig.toml` scopes `@mxlang` to. Mesh pins `@mxlang/core` and `@mxlang/data` to exact versions in `packages/compiler/package.json`, so an install resolves them like any other dependency — on a developer machine and on a hosted runner ([ADR-0031](../decisions/0031-no-ci-until-mx-is-published.md), amended 2026-10-05). The versions are pre-releases, which changes nothing about the risk this section describes: nothing resolves a range, so a new MX release reaches Mesh when Mesh bumps the pin, and never on its own. A contributor who needs an MX commit that is not published yet links a local checkout, which is never committed (the contributing page, "What exists today").
+
+There is no continuous integration yet, so an MX change that reaches the pinned version stops Mesh when the pin moves, and nothing notices until someone runs `verify`; the workflow that closes that is written and lands in the next pull request ([ADR-0031](../decisions/0031-no-ci-until-mx-is-published.md)).
 
 ## The rule: never re-parse `.mx` text
 

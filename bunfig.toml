@@ -5,11 +5,11 @@
 # registry.
 #
 # packages/compiler depends on @mxlang/core and @mxlang/data by exact version
-# through this entry, which is what lets a GitHub runner run `bun install
-# --frozen-lockfile` (see .github/workflows/verify.yml). A contributor who needs
-# an unreleased MX commit links a local checkout instead, which is a temporary edit
-# to packages/compiler/package.json that is never committed; see "Dependencies and
-# the registry" in
+# through this entry, so a machine that has never seen an MX checkout installs
+# them like any other dependency, a hosted runner included. A contributor who
+# needs an unreleased MX commit links a local checkout instead, which is a
+# temporary edit to packages/compiler/package.json that is never committed; see
+# "Dependencies and the registry" in
 # apps/docs/docs/architecture/contributing.md.
 #
 # See apps/docs/docs/architecture/decisions/0065-mx-highlighting-on-the-docs-site.md

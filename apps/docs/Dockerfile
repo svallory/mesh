@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1
 # Build the Mesh docs site (docmd static site) and serve it with unprivileged nginx.
 #
-# The docs app is self-contained: it never depends on the workspace's link: MX
-# packages, so this build copies only apps/docs and installs from its own
-# lockfile (docker/bun.lock), which `bun run validate` keeps in step with
+# The docs app is self-contained: the deployment builds from apps/docs alone, so
+# this build copies only apps/docs and installs from its own lockfile
+# (docker/bun.lock), which `bun run validate` keeps in step with
 # package.json. The image build never sees the workspace root, so root-level
 # overrides, patchedDependencies and trustedDependencies do not apply to it, and
 # neither does the root bunfig.toml that points the @mxlang scope at
