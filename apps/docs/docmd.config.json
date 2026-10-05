@@ -13,6 +13,7 @@
     "search": {},
     "./plugins/mx-highlight.js": {},
     "./plugins/mx-figure.js": {},
+    "./plugins/mesh-home.js": {},
     "ai": false
   },
   "navigation": [
