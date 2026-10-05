@@ -8,12 +8,14 @@
 // (an `mx-flow` fence) on the left and the build step and everything it writes
 // (an HTML block) on the right.
 //
-// Everything here is static: the diagram, its connectors, and the highlighting of
-// a box's source lines on hover (CSS `:has()`) all work without JavaScript, in
-// print and with reduced motion. A small island (island/home-flow.ts, built into
-// site/assets/home-flow.js) takes the diagram over after first paint and draws
-// one edge from each part of the file to the build; when it is not there,
-// nothing is missing.
+// Everything here is static: the diagram, and the highlighting of a card's source
+// lines on hover or, on a phone, while the card is on top (CSS `:has()`), work
+// without JavaScript, in print and with reduced motion.
+//
+// On a wide screen the cards sit around the file: the cards of "Your app" beside
+// it, the database's and the tools' cards under it. On a phone the file pins at
+// the top and the cards pass one at a time through a slot at the bottom of the
+// screen. In between, the file, the build and the cards stack on a trunk.
 //
 // Every rule is scoped to the content column that holds `.mh-hero` (`HOME`), or
 // to the body that holds it for the page chrome. `:has()` keeps the scope right
@@ -60,7 +62,10 @@ export function renderMxFlow(source, file) {
       throw new Error(`${file}: mx-flow line ${index + 1} comes before the entity line`);
     }
   });
-  const lineHtml = (k) => `<span class="mh-l">${render(starts[k], starts[k] + lines[k].length)}</span>`;
+  // Each line carries its indentation, so where the file is pinned on a phone a
+  // long line can wrap under its own first character instead of being cut off.
+  const lineHtml = (k) => `<span class="mh-l" style="--i:${lines[k].length - lines[k].trimStart().length}">` +
+    `${render(starts[k], starts[k] + lines[k].length)}</span>`;
   let code = '';
   let next = 0;
   for (const section of sections) {
@@ -75,71 +80,12 @@ export function renderMxFlow(source, file) {
   return `<pre class="hljs mx-hl mh-file-code"><code class="language-mx">${code}</code></pre>`;
 }
 
-/**
- * The layout of the side-by-side diagram, in rem, shared by the stylesheet and
- * the wires: the boxes column is a grid with these fixed rows, so where each box
- * sits is known when the page is built, and the wires can be drawn then, as a
- * static SVG that is there without JavaScript, before the island, and in print.
- */
-export const WIRE = { gap: 14, chipX: 1, chipW: 6.75, label: 1.5, box: 6.25, rowGap: 0.5 };
-
-/** The rows of the boxes column, in order: a group label or a box. */
-export function outRows(html) {
-  return [...html.matchAll(/<p class="mh-group"|<div class="mh-box" data-box="([a-z-]+)"([^>]*)>/g)].map((m) =>
-    m[0].startsWith('<p') ? { kind: 'label' } : { kind: 'box', id: m[1], via: /data-via=/.test(m[2]) });
-}
-
-/**
- * The static wires for one boxes column: one curve per box from `mesh build` to
- * the middle of the box's left side. Each leaves the build horizontally, makes
- * its vertical run in the middle of the gap, and enters its box horizontally, so
- * no two share more than their start. Plus the per-box rules that light one
- * wire and dim the rest while its box is hovered.
- */
-export function wiresFor(html) {
-  const rows = outRows(html);
-  const heights = rows.map((row) => (row.kind === 'label' ? WIRE.label : WIRE.box));
-  const total = heights.reduce((a, b) => a + b, 0) + WIRE.rowGap * (rows.length - 1);
-  const px = (rem) => +(rem * 16).toFixed(2);
-  const x0 = px(WIRE.chipX + WIRE.chipW);
-  const x1 = px(WIRE.gap);
-  const xm = +((x0 + x1) / 2).toFixed(2);
-  const y0 = px(total / 2);
-  let top = 0;
-  const paths = [];
-  rows.forEach((row, index) => {
-    const mid = top + heights[index] / 2;
-    top += heights[index] + WIRE.rowGap;
-    if (row.kind !== 'box') return;
-    const y = px(mid);
-    paths.push(`<path class="mh-wire${row.via ? ' mh-wire-via' : ''}" data-box="${row.id}" d="M${x0} ${y0}C${xm} ${y0} ${xm} ${y} ${x1} ${y}"/>`);
-  });
-  const ids = rows.filter((row) => row.kind === 'box').map((row) => row.id);
-  const scope = '.mh-hero+.grids';
-  const hot = ids.map((id) => `${scope}:has(.mh-box[data-box="${id}"]:hover) .mh-wire[data-box="${id}"]`).join(',');
-  const svg = `<svg class="mh-wires" aria-hidden="true" focusable="false" viewBox="0 0 ${x1} ${px(total)}" preserveAspectRatio="none" style="width:${WIRE.gap}rem;height:${total}rem">${paths.join('')}</svg>`;
-  const style = `<style>${scope} .mh-out{--mh-rows:${heights.map((h) => `${h}rem`).join(' ')}}${hot}{stroke:var(--mh-accent);stroke-width:2.25;opacity:1}</style>`;
-  return { svg, style, total };
-}
-
-/** Puts the wires and the row sizes into the boxes column's HTML block. */
-export function wireOut(html) {
-  // docmd renders a container's content more than once; a block it has already
-  // wired carries the marker and is left alone.
-  if (!html.includes('<div class="mh-out">')) return html;
-  const { svg, style } = wiresFor(html);
-  return html.replace('<div class="mh-out">', `${style}<div class="mh-out" data-wired>${svg}`);
-}
-
 const installed = new WeakSet();
 
 export function installMxFlow(md) {
   // docmd 0.9.7 invokes markdownSetup twice on the same processor.
   if (installed.has(md)) return;
   installed.add(md);
-  md.core.ruler.push('mesh_home_wires', (state) => {
-    for (const token of state.tokens) if (token.type === 'html_block') token.content = wireOut(token.content);
-  });
   const previousFence = md.renderer.rules.fence;
   md.renderer.rules.fence = function (tokens, index, options, env, self) {
     const token = tokens[index];
@@ -160,7 +106,7 @@ const tints = FLOW_SECTIONS.map((name) =>
   `${FLOW}:has(.mh-box[data-from~="${name}"]:is(:hover,.is-hot)) .mh-sec[data-section="${name}"]`).join(',');
 
 export const homeStyles = `<style>
-${HOME}{--mh-accent:var(--link-color,#068ad5);--mh-ink:var(--text-heading,#09090b);--mh-muted:var(--text-muted,#6b6b75);--mh-line:var(--border-color,#e4e4e7);--mh-panel:var(--code-bg,#fafafa);--mh-grid:rgb(9 9 11/.05);--mh-gap:6.5rem;--mh-stub:1.5rem;--mh-wire:color-mix(in srgb,var(--mh-accent) 55%,transparent)}
+${HOME}{--mh-accent:var(--link-color,#068ad5);--mh-ink:var(--text-heading,#09090b);--mh-muted:var(--text-muted,#6b6b75);--mh-line:var(--border-color,#e4e4e7);--mh-panel:var(--code-bg,#fafafa);--mh-grid:rgb(9 9 11/.05);--mh-wire:color-mix(in srgb,var(--mh-accent) 55%,transparent)}
 :root[data-theme=dark] ${HOME}{--mh-grid:rgb(250 250 250/.05)}
 /* Full width: no sidebar on the home page. The top bar stays (site name, search,
    theme); the page's own nav leads into Docs and Architecture. */
@@ -194,12 +140,8 @@ ${HOME} .mh-btn-main:hover{background:var(--mh-accent);border-color:var(--mh-acc
 ${HOME} :is(.mh-btn,.mh-door,.mh-nav a):focus-visible{outline:2px solid var(--mh-accent);outline-offset:3px}
 ${HOME} .mh-status{margin:0;font-size:.875rem;color:var(--mh-muted)}
 ${HOME} .mh-status::before{content:"";display:inline-block;width:.5rem;height:.5rem;margin-right:.55rem;border-radius:50%;background:#d97706;vertical-align:.05em}
-/* The build diagram. On a wide screen: the entity file, the gap with mesh build
-   and the wires, then one box per thing the build writes. The boxes column has
-   fixed rows (WIRE in this file), so the wires are drawn when the page is built
-   (an SVG the plugin puts into the page): one curve per box, leaving the build
-   horizontally, turning in the middle of the gap, entering the middle of the
-   box's left side. Narrower, it is a vertical flow on a trunk. */
+/* The build diagram, by default (a tablet, or a short phone): the file, the
+   build, then the cards on a trunk down their left side. */
 ${FLOW}{position:relative;display:grid;grid-template-columns:minmax(0,1fr);margin-top:.5rem;margin-bottom:3.5rem;padding:0;overflow:visible;isolation:isolate;border:0;box-shadow:none;background:none}
 ${FLOW}::before{content:"";position:absolute;inset:-1rem;z-index:-1;background-image:linear-gradient(var(--mh-grid) 1px,transparent 1px),linear-gradient(90deg,var(--mh-grid) 1px,transparent 1px);background-size:22px 22px;background-position:-1px -1px;-webkit-mask-image:radial-gradient(ellipse at center,#000 50%,transparent 100%);mask-image:radial-gradient(ellipse at center,#000 50%,transparent 100%)}
 ${FLOW}>.grid-item{position:relative;overflow:visible;display:flex;flex-direction:column;min-width:0;margin:0;padding:0;border:0;background:none;gap:0}
@@ -214,7 +156,6 @@ ${FLOW} .mh-seam::before{content:"";position:absolute;top:0;bottom:0;left:.75rem
 ${FLOW} .mh-build{position:relative;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;padding:.4rem .75rem;border-radius:999px;background:var(--bg-color,#fff);border:1.5px solid var(--mh-wire);color:var(--mh-accent);font-family:var(--font-family-mono,ui-monospace,monospace);font-size:.75rem;font-weight:600;white-space:nowrap;transition:border-color .15s ease}
 ${FLOW} .mh-out{position:relative;display:flex;flex-direction:column;gap:.5rem;padding-left:2rem}
 ${FLOW} .mh-out::before{content:"";position:absolute;left:.75rem;top:-.5rem;bottom:2rem;border-left:1.5px solid var(--mh-wire)}
-${FLOW} .mh-wires{display:none}
 ${FLOW} .mh-group{margin:.4rem 0 0;font-size:.8rem;font-weight:650;color:var(--mh-muted)}
 ${FLOW} .mh-group:first-of-type{margin-top:0}
 ${FLOW} .mh-box{position:relative;box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr);gap:.15rem 1rem;align-content:center;padding:.6rem .85rem;border:1px solid var(--mh-line);border-radius:10px;background:var(--bg-color,#fff);transition:border-color .15s ease,box-shadow .15s ease,opacity .15s ease}
@@ -231,32 +172,37 @@ ${FLOW} .mh-snip{grid-column:1;margin:.35rem 0 0;padding:.45rem .6rem;border-rad
 ${FLOW} .mh-snip code{padding:0;background:none;font-size:inherit;border:0}
 ${FLOW} .mh-box code{font-size:.92em}
 ${FLOW} .mh-box .mh-from{font-size:.72rem}
+/* A wide screen: the cards around the file. "Your app" beside it, the database
+   and the tools under it, each card next to the code it comes from in the reader's
+   eye; hovering a card tints its source lines. No build node and no wires: the
+   tint is the link. The boxes' wrappers step aside (display: contents) so every
+   label and card is placed on the diagram's own grid. */
 @media (min-width:1181px){
-  ${FLOW}{grid-template-columns:minmax(0,1.1fr) minmax(0,1.2fr);column-gap:${WIRE.gap}rem;align-items:center;padding:1.5rem 0;margin-bottom:4.5rem}
+  ${FLOW}{grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:auto;column-gap:1rem;row-gap:.75rem;align-items:stretch;padding:1.5rem 0;margin-bottom:4.5rem}
   ${FLOW}::before{inset:0 -1.5rem}
-  ${FLOW} .mh-seam{position:absolute;top:0;bottom:0;right:100%;width:${WIRE.gap}rem;height:auto;z-index:1}
-  ${FLOW} .mh-seam::before{top:50%;bottom:auto;left:0;width:${WIRE.chipX}rem;border-left:0;border-top:1.5px solid var(--mh-wire)}
-  ${FLOW} .mh-build{position:absolute;left:${WIRE.chipX}rem;top:50%;width:${WIRE.chipW}rem;transform:translateY(-50%)}
-  ${FLOW} .mh-out{display:grid;grid-template-rows:var(--mh-rows);row-gap:${WIRE.rowGap}rem;padding-left:0}
-  ${FLOW} .mh-out::before,${FLOW} .mh-box::before{display:none}
-  ${FLOW} .mh-wires{display:block;position:absolute;top:0;left:-${WIRE.gap}rem;overflow:visible;pointer-events:none}
-  ${FLOW} .mh-wire{fill:none;stroke:var(--mh-wire);stroke-width:1.5;vector-effect:non-scaling-stroke;transition:stroke .15s ease,opacity .15s ease}
-  ${FLOW} .mh-wire-via{stroke-dasharray:5 4}
-  ${FLOW}:has(.mh-box:hover) .mh-wire{opacity:.2}
-  ${FLOW} .mh-group{margin:0;align-self:end;line-height:1.5rem}
-  ${FLOW} pre.mh-file-code{font-size:.72rem}
-  ${FLOW} .mh-box{height:${WIRE.box}rem;overflow:hidden;grid-template-columns:minmax(0,1fr) auto;align-content:center}
-  ${FLOW} .mh-snip{grid-column:2;grid-row:1/span 4;align-self:center;margin:0}
+  ${FLOW}>.grid-item:last-child,${FLOW} .mh-out{display:contents}
+  ${FLOW}>.grid-item:first-child{grid-column:1/3;grid-row:1/6;align-self:start;margin-right:1.25rem}
+  ${FLOW} pre.mh-file-code{font-size:.74rem}
+  ${FLOW} .mh-seam,${FLOW} .mh-out::before,${FLOW} .mh-box::before{display:none}
+  ${FLOW} .mh-group{margin:0;align-self:end}
+  ${FLOW} .mh-group[data-group="Your app"]{grid-column:3/5;grid-row:1}
+  ${FLOW} .mh-box[data-group="Your app"]{grid-column:3/5}
+  ${FLOW} .mh-box[data-box=types]{grid-row:2}
+  ${FLOW} .mh-box[data-box=functions]{grid-row:3}
+  ${FLOW} .mh-box[data-box=validation]{grid-row:4}
+  ${FLOW} .mh-box[data-box=authorization]{grid-row:5}
+  ${FLOW} .mh-group[data-group="The database"]{grid-column:1/3;grid-row:6;margin-top:1rem}
+  ${FLOW} .mh-group[data-group="For your tools"]{grid-column:3/5;grid-row:6;margin-top:1rem}
+  ${FLOW} .mh-box[data-box=table]{grid-column:1;grid-row:7}
+  ${FLOW} .mh-box[data-box=migrations]{grid-column:2;grid-row:7}
+  ${FLOW} .mh-box[data-box=rules]{grid-column:3;grid-row:7}
+  ${FLOW} .mh-box[data-box=model]{grid-column:4;grid-row:7}
+  ${FLOW} .mh-box[data-group="Your app"]{grid-template-columns:minmax(0,1fr) auto;align-content:center}
+  ${FLOW} .mh-box[data-group="Your app"] .mh-snip{grid-column:2;grid-row:1/span 4;align-self:center;margin:0}
+  ${FLOW} .mh-box:not([data-group="Your app"]){align-content:start}
 }
-/* The island's layer: it draws the wires once it has measured the boxes. */
-${FLOW} .mh-flow-layer{position:absolute;inset:0;z-index:0;pointer-events:none;opacity:0;transition:opacity .2s ease}
-${FLOW}.is-flow-live .mh-flow-layer{opacity:1}
-${FLOW}.is-flow-live .mh-wires,${FLOW}.is-flow-live .mh-seam::before{opacity:0}
-${FLOW}.is-flow-live :is(.docmd-code-block-wrapper,.mh-box,.mh-group){position:relative;z-index:1}
 /* The sections under the diagram. */
 ${HOME} .mh-section{margin-bottom:4.5rem}
-${HOME} .mh-section:has(+.docmd-code-block-wrapper){margin-bottom:1.25rem}
-${HOME}>.mh-section+.docmd-code-block-wrapper{margin-bottom:4.5rem}
 ${HOME} .mh-section h2{margin:0 0 .6rem;font-size:clamp(1.55rem,2.6vw,2rem);letter-spacing:-.025em;color:var(--mh-ink)}
 ${HOME} .mh-intro{margin:0 0 1.75rem;max-width:46rem;color:var(--mh-muted);line-height:1.6}
 ${HOME} .mh-connect{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1.5rem 2rem}
@@ -281,6 +227,37 @@ ${HOME} .mh-door:hover{border-color:var(--mh-accent);background:color-mix(in srg
 ${HOME} .mh-door strong{display:block;margin-bottom:.4rem;font-size:1.3rem;letter-spacing:-.02em;color:var(--mh-ink)}
 ${HOME} .mh-door span{display:block;line-height:1.55;color:var(--mh-muted)}
 ${HOME} .mh-colophon{margin-top:0;font-size:.875rem;color:var(--mh-muted)}
+/* A phone held upright and tall enough: the file pins under the top bar, the
+   build sits above a card slot at the bottom of the screen, and the cards pass
+   through that slot one at a time, each sliding up over the last and staying
+   while the page scrolls on. After the last card the section ends and the page
+   scrolls as usual. Pure CSS (sticky), so it works without JavaScript; the
+   page's script only marks the card on top so the file tints its lines. */
+@media screen and (max-width:900px) and (min-height:660px){
+  ${FLOW}{display:block;--mh-top:3.5rem;--mh-card:9.25rem;--mh-dwell:30svh;--mh-floor:calc(100svh - .75rem);--mh-slot:calc(var(--mh-floor) - var(--mh-card))}
+  ${FLOW}::before{display:none}
+  /* The file's column is a stage as tall as the screen under the top bar, with
+     the file at its top: it is released exactly when the last card is, so the
+     file, the build and the last card leave together. */
+  ${FLOW}>.grid-item:first-child{position:sticky;top:var(--mh-top);z-index:2;height:calc(var(--mh-floor) - var(--mh-top));pointer-events:none}
+  ${FLOW}>.grid-item:first-child>*{pointer-events:auto}
+  /* The file fills the screen between the top bar and the build: its type size
+     follows the screen's height, and a long line wraps under its own indent. */
+  ${FLOW} pre.mh-file-code{padding:.55rem 0;font-size:clamp(.6rem,calc((100svh - 21rem) / 34),.76rem);line-height:1.5;white-space:pre-wrap;overflow-x:hidden}
+  ${FLOW} pre.mh-file-code code{min-width:0}
+  ${FLOW} .mh-l{min-height:1.5em;padding:0 .8rem 0 calc(.8rem + var(--i,0) * 1ch + 2ch);text-indent:calc(-1 * (var(--i,0) * 1ch + 2ch))}
+  ${FLOW}>.grid-item:first-child .docmd-code-block-header{padding-top:.4rem;padding-bottom:.4rem}
+  ${FLOW}>.grid-item:last-child{margin-top:calc(-1 * (var(--mh-card) + 3rem))}
+  ${FLOW} .mh-out{display:block;padding:0}
+  ${FLOW} .mh-out::after{content:"";display:block;height:var(--mh-dwell)}
+  ${FLOW} .mh-out::before,${FLOW} .mh-group{display:none}
+  ${FLOW} .mh-seam{position:sticky;top:calc(var(--mh-slot) - 3rem);z-index:1;height:3rem;margin:0 0 var(--mh-card);justify-content:center}
+  ${FLOW} .mh-seam::before{left:50%;top:auto;bottom:0;height:.75rem}
+  ${FLOW} .mh-box{position:sticky;top:var(--mh-slot);height:var(--mh-card);overflow:hidden;margin-top:var(--mh-dwell);align-content:start;box-shadow:0 -14px 28px -18px rgb(0 0 0/.45)}
+  ${FLOW} .mh-out>.mh-group:first-of-type+.mh-box{margin-top:calc(var(--mh-card) * -1)}
+  ${FLOW} .mh-box::before{content:attr(data-group);position:static;display:block;width:auto;border:0;margin-bottom:.15rem;font-size:.68rem;font-weight:650;color:var(--mh-muted)}
+  ${FLOW}:has(.mh-box:hover) .mh-box:not(:hover){opacity:1}
+}
 @media (max-width:1180px){
   ${HOME} .mh-connect{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
@@ -292,8 +269,6 @@ ${HOME} .mh-colophon{margin-top:0;font-size:.875rem;color:var(--mh-muted)}
 }
 @media (prefers-reduced-motion:reduce){${HOME} :is(.mh-btn,.mh-door,.mh-box,.mh-sec){transition:none}}
 @media print{
-  ${FLOW} .mh-flow-layer{display:none}
-  ${FLOW}.is-flow-live .mh-wires,${FLOW}.is-flow-live .mh-seam::before{opacity:1}
   ${FLOW} .mh-sec{background:none!important;box-shadow:none!important}
 }
 </style>`;

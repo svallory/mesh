@@ -8,15 +8,12 @@
   "scripts": {
     "test": "bun test test/",
     "dev": "docmd dev",
-    "build": "rm -rf site .docmd && docmd build && bun island/build.ts",
+    "build": "rm -rf site .docmd && docmd build",
     "validate": "docmd validate && bun check-docker-lock.ts"
   },
   "devDependencies": {
     "@docmd/core": "0.9.7",
     "@docmd/plugin-search": "0.9.7",
-    "@mxlang/tree-sitter-mx": "0.1.0-alpha.1",
-    "@xyflow/svelte": "1.7.0",
-    "bun-plugin-svelte": "0.0.6",
-    "svelte": "5.57.1"
+    "@mxlang/tree-sitter-mx": "0.1.0-alpha.1"
   }
 }

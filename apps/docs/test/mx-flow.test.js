@@ -21,7 +21,7 @@ test('each section of the file is one block, marked with the section it is', () 
   // Every line, blank ones included, is one block; none is lost or added.
   expect(html.match(/class="mh-l"/g)).toHaveLength(10);
   // Blank lines between sections stay outside them.
-  expect(html).toContain('</span></span><span class="mh-l"></span><span class="mh-sec" data-section="actions">');
+  expect(html).toContain('</span></span><span class="mh-l" style="--i:0"></span><span class="mh-sec" data-section="actions">');
   expect(html.startsWith('<pre class="hljs mx-hl mh-file-code"><code class="language-mx">')).toBe(true);
   expect(html).toContain('<span class="ts-tag">entity</span>');
 });
@@ -38,53 +38,40 @@ test('the file is escaped like every highlighted fence', () => {
   expect(html).not.toContain('<b>');
 });
 
-// The wires are computed when the page is built, from the boxes column's fixed rows.
-import { WIRE, outRows, wiresFor, wireOut } from '../plugins/mesh-home.js';
-
-const column = [
-  '<div class="mh-out">',
-  '<p class="mh-group">A</p>',
-  '<div class="mh-box" data-box="one" data-from="actions"><h3>One</h3></div>',
-  '<div class="mh-box" data-box="two" data-from="actions" data-via="x"><h3>Two</h3></div>',
-  '<p class="mh-group">B</p>',
-  '<div class="mh-box" data-box="three" data-from="policies"><h3>Three</h3></div>',
-  '</div>',
-].join('\n');
-
-test('one wire per box, from the build to the middle of its left side, through the middle of the gap', () => {
-  expect(outRows(column).map((row) => row.kind === 'box' ? row.id : 'label')).toEqual(['label', 'one', 'two', 'label', 'three']);
-  const { svg, total } = wiresFor(column);
-  expect(total).toBe(2 * WIRE.label + 3 * WIRE.box + 4 * WIRE.rowGap);
-  const paths = [...svg.matchAll(/data-box="([a-z]+)" d="M([\d.]+) ([\d.]+)C([\d.]+) ([\d.]+) ([\d.]+) ([\d.]+) ([\d.]+) ([\d.]+)"/g)];
-  expect(paths.map((m) => m[1])).toEqual(['one', 'two', 'three']);
-  const rem = (n) => n * 16;
-  let top = 0;
-  const mids = [];
-  for (const h of [WIRE.label, WIRE.box, WIRE.box, WIRE.label, WIRE.box]) { mids.push(top + h / 2); top += h + WIRE.rowGap; }
-  const expected = [mids[1], mids[2], mids[4]];
-  paths.forEach((m, i) => {
-    const [x0, y0, c1x, c1y, c2x, c2y, x1, y1] = m.slice(2).map(Number);
-    // Every wire starts at the build's right side, level with its middle...
-    expect(x0).toBe(rem(WIRE.chipX + WIRE.chipW));
-    expect(y0).toBeCloseTo(rem(total / 2), 1);
-    // ...leaves it and enters its box horizontally, turning in the middle of the gap...
-    expect(c1y).toBe(y0);
-    expect(c2y).toBe(y1);
-    expect(c1x).toBe(c2x);
-    expect(c1x).toBeCloseTo((x0 + x1) / 2, 1);
-    // ...and ends at the box's left side, at its middle.
-    expect(x1).toBe(rem(WIRE.gap));
-    expect(y1).toBeCloseTo(rem(expected[i]), 1);
-  });
-  expect(svg).toContain('mh-wire mh-wire-via" data-box="two"');
+// On a wide screen the cards sit around the file, placed on the diagram's own grid.
+test('on a wide screen the cards sit around the file, with no build node', async () => {
+  const { homeStyles } = await import('../plugins/mesh-home.js');
+  const wide = /@media \(min-width:1181px\)\{([\s\S]*?)\n\}/.exec(homeStyles)?.[1];
+  expect(wide).toBeDefined();
+  expect(wide).toContain('.mh-seam,');
+  expect(wide).toMatch(/\.mh-seam,[^{]*\{display:none\}/);
+  expect(wide).toContain('>.grid-item:first-child{grid-column:1/3;grid-row:1/6');
+  expect(wide).toContain('.mh-box[data-group="Your app"]{grid-column:3/5}');
+  for (const [box, place] of [['table', 'grid-column:1;grid-row:7'], ['migrations', 'grid-column:2;grid-row:7'], ['rules', 'grid-column:3;grid-row:7'], ['model', 'grid-column:4;grid-row:7']]) {
+    expect(wide).toContain(`.mh-box[data-box=${box}]{${place}}`);
+  }
 });
 
-test('the wires go into the page once, with the rule that lights each box\'s own wire', () => {
-  const once = wireOut(column);
-  expect(wireOut(once)).toBe(once);
-  expect(once.match(/<svg class="mh-wires"/g)).toHaveLength(1);
-  expect(once).toContain('<div class="mh-out" data-wired>');
-  for (const id of ['one', 'two', 'three']) expect(once).toContain(`:has(.mh-box[data-box="${id}"]:hover) .mh-wire[data-box="${id}"]`);
-  expect(once).toContain(`--mh-rows:${WIRE.label}rem ${WIRE.box}rem ${WIRE.box}rem ${WIRE.label}rem ${WIRE.box}rem`);
-  expect(wireOut('<div class="other"></div>')).toBe('<div class="other"></div>');
+// On a phone the diagram is a scroll sequence: the file pins at the top, the cards
+// pass one at a time through a slot at the bottom, and all of it is released
+// together after the last card. It is CSS (sticky), so it needs no script.
+test('on a phone the file pins and the cards pass through one slot, in CSS alone', async () => {
+  const { homeStyles } = await import('../plugins/mesh-home.js');
+  const deck = /@media screen and \(max-width:900px\) and \(min-height:660px\)\{([\s\S]*?)\n\}/.exec(homeStyles)?.[1];
+  expect(deck).toBeDefined();
+  // The file's column is a sticky stage as tall as the screen under the top bar,
+  // so it is released at the same moment as the last card.
+  expect(deck).toContain('>.grid-item:first-child{position:sticky;top:var(--mh-top);z-index:2;height:calc(var(--mh-floor) - var(--mh-top))');
+  // Every card sticks in the same slot, with a pause of scrolling between cards.
+  expect(deck).toContain('.mh-box{position:sticky;top:var(--mh-slot);height:var(--mh-card);overflow:hidden;margin-top:var(--mh-dwell)');
+  expect(deck).toContain('.mh-out::after{content:"";display:block;height:var(--mh-dwell)}');
+  // The build rests just above the slot.
+  expect(deck).toContain('.mh-seam{position:sticky;top:calc(var(--mh-slot) - 3rem)');
+  // Its sticky parents may not be scroll containers.
+  expect(homeStyles).toMatch(/\.grids\{position:relative;display:grid;[^}]*overflow:visible/);
+});
+
+test('each line of the file carries its indentation, for the hanging wrap on a phone', () => {
+  const html = renderMxFlow('entity :Todo\n  attributes\n    string :title\n', 'index.md');
+  expect([...html.matchAll(/class="mh-l" style="--i:(\d+)"/g)].map((m) => m[1])).toEqual(['0', '2', '4']);
 });
