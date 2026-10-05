@@ -37,13 +37,14 @@ declare module "@meshfw/runtime" {
     result: boolean;
     decisive: boolean;
   }
+
   export class MeshError extends Error {
     code: string;
   }
 
   export class InvalidInputError extends MeshError {
-    /** The failing check's `code`, or `invalid_input` when the input did not fit the action. */
-    override code: string;
+    /** Always `invalid_input`: each failing `check` declares its own code on its issue. */
+    override code: "invalid_input";
     issues: Issue[];
   }
 

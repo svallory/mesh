@@ -1,6 +1,6 @@
 ---
 title: "Entities"
-description: "Every declaration an entity file may use: attributes, relationships, computed fields, actions, validations, steps, policies, with the eleven rules to remember."
+description: "Every declaration an entity file may use: attributes, relationships, computed fields, actions, validations, steps and policies."
 ---
 
 # Entities
@@ -13,32 +13,26 @@ An entity file is one `.mesh.mx` file in your project's domain folder. It holds 
 
 Everything here is [Marko](https://markojs.org)'s concise syntax: indentation, no angle brackets. A block starts with its tag and continues until the indentation changes.
 
-## The eleven rules
-
-These are all the rules there are. Read them once; every section below is an example of one of them.
-
-1. A declaration is `kind #name options`: the tag says what it is, `#name` names it. Names are unique within their scope.
-2. Sections group declarations: `attributes`, `relationships`, `computed`, `actions`, `policies`; inside an action: `arguments`, `validate`, `do`.
-3. An attribute's type is its tag. Attributes are required unless marked `nullable`. Shape rules for one field (`min`, `max`, `match`) go on its line.
-4. A relationship names its destination entity as the tag's value: `has-many=InvoiceLine #lines`.
-5. A computed field is either a typed field with a body, or a rollup (`count`, `sum`, …) with `of=` a path.
-6. Functions receive `{ self, input, actor, context }`. A one-expression arrow is translated (it also runs in SQL); a block body is plain code.
-7. `actions auto=[...]` generates the plain actions of those types, named after the type. Every written action is `type #name`. `on:load="name"` says which read Mesh uses when it loads this entity through a relationship; without it, the auto read.
-8. `validate` runs first, on the stored record plus `input`: `require=[...]` and `check :label [ that code message ]`. `do` runs next, top to bottom: `set` with `#field=value` lines, `when=cond` with nested steps, `load=[...]`, `run(…) { }` for one-off code.
-9. `always` under `actions` takes an action body and applies it to every action in its scope.
-10. A policy has a scope (`types=`, `actions=`, or neither, for all) and checks. Every policy covering an action must pass; an action no policy covers is forbidden.
-11. Files end in `.mesh.mx`; one entity per file; the folder under `src/domain/` is the module.
-
 ## The shape of a file
+
+This is a complete entity file, small enough to read in one go:
 
 ```mx "src/domain/todo/todo.mesh.mx"
 entity #Todo table="todos"
   attributes
     uuid #id primary-key
     string #title
+    boolean #done default=false
+    timestamp #insertedAt on="create"
+    timestamp #updatedAt on="update"
 
   relationships
-    belongs-to=List #list nullable
+    belongs-to=List #list
+
+  computed
+    string #label({ self }) {
+      return (self.done ? "[x] " : "[ ] ") + self.title
+    }
 
   actions auto=["read", "destroy"]
     create #create accept=["title", "listId"]
@@ -54,9 +48,17 @@ entity #Todo table="todos"
       authorize-if=({ self, actor }) => self.list.ownerId === actor.id
 ```
 
-`attributes` is the only section a file needs. Every other section is optional, and every section may be empty. The order of the sections does not matter; the order of the lines inside a section does.
+Five things about that file are worth saying outright.
 
-**Values Mesh reads are literals.** A string, a number, `true`, `false`, a list or an object written out in full. The exceptions are the places whose value is code: `filter`, `when`, `authorize-if`, `forbid-if`, the `that` of a `check`, the right-hand side of a `set` line, and a computed field's body. Those take an arrow function or a block.
+**Every line is `kind #name options`.** The tag says what the line is, `#name` says which one, and the options follow: `uuid #id primary-key` is one line, and so is `policy #owner types=["create", "read"]`. Names are unique within their section, and one entity per file.
+
+**Sections group the lines.** `attributes`, `relationships`, `computed`, `actions` and `policies`, in any order, and each may be empty or left out. Inside an action there are three more: `arguments`, `validate` and `do`. The order of the sections does not matter; the order of the lines inside one does.
+
+**Indentation nests.** A line indented under another belongs to it, and runs as part of it.
+
+**Values Mesh reads are literals.** A string, a number, `true`, `false`, a list or an object written out in full. The exceptions are the places whose value is code: `filter`, `when`, `authorize-if`, `forbid-if`, the `that` of a `check`, the right-hand side of a `set` line, and a computed field's body. Those take one of two things, and the difference matters: a function whose body is **one expression** — an arrow `(…) => …`, or a method body with a single `return` — is translated, so it also runs inside the database query. Anything else is plain code, and runs in memory.
+
+**Functions receive four things.** `self` is the record, `input` is what the caller sent, `actor` is who is calling and `context` is the rest of the call. `({ self })` in the file above destructures the first; the others are optional, and every function that uses `self` alone can be translated into the query.
 
 **Hand-written code is imported.** A `.mesh.mx` file opens with ordinary `import` lines, and the imported functions are usable inside its expressions. The helper sits beside the entity and is a normal TypeScript module:
 
@@ -110,7 +112,9 @@ entity #Post
     string #title
     enum #status values=["draft", "published"] default="draft"
     string #notes nullable max=2000
-    decimal #views default=0
+    integer #views default=0
+    float #rating default=0
+    decimal #price
     datetime #publishedAt nullable
     timestamp #insertedAt on="create"
     timestamp #updatedAt on="update"
@@ -122,12 +126,16 @@ entity #Post
 |:--|:--|:--|
 | `uuid` | `string` | A UUID. `primary-key` is how you get one |
 | `string` | `string` | Text |
-| `enum` | the union of `values` | One of a fixed set: `enum #status values=["draft", "published"]` |
-| `decimal` | `number` | A number, whole or not |
+| `integer` | `number` | A whole number: a count, a position, a number of views |
+| `float` | `number` | A number with a fraction, where the exact value does not matter |
+| `decimal` | `number` | An exact number with a fraction: money, a tax rate, anything you add up |
 | `boolean` | `true` or `false` | |
+| `enum` | the union of `values` | One of a fixed set: `enum #status values=["draft", "published"]` |
 | `date` | `Date` | A calendar date |
 | `datetime` | `Date` | A date and a time of day |
 | `timestamp` | `Date` | A moment, written with the time zone |
+
+`integer`, `float` and `decimal` are all `number` in TypeScript, and they are three different types because they are three different things to store: a whole number is not a money amount, and money is not a measurement.
 
 `status` above is typed `"draft" | "published"` in TypeScript, so a caller that sends `"archvied"` does not compile, and would be rejected at run time if it slipped past.
 
@@ -140,7 +148,7 @@ entity #Post
 | `default=` | A literal that fits the type: a number, one of an `enum`'s `values`, `true` or `false` |
 | `values=` | On an `enum` only: the allowed values, in full. An empty list, a blank or a repeat is a build error |
 | `unique` | The database refuses a second row with the same value |
-| `min=`, `max=` | The shortest and longest a `string` may be |
+| `min=`, `max=` | For a `string`, the shortest and longest it may be; for a number, the smallest and largest value it may take |
 | `match=` | A regular expression a `string` must match |
 | `on="create"`, `on="update"` | On a `timestamp`: who fills it. Mesh fills it, and no caller may set it |
 
@@ -200,7 +208,15 @@ entity #Todo
 
 **A field with a body.** A type, a `#name`, the parameters in brackets, and a block. The parameters are `({ self })` in almost every case; add `input` on an action's field, or `actor` when the value depends on who is asking.
 
-**A rollup.** `count` and `sum` take `of=`, a path: a relationship name, or a relationship name and a field (`of="lines.amount"`). `count` gives a number of rows, `sum` the total of a numeric field over them. The path is checked at build time against the generated types, so a wrong path is a build error and not a query that returns nothing.
+**A rollup.** A rollup kind, a `#name` and `of=`, a path: a relationship name, or a relationship name and a field (`of="lines.amount"`). The path is checked at build time against the generated types, so a wrong path is a build error and not a query that returns nothing.
+
+| Rollup | Result |
+|:--|:--|
+| `count #lineCount of="lines"` | How many rows the path reaches |
+| `sum #total of="lines.amount"` | The total of a numeric field over them |
+| `avg #averageAmount of="lines.amount"` | The average of the same |
+| `min #firstDueOn of="lines.dueOn"` | The smallest value of the field |
+| `max #lastDueOn of="lines.dueOn"` | The largest |
 
 A computed field exists on a result only when you ask for it by name in `load`. Reading one that was not loaded is a type error.
 
@@ -225,7 +241,7 @@ entity #Todo
 
 **`auto`.** Any of `create`, `read`, `update`, `destroy`, no repeats. An action listed there is named after its type, which is why the auto read is `readTodo` and the auto destroy is `destroyTodo`. `auto=["read"]` gives you a read and nothing else; the tutorial's todo also writes its own `create #create`, so it does not list `create` there.
 
-**`on:load`.** `on:load="visible"` says which read Mesh uses when it loads this entity through a relationship — `todo.list` runs the read named `visible`, and that read's `filter` applies. Leave it out and Mesh uses the auto read. When neither is there, and the entity is loaded through a relationship, the build says so.
+**`on:load`.** `on:load="visible"` says which read Mesh uses when it loads this entity through a relationship — `todo.list` runs the read named `visible`, and that read's `filter` applies. Without it, Mesh uses the auto read. Naming a read that does not exist is a build error.
 
 **`accept`.** A list of field names, with no blanks and no repeats; `accept=[]` is valid and means the action takes only an id. A field that is not accepted and not filled by a step is a build error, not a field silently left empty.
 
@@ -252,30 +268,40 @@ entity #Todo
 
 ### validate
 
-The checks that run before anything is written, in this order: the stored record, plus the caller's `input`, plus whatever earlier steps have set.
+The checks that run before anything is written. `self` in a check is the record the action will write: the stored value for every field the caller did not send, the caller's value for each accepted field, and the defaults on a create. Nothing from `do` has run yet, and `input` is still there when a rule needs the caller's own arguments.
 
-```mx "src/domain/todo/todo.mesh.mx"
-entity #Todo
+```mx "src/domain/invoice/invoice.mesh.mx"
+entity #Invoice
   attributes
     uuid #id primary-key
-    string #title
-    decimal #estimate default=0
+    string #number unique match=/^INV-\d+$/
+    decimal #amount min=0
+    date #issuedOn
+    date #dueOn
 
   actions
-    create #create accept=["title", "estimate"]
+    create #create accept=["number", "amount", "issuedOn", "dueOn"]
       validate
-        require=["title"]
-        check :titleNotEmpty [
-          that=({ self }) => self.title.trim().length > 0
-          code="empty_title"
-          message="a todo needs a title"
+        require=["number"]
+        check :dueAfterIssue [
+          that=({ self }) => self.dueOn >= self.issuedOn
+          code="due_before_issue"
+          message="the due date cannot be before the issue date"
         ]
-        check :estimateNotNegative [
-          that=({ self, input }) => self.estimate >= 0
-          code="invalid_estimate"
-          message="the estimate cannot be negative"
+
+    update #send
+      validate
+        check :notSentYet [
+          that=({ self }) => self.status !== "sent"
+          code="already_sent"
+          message="this invoice has already been sent"
         ]
+      do
+        set
+          #status="sent"
 ```
+
+**A rule about one field goes on that field's line**, with `min`, `max` or `match`: `decimal #amount min=0` says what `check :amountNotNegative` would have said. A `check` is for a rule across fields, or about the state the row is in.
 
 **`require=[...]`** lists fields that must be present in the caller's input.
 
@@ -284,10 +310,10 @@ entity #Todo
 | Option | Meaning |
 |:--|:--|
 | `that=` | An arrow function returning a boolean. It sees `self` and `input` |
-| `code=` | The caller-facing code, a string or a number. It becomes the error's `code`, so your program can switch on it |
+| `code=` | The caller-facing code for this rule, a string or a number. It is on the issue the caller receives, so a program can switch on it |
 | `message=` | The sentence the caller sees |
 
-A check that fails throws `InvalidInputError` with that `code`, that `message`, and the name of the check, and the issue points at the line of the `check` that declared it. `when=` nests inside `validate` as it does inside `do`, so a rule may apply only under a condition.
+A check that fails throws `InvalidInputError`, whose own `code` is always `invalid_input`. Each failure is one entry of `error.issues`, carrying the label you gave the check, the `code` and `message` you wrote, and the file, line and column of the `check` that declared it. Several checks can fail at once, and each one is its own issue, which is why the declared `code` lives there and not on the error. `when=` nests inside `validate` as it does inside `do`, so a rule may apply only under a condition.
 
 ### do
 
@@ -423,6 +449,18 @@ src/domain/todo/todo.mesh.mx:11:21 error `accept` names "titel", which is not an
 ```
 
 To see what Mesh read, including the source position of every declaration, run `mesh inspect Todo`. To see the plan an action's handler follows, run `mesh explain Todo complete`. Both are in [the command line](./configuration.md).
+
+## In short
+
+If you want one table and nothing else, this is the whole file.
+
+| Section | A line looks like | An example |
+|:--|:--|:--|
+| `attributes` | `type #name options`, required unless `nullable` | `string #title max=200` |
+| `relationships` | `kind=Destination #name`, and `nullable` makes it optional | `belongs-to=List #list` |
+| `computed` | `type #name({ self }) { … }`, or a rollup with `of=` a path | `count #todoCount of="todos"` |
+| `actions` | `type #name options`, with `arguments`, `validate` and `do` inside | `update #send` |
+| `policies` | `policy #name`, a scope (`types=`, `actions=`) and `authorize-if` / `forbid-if` | `policy #owner types=["read"]` |
 
 ## A larger example
 

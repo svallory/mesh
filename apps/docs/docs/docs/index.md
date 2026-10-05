@@ -86,7 +86,7 @@ You are writing TypeScript on Bun and some of your program's data has rules atta
 
 - [Quick start](./quick-start.md) — a working project in five minutes.
 - [Tutorial: a todo list](./tutorial.md) — two entities and everything you can do with them.
-- [Entities](./entities.md) — every declaration an entity file may use, and the eleven rules to remember.
+- [Entities](./entities.md) — every declaration an entity file may use.
 - [Calling actions](./calling-actions.md) — the functions Mesh generates.
 - [Project structure](./project-structure.md) — where files live and which ones you commit.
 - [Configuration and the command line](./configuration.md) — `mesh.config.ts` and every `mesh` command.

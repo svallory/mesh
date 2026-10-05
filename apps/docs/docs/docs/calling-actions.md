@@ -242,12 +242,12 @@ Every action throws on failure. All four classes come from `@meshfw/runtime`, ex
 
 | Class | `code` | Thrown when |
 |:--|:--|:--|
-| `InvalidInputError` | the failing check's `code`, or `invalid_input` | The input does not fit the action, or a `check` failed |
+| `InvalidInputError` | `invalid_input` | The input does not fit the action, or a `check` failed |
 | `NotFoundError` | `not_found` | The row the call names does not exist, or is not visible to this actor |
 | `ForbiddenError` | `forbidden` | A policy denied the call. Carries a `breakdown` of every check |
 | `FrameworkError` | `framework` | A mistake in the program: an action called before `connect`, a load that cannot be served |
 
-`InvalidInputError.issues` holds every failure it collected. Each issue has a `name` (the label you gave the `check`), a `code`, a `path` into the input, a `message`, and, when the failure came from a rule you declared, the file, line and column of the `check` that declared it.
+`InvalidInputError.issues` holds every failure it collected, one entry each. An entry has a `name` (the label you gave the `check`), the `code` and `message` you wrote, a `path` into the input, and, when the failure came from a rule you declared, the file, line and column of the `check` that declared it. The code you declared is on the issue rather than on the error because several checks can fail in one call, and one code on the error could only name one of them.
 
 ```ts "src/main.ts"
 import { InvalidInputError } from "@meshfw/runtime";
@@ -274,6 +274,8 @@ try {
 titleNotEmpty empty_title title must not be empty
 src/domain/todo/todo.mesh.mx 26 11
 ```
+
+That first line is one entry of `error.issues`: the check's label, the code the check declared, and its message. `error.code` is `invalid_input`.
 
 A caught error has type `unknown` in strict TypeScript, so narrow it before reading `issues`.
 

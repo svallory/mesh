@@ -104,7 +104,7 @@ test("an empty title is rejected", async () => {
 });
 ```
 
-If you care which rule failed, catch the error and read `issues`, which carries the name and the code of the `check` that declared it, its message, and the `.mesh.mx` position of the line. See [Errors](./calling-actions.md#errors).
+If you care which rule failed, catch the error and read `issues`. Each entry names the `check` that declared it, the code that check declared, its message, and the line of the `.mesh.mx` file it is on. See [Errors](./calling-actions.md#errors).
 
 ## Asserting a denial
 

@@ -199,7 +199,7 @@ Four things to notice:
 - **`createList` takes only `name`.** `ownerId` is not in the input type, so a call that sends it does not compile.
 - **`load: ["label"]` is what types `todo.label`.** Without it, reading the property is a type error rather than `undefined`.
 - **Bob gets `NotFoundError`, not `ForbiddenError`.** The policy reads the stored row, so it becomes a filter on the statement, and a row he may not change does not exist as far as he is concerned. Ask first and you get the reason instead: `canCompleteTodo({ id }, { actor: bob })` returns `{ allowed: false, breakdown }`.
-- **The empty title is caught before anything is written.** The error carries the `code` and the name you gave the check (`titleNotEmpty`), its message, and the line of the `check` in the `.mesh.mx` file.
+- **The empty title is caught before anything is written.** The error's code is `invalid_input`; each of its issues carries the name you gave the check (`titleNotEmpty`), the code you declared (`empty_title`), your message, and the line of the `check` in the `.mesh.mx` file.
 
 ## Build and run
 
