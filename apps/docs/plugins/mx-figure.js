@@ -92,7 +92,7 @@ export function parseMxFigure(source, file = '<markdown>') {
   return { segments: kept, problems };
 }
 
-// The same four characters the vendored renderer escapes, so a title, a note
+// The same four characters the package's renderer escapes, so a title, a note
 // and a code line are all safe in the HTML this file builds by hand.
 function escapeHtml(text) {
   return text
@@ -111,7 +111,6 @@ function noteBody(body) {
 
 export function renderMxFigure(source, file) {
   const { segments, problems } = parseMxFigure(source, file);
-  if (problems.length > 0) throw new Error(problems.join('\n'));
   // One parse of the whole file, then each segment reads its own line range out
   // of it: a segment that starts at an indented section tag is not a document on
   // its own and would colour as nothing (see ./mx-highlight.js).
@@ -122,16 +121,19 @@ export function renderMxFigure(source, file) {
   // them is also what keeps the parse whole: in concise syntax a line at the
   // left margin ends the root tag's block, a comment included, so an author who
   // wrote one of these notes at the left margin inside the entity would end the
-  // entity there and leave every line below it uncoloured.
+  // entity there and leave every line below it unreadable. `mxHighlighter`
+  // refuses a file the grammar could not read, so the figure would fail the
+  // build rather than render those lines uncoloured.
   const lines = sourceLines(source).map((line) => (NOTE.test(line) ? '' : line));
   const whole = lines.join('\n');
+  if (problems.length > 0) throw new Error(problems.join('\n'));
   const lineStart = [];
   let at = 0;
   for (const line of lines) {
     lineStart.push(at);
     at += line.length + 1;
   }
-  const render = mxHighlighter(whole);
+  const render = mxHighlighter(whole, file);
   const rows = segments
     .map((segment, index) => {
       const from = lineStart[segment.start] ?? 0;

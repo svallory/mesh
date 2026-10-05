@@ -112,7 +112,7 @@ test('blank lines at the end of a segment are not rendered', () => {
 });
 
 // The escaping path is ours here too: a figure is a code block and a note, both
-// built by string concatenation in this file rather than by the vendored
+// built by string concatenation in this file rather than by the package's
 // renderer. Nothing an author writes may open a tag or close the `code` early.
 test('a figure escapes the HTML in its code and in its notes', () => {
   const html = renderMxFigure(
@@ -134,6 +134,22 @@ test('a figure with CRLF line endings renders the same segments and notes', () =
   const fromLf = renderMxFigure(aligned, 'todo.md');
   expect(fromCrlf).toBe(fromLf);
   expect(fromCrlf).toContain('<span class="ts-constant">#title</span>');
+});
+
+test('a figure whose file the grammar cannot read fails on the same terms', () => {
+  // The figure blanks its own `// @key:` notes before it parses, so the
+  // annotated figure on the Introduction page parses whole; an author who writes
+  // a `//` line at the left margin inside the entity is the case that fails here,
+  // exactly as it fails an ordinary fence.
+  const source = ['// @fields: Fields — title is a string.', 'entity #Todo',
+    '// a comment at the left margin', '  attributes', '    string #title', ''].join('\n');
+  const error = (() => {
+    try { renderMxFigure(source, 'index.md'); } catch (cause) { return cause; }
+    return null;
+  })();
+  expect(error).toBeInstanceOf(Error);
+  expect(error.message).toContain('index.md');
+  expect(error.message).toContain('block line 3 is an ERROR node');
 });
 
 test('a render failure carries the page, the line and the fence', () => {
