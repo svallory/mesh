@@ -60,15 +60,15 @@ test("the page's claims about its entity file match the file", () => {
   for (const name of ['createTodo', 'renameTodo', 'pendingTodo', 'readTodo', 'destroyTodo']) expect(page).toContain(name);
 });
 
-test('every box names sections the file has, and the island is loaded from where the build writes it', async () => {
+test('every card names sections the file has, and its group; the page has no "What you call"', async () => {
   const { FLOW_SECTIONS } = await import('../plugins/mesh-home.js');
-  const boxes = [...page.matchAll(/<div class="mh-box" data-box="([a-z]+)" data-from="([a-z ]+)"/g)];
+  const boxes = [...page.matchAll(/<div class="mh-box" data-box="([a-z]+)" data-from="([a-z ]+)"(?: data-via="[^"]*")? data-group="([^"]+)"/g)];
   expect(boxes.map((m) => m[1])).toEqual(['types', 'functions', 'validation', 'authorization', 'table', 'migrations', 'rules', 'model']);
   for (const [, , from] of boxes) for (const part of from.split(' ')) expect(FLOW_SECTIONS).toContain(part);
-  const build = readFileSync(new URL('../island/build.ts', import.meta.url), 'utf8');
-  expect(build).toContain("'../site/assets/home-flow.js'");
-  expect(page).toContain("import((window.DOCMD_BASE || '/') + 'assets/home-flow.js')");
-  expect(page).toContain("matchMedia('(prefers-reduced-motion: reduce)')");
+  expect([...new Set(boxes.map((m) => m[3]))]).toEqual(['Your app', 'The database', 'For your tools']);
+  expect(page).not.toContain('What you call');
+  expect(page).not.toContain('```ts');
+  expect(page).not.toContain('home-flow.js');
 });
 
 // The headline breaks between its two sentences and nowhere else: each is a block.

@@ -42,61 +42,46 @@ entity :Todo table="todos"
 ::: grid
 <div class="mh-out">
 <div class="mh-seam"><span class="mh-build">mesh build</span></div>
-<p class="mh-group">The module you call</p>
-<div class="mh-box" data-box="types" data-from="attributes relationships"><h3>Types <code>todo.types.ts</code></h3><p class="mh-from">from <code>attributes</code>, <code>relationships</code></p><div class="mh-snip"><code>interface Todo {
+<p class="mh-group" data-group="Your app">Your app</p>
+<div class="mh-box" data-box="types" data-from="attributes relationships" data-group="Your app"><h3>Types <code>todo.types.ts</code></h3><p class="mh-from">from <code>attributes</code>, <code>relationships</code></p><div class="mh-snip"><code>interface Todo {
   id: string; title: string;
   done: boolean; listId: string }</code></div></div>
-<div class="mh-box" data-box="functions" data-from="actions"><h3>Functions <code>todo.actions.ts</code></h3><p class="mh-from">one per action, from <code>actions</code>, imported from <code>#mesh</code></p><div class="mh-snip"><code>createTodo(input, context)
+<div class="mh-box" data-box="functions" data-from="actions" data-group="Your app"><h3>Functions <code>todo.actions.ts</code></h3><p class="mh-from">one per action, from <code>actions</code>, imported from <code>#mesh</code></p><div class="mh-snip"><code>createTodo(input, context)
 pendingTodo(input, context)
 renameTodo, readTodo, destroyTodo</code></div></div>
-<div class="mh-box" data-box="validation" data-from="attributes actions"><h3>Input validation <code>todo.validators.ts</code></h3><p>Every input is checked before your code runs: no empty title, and no field the action does not accept.</p><p class="mh-from">from <code>attributes</code>, <code>actions</code></p></div>
-<div class="mh-box" data-box="authorization" data-from="policies"><h3>Authorization <span>in every function</span></h3><p>A write is checked before it runs; a read gets the policy in its query. <code>canCreateTodo</code> asks first.</p><p class="mh-from">from <code>policies</code></p></div>
-<p class="mh-group">The database</p>
-<div class="mh-box" data-box="table" data-from="entity attributes relationships"><h3>The table <code>schema.ts</code></h3><p>The <code>todos</code> table, its columns and the foreign key to <code>List</code>, written by the data adapter.</p><p class="mh-from">from the entity line, <code>attributes</code>, <code>relationships</code></p></div>
-<div class="mh-box" data-box="migrations" data-from="entity attributes relationships" data-via="mesh migrate generate"><h3>Migrations <code>migrations/*.sql</code></h3><p>Plain SQL from <code>mesh migrate generate</code> when the table changes; applied by <code>mesh migrate apply</code>.</p><p class="mh-from">from the table</p></div>
-<p class="mh-group">For your tools</p>
-<div class="mh-box" data-box="rules" data-from="entity attributes relationships actions policies"><h3>Rules for agents <code>rules.md</code></h3><p class="mh-from">from the whole file</p><div class="mh-snip"><code>entity :Todo table="todos"
+<div class="mh-box" data-box="validation" data-from="attributes actions" data-group="Your app"><h3>Input validation <code>todo.validators.ts</code></h3><p>Every input is checked before your code runs: no empty title, and no field the action does not accept.</p><p class="mh-from">from <code>attributes</code>, <code>actions</code></p></div>
+<div class="mh-box" data-box="authorization" data-from="policies" data-group="Your app"><h3>Authorization <span>in every function</span></h3><p>A write is checked before it runs; a read gets the policy in its query. <code>canCreateTodo</code> asks first.</p><p class="mh-from">from <code>policies</code></p></div>
+<p class="mh-group" data-group="The database">The database</p>
+<div class="mh-box" data-box="table" data-from="entity attributes relationships" data-group="The database"><h3>The table <code>schema.ts</code></h3><p>The <code>todos</code> table, its columns and the foreign key to <code>List</code>, written by the data adapter.</p><p class="mh-from">from the entity line, <code>attributes</code>, <code>relationships</code></p></div>
+<div class="mh-box" data-box="migrations" data-from="entity attributes relationships" data-via="mesh migrate generate" data-group="The database"><h3>Migrations <code>migrations/*.sql</code></h3><p>Plain SQL from <code>mesh migrate generate</code> when the table changes; applied by <code>mesh migrate apply</code>.</p><p class="mh-from">from the table</p></div>
+<p class="mh-group" data-group="For your tools">For your tools</p>
+<div class="mh-box" data-box="rules" data-from="entity attributes relationships actions policies" data-group="For your tools"><h3>Rules for agents <code>rules.md</code></h3><p class="mh-from">from the whole file</p><div class="mh-snip"><code>entity :Todo table="todos"
   actions: auto read destroy;
     create :create accept=[:title, :listId]</code></div></div>
-<div class="mh-box" data-box="model" data-from="entity attributes relationships actions policies"><h3>The model <code>model.json</code></h3><p>Every declaration with its source position: what <code>mesh inspect</code> prints.</p><p class="mh-from">from the whole file</p></div>
+<div class="mh-box" data-box="model" data-from="entity attributes relationships actions policies" data-group="For your tools"><h3>The model <code>model.json</code></h3><p>Every declaration with its source position: what <code>mesh inspect</code> prints.</p><p class="mh-from">from the whole file</p></div>
 </div>
 <script type="module">
-// The diagram is whole without this. It loads the island that redraws the wires
-// side by side, after first paint, only on a screen wide enough for that layout
-// (or once the window grows to it), and never with reduced motion. docmd re-runs
-// this script when it swaps the page in; the module itself loads once.
-const wide = matchMedia('(min-width: 1181px)');
-const load = () => requestAnimationFrame(() => setTimeout(() => {
-  const root = document.querySelector('.mh-hero + .grids');
-  if (root) import((window.DOCMD_BASE || '/') + 'assets/home-flow.js').then((m) => m.mount(root), () => {});
-}, 0));
-if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
-  if (wide.matches) load(); else wide.addEventListener('change', load, { once: true });
-}
+// The diagram is whole without this. On a phone, where the cards pass one at a
+// time under the pinned file (CSS only), it marks the card on top so the file
+// tints the lines that card comes from. docmd re-runs this script when it swaps
+// the page in; the scroll handler is replaced, not added again.
+const deck = matchMedia('screen and (max-width: 900px) and (min-height: 660px)');
+let frame = 0;
+const mark = () => {
+  frame = 0;
+  const boxes = [...document.querySelectorAll('.mh-hero + .grids .mh-box')];
+  if (!boxes.length) return;
+  let top = null;
+  if (deck.matches) for (const box of boxes) if (box.getBoundingClientRect().top <= parseFloat(getComputedStyle(box).top) + 2) top = box;
+  for (const box of boxes) box.classList.toggle('is-hot', box === top);
+};
+window.removeEventListener('scroll', window.__mhDeck);
+window.__mhDeck = () => { if (!frame) frame = requestAnimationFrame(mark); };
+window.addEventListener('scroll', window.__mhDeck, { passive: true });
+mark();
 </script>
 :::
 :::
-
-<section class="mh-section" aria-labelledby="mh-call">
-<h2 id="mh-call">What you call</h2>
-<p class="mh-intro">Each action is an ordinary async function. Its input takes the fields the action accepts and nothing else, and its second argument says who is calling, which is what the policies are checked against. There is no server, route or client to generate: the function is the interface.</p>
-</section>
-
-```ts "src/main.ts"
-import { createTodo, pendingTodo } from "#mesh";
-
-const todo = await createTodo(
-  { title: "Buy milk", listId: list.id },
-  { actor },
-);
-
-// Only this actor's todos: the policy is part of the query.
-const open = await pendingTodo({}, { actor });
-
-// An empty title never reaches the database:
-// this call throws InvalidInputError.
-await createTodo({ title: "", listId: list.id }, { actor });
-```
 
 <section class="mh-section" aria-labelledby="mh-connect">
 <h2 id="mh-connect">Connect it to anything</h2>
