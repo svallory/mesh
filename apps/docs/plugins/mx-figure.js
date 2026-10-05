@@ -92,8 +92,14 @@ export function parseMxFigure(source, file = '<markdown>') {
   return { segments: kept, problems };
 }
 
+// The same four characters the vendored renderer escapes, so a title, a note
+// and a code line are all safe in the HTML this file builds by hand.
 function escapeHtml(text) {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 /** Inline code spans and emphasis only: a note is a sentence, not a page. */
@@ -130,8 +136,12 @@ export function renderMxFigure(source, file) {
     .map((segment, index) => {
       const from = lineStart[segment.start] ?? 0;
       let to = segment.end >= lineStart.length ? whole.length : lineStart[segment.end];
-      // One segment's last line keeps no trailing newline, as in a plain fence.
-      if (whole[to - 1] === '\n') to--;
+      // The range stops at the first character of the line after the segment, so
+      // it ends with the newline that closed the segment's last line. Trim that,
+      // and any blank lines the author left at the end of the segment: a plain
+      // fence strips one trailing newline, and a segment must not render a
+      // trailing empty line either.
+      while (to > from && whole[to - 1] === '\n') to--;
       const code = `<pre class="hljs mx-hl"><code class="language-mx">${render(from, to)}</code></pre>`;
       const note = `<div class="mx-row mx-note"><span class="mx-badge">${index + 1}</span>` +
         `<p><strong>${escapeHtml(segment.title)}</strong> ${noteBody(segment.body)}</p></div>`;

@@ -106,8 +106,8 @@ The [Ash-to-Mesh mapping](./roadmap/vocabulary-mapping.md) keeps the M1 spelling
 `@mxlang/tree-sitter-mx` with its `queries/highlights.scm` and `queries/injections.scm`, run at build
 time through `web-tree-sitter` 0.26.9. TypeScript inside an MX file (a function body, an attribute
 value) is injected and highlighted with the TypeScript grammar, so a lambda in a `check` is coloured
-the same way the `ts` fence above it is. Shiki stays in charge of every other language
-([ADR-0065](./decisions/0065-mx-highlighting-on-the-docs-site.md)).
+the same way the `ts` fence above it is. Every other language is highlighted by docmd itself, with
+highlight.js and the light and dark stylesheets docmd ships ([ADR-0065](./decisions/0065-mx-highlighting-on-the-docs-site.md)).
 
 Two files, two jobs:
 
@@ -118,9 +118,10 @@ Two files, two jobs:
   `@mxlang/tree-sitter-mx` is published, import it and delete the directory.
 - `apps/docs/plugins/mx-highlight.js` is the docmd plugin and the only entry point for `mx`. It routes
   the fences, it fails the build with the page and the line when a fence cannot be highlighted, and it
-  holds the `PALETTE` table that maps each capture name to the GitHub light and dark colours Shiki uses
-  for the other languages, so an `mx` block sits beside a `ts` block without a seam. A new capture name
-  in a refreshed grammar shows up as a failing test until it is given a colour.
+  holds the `PALETTE` table that maps each capture name to the light and dark colours docmd's own
+  highlight stylesheets use for the other languages, so an `mx` block sits beside a `ts` block without
+  a seam. A new capture name in a refreshed grammar shows up as a failing test until it is given a
+  colour.
 
 `mx-figure` fences (the annotated figure on the Introduction page) go through the same highlighter.
 The figure is one entity file cut into segments, so it is parsed once as a whole file and each segment

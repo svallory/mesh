@@ -16,12 +16,37 @@ const coreRequire = createRequire(require.resolve('@docmd/core'));
 const { createMarkdownProcessor, processContentAsync } = await import(coreRequire.resolve('@docmd/parser'));
 const processor = (renderMx) => createMarkdownProcessor({}, (md) => installMxHighlight(md, renderMx));
 
-/** The class of the one span whose text is exactly `text`, or undefined. */
-function classOfText(source, text) {
+/**
+ * The class of every span whose text is exactly `text`, in document order.
+ *
+ * Every match is returned, not the first: a token that occurs twice in one
+ * fence (the two `self` of a `check`) has to be coloured the same way both
+ * times, and a second occurrence left uncoloured must not pass unnoticed.
+ *
+ * @param {string} source
+ * @param {string} text
+ * @returns {string[]}
+ */
+function classesOfText(source, text) {
   const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  const match = new RegExp(`<span class="([^"]+)">${escaped.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</span>`)
-    .exec(highlightMx(source));
-  return match?.[1];
+  const pattern = new RegExp(`<span class="([^"]+)">${escaped.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</span>`, 'g');
+  return [...highlightMx(source).matchAll(pattern)].map((match) => match[1]);
+}
+
+/**
+ * The error `fn` throws, or `undefined` when it does not throw. The caller
+ * asserts on it, so a render that quietly stopped failing fails the test: a
+ * bare `try`/`catch` with assertions only inside the `catch` does not.
+ *
+ * @param {() => unknown} fn
+ */
+function thrown(fn) {
+  try {
+    fn();
+  } catch (error) {
+    return error;
+  }
+  return undefined;
 }
 
 const forms = [
@@ -94,7 +119,9 @@ for (const form of forms) {
   test(`${form.name} is coloured, and does not throw`, () => {
     const html = highlightMx(form.code + '\n');
     for (const [text, cls] of Object.entries(form.spans)) {
-      expect(classOfText(form.code, text)).toBe(cls);
+      const classes = classesOfText(form.code, text);
+      expect(classes.length).toBeGreaterThan(0);
+      expect([...new Set(classes)]).toEqual([cls]);
     }
     expect(html).toContain('<pre class="hljs mx-hl"><code class="language-mx">');
   });
@@ -147,6 +174,27 @@ test('a plain word carries no span, so it reads in the colour docmd gives a pre'
   expect(themeStyles).not.toContain('.ts-property{');
 });
 
+// The escaping path is ours (the vendored `renderMx`), and a fence is the one
+// place an author can write HTML by accident: an attribute value, a comment or a
+// string that looks like a tag. Everything that reaches the page is escaped, so
+// nothing can close the `code` element early or open a tag.
+test('an mx fence escapes the HTML an author wrote', () => {
+  const html = highlightMx('string #markup default="<b>&</b>" // </pre><script>alert(1)</script>\n');
+  expect(html).toContain('&lt;b&gt;&amp;&lt;/b&gt;');
+  expect(html).toContain('&lt;/pre&gt;&lt;script&gt;alert(1)&lt;/script&gt;');
+  expect(html).not.toContain('<b>');
+  expect(html).not.toContain('<script>');
+  // The only elements in the output are the ones the renderer opens itself,
+  // and the code element is still the last thing before `</pre>`.
+  expect([...new Set([...html.matchAll(/<\/?([a-z]+)/g)].map((match) => match[1]))].sort())
+    .toEqual(['code', 'pre', 'span']);
+  expect(html.endsWith('</code></pre>')).toBe(true);
+  // And the text a reader sees is the text the author wrote.
+  const text = html.replace(/<[^>]*>/g, '')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+  expect(text).toBe('string #markup default="<b>&</b>" // </pre><script>alert(1)</script>');
+});
+
 test('a titled mx fence keeps docmd code-block header and copy button markup', () => {
   const html = processor().render('```mx "todo.mesh.mx"\nentity #Todo\n```', { filePath: 'todo.md' });
   expect(html).toContain('docmd-code-block-wrapper');
@@ -168,12 +216,10 @@ test('highlight failures abort rendering with page, block line and source', () =
   const md = processor(() => { throw new Error('injected failure'); });
   expect(() => md.render('# Todo\n\n```mx\nresource="todo"\n```', { filePath: 'docs/todo.md' }))
     .toThrow('FrameworkError: docs/todo.md: mx block could not be located in the source (line 3 relative to the page body after frontmatter;');
-  try {
-    md.render('```mx\nresource="todo"\n```', { filePath: 'todo.md' });
-  } catch (error) {
-    expect(error.message).toContain('```mx\nresource="todo"\n```');
-    expect(error.cause.message).toBe('injected failure');
-  }
+  const error = thrown(() => md.render('```mx\nresource="todo"\n```', { filePath: 'todo.md' }));
+  expect(error).toBeInstanceOf(Error);
+  expect(error.message).toContain('```mx\nresource="todo"\n```');
+  expect(error.cause.message).toBe('injected failure');
 });
 
 test('highlight failures report source-file fence lines after docmd strips frontmatter', async () => {

@@ -95,6 +95,47 @@ test('a segment matches the same lines highlighted as part of the whole file', (
   expect(last).toContain('    <span class="ts-tag">belongs-to</span><span class="ts-operator">=</span><span class="ts-type">List</span> <span class="ts-constant">#list</span></code>');
 });
 
+// A plain fence strips one trailing newline, so a segment must not render a
+// trailing empty line either, however many blank lines the author left at the
+// end of it.
+test('blank lines at the end of a segment are not rendered', () => {
+  for (const tail of ['', '\n', '\n\n\n']) {
+    const html = renderMxFigure(
+      `// @a: First — one.\nentity #Todo\n  attributes\n    string #a\n// @b: Second — two.\n    string #b${tail}`,
+      'todo.md',
+    );
+    const codes = [...html.matchAll(/<code class="language-mx">([\s\S]*?)<\/code>/g)].map((m) => m[1]);
+    expect(codes).toHaveLength(2);
+    expect(codes[1]).toBe('    <span class="ts-tag">string</span> <span class="ts-constant">#b</span>');
+    expect(html).not.toContain('</code>\n');
+  }
+});
+
+// The escaping path is ours here too: a figure is a code block and a note, both
+// built by string concatenation in this file rather than by the vendored
+// renderer. Nothing an author writes may open a tag or close the `code` early.
+test('a figure escapes the HTML in its code and in its notes', () => {
+  const html = renderMxFigure(
+    '// @a: Tags — `<b>bold</b>` & "quotes" in a note.\nentity #Todo default="<i>&</i>"\n',
+    'todo.md',
+  );
+  expect(html).toContain('<p><strong>Tags</strong> <code>&lt;b&gt;bold&lt;/b&gt;</code> &amp; &quot;quotes&quot; in a note.</p>');
+  expect(html).toContain('<span class="ts-string">&quot;&lt;i&gt;&amp;&lt;/i&gt;&quot;</span>');
+  expect(html).not.toContain('<b>');
+  expect(html).not.toContain('<i>');
+  expect([...new Set([...html.matchAll(/<\/?([a-z]+)/g)].map((m) => m[1]))].sort())
+    .toEqual(['code', 'div', 'figure', 'p', 'pre', 'span', 'strong']);
+});
+
+test('a figure with CRLF line endings renders the same segments and notes', () => {
+  const crlf = aligned.replace(/\n/g, '\r\n');
+  expect(parseMxFigure(crlf, 'todo.md').problems).toEqual([]);
+  const fromCrlf = renderMxFigure(crlf, 'todo.md');
+  const fromLf = renderMxFigure(aligned, 'todo.md');
+  expect(fromCrlf).toBe(fromLf);
+  expect(fromCrlf).toContain('<span class="ts-constant">#title</span>');
+});
+
 test('a render failure carries the page, the line and the fence', () => {
   const dir = mkdtempSync(join(tmpdir(), 'mx-figure-'));
   try {

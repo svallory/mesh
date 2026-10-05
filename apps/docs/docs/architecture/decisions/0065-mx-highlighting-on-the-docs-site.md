@@ -35,6 +35,10 @@ The `@mxlang` packages are not published, and the docs image is built from the p
 - When `@mxlang/tree-sitter-mx` is published (subpath `@mxlang/tree-sitter-mx/docmd`), Mesh imports it and deletes the vendored copy.
 - The work is one docs task after the `docs/syntax-v2` branch merges, because both touch `apps/docs`. It must probe a regex-literal attribute value (`match=/^INV-\d+$/`), which MX did not test.
 
+Implemented in one detail differently from the wording above: docmd highlights every other language
+with highlight.js and the two stylesheets it ships, not with Shiki, so the `mx` capture names are
+mapped to docmd's own light and dark hexes rather than to a Shiki theme ([contributing](../contributing.md)).
+
 ## Options considered
 
 ### Option A: MX's tree-sitter highlighter, vendored until published (chosen)
@@ -58,8 +62,8 @@ Only Option A highlights the syntax the docs show. The vendored copy is temporar
 
 ## Consequences
 
-- The `mx-highlight` plugin of PR #19 is replaced for `mx` fences; other fences keep Shiki, including
-  the dark-mode switch, which only the plugin's own stylesheet applied.
+- The `mx-highlight` plugin of PR #19 is replaced for `mx` fences; every other fence is highlighted by
+  docmd, as before, and the dark-mode switch the old plugin carried is gone with it.
 - The grammar is line-tolerant in a way a TextMate grammar is not: a fence is read as one file, so a
   line it cannot read can leave the lines below it uncoloured, with no error anywhere. The build still
   fails loudly on a missing or unreadable grammar, not on a line the grammar dislikes.

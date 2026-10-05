@@ -18,13 +18,15 @@ Runtime dependency: `web-tree-sitter` 0.26.9 (build time only, a dev dependency 
 
 ## What Mesh changed
 
-Only the path constants at the top of `mx-highlight.mjs`, and the two build hints in the
-"file is missing" error next to them:
+Three things, all in `mx-highlight.mjs`:
 
 - `grammarDir` is this directory instead of `packages/editors/tree-sitter-mx` in the mxlang repo,
   so the wasm and the queries are read from beside the module.
 - `tsDir` is `./ts` here instead of `apps/docs/.cache/ts`, so the TypeScript grammar is vendored too
   rather than built during the docs build.
+- A three-line comment above them, and the two build hints in the "file is missing" error next to
+  them, pointed at mxlang commands and now say where to refresh the copy. The error text itself is
+  otherwise the same: a missing file still fails the build rather than falling back to plain text.
 
 Everything else, including the module's own docmd `markdownSetup`, is byte-for-byte the MX lead's
 copy. Mesh does not register that `markdownSetup`: `../mx-highlight.js` is the single docmd entry
@@ -47,11 +49,13 @@ bash apps/docs/scripts/build-ts-grammar.sh                  # ts/tree-sitter-typ
 
 1. Ask the MX lead for a new drop (the mxlang commit it came from, the two commands above, and any
    query change).
-2. Copy the files over this directory, keep the two path constants as they are, and delete
-   `apps/docs/plugins/mx-highlight.js`'s assumption that nothing else changed: check `captureNames`
-   in the new queries against the `PALETTE` table in `../mx-highlight.js`. `bun test test/` fails on
-   a capture name with no colour.
-3. Write the new mxlang commit and date at the top of this file.
+2. Copy the files over this directory and keep the three changes listed above: the two path constants
+   and the comment that names them.
+3. Compare the capture names the new queries produce with the `PALETTE` table in
+   `../mx-highlight.js`. `bun test test/` fails on any capture name the table does not decide, so the
+   failing test names what is new; give each one a colour (or a deliberate blank, which the table
+   spells as `null`).
+4. Write the new mxlang commit and date at the top of this file.
 
 The wasm files are committed because the Docker build has no tree-sitter command-line tool, and the
 site must not fall back to plain text: the module throws at import when a file is missing.
