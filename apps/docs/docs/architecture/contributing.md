@@ -102,7 +102,36 @@ The [Ash-to-Mesh mapping](./roadmap/vocabulary-mapping.md) keeps the M1 spelling
 
 ## Code highlighting
 
-`mx` fences are highlighted by the `mx-highlight` plugin (`apps/docs/plugins/mx-highlight.js`), which runs Shiki with its Marko grammar on `mx` fences only. The Marko grammar does not know entity file syntax v2 (`#name` after a space, `:label`), so `mx` fences move to MX's own tree-sitter highlighter, vendored under `apps/docs/plugins/mx/` until `@mxlang/tree-sitter-mx` is published; Shiki stays for every other language ([ADR-0065](./decisions/0065-mx-highlighting-on-the-docs-site.md)). That change is its own docs task after the `docs/syntax-v2` branch merges.
+`mx` fences are highlighted by MX's own highlighter: the tree-sitter grammar
+`@mxlang/tree-sitter-mx` with its `queries/highlights.scm` and `queries/injections.scm`, run at build
+time through `web-tree-sitter` 0.26.9. TypeScript inside an MX file (a function body, an attribute
+value) is injected and highlighted with the TypeScript grammar, so a lambda in a `check` is coloured
+the same way the `ts` fence above it is. Shiki stays in charge of every other language
+([ADR-0065](./decisions/0065-mx-highlighting-on-the-docs-site.md)).
+
+Two files, two jobs:
+
+- `apps/docs/plugins/mx/` is MX's highlighter, vendored unchanged except for two path constants
+  because the `@mxlang` packages are not published. `apps/docs/plugins/mx/SOURCE.md` names the mxlang
+  commit it came from, the two commands that built it, what was changed and how to refresh it. Do not
+  edit it to fix a highlight: the grammar belongs to MX, and the queries are not ours either. When
+  `@mxlang/tree-sitter-mx` is published, import it and delete the directory.
+- `apps/docs/plugins/mx-highlight.js` is the docmd plugin and the only entry point for `mx`. It routes
+  the fences, it fails the build with the page and the line when a fence cannot be highlighted, and it
+  holds the `PALETTE` table that maps each capture name to the GitHub light and dark colours Shiki uses
+  for the other languages, so an `mx` block sits beside a `ts` block without a seam. A new capture name
+  in a refreshed grammar shows up as a failing test until it is given a colour.
+
+`mx-figure` fences (the annotated figure on the Introduction page) go through the same highlighter.
+The figure is one entity file cut into segments, so it is parsed once as a whole file and each segment
+reads its own lines out of the result: a segment that starts at an indented `attributes` tag is not a
+document on its own and would colour as nothing.
+
+A fence is highlighted as a whole file. A `//` comment line after the root line ends the document as
+far as the grammar is concerned, and everything below it is left uncoloured; the figure blanks its own
+`// @key:` annotation lines for that reason. Two smaller gaps in the vendored queries, both reported to
+the MX lead: the names in a destructured lambda parameter (`that=({ self }) => …`) get no colour, and
+so do the `?` and `:` of a ternary.
 
 ## Layout and file names
 

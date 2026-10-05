@@ -7,7 +7,8 @@ description: "Decision record 0065: how `mx` fences are highlighted, how the hig
 
 ## Status
 
-Accepted. Not built yet.
+Accepted. Built: the highlighter is vendored under `apps/docs/plugins/mx/` and wired into the docs
+build. Switching to the published `@mxlang/tree-sitter-mx` package is still ahead.
 
 ## Date
 
@@ -57,10 +58,19 @@ Only Option A highlights the syntax the docs show. The vendored copy is temporar
 
 ## Consequences
 
-- The `mx-highlight` plugin of PR #19 is replaced for `mx` fences; other fences keep Shiki.
+- The `mx-highlight` plugin of PR #19 is replaced for `mx` fences; other fences keep Shiki, including
+  the dark-mode switch, which only the plugin's own stylesheet applied.
+- The grammar is line-tolerant in a way a TextMate grammar is not: a fence is read as one file, so a
+  line the grammar cannot parse can leave the lines below it uncoloured. The build still fails loudly on
+  a missing or unreadable grammar, not on a line the grammar dislikes.
 - Open, the operator's call: a private package registry (Verdaccio on the operator's server, the lead's recommendation over GitHub Packages) to share unpublished `@mxlang` and `@meshfw` packages; it would remove the vendoring step.
 
 ## Action items
 
-- [ ] After `docs/syntax-v2` merges: vendor the highlighter, wire it into docmd, probe a regex-literal attribute value.
+- [x] Vendor the highlighter, wire it into docmd, probe a regex-literal attribute value (done in the
+  `docs/mx-highlighter` branch: `match=/^INV-\d+$/` colours as a regex literal, the `docs` tests cover
+  it, and the grammar was not changed to get there).
+- [ ] Two gaps found while switching the site over, both for the MX lead: a `//` comment line after the
+  root line ends the document for the grammar, and the names in a destructured lambda parameter
+  (`that=({ self }) => …`) get no capture.
 - [ ] When `@mxlang/tree-sitter-mx` is published: import it and delete `apps/docs/plugins/mx/`.
