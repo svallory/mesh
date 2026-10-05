@@ -1,19 +1,22 @@
 ---
 title: "Mesh"
-description: "Mesh is a TypeScript framework for Bun. Describe each thing your program stores once, in one .mesh.mx file, and call the typed functions Mesh writes from it."
+description: "Mesh is a TypeScript framework for Bun. Describe your domain once, one small .mesh.mx file per entity, and Mesh builds your domain logic as a module of typed functions you connect to anything."
 toc: false
 ---
 
+<nav class="mh-nav" aria-label="Site"><a href="/docs/">Docs</a><a href="/docs/quick-start/">Quick start</a><a href="/architecture/">Architecture</a></nav>
+
 <section class="mh-hero" aria-labelledby="mh-title">
-<h1 id="mh-title" class="mh-title">Describe it once.<br>Call a function.</h1>
-<p class="mh-lede">Mesh is a TypeScript framework for Bun. You describe each thing your program stores in one <code>.mesh.mx</code> file: its data, its operations and its rules. Mesh writes the typed functions, the input validation, the authorization, the tables and the migrations.</p>
+<h1 id="mh-title" class="mh-title"><span>Describe your domain once.</span> <span>Mesh builds the rest.</span></h1>
+<p class="mh-lede">Your domain is what your program keeps, what can be done to it, and who may do it. In Mesh you write it down as one small <code>.mesh.mx</code> file per entity.</p>
+<p class="mh-lede">From those files Mesh builds your core domain and business logic as a module of typed TypeScript functions, with the input validation, the authorization, the database tables and the migrations. Connect that module to anything: an HTTP API, a command line, a worker, a user interface, an agent. Change a file and the module is rebuilt from it, so nothing drifts.</p>
 <p class="mh-actions"><a class="mh-btn mh-btn-main" href="/docs/">Read the introduction</a><a class="mh-btn" href="/docs/quick-start/">Quick start</a></p>
 <p class="mh-status">Mesh is not released yet. These pages describe Mesh 1.0.</p>
 </section>
 
 ::: grids
 ::: grid
-```mx "src/domain/todo/todo.mesh.mx"
+```mx-flow "src/domain/todo/todo.mesh.mx"
 entity :Todo table="todos"
   attributes
     uuid :id primary-key
@@ -25,54 +28,104 @@ entity :Todo table="todos"
 
   actions auto=[:read, :destroy]
     create :create accept=[:title, :listId]
+    update :rename accept=[:title]
+    read :pending
+      filter=({ self }) => !self.done
+      sort
+        asc :title
 
   policies
-    policy :owner types=[:create, :read, :destroy]
+    policy :owner types=[:create, :read, :update, :destroy]
       authorize-if=({ self, actor }) => self.list.ownerId === actor.id
 ```
 :::
 ::: grid
-<div class="mh-seam" aria-hidden="true"><span class="mh-build"><code>mesh build</code><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M5 12h13m-5-5 5 5-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+<div class="mh-out">
+<div class="mh-seam"><span class="mh-build">mesh build</span></div>
+<p class="mh-group">The module you call</p>
+<div class="mh-box" data-box="types" data-from="attributes relationships"><h3>Types <code>todo.types.ts</code></h3><p class="mh-from">from <code>attributes</code>, <code>relationships</code></p><div class="mh-snip"><code>interface Todo {
+  id: string; title: string;
+  done: boolean; listId: string }</code></div></div>
+<div class="mh-box" data-box="functions" data-from="actions"><h3>Functions <code>todo.actions.ts</code></h3><p class="mh-from">one per action, from <code>actions</code>, imported from <code>#mesh</code></p><div class="mh-snip"><code>createTodo(input, context)
+pendingTodo(input, context)
+renameTodo, readTodo, destroyTodo</code></div></div>
+<div class="mh-box" data-box="validation" data-from="attributes actions"><h3>Input validation <code>todo.validators.ts</code></h3><p>Every input is checked before your code runs: no empty title, and no field the action does not accept.</p><p class="mh-from">from <code>attributes</code>, <code>actions</code></p></div>
+<div class="mh-box" data-box="authorization" data-from="policies"><h3>Authorization <span>in every function</span></h3><p>A write is checked before it runs; a read gets the policy in its query. <code>canCreateTodo</code> asks first.</p><p class="mh-from">from <code>policies</code></p></div>
+<p class="mh-group">The database</p>
+<div class="mh-box" data-box="table" data-from="entity attributes relationships"><h3>The table <code>schema.ts</code></h3><p>The <code>todos</code> table, its columns and the foreign key to <code>List</code>, written by the data adapter.</p><p class="mh-from">from the entity line, <code>attributes</code>, <code>relationships</code></p></div>
+<div class="mh-box" data-box="migrations" data-from="entity attributes relationships" data-via="mesh migrate generate"><h3>Migrations <code>migrations/*.sql</code></h3><p>Plain SQL from <code>mesh migrate generate</code> when the table changes; applied by <code>mesh migrate apply</code>.</p><p class="mh-from">from the table</p></div>
+<p class="mh-group">For your tools</p>
+<div class="mh-box" data-box="rules" data-from="entity attributes relationships actions policies"><h3>Rules for agents <code>rules.md</code></h3><p class="mh-from">from the whole file</p><div class="mh-snip"><code>entity :Todo table="todos"
+  actions: auto read destroy;
+    create :create accept=[:title, :listId]</code></div></div>
+<div class="mh-box" data-box="model" data-from="entity attributes relationships actions policies"><h3>The model <code>model.json</code></h3><p>Every declaration with its source position: what <code>mesh inspect</code> prints.</p><p class="mh-from">from the whole file</p></div>
+</div>
+<script type="module">
+// The diagram is whole without this. It loads the island that redraws the wires
+// side by side, after first paint, only on a screen wide enough for that layout
+// (or once the window grows to it), and never with reduced motion. docmd re-runs
+// this script when it swaps the page in; the module itself loads once.
+const wide = matchMedia('(min-width: 1181px)');
+const load = () => requestAnimationFrame(() => setTimeout(() => {
+  const root = document.querySelector('.mh-hero + .grids');
+  if (root) import((window.DOCMD_BASE || '/') + 'assets/home-flow.js').then((m) => m.mount(root), () => {});
+}, 0));
+if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  if (wide.matches) load(); else wide.addEventListener('change', load, { once: true });
+}
+</script>
+:::
+:::
+
+<section class="mh-section" aria-labelledby="mh-call">
+<h2 id="mh-call">What you call</h2>
+<p class="mh-intro">Each action is an ordinary async function. Its input takes the fields the action accepts and nothing else, and its second argument says who is calling, which is what the policies are checked against. There is no server, route or client to generate: the function is the interface.</p>
+</section>
 
 ```ts "src/main.ts"
-import { createTodo } from "#mesh";
+import { createTodo, pendingTodo } from "#mesh";
 
-// todo is a Todo: id, title, done, listId
 const todo = await createTodo(
   { title: "Buy milk", listId: list.id },
   { actor },
 );
 
+// Only this actor's todos: the policy is part of the query.
+const open = await pendingTodo({}, { actor });
+
 // An empty title never reaches the database:
 // this call throws InvalidInputError.
-await createTodo(
-  { title: "", listId: list.id },
-  { actor },
-);
+await createTodo({ title: "", listId: list.id }, { actor });
 ```
-:::
-:::
 
-<section class="mh-section" aria-labelledby="mh-gets">
-<h2 id="mh-gets">What one file gives you</h2>
-<p class="mh-intro">Every line of the file above stands for code you would otherwise write by hand, and keep in step by hand.</p>
-<dl class="mh-gets">
-<div><dt>Types</dt><dd><code class="mh-src">string :title min=1</code><span><code>Todo</code> has <code>title: string</code>, and so does the input of every action that accepts it.</span></dd></div>
-<div><dt>Functions</dt><dd><code class="mh-src">create :create accept=[:title, :listId]</code><span><code>createTodo(input, { actor })</code> is an ordinary async function. The input takes the fields the action accepts, and nothing else.</span></dd></div>
-<div><dt>Validation</dt><dd><code class="mh-src">min=1</code><span>An input that breaks a rule is refused with <code>InvalidInputError</code>, which lists every failure at once.</span></dd></div>
-<div><dt>Authorization</dt><dd><code class="mh-src">policy :owner</code><span>An action no policy covers is forbidden. A todo in someone else's list is simply not found.</span></dd></div>
-<div><dt>Schema and migrations</dt><dd><code class="mh-src">entity :Todo table="todos"</code><span>The <code>todos</code> table, and a plain SQL migration from <code>mesh migrate generate</code> each time the file changes.</span></dd></div>
-</dl>
+<section class="mh-section" aria-labelledby="mh-connect">
+<h2 id="mh-connect">Connect it to anything</h2>
+<p class="mh-intro">Mesh is not a server and does not assume one. The module is your domain, and whatever you build around it calls the same functions, with the same checks.</p>
+<ul class="mh-connect">
+<li><strong>An HTTP API.</strong> A route handler turns the request into an input and an actor, and calls the function. The HTTP layer stays yours.</li>
+<li><strong>A command line or a worker.</strong> A task calls the same function a request handler would, with the same validation and the same policies.</li>
+<li><strong>A user interface.</strong> The server side of your UI calls the functions directly; there is no client to generate and keep in step.</li>
+<li><strong>An agent.</strong> Give an agent's tool a function to call. The policies still decide what the agent's actor may do.</li>
+</ul>
 </section>
 
-<section class="mh-section" aria-labelledby="mh-who">
-<h2 id="mh-who">Who it is for</h2>
-<p class="mh-intro">You write TypeScript on Bun, and some of your program's data has rules attached: who may read it, what counts as valid, what it means for an order to be complete.</p>
-<ul class="mh-who">
-<li><strong>Backend services and APIs.</strong> One declaration replaces a table definition, the input types, a validation layer and a controller. The HTTP layer stays yours.</li>
-<li><strong>Command-line tools and workers.</strong> An action is a function. A task calls the same code a request handler runs.</li>
-<li><strong>Applications with an AI agent in them.</strong> Editing one small declarative file, then running one command, is a smaller job for an agent than editing a model, a schema and a service layer together.</li>
+<section class="mh-section mh-agent" aria-labelledby="mh-agent">
+<h2 id="mh-agent">Ready for your agent</h2>
+<p class="mh-lead">The less your agent writes, the less it can get wrong. With Mesh it writes one small declarative file per entity; everything else is built from that file by Mesh's own generators.</p>
+<ul class="mh-why">
+<li><strong>Fewer places to make a mistake.</strong> The types, functions, validators and checks are generated, the same for every project and the same on every build, instead of written fresh by the agent each time.</li>
+<li><strong>A smaller diff to review.</strong> You read the change to the entity file, the part that carries the intent. The generated code is committed beside it, but it follows from the file.</li>
+<li><strong>Less to write, less to read.</strong> One file is the whole truth about an entity, so an agent changing a rule reads and writes that file, not a model, a schema and a service layer.</li>
+<li><strong>Mistakes stop at build time, with a fix.</strong> A misspelled field in <code>accept</code> is an error at that name, with the line, the column and a suggestion, which an agent can act on in one step.</li>
+<li><strong>Tools that answer instead of guessing.</strong> <code>mesh build</code> writes a rules file for the agent to read; <code>mesh inspect</code> prints the model with the source position of every declaration; <code>mesh explain</code> prints the plan a call will follow.</li>
 </ul>
+<div class="mh-tally">
+<h3>What the agent writes, and what it does not</h3>
+<p>It writes the 20 lines of <code>todo.mesh.mx</code> above. It does not write the types, the action functions, the input validators, the authorization checks, the table schema, the migration SQL, the rules file or the model: the diagram above shows where each comes from.</p>
+<pre><code>src/domain/todo/todo.mesh.mx:11:28 error `accept` names :titel,
+which is not an attribute of :Todo. Did you mean :title?</code></pre>
+</div>
+<p class="mh-more">More in <a href="/docs/ai-agents/">Working with AI agents</a>: the rules file, <code>mesh inspect</code>, <code>mesh explain</code>, and what Mesh does not solve for an agent.</p>
 </section>
 
 <nav class="mh-doors" aria-label="Sections of this site">

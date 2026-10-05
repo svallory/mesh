@@ -7,7 +7,8 @@ import { readFileSync } from 'node:fs';
 import { highlightMx, mxParseProblems } from '../plugins/mx-highlight.js';
 
 const page = readFileSync(new URL('../docs/index.md', import.meta.url), 'utf8');
-const fences = [...page.matchAll(/^```mx(?:[ \t][^\n]*)?\n([\s\S]*?)^```[ \t]*$/gm)].map((m) => m[1]);
+// The entity file is an `mx-flow` fence (plugins/mesh-home.js), the left half of the build diagram.
+const fences = [...page.matchAll(/^```mx(?:-flow)?(?:[ \t][^\n]*)?\n([\s\S]*?)^```[ \t]*$/gm)].map((m) => m[1]);
 
 const SECTIONS = new Set(['attributes', 'relationships', 'computed', 'actions', 'policies']);
 
@@ -29,7 +30,10 @@ test('the home page has one entity file, the todo file in syntax v3', () => {
   }
   // The flagship file's idea, in the order a reader meets it.
   const shape = ['uuid :id primary-key', 'string :title min=1', 'boolean :done default=false',
-    'belongs-to=:List :list', 'create :create accept=[:title, :listId]', 'policy :owner'];
+    'belongs-to=:List :list', 'create :create accept=[:title, :listId]', 'update :rename accept=[:title]',
+    'read :pending', 'sort\n        asc :title', 'policy :owner'];
+  // A read's order is a `sort` section, never the old `sort=[...]` option.
+  expect(fences[0]).not.toContain('sort=');
   let at = -1;
   for (const part of shape) {
     const next = fences[0].indexOf(part);
@@ -41,4 +45,64 @@ test('the home page has one entity file, the todo file in syntax v3', () => {
 test("the home page's entity file highlights with no error", () => {
   expect(mxParseProblems(fences[0], 'docs/index.md')).toEqual([]);
   expect(highlightMx(fences[0])).toContain('<span class="ts-tag">entity</span>');
+});
+
+// The page quotes facts about its own sample; they must stay true when it changes.
+test("the page's claims about its entity file match the file", () => {
+  const lines = fences[0].replace(/\n$/, '').split('\n');
+  expect(page).toContain(`It writes the ${lines.length} lines of <code>todo.mesh.mx</code> above.`);
+  // The build error the agents section shows is the one the build would print for
+  // a misspelled `:title` in this file's `accept`: same line, same column.
+  const row = lines.findIndex((line) => line.includes('create :create accept=[:title'));
+  const column = lines[row].indexOf(':title') + 1;
+  expect(page).toContain(`src/domain/todo/todo.mesh.mx:${row + 1}:${column} error \`accept\` names :titel,`);
+  // Every box's function names are the actions the file declares.
+  for (const name of ['createTodo', 'renameTodo', 'pendingTodo', 'readTodo', 'destroyTodo']) expect(page).toContain(name);
+});
+
+test('every box names sections the file has, and the island is loaded from where the build writes it', async () => {
+  const { FLOW_SECTIONS } = await import('../plugins/mesh-home.js');
+  const boxes = [...page.matchAll(/<div class="mh-box" data-box="([a-z]+)" data-from="([a-z ]+)"/g)];
+  expect(boxes.map((m) => m[1])).toEqual(['types', 'functions', 'validation', 'authorization', 'table', 'migrations', 'rules', 'model']);
+  for (const [, , from] of boxes) for (const part of from.split(' ')) expect(FLOW_SECTIONS).toContain(part);
+  const build = readFileSync(new URL('../island/build.ts', import.meta.url), 'utf8');
+  expect(build).toContain("'../site/assets/home-flow.js'");
+  expect(page).toContain("import((window.DOCMD_BASE || '/') + 'assets/home-flow.js')");
+  expect(page).toContain("matchMedia('(prefers-reduced-motion: reduce)')");
+});
+
+// The headline breaks between its two sentences and nowhere else: each is a block.
+test('the headline is two sentences, one block each', () => {
+  expect(page).toContain('<h1 id="mh-title" class="mh-title"><span>Describe your domain once.</span> <span>Mesh builds the rest.</span></h1>');
+});
+
+// The home quotes two things the Docs define: what the rules file says, and what a
+// build error says. Both must read as the Docs pages have them, so a change to
+// either page fails here until the home follows.
+const docsPage = (name) => readFileSync(new URL(`../docs/docs/${name}`, import.meta.url), 'utf8');
+
+test('the rules-file box quotes the rules file as Working with AI agents shows it', () => {
+  const agents = docsPage('ai-agents.md');
+  const rules = /## The rules file[\s\S]*?```text\n([\s\S]*?)```/.exec(agents)?.[1];
+  expect(rules).toBeDefined();
+  const box = /data-box="rules"[\s\S]*?<div class="mh-snip"><code>([\s\S]*?)<\/code><\/div>/.exec(page)?.[1];
+  expect(box).toBeDefined();
+  for (const line of box.split('\n')) expect(rules).toContain(line.trim());
+  // Names are atoms there, so they are atoms here: never a quoted name.
+  expect(box).not.toMatch(/\("|"[a-z]\w*",/);
+});
+
+test('the build error quotes the message as Configuration prints it', () => {
+  const sample = /error `accept` names :titel, which is not an attribute of :Todo\. Did you mean :title\?/;
+  expect(docsPage('configuration.md')).toMatch(sample);
+  const quoted = /<pre><code>(src\/domain\/todo\/todo\.mesh\.mx:[\s\S]*?)<\/code><\/pre>/.exec(page)?.[1];
+  expect(quoted?.replace(/\n/g, ' ')).toMatch(sample);
+});
+
+test('nothing on the home quotes a name where the entity file would write an atom', () => {
+  // A quoted lower-case identifier, outside HTML attributes and the TypeScript
+  // sample (where field names are strings at run time, as the Docs say).
+  const text = page.replace(/```ts[\s\S]*?```/g, '').replace(/<[^>]+>/g, ' ');
+  const quoted = [...text.matchAll(/"([a-z][A-Za-z]*)"/g)].map((m) => m[1]);
+  expect(quoted.filter((name) => name !== 'todos')).toEqual([]);
 });
