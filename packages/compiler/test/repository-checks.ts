@@ -5,6 +5,37 @@ import { parse } from "./helpers.ts";
 
 // ADR-0043: only packages declaring tag contracts may mention MX; extensions join in M6.
 export const MX_IMPORT_PACKAGES = ["packages/compiler"] as const;
+
+/**
+ * The one `@mxlang` mention allowed outside those packages.
+ *
+ * The docs site highlights `mx` fences with MX's own tree-sitter highlighter,
+ * which is the published `@mxlang/tree-sitter-mx` (ADR-0065). It is a build-time
+ * grammar for the documentation, not the entity vocabulary, so `@mxlang/core` and
+ * `@mxlang/data` stay forbidden everywhere outside `packages/compiler` and only
+ * this one package name passes in `apps/docs`. A blanket exemption for the docs
+ * app would have let the vocabulary's own packages back in.
+ */
+export const MX_HIGHLIGHTER_PACKAGE = "@mxlang/tree-sitter-mx";
+
+/**
+ * The offset of the first `@mxlang` mention in `source` that is not the
+ * highlighter, or -1. `@mxlang/tree-sitter-mx-something` does not pass: the name
+ * must end where the package name ends.
+ */
+function firstForbiddenMxMention(source: string): number {
+  for (let at = 0; ;) {
+    const found = source.indexOf("@mxlang", at);
+    if (found === -1) return -1;
+    const end = found + MX_HIGHLIGHTER_PACKAGE.length;
+    const next = source[end];
+    if (source.startsWith(MX_HIGHLIGHTER_PACKAGE, found) && (next === undefined || !/[\w.-]/.test(next))) {
+      at = end;
+      continue;
+    }
+    return found;
+  }
+}
 const sourceExtensions = new Set([".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".json"]);
 const lockFiles = new Set(["bun.lock", "bun.lockb", "bun.lock.json", "package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml"]);
 const within = (path: string, dir: string) => path === dir || path.startsWith(`${dir}/`);
@@ -25,11 +56,13 @@ function walk(root: string, dir: string, allFiles = false): string[] {
 /** Deliberately text-only: comments, strings, wrappers and dependency fields all count.
  * Specifiers assembled at run time from pieces cannot be caught by this substring rule;
  * the package.json dependency rule plus code review are the backstop.
+ *
+ * The one exception is `MX_HIGHLIGHTER_PACKAGE`, the docs site's grammar (ADR-0065).
  */
 export function checkMxImports(root: string): string[] {
   return ["packages", "apps", "examples"].flatMap((group) => walk(root, join(root, group))).sort().flatMap((file) => {
     const source = readFileSync(file, "utf8");
-    const first = source.indexOf("@mxlang");
+    const first = firstForbiddenMxMention(source);
     if (first === -1) return [];
     const path = relative(root, file).split(sep).join("/");
     const line = source.slice(0, first).split(/\r\n|\r|\n/).length;
