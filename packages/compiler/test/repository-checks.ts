@@ -170,84 +170,166 @@ function docsMxBlocks(dir: string): DocsBlock[] {
 }
 
 /**
- * The operator's entity file syntax v2 (ruling of 2026-10-05): a declaration is
- * `kind #name`, so every Docs sample is a v2 entity file and today's contracts
- * cannot read one. Two rules keep the check honest while the rename task has not
+ * The operator's entity file syntax v3 (ruling of 2026-10-05 evening, ADR-0066):
+ * a declaration is `kind :name` and every name, reference and fixed-set value is
+ * an atom, so every Docs sample is a v3 entity file and today's contracts cannot
+ * read one. Two rules keep the check honest while the atoms realignment has not
  * run:
  *
- *  - a v2 block is parsed for real, by `parseData` with no contracts, after one
+ *  - a v3 block is parsed for real, by `parseData` with no contracts, after one
  *    in-memory normalisation of the spellings MX does not parse yet;
  *  - its parse with the contracts is deferred, counted and printed under one name.
  *
- * The rules of v2 that the normalisation covers are the ones MX has queued
- * (decision 146): `#name` after a space, and the `:label` sugar.
+ * The spellings the normalisation covers are the ones MX has queued (decisions
+ * 145 and 146): an atom in a value, and a tagless `:field=value` line, which
+ * needs the parent's `defaultTag`.
  */
-export const DOCS_SYNTAX = "syntax v2";
+export const DOCS_SYNTAX = "syntax v3";
 
-/** The one named reason a v2 block's contracts parse is deferred under. */
-export const DOCS_SYNTAX_PENDING_RENAME = `${DOCS_SYNTAX}, pending the rename task`;
+/** The one named reason a v3 block's contracts parse is deferred under. */
+export const DOCS_SYNTAX_PENDING_ATOMS = `${DOCS_SYNTAX}, pending the atoms realignment`;
 
-/** A complete v2 entity file: comments and imports may come first, then `entity #Name`. */
-export function isV2EntityFile(block: string): boolean {
+/** A complete v3 entity file: comments and imports may come first, then `entity :Name`. */
+export function isV3EntityFile(block: string): boolean {
   for (const line of block.split("\n")) {
     const text = line.trim();
     if (text === "" || text.startsWith("//")) continue;
     if (text.startsWith("import ")) continue;
-    return /^entity\s+#\w+/.test(text);
+    return /^entity\s+:\w+/.test(text);
   }
   return false;
 }
 
 /**
- * Rewrites the v2 spellings MX cannot parse yet into today's, in memory only:
+ * Rewrites the v3 spellings MX cannot parse yet into today's, in memory only.
+ * One function, four rules, in the order they must run:
  *
- *  - `kind #name` becomes `kind#name`, the form that parses today;
- *  - `kind=Destination #name` becomes `kind#name="Destination"`, because a value
- *    cannot be glued to a name (the same gap, and the same decision);
- *  - `check :label` becomes `check`, dropping the `:label` sugar.
+ *  - a relationship names its destination as an atom, `belongs-to=:Customer :customer`,
+ *    becomes `belongs-to#customer=:Customer`: a value cannot be glued to a name
+ *    (MX decision 146);
+ *  - a tagless line in `set`, `:status=:sent`, becomes `#status=:sent`, the form
+ *    today's parser reads as a line of the parent's default tag
+ *    (MX decision 145, `defaultTag`);
+ *  - a declaration name, `kind :name`, becomes `kind#name`, the one name sigil
+ *    alpha.2 parses (it arrives as the tag's `name`);
+ *  - every remaining atom becomes a string: `accept=[:title, :listId]`,
+ *    `default=:draft`, `on=:create`, `on:load=:visible`, `self.status === :sent`.
+ *    An atom is only recognised after the start of a line, whitespace, `=`, `[`,
+ *    `(` or `,`, so an attribute name that contains a colon (`on:load`) and the
+ *    ` : ` of a ternary are both left alone.
  *
  * Indentation, literals, arrow functions and block bodies are already today's
- * syntax and are left exactly as written, as is every comment.
+ * syntax and are kept exactly as written, as is every comment. This whole
+ * function disappears when Mesh pins the MX alpha that parses atoms (decision
+ * 156); nothing else in the check changes with it.
  */
-export function normaliseV2(source: string): string {
+const ATOM_AS_VALUE = /(^|[\s=[(,])\s*:([A-Za-z][\w-]*)/g;
+
+export function normaliseV3(source: string): string {
   return source.split("\n").map((line) => {
     if (line.trim() === "" || line.trimStart().startsWith("//")) return line;
     const indent = line.slice(0, line.length - line.trimStart().length);
     const rest = line.trimStart();
-    const valued = /^([a-z][a-z0-9-]*)=([A-Za-z][\w]*)\s+#(\w+)(.*)$/.exec(rest);
-    if (valued) return `${indent}${valued[1]}#${valued[3]}="${valued[2]}"${valued[4]}`;
-    const named = /^([a-z][a-z0-9-]*)\s+#(\w+)(.*)$/.exec(rest);
-    if (named) return `${indent}${named[1]}#${named[2]}${named[3]}`;
-    return `${indent}${rest.replace(/(^|\s):[a-z][a-z0-9-]*/g, "$1")}`;
+    const relationship = /^([a-z][a-z0-9-]*)=:(\w+)\s+:(\w+)(.*)$/.exec(rest);
+    const field = /^:(\w+)=(.*)$/.exec(rest);
+    const named = /^([a-z][a-z0-9-]*)\s+:(\w+)(.*)$/.exec(rest);
+    let rewritten = rest;
+    if (relationship) rewritten = `${relationship[1]}#${relationship[3]}="${relationship[2]}"${relationship[4]}`;
+    else if (field) rewritten = `#${field[1]}=${field[2]}`;
+    else if (named) rewritten = `${named[1]}#${named[2]}${named[3]}`;
+    // The last rule runs on the whole line, so an atom in the options of a
+    // declaration (`create :create accept=[:title]`) is normalised as well.
+    return `${indent}${rewritten.replace(ATOM_AS_VALUE, '$1"$2"')}`;
   }).join("\n");
 }
 
-/** Parses a v2 block with no contracts; a parser crash is a finding, not an exception. */
-export function parseV2(source: string, file: string): DataDiagnostic[] {
+/**
+ * An option whose value is a single name or enum value, written as a string:
+ * `accept="title"`, `default="draft"`, `on:load="visible"`. A list is handled
+ * by `V3_LIST_OF_QUOTED_NAMES` below.
+ */
+const V3_QUOTED_NAME =
+  /(?:^|[\s])(accept|auto|types|actions|load|sort|require|default|on|on:load|belongs-to|has-many|has-one)=("[^"]*")/;
+
+/**
+ * An option whose value is a list written as quoted identifiers: `fields=[
+ * "status", "amount"]`, `accept=["title"]`. Any option may hold such a list,
+ * including one an extension adds (`audit fields=[...]`), because a list of
+ * quoted identifiers is a list of names wherever it appears.
+ *
+ * The one exclusion is an option whose value is genuinely a list of text.
+ * None of the v1 vocabulary has one — `table`, `message`, `code`, `of`,
+ * `match` and `domain` are all single strings, and `values` holds enum values,
+ * which are atoms, not text — so the set is empty and is kept as a named,
+ * auditable place to add one. A *single* quoted value is not caught here: for
+ * an option nobody has declared, `"some text"` and a name look the same, and
+ * guessing would produce false findings on ordinary text.
+ */
+const V3_TEXT_LIST_OPTIONS = new Set<string>();
+const V3_LIST_OF_QUOTED_NAMES =
+  /(\b[a-z][a-z0-9-]*)=(\[\s*(?:"[\w-]+"\s*,?\s*)+\])/g;
+
+/**
+ * The first line of a block that is not written in syntax v3, or `null`.
+ *
+ * The parser cannot see any of this: `accept=["title"]` and `sort=[:dueOn]`
+ * are perfectly good input to MX, so the block would parse and the page would
+ * drift back to the old syntax without any check noticing. These are the rules
+ * of the syntax the docs enforce, and this is where it enforces them.
+ */
+export function quotedNameInV3(block: string): string | null {
+  for (const [index, line] of block.split("\n").entries()) {
+    const text = line.trim();
+    if (text === "" || text.startsWith("//")) continue;
+    // A `set` step's own line names a field with an atom, not an option.
+    if (/^set\b/.test(text)) continue;
+    // A read's order is a `sort` section with `asc`/`desc` lines (ADR-0066).
+    if (/(?:^|[\s])sort=/.test(text)) {
+      return `line ${index + 1}: a read's order is a \`sort\` section with \`asc :field\` and \`desc :field\` lines, not a \`sort=\` option (${text})`;
+    }
+    const name = V3_QUOTED_NAME.exec(text);
+    if (name) {
+      return `line ${index + 1}: \`${name[1]}\` takes a name as an atom, not a string (${text})`;
+    }
+    V3_LIST_OF_QUOTED_NAMES.lastIndex = 0;
+    for (let list = V3_LIST_OF_QUOTED_NAMES.exec(text); list; list = V3_LIST_OF_QUOTED_NAMES.exec(text)) {
+      if (V3_TEXT_LIST_OPTIONS.has(list[1]!)) continue;
+      return `line ${index + 1}: \`${list[1]}\` takes a list of names as atoms, not strings (${text})`;
+    }
+    const oldName = /^[a-z][a-z0-9-]*\s+#(\w+)/.exec(text);
+    if (oldName) return `line ${index + 1}: a declaration is \`kind :name options\`; \`#${oldName[1]}\` is the old spelling (${text})`;
+  }
+  return null;
+}
+
+/** Parses a v3 block with no contracts; a parser crash is a finding, not an exception. */
+export function parseV3(source: string, file: string): DataDiagnostic[] {
   try {
-    return parseData(normaliseV2(source), file).diagnostics;
+    return parseData(normaliseV3(source), file).diagnostics;
   } catch (cause) {
     return [{ severity: "error", message: `MX could not parse the block at all: ${(cause as Error).message.split("\n")[0]}`, line: 1, column: 0, offset: 0 }];
   }
 }
 
 /**
- * The stricter companion: every MX fence on the Docs pages must be a complete v2
+ * The stricter companion: every MX fence on the Docs pages must be a complete v3
  * entity file, so a page cannot drift back to another syntax, and every one of them
- * must parse. A block whose root is not `entity #Name` fails here.
+ * must parse. A block whose root is not `entity :Name` fails here.
  */
-export function checkDocsSyntaxV2(dir: string) {
+export function checkDocsSyntaxV3(dir: string) {
   let checked = 0;
   const errors: string[] = [];
   for (const { name, line, block, closed } of docsMxBlocks(dir)) {
     const where = `${name}:${line}`;
     if (!closed) { errors.push(`${where}: unclosed MX fence`); continue; }
-    if (!isV2EntityFile(block.join("\n"))) {
-      errors.push(`${where}: MX fence is not a complete ${DOCS_SYNTAX} entity file: its root must be \`entity #Name\``);
+    if (!isV3EntityFile(block.join("\n"))) {
+      errors.push(`${where}: MX fence is not a complete ${DOCS_SYNTAX} entity file: its root must be \`entity :Name\``);
       continue;
     }
     checked++;
-    for (const diagnostic of parseV2(`${block.join("\n")}\n`, where)) {
+    const quoted = quotedNameInV3(block.join("\n"));
+    if (quoted) errors.push(`${where}: MX fence is not written in ${DOCS_SYNTAX}: ${quoted}`);
+    for (const diagnostic of parseV3(`${block.join("\n")}\n`, where)) {
       errors.push(`${where}: MX block ${diagnostic.line}:${diagnostic.column + 1}: ${diagnostic.message}`);
     }
   }
@@ -259,19 +341,19 @@ export function checkDocsSyntaxV2(dir: string) {
 export function checkDocsSamples(dir: string) {
   let parsed = 0;
   let skipped = 0;
-  let v2 = 0;
+  let v3 = 0;
   const deferred: { at: string; reason: string }[] = [];
   const errors: string[] = [];
   for (const { name, line, block, closed } of docsMxBlocks(dir)) {
     const where = `${name}:${line}`;
     if (!closed) errors.push(`${where}: unclosed MX fence`);
-    // A v2 entity file is parsed here for real, without the contracts, and its
+    // A v3 entity file is parsed here for real, without the contracts, and its
     // contracts parse is deferred under one name rather than counted as a finding.
-    if (isV2EntityFile(block.join("\n"))) {
-      v2++;
+    if (isV3EntityFile(block.join("\n"))) {
+      v3++;
       parsed++;
-      deferred.push({ at: where, reason: DOCS_SYNTAX_PENDING_RENAME });
-      for (const diagnostic of parseV2(`${block.join("\n")}\n`, where)) {
+      deferred.push({ at: where, reason: DOCS_SYNTAX_PENDING_ATOMS });
+      for (const diagnostic of parseV3(`${block.join("\n")}\n`, where)) {
         errors.push(`${where}: MX block ${diagnostic.line}:${diagnostic.column + 1}: ${diagnostic.message}`);
       }
       continue;
@@ -292,7 +374,7 @@ export function checkDocsSamples(dir: string) {
   }
   const byReason = new Map<string, number>();
   for (const { reason } of deferred) byReason.set(reason, (byReason.get(reason) ?? 0) + 1);
-  console.log(`Docs MX samples: parsed ${parsed} (${v2} of them ${DOCS_SYNTAX} entity files, parsed without contracts), deferred ${deferred.length}, skipped ${skipped} fragments`);
+  console.log(`Docs MX samples: parsed ${parsed} (${v3} of them ${DOCS_SYNTAX} entity files, parsed without contracts), deferred ${deferred.length}, skipped ${skipped} fragments`);
   for (const [reason, count] of byReason) console.log(`  deferred (${count}): ${reason}`);
   if (parsed === 0 && deferred.length === 0) errors.push("Docs sample check parsed no complete entity blocks");
   return { parsed, skipped, deferred, errors };

@@ -23,7 +23,6 @@ import {
   classesOf,
   escapeHtml,
   parseMx,
-  renderFence,
 } from '@mxlang/tree-sitter-mx/docmd';
 
 /**
@@ -46,8 +45,36 @@ import {
  * @param {string} [file] the page, for the figure's own problem list
  * @returns {string[]}
  */
+/**
+ * The one spelling the grammar cannot read yet, and the name of the allowance.
+ *
+ * An entity file (syntax v3, ADR-0066) writes a `set` step's lines as
+ * `:field=value`: a tagless line whose name is an atom. MX 0.1.0-alpha.2 reads
+ * `#field=value` (the tag resolves as the parent's `defaultTag`, MX decision 145)
+ * but not the atom, and one such line puts an ERROR node at the root of the whole
+ * block, which leaves every line under it uncoloured and fails the build.
+ *
+ * TEMPORARY, and owed to MX: delete `withAtomSetLines` and the three calls to it
+ * when Mesh pins the MX alpha that parses atoms (MX decision 156). It changes one
+ * character per line, so every offset, line number and figure slice below is the
+ * same length as the author's text, and it does not touch the error check: a block
+ * the grammar cannot read for any other reason still fails the build.
+ */
+export const MX_ATOM_SET_LINES_PENDING_MX_ATOMS = 'atoms: a tagless :field=value line in a set';
+
+/** Rewrites the tagless `:field=value` lines to the `#field=value` the grammar reads. */
+export function withAtomSetLines(source) {
+  return source
+    .split('\n')
+    .map((line) => {
+      const tagless = /^(\s+):([A-Za-z]\w*)=(.*)$/.exec(line);
+      return tagless ? `${tagless[1]}#${tagless[2]}=${tagless[3]}` : line;
+    })
+    .join('\n');
+}
+
 export function mxParseProblems(source, file = '<mx block>') {
-  const tree = parseMx(source);
+  const tree = parseMx(withAtomSetLines(source));
   if (!tree.rootNode.hasError) return [];
   const rows = new Set();
   const visit = (node) => {
@@ -87,7 +114,13 @@ export function mxParseProblems(source, file = '<mx block>') {
 export function highlightMx(source) {
   const problems = mxParseProblems(source);
   if (problems.length > 0) throw new Error(problems.join('\n'));
-  return renderFence(source);
+  // The classes come from the rewritten source (the grammar cannot read a
+  // tagless `:field=value` line yet) and the text from the author's own, so a
+  // fence shows `:status=:sent` and not the `#status=:sent` it was rewritten
+  // to. `renderFence` is the same wrapper the package emits, which is what
+  // docmd's own `mx` styling expects.
+  const inner = mxHighlighter(source)(0, source.replace(/\n$/, '').length);
+  return `<pre class="hljs mx-hl"><code class="language-mx">${inner}</code></pre>`;
 }
 
 /**
@@ -111,7 +144,7 @@ export function highlightMx(source) {
 export function mxHighlighter(source, file) {
   const problems = mxParseProblems(source, file);
   if (problems.length > 0) throw new Error(problems.join('\n'));
-  const classes = classesOf(source);
+  const classes = classesOf(withAtomSetLines(source));
   return (start, end) => {
     let html = '';
     let at = start;

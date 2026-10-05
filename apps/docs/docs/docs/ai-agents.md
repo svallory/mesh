@@ -22,13 +22,13 @@ The tutorial's two entity files are 25 and 39 lines. That is the whole surface a
 `mesh build` writes `.mesh/rules.md`: a short description of your entities — which actions exist and what they accept — and of Mesh's vocabulary: the field types, the action types and the declarations an extension adds. It is generated, so it cannot drift from the code. Condensed onto three lines, the todo above looks like this:
 
 ```text
-entity Todo (table "todos")
-  attributes: id uuid primary-key, title string min=1, done boolean default=false
-  actions: auto read destroy; create accept=("title", "listId"); update complete, rename
-  policy owner types=(create read update destroy): authorize-if self.list.ownerId == actor.id
+entity :Todo table="todos"
+  attributes: :id uuid primary-key, :title string min=1, :done boolean default=false
+  actions: auto read destroy; create :create accept=[:title, :listId]; update :complete, :rename
+  policy :owner types=[:create, :read, :update, :destroy]: authorize-if self.list.ownerId === actor.id
 ```
 
-(That is the shape of the content, not the file's exact text: the real file is longer and lists every entity.)
+(That is the shape of the content, not the file's exact text: the real file is longer and lists every entity.) It writes names and lists of names the way an entity file does, because that is what it is teaching: an agent that copies a line from it into a `.mesh.mx` file has written a valid one.
 
 Point your agent at it. If your agent reads a project file such as `AGENTS.md`, have it read `.mesh/rules.md` too.
 

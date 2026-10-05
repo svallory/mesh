@@ -96,7 +96,7 @@ Each adapter has two halves: a build-time half that emits Drizzle table definiti
 
 **Column names (lead ruling, 2026-10-04).** A column is named exactly like its attribute: `dueOn` stays `dueOn`, with no camelCase-to-snake_case transform.
 
-**Table placement.** `table` is an attribute of the entity line, `entity #Invoice table="invoices"` ([ADR-0050](../decisions/0050-entity-file-syntax.md)). The operator's ruling of 2026-10-04 to move it to a data-layer section once the extension host exists ([rulings before M2](../decisions/rulings-2026-10-04.md)) predates syntax v2, which keeps it on the entity line.
+**Table placement.** `table` is an attribute of the entity line, `entity :Invoice table="invoices"` ([ADR-0050](../decisions/0050-entity-file-syntax.md)). The operator's ruling of 2026-10-04 to move it to a data-layer section once the extension host exists ([rulings before M2](../decisions/rulings-2026-10-04.md)) predates syntax v2, which keeps it on the entity line ([ADR-0066](../decisions/0066-names-and-references-are-atoms.md) changes how the entity is named, not where `table` goes).
 
 **Isolation rule.** Drizzle is imported only under `packages/data-*` and in the emitted schema file. Generated action functions never import Drizzle, the model or `model.json`; `verify` checks it ([roadmap](../roadmap/roadmap.md), M2, test 4).
 

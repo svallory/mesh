@@ -141,7 +141,7 @@ Exit codes: `0` success, `1` errors were found, `2` usage error.
 Every diagnostic names the file, the line and the column, both 1-based, and says what to do:
 
 ```text
-src/domain/todo/todo.mesh.mx:11:21 error `accept` names "titel", which is not an attribute of Todo. Did you mean "title"?
+src/domain/todo/todo.mesh.mx:18:28 error `accept` names :titel, which is not an attribute of :Todo. Did you mean :title?
 ```
 
 The same shape is used for an unknown declaration, one the build does not implement, a duplicate entity name, a free variable in an expression and a capability the adapter does not declare. Nothing is silently dropped.
@@ -216,7 +216,7 @@ bunx mesh migrate apply
 bunx mesh migrate generate --allow drop:Todo.title
 ```
 
-The name after the colon is the entity and the column, as the entity file spells them.
+The name after the colon is the entity and the column, without the colon the entity file writes them with.
 
 The migration is a plain SQL file in `migrations/`, and you commit it. Generating never applies anything; applying is a separate, explicit command. So a new machine, and your production environment, reach the same shape with `mesh migrate apply`.
 
