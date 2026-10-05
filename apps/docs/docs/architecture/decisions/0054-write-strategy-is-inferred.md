@@ -35,8 +35,8 @@ The rulings do not mention `require-atomic`. Something had to be decided.
 The write strategy is chosen by the build from the action body. There is no `require-atomic` attribute.
 
 - An update or destroy is **atomic** when every `check` reads only `input`, and every `set` value is a translated expression that reads nothing stored except the column it assigns (a literal, an input value, `self.count + 1` for `#count`).
-- Anything else makes it **read-then-write**: a `check` or `when` that reads `self`, a `set` value that reads another stored column, a plain-code value (a body that is not one expression), or a `run` step.
-- `mesh explain <entity> <action>` prints the strategy and the reason, naming the line that made the action read-then-write. The output for the example is committed and guarded, so a change of strategy shows in review.
+- Anything else makes it **read-then-write**: a `check` or `when` that reads `self`, a `set` value that reads another stored column, a `check`, `when` or `set` value that cannot be translated (a body that is not one expression, or one expression the translator does not support), or a `run` step. None of these is an error ([ADR-0056](./0056-translated-expressions-are-one-expression-arrows.md)).
+- `mesh explain <entity> <action>` prints the strategy and the reason, naming the line or the expression that made the action read-then-write. The output for the example is committed and guarded, so a change of strategy shows in review.
 - Everything else in [ADR-0017](./0017-atomic-by-default-and-classification.md) stands: the strategy is fixed at build time, a step never runs twice, the read-then-write path takes a write lock, and folding record-reading checks into the statement stays after v1 ([ADR-0044](./0044-folding-record-reading-validations.md)).
 
 ## Options considered

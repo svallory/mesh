@@ -50,7 +50,7 @@ One rule can be needed in two places. A filter must run in the database so that 
 - **Where SQL is required** (a `filter`, a `sort`, a policy check, a rollup's `of`, or inside another translated expression), the expression must translate. A construct the translator does not support there is a build error at that node, reported in the editor through the contracts' `analyze` hook and again by the build. Using a computed field that runs in memory there is a build error that **names the field and the part that could not be translated**.
 - **A computed field** whose single expression cannot be translated is not an error: `#label` above calls the helper `formatMoney` on `self.total`, so it runs in memory after the record is loaded. `mesh explain` shows which computed fields are translated. Nobody writes a second statement to opt out ([rulings of 2026-10-04](../decisions/rulings-2026-10-04.md), "Rulings after the review of the user docs").
 - **Plain code** is a body with more than one statement, or a `run` step. It is emitted as TypeScript by slicing the authored text at MX's span and runs in memory only.
-- In a `check`'s `that`, a `when` or a `set` value, a one-expression body the translator does not support is an error at that node; it is never silently turned into plain code.
+- In a `check`'s `that`, a `when` or a `set` value, an expression that cannot be translated is not an error either: it runs in memory, which makes the action read-then-write, and `mesh explain` names the expression that caused it ([ADR-0054](../decisions/0054-write-strategy-is-inferred.md)). Only a `filter`, a `sort` and a policy require SQL.
 
 The parameter types expose only what translates, so the editor offers `self.status` but not, for example, string methods the translator lacks.
 
@@ -59,8 +59,8 @@ Where the form matters:
 | Position | Rule |
 |---|---|
 | `filter` on a read | Must be translated; plain code, or a computed field that runs in memory, is a build error naming the field and the untranslatable part. |
-| `check`'s `that`, `when` | Either form. Plain code, or a translated one reading `self`, makes an update read-then-write ([ADR-0054](../decisions/0054-write-strategy-is-inferred.md)). |
-| `set` value | Either form. Only a translated value reading nothing stored except its own column can fold into an atomic `UPDATE`. |
+| `check`'s `that`, `when` | Either form, never an error. Plain code, an expression that cannot be translated, or a translated one reading `self`, makes an update read-then-write ([ADR-0054](../decisions/0054-write-strategy-is-inferred.md)). |
+| `set` value | Either form, never an error. Only a translated value reading nothing stored except its own column can fold into an atomic `UPDATE`; anything else makes the update read-then-write. |
 | Computed field with a body (M7) | A single `return` that Mesh can translate is translated: usable in filters, sorts and policies, also computed in memory on a loaded record. Otherwise the field runs in memory after load, which is not an error; using it in a filter, a sort, a policy or another translated expression is. `mesh explain` shows which. |
 | Rollup `of="lines.amount"` (M7) | A path string checked at build time against generated path types; always SQL. The function form, where a path cannot express it, must be translated. |
 | Policy check (M8) | On a read, must be translated, because it becomes a query filter. Checks inside a policy combine without order ([ADR-0055](../decisions/0055-policies-are-core.md)). On a write, a record-reading check is folded into an atomic statement as a filter, or evaluated on the locked row of a read-then-write action. |
