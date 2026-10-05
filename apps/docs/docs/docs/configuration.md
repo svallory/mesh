@@ -141,7 +141,7 @@ Exit codes: `0` success, `1` errors were found, `2` usage error.
 Every diagnostic names the file, the line and the column, both 1-based, and says what to do:
 
 ```text
-src/domain/todo/todo.mesh.mx:11:21 error `accept` names "titel", which is not an attribute of Todo. Did you mean "title"?
+src/domain/todo/todo.mesh.mx:11:21 error `accept` names :titel, which is not an attribute of :Todo. Did you mean :title?
 ```
 
 The same shape is used for an unknown declaration, one the build does not implement, a duplicate entity name, a free variable in an expression and a capability the adapter does not declare. Nothing is silently dropped.

@@ -21,13 +21,13 @@ An extension declares itself through one typed manifest ([roadmap](../roadmap/ro
 
 | Entry | What it declares |
 |---|---|
-| Tags | New vocabulary: tag contracts the extension adds, in the `kind #name options` shape ([ADR-0050](../decisions/0050-entity-file-syntax.md)). |
+| Tags | New vocabulary: tag contracts the extension adds, in the `kind :name options` shape ([ADR-0050](../decisions/0050-entity-file-syntax.md)). |
 | Transforms | Rewrites of the model, each placed in a named phase. |
 | Verifiers | Read-only checks across entities; a failure stops the build. |
 | Emitters | Each a typed view of the model plus a Jig template ([ADR-0061](../decisions/0061-generators-are-jig-templates.md)). |
 | Expression functions | Each with its in-memory implementation and its SQL form per data adapter ([expressions](./expressions.md)). |
 | Attribute types | A new type tag, with a validator and a column type per adapter. |
-| Steps (planned) | Reusable steps an entity file uses as tags. Their definitions are `step #name` files in `.mesh.mx`, with an `options` section and a body; Mesh derives the tag's contract from the definition. Extensions contribute steps the same way projects do ([ADR-0053](../decisions/0053-validate-then-do.md)). Not in v1. |
+| Steps (planned) | Reusable steps an entity file uses as tags. Their definitions are `step :name` files in `.mesh.mx`, with an `options` section and a body; Mesh derives the tag's contract from the definition. Extensions contribute steps the same way projects do ([ADR-0053](../decisions/0053-validate-then-do.md)). Not in v1. |
 | Context keys read | The keys of the action context the extension reads (for example a multitenancy extension's `tenantId`). Two extensions claiming one key fail the build ([ADR-0059](../decisions/0059-action-context.md)). |
 | Tooling hooks | A `mesh` subcommand. |
 | Adapter requirements | What the extension requires from adapters. |
@@ -53,9 +53,9 @@ A **contribution point** is a place in the model or the vocabulary that its owne
 `entity` belongs to core, and its children (`attributes`, `relationships`, `computed`, `actions`, `policies`) are closed in its contract. Core publishes a contribution point on `entity` for children. Suppose a project-local extension adds an `audit` section:
 
 ```mx
-entity #Invoice table="invoices"
+entity :Invoice table="invoices"
   attributes
-    uuid #id primary-key
+    uuid :id primary-key
   audit fields=["status", "amount"]
 ```
 

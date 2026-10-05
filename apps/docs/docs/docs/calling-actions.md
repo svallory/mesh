@@ -86,14 +86,14 @@ An extension that needs a key of its own states which one it reads, and two exte
 Inside an entity file, the functions receive four parameters: the record as `self`, the caller's own object as `input`, the caller as `actor`, and everything else the call carries as `context`. `context` is what you declared above, and it does not carry `actor` again — the caller is `actor`, and only `actor`. Here a tenant-scoped policy reads the record's own tenant and the call's:
 
 ```mx "src/domain/todo/todo.mesh.mx"
-entity #Todo table="todos"
+entity :Todo table="todos"
   attributes
-    uuid #id primary-key
-    string #title
-    uuid #tenantId
+    uuid :id primary-key
+    string :title
+    uuid :tenantId
 
   policies
-    policy #sameTenant types=["create"]
+    policy :sameTenant types=[:create]
       authorize-if=({ self, context }) => self.tenantId === context.tenantId
 ```
 
@@ -226,7 +226,7 @@ console.log(page.map((todo) => todo.title));
 await disconnect();
 ```
 
-`sort` uses the same strings as the `sort` option in an entity file: a bare name is ascending, `-` in front is descending. `limit` and `offset` page the result.
+`sort` uses the same names as the `sort` option in an entity file — a bare name ascending, `-` in front descending — and here they are strings: **at run time an atom is its name as a string**. That is the only difference, and it holds everywhere — `sort=[:dueOn]` in the entity file is `sort: ["dueOn"]` in a call, `values=[:draft, :sent]` is a `"draft" | "sent"` in TypeScript, and `self.status === :sent` inside the file is `todo.status === "sent"` in yours. `limit` and `offset` page the result.
 
 A filter is a value, not a string, so a field that does not exist is a type error rather than a query that quietly returns nothing. The entity's own filter, the caller's filter and the policies are all combined before the query leaves the process.
 

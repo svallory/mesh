@@ -17,26 +17,28 @@ MX is a separate project that parses Marko-syntax files. For Mesh it offers a "d
 
 MX is core, not an adapter: it is not replaceable, there is no front-end slot and no front-end package, and the tag contracts live in `@meshfw/compiler` ([ADR-0043](../decisions/0043-mx-is-core.md)). `compiler` depends on MX; `model` and `runtime` never import it. `packages/compiler/test/repository-checks.test.ts` checks this boundary as **M1 test 8**, so the compiler's `test` script makes it part of root `verify`. It reads every `.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, `.cjs` and `.json` file under `packages/`, `apps/` and `examples/` as text, without parsing syntax. Any occurrence of the substring `@mxlang` outside the one allow-list constant, currently `packages/compiler`, fails: comments and strings count intentionally, and the diagnostic names the file and the line of its first occurrence. This also forbids MX dependencies in any `package.json` dependency field outside the allow-list. The MX host package and tag-contract extensions join the allow-list when they exist. Only paths with a `node_modules` segment, `apps/docs/site`, `apps/docs/docs`, and lock files are excluded; unrelated folders called `build`, `dist`, `site` or `coverage` remain scanned. Planted reviewer reproductions and dependency declarations prove the check fails, while MX-free angle-bracket assertions and JSX pass. A specifier assembled at run time from separate pieces can evade a substring check; the dependency rule and code review are the backstop.
 
-The same test file reads every `apps/docs/docs/docs/*.md` page and parses complete `mx` fenced blocks with the contracts and both rejection options. Blocks whose first non-blank line does not start with the root tag are fragments and are skipped. Until the realignment task teaches the contracts the `entity` tag, the check rewrites a leading `entity=` to `resource=` in memory and parses the result; only a diagnostic that names something the rename itself will change is deferred, counted and printed. Samples in syntax v2 (`entity #Todo`) need the realignment task's contracts. The check prints parsed/skipped counts, rejects an empty set of complete blocks and names the page, fence line and MX diagnostic on failure; a planted invalid sample tests that failure path.
+The same test file reads every `apps/docs/docs/docs/*.md` page and parses complete `mx` fenced blocks with the contracts and both rejection options. Blocks whose first non-blank line does not start with the root tag are fragments and are skipped. Until the realignment task teaches the contracts the `entity` tag, the check rewrites a leading `entity=` to `resource=` in memory and parses the result; only a diagnostic that names something the rename itself will change is deferred, counted and printed. Samples in syntax v3 (`entity :Todo`) need the realignment task's contracts; until it runs they are parsed with no contracts after one in-memory normalisation of the spellings MX cannot read yet. The check prints parsed/skipped counts, rejects an empty set of complete blocks and names the page, fence line and MX diagnostic on failure; a planted invalid sample tests that failure path.
 
 Entity files use MX concise syntax ([ADR-0041](../decisions/0041-mx-concise-syntax.md)) and end in `.mesh.mx` ([ADR-0051](../decisions/0051-mesh-mx-files-and-the-mesh-host.md)).
 
 ## The vocabulary
 
-The vocabulary is Mesh's own, informed by Ash ([ADR-0049](../decisions/0049-vocabulary-is-meshs-own.md)). Every declaration is `kind #name options` ([ADR-0050](../decisions/0050-entity-file-syntax.md)): `entity #Invoice`, `string #number unique`, `belongs-to=Customer #customer`, `update #pay`, `policy #staffWrites types=["update"]`. The [Ash-to-Mesh mapping](../roadmap/vocabulary-mapping.md) says where each Ash concept went.
+The vocabulary is Mesh's own, informed by Ash ([ADR-0049](../decisions/0049-vocabulary-is-meshs-own.md)). Every declaration is `kind :name options` ([ADR-0050](../decisions/0050-entity-file-syntax.md), as amended by [ADR-0066](../decisions/0066-names-and-references-are-atoms.md)): `entity :Invoice`, `string :number unique`, `belongs-to=:Customer :customer`, `update :pay`, `policy :staffWrites types=[:update]`. The [Ash-to-Mesh mapping](../roadmap/vocabulary-mapping.md) says where each Ash concept went.
 
-## The MX features syntax v2 depends on
+## The MX features syntax v3 depends on
 
-| Feature | Used for | MX state (2026-10-05) |
+| Feature | Used for | MX state (measured 2026-10-05 evening) |
 |---|---|---|
-| `#name` after a space (`update #pay`) | every declaration's name | MX decision 146, next in MX's queue; today only `update#pay` parses |
-| `:label` sugar | the label of a `check` | MX decision 146 |
-| A per-parent `defaultTag` | tagless `#field=value` lines under `set` | MX decision 145: the ladder and the built-in `object` default landed; per-parent `defaultTag` in review |
+| Atoms in a value (`accept=[:title]`, `types=[:update]`, `values=[:draft]`, `default=:draft`, `on=:create`, `on:load=:visible`, an atom inside an expression) | every reference and every fixed-set value | MX decision 156, approved and not implemented. `parseData` 0.1.0-alpha.2 reports `Unexpected token` on each; the operator approved an interim parser bundle for the next alpha |
+| `:name` after a tag (`update :pay`) | every declaration's name | Parses today, and arrives as the attribute `name`, exactly as `#name` did |
+| A relationship's destination as an atom (`belongs-to=:Customer :customer`) | a reference to another entity | The same atom gap: a value cannot be glued to a name (MX decision 146) |
+| A per-parent `defaultTag` | tagless `:field=value` lines under `set` | MX decision 145: the ladder and the built-in `object` default landed; per-parent `defaultTag` in review |
+| The `:label` sugar | the label of a `check` | Parses today |
 | `imports: "pass"` on `parseData` | helper imports at the top of an entity file | scheduled; with `"pass"` the tree gains `imports: [{ code, span }]` in file order and control flow stays rejected |
-| `on:load` as one attribute | `actions on:load="visible"` | final |
+| `on:load` as one attribute | `actions on:load=:visible` | final |
 | A third-party host on the data target, registered through `mx.host` | the `mesh` host that makes `.mesh.mx` resolve in MX tooling | MX decision 148, after 146 |
 
-(MX project notes, updates; the MX lead's answers of 2026-10-05, recorded in [ADR-0051](../decisions/0051-mesh-mx-files-and-the-mesh-host.md).) Until these land, files run through MX tooling stay plain `.mx` and use the glued `kind#name` form.
+(MX project notes, updates; the MX lead's answers of 2026-10-05, recorded in [ADR-0051](../decisions/0051-mesh-mx-files-and-the-mesh-host.md).) Until these land, files run through MX tooling stay plain `.mx`, and the Docs checks normalise the spellings above in memory before they parse ([open questions](../open-questions.md)).
 
 ## The call
 
@@ -52,7 +54,7 @@ Attribute tags (written `@name`) are governed by the parent's `attributeTags`, n
 
 ## The tree
 
-`DataDocument { statements, children }`. A `DataTag` has `name`, `nameSpan`, `span`, `attrs`, `args`, `params`, `attrTags` and `children`. An attribute is a `string`, a `boolean`, an `expression` or a `spread`. A default attribute (in concise syntax, `belongs-to=Customer`) arrives as an attribute named `value`; the `#name` shorthand arrives as the attribute `id`. Reserved names that cannot be data tags: `if`, `else`, `else-if`, `for`, `const`, `define`, `return`, `import`, `export`, `static`, `try`. Duplicate attribute names on one tag: last wins, with a warning (all: MX project notes, getting-started, section 1).
+`DataDocument { statements, children }`. A `DataTag` has `name`, `nameSpan`, `span`, `attrs`, `args`, `params`, `attrTags` and `children`. An attribute is a `string`, a `boolean`, an `expression` or a `spread`. A default attribute (in concise syntax, `belongs-to=:Customer`) arrives as an attribute named `value`; the `:name` sugar arrives as the attribute `name`, and `#name` as the attribute `id`. Reserved names that cannot be data tags: `if`, `else`, `else-if`, `for`, `const`, `define`, `return`, `import`, `export`, `static`, `try`. Duplicate attribute names on one tag: last wins, with a warning (all: MX project notes, getting-started, section 1).
 
 Diagnostics carry `severity`, `message`, `line`, `column`, `offset` (UTF-16) and `file`. `tree` is `undefined` when there is an error. `line` is 1-based and `column` is 0-based: Mesh's tests assert `line: 1, column: 0` for a bad tag at the start of line 1 (`packages/compiler/test/contracts.test.ts`), and MX's note of 2026-10-04 00:32 reports `1:0` for the root tag and `2:2` for an indented child (MX project notes, updates). MX change #227 ("every printed position 1-based") concerns printed positions, not these fields (MX project notes, updates, entry of 2026-10-03 23:02). Which convention Mesh itself prints in its own messages is not decided.
 
@@ -77,7 +79,7 @@ The contracts in `packages/compiler/src/contracts.ts` make every contract closed
 
 | MX enforces (inside `parseData`) | Mesh enforces (after `parseData`) |
 |---|---|
-| Known tags, nesting, parents | Exactly one `entity` per file; `#name` unique within its scope |
+| Known tags, nesting, parents | Exactly one `entity` per file; `:name` unique within its scope |
 | Attribute types, required attributes | Duplicate entity names; `accept` naming a missing attribute; `of=` paths |
 | Structural rejection of non-data constructs | The not-implemented rule ([ADR-0018](../decisions/0018-not-implemented-is-a-build-error.md)) |
 | Conditional rules written in `analyze`, including unsupported constructs in a translated expression | Free variables, the write strategy, capabilities |

@@ -24,8 +24,8 @@ The tutorial's two entity files are 25 and 39 lines. That is the whole surface a
 ```text
 entity Todo (table "todos")
   attributes: id uuid primary-key, title string min=1, done boolean default=false
-  actions: auto read destroy; create accept=("title", "listId"); update complete, rename
-  policy owner types=(create read update destroy): authorize-if self.list.ownerId == actor.id
+  actions: auto read destroy; create accept=(:title, :listId); update complete, rename
+  policy owner types=(:create, :read, :update, :destroy): authorize-if self.list.ownerId == actor.id
 ```
 
 (That is the shape of the content, not the file's exact text: the real file is longer and lists every entity.)

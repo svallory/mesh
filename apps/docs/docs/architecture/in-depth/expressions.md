@@ -14,26 +14,26 @@ Related: [overview](../overview/architecture.md), [how Mesh uses MX](./mx-integr
 An entity file holds small functions. From the reference file of [ADR-0050](../decisions/0050-entity-file-syntax.md):
 
 ```mx
-read #overdue
+read :overdue
   filter=({ self }) => self.isOverdue
-  sort=["dueOn"]
+  sort=[:dueOn]
 ```
 
 ```mx
 do
   set
-    #paidAt=({ input }) => input.paidAt
+    :paidAt=({ input }) => input.paidAt
   when=({ self }) => self.amount > 10000
     set
-      #needsReview=true
+      :needsReview=true
 ```
 
 ```mx
 computed
-  boolean #isOverdue({ self }) {
-    return self.status === "sent" && self.dueOn < today()
+  boolean :isOverdue({ self }) {
+    return self.status === :sent && self.dueOn < today()
   }
-  string #label({ self }) {
+  string :label({ self }) {
     return self.number + " · " + formatMoney(self.total)
   }
 ```
@@ -46,9 +46,9 @@ One rule can be needed in two places. A filter must run in the database so that 
 
 [ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md):
 
-- A function whose **body is one expression Mesh can translate** is **translated**: an arrow, `({ self }) => self.status === "sent"`, or a method body that is a single `return`, as in `#isOverdue` above. It becomes a tree; it runs in SQL where a query needs it and in memory otherwise.
+- A function whose **body is one expression Mesh can translate** is **translated**: an arrow, `({ self }) => self.status === :sent`, or a method body that is a single `return`, as in `:isOverdue` above. It becomes a tree; it runs in SQL where a query needs it and in memory otherwise.
 - **Where SQL is required** (a `filter`, a `sort`, a policy check, a rollup's `of`, or inside another translated expression), the expression must translate. A construct the translator does not support there is a build error at that node, reported in the editor through the contracts' `analyze` hook and again by the build. Using a computed field that runs in memory there is a build error that **names the field and the part that could not be translated**.
-- **A computed field** whose single expression cannot be translated is not an error: `#label` above calls the helper `formatMoney` on `self.total`, so it runs in memory after the record is loaded. `mesh explain` shows which computed fields are translated. Nobody writes a second statement to opt out ([rulings of 2026-10-04](../decisions/rulings-2026-10-04.md), "Rulings after the review of the user docs (2026-10-05, lead under delegation)").
+- **A computed field** whose single expression cannot be translated is not an error: `:label` above calls the helper `formatMoney` on `self.total`, so it runs in memory after the record is loaded. `mesh explain` shows which computed fields are translated. Nobody writes a second statement to opt out ([rulings of 2026-10-04](../decisions/rulings-2026-10-04.md), "Rulings after the review of the user docs (2026-10-05, lead under delegation)").
 - **Plain code** is a body with more than one statement, or a `run` step. It is emitted as TypeScript by slicing the authored text at MX's span and runs in memory only.
 - In a `check`'s `that`, a `when` or a `set` value, an expression that cannot be translated is not an error either: it runs in memory, which makes the action read-then-write, and `mesh explain` names the expression that caused it ([ADR-0054](../decisions/0054-write-strategy-is-inferred.md)). Only a `filter`, a `sort` and a policy require SQL.
 
@@ -69,7 +69,7 @@ An earlier design classified each function by its content: *translatable* if eve
 
 ## What a translated expression may reference
 
-A translated expression may reference its parameters, registered functions, and calls to imported pure functions that do not read `self`; such a call is evaluated once in memory before the query and bound as a parameter. A bare captured value (a variable from the file) is a build error. ([ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md)). A database cannot see a captured value, so a free variable is an error; a call to an imported pure function that does not read `self` is computed once and sent as a parameter, which is how `isStaff(actor)` appears in a policy and `today()` in `#isOverdue`. This is why an imported function must be pure. The research on expression languages recommends the same rule ("parameters, never closures") and the same treatment of the current date ([expression language](../research/expression-language.md), section 6).
+A translated expression may reference its parameters, registered functions, and calls to imported pure functions that do not read `self`; such a call is evaluated once in memory before the query and bound as a parameter. A bare captured value (a variable from the file) is a build error. ([ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md)). A database cannot see a captured value, so a free variable is an error; a call to an imported pure function that does not read `self` is computed once and sent as a parameter, which is how `isStaff(actor)` appears in a policy and `today()` in `:isOverdue`. This is why an imported function must be pure. The research on expression languages recommends the same rule ("parameters, never closures") and the same treatment of the current date ([expression language](../research/expression-language.md), section 6).
 
 ## The tree and its forms
 

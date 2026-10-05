@@ -21,8 +21,8 @@ The function body lists the phases in order, written out for that action, not a 
 
 An action's body in the entity file has two blocks ([ADR-0053](../decisions/0053-validate-then-do.md)):
 
-- **`validate`**: `require=[...]` and `check :label [ that code message ]`, with `when` to nest. It is for rules across fields or about stored state; a rule about one field goes on its line (`decimal #amount min=0`) and is checked in phase 2. It runs first. `self` is the record with the caller's accepted input applied: the sent value for each accepted field, the stored value for the rest (on a create, the defaults); nothing from `do` has run. `input` carries the arguments.
-- **`do`**: steps, run in written order. v1 steps are `set` (`#field=value` lines), `when=cond` with nested steps, `load=[...]` and `run(...) { }` for one-off plain code.
+- **`validate`**: `require=[...]` and `check :label [ that code message ]`, with `when` to nest. It is for rules across fields or about stored state; a rule about one field goes on its line (`decimal :amount min=0`) and is checked in phase 2. It runs first. `self` is the record with the caller's accepted input applied: the sent value for each accepted field, the stored value for the rest (on a create, the defaults); nothing from `do` has run. `input` carries the arguments.
+- **`do`**: steps, run in written order. v1 steps are `set` (`:field=value` lines), `when=cond` with nested steps, `load=[...]` and `run(...) { }` for one-off plain code.
 
 `always` blocks under `actions` (scoped with `types=` and `actions=`) add a shared `validate` and `do` to every action in their scope; their checks run before the action's own, and their steps before the action's own.
 
@@ -71,7 +71,7 @@ The build infers the strategy from the body; the author writes nothing to choose
 
 The criterion ([ADR-0054](../decisions/0054-write-strategy-is-inferred.md)): A create always runs as one statement (one `INSERT`). An update or destroy runs as one statement when its `check` and `when` conditions read only `input`, `actor` and `context` and its `set` values translate; a `check` or `when` that reads `self` makes it read the row first (locked, in the same transaction) and then write. Folding a translated `self` condition into the statement's `WHERE` is after v1 ([ADR-0044](../decisions/0044-folding-record-reading-validations.md)). A `run` step, and a `check`, `when` or `set` value that cannot be translated, also make the action read first; none of these is an error.
 
-**Atomic** is one statement, no read first, so a concurrent writer cannot slip between a read and the write. Translated `set` values fold into the `UPDATE` assignments (a literal, an input value, `self.count + 1` for `#count`). Conditions that read only `input`, `actor` and `context` run in memory before the statement.
+**Atomic** is one statement, no read first, so a concurrent writer cannot slip between a read and the write. Translated `set` values fold into the `UPDATE` assignments (a literal, an input value, `self.count + 1` for `:count`). Conditions that read only `input`, `actor` and `context` run in memory before the statement.
 
 **Read-then-write** is everything else. The action reads the row with a write lock (a row lock on Postgres, an immediate transaction on SQLite), runs `validate` and then `do` in memory with the in-memory forms, collecting every failed check, and writes, all in one transaction, so two calls cannot both act on the same stale row. The data-layer contract gains a "read for update" call for this in M5 ([data layer](./data-layer.md)). `explain` prints "read then write" and names the line that required it.
 
@@ -95,7 +95,7 @@ Ash authorizes writes in six places ([Ash runtime internals](../research/ash-run
 
 ## Arguments and loads
 
-`arguments` are action inputs that are not attributes, declared in the attribute line shape (`datetime #paidAt`). They share one input object with the accepted fields (a name collision is a build error), reach functions as `input`, and are cast like attributes ([ADR-0052](../decisions/0052-actions-auto-and-on-load.md)). A `load=[...]` step names relationships or computed fields to load onto the returned record; it writes nothing ([ADR-0053](../decisions/0053-validate-then-do.md)). A load that cannot be served is a run-time error, never skipped.
+`arguments` are action inputs that are not attributes, declared in the attribute line shape (`datetime :paidAt`). They share one input object with the accepted fields (a name collision is a build error), reach functions as `input`, and are cast like attributes ([ADR-0052](../decisions/0052-actions-auto-and-on-load.md)). A `load=[...]` step names relationships or computed fields to load onto the returned record; it writes nothing ([ADR-0053](../decisions/0053-validate-then-do.md)). A load that cannot be served is a run-time error, never skipped.
 
 ## Errors
 
@@ -112,34 +112,34 @@ Each phase gets one span through the OpenTelemetry API, which does nothing unles
 From the reference file in [ADR-0050](../decisions/0050-entity-file-syntax.md):
 
 ```mx
-update #pay
+update :pay
   arguments
-    datetime #paidAt
+    datetime :paidAt
   validate
     check :invoiceNotSent [
-      that=({ self }) => self.status === "sent"
+      that=({ self }) => self.status === :sent
       code="invalid_state"
       message="only a sent invoice can be paid"
     ]
   do
     set
-      #status="paid"
-      #paidAt=({ input }) => input.paidAt
-      #paidById=({ actor }) => actor.id
+      :status=:paid
+      :paidAt=({ input }) => input.paidAt
+      :paidById=({ actor }) => actor.id
     when=({ self }) => self.amount > 10000
       set
-        #needsReview=true
-    load=["customer"]
+        :needsReview=true
+    load=[:customer]
 ```
 
-and the `always` block that adds `check :dueAfterIssue` (`self.dueOn >= self.issuedOn`) to every create and update, and the policy `#staffWrites types=["create", "update", "destroy"]` with `authorize-if=({ actor }) => isStaff(actor)`.
+and the `always` block that adds `check :dueAfterIssue` (`self.dueOn >= self.issuedOn`) to every create and update, and the policy `:staffWrites types=[:create, :update, :destroy]` with `authorize-if=({ actor }) => isStaff(actor)`.
 
 The check reads `self.status`, a stored value, so the build makes `pay` **read-then-write**; `explain` names the `check :invoiceNotSent` line.
 
 1. **Enter.** `payInvoice({ id, paidAt }, { actor })`.
 2. **Cast.** `id` and the argument `paidAt` pass; anything else is an error.
 3. **Plan.** Read with lock, then write.
-4. **Pre-check.** `isStaff(actor)` reads nothing stored, so `#staffWrites` runs here. A non-staff caller is forbidden before the transaction opens.
+4. **Pre-check.** `isStaff(actor)` reads nothing stored, so `:staffWrites` runs here. A non-staff caller is forbidden before the transaction opens.
 5. **Transaction.** Opens; the invoice is read with a write lock; a missing invoice is not found. `validate` runs on the stored invoice (`pay` accepts no fields, so nothing is applied over it): the `always` check `dueAfterIssue`, then `invoiceNotSent`. If either fails, the call raises `InvalidInputError` (`code` `invalid_input`) with one issue per failed check and writes nothing. Then `do`: the `set` assigns three fields; `when` sees the record as the `set` left it and, for an amount above 10000, sets `needsReview`.
 6. **Data layer.** The proposed row is written inside the locked transaction.
 7. **Commit.** The transaction closes.

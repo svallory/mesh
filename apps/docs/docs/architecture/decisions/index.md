@@ -28,9 +28,9 @@ The rulings the records quote are in the dated log, [rulings of 2026-10-04](./ru
 
 ## What changed on 2026-10-04 evening and 2026-10-05
 
-The operator's rulings of those two days replaced the vocabulary copied from Ash with Mesh's own entity file syntax and renamed most things a user sees. Records 0049 to 0065 hold them:
+The operator's rulings of those two days replaced the vocabulary copied from Ash with Mesh's own entity file syntax and renamed most things a user sees. Records 0049 to 0066 hold them:
 
-- **Terms and syntax**: `resource` became `entity` and the vocabulary is Mesh's own ([0049](./0049-vocabulary-is-meshs-own.md)); every line is `kind #name options` ([0050](./0050-entity-file-syntax.md), with the reference file); files end in `.mesh.mx` ([0051](./0051-mesh-mx-files-and-the-mesh-host.md)); actions, `auto` and `on:load` ([0052](./0052-actions-auto-and-on-load.md)); `validate` then `do` ([0053](./0053-validate-then-do.md)); the write strategy is inferred ([0054](./0054-write-strategy-is-inferred.md)); policies are core, fail closed and combine without order ([0055](./0055-policies-are-core.md)); a function whose body is one expression is translated ([0056](./0056-translated-expressions-are-one-expression-arrows.md)).
+- **Terms and syntax**: `resource` became `entity` and the vocabulary is Mesh's own ([0049](./0049-vocabulary-is-meshs-own.md)); every line is `kind #name options` ([0050](./0050-entity-file-syntax.md), with the reference file), later amended so that names and references are atoms, `kind :name options` ([0066](./0066-names-and-references-are-atoms.md)); files end in `.mesh.mx` ([0051](./0051-mesh-mx-files-and-the-mesh-host.md)); actions, `auto` and `on:load` ([0052](./0052-actions-auto-and-on-load.md)); `validate` then `do` ([0053](./0053-validate-then-do.md)); the write strategy is inferred ([0054](./0054-write-strategy-is-inferred.md)); policies are core, fail closed and combine without order ([0055](./0055-policies-are-core.md)); a function whose body is one expression is translated ([0056](./0056-translated-expressions-are-one-expression-arrows.md)).
 - **Project shape**: one domain at `src/domain/` with modules as folders ([0057](./0057-one-domain-modules-as-folders.md)); generated code in `.mesh/`, imported as `#mesh` ([0058](./0058-generated-code-in-mesh-imported-as-hash-mesh.md)); the flat `ActionContext` ([0059](./0059-action-context.md)); packages `@meshfw/*` ([0060](./0060-meshfw-package-scope.md)); Jig templates ([0061](./0061-generators-are-jig-templates.md)); Zod 4, Drizzle and OpenTelemetry as direct dependencies ([0062](./0062-direct-dependencies-zod-drizzle-opentelemetry.md)).
 - **Process**: docs first in the 1.0 voice, and the hold ([0063](./0063-user-docs-first-and-the-hold.md)); the order of work after approval ([0064](./0064-order-of-work-after-approval.md)); highlighting `mx` code on this site ([0065](./0065-mx-highlighting-on-the-docs-site.md)).
 
@@ -94,6 +94,7 @@ The code on `main` still uses the names of 2026-10-04 morning until the realignm
 | [0063](./0063-user-docs-first-and-the-hold.md) | User docs first, in the 1.0 voice; development on hold until approved | Accepted | operator |
 | [0064](./0064-order-of-work-after-approval.md) | After approval: realignment, Jig port, then M2 | Accepted | lead, delegated |
 | [0065](./0065-mx-highlighting-on-the-docs-site.md) | The docs site highlights `mx` code with MX's tree-sitter highlighter | Accepted | lead, delegated, with the MX lead |
+| [0066](./0066-names-and-references-are-atoms.md) | Names and references are atoms: `kind :name options` | Accepted | operator (three points by the lead) |
 
 ## Superseded records
 
