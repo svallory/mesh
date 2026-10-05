@@ -9,7 +9,10 @@ description: "Decision record 0065: how `mx` fences are highlighted, how the hig
 
 Accepted. Built: the docs highlighter is the published `@mxlang/tree-sitter-mx` package, wired into the
 docs build. The highlighter was vendored under `apps/docs/plugins/mx/` for as long as the package was
-unpublished; that directory is gone.
+unpublished; that directory is gone. Since `0.1.0-alpha.2` the package reads **all of entity file syntax
+v3** ([ADR-0066](./0066-names-and-references-are-atoms.md)), including the tagless `:field=value` line in
+a `set` and the atom values around it, so the highlighter carries no allowance for a spelling the grammar
+cannot read, and its palette gives a declaration's name and an atom value a colour each.
 
 ## Date
 
@@ -43,7 +46,8 @@ with highlight.js and the two stylesheets it ships, not with Shiki, so the `mx` 
 mapped to docmd's own light and dark hexes rather than to a Shiki theme ([contributing](../contributing.md)).
 
 Implemented in a second detail, the one the ruling anticipated: the vendoring step is over.
-`@mxlang/tree-sitter-mx` is on `https://npm.saulo.tech` as `0.1.0-alpha.1`, `apps/docs` depends on it
+`@mxlang/tree-sitter-mx` is on `https://npm.saulo.tech` as `0.1.0-alpha.2` (published from mxlang `91daeab7c`),
+`apps/docs` depends on it
 at that exact version, and `apps/docs/plugins/mx/` is deleted. The repository's `bunfig.toml` points
 the `@mxlang` scope at that registry; it is read-only and has no uplink, so only the `@mxlang` scope
 points at it and nothing else in the workspace resolves there. The docs image never sees the repository
@@ -86,7 +90,12 @@ grammar, which was the whole point of the ruling.
   sits in. Nothing on the site needs it today and the annotated figure blanks its own annotation lines.
 - Two capture gaps in the vendored queries were reported to MX and fixed there: the names in a
   destructured lambda parameter (`that=({ self }) => …`) and the `?` and `:` of a ternary. Both are
-  coloured by `0.1.0-alpha.1`, and both are pinned by tests.
+  coloured by `0.1.0-alpha.1` and later, and both are pinned by tests.
+- Two more were fixed on the MX side and are in `0.1.0-alpha.2`: the tagless `:field=value` line in a `set`
+  is parsed rather than rewritten before parsing, and the grammar gives a declaration's name and an atom
+  value a capture each (`shorthand_name` and `atom`, the classes `ts-name` and `ts-atom`), so the docs
+  palette can colour them differently instead of reading them the same. The allowance that rewrote those
+  lines is gone; the test that pins the line is the line the plugin no longer rewrites.
 - The `@mxlang` scope resolves from `https://npm.saulo.tech`, a registry the operator hosts. It is read-only
   and has no uplink, so an `@mxlang` version that is not published there cannot be installed by accident.
 - Open, the operator's call: the same registry could carry the unpublished `@meshfw` packages once those
@@ -101,6 +110,9 @@ grammar, which was the whole point of the ruling.
   a destructured lambda parameter and the `?` and `:` of a ternary are both coloured, with tests.
 - [x] A column-0 line inside an entity is an ERROR node; a fence that has one fails the docs build with the
   page and the line, and the annotated figure still blanks its own annotation lines.
-- [x] `@mxlang/tree-sitter-mx` is published: `apps/docs` depends on it at `0.1.0-alpha.1`, the
+- [x] `@mxlang/tree-sitter-mx` is published: `apps/docs` depends on it at `0.1.0-alpha.2`, the
   `apps/docs/plugins/mx/` copy is deleted, and the `@mxlang` scope resolves from
   `https://npm.saulo.tech` (root `bunfig.toml`, and `apps/docs/docker/bunfig.toml` for the image).
+- [x] The grammar reads all of syntax v3 (`0.1.0-alpha.2`): the `withAtomSetLines` allowance is deleted, a
+  tagless `:field=value` line in a `set` is highlighted from the author's own text, and a name
+  (`ts-name`) and an atom (`ts-atom`) each have a colour in both themes.
