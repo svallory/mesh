@@ -83,7 +83,7 @@ bun run test        # tests only
 bun run typecheck   # type checks only
 ```
 
-`bun install` at the repository root is all there is. The compiler's two MX dependencies, `@mxlang/core` and `@mxlang/data`, are pinned to an exact version and installed from the registry; there is no `bun link` step, no local MX checkout and no token. See [Continuous integration](#continuous-integration) for what that buys and what does not exist yet.
+`bun install` at the repository root is all there is. The compiler's two MX dependencies, `@mxlang/core` and `@mxlang/data`, are pinned to an exact version and installed from the registry; there is no `bun link` step, no local MX checkout and no token. The install and `bun run verify` are also what a GitHub Actions run does for every pull request and every push to `main`; see [Continuous integration](#continuous-integration).
 
 To work against an MX commit that is not published yet — the MX lead's own workflow, and useful when a change to MX has to land in Mesh the same day — run `bun link` inside the MX checkout once, then point the two `@mxlang` dependencies in `packages/compiler/package.json` at `link:@mxlang/core` and `link:@mxlang/data` and run `bun install`. That edit is local and never committed: a committed `link:` entry breaks every machine that has no MX checkout, including the CI runner. Revert it and re-run `bun install` before you commit or push. Never run `bun link @mxlang/...` at the repository root: `bun link <package>` writes a `link:` dependency into the `package.json` of the directory it runs in.
 
@@ -167,17 +167,28 @@ install from either is reproducible without asking the registry for a version ra
 
 ## Continuous integration
 
-There is no continuous integration on `main` yet, and the reason ADR-0031 recorded is nearly gone. The
-`@mxlang` packages the compiler needs are published on a registry any machine can read, so a hosted
-runner can now do what this page describes for a contributor: `bun install --frozen-lockfile`, then
-`bun run verify`. Everything else `verify` needs — Bun, `tsc`, docmd's build and link check — is either
-in the lockfile or in the Bun distribution, so nothing would have to be skipped or split out on a runner.
+`.github/workflows/verify.yml` runs `bun run verify` on GitHub Actions, on every pull request and on
+every push to `main`. One job on `ubuntu-latest`: check out the repository, install Bun 1.3.14 (the
+version `package.json#packageManager` pins), `bun install --frozen-lockfile`, `bun run verify`. The
+same script contributors run locally is the whole check; nothing in it needs a browser or a Docker
+daemon, so nothing is skipped or split out on the runner.
 
-The workflow is written and lands in the next pull request: one job on `ubuntu-latest`, checkout, Bun
-1.3.14 (the version `package.json#packageManager` pins), `bun install --frozen-lockfile`, `bun run
-verify`; `permissions: contents: read`, no secrets, actions pinned by commit SHA with the version in a
-comment, superseded runs on the same ref cancelled. Until that pull request is merged, `verify` runs when
-a contributor runs it, and the review protocol is what catches a skipped run.
+What the workflow deliberately does not do:
+
+- **No secrets.** Every dependency resolves either from the public registry or from `https://npm.saulo.tech`,
+  which is read-only for everyone. If that registry ever needs a token, the workflow does not have one and
+  the fix is a public read for the `@mxlang` scope, not a stored credential.
+- **Least privilege.** `permissions: contents: read`, and `persist-credentials: false` on the checkout, so the
+  job's token is not written into the git config for a later step to pick up.
+- **Actions pinned by commit SHA**, with the version in a comment, so a moved tag cannot change what runs.
+  A bump is a one-line comment change plus a new SHA.
+- **`--frozen-lockfile`**, which fails if `bun.lock` would change: a pull request cannot pass CI on a
+  lockfile it forgot to commit.
+- **Concurrency cancellation.** One run per ref; a newer push cancels the run it supersedes, so a branch
+  with five pushes does not queue five full installs.
+
+ADR-0031 recorded why this file did not exist: the `@mxlang` packages came from a `link:` checkout a
+hosted runner cannot have. They are published now, which is what removed the blocker.
 
 ## Layout and file names
 

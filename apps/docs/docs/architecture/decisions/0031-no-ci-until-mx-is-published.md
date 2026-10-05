@@ -1,11 +1,11 @@
 ---
 title: "0031. No continuous integration until MX is published"
-description: "Decision record 0031: No continuous integration until MX is published. Status: Amended 2026-10-05; its condition is met and the workflow is in the next pull request."
+description: "Decision record 0031: No continuous integration until MX is published. Status: Amended 2026-10-05; its condition is met and CI runs verify."
 ---
 
 # 0031. No continuous integration until MX is published
 
-> **Amended** on 2026-10-05: the `@mxlang` packages are published, which is the condition this record set. `packages/compiler` now installs them from the registry by exact version, and the workflow that removes the record's remaining cost lands in the next pull request. The body below is kept as history; see the amendment at the end of the record.
+> **Amended** on 2026-10-05: the `@mxlang` packages are published, which is the condition this record set. `packages/compiler` installs them from the registry by exact version, and `.github/workflows/verify.yml` runs `bun run verify` on every pull request and every push to `main`. The body below is kept as history; see the amendment at the end of the record.
 
 ## Status
 
@@ -99,13 +99,11 @@ What changed, for a reader who came here for the reason the record exists:
   (`0.1.0-alpha.2`), not through `link:` entries. `bun.lock` records the registry URL and the integrity
   hash of each tarball, so `bun install --frozen-lockfile` is reproducible from a clean clone on a
   machine that has never had an MX checkout.
-- The workflow this record ruled out is written and lands in the next pull request: checkout, Bun 1.3.14
-  (the version `package.json#packageManager` pins), `bun install --frozen-lockfile`, `bun run verify`.
-  Least privilege, actions pinned by commit SHA, no secrets, superseded runs cancelled. It is on its own
-  branch because the machine it was written on cannot push a workflow file yet (see the report), not
-  because the two changes belong apart.
-- Until it is merged, the cost this record listed still stands: "a missed `verify` run is invisible". The
-  review protocol is what catches it, which is what the action item below already asked for.
+- The workflow this record ruled out is written: checkout, Bun 1.3.14 (the version `package.json#packageManager`
+  pins), `bun install --frozen-lockfile`, `bun run verify`. Least privilege, actions pinned by commit SHA, no
+  secrets, superseded runs cancelled.
+- The cost this record listed is therefore gone: a pull request with a failing `verify` is red, and a missed
+  run is no longer invisible.
 
 What did not change: `verify` is still the one command that runs every check, and nothing in it needs a
 browser or a Docker daemon, so the workflow is that script and nothing else. The MX pre-releases are still
