@@ -337,7 +337,7 @@
               "path": "/architecture/decisions/0055-policies-are-core/"
             },
             {
-              "title": "0056. Translated expressions are one-expression arrows; Mesh builds its own translator",
+              "title": "0056. A function whose body is one expression is translated; Mesh builds its own translator",
               "path": "/architecture/decisions/0056-translated-expressions-are-one-expression-arrows/"
             },
             {

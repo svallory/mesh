@@ -60,8 +60,8 @@ Diagnostics carry `severity`, `message`, `line`, `column`, `offset` (UTF-16) and
 
 An attribute that holds code arrives as `DataExpr { code, shape, span, node }`. `node` is a Babel expression node. `code` is Marko's printed form; slicing the source at `span` gives the authored text (MX project notes, getting-started, section 1). Mesh uses both:
 
-- `compiler` converts a one-expression arrow's Babel node to Mesh's expression tree (M4).
-- A block body is plain code, emitted as TypeScript by slicing the authored text at the span ([ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md); [roadmap](../roadmap/roadmap.md), M4).
+- `compiler` converts the Babel node of a function whose body is one expression (an arrow, or a method body that is a single `return`) to Mesh's expression tree (M4).
+- Any other body is plain code, emitted as TypeScript by slicing the authored text at the span ([ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md); [roadmap](../roadmap/roadmap.md), M4).
 
 This is why there is no expression-parser slot: MX already did the parsing.
 
@@ -69,7 +69,7 @@ This is why there is no expression-parser slot: MX already did the parsing.
 
 A *tag contract* tells MX which attributes, children and parents a tag allows. Contracts can declare attribute `type` (`string`, `number`, `boolean`, `enum` with `values`, `array` with `items`, `function`) and `required`; `attributeTags`; `children` (closed once present); `parents`, including `"#root"`; and attributes on attribute tags (MX project notes, getting-started, section 1; MX project notes, updates, entry of 2026-10-03 17:45).
 
-Rules a declaration cannot express go in an `analyze` hook that reports positioned errors. Examples in syntax v2: `values` required on `enum` and nowhere else; `min` and `max` only on types they apply to; a `policy`'s `types=` items are action types. The same hook is where an unsupported construct inside a one-expression arrow is reported, so the editor shows it as the author types ([ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md)). `analyze` runs under `parseData` with directly passed `customTags` and `structural: "reject"` (MX project notes, updates, entry of 2026-10-03 22:10).
+Rules a declaration cannot express go in an `analyze` hook that reports positioned errors. Examples in syntax v2: `values` required on `enum` and nowhere else; `min` and `max` only on types they apply to; a `policy`'s `types=` items are action types. The same hook is where an unsupported construct inside a translated body is reported, so the editor shows it as the author types ([ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md)). `analyze` runs under `parseData` with directly passed `customTags` and `structural: "reject"` (MX project notes, updates, entry of 2026-10-03 22:10).
 
 The contracts in `packages/compiler/src/contracts.ts` make every contract closed and every statically read value `literalOnly`: a static tree has no scope, so an identifier would reach Mesh as an unevaluable expression. Function attributes (`filter=`, `that=`, `authorize-if=`, a `set` value) and method bodies are the exception, because they are code.
 

@@ -15,7 +15,7 @@ Accepted
 
 ## Deciders
 
-operator (Saulo Vallory)
+operator (Saulo Vallory); the lead, delegated by the operator, for the points marked below
 
 ## Context
 
@@ -39,9 +39,12 @@ So:
 
 - `create #create accept=[...]`, `update #pay`, `read #overdue`, `destroy #archive`. The generated function is the action name followed by the entity name: `payInvoice`, `overdueInvoice`.
 - `auto=["read", "destroy"]` gives `readInvoice` and `destroyInvoice`.
-- `on:load="visible"` names the read Mesh uses to load this entity through a relationship. MX delivers it as one attribute named `on:load`. Other `on:` keys may follow; v1 has only `load`.
-- An entity loaded through a relationship with neither `on:load` nor an auto read fails the build.
-- `arguments` holds inputs that are not attributes, in the attribute line shape. They reach functions as `input` ([ADR-0053](./0053-validate-then-do.md)).
+- `on:load="visible"` names a read action of this same entity that exists; Mesh uses it when the entity is loaded through a relationship. Naming a read that does not exist is a build error. MX delivers it as one attribute named `on:load`. Other `on:` keys may follow; v1 has only `load`.
+- Without `on:load`, Mesh uses the auto `read`. An entity loaded through a relationship with neither fails the build.
+- **What a caller must send.** On a create, every accepted field that is required and has no default; on an update, none of the accepted fields (only the key).
+- `arguments` holds inputs that are not attributes, in the attribute line shape. They share one input object with the accepted fields; an argument whose name collides with an accepted field is a build error. They reach functions as `input` ([ADR-0053](./0053-validate-then-do.md)).
+
+The last three points, and the existence check on `on:load`, are the lead's, delegated by the operator ([rulings of 2026-10-04](./rulings-2026-10-04.md), section "Rulings after the review of the user docs").
 
 ## Options considered
 

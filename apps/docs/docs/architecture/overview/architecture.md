@@ -34,7 +34,8 @@ entity #Todo table="todos"
 
   computed
     string #label({ self }) {
-      return (self.done ? "[x] " : "[ ] ") + self.title
+      const box = self.done ? "[x] " : "[ ] "
+      return box + self.title
     }
 
   actions auto=["read", "destroy"]
@@ -62,7 +63,7 @@ Adapted from [research synthesis](../research/synthesis.md) (section 14) and the
 1. One declaration per entity; everything else derived.
 2. A small hardcoded core; databases and transports are adapters; optional features are extensions.
 3. Generated code carries the behaviour: committed, readable TypeScript. Ash keeps behaviour in its library, so stack traces are unhelpful and test coverage of a user's own resource reads 0% ([research synthesis](../research/synthesis.md), section 6, item 2; [ADR-0003](../decisions/0003-generated-code-carries-behaviour.md)).
-4. Conservative defaults: accept only listed inputs; required unless `nullable`; atomic where the body allows; forbidden unless a policy allows ([ADR-0055](../decisions/0055-policies-are-core.md)).
+4. Conservative defaults: accept only listed inputs; required unless `nullable`; atomic where the body allows; forbidden unless every covering policy allows ([ADR-0055](../decisions/0055-policies-are-core.md)).
 5. Predictable execution: one lifecycle, a write strategy fixed at build time, hard errors instead of silent fallbacks.
 6. One way to write each thing, and few rules to remember ([ADR-0050](../decisions/0050-entity-file-syntax.md)).
 7. Legible to coding agents: a machine-readable model, a generated rules file, errors that name the fix.
@@ -89,7 +90,7 @@ Details in [build pipeline](../in-depth/build-pipeline.md) and [how Mesh uses MX
 
 1. Load: every `.mesh.mx` file under `src/domain/` is parsed by MX into a tree with source positions.
 2. Check structure: tags, attributes and nesting are checked against the tag contracts.
-3. Build model: one plain-data document per entity; each expression is converted to a tree (one-expression arrows) or kept as plain code (block bodies).
+3. Build model: one plain-data document per entity; each function whose body is one expression is converted to a tree, and anything else is kept as plain code.
 4. Transform: extensions rewrite the model in named phases.
 5. Verify: read-only checks across entities.
 6. Compile expressions: each translated expression is written out as a tree literal and as in-memory TypeScript.

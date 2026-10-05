@@ -1,6 +1,6 @@
 ---
 title: "0055. Policies are core; every covering policy must pass; an entity without policies forbids everything"
-description: "Decision record 0055: policy scope by `types=` and `actions=`, the combining rule, no `bypass`, fail closed, and policies in core instead of an extension. Status: Accepted."
+description: "Decision record 0055: policy scope by `types=` and `actions=`, how checks combine without order, no `bypass`, fail closed, and policies in core instead of an extension. Status: Accepted."
 ---
 
 # 0055. Policies are core; every covering policy must pass; an entity without policies forbids everything
@@ -15,7 +15,7 @@ Accepted. Supersedes [ADR-0036](./0036-deny-by-default-arrives-with-policies.md)
 
 ## Deciders
 
-operator (Saulo Vallory) for the policy syntax and the combining rule; the lead, delegated by the operator, for "policies are core" and "an entity without policies forbids everything"
+operator (Saulo Vallory) for the policy syntax and the rule that every covering policy must pass; the lead, delegated by the operator, for "policies are core", "an entity without policies forbids everything" and how the checks inside one policy combine
 
 ## Context
 
@@ -40,7 +40,13 @@ The lead, delegated by the operator, same file, section "Decisions delegated to 
 So:
 
 - A policy covers an action when the action's name is in `actions=` or its type is in `types=`; a policy with neither covers every action.
-- Inside one policy the checks run in written order and the first check that applies decides: `authorize-if` allows when it holds, `forbid-if` forbids when it holds. A policy in which no check decides fails. This is Ruling 6's "ordered allow/deny checks", unchanged.
+- Inside one policy the checks combine **without order**. A policy passes when none of its `forbid-if` is true and, if it has any `authorize-if`, at least one is true. A policy with only `forbid-if` checks passes unless one of them holds.
+
+The lead, delegated by the operator, same file, section "Rulings after the review of the user docs":
+
+> How do the checks inside one policy combine? Without order. A policy passes when none of its `forbid-if` is true and, if it has any `authorize-if`, at least one is true. Every policy that covers the action must pass.
+
+This narrows the word "ordered" in Ruling 6 ("ordered allow/deny checks", [ADR-0022](./0022-policies-simple-tier-as-extension.md)); the rest of that ruling stands (allow and deny checks, read policies as query filters, the breakdown). Two reasons. The reference file's `policy #neverDestroyPaid` has only a `forbid-if`; under "the first check that applies decides, and a policy where nothing decides fails" it would forbid every destroy, including those of unpaid invoices. And order-dependence is the reason `bypass` was dropped: a rule whose meaning changes when a line moves is the failure the operator rejected. An exemption is written in the condition: `forbid-if=({ self, actor }) => self.status === "paid" && !isStaff(actor)`. (An earlier delegated decision, taken while this record was first written, kept Ash's first-match order inside a policy; it is replaced.)
 - An action passes only if every policy covering it passes. An action no policy covers is forbidden, and so is every action of an entity with no `policies` section.
 - `bypass` is not in v1.
 - The rest of [ADR-0022](./0022-policies-simple-tier-as-extension.md) stands: read policies become query filters; the breakdown is data; `can` asks without acting; the formula stays solver-ready. A create policy sees the proposed record; reading a related record is a query inside the transaction before the insert.
@@ -49,7 +55,7 @@ So:
 
 ### Option A: policies in core, fail closed, every covering policy must pass (chosen)
 
-**Pros:** forgetting a policy can never open an entity; no package or configuration line to forget; the combining rule does not depend on order, so moving a policy cannot change the outcome.
+**Pros:** forgetting a policy can never open an entity; no package or configuration line to forget; nothing depends on order, so moving a policy or a check cannot change the outcome.
 **Cons:** a prototype must write an open policy (`policy #open` with `authorize-if=() => true`) before anything runs; the authorization engine is no longer replaceable as a unit.
 
 ### Option B: the `ext-policies` extension, on by default ([ADR-0022](./0022-policies-simple-tier-as-extension.md), [ADR-0036](./0036-deny-by-default-arrives-with-policies.md))
@@ -57,10 +63,10 @@ So:
 **Pros:** the rules engine is replaceable; core stays smaller.
 **Cons:** a disabled extension makes the `policies` section a build error, so turning authorization off is a configuration change far from the entity; two steps (install, enable) before a rule works.
 
-### Option C: Ash's first-match across policies, with `bypass`
+### Option C: Ash's order, with `bypass`
 
-**Pros:** expresses "staff may do anything" in one policy.
-**Cons:** order-dependent; a misplaced bypass opens actions (fails open), which is what the operator rejected.
+**Pros:** expresses "staff may do anything" in one policy; checks inside a policy can be read top to bottom as in Ash.
+**Cons:** order-dependent; a misplaced bypass opens actions (fails open), which is what the operator rejected; a forbid-only policy forbids everything under first-match.
 
 ## Trade-off analysis
 

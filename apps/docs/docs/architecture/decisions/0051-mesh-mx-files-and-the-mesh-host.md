@@ -30,7 +30,7 @@ Entity file syntax v2 ([ADR-0050](./0050-entity-file-syntax.md)) also needs MX f
 | Feature | MX decision | State on 2026-10-05 |
 |---|---|---|
 | `#name` after a space (`update #pay`); today only the glued form `update#pay` parses | 146 | Next in MX's queue |
-| `:label` sugar (`check :amountNotNegative [...]`); also fixes a crash on `value:Todo` | 146 | Next in MX's queue |
+| `:label` sugar (`check :dueAfterIssue [...]`); also fixes a crash on `value:Todo` | 146 | Next in MX's queue |
 | A default tag for tagless `#field=value` lines under `set`: the parent contract's `defaultTag`, else `package.json#mx.data.defaultTag`, else the built-in `object` | 145 | The ladder and `object` landed; the per-parent `defaultTag` is in review |
 | `imports: "pass" \| "reject"` on `parseData`: with `"pass"` the tree gains `imports: [{ code, span }]` in file order and control flow stays rejected | none (an additive option) | Scheduled |
 | `on:load="visible"` arrives as one attribute named `on:load` | none | Final |

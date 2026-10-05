@@ -23,7 +23,7 @@ An *atomic* update folds its work into one `UPDATE` statement with no read first
 
 Entity file syntax v2 ([ADR-0050](./0050-entity-file-syntax.md), [ADR-0053](./0053-validate-then-do.md)) changes the inputs:
 
-- `validate` sees the stored record, so any `check` that reads `self` on an update needs the row first.
+- In `validate`, `self` is the stored record with the accepted input applied, so any `check` that reads `self` on an update needs the row first.
 - The rulings say a `run` step "makes the action non-atomic"; they do not ask the author to declare it.
 - The reference file has two such updates (`send` and `pay` check `self`) and neither carries `require-atomic=false`.
 - The operator's principle for the syntax is to minimise the rules a user must remember.
@@ -35,7 +35,7 @@ The rulings do not mention `require-atomic`. Something had to be decided.
 The write strategy is chosen by the build from the action body. There is no `require-atomic` attribute.
 
 - An update or destroy is **atomic** when every `check` reads only `input`, and every `set` value is a translated expression that reads nothing stored except the column it assigns (a literal, an input value, `self.count + 1` for `#count`).
-- Anything else makes it **read-then-write**: a `check` or `when` that reads `self`, a `set` value that reads another stored column, a value with a block body, or a `run` step.
+- Anything else makes it **read-then-write**: a `check` or `when` that reads `self`, a `set` value that reads another stored column, a plain-code value (a body that is not one expression), or a `run` step.
 - `mesh explain <entity> <action>` prints the strategy and the reason, naming the line that made the action read-then-write. The output for the example is committed and guarded, so a change of strategy shows in review.
 - Everything else in [ADR-0017](./0017-atomic-by-default-and-classification.md) stands: the strategy is fixed at build time, a step never runs twice, the read-then-write path takes a write lock, and folding record-reading checks into the statement stays after v1 ([ADR-0044](./0044-folding-record-reading-validations.md)).
 

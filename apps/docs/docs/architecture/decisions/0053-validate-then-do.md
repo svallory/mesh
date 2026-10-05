@@ -29,7 +29,7 @@ Operator, 2026-10-05, [rulings of 2026-10-04](./rulings-2026-10-04.md), section 
 
 **Validations.**
 
-- The shape of one field (length, pattern, range) goes on its attribute or argument line: `string #notes nullable max=2000`, `string #number match=/^INV-\d+$/`.
+- A rule about one field goes on its attribute or argument line, always: `min` and `max` (length for a string, value for a number) and `match`: `decimal #amount min=0`, `string #notes nullable max=2000`, `string #number match=/^INV-\d+$/`. A `check` is only for rules across fields (`self.dueOn >= self.issuedOn`) or about stored state (`self.status === "sent"`); restating a one-field rule as a `check` is the second way to write one thing that the syntax forbids ([rulings of 2026-10-04](./rulings-2026-10-04.md), "Rulings after the review of the user docs", row "Where do rules about one field go?").
 - The rules of an action go in a `validate` block: `require=[...]` (fields that must be present) and `check :name [ that=fn code=... message=... ]`. `:name` is a label (MX's `:name` sugar); `code` is the caller-facing code, a string or a number; `when` nests checks under a condition.
 - "`validate` runs before `do` and sees the stored record plus `input` (replaces the lead's earlier 'sees the record after the changes')." A `check` runs only before the steps.
 
@@ -43,13 +43,28 @@ Operator, 2026-10-05, [rulings of 2026-10-04](./rulings-2026-10-04.md), section 
 
 **Reusable steps** (planned now, built later): "Defined in MX, one file per step (`step #slugify` with an `options` section and a body), under `src/domain/`; Mesh derives the tag's contract from the definition, and entity files use it as a tag: `slugify from="title" to="slug"`. Extensions contribute steps the same way."
 
-Three points the rulings leave open, decided by the lead under the operator's delegation:
+Points the rulings left open, decided by the lead under the operator's delegation ([rulings of 2026-10-04](./rulings-2026-10-04.md), sections "Rulings on the contributor-docs author's choices" and "Rulings after the review of the user docs"):
 
-1. **Create.** A create has no stored record. Its `validate` sees, as `self`, the record built from the accepted input and the declared defaults, before any step runs.
+1. **`self` in `validate`.** The record with the caller's accepted input applied: the sent value for each accepted field, the stored value for every field the caller did not send. On a create the stored values are the declared defaults. Nothing from `do` has run. `input` is still there, for arguments. One rule serves create and update, and a cross-field check (`self.dueOn >= self.issuedOn`) and a state check (`self.status === "sent"`) both read naturally; with `self` as the stored record only, every cross-field check on an update would have to merge `input` by hand. Reading a field's value from before the change is planned, not v1. This sharpens the operator's "sees the stored record plus `input`".
 2. **`self` during `do`.** Each step sees the record as the earlier steps left it; `when=({ self }) => self.amount > 10000` reads the amount after any `set` above it.
 3. **`load`.** `load=["customer"]` loads the named relationships or computed fields onto the record the action returns, as Ash's `load` change does. It writes nothing.
+4. **`always`.** Scoped with `types=` and `actions=`, as a policy is. Its validations run before the action's, and its steps before the action's, in the order the `always` blocks are written.
 
-The order of `always` against an action's own body: the `always` validations run before the action's, and the `always` steps before the action's, in the order the `always` blocks are written. (lead)
+### What `self` holds
+
+| Where the function runs | `self` is |
+|---|---|
+| `validate` (`check`, `when` inside it) | The record with the accepted input applied: sent values for accepted fields, stored values (on a create, defaults) for the rest. Nothing from `do` has run. |
+| A `do` step | The record as the earlier steps left it. |
+| A `filter` on a read | Each row the query considers. |
+| A policy on a read | The row. |
+| A policy on an update or destroy | The stored record. |
+| A policy on a create | The proposed record (accepted input and defaults). |
+| A computed field | The loaded record. |
+
+### Errors
+
+A failed `check` raises `InvalidInputError`, whose `code` is always `invalid_input`: several checks can fail at once, so an error-level code taken from one of them would be ambiguous. Each issue carries the check's label, its declared `code`, the path, the message and the `.mesh.mx` position of the `check` tag ([ADR-0039](./0039-run-time-error-positions.md) decides how the position travels).
 
 ## Options considered
 
@@ -75,7 +90,7 @@ Option A puts the rules first and makes every kind of work visible to the build,
 ## Consequences
 
 - `change=` and the `validate=` attribute leave the vocabulary; the code on `main` keeps them until the realignment task.
-- A failed `check` raises `InvalidInputError` with the check's `code`, `message` and the `.mesh.mx` position of the `check` tag ([ADR-0039](./0039-run-time-error-positions.md) decides how the position travels).
+- Every failed `check` is collected into one `InvalidInputError` (see Errors above).
 - `always` replaces Ash's `changes` and `validations` sections.
 - Step files share the `.mesh.mx` extension ([ADR-0051](./0051-mesh-mx-files-and-the-mesh-host.md)); the extension host gains "steps" as a contribution kind when they are built ([extension host](../in-depth/extension-host.md)).
 - The question "which further declared steps would read better" (for example `increment`) stays open for the operator.

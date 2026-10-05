@@ -1,9 +1,9 @@
 ---
-title: "0056. Translated expressions are one-expression arrows; Mesh builds its own translator"
+title: "0056. A function whose body is one expression is translated; Mesh builds its own translator"
 description: "Decision record 0056: which functions in an entity file run in SQL, how unsupported code is reported, and the result of the expression-language research. Status: Accepted."
 ---
 
-# 0056. Translated expressions are one-expression arrows; Mesh builds its own translator
+# 0056. A function whose body is one expression is translated; Mesh builds its own translator
 
 ## Status
 
@@ -29,11 +29,19 @@ Operator, 2026-10-05, [rulings of 2026-10-04](./rulings-2026-10-04.md), section 
 
 > Translated expressions are one-expression arrows; a block body is never translated. Their parameter types expose only what translates; unsupported constructs are diagnosed in the editor through the contracts' `analyze` hook. Before building the translator, research whether an existing project lets one write ordinary TypeScript expressions bound to a data model and run them both in memory and as SQL; if none fits, Mesh implements it. A raw-SQL escape hatch (like Ash's `fragment`) is planned, not in v1.
 
+The lead, delegated by the operator, sharpened the first sentence after the review of the user docs ([rulings of 2026-10-04](./rulings-2026-10-04.md), section "Rulings after the review of the user docs", row "Which functions does Mesh translate to SQL?"):
+
+> A function whose body is one expression: an arrow `(...) => expression`, or a method body that is a single `return expression`. Anything else is plain code and runs in memory only. Using a plain-code computed field in a filter, a sort, a policy or another translated expression is a build error that names the field.
+
+The reason: the reference file's `boolean #isOverdue({ self }) { return ... }` is a method body used by a filter, so "a block body is never translated" made the reference fail its own build.
+
 So the class is decided by the form the author chose, not by what the body contains:
 
-- `({ self }) => self.status === "sent"` is **translated**: one tree, run in SQL where a query needs it and in memory otherwise. A construct the translator does not support is an error at that node, in the editor and in the build. It is never silently demoted to plain code.
-- `({ self }) { return ... }` (a block body, a method body on a computed field, or a `run` step) is **plain code**: emitted as TypeScript, run in memory only. It cannot appear where SQL is required (`filter`, a read policy, a rollup's `of`).
-- The function parameters `{ self, input, actor, context }` are typed so that, inside a one-expression arrow, the editor offers only what translates.
+- **Translated**: a body that is one expression. `({ self }) => self.status === "sent"`, or a computed field written `boolean #isOverdue({ self }) { return self.status === "sent" && self.dueOn < today() }`. One tree, run in SQL where a query needs it and in memory otherwise. A construct the translator does not support is an error at that node, in the editor and in the build. It is never silently demoted to plain code.
+- **Plain code**: anything else, such as a method body with more than one statement or a `run` step. Emitted as TypeScript, run in memory only. It cannot appear where SQL is required (a `filter`, a `sort`, a policy check on a read, a rollup's `of`, or inside another translated expression); using a plain-code computed field there is a build error that names the field.
+- The function parameters `{ self, input, actor, context }` are typed so that, inside a translated body, the editor offers only what translates.
+
+An author who wants a computed field to stay plain code on purpose (for example because it calls a helper on `self`, which cannot be translated) writes it with more than one statement.
 
 **The research** ([expression language](../research/expression-language.md), fact-checked in [its review](../research/reviews/expression-language-review.md)) found no *established* project that captures a normal TypeScript arrow and runs it both in memory and as SQL. It found one young project with the same design: Greffon (<https://github.com/PhenX/Greffon>), which captures TypeScript lambdas at build time and runs one expression tree in memory and as Postgres or SQLite SQL. Greffon's repository was created on 2026-08-14; it has no stars and four downloads a week, and its behaviour is known only from its docs. The lead, delegated by the operator, decided ([rulings of 2026-10-04](./rulings-2026-10-04.md), section "Expression language, after the fact-check"):
 
@@ -51,7 +59,7 @@ The raw-SQL escape hatch is planned after v1.
 
 ### Option A: classify by form; build the translator (chosen)
 
-**Pros:** the author sees from the code whether a rule runs in SQL; errors appear in the editor, not at run time; the research shows there is nothing established to reuse.
+**Pros:** the author sees from the form of the code whether a rule runs in SQL; errors appear in the editor, not at run time; the research shows there is nothing established to reuse.
 **Cons:** Mesh owns a translator, an evaluator and their agreement tables ([ADR-0010](./0010-one-expression-tree-two-evaluators.md)); editor diagnostics depend on MX's editor support for data files.
 
 ### Option B: classify by content ([ADR-0010](./0010-one-expression-tree-two-evaluators.md) as written)
@@ -66,12 +74,12 @@ The raw-SQL escape hatch is planned after v1.
 
 ## Trade-off analysis
 
-Option A trades flexibility (a block body never runs in SQL) for predictability, which the project ranks above convenience everywhere else (no silent fallback, [roadmap](../roadmap/roadmap.md), section 2, principle 2). Option C was checked: the only matching project is too young to depend on, though worth reading first.
+Option A trades flexibility (a multi-statement body never runs in SQL) for predictability, which the project ranks above convenience everywhere else (no silent fallback, [roadmap](../roadmap/roadmap.md), section 2, principle 2). Option C was checked: the only matching project is too young to depend on, though worth reading first.
 
 ## Consequences
 
-- "Opaque" now means "a block body". The [expressions](../in-depth/expressions.md) page and the roadmap's M4 tests change from "classified as translatable or opaque" to "a one-expression arrow either translates or fails at the node".
-- The write-strategy inference of [ADR-0054](./0054-write-strategy-is-inferred.md) reads the form: a block body in a `set` value or a `run` step makes an update read-then-write.
+- "Opaque" now means "plain code": a body that is not one expression. The [expressions](../in-depth/expressions.md) page and the roadmap's M4 tests change from "classified as translatable or opaque" to "a one-expression body either translates or fails at the node".
+- The write-strategy inference of [ADR-0054](./0054-write-strategy-is-inferred.md) reads the form: a plain-code `set` value or a `run` step makes an update read-then-write.
 - The research's list of pitfalls (null and `undefined`, booleans on SQLite, dates, string case and `LIKE`, short-circuit evaluation, coercion) is input to [ADR-0012](./0012-expression-semantics.md), which stays Proposed and must be ruled before M4.
 - The translator works over the Babel node MX hands over ([ADR-0043](./0043-mx-is-core.md)); the editor diagnostics come from the composed contracts' `analyze` hook ([ADR-0021](./0021-composed-contracts-module.md)).
 
