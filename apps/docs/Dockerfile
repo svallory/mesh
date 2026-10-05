@@ -20,14 +20,17 @@ RUN bun install --frozen-lockfile
 
 COPY package.json docmd.config.json ./
 COPY docs ./docs
-# plugins/ holds the two docmd plugins for `mx`: plugins/mx-highlight.js, which
+# plugins/ holds the docmd plugins: the two for `mx`, plugins/mx-highlight.js, which
 # routes the fences and owns the capture-name palette, and plugins/mx-figure.js,
-# the annotated figure. The grammar, its two query files and the TypeScript
+# the annotated figure, and plugins/mesh-home.js, the home page. The grammar, its two query files and the TypeScript
 # grammar the injections need come from the installed @mxlang/tree-sitter-mx
 # package, so nothing under plugins/ is a committed binary any more and this COPY
 # has no reason to be whole-directory (it stays one, so a file added to the
 # directory is not silently left out of the image).
 COPY plugins ./plugins
+# island/ is the home page's diagram (Svelte Flow), bundled by island/build.ts into
+# site/assets/home-flow.js as the last step of `bun run build`.
+COPY island ./island
 RUN bun run build
 
 FROM nginxinc/nginx-unprivileged:1.30.5-alpine@sha256:ed04ec1ff34502c339ee5c3ae3f855442398edc1d05591e2b98981dcbbd20b1e
