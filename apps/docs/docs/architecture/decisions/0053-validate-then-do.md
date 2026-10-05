@@ -29,7 +29,7 @@ Operator, 2026-10-05, [rulings of 2026-10-04](./rulings-2026-10-04.md), section 
 
 **Validations.**
 
-- A rule about one field goes on its attribute or argument line, always: `min` and `max` (length for a string, value for a number) and `match`: `decimal #amount min=0`, `string #notes nullable max=2000`, `string #number match=/^INV-\d+$/`. A `check` is only for rules across fields (`self.dueOn >= self.issuedOn`) or about stored state (`self.status === "sent"`); restating a one-field rule as a `check` is the second way to write one thing that the syntax forbids ([rulings of 2026-10-04](./rulings-2026-10-04.md), "Rulings after the review of the user docs", row "Where do rules about one field go?").
+- A rule about one field goes on its attribute or argument line, always: `min` and `max` (length for a string, value for a number) and `match`: `decimal #amount min=0`, `string #notes nullable max=2000`, `string #number match=/^INV-\d+$/`. A `check` is only for rules across fields (`self.dueOn >= self.issuedOn`) or about stored state (`self.status === "sent"`); restating a one-field rule as a `check` is the second way to write one thing that the syntax forbids ([rulings of 2026-10-04](./rulings-2026-10-04.md), "Rulings after the review of the user docs (2026-10-05, lead under delegation)", row "Where do rules about one field go?").
 - The rules of an action go in a `validate` block: `require=[...]` (fields that must be present) and `check :name [ that=fn code=... message=... ]`. `:name` is a label (MX's `:name` sugar); `code` is the caller-facing code, a string or a number; `when` nests checks under a condition.
 - "`validate` runs before `do` and sees the stored record plus `input` (replaces the lead's earlier 'sees the record after the changes')." A `check` runs only before the steps.
 
@@ -43,7 +43,7 @@ Operator, 2026-10-05, [rulings of 2026-10-04](./rulings-2026-10-04.md), section 
 
 **Reusable steps** (planned now, built later): "Defined in MX, one file per step (`step #slugify` with an `options` section and a body), under `src/domain/`; Mesh derives the tag's contract from the definition, and entity files use it as a tag: `slugify from="title" to="slug"`. Extensions contribute steps the same way."
 
-Points the rulings left open, decided by the lead under the operator's delegation ([rulings of 2026-10-04](./rulings-2026-10-04.md), sections "Rulings on the contributor-docs author's choices" and "Rulings after the review of the user docs"):
+Points the rulings left open, decided by the lead under the operator's delegation ([rulings of 2026-10-04](./rulings-2026-10-04.md), sections "Rulings on the contributor-docs author's choices (2026-10-05, lead under delegation)" and "Rulings after the review of the user docs (2026-10-05, lead under delegation)"):
 
 1. **`self` in `validate`.** The record with the caller's accepted input applied: the sent value for each accepted field, the stored value for every field the caller did not send. On a create the stored values are the declared defaults. Nothing from `do` has run. `input` is still there, for arguments. One rule serves create and update, and a cross-field check (`self.dueOn >= self.issuedOn`) and a state check (`self.status === "sent"`) both read naturally; with `self` as the stored record only, every cross-field check on an update would have to merge `input` by hand. Reading a field's value from before the change is planned, not v1. This sharpens the operator's "sees the stored record plus `input`".
 2. **`self` during `do`.** Each step sees the record as the earlier steps left it; `when=({ self }) => self.amount > 10000` reads the amount after any `set` above it.
@@ -98,6 +98,6 @@ Option A puts the rules first and makes every kind of work visible to the build,
 ## Action items
 
 - [ ] Realignment task: contracts for `validate`, `require`, `check`, `do`, `set`, `when`, `load`, `run`, `always`.
-- [ ] M4: classify `check` and `set` values ([ADR-0056](./0056-translated-expressions-are-one-expression-arrows.md)).
+- [ ] M4: translate `check` and `set` values or run them in memory, per [ADR-0056](./0056-translated-expressions-are-one-expression-arrows.md).
 - [ ] M5: run `validate` then `do` in the generated handler, collecting every failed check.
 - [ ] Operator: list candidate declared steps (`increment` and others) and decide which to add.

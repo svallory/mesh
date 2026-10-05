@@ -25,7 +25,7 @@ Writing the user docs showed that the nested bag made every call longer (`{ acto
 
 ## Decision
 
-Operator, 2026-10-04 evening, [rulings of 2026-10-04](./rulings-2026-10-04.md), section "Rulings on the user docs, layout and terms", row "Action context":
+Operator, 2026-10-04 evening, [rulings of 2026-10-04](./rulings-2026-10-04.md), section "Rulings on the user docs, layout and terms (2026-10-04 evening, operator)", row "Action context":
 
 > The second argument of every action is the action context: `createTodo(input, context)`. Its type, `ActionContext`, is one flat object the user declares once by declaration merging in `src/context.ts`. `actor` is the one key Mesh reads; every other key (tenant, locale, ...) is the user's. No `scope`, no nested `context` bag, no `Register` interface. An extension that needs a key states which one it reads; a clash is a build error (this settles tenant placement). In `.mx` functions: the record, `actor` as a shortcut, and `context`. Replaces "scope `{actor, context}`" in ADR-0007 and ADR-0047.
 
@@ -43,7 +43,7 @@ declare module "@meshfw/runtime" {
 }
 ```
 
-With nothing declared the type is `{ actor?: unknown } & Record<string, unknown>`. The argument is still plain and required on every call, as [ADR-0007](./0007-scope-is-a-plain-argument.md) decided; only its shape changed. It never carries the data layer ([ADR-0047](./0047-actions-are-bound-to-a-data-layer.md)).
+The mechanism, as ruled by the lead, delegated by the operator ([rulings of 2026-10-04](./rulings-2026-10-04.md), section "Rulings after the review of the contributor docs (2026-10-05, lead under delegation)"): `@meshfw/runtime` exports an empty `interface ActionContext {}`. The project adds its keys, `actor` included, by declaration merging in `src/context.ts`; the runtime declares no `actor` itself, because that would make the project's own declaration a duplicate-property error. Generated functions take `context: ActionContext`, and the parameter is optional when the merged interface has no required key. In entity-file functions, `actor` has the type the project declared, or `unknown` when it declared none. The argument is still plain and required on every call, as [ADR-0007](./0007-scope-is-a-plain-argument.md) decided; only its shape changed. It never carries the data layer ([ADR-0047](./0047-actions-are-bound-to-a-data-layer.md)).
 
 **Tenancy.** A tenant is an ordinary key the user declares. An extension that implements multitenancy states in its manifest which key it reads; two extensions claiming one key fail the build. This answers [ADR-0009](./0009-tenancy-placement.md): tenancy is not in core.
 

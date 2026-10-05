@@ -42,7 +42,7 @@ So:
 - A policy covers an action when the action's name is in `actions=` or its type is in `types=`; a policy with neither covers every action.
 - Inside one policy the checks combine **without order**. A policy passes when none of its `forbid-if` is true and, if it has any `authorize-if`, at least one is true. A policy with only `forbid-if` checks passes unless one of them holds.
 
-The lead, delegated by the operator, same file, section "Rulings after the review of the user docs":
+The lead, delegated by the operator, same file, section "Rulings after the review of the user docs (2026-10-05, lead under delegation)":
 
 > How do the checks inside one policy combine? Without order. A policy passes when none of its `forbid-if` is true and, if it has any `authorize-if`, at least one is true. Every policy that covers the action must pass.
 

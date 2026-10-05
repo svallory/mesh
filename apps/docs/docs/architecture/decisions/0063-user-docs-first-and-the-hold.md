@@ -25,7 +25,7 @@ The first set of pages showed two things. The warnings, milestone notes and "not
 
 ## Decision
 
-Operator, 2026-10-04 evening, [rulings of 2026-10-04](./rulings-2026-10-04.md), section "Rulings on the user docs, layout and terms", rows "User docs voice" and "Hold":
+Operator, 2026-10-04 evening, [rulings of 2026-10-04](./rulings-2026-10-04.md), section "Rulings on the user docs, layout and terms (2026-10-04 evening, operator)", rows "User docs voice" and "Hold":
 
 > The pages under Docs are written as if Mesh 1.0 were released. No "exists today", no milestone notes, no "not decided yet" callouts. Each page carries one line saying Mesh is not released yet. Contributor material (open decisions, what exists, findings) moves to Architecture. Replaces the "live spec with warnings" wording of the earlier row; the practice (docs before code) stands.
 

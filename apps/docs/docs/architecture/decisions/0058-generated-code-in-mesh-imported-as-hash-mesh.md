@@ -25,7 +25,7 @@ A path import ties every application file to where the folder is. A visible top-
 
 ## Decision
 
-Operator, 2026-10-04 evening, [rulings of 2026-10-04](./rulings-2026-10-04.md), section "Rulings on the user docs, layout and terms", rows "Generated folder" and "Import specifier":
+Operator, 2026-10-04 evening, [rulings of 2026-10-04](./rulings-2026-10-04.md), section "Rulings on the user docs, layout and terms (2026-10-04 evening, operator)", rows "Generated folder" and "Import specifier":
 
 > Named `.mesh`, committed, guarded, marked `linguist-generated`. Users should not have to care about it; it is not hidden from them.
 

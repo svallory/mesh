@@ -23,7 +23,7 @@ The packages were written `@mesh/*` as working names, and [ADR-0040](./0040-pack
 
 ## Decision
 
-Operator, 2026-10-04 evening, [rulings of 2026-10-04](./rulings-2026-10-04.md), section "Rulings on the user docs, layout and terms", row "npm organisation":
+Operator, 2026-10-04 evening, [rulings of 2026-10-04](./rulings-2026-10-04.md), section "Rulings on the user docs, layout and terms (2026-10-04 evening, operator)", row "npm organisation":
 
 > `meshfw`, at least for now (`mesh` is taken on npm). Packages are `@meshfw/*` (`@meshfw/cli`, `@meshfw/runtime`, ...); the product is still called Mesh and the binary `mesh`. Registered by the operator on 2026-10-04.
 

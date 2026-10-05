@@ -37,7 +37,7 @@ The operator's rulings of 2026-10-05, [rulings of 2026-10-04](./rulings-2026-10-
 - **The record.** "Functions receive the record as `self` (fixed key), beside `actor`, `input`, `context`. Not a name derived from the entity."
 - **Sections.** `attributes`, `relationships`, `computed`, `actions`, `policies`; inside an action, `arguments`, `validate` and `do`. Sections may come in any order; only the order of lines inside a section matters.
 
-Later rulings of the lead, delegated by the operator, fill in what the syntax rulings left open ([rulings of 2026-10-04](./rulings-2026-10-04.md), sections "Rulings on the user-docs author's choices" and "Rulings after the review of the user docs"):
+Later rulings of the lead, delegated by the operator, fill in what the syntax rulings left open ([rulings of 2026-10-04](./rulings-2026-10-04.md), sections "Rulings on the user-docs author's choices (2026-10-05, lead under delegation)" and "Rulings after the review of the user docs (2026-10-05, lead under delegation)"):
 
 - **Attribute types.** `uuid`, `string`, `integer`, `float`, `decimal`, `boolean`, `enum`, `date`, `datetime`, `timestamp`.
 - **Rules about one field go on its line, always**: `min` and `max` (length for a string, value for a number) and `match`. A `check` is only for rules across fields or about stored state ([ADR-0053](./0053-validate-then-do.md)). "Never two ways to write the same thing."
@@ -98,7 +98,7 @@ entity #Invoice table="invoices"
 
     update #send
       validate
-        check :invoiceHasNoLines [
+        check :invoiceHasLines [
           that=({ self }) => self.lineCount > 0
           code="invalid_state"
           message="an invoice needs at least one line"
@@ -193,7 +193,7 @@ Option A minimises what a user must remember, which the operator ranks first. It
 - `required` by default inverts Ash's `allow_nil? true` default. A missing `nullable` is a build-time and type-level error, never a silent null.
 - `self` replaces the record name derived from the entity (`post`, `todo`) in every function.
 - New attribute types (`integer`, `float`, `decimal`, `date`, `timestamp`) and the rollups `sum`, `avg`, `min`, `max` enter the registry.
-- The reference file was corrected after the review of the user docs: the one-field rule `amountNotNegative` became `decimal #amount min=0`, the `always` example became the cross-field check `dueAfterIssue` (which needed `date #issuedOn`). `#label` keeps its single `return`: it calls `formatMoney(self.total)`, cannot be translated, and so runs in memory, which is not an error for a computed field ([ADR-0056](./0056-translated-expressions-are-one-expression-arrows.md)).
+- The reference file was corrected after the review of the user docs: the one-field rule `amountNotNegative` became `decimal #amount min=0`, the `always` example became the cross-field check `dueAfterIssue` (which needed `date #issuedOn`), the `send` action's check `invoiceHasNoLines` became `invoiceHasLines` (the label said the opposite of its condition, [rulings of 2026-10-04](./rulings-2026-10-04.md), section "Rulings after the review of the contributor docs (2026-10-05, lead under delegation)"). `#label` keeps its single `return`: it calls `formatMoney(self.total)`, cannot be translated, and so runs in memory, which is not an error for a computed field ([ADR-0056](./0056-translated-expressions-are-one-expression-arrows.md)).
 - The code on `main` still has the M1 vocabulary until the realignment task ([ADR-0064](./0064-order-of-work-after-approval.md)).
 
 ## Action items

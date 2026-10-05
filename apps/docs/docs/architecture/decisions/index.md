@@ -41,7 +41,7 @@ The code on `main` still uses the names of 2026-10-04 morning until the realignm
 | ADR | Decision | Status | Deciders |
 |---|---|---|---|
 | [0001](./0001-three-rings.md) | Three rings: core, adapters, extensions | Accepted | operator |
-| [0002](./0002-resource-files-are-mx.md) | Entity files are MX, read as a static data tree | Accepted, amended by 0049, 0050, 0051 | operator |
+| [0002](./0002-resource-files-are-mx.md) | Resource files are `.mx`, read as a data tree through MX (now entity files, `.mesh.mx`) | Accepted, amended by 0049, 0050, 0051 | operator |
 | [0003](./0003-generated-code-carries-behaviour.md) | Generated code carries the behaviour; the run-time library stays thin | Accepted | operator |
 | [0004](./0004-no-measurement-gate.md) | Mesh is built regardless; measuring the agent benefit is not a gate | Accepted | operator |
 | [0005](./0005-core-interface-is-a-function-call.md) | The core's interface is a function call; transports are optional adapters, none in v1 | Accepted | operator |
@@ -52,7 +52,7 @@ The code on `main` still uses the names of 2026-10-04 morning until the realignm
 | [0016](./0016-in-memory-data-via-sqlite.md) | In-memory data for tests is SQLite's in-memory mode | Accepted | roadmap author |
 | [0017](./0017-atomic-by-default-and-classification.md) | Updates are atomic by default; a step never runs twice | Accepted, amended by 0053, 0054 | operator, lead, roadmap author |
 | [0018](./0018-not-implemented-is-a-build-error.md) | A valid but unimplemented tag is a build error | Accepted | roadmap author |
-| [0019](./0019-v1-scope.md) | v1 is milestones M0 to M9; what comes after | Accepted | operator |
+| [0019](./0019-v1-scope.md) | v1 is milestones M0 to M9; what comes after (its rationale cites records since superseded) | Accepted | operator |
 | [0020](./0020-extension-contributions-through-declared-points.md) | Extensions contribute to each other only through declared points | Accepted | operator |
 | [0021](./0021-composed-contracts-module.md) | Mesh generates one self-contained MX contracts module | Accepted | lead |
 | [0022](./0022-policies-simple-tier-as-extension.md) | Policies: a simple tier, solver-ready | Accepted, amended by 0055 | operator |
@@ -102,7 +102,7 @@ The code on `main` still uses the names of 2026-10-04 morning until the realignm
 | [0006](./0006-cli-first-transport.md) | The first transport is a CLI | [0005](./0005-core-interface-is-a-function-call.md) | lead |
 | [0007](./0007-scope-is-a-plain-argument.md) | The scope `{ actor, context }` is a plain argument on every action call | [0059](./0059-action-context.md) | lead |
 | [0008](./0008-actor-resolver-adapter.md) | Transports obtain the scope through an actor-resolver adapter | [0007](./0007-scope-is-a-plain-argument.md) | lead |
-| [0009](./0009-tenancy-placement.md) | Where tenancy lives: core or extension (was Proposed) | [0059](./0059-action-context.md) | operator |
+| [0009](./0009-tenancy-placement.md) | Where tenancy lives: core or extension (was Proposed) | [0059](./0059-action-context.md) | open (it was Proposed) |
 | [0011](./0011-sql-only-expressions.md) | Translatable expressions run only as SQL | [0010](./0010-one-expression-tree-two-evaluators.md) | roadmap author (never accepted) |
 | [0015](./0015-sql-printed-by-mesh.md) | Mesh prints SQL and diffs schemas itself | [0014](./0014-sql-adapters-on-drizzle.md) | roadmap author |
 | [0024](./0024-in-process-runner-first.md) | The in-process workflow runner is the first adapter | [0023](./0023-workflows-and-jobs-deferred.md) | operator |

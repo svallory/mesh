@@ -31,7 +31,7 @@ Two operator rulings, recorded in [rulings of 2026-10-04](./rulings-2026-10-04.m
 
 > **Term.** `resource` becomes `entity` (overrides "copy Ash" for this word).
 
-(section "Rulings on the user docs, layout and terms", 2026-10-04 evening), and, on 2026-10-05:
+(section "Rulings on the user docs, layout and terms (2026-10-04 evening, operator)", 2026-10-04 evening), and, on 2026-10-05:
 
 > Supersedes the vocabulary rulings above where they differ ("copy Ash" no longer holds: the vocabulary is Mesh's own, informed by Ash).
 

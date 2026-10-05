@@ -44,7 +44,7 @@ So:
 - **What a caller must send.** On a create, every accepted field that is required and has no default; on an update, none of the accepted fields (only the key).
 - `arguments` holds inputs that are not attributes, in the attribute line shape. They share one input object with the accepted fields; an argument whose name collides with an accepted field is a build error. They reach functions as `input` ([ADR-0053](./0053-validate-then-do.md)).
 
-The last three points, and the existence check on `on:load`, are the lead's, delegated by the operator ([rulings of 2026-10-04](./rulings-2026-10-04.md), section "Rulings after the review of the user docs").
+The last three points, and the existence check on `on:load`, are the lead's, delegated by the operator ([rulings of 2026-10-04](./rulings-2026-10-04.md), section "Rulings after the review of the user docs (2026-10-05, lead under delegation)").
 
 ## Options considered
 

@@ -15,7 +15,7 @@ Accepted
 
 ## Deciders
 
-operator (Saulo Vallory)
+operator (Saulo Vallory); the lead, delegated by the operator, for the three details marked below
 
 ## Context
 
@@ -25,13 +25,13 @@ Writing the user docs showed that the attribute repeated what the folder already
 
 ## Decision
 
-Operator, 2026-10-04 evening, [rulings of 2026-10-04](./rulings-2026-10-04.md), section "Rulings on the user docs, layout and terms", rows "Project structure" and "Domain and grouping":
+Operator, 2026-10-04 evening, [rulings of 2026-10-04](./rulings-2026-10-04.md), section "Rulings on the user docs, layout and terms (2026-10-04 evening, operator)", rows "Project structure" and "Domain and grouping":
 
 > `.mx` files live under `src/domain/<domain>/`; `migrations/` and `.mesh/` at the root; `src/extensions/` for project-local extensions.
 
 > Deviate from Ash: an app (or package) has one domain, `src/domain/`. Inside it, entities are grouped in folders; the folder is the group, and no attribute repeats it in the file. The group is called a **module** (`src/domain/accounts/` is the accounts module).
 
-The details the first row left pending were settled the same evening: the action context is declared in `src/context.ts` ([ADR-0059](./0059-action-context.md)), and the domain is the folder itself. With [ADR-0051](./0051-mesh-mx-files-and-the-mesh-host.md) the files end in `.mesh.mx`:
+The details the first row left pending were settled the same evening by the operator: the action context is declared in `src/context.ts` ([ADR-0059](./0059-action-context.md)), and the domain is the folder itself. With [ADR-0051](./0051-mesh-mx-files-and-the-mesh-host.md) the files end in `.mesh.mx`:
 
 ```text
 my-app/
@@ -49,7 +49,7 @@ my-app/
     context.ts                 declares ActionContext
 ```
 
-The configuration key that names the folder is `domain` (`domain: "src/domain"`). One entity per file; two entities with the same name anywhere in the domain fail the build. An entity file may import only relative files inside `src/domain/`.
+Three further details are the lead's, delegated by the operator ([rulings of 2026-10-04](./rulings-2026-10-04.md), section "Rulings after the review of the contributor docs (2026-10-05, lead under delegation)"): the configuration key that names the folder is `domain` (`domain: "src/domain"`) (lead, delegated); two entities with the same name anywhere in the domain fail the build, so names are unique across modules (lead, delegated); an entity file may import only relative files inside the domain folder (lead, delegated). One entity per file.
 
 ## Options considered
 

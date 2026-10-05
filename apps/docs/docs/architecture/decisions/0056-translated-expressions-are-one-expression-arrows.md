@@ -29,7 +29,7 @@ Operator, 2026-10-05, [rulings of 2026-10-04](./rulings-2026-10-04.md), section 
 
 > Translated expressions are one-expression arrows; a block body is never translated. Their parameter types expose only what translates; unsupported constructs are diagnosed in the editor through the contracts' `analyze` hook. Before building the translator, research whether an existing project lets one write ordinary TypeScript expressions bound to a data model and run them both in memory and as SQL; if none fits, Mesh implements it. A raw-SQL escape hatch (like Ash's `fragment`) is planned, not in v1.
 
-The lead, delegated by the operator, sharpened the first sentence after the review of the user docs ([rulings of 2026-10-04](./rulings-2026-10-04.md), section "Rulings after the review of the user docs", row "Which functions does Mesh translate to SQL?"):
+The lead, delegated by the operator, sharpened the first sentence after the review of the user docs ([rulings of 2026-10-04](./rulings-2026-10-04.md), section "Rulings after the review of the user docs (2026-10-05, lead under delegation)", row "Which functions does Mesh translate to SQL?"):
 
 > A function whose body is one expression: an arrow `(...) => expression`, or a method body that is a single `return expression`. Anything else is plain code and runs in memory only. Using a plain-code computed field in a filter, a sort, a policy or another translated expression is a build error that names the field.
 
@@ -37,7 +37,7 @@ The reason: the reference file's `boolean #isOverdue({ self }) { return ... }` i
 
 So the class is decided by the form the author chose, not by what the body contains:
 
-The lead then settled what happens to a computed field whose one-expression body cannot be translated (same file, the row after it):
+The lead then settled what happens to a computed field whose one-expression body cannot be translated (same file, same section, its second table):
 
 > It is not an error. A computed field is translated when its body is one expression Mesh can translate; otherwise it runs in memory. The build error comes only where SQL is required: a filter, a sort, a policy, or a translated expression that uses that field. The error names the field and the part that could not be translated. `mesh explain` shows which computed fields are translated. Nobody writes a second statement to opt out.
 
@@ -52,10 +52,10 @@ So:
 - **A `check`'s `that`, a `when` or a `set` value** whose single expression cannot be translated is not an error either: it runs in memory, which makes the action read-then-write, and `mesh explain` names the expression that caused it ([ADR-0054](./0054-write-strategy-is-inferred.md)).
 - So only a `filter`, a `sort` and a policy (and a rollup's `of`, or a translated expression that uses a field) require SQL, and only there is an untranslatable expression a build error.
 
-The lead then ruled the same for steps and checks (same file, last row): an untranslatable one-expression body in a `check`, a `when` or a `set` value "Not an error either. It runs in memory, which makes the action read the record first and then write (not one statement); `mesh explain` says so and names the expression that caused it." It is the inferred write strategy of [ADR-0054](./0054-write-strategy-is-inferred.md) applied to expressions: an error there would contradict it.
+The lead then ruled the same for steps and checks (same file, same section, second table, next row): an untranslatable one-expression body in a `check`, a `when` or a `set` value "Not an error either. It runs in memory, which makes the action read the record first and then write (not one statement); `mesh explain` says so and names the expression that caused it." It is the inferred write strategy of [ADR-0054](./0054-write-strategy-is-inferred.md) applied to expressions: an error there would contradict it.
 - The function parameters `{ self, input, actor, context }` are typed so that, inside a translated body, the editor offers only what translates.
 
-**The research** ([expression language](../research/expression-language.md), fact-checked in [its review](../research/reviews/expression-language-review.md)) found no *established* project that captures a normal TypeScript arrow and runs it both in memory and as SQL. It found one young project with the same design: Greffon (<https://github.com/PhenX/Greffon>), which captures TypeScript lambdas at build time and runs one expression tree in memory and as Postgres or SQLite SQL. Greffon's repository was created on 2026-08-14; it has no stars and four downloads a week, and its behaviour is known only from its docs. The lead, delegated by the operator, decided ([rulings of 2026-10-04](./rulings-2026-10-04.md), section "Expression language, after the fact-check"):
+**The research** ([expression language](../research/expression-language.md), fact-checked in [its review](../research/reviews/expression-language-review.md)) found no *established* project that captures a normal TypeScript arrow and runs it both in memory and as SQL. It found one young project with the same design: Greffon (<https://github.com/PhenX/Greffon>), which captures TypeScript lambdas at build time and runs one expression tree in memory and as Postgres or SQLite SQL. Greffon's repository was created on 2026-08-14; it has no stars and four downloads a week, and its behaviour is known only from its docs. The lead, delegated by the operator, decided ([rulings of 2026-10-04](./rulings-2026-10-04.md), section "Expression language, after the fact-check (2026-10-05, lead under delegation)"):
 
 > Does Mesh still implement its own expression language? Yes. Greffon is seven weeks old with no users; Mesh cannot put its core on it. The research conclusion changes from "no project" to "no established project".
 
@@ -63,7 +63,7 @@ The lead then ruled the same for steps and checks (same file, last row): an untr
 
 So Mesh implements the translator, after reading Greffon, and copies the design the research recommends: two interpreters over one tree; a small enumerated node vocabulary with an allow-listed function call; relationship traversal rewritten into joins as a normalisation pass before SQL; a declared supported subset checked before anything else; parameters, never closures; policies folded into the query tree.
 
-**Parameters** (lead). A part of a translated expression that does not read `self` (for example `isStaff(actor)` or `today()`) is evaluated once, in memory, before the query, and enters the SQL as a bound parameter. This is how an imported helper may appear in a policy check, and why imported helpers must be pure.
+**What a translated expression may reference** (the lead, delegated by the operator, [rulings of 2026-10-04](./rulings-2026-10-04.md), section "Rulings after the review of the contributor docs (2026-10-05, lead under delegation)"): its parameters, registered functions, and calls to imported pure functions that do not read `self`, such as `isStaff(actor)` or `today()`. Such a call is evaluated once in memory before the query and bound as a parameter. A bare captured value (a variable from the file) is a build error.
 
 The raw-SQL escape hatch is planned after v1.
 

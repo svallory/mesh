@@ -48,7 +48,7 @@ One rule can be needed in two places. A filter must run in the database so that 
 
 - A function whose **body is one expression Mesh can translate** is **translated**: an arrow, `({ self }) => self.status === "sent"`, or a method body that is a single `return`, as in `#isOverdue` above. It becomes a tree; it runs in SQL where a query needs it and in memory otherwise.
 - **Where SQL is required** (a `filter`, a `sort`, a policy check, a rollup's `of`, or inside another translated expression), the expression must translate. A construct the translator does not support there is a build error at that node, reported in the editor through the contracts' `analyze` hook and again by the build. Using a computed field that runs in memory there is a build error that **names the field and the part that could not be translated**.
-- **A computed field** whose single expression cannot be translated is not an error: `#label` above calls the helper `formatMoney` on `self.total`, so it runs in memory after the record is loaded. `mesh explain` shows which computed fields are translated. Nobody writes a second statement to opt out ([rulings of 2026-10-04](../decisions/rulings-2026-10-04.md), "Rulings after the review of the user docs").
+- **A computed field** whose single expression cannot be translated is not an error: `#label` above calls the helper `formatMoney` on `self.total`, so it runs in memory after the record is loaded. `mesh explain` shows which computed fields are translated. Nobody writes a second statement to opt out ([rulings of 2026-10-04](../decisions/rulings-2026-10-04.md), "Rulings after the review of the user docs (2026-10-05, lead under delegation)").
 - **Plain code** is a body with more than one statement, or a `run` step. It is emitted as TypeScript by slicing the authored text at MX's span and runs in memory only.
 - In a `check`'s `that`, a `when` or a `set` value, an expression that cannot be translated is not an error either: it runs in memory, which makes the action read-then-write, and `mesh explain` names the expression that caused it ([ADR-0054](../decisions/0054-write-strategy-is-inferred.md)). Only a `filter`, a `sort` and a policy require SQL.
 
@@ -60,18 +60,16 @@ Where the form matters:
 |---|---|
 | `filter` on a read | Must be translated; plain code, or a computed field that runs in memory, is a build error naming the field and the untranslatable part. |
 | `check`'s `that`, `when` | Either form, never an error. Plain code, an expression that cannot be translated, or a translated one reading `self`, makes an update read-then-write ([ADR-0054](../decisions/0054-write-strategy-is-inferred.md)). |
-| `set` value | Either form, never an error. Only a translated value reading nothing stored except its own column can fold into an atomic `UPDATE`; anything else makes the update read-then-write. |
+| `set` value | Either form, never an error. A translated value folds into an atomic `UPDATE`; one that cannot be translated makes the update read-then-write. |
 | Computed field with a body (M7) | A single `return` that Mesh can translate is translated: usable in filters, sorts and policies, also computed in memory on a loaded record. Otherwise the field runs in memory after load, which is not an error; using it in a filter, a sort, a policy or another translated expression is. `mesh explain` shows which. |
 | Rollup `of="lines.amount"` (M7) | A path string checked at build time against generated path types; always SQL. The function form, where a path cannot express it, must be translated. |
 | Policy check (M8) | On a read, must be translated, because it becomes a query filter. Checks inside a policy combine without order ([ADR-0055](../decisions/0055-policies-are-core.md)). On a write, a record-reading check is folded into an atomic statement as a filter, or evaluated on the locked row of a read-then-write action. |
 
 An earlier design classified each function by its content: *translatable* if every construct converted, *opaque* otherwise. It is superseded: the class was invisible to the author, and a small edit could move a rule from SQL to memory ([ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md)).
 
-## No free variables; parameters are bound
+## What a translated expression may reference
 
-A translated expression may use only its parameters and registered functions. A free variable (a name captured from the enclosing file) is a build error ([roadmap](../roadmap/roadmap.md), M4). A database cannot see a captured value.
-
-A part of a translated expression that does not read `self` (for example `isStaff(actor)`, a call to an imported helper, or `today()`) is evaluated once in memory before the query and enters the SQL as a bound parameter ([ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md)). This is how imported helpers appear in policy checks, and why an imported function must be pure. The research on expression languages recommends the same rule ("parameters, never closures") and the same treatment of the current date ([expression language](../research/expression-language.md), section 6).
+A translated expression may reference its parameters, registered functions, and calls to imported pure functions that do not read `self`; such a call is evaluated once in memory before the query and bound as a parameter. A bare captured value (a variable from the file) is a build error. ([ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md)). A database cannot see a captured value, so a free variable is an error; a call to an imported pure function that does not read `self` is computed once and sent as a parameter, which is how `isStaff(actor)` appears in a policy and `today()` in `#isOverdue`. This is why an imported function must be pure. The research on expression languages recommends the same rule ("parameters, never closures") and the same treatment of the current date ([expression language](../research/expression-language.md), section 6).
 
 ## The tree and its forms
 
