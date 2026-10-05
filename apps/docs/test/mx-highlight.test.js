@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import {
   highlightMx,
   installMxHighlight,
+  mxParseProblems,
   themeStyles,
   unstyledCaptureNames,
 } from '../plugins/mx-highlight.js';
@@ -62,17 +63,34 @@ const forms = [
     },
   },
   {
+    // The name in a destructured parameter and the same name in the body are
+    // two different nodes: `variable.parameter` in the pattern, `variable` in
+    // the body. Both carry a class, and both are listed here.
     name: 'a check with a label, an expression argument and a code',
     code: 'check :invoiceIsSent [ that=({ self }) => self.status === "sent" code="invalid_state" ]',
     spans: {
       check: 'ts-tag',
       ':invoiceIsSent': 'ts-label',
       that: 'ts-attribute',
-      self: 'ts-variable',
+      self: ['ts-variable-parameter', 'ts-variable'],
       status: 'ts-property',
       '"sent"': 'ts-string',
       code: 'ts-attribute',
       '"invalid_state"': 'ts-string',
+    },
+  },
+  {
+    name: 'a ternary in an attribute value',
+    code: 'string #state default=isLate ? "late" : "ok"',
+    spans: {
+      string: 'ts-tag',
+      '#state': 'ts-constant',
+      default: 'ts-attribute',
+      isLate: 'ts-variable',
+      '?': 'ts-operator',
+      '"late"': 'ts-string',
+      ':': 'ts-operator',
+      '"ok"': 'ts-string',
     },
   },
   {
@@ -118,10 +136,11 @@ const forms = [
 for (const form of forms) {
   test(`${form.name} is coloured, and does not throw`, () => {
     const html = highlightMx(form.code + '\n');
-    for (const [text, cls] of Object.entries(form.spans)) {
+    for (const [text, wanted] of Object.entries(form.spans)) {
+      const expected = Array.isArray(wanted) ? wanted : [wanted];
       const classes = classesOfText(form.code, text);
       expect(classes.length).toBeGreaterThan(0);
-      expect([...new Set(classes)]).toEqual([cls]);
+      expect([...new Set(classes)].sort()).toEqual([...expected].sort());
     }
     expect(html).toContain('<pre class="hljs mx-hl"><code class="language-mx">');
   });
@@ -154,6 +173,14 @@ test('every capture the queries can produce has a decided colour in both themes'
   }
   // A regex is a string in this theme, so the italic is what separates it.
   expect(themeStyles).toContain('.mx-hl .ts-string-special{color:#50a14f;font-style:italic}');
+  // A capture whose entry was never written must not slip through the palette.
+  // `constructor` is the one that could: it is an `Object.prototype` property,
+  // so `name in PALETTE` is true for it whether or not the table decides it, and
+  // the table would then read as `Object` and emit `color:undefined`.
+  expect(unstyledCaptureNames()).toEqual([]);
+  expect(themeStyles).not.toContain('undefined');
+  expect(themeStyles).toContain('.mx-hl .ts-constructor{color:#4078f2');
+  expect(themeStyles).toContain(':root[data-theme="dark"] .mx-hl .ts-constructor{color:#61aeee}');
   // The box is docmd's: the stylesheet colours spans and sets no background.
   expect(themeStyles).not.toContain('background');
   expect(themeStyles).not.toContain('.shiki');
@@ -174,7 +201,7 @@ test('a plain word carries no span, so it reads in the colour docmd gives a pre'
   expect(themeStyles).not.toContain('.ts-property{');
 });
 
-// The escaping path is ours (the vendored `renderMx`), and a fence is the one
+// The escaping path is the package's `renderMx`, and a fence is the one
 // place an author can write HTML by accident: an attribute value, a comment or a
 // string that looks like a tag. Everything that reaches the page is escaped, so
 // nothing can close the `code` element early or open a tag.
@@ -193,6 +220,81 @@ test('an mx fence escapes the HTML an author wrote', () => {
   const text = html.replace(/<[^>]*>/g, '')
     .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
   expect(text).toBe('string #markup default="<b>&</b>" // </pre><script>alert(1)</script>');
+});
+
+// The two forms the vendored queries used to leave uncoloured. Both were fixed
+// on the MX side and are in @mxlang/tree-sitter-mx 0.1.0-alpha.1, so both are
+// pinned here: a downgrade of the package that lost either one fails this.
+test('the name in a destructured lambda parameter is coloured, and the body\'s too', () => {
+  const html = highlightMx('check :done [ that=({ self }) => self.done ]\n');
+  // The pattern's `self` is a bound name (`variable.parameter`), the body's is a
+  // read of it (`variable`); both are plain words, and both carry their class.
+  expect(html).toContain('<span class="ts-punctuation-bracket">({</span> <span class="ts-variable-parameter">self</span>');
+  expect(html).toContain('<span class="ts-variable">self</span><span class="ts-punctuation-delimiter">.</span><span class="ts-property">done</span>');
+  expect(classesOfText('check :done [ that=({ self }) => self.done ]', 'self').sort())
+    .toEqual(['ts-variable', 'ts-variable-parameter']);
+});
+
+test('the ? and the : of a ternary are coloured as operators', () => {
+  const code = 'string #state default=isLate ? "late" : "ok"\n';
+  const html = highlightMx(code);
+  expect(html).toContain('<span class="ts-variable">isLate</span> <span class="ts-operator">?</span>');
+  expect(html).toContain('<span class="ts-string">&quot;late&quot;</span> <span class="ts-operator">:</span>');
+  // The old grammar gave both no class at all, which left a bare `?` and `:` in
+  // the output. Every character of the code the reader sees is inside a span now:
+  // strip the spans and what is left is the author's line, escaped and nothing
+  // else.
+  const inner = /<code class="language-mx">([\s\S]*)<\/code>/.exec(html)[1];
+  expect(inner.replace(/<\/?span[^>]*>/g, ''))
+    .toBe('string #state default=isLate ? &quot;late&quot; : &quot;ok&quot;');
+});
+
+// A fence is a whole `.mx` file, and a line at the left margin ends the root
+// tag's block, a comment included. The grammar reports that as an ERROR node, so
+// the block would render as plain text with the lines below it uncoloured and no
+// error anywhere. It fails the build like any other bad fence instead, naming
+// the page and the line, and the line inside the block to fix.
+const columnZero = [
+  'entity #Todo table="todos"',
+  '// @fields: title is a string.',
+  '  attributes',
+  '    string #title min=1',
+].join('\n');
+
+test('mxParseProblems says nothing about a file the grammar read', () => {
+  expect(mxParseProblems('entity #Todo\n  attributes\n    string #title min=1\n', 'todo.md')).toEqual([]);
+  // A comment indented with the block it sits in is fine, as every fence on the
+  // site shows.
+  expect(mxParseProblems('entity #Todo\n  // a comment\n  attributes\n    string #title\n', 'todo.md')).toEqual([]);
+});
+
+test('mxParseProblems names the line inside the block the grammar could not read', () => {
+  const problems = mxParseProblems(columnZero + '\n', 'docs/entities.md');
+  expect(problems).toHaveLength(1);
+  // Line 1 is the entity, which parsed; line 2 is the comment at the left
+  // margin, which is what the author has to indent.
+  expect(problems[0]).toContain('docs/entities.md');
+  expect(problems[0]).toContain('block line 2 is an ERROR node');
+  expect(problems[0]).toContain('a comment inside an entity is indented with the block it sits in');
+});
+
+test('an mx fence the grammar cannot read fails the build with the page and the line', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'mesh-highlight-error-tree-'));
+  try {
+    const filePath = join(dir, 'entities.md');
+    const source = ['# Todo', '', '```mx', columnZero, '```', ''].join('\n');
+    writeFileSync(filePath, source);
+    const failure = await processContentAsync(source, processor(), {}, { filePath })
+      .then(() => undefined, (error) => error);
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure.message).toContain(`${filePath}:3:1: Failed to highlight mx block`);
+    expect(failure.message).toContain('@mxlang/tree-sitter-mx');
+    expect(failure.message).toContain('block line 2 is an ERROR node');
+    // The fence itself is quoted, so the author sees what failed.
+    expect(failure.message).toContain(columnZero);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('a titled mx fence keeps docmd code-block header and copy button markup', () => {

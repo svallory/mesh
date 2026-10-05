@@ -1,10 +1,11 @@
 // `mx` fences on the docs site are highlighted with MX's own highlighter: the
-// tree-sitter grammar, queries and TypeScript injection vendored under ./mx (see
-// ./mx/SOURCE.md), run through web-tree-sitter at build time. Nothing is parsed
-// in the browser; the page gets static spans ([ADR-0065]).
+// published `@mxlang/tree-sitter-mx` package (grammar wasm, highlight and
+// injection queries, and the TypeScript grammar the injections need), run
+// through web-tree-sitter at build time. Nothing is parsed in the browser; the
+// page gets static spans ([ADR-0065]).
 //
 // This module is the single docmd entry point for `mx`:
-//   - it routes every ```mx fence through the vendored `renderFence`, through
+//   - it routes every ```mx fence through the package's `renderFence`, through
 //     `md.options.highlight` (not `renderer.rules.fence`), so docmd's own
 //     ```lang "title" wrapper, header and copy button keep working;
 //   - it wraps the fence rule to turn a highlight failure into a build failure
@@ -16,10 +17,76 @@
 // `mx-figure` fences import `highlightMx` from here, so the annotated figure and
 // ordinary fences can never drift apart.
 import { readFileSync } from 'node:fs';
-import { classesOf, captureNames, classOf, escapeHtml, renderFence } from './mx/mx-highlight.mjs';
+import {
+  captureNames,
+  classOf,
+  classesOf,
+  escapeHtml,
+  parseMx,
+  renderFence,
+} from '@mxlang/tree-sitter-mx/docmd';
+
+/**
+ * What is wrong with `source`, as build-problem messages, or `[]` when the
+ * grammar read all of it.
+ *
+ * `parseMx` marks a line it could not read with an ERROR node. The clearest
+ * case is the language's own rule, not a gap: in concise syntax a line at the
+ * left margin ends the root tag's block, a comment included, so a comment
+ * inside an entity that is not indented with the block it sits in ends the
+ * entity there, and everything below it is unreadable too. A block the grammar
+ * cannot read is a bad block, so it fails the build like any other one: the
+ * wrapper in `installMxHighlight` adds the page and the line of the fence, and
+ * these messages say which line inside the block the grammar stopped at.
+ *
+ * The block is parsed once here and once more by `renderFence`, which is what
+ * the package ships; a fence is a whole file and the parse is milliseconds.
+ *
+ * @param {string} source
+ * @param {string} [file] the page, for the figure's own problem list
+ * @returns {string[]}
+ */
+export function mxParseProblems(source, file = '<mx block>') {
+  const tree = parseMx(source);
+  if (!tree.rootNode.hasError) return [];
+  const rows = new Set();
+  const visit = (node) => {
+    if (node.type !== 'ERROR') {
+      for (const child of node.children) visit(child);
+      return;
+    }
+    // An ERROR node wraps everything it could not attach to the rest, so its own
+    // start row is usually the block's first line and names nothing an author
+    // can act on. What they have to fix is the first token the grammar could not
+    // keep inside the block, which in the column-0 case is the first child that
+    // starts on a later line at the left margin.
+    const loose = node.children.find(
+      (child) => child.startPosition.column === 0 && child.startPosition.row > node.startPosition.row,
+    );
+    rows.add((loose ?? node).startPosition.row + 1);
+  };
+  visit(tree.rootNode);
+  const at = [...rows].sort((a, b) => a - b);
+  let where;
+  if (at.length === 0) {
+    where = 'the grammar reported an error with no line of its own';
+  } else if (at.length === 1) {
+    where = `block line ${at[0]} is an ERROR node`;
+  } else {
+    where = `block lines ${at.join(', ')} are ERROR nodes`;
+  }
+  return [
+    `${file}: mx block cannot be highlighted: ${where}, so it would render as plain ` +
+    `text and the lines below it would too. In concise syntax a line at the left ` +
+    `margin ends the root tag's block, a comment included, so a comment inside an ` +
+    `entity is indented with the block it sits in.`,
+  ];
+}
 
 /** One `<pre>` for one `mx` fence or one figure segment. */
 export function highlightMx(source) {
+  const problems = mxParseProblems(source);
+  if (problems.length > 0) throw new Error(problems.join('\n'));
   return renderFence(source);
 }
 
@@ -33,11 +100,17 @@ export function highlightMx(source) {
  * range out of the result, which is also what makes a segment look exactly like
  * the same lines in a full-file fence.
  *
+ * A whole file the grammar cannot read is refused here too, so a figure fails
+ * on the same terms as the fence beside it.
+ *
  * @param {string} source
+ * @param {string} [file] the page, for the problem messages
  * @returns {(start: number, end: number) => string} highlighted HTML of
  *   `source.slice(start, end)`, the same markup `renderFence` would produce.
  */
-export function mxHighlighter(source) {
+export function mxHighlighter(source, file) {
+  const problems = mxParseProblems(source, file);
+  if (problems.length > 0) throw new Error(problems.join('\n'));
   const classes = classesOf(source);
   return (start, end) => {
     let html = '';
@@ -95,6 +168,8 @@ const PALETTE = {
   'constant.builtin': ['#c18401', '#e6c07b'], // `true`, `false`, `null`
   'variable.builtin': ['#c18401', '#e6c07b'],
   number: ['#c18401', '#e6c07b'],
+  // A constructor is a named function, so it takes the function colour.
+  constructor: ['#4078f2', '#61aeee'],
   // A plain word: a variable, a parameter, a property. docmd's `pre` colour
   // already is the plain colour, so these need no rule.
   variable: null,
@@ -102,7 +177,7 @@ const PALETTE = {
   property: null,
 };
 
-/** Capture names the vendored queries can produce that need no colour. */
+/** Capture names the package's queries can produce that need no colour. */
 const UNSTYLED = ['none', 'embedded'];
 
 /** Captures set in italic, so a regex literal reads apart from a plain string. */
@@ -111,12 +186,17 @@ const ITALIC = new Set(['string.special', 'comment']);
 /**
  * The capture names with neither a colour nor a deliberate blank, for the tests:
  * a refreshed grammar that adds a capture fails on this until it is placed.
+ *
+ * `Object.hasOwn`, not `in`: a capture called `constructor` (the queries have
+ * one) is also an `Object.prototype` property, so `name in PALETTE` answers
+ * `true` for it whether or not the table decides it, and the table would then
+ * be read as `Object` and emit `color:undefined`.
  */
 export function unstyledCaptureNames() {
-  return captureNames.filter((name) => !(name in PALETTE) && !UNSTYLED.includes(name));
+  return captureNames.filter((name) => !Object.hasOwn(PALETTE, name) && !UNSTYLED.includes(name));
 }
 
-const COLOURED = captureNames.filter((name) => PALETTE[name]);
+const COLOURED = captureNames.filter((name) => Object.hasOwn(PALETTE, name) && PALETTE[name]);
 
 /**
  * The whole stylesheet: one rule per capture in the light theme, one in the
@@ -222,10 +302,15 @@ export function installMxHighlight(md, renderMx = highlightMx) {
       return previousFence.call(this, tokens, index, options, env, self);
     } catch (cause) {
       // Render-time errors escape docmd's isolated setup hooks and abort the build.
+      // The highlighter's own reason (which line of the block the grammar could
+      // not read) belongs in the message, not only in `cause`: this string is
+      // what the build prints.
+      const because = cause instanceof Error && cause.message ? `\n${cause.message}` : '';
       throw new Error(
         `${fenceLocation(token, env, bodies.get(env))}: ` +
-        `Failed to highlight mx block with MX's tree-sitter highlighter (plugins/mx). ` +
-        `Check the block and the vendored grammar.\n` +
+        `Failed to highlight mx block with MX's tree-sitter highlighter ` +
+        `(@mxlang/tree-sitter-mx).${because}\n` +
+        `Check the block and the grammar's rule about indentation.\n` +
         `\`\`\`mx\n${token.content}\`\`\``,
         { cause },
       );

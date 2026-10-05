@@ -1,0 +1,12 @@
+# @mxlang is published on the operator's own registry, https://npm.saulo.tech,
+# and nowhere else. It is a read-only Verdaccio for this repository's scope: the
+# @mxlang packages are installed from it by anyone, without an uplink, so only
+# this scope ever points at it. Every other package keeps the default registry,
+# which is what `bun link` needs: packages/compiler's `link:@mxlang/core` and
+# `link:@mxlang/data` are resolved from this machine, not from any registry, so
+# the scope entry leaves them alone.
+#
+# See apps/docs/docs/architecture/decisions/0065-mx-highlighting-on-the-docs-site.md
+# (ADR-0065) for why the docs highlighter comes from there.
+[install.scopes]
+"@mxlang" = "https://npm.saulo.tech"

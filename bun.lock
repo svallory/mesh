@@ -15,7 +15,7 @@
       "devDependencies": {
         "@docmd/core": "0.9.7",
         "@docmd/plugin-search": "0.9.7",
-        "web-tree-sitter": "0.26.9",
+        "@mxlang/tree-sitter-mx": "0.1.0-alpha.1",
       },
     },
     "examples/blog": {
@@ -175,6 +175,8 @@
     "@mxlang/core": ["@mxlang/core@link:@mxlang/core", {}],
 
     "@mxlang/data": ["@mxlang/data@link:@mxlang/data", {}],
+
+    "@mxlang/tree-sitter-mx": ["@mxlang/tree-sitter-mx@0.1.0-alpha.1", "https://npm.saulo.tech/@mxlang/tree-sitter-mx/-/tree-sitter-mx-0.1.0-alpha.1.tgz", { "dependencies": { "web-tree-sitter": "0.26.9" }, "peerDependencies": { "@types/emscripten": "^1.40.0" }, "optionalPeers": ["@types/emscripten"] }, "sha512-jE+HM6PY7h1c/aDtNuFR/7LObK9nalEKTc7QzWZ/qMC9y4NFc6CqO4+aZGZMlsOhiXC99dwo8DkZUYMGhV3Xqw=="],
 
     "@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
 

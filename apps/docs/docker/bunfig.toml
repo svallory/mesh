@@ -1,0 +1,17 @@
+# The docs image installs from docker/package.json and docker/bun.lock, which
+# `bun run validate` keeps in step with apps/docs/package.json, and the build
+# context is this directory: the image never sees the workspace root, so the
+# root bunfig.toml that scopes @mxlang to https://npm.saulo.tech does not apply
+# here, and neither do root-level overrides, patchedDependencies or
+# trustedDependencies.
+#
+# This file repeats that one scope entry, and it is needed the moment the
+# install resolves rather than reads: `bun install --frozen-lockfile` takes the
+# tarball URL straight out of docker/bun.lock, but a resolve without this file
+# asks registry.npmjs.org and gets "GET .../@mxlang%2ftree-sitter-mx - 404".
+# Verified in oven/bun:1.3.14 with docker/package.json alone, in both directions.
+#
+# Keep it in step with the root bunfig.toml:
+# apps/docs/docs/architecture/contributing.md says where the registry is.
+[install.scopes]
+"@mxlang" = "https://npm.saulo.tech"

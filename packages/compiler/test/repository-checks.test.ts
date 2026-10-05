@@ -94,6 +94,45 @@ test("M1 test 8: only exact dependency, docs output/content and lock paths are e
   });
 });
 
+// ADR-0065: the docs site highlights `mx` fences with MX's own highlighter, so
+// the one package name it may mention outside `packages/compiler` is the grammar
+// package. The vocabulary's own packages stay forbidden there, and so does a name
+// that merely starts with the highlighter's.
+test("M1 test 8: the docs app may mention only the highlighter, not the vocabulary", () => {
+  workspace((dir, put) => {
+    put("apps/docs/plugins/mx-highlight.js", 'import { renderMx } from "@mxlang/tree-sitter-mx/docmd";');
+    put("apps/docs/package.json", '  "devDependencies": { "@mxlang/tree-sitter-mx": "0.1.0-alpha.1" }');
+    put("apps/docs/test/mx-highlight.test.js", '// see ADR-0065 and @mxlang/tree-sitter-mx');
+    expect(checkMxImports(dir)).toEqual([]);
+    for (const path of ["packages/model/src/core.ts", "apps/demo/data.ts", "examples/blog/core.mjs"])
+      put(path, 'import "@mxlang/core";');
+    expect(checkMxImports(dir)).toHaveLength(3);
+  });
+});
+
+test("M1 test 8: a name that only starts with the highlighter is still forbidden", () => {
+  workspace((dir, put) => {
+    put("apps/docs/plugins/data.js", 'import { data } from "@mxlang/tree-sitter-mx-data";');
+    put("apps/docs/plugins/shorthand.js", 'import x from "@mxlang/tree-sitter-mx.js";');
+    put("apps/docs/plugins/other.js", 'import { data } from "@mxlang/data";');
+    expect(checkMxImports(dir)).toHaveLength(3);
+  });
+});
+
+test("M1 test 8: the highlighter alongside the vocabulary in one file is one finding", () => {
+  workspace((dir, put) => {
+    put("apps/docs/plugins/both.js", [
+      'import { renderMx } from "@mxlang/tree-sitter-mx/docmd";',
+      '// and the vocabulary, which is never allowed here:',
+      'import { parseData } from "@mxlang/data";',
+      '',
+    ].join("\n"));
+    expect(checkMxImports(dir)).toEqual([
+      'apps/docs/plugins/both.js:3: Mention of @mxlang is forbidden here (ADR-0043), including comments and strings; move the code into packages/compiler or remove the mention',
+    ]);
+  });
+});
+
 test.skipIf(sep !== "/")("M1 test 8: POSIX literal backslashes do not create excluded path segments", () => {
   workspace((dir, put) => {
     put("apps/docs/site\\review-import.ts", 'import "@mxlang/data";');
