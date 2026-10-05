@@ -7,6 +7,6 @@
   "devDependencies": {
     "@docmd/core": "0.9.7",
     "@docmd/plugin-search": "0.9.7",
-    "web-tree-sitter": "0.26.9"
+    "@mxlang/tree-sitter-mx": "0.1.0-alpha.1"
   }
 }
