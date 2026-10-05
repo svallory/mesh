@@ -7,7 +7,8 @@ import { readFileSync } from 'node:fs';
 import { highlightMx, mxParseProblems } from '../plugins/mx-highlight.js';
 
 const page = readFileSync(new URL('../docs/index.md', import.meta.url), 'utf8');
-const fences = [...page.matchAll(/^```mx(?:[ \t][^\n]*)?\n([\s\S]*?)^```[ \t]*$/gm)].map((m) => m[1]);
+// The entity file is an `mx-flow` fence (plugins/mesh-home.js), the left half of the build diagram.
+const fences = [...page.matchAll(/^```mx(?:-flow)?(?:[ \t][^\n]*)?\n([\s\S]*?)^```[ \t]*$/gm)].map((m) => m[1]);
 
 const SECTIONS = new Set(['attributes', 'relationships', 'computed', 'actions', 'policies']);
 
@@ -29,7 +30,10 @@ test('the home page has one entity file, the todo file in syntax v3', () => {
   }
   // The flagship file's idea, in the order a reader meets it.
   const shape = ['uuid :id primary-key', 'string :title min=1', 'boolean :done default=false',
-    'belongs-to=:List :list', 'create :create accept=[:title, :listId]', 'policy :owner'];
+    'belongs-to=:List :list', 'create :create accept=[:title, :listId]', 'update :rename accept=[:title]',
+    'read :pending', 'sort\n        asc :title', 'policy :owner'];
+  // A read's order is a `sort` section, never the old `sort=[...]` option.
+  expect(fences[0]).not.toContain('sort=');
   let at = -1;
   for (const part of shape) {
     const next = fences[0].indexOf(part);
@@ -41,4 +45,28 @@ test('the home page has one entity file, the todo file in syntax v3', () => {
 test("the home page's entity file highlights with no error", () => {
   expect(mxParseProblems(fences[0], 'docs/index.md')).toEqual([]);
   expect(highlightMx(fences[0])).toContain('<span class="ts-tag">entity</span>');
+});
+
+// The page quotes facts about its own sample; they must stay true when it changes.
+test("the page's claims about its entity file match the file", () => {
+  const lines = fences[0].replace(/\n$/, '').split('\n');
+  expect(page).toContain(`It writes the ${lines.length} lines of <code>todo.mesh.mx</code> above.`);
+  // The build error the agents section shows is the one the build would print for
+  // a misspelled `:title` in this file's `accept`: same line, same column.
+  const row = lines.findIndex((line) => line.includes('create :create accept=[:title'));
+  const column = lines[row].indexOf(':title') + 1;
+  expect(page).toContain(`src/domain/todo/todo.mesh.mx:${row + 1}:${column} error \`accept\` names "titel"`);
+  // Every box's function names are the actions the file declares.
+  for (const name of ['createTodo', 'renameTodo', 'pendingTodo', 'readTodo', 'destroyTodo']) expect(page).toContain(name);
+});
+
+test('every box names sections the file has, and the island is loaded from where the build writes it', async () => {
+  const { FLOW_SECTIONS } = await import('../plugins/mesh-home.js');
+  const boxes = [...page.matchAll(/<div class="mh-box" data-box="([a-z]+)" data-from="([a-z ]+)"/g)];
+  expect(boxes.map((m) => m[1])).toEqual(['types', 'functions', 'validation', 'authorization', 'table', 'migrations', 'rules', 'model']);
+  for (const [, , from] of boxes) for (const part of from.split(' ')) expect(FLOW_SECTIONS).toContain(part);
+  const build = readFileSync(new URL('../island/build.ts', import.meta.url), 'utf8');
+  expect(build).toContain("'../site/assets/home-flow.js'");
+  expect(page).toContain("import((window.DOCMD_BASE || '/') + 'assets/home-flow.js')");
+  expect(page).toContain("matchMedia('(prefers-reduced-motion: reduce)')");
 });
