@@ -1,6 +1,6 @@
 ---
 title: "Tutorial: a todo list"
-description: "Two entities, a relationship, a validation, a policy, a calculation and an aggregate, then a script and a test that use them."
+description: "Two entities, a relationship, a validation, a policy, a computed field and a rollup, then a script and a test that use them."
 ---
 
 # Tutorial: a todo list
@@ -9,7 +9,7 @@ description: "Two entities, a relationship, a validation, a policy, a calculatio
 Mesh is not released yet. These pages describe Mesh 1.0.
 :::
 
-You will build a small program: lists of todos, where a list belongs to somebody and only that person may read or change its todos. Along the way you will use every idea Mesh has: relationships, validations, changes, policies, calculations and aggregates. Then you will run it, and write a test for it.
+You will build a small program: lists of todos, where a list belongs to somebody and only that person may read or change its todos. Along the way you will use the main ideas Mesh has: relationships, validations, steps, policies and computed fields. Then you will run it, and write a test for it.
 
 Start from the project in the [quick start](./quick-start.md), or from a new one:
 
@@ -23,93 +23,103 @@ cd todo-app
 - Someone creates a list. The list records who owns it.
 - Someone adds a todo to a list they own.
 - Someone completes a todo, and asks which todos are still pending.
-- Somebody else's todos are invisible to them, and every one of the errors says so.
+- Somebody else's todos come back as nothing at all, and the errors say why.
 
-Two entities, because a todo needs a list and a list needs todos. A single file with a `listId` field would also work; a relationship is what lets you write `todo.list.ownerId` in a rule and have Mesh fetch it for you.
+Two entities, because a todo needs a list and a list needs todos. A single file with a `listId` field would also work; a relationship is what lets you write `self.list.ownerId` in a rule and have Mesh fetch it for you.
 
 ## The list
 
-`src/domain/todo/list.mx`:
+`src/domain/todo/list.mesh.mx`:
 
-```mx "src/domain/todo/list.mx"
-entity="list" table="lists"
+```mx "src/domain/todo/list.mesh.mx"
+entity #List table="lists"
   attributes
-    uuid-primary-key="id"
-    attribute="name" type="string" allow-nil=false
-    attribute="ownerId" type="uuid" allow-nil=false
-    create-timestamp="insertedAt"
+    uuid #id primary-key
+    string #name
+    uuid #ownerId
+    timestamp #insertedAt on="create"
+    timestamp #updatedAt on="update"
 
   relationships
-    has-many="todos" destination="todo"
+    has-many=Todo #todos
 
-  actions defaults=["read", "destroy"]
-    create="create" accept=["name"]
-      change=({ list, actor }) => { list.ownerId = actor.id }
+  computed
+    count #todoCount of="todos"
+
+  actions auto=["read", "destroy"]
+    create #create accept=["name"]
+      do
+        set
+          #ownerId=({ actor }) => actor.id
 
   policies
-    policy=action_type("create")
+    policy #anyoneCreates types=["create"]
       authorize-if=() => true
-    policy=action_type(["read", "destroy"])
-      authorize-if=({ list, actor }) => list.ownerId === actor.id
-
-  aggregates
-    count="todoCount" relationship-path="todos"
+    policy #ownerOnly types=["read", "destroy"]
+      authorize-if=({ self, actor }) => self.ownerId === actor.id
 ```
 
 Four things worth noticing:
 
-- **`accept=["name"]` only.** `ownerId` is not accepted, so no caller can create a list owned by somebody else. A change fills it from the caller's `actor`.
-- **The two policies are separate.** `action_type(["read", "destroy"])` means "read or destroy", which is one policy for two actions. A list of *checks* (`policy=[a, b]`) means both must hold. One is "or", the other is "and".
-- **Nobody without a policy is allowed.** `create` has a policy that allows everyone; `read` and `destroy` have a policy that requires ownership.
-- **`count="todoCount"`** is an aggregate: how many todos the list has. You ask for it with `load: ["todoCount"]`.
+- **`accept=["name"]` only.** `ownerId` is not accepted, so no caller can create a list owned by somebody else; a step fills it from the caller's `actor`.
+- **The two policies are separate.** `types=["read", "destroy"]` means "read or destroy", which is one policy for two actions. Two policies are "and": every policy covering an action must pass.
+- **`types=["create"]` on its own policy allows everyone**, because `authorize-if=() => true` always holds. `read` and `destroy` need ownership. An action that no policy covers is forbidden, so a new action needs one before it works.
+- **`count #todoCount`** is a rollup: how many todos the list has. Callers ask for it with `load: ["todoCount"]`.
 
 ## The todo
 
-`src/domain/todo/todo.mx`:
+`src/domain/todo/todo.mesh.mx`, the same file the [quick start](./quick-start.md) wrote:
 
-```mx "src/domain/todo/todo.mx"
-entity="todo" table="todos"
+```mx "src/domain/todo/todo.mesh.mx"
+entity #Todo table="todos"
   attributes
-    uuid-primary-key="id"
-    attribute="title" type="string" allow-nil=false
-    attribute="done" type="boolean" allow-nil=false default=false
-    create-timestamp="insertedAt"
-    update-timestamp="updatedAt"
+    uuid #id primary-key
+    string #title min=1
+    boolean #done default=false
+    timestamp #insertedAt on="create"
+    timestamp #updatedAt on="update"
 
   relationships
-    belongs-to="list" destination="list"
+    belongs-to=List #list
 
-  actions defaults=["read", "destroy"]
-    create="create" accept=["title", "listId"]
-      validate=({ todo }) => todo.title.length > 0 message="title must not be empty"
+  computed
+    string #label({ self }) {
+      return (self.done ? "[x] " : "[ ] ") + self.title
+    }
 
-    update="complete"
-      change=({ todo }) => { todo.done = true }
+  actions auto=["read", "destroy"]
+    create #create accept=["title", "listId"]
 
-    update="rename" accept=["title"]
+    update #complete
+      validate
+        check :notDoneYet [
+          that=({ self }) => !self.done
+          code="already_done"
+          message="this todo is already complete"
+        ]
+      do
+        set
+          #done=true
 
-    read="pending"
-      filter=({ todo }) => todo.done === false
+    update #rename accept=["title"]
+
+    read #pending
+      filter=({ self }) => self.done === false
       sort=["insertedAt"]
 
   policies
-    policy=action_type(["create", "read", "update", "destroy"])
-      authorize-if=({ todo, actor }) => todo.list.ownerId === actor.id
-
-  calculations
-    calculate="label" type="string"
-      value({ todo }) {
-        return (todo.done ? "[x] " : "[ ] ") + todo.title
-      }
+    policy #owner types=["create", "read", "update", "destroy"]
+      authorize-if=({ self, actor }) => self.list.ownerId === actor.id
 ```
 
 What this gives you:
 
-- **`listId` was not declared.** `belongs-to="list"` adds the foreign-key attribute and the relationship that reads it. `todo.list` is there when you ask for it.
-- **The validation sees the record it is about to write**, so `todo.title` is the title the caller sent. It fails with the message you wrote, not a generic one.
-- **`complete` accepts nothing.** It takes an id and a context. The change reads no stored value, so Mesh folds it into the single `UPDATE`. Two callers completing the same todo cannot both win on a stale copy.
+- **`listId` was not declared.** `belongs-to=List #list` adds the foreign-key attribute and the relationship that reads it. `todo.list` is there when you ask for it.
+- **`min=1` is the whole of "a todo needs a title"**, and it is checked twice: the input validator refuses it before the call, and the column refuses it.
+- **`check :notDoneYet` is about state, not about one field**, which is what a `check` is for. It runs on the record with the caller's input applied, so it fails with the message you wrote before anything is written.
+- **`complete` accepts nothing.** It takes an id and a context, and its check reads the todo it was given, so Mesh reads that row, locked, and writes it in the same transaction rather than running one blind `UPDATE`. Two callers completing the same todo cannot both win on a stale copy. `rename`, which has no check, is the one that runs as a single `UPDATE`.
 - **`pending` is a query, not a filter you remember to apply.** The filter runs in SQL, combined with whatever the caller passed.
-- **`label` is computed, not stored.** It is opaque: it concatenates a string, so it cannot run in SQL. Ask for it by name, or the property does not exist on the result.
+- **`label` is computed, not stored.** It concatenates a string, so Mesh cannot run it in SQL and computes it after the rows load. Ask for it by name, or the property does not exist on the result.
 
 ## The action context
 
@@ -171,25 +181,27 @@ try {
   await createTodo({ title: "", listId: list.id }, { actor: alice });
 } catch (error) {
   if (!(error instanceof InvalidInputError)) throw error;
-  console.log(error.issues.map((issue) => issue.message).join("; "));
+  console.log(error.code, error.issues[0]?.code, error.issues[0]?.message);
 }
 
 await disconnect();
 ```
 
-```
+```text
 [ ] Buy bread
 [ ] Buy coffee
 not_found
-title must not be empty
+invalid_input too_short must be at least 1 character
 ```
 
-Four things to notice:
+An empty title is refused at run time by `string #title min=1`, with Mesh's own code and message — a line rule has nowhere to write a custom one — and the issue points at that line in the `.mesh.mx` file. A `check` of your own fails the same way and carries the label and code you gave it.
+
+Five things to notice:
 
 - **`createList` takes only `name`.** `ownerId` is not in the input type, so a call that sends it does not compile.
 - **`load: ["label"]` is what types `todo.label`.** Without it, reading the property is a type error rather than `undefined`.
 - **Bob gets `NotFoundError`, not `ForbiddenError`.** The policy reads the stored row, so it becomes a filter on the statement, and a row he may not change does not exist as far as he is concerned. Ask first and you get the reason instead: `canCompleteTodo({ id }, { actor: bob })` returns `{ allowed: false, breakdown }`.
-- **The empty title is caught before anything is written**, with the message from the `validate` tag, and the issue names the tag's line in the `.mx` file.
+- **The empty title is refused before anything is written**, with Mesh's standard code and message and the position of the line that carries the rule.
 
 ## Build and run
 
@@ -225,8 +237,9 @@ test("only the owner sees a todo", async () => {
   const mine = await todo.pendingTodo({ load: ["label"] }, { actor: alice });
   expect(mine.map((row) => row.label)).toEqual(["[ ] Buy milk"]);
 
-  const his = await todo.canPendingTodo({}, { actor: bob });
-  expect(his.allowed).toBe(false);
+  // Bob's read is allowed; the policy is part of the query, so it simply
+  // returns the rows he owns, which here are none.
+  expect(await todo.pendingTodo({}, { actor: bob })).toEqual([]);
 
   await db.close();
 });
@@ -238,7 +251,7 @@ test("a title cannot be empty", async () => {
 
   const list = await todo.createList({ name: "Groceries" }, { actor: alice });
 
-  expect(
+  await expect(
     todo.createTodo({ title: "", listId: list.id }, { actor: alice }),
   ).rejects.toBeInstanceOf(InvalidInputError);
 
@@ -261,5 +274,5 @@ bun test
 ## What to build next
 
 - Add a `title` filter to the pending read and sort it by title. [Calling actions](./calling-actions.md) has the filter form.
-- Load `todo.list` and `list.todoCount` in one call. [Loading](./calling-actions.md#loading-relationships-calculations-and-aggregates) has the rules.
-- Read the entity's tags one by one. [Entities](./entities.md) is the reference.
+- Load `todo.list` and `list.todoCount` in one call. [Loading](./calling-actions.md#loading-relationships-and-computed-fields) has the rules.
+- Add a `dueOn` date to the todo, and a `count` of the list's todos you can read on the list. [Computed fields](./entities.md#computed) has both.

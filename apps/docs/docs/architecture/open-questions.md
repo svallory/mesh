@@ -6,9 +6,11 @@ description: "Everything the user docs deliberately do not say: unsettled decisi
 # Open questions and findings
 
 ::: callout info "Vocabulary note"
-The pages under [Docs](../docs/index.md) are written in the terms the operator ruled on 2026-10-04: an **entity** (not a resource), each folder inside `src/domain/` is a **module**, generated code lives in **`.mesh/`** (not `generated/`), and an action's second argument is the **action context** (not a scope).
+The pages under [Docs](../docs/index.md) are written in the terms the operator ruled on 2026-10-04 and 2026-10-05: an **entity** (not a resource), each folder inside `src/domain/` is a **module**, generated code lives in **`.mesh/`** (not `generated/`), an action's second argument is the **action context** (not a scope), and entity files are written in [entity file syntax v2](#syntax-v2).
 
-The code, the decision records, the roadmap and the research pages in this section still say *resource*, the `domain=` attribute, *`generated/`* and *scope*, and the packages are still `@mesh/*` (the operator ruled the npm scope to be **`meshfw`**: `@meshfw/cli`, `@meshfw/runtime`, `@meshfw/data-sqlite`, `@meshfw/data-postgres`, `@meshfw/ext-policies`, scaffolded with `bun create meshfw <dir>`). The product is Mesh, the command is `mesh`, the import specifier is `#mesh` and the configuration file is `mesh.config.ts` in both vocabularies. That is not drift to fix page by page: a rename task sweeps the code, the contracts, the fixtures and these architecture pages together. Until it runs, a reader comparing a Docs page with an Architecture page will see two vocabularies, and the Docs page is the one that states the target.
+The rest of this section was brought to the same vocabulary in [PR #24](https://github.com/svallory/mesh/pull/24), and the packages are `@meshfw/*` (the operator ruled the npm scope to be **`meshfw`**: `@meshfw/cli`, `@meshfw/runtime`, `@meshfw/data-sqlite`, `@meshfw/data-postgres`, scaffolded with `bun create meshfw <dir>`; authorization is core, so there is no policies package). The product is Mesh, the command is `mesh`, the import specifier is `#mesh` and the configuration file is `mesh.config.ts`.
+
+**Only the code still says the old words.** `packages/`, `examples/blog` and the compiler's fixtures still use `resource`, `domain=`, *`generated/`* and *scope*, and the contracts still describe the pre-v2 vocabulary. That is not drift to fix page by page: the realignment task sweeps the code and the contracts together. Until it runs, a reader who opens a Docs page and a source file will see two vocabularies, and the Docs page is the one that states the target.
 :::
 
 The pages under Docs are written as if Mesh 1.0 were released: no open questions, no milestones, no hedges. Everything below is what those pages had to leave out, and where each item has to be settled. A page under Docs that has to say "this is not decided" has found a gap, which is the point of writing it first.
@@ -51,6 +53,26 @@ The findings below came from writing the Docs pages against the design. Each nam
 - **The action context's type.** The operator ruled on 2026-10-04 that the second argument is one flat `ActionContext` the user declares by declaration merging. Two records still describe the older shape and have to be amended in the rename task: [ADR-0007](decisions/0007-scope-is-a-plain-argument.md) and [ADR-0047](decisions/0047-actions-are-bound-to-a-data-layer.md) both say "scope" and describe `{ actor, context }`.
 - **Generator templates as an escape hatch.** `mesh export generators` would copy the templates into the project so an advanced user could edit them, and the templates would be written in [Jig](https://jig.saulo.engineer/docs/introduction). It is undecided. The user page [Customising generated code](../docs/customising-generated-code.md) is written as a proposal so the operator can judge the developer experience, and it recommends a named mixin hook in each template instead of a copy of the whole template. A copy means the project owns the generated output and upgrades stop applying; a hook keeps the escape hatch small.
 - **What "what exists today" covers.** The contributor page holds it, but nothing states when it is rewritten as each milestone lands.
+
+## Syntax v2
+
+On 2026-10-05 the operator redesigned the entity file syntax (ruling, [rulings of 2026-10-04](./decisions/rulings-2026-10-04.md)). The pages under [Docs](../docs/index.md) were rewritten to it; nothing else was. Until the realignment task runs, **the Docs pages and the code do not agree**, and the Docs pages are the target.
+
+**What MX does not parse yet (2026-10-05).** Three spellings of v2 are newer than the parser, so the Docs sample check normalises them in memory before it parses a block:
+
+| Spelling | Why it does not parse | Status |
+|:--|:--|:--|
+| `#name` after a space (`update #pay`) | The parser only takes the id shorthand glued to the tag (`update#pay`) | MX decision 146, next in MX's queue; it also fixes the `value:Todo` crash |
+| The `:label` sugar (`check :invoiceNotSent`) | Not implemented | Same decision |
+| A default tag for tagless `#field=value` lines inside `do` | The data target names such a line `object` | MX decision 145: the tag resolves as the parent's contract `defaultTag`, else `package.json#mx.data.defaultTag`, else the built-in `object`. Mesh declares `defaultTag` on `set` once it lands |
+
+Two more answers from the MX lead are load-bearing: `on:load="visible"` arrives as one attribute named `on:load` (final), and `.mesh.mx` keeps its old meaning of "host named `mesh`" until Mesh ships a third-party MX host package named `mesh` (MX decision 148). Files run through MX tooling stay plain `.mx` until that package exists; the Docs pages may show `.mesh.mx`.
+
+**Planned, not v1.** Not in the Docs pages, because a reader would plan on them: `lock="version"`, `relate=…` and `after-commit(…) { }` steps; reusable steps defined in MX (`step #slugify`, one file per step under `src/domain/`, used from an entity file as `slugify from="title" to="slug"`); a raw-SQL escape hatch like Ash's `fragment`; and `bypass` on a policy, which the operator removed because it fails open and is order-dependent (write `isStaff(actor) || …` with a helper instead). Two more items the syntax reference does not settle and the docs therefore do not show: an `increment` step (`set` with an expression covers it), and a cap declared on the entity (a read declares `filter` and `sort`; `limit` and `offset` arrive in the caller's input).
+
+**What still implements the old syntax.** `packages/compiler/src/contracts.ts`, `@mesh/model`, the compiler's build and emitters, `examples/blog` and the compiler's fixtures all still declare `resource="…"`, `attribute="x" type="…"`, `changes`, `validations`, `calculations`, `aggregates` and `policy=action_type(…)`. The compiler's own Docs check therefore defers every v2 block under one named reason (`syntax v2, pending the rename task`) and parses it instead with `parseData` and no contracts, in `packages/compiler/test/repository-checks.ts`; `apps/docs/test/docs-mx-syntax.test.ts` is the stricter companion and fails a block whose root is not `entity #Name`. Both re-enable when the realignment task teaches the contracts the tag.
+
+Two consequences for records that predate v2: [ADR-0034](./decisions/0034-vocabulary-copies-ash-dsl.md) ("copy Ash's DSL") is superseded for entity files, and [ADR-0022](./decisions/0022-policies-simple-tier-as-extension.md) is superseded on packaging, since `policies` is now a section of the entity file rather than an extension. [ADR-0017](./decisions/0017-atomic-by-default-and-classification.md) is amended again: `validate` sees the stored record plus `input`, not the record after the changes, and `require-atomic` does not appear in v2 — a `run(…) { }` step, or any expression Mesh cannot translate to SQL, is what makes an action read-then-write.
 
 ## What the Docs pages invented
 

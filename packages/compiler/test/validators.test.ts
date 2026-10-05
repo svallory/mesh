@@ -54,6 +54,7 @@ test("M2 test 2: emitted validators and types type-check for ordinary, empty and
 });
 
 test("M2 test 2: validator drift checks reject changed keys, requiredness, nullability and scalar width with strict project flags", async () => {
+  // This one runs `tsc` eleven times, so it needs more than bun's 5s default under load.
   const out = await emitted(fixture("reduced-post.mx").source);
   const title = "title: z.string()";
   const body = "body: z.string().nullable().optional(),";
@@ -79,7 +80,7 @@ test("M2 test 2: validator drift checks reject changed keys, requiredness, nulla
   expect(empty.validator.contents).toContain("z.strictObject({})");
   await writeFile(resolve(empty.root, empty.validator.path), empty.validator.contents.replace("z.strictObject({})", "z.strictObject({ extra: z.string().optional() })"));
   expect(check(empty.root, empty.files.filter((file) => file.path.endsWith(".ts")).map((file) => file.path)).output).toContain("TS2344");
-});
+}, 60_000);
 
 test.each(BUILTIN_OBJECT_PROPERTY_NAMES.flatMap((name) => ["attribute", "uuid-primary-key", "create-timestamp", "update-timestamp"].map((tag) => [name, tag] as const)))("built-in object property %s is rejected for %s with exact name position", (name, tag) => {
   const source = `resource="named"\n  attributes\n${tag === "uuid-primary-key" ? "" : '    uuid-primary-key="id"\n'}    ${tag}="${name}"${tag === "attribute" ? ' type="string"' : ""}\n`;
