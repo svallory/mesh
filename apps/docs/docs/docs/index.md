@@ -14,7 +14,7 @@ Mesh is a TypeScript framework: you describe each thing your program stores once
 
 ## One file, and what each part gives you
 
-This is a complete `src/domain/todo/todo.mesh.mx`, top to bottom, cut into its parts. Each note sits with the lines it describes, and every part of the file is something you would otherwise write by hand.
+This is a complete `src/domain/todo/todo.mesh.mx`, top to bottom, as your editor shows it. Point at a numbered marker, or at the lines it sits on, to read what that part gives you; every part is something you would otherwise write by hand.
 
 ```mx-figure
 // @name: Name and table — Todo lives in the `todos` table. The type, the functions and the migration come from this one line.
