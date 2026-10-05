@@ -7,7 +7,7 @@ toc: false
 <section class="mh-hero" aria-labelledby="mh-title">
 <h1 id="mh-title" class="mh-title">Describe it once.<br>Call a function.</h1>
 <p class="mh-lede">Mesh is a TypeScript framework for Bun. You describe each thing your program stores in one <code>.mesh.mx</code> file: its data, its operations and its rules. Mesh writes the typed functions, the input validation, the authorization, the tables and the migrations.</p>
-<p class="mh-actions"><a class="mh-btn mh-btn-main" href="./docs/">Read the introduction</a><a class="mh-btn" href="./docs/quick-start/">Quick start</a></p>
+<p class="mh-actions"><a class="mh-btn mh-btn-main" href="/docs/">Read the introduction</a><a class="mh-btn" href="/docs/quick-start/">Quick start</a></p>
 <p class="mh-status">Mesh is not released yet. These pages describe Mesh 1.0.</p>
 </section>
 
@@ -76,8 +76,8 @@ await createTodo(
 </section>
 
 <nav class="mh-doors" aria-label="Sections of this site">
-<a class="mh-door" href="./docs/"><strong>Docs</strong><span>For people who build with Mesh: the introduction, a quick start, a tutorial and the reference for every declaration.</span></a>
-<a class="mh-door" href="./architecture/"><strong>Architecture</strong><span>For contributors: the decisions, the research and the design that no single code file explains.</span></a>
+<a class="mh-door" href="/docs/"><strong>Docs</strong><span>For people who build with Mesh: the introduction, a quick start, a tutorial and the reference for every declaration.</span></a>
+<a class="mh-door" href="/architecture/"><strong>Architecture</strong><span>For contributors: the decisions, the research and the design that no single code file explains.</span></a>
 </nav>
 
 <p class="mh-colophon">Mesh is open source under the MIT licence. It is modelled on <a href="https://ash-hq.org">Ash</a>, the declarative resource framework for Elixir, and runs on <a href="https://bun.sh">Bun</a>.</p>
