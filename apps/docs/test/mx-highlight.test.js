@@ -9,7 +9,6 @@ import {
   mxParseProblems,
   themeStyles,
   unstyledCaptureNames,
-  withAtomSetLines,
 } from '../plugins/mx-highlight.js';
 
 // Resolve docmd's own parser, rather than pinning a second markdown implementation.
@@ -71,7 +70,7 @@ const forms = [
     code: 'check :invoiceIsSent [ that=({ self }) => self.status === "sent" code="invalid_state" ]',
     spans: {
       check: 'ts-tag',
-      ':invoiceIsSent': 'ts-label',
+      ':invoiceIsSent': 'ts-name',
       that: 'ts-attribute',
       self: ['ts-variable-parameter', 'ts-variable'],
       status: 'ts-property',
@@ -155,8 +154,9 @@ test('every capture the queries can produce has a decided colour in both themes'
   const expected = {
     'ts-tag': '#a626a4',
     'ts-keyword': '#a626a4',
-    'ts-label': '#4078f2',
-    'ts-constant': '#0184bb',
+    'ts-name': '#4078f2',
+    'ts-atom': '#0184bb',
+    'ts-constant': '#4078f2',
     'ts-attribute': '#986801',
     'ts-string': '#50a14f',
     'ts-string-special': '#50a14f',
@@ -191,7 +191,7 @@ test('every capture the queries can produce has a decided colour in both themes'
 test('a plain word carries no span, so it reads in the colour docmd gives a pre', () => {
   const html = highlightMx('check :paid [ that=(self) => self.done ]\n');
   expect(html).toContain('<span class="ts-tag">check</span>');
-  expect(html).toContain('<span class="ts-label">:paid</span>');
+  expect(html).toContain('<span class="ts-name">:paid</span>');
   // `self` is a parameter in the list and a variable in the body. Both are plain
   // words: the span carries its class, and the stylesheet has no rule for it, so
   // the word reads in the pre colour docmd gives every other block.
@@ -224,8 +224,8 @@ test('an mx fence escapes the HTML an author wrote', () => {
 });
 
 // The two forms the vendored queries used to leave uncoloured. Both were fixed
-// on the MX side and are in @mxlang/tree-sitter-mx 0.1.0-alpha.1, so both are
-// pinned here: a downgrade of the package that lost either one fails this.
+// on the MX side and are in @mxlang/tree-sitter-mx 0.1.0-alpha.1 and later, so
+// both are pinned here: a downgrade of the package that lost either one fails this.
 test('the name in a destructured lambda parameter is coloured, and the body\'s too', () => {
   const html = highlightMx('check :done [ that=({ self }) => self.done ]\n');
   // The pattern's `self` is a bound name (`variable.parameter`), the body's is a
@@ -279,27 +279,45 @@ test('mxParseProblems names the line inside the block the grammar could not read
   expect(problems[0]).toContain('a comment inside an entity is indented with the block it sits in');
 });
 
-test('a tagless `:field=value` line in a set is the one allowance, and it is not a hole', () => {
-  // The grammar cannot read an atom as a tagless line's name yet (MX decision
-  // 145/156), so the plugin rewrites those lines before parsing them.
+// A `set` step writes its lines tagless: `:status=:paid`, with the field's name
+// an atom. The grammar could not read that until @mxlang/tree-sitter-mx
+// 0.1.0-alpha.2 (MX decisions 145 and 156), one such line put an ERROR node at
+// the root of the whole block, and the plugin carried an allowance that rewrote
+// the line before parsing. The allowance is gone, so this test is the pin: the
+// line is parsed as the author's own text, with no ERROR node and with the name
+// and the atom in the classes the palette gives them.
+test('a tagless `:field=value` line in a set is the grammar\'s own syntax now', () => {
   const set = [
     'entity :Todo',
     '  attributes',
-    '    boolean :done default=false',
+    '    enum :status values=[:draft, :paid] default=:draft',
+    '    datetime :paidAt nullable',
     '  actions',
-    '    update :complete',
+    '    update :pay',
     '      do',
     '        set',
-    '          :done=true',
+    '          :status=:paid',
+    '          :paidAt=({ input }) => input.paidAt',
     '',
   ].join('\n');
-  expect(withAtomSetLines(set)).toContain('          #done=true');
-  // Same length, same line count: the figure's line ranges and the offsets the
-  // highlighter slices by still line up with the author's text.
-  expect(withAtomSetLines(set).split('\n')).toHaveLength(set.split('\n').length);
-  expect(withAtomSetLines(set)).toHaveLength(set.length);
+  // No ERROR node, with the source handed over as it is written.
   expect(mxParseProblems(set, 'todo.md')).toEqual([]);
-  // The allowance is exactly that: a line at the left margin is still an error.
+  const html = highlightMx(set);
+  const classes = classesOfText(set, ':status');
+  expect([...new Set(classes)].sort()).toEqual(['ts-name']);
+  expect([...new Set(classesOfText(set, ':paid'))].sort()).toEqual(['ts-atom']);
+  expect([...new Set(classesOfText(set, ':paidAt'))].sort()).toEqual(['ts-name']);
+  // The tagless assignment and the arrow that reads a field, coloured as the
+  // same file's fence colours them.
+  expect(html).toContain('<span class="ts-name">:status</span><span class="ts-operator">=</span><span class="ts-atom">:paid</span>');
+  expect(html).toContain('<span class="ts-name">:paidAt</span><span class="ts-operator">=</span><span class="ts-punctuation-bracket">({</span> <span class="ts-variable-parameter">input</span> <span class="ts-punctuation-bracket">})</span> <span class="ts-operator">=&gt;</span> <span class="ts-variable">input</span><span class="ts-punctuation-delimiter">.</span><span class="ts-property">paidAt</span>');
+  expect(html).toContain('<span class="ts-variable-parameter">input</span>');
+  // The text a reader sees is the author's own, with no rewrite anywhere: the
+  // allowance used to turn this line into `#status=:paid`.
+  expect(html.replace(/<[^>]*>/g, '')).toContain(':status=:paid');
+  expect(html.replace(/<[^>]*>/g, '')).not.toContain('#status');
+  // And the error check is not weakened by dropping the allowance: a line at the
+  // left margin is still an error, and so is a line with nothing after `=`.
   expect(mxParseProblems(columnZero + '\n', 'docs/entities.md')).toHaveLength(1);
   expect(mxParseProblems('entity :Todo\n  attributes\n    string :title min=\n', 'todo.md')).toHaveLength(1);
 });

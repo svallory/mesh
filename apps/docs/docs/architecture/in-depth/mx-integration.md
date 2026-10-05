@@ -27,18 +27,18 @@ The vocabulary is Mesh's own, informed by Ash ([ADR-0049](../decisions/0049-voca
 
 ## The MX features syntax v3 depends on
 
-| Feature | Used for | MX state (measured 2026-10-05 evening) |
+| Feature | Used for | MX state (measured 2026-10-05 evening, `@mxlang/data` 0.1.0-alpha.3) |
 |---|---|---|
-| Atoms in a value (`accept=[:title]`, `types=[:update]`, `values=[:draft]`, `default=:draft`, `on=:create`, `on:load=:visible`, an atom inside an expression) | every reference and every fixed-set value | MX decision 156, approved and not implemented. `parseData` 0.1.0-alpha.2 reports `Unexpected token` on each; the operator approved an interim parser bundle for the next alpha |
-| `:name` after a tag (`update :pay`) | every declaration's name | Parses today, and arrives as the attribute `name`, exactly as `#name` did |
-| A relationship's destination as an atom (`belongs-to=:Customer :customer`) | a reference to another entity | The same atom gap: a value cannot be glued to a name (MX decision 146) |
-| A per-parent `defaultTag` | tagless `:field=value` lines under `set` | MX decision 145: the ladder and the built-in `object` default landed; per-parent `defaultTag` in review |
+| Atoms in a value (`accept=[:title]`, `types=[:update]`, `values=[:draft]`, `default=:draft`, `on=:create`, `on:load=:visible`, an atom inside an expression) | every reference and every fixed-set value | In the grammar and queries, **not** in `parseData`. `@mxlang/tree-sitter-mx` 0.1.0-alpha.2 reads every one of them, so the docs highlighter needs no allowance; `@mxlang/data` 0.1.0-alpha.3 still reports `Unexpected token` on each. The operator approved an interim parser bundle for the next alpha |
+| `:name` after a tag (`update :pay`) | every declaration's name | Parses today, and arrives as the attribute `name`, exactly as `#name` did. The highlighter gives it its own colour (`ts-name`) as of `@mxlang/tree-sitter-mx` 0.1.0-alpha.2 |
+| A relationship's destination as an atom (`belongs-to=:Customer :customer`) | a reference to another entity | The same atom gap: a value cannot be glued to a name (MX decision 146). The grammar reads it (an atom, `ts-atom`); `parseData` 0.1.0-alpha.3 does not |
+| A per-parent `defaultTag` | tagless `:field=value` lines under `set` | Lands in the grammar as of `@mxlang/tree-sitter-mx` 0.1.0-alpha.2 (MX decision 145): the tagless line is highlighted from the author's own text, with no allowance. `parseData` 0.1.0-alpha.3 still reports `Unexpected token` |
 | The `:label` sugar | the label of a `check` | Parses today |
 | `imports: "pass"` on `parseData` | helper imports at the top of an entity file | scheduled; with `"pass"` the tree gains `imports: [{ code, span }]` in file order and control flow stays rejected |
 | `on:load` as one attribute | `actions on:load=:visible` | final |
 | A third-party host on the data target, registered through `mx.host` | the `mesh` host that makes `.mesh.mx` resolve in MX tooling | MX decision 148, after 146 |
 
-(MX project notes, updates; the MX lead's answers of 2026-10-05, recorded in [ADR-0051](../decisions/0051-mesh-mx-files-and-the-mesh-host.md).) Until these land, files run through MX tooling stay plain `.mx`, and the Docs checks normalise the spellings above in memory before they parse ([open questions](../open-questions.md)).
+(MX project notes, updates; the MX lead's answers of 2026-10-05, recorded in [ADR-0051](../decisions/0051-mesh-mx-files-and-the-mesh-host.md).) **The highlighter is no longer part of what MX does not parse.** `@mxlang/tree-sitter-mx` 0.1.0-alpha.2 reads all of syntax v3 — atoms, `:name` after a tag and the tagless `:field=value` line in a `set` included — so `apps/docs/plugins/mx-highlight.js` has no allowance left and colours a name and an atom differently ([ADR-0065](../decisions/0065-mx-highlighting-on-the-docs-site.md)). What is still missing is `parseData`: `@mxlang/data` 0.1.0-alpha.3 reports `Unexpected token` on an atom in a value, on an atom as a relationship's destination and on a tagless `:field=value` line, all three measured on that version. Until they land, files run through MX tooling stay plain `.mx`, and the Docs checks normalise the spellings above in memory before they parse ([open questions](../open-questions.md)).
 
 ## The call
 
@@ -108,5 +108,5 @@ The tree is the semantics (MX project notes, getting-started, section 5). Re-par
 
 - **One error per file.** Parse errors are fail-fast and there is no partial tree (MX project notes, data-target, section 7; MX project notes, getting-started, section 1). A file with three mistakes takes three runs.
 - **No editor support for data files yet.** MX has not shipped editor diagnostics for data files (MX project notes, getting-started, section 1). Mesh surfaces diagnostics itself, and the generated contracts module has no consumer until that ships ([roadmap](../roadmap/roadmap.md), M6, risks). The editor diagnostics for expressions promised by [ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md) depend on it.
-- **Highlighting.** The docs site highlights `mx` with MX's own tree-sitter highlighter, the published `@mxlang/tree-sitter-mx` package ([ADR-0065](../decisions/0065-mx-highlighting-on-the-docs-site.md)). A line at the left margin ends the root tag's block, a comment included, so a comment inside an entity has to be indented with the block it sits in; the grammar reports such a line as an ERROR node and a fence with one fails the docs build, naming the page and the line.
+- **Highlighting.** The docs site highlights `mx` with MX's own tree-sitter highlighter, the published `@mxlang/tree-sitter-mx` package ([ADR-0065](../decisions/0065-mx-highlighting-on-the-docs-site.md)). Every construct of syntax v3 is coloured, including an atom and a name. A line at the left margin ends the root tag's block, a comment included, so a comment inside an entity has to be indented with the block it sits in; the grammar reports such a line as an ERROR node and a fence with one fails the docs build, naming the page and the line.
 - **A `transform` that emits tags is not supported** on the data target (MX project notes, updates, entry of 2026-10-03 23:05). Mesh does not use `transform`.
