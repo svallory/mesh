@@ -98,7 +98,7 @@ Extensions add tags, but `entity.children` is closed in the contract. MX merges 
 
 MX is published as pre-release versions on `https://npm.saulo.tech`, the registry the repository's `bunfig.toml` scopes `@mxlang` to. Mesh pins `@mxlang/core` and `@mxlang/data` to exact versions in `packages/compiler/package.json`, so an install resolves them like any other dependency — on a developer machine and on a hosted runner ([ADR-0031](../decisions/0031-no-ci-until-mx-is-published.md), amended 2026-10-05). The versions are pre-releases, which changes nothing about the risk this section describes: nothing resolves a range, so a new MX release reaches Mesh when Mesh bumps the pin, and never on its own. A contributor who needs an MX commit that is not published yet links a local checkout, which is never committed (the contributing page, "What exists today").
 
-There is no continuous integration yet, so an MX change that reaches the pinned version stops Mesh when the pin moves, and nothing notices until someone runs `verify`; the workflow that closes that is written and lands in the next pull request ([ADR-0031](../decisions/0031-no-ci-until-mx-is-published.md)).
+`.github/workflows/verify.yml` runs `bun run verify` on every pull request and on every push to `main`, so an MX change that reaches the pinned version fails the build rather than sitting in a local clone until someone remembers to run the check ([ADR-0031](../decisions/0031-no-ci-until-mx-is-published.md), amended 2026-10-05).
 
 ## The rule: never re-parse `.mx` text
 
