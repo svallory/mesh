@@ -1,13 +1,15 @@
 ---
 title: "0036. Deny by default arrives with the policies extension"
-description: "Decision record 0036: Deny by default arrives with the policies extension. Status: Accepted."
+description: "Decision record 0036: Deny by default arrives with the policies extension. Status: Superseded by ADR-0055."
 ---
 
 # 0036. Deny by default arrives with the policies extension
 
+> **Superseded** by [ADR-0055](./0055-policies-are-core.md) on 2026-10-05. The body below is kept as history.
+
 ## Status
 
-Accepted
+Superseded by [ADR-0055](./0055-policies-are-core.md)
 
 ## Date
 

@@ -1,13 +1,15 @@
 ---
 title: "0017. Updates are atomic by default; changes and validations are classified"
-description: "Decision record 0017: Updates are atomic by default; changes and validations are classified. Status: Accepted."
+description: "Decision record 0017: Updates are atomic by default; changes and validations are classified. Status: Amended by ADR-0053, 0054."
 ---
 
 # 0017. Updates are atomic by default; changes and validations are classified
 
+> **Amended** by [ADR-0053](./0053-validate-then-do.md) and [ADR-0054](./0054-write-strategy-is-inferred.md) on 2026-10-05: read the successor for what changed. The body below is kept as history.
+
 ## Status
 
-Accepted
+Accepted, amended by [ADR-0053](./0053-validate-then-do.md) and [ADR-0054](./0054-write-strategy-is-inferred.md)
 
 ## Date
 

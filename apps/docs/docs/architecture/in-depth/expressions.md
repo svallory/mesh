@@ -1,62 +1,79 @@
 ---
 title: "Expressions: one tree, two evaluators"
-description: "One expression tree with two evaluators: in memory and in SQL."
+description: "How a function whose body is one expression becomes one tree that runs in memory and in SQL, and what plain code is."
 ---
 
 # Expressions: one tree, two evaluators
 
-Status: design; built in milestone M4 ([roadmap](../roadmap/roadmap.md), M4). Used by M5 (atomic changes), M7 (calculations, relationship traversal) and M8 (policies). Nothing on this page exists as code yet. The semantics where SQL and JavaScript differ are open: [ADR-0012](../decisions/0012-expression-semantics.md) is Proposed.
+Status: design; built in milestone M4 ([roadmap](../roadmap/roadmap.md), M4). Used by M5 (atomic updates), M7 (computed fields, relationship traversal) and M8 (policies). Nothing on this page exists as code yet. The semantics where SQL and JavaScript differ are open: [ADR-0012](../decisions/0012-expression-semantics.md) is Proposed and must be ruled before M4. Before designing the translator, M4 reads Greffon, the one project with the same design, and reports what to copy ([ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md)).
 
-Vocabulary note: tag and attribute names on this page are working names. For v1 the vocabulary copies Ash's DSL, and the final name follows the mapping in [vocabulary mapping](../roadmap/vocabulary-mapping.md) ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md)). Examples use MX concise syntax ([ADR-0041](../decisions/0041-mx-concise-syntax.md)).
-
-Related: [overview](../overview/architecture.md), [MX integration](./mx-integration.md), [build pipeline](./build-pipeline.md), [action lifecycle](./action-lifecycle.md), [data layer](./data-layer.md), [extension host](./extension-host.md).
+Related: [overview](../overview/architecture.md), [how Mesh uses MX](./mx-integration.md), [build pipeline](./build-pipeline.md), [action lifecycle](./action-lifecycle.md), [data layer](./data-layer.md), [extension host](./extension-host.md).
 
 ## What an expression is
 
-In a resource file an expression is an arrow function. From `packages/compiler/test/fixtures/post.mx`:
+An entity file holds small functions. From the reference file of [ADR-0050](../decisions/0050-entity-file-syntax.md):
 
 ```mx
-read="published"
-  filter=({ post }) => post.state === "published"
-  sort=["-insertedAt"]
+read #overdue
+  filter=({ self }) => self.isOverdue
+  sort=["dueOn"]
 ```
-
-and, on the `publish` action:
 
 ```mx
-change=({ post }) => { post.state = "published" }
-validate=({ post }) => post.title.length > 0 message="title required"
+do
+  set
+    #paidAt=({ input }) => input.paidAt
+  when=({ self }) => self.amount > 10000
+    set
+      #needsReview=true
 ```
 
-MX does not run these. It hands each over as a parsed Babel node (the syntax tree of the Babel parser) with a source span (MX project notes, getting-started, section 1). MX is core, not an adapter ([ADR-0043](../decisions/0043-mx-is-core.md)), and the conversion from the Babel node to the Mesh tree happens in `packages/compiler` ([roadmap](../roadmap/roadmap.md), M4).
+```mx
+computed
+  boolean #isOverdue({ self }) {
+    return self.status === "sent" && self.dueOn < today()
+  }
+  string #label({ self }) {
+    return self.number + " · " + formatMoney(self.total)
+  }
+```
 
-One expression can be needed in two places. A filter must run in the database so that not every row is loaded. A validation on a record already in memory must run in the program. So Mesh turns an arrow function into **one tree** with two evaluators, as Ash does ([rulings of 2026-10-04](../decisions/rulings-2026-10-04.md), "Rulings after the decision review", row "Expressions"; [ADR-0010](../decisions/0010-one-expression-tree-two-evaluators.md); [research synthesis](../research/synthesis.md), section 2.2).
+Every function receives one object with four keys: `self` (the record), `input` (the action's accepted fields and arguments), `actor` (the caller, a shortcut for `context.actor`) and `context` (the [action context](../decisions/0059-action-context.md)). MX does not run these functions. It hands each over as a parsed Babel node (the syntax tree of the Babel parser) with a source span (MX project notes, getting-started, section 1). Conversion to Mesh's tree happens in `@meshfw/compiler` ([ADR-0043](../decisions/0043-mx-is-core.md)).
 
-## Translatable and opaque
+One rule can be needed in two places. A filter must run in the database so that not every row is loaded. A check on a record already in memory must run in the program. So Mesh turns a function into **one tree** with two evaluators, as Ash does ([ADR-0010](../decisions/0010-one-expression-tree-two-evaluators.md); [research synthesis](../research/synthesis.md), section 2.2).
 
-- **Translatable**: every construct converts to the tree.
-- **Opaque**: some construct cannot be converted, for example a call to an imported helper. It is emitted as TypeScript by slicing the authored text at MX's span, and has no tree ([roadmap](../roadmap/roadmap.md), M4).
+## Translated or plain code: the author's form decides
 
-Where the class matters ([roadmap](../roadmap/roadmap.md), M4, M5, M7, M8):
+[ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md):
+
+- A function whose **body is one expression Mesh can translate** is **translated**: an arrow, `({ self }) => self.status === "sent"`, or a method body that is a single `return`, as in `#isOverdue` above. It becomes a tree; it runs in SQL where a query needs it and in memory otherwise.
+- **Where SQL is required** (a `filter`, a `sort`, a policy check, a rollup's `of`, or inside another translated expression), the expression must translate. A construct the translator does not support there is a build error at that node, reported in the editor through the contracts' `analyze` hook and again by the build. Using a computed field that runs in memory there is a build error that **names the field and the part that could not be translated**.
+- **A computed field** whose single expression cannot be translated is not an error: `#label` above calls the helper `formatMoney` on `self.total`, so it runs in memory after the record is loaded. `mesh explain` shows which computed fields are translated. Nobody writes a second statement to opt out ([rulings of 2026-10-04](../decisions/rulings-2026-10-04.md), "Rulings after the review of the user docs (2026-10-05, lead under delegation)").
+- **Plain code** is a body with more than one statement, or a `run` step. It is emitted as TypeScript by slicing the authored text at MX's span and runs in memory only.
+- In a `check`'s `that`, a `when` or a `set` value, an expression that cannot be translated is not an error either: it runs in memory, which makes the action read-then-write, and `mesh explain` names the expression that caused it ([ADR-0054](../decisions/0054-write-strategy-is-inferred.md)). Only a `filter`, a `sort` and a policy require SQL.
+
+The parameter types expose only what translates, so the editor offers `self.status` but not, for example, string methods the translator lacks.
+
+Where the form matters:
 
 | Position | Rule |
 |---|---|
-| `filter` on a read | Must be translatable. An unsupported construct fails the build at that node. |
-| `change` and `validate` | Either class; the class is recorded in the model and decides atomic or non-atomic ([action lifecycle](./action-lifecycle.md)). |
-| `calculate` (M7) | Translatable: usable in queries, also computed in memory on a loaded record. Opaque: runs after load, cannot be used in a filter (build error). |
-| Read policy (M8) | Must be translatable, because it becomes a query filter. A write policy that reads the record is folded into the statement as a filter on an atomic action and evaluated in memory on the locked row otherwise; one that is not translatable on an atomic action is a build error. |
+| `filter` on a read | Must be translated; plain code, or a computed field that runs in memory, is a build error naming the field and the untranslatable part. |
+| `check`'s `that`, `when` | Either form, never an error. Plain code, an expression that cannot be translated, or a translated one reading `self`, makes an update read-then-write ([ADR-0054](../decisions/0054-write-strategy-is-inferred.md)). |
+| `set` value | Either form, never an error. A translated value folds into an atomic `UPDATE`; one that cannot be translated makes the update read-then-write. |
+| Computed field with a body (M7) | A single `return` that Mesh can translate is translated: usable in filters, sorts and policies, also computed in memory on a loaded record. Otherwise the field runs in memory after load, which is not an error; using it in a filter, a sort, a policy or another translated expression is. `mesh explain` shows which. |
+| Rollup `of="lines.amount"` (M7) | A path string checked at build time against generated path types; always SQL. The function form, where a path cannot express it, must be translated. |
+| Policy check (M8) | On a read, must be translated, because it becomes a query filter. Checks inside a policy combine without order ([ADR-0055](../decisions/0055-policies-are-core.md)). On a write, a record-reading check is folded into an atomic statement as a filter, or evaluated on the locked row of a read-then-write action. |
 
-Ash's policy access types (`strict`, `filter`, `runtime`) map onto this split ([research synthesis](../research/synthesis.md), section 8, "Copy from Ash").
+An earlier design classified each function by its content: *translatable* if every construct converted, *opaque* otherwise. It is superseded: the class was invisible to the author, and a small edit could move a rule from SQL to memory ([ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md)).
 
-Several of these errors need the class. Conversion and classification happen while the model is built (stage 3), so the tree and the class are part of the model. The errors that depend on the class come from the checks step, which becomes the Verify stage from M6 ([roadmap](../roadmap/roadmap.md), M1, M4 and M6). Stage 6 (Compile expressions) only produces the two forms. The stage numbers are the synthesis's ([research synthesis](../research/synthesis.md), section 16); see [build pipeline](./build-pipeline.md).
+## What a translated expression may reference
 
-## The scope rule: no free variables
-
-A translatable expression may use only its own parameters and registered functions. A free variable (a name captured from the enclosing file) is a build error ([roadmap](../roadmap/roadmap.md), M4). A database cannot see a captured value. Every TypeScript library that parses arrow functions at run time loses captured variables, so Mesh does the work at build time, where the whole file is visible ([research synthesis](../research/synthesis.md), section 8, gap 5). Opaque expressions are not under this rule.
+A translated expression may reference its parameters, registered functions, and calls to imported pure functions that do not read `self`; such a call is evaluated once in memory before the query and bound as a parameter. A bare captured value (a variable from the file) is a build error. ([ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md)). A database cannot see a captured value, so a free variable is an error; a call to an imported pure function that does not read `self` is computed once and sent as a parameter, which is how `isStaff(actor)` appears in a policy and `today()` in `#isOverdue`. This is why an imported function must be pure. The research on expression languages recommends the same rule ("parameters, never closures") and the same treatment of the current date ([expression language](../research/expression-language.md), section 6).
 
 ## The tree and its forms
 
-Each translatable expression is written into the generated file twice ([roadmap](../roadmap/roadmap.md), M4):
+Each translated expression is written into the generated file twice ([roadmap](../roadmap/roadmap.md), M4):
 
 | What | Made when | Used by |
 |---|---|---|
@@ -64,39 +81,36 @@ Each translatable expression is written into the generated file twice ([roadmap]
 | The **SQL** | Compiled by the adapter at query time, in `data-drizzle` | The database |
 | The **in-memory form**, emitted TypeScript | Emitted at build time | The program, calling the registered functions' in-memory implementations in `runtime` |
 
-Nothing produces SQL at build time. The reason is that queries are assembled at run time from the action's filter, the caller's filter and, later, policies ([roadmap](../roadmap/roadmap.md), M4). At build time the adapter is checked instead: every function a resource uses must have a SQL form in the configured adapter, or the build fails (same place).
+Nothing produces SQL at build time, because queries are assembled at run time from the action's filter, the caller's filter and the policies. At build time the adapter is checked instead: every function an entity uses must have a SQL form in the configured adapter, or the build fails.
 
-The in-memory form is emitted rather than interpreted, so it is readable in the generated file ([ADR-0003](../decisions/0003-generated-code-carries-behaviour.md)). [ADR-0010](../decisions/0010-one-expression-tree-two-evaluators.md) records this build design as a design choice, separate from the project owner's ruling.
+The in-memory form is emitted rather than interpreted, so it is readable in the generated file ([ADR-0003](../decisions/0003-generated-code-carries-behaviour.md)). The tree type lives in `runtime`, because it crosses the data-layer contract ([data layer](./data-layer.md)). The registry of functions and operators lives in `model`. `runtime` imports nothing from `model`.
 
-The tree type lives in `runtime`, because it crosses the data-layer contract ([data layer](./data-layer.md)). The registry of functions and operators lives in `model`. `runtime` imports nothing from `model` ([roadmap](../roadmap/roadmap.md), M4 and section 3).
+## Design taken from the research
 
-## Where each form is used
+The [expression-language research](../research/expression-language.md) found no established project that captures a normal TypeScript arrow and runs it both in memory and as SQL; Greffon, the one young project with the same design, is too new to depend on ([ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md)). Its list of what to copy shapes this page:
 
-- Filters on reads: the tree, compiled to SQL at query time.
-- Atomic changes that do not read the stored record (M5): the tree, folded into the `UPDATE` assignments. A validation that reads only the input uses the in-memory form before the statement ([roadmap](../roadmap/roadmap.md), M5).
-- Non-atomic updates (opaque, or reading the stored record): the in-memory form on the row read with a write lock. No validation is folded into the statement in v1 ([ADR-0044](../decisions/0044-folding-record-reading-validations.md), Proposed).
-- Policies (M8): the tree for reads and for record-reading checks on atomic writes, the in-memory form otherwise.
-- Calculations (M7): the tree in queries, the in-memory form on a loaded record.
+1. Two interpreters over one tree, so a rule cannot be true in one and false in the other.
+2. A small, enumerated node vocabulary, plus a function-call node with a fixed allow-list.
+3. Relationship traversal (`self.customer.userId`) rewritten into joins as a normalisation pass before SQL generation.
+4. A declared supported subset, checked before anything else, with errors at a source span.
+5. Parameters, never closures.
+6. Policies folded into the query tree, so indexes still work.
 
-The fixture's `create` action has a change `post.authorId = actor.id`. A create is not an update, and the roadmap does not say which form it uses: not decided. Parameters such as the actor are bound from the scope and the input when the expression runs ([roadmap](../roadmap/roadmap.md), M4); the mechanism for the SQL form is not decided.
+The same section lists pitfalls that bear on [ADR-0012](../decisions/0012-expression-semantics.md): null against `undefined`, booleans stored as integers on SQLite, dates, string case and `LIKE`, short-circuit evaluation, and coercion (`==`, `+` on strings).
 
 ## The function registry
 
-Every operator and function an expression may use is registered once, in `model` ([roadmap](../roadmap/roadmap.md), M4). A function used in a resource needs an in-memory implementation in `runtime` and a SQL form in the configured adapter. Extensions add functions through their manifest, supplying both ([roadmap](../roadmap/roadmap.md), M6; [extension host](./extension-host.md)). A fake adapter with no SQL form for a used function fails the build (M6, test 5). One registry exists because Ash's docs drift from its registries: 39 registered functions, about 30 documented ([research synthesis](../research/synthesis.md), section 8).
+Every operator and function an expression may use is registered once, in `model` ([roadmap](../roadmap/roadmap.md), M4). A function used in an entity needs an in-memory implementation in `runtime` and a SQL form in the configured adapter. Extensions add functions through their manifest, supplying both ([extension host](./extension-host.md)). One registry exists because Ash's docs drift from its registries: 39 registered functions, about 30 documented ([research synthesis](../research/synthesis.md), section 8).
 
 ## Keeping the evaluators in agreement
 
-Every registered function has one table of inputs and expected outputs, null cases included. The table is run through the in-memory form and through every merged SQL adapter, and all must give the table's answer ([roadmap](../roadmap/roadmap.md), M4, test 1; M9, test 5 adds Postgres). The tables cover single functions, not combinations ([roadmap](../roadmap/roadmap.md), section 9, risk 5).
-
-## Where SQL and JavaScript differ
-
-Nulls and string ordering give different results in SQL and in JavaScript. Which one a Mesh expression follows is open: [ADR-0012](../decisions/0012-expression-semantics.md) is Proposed and blocks M4. The roadmap's only assumption is that both evaluators follow one definition, Mesh's own ([roadmap](../roadmap/roadmap.md), M4).
+Every registered function has one table of inputs and expected outputs, null cases included. The table is run through the in-memory form and through every merged SQL adapter, and all must give the table's answer ([roadmap](../roadmap/roadmap.md), M4, test 1; M9, test 5 adds Postgres). The tables cover single functions, not combinations.
 
 ## What Ash does and where it went wrong
 
 Ash's expression is a two-stage tree: unresolved call nodes, resolved into operator and function structs when a filter is parsed. The same tree runs in memory (`Ash.Filter.Runtime`) or compiles to SQL (`AshSql.Expr`) ([Ash runtime internals](../research/ash-runtime-internals.md), sections 5.1 and 5.4). Two failures matter:
 
-1. **Paths that disagree.** Bug #2969 (fixed the day it was reported, 2026-09-26): a filter added by an action's own change was lost when a single-record update ran atomically, so the row was written although the non-atomic path rejected it (same file, 12.B item 21). Strictly this is a lifecycle bug, not an evaluator bug; the roadmap cites it as the example of two paths drifting ([roadmap](../roadmap/roadmap.md), M4, risks). The shared tables do not guard against this kind of drift; M5's rule that a change is never run twice does, together with the single plan in [action lifecycle](./action-lifecycle.md) ([roadmap](../roadmap/roadmap.md), M4, risks). The tables guard the other risk, the two forms giving different answers.
-2. **JavaScript semantics forced onto the database.** AshPostgres installs SQL functions (`ash_elixir_and` and others) so `&&` behaves as in Elixir. A filter written with `&&` ran in about 3,400 ms against about 110 ms with `and`, because the function call defeats the index (same file, 4.2 and 12.B item 17). This bears on [ADR-0012](../decisions/0012-expression-semantics.md) ([roadmap](../roadmap/roadmap.md), M4, risks).
+1. **Paths that disagree.** Bug #2969: a filter added by an action's own change was lost when a single-record update ran atomically (same file, 12.B item 21). Strictly a lifecycle bug; Mesh's rule that a step never runs twice, with one plan per action, guards against it ([action lifecycle](./action-lifecycle.md)). The shared tables guard the other risk, the two forms giving different answers.
+2. **JavaScript semantics forced onto the database.** AshPostgres installs SQL functions (`ash_elixir_and` and others) so `&&` behaves as in Elixir. A filter written with `&&` ran in about 3,400 ms against about 110 ms with `and`, because the function call defeats the index (same file, 4.2 and 12.B item 17). This bears on [ADR-0012](../decisions/0012-expression-semantics.md).
 
-Ash also sometimes filters in memory when a data layer cannot run an expression (same file, 5.4). Mesh has an in-memory evaluator, but it is never a fallback for a missing database capability ([data layer](./data-layer.md)).
+Ash also sometimes filters in memory when a data layer cannot run an expression (same file, 5.4). Mesh's in-memory evaluator is never a fallback for a missing database capability ([data layer](./data-layer.md)).

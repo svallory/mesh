@@ -5,6 +5,8 @@ description: "Decision record 0019: Where version 1 ends. Status: Accepted."
 
 # 0019. Where version 1 ends
 
+> **Note** (2026-10-05): the scope below (M0 to M9) stands. Its rationale cites [ADR-0007](./0007-scope-is-a-plain-argument.md), [ADR-0034](./0034-vocabulary-copies-ash-dsl.md) and [ADR-0036](./0036-deny-by-default-arrives-with-policies.md), since superseded by [ADR-0059](./0059-action-context.md), [ADR-0049](./0049-vocabulary-is-meshs-own.md) and [ADR-0055](./0055-policies-are-core.md); two tasks now precede M2 ([ADR-0064](./0064-order-of-work-after-approval.md)).
+
 ## Status
 
 Accepted

@@ -1,6 +1,6 @@
 ---
 title: "Research"
-description: "Investigations that fed Mesh decisions: nine documents on Ash, TypeScript prior art and durable engines, with their fact-check reviews."
+description: "Investigations that fed Mesh decisions: eleven documents on Ash, TypeScript prior art, durable engines, expression languages and validation libraries, with their fact-check reviews."
 ---
 
 # Research
@@ -24,10 +24,12 @@ Start with the synthesis, then read the document for the layer you care about. W
 | 06 | [TypeScript prior art](./ts-prior-art.md) | Which TypeScript projects already try to "declare the model, derive the rest"? | 14,079 | [Accept with fixes](./reviews/ts-prior-art-review.md) |
 | 07 | [Candidate foundation libraries](./ts-foundation-candidates.md) | Which libraries could Mesh build on, layer by layer? | 16,255 | [Accept with fixes](./reviews/ts-foundation-candidates-review.md) |
 | 08 | [Durable workflow engines](./durable-engines.md) | Which durable workflow engines exist, and what adapter interface could Mesh offer them? | 10,588 | [Accept with fixes](./reviews/durable-engines-review.md) |
+| 09 | [Expression language](./expression-language.md) | Can an existing project carry Mesh's expression language, in memory and as SQL? Decision: [ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md) | 6,820 | [Corrected in place](./reviews/expression-language-review.md): conclusion rewritten (Greffon) |
+| 10 | [Validation library](./validation-library.md) | Which validation library should Mesh generate validators with? Decision: [ADR-0062](../decisions/0062-direct-dependencies-zod-drizzle-opentelemetry.md) (keeps Zod, against the document's pick) | 4,609 | No review file |
 
 ## Reviews
 
-Each review is an independent fact-check of one document against primary sources. They are moved here unchanged, so they refer to the original local file names.
+Each review is an independent fact-check of one document against primary sources. They are moved here unchanged, so they refer to the original local file names (`notes/research/NN-topic.md`).
 
 - [Review: Ash core feature inventory](./reviews/ash-features-review.md): Accept with fixes, 8,085 words.
 - [Review: Ash DSL and extension system](./reviews/ash-dsl-and-extensions-review.md): Accept, 7,592 words.
@@ -37,3 +39,4 @@ Each review is an independent fact-check of one document against primary sources
 - [Review: TypeScript prior art](./reviews/ts-prior-art-review.md): Accept with fixes, 11,365 words.
 - [Review: Candidate foundation libraries](./reviews/ts-foundation-candidates-review.md): Accept with fixes, 11,041 words.
 - [Review: Durable workflow engines](./reviews/durable-engines-review.md): Accept with fixes, 7,592 words.
+- [Review: Expression language](./reviews/expression-language-review.md): the document was corrected in place after this review (47 claims confirmed, 15 corrected, 7 not verifiable), 2,041 words.

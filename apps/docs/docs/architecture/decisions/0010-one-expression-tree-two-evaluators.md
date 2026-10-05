@@ -1,13 +1,15 @@
 ---
 title: "0010. One expression tree, two evaluators"
-description: "Decision record 0010: One expression tree, two evaluators. Status: Accepted."
+description: "Decision record 0010: One expression tree, two evaluators. Status: Amended by ADR-0056."
 ---
 
 # 0010. One expression tree, two evaluators
 
+> **Amended** by [ADR-0056](./0056-translated-expressions-are-one-expression-arrows.md) on 2026-10-05: read the successor for what changed. The body below is kept as history.
+
 ## Status
 
-Accepted
+Accepted, amended by [ADR-0056](./0056-translated-expressions-are-one-expression-arrows.md)
 
 ## Date
 
