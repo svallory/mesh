@@ -26,8 +26,9 @@
 // Without JavaScript, and in print, that list is what the reader gets: the code,
 // then the numbered notes. With JavaScript (the small inline script below, no
 // dependency), the list becomes the set of popovers: hovering a segment or
-// focusing its marker shows its note beside the code (or under the segment when
-// the column has no room beside it), the segment's lines are tinted while its
+// focusing its marker shows its note beside the segment, right-aligned in the
+// code block, whenever the segment's own lines end left of it (otherwise, and in
+// a column under 600px, under the segment, so a note never covers its own lines), the segment's lines are tinted while its
 // note is open, a click, Enter or Space pins the note, and Escape or a click
 // elsewhere closes it.
 import { mxHighlighter } from './mx-highlight.js';
@@ -243,18 +244,20 @@ var d=document,R=d.documentElement,open=null,pinned=false,timer=0;
 R.classList.add('mx-fig-js');
 function parts(seg){var fig=seg.closest('.mx-figure');return{fig:fig,seg:seg,mark:seg.querySelector('.mx-mark'),note:d.getElementById(seg.getAttribute('data-note'))};}
 function place(p){
-  var n=p.note,f=p.fig.getBoundingClientRect(),pre=p.fig.querySelector('pre'),c=pre.getBoundingClientRect(),
-      s=p.seg.getBoundingClientRect(),m=p.mark.getBoundingClientRect(),code=pre.firstChild,
-      used=Math.min(c.width,code.scrollWidth+2),room=f.width-used-16,w,x,y,where;
-  if(room>=240){w=Math.min(room-4,384);x=used+16;y=s.top-f.top;where='right';}
+  var n=p.note,f=p.fig.getBoundingClientRect(),c=p.fig.querySelector('pre').getBoundingClientRect(),
+      s=p.seg.getBoundingClientRect(),m=p.mark.getBoundingClientRect(),r=d.createRange(),end=0,w,x,y,where;
+  // Where the part's own text ends: a line is a full-width block, so measure its contents.
+  p.seg.querySelectorAll('.mx-line').forEach(function(l){r.selectNodeContents(l);end=Math.max(end,r.getBoundingClientRect().right);});
+  w=Math.min(384,c.right-end-28);
+  if(f.width>=600&&w>=240){x=c.right-f.left-w-12;y=s.top-f.top;where='right';n.style.removeProperty('--ox');}
   else{
     w=Math.min(f.width-8,384);x=Math.max(4,Math.min(m.left-f.left-24,f.width-w-4));
-    n.style.width=w+'px';var h=n.offsetHeight,below=s.bottom-f.top+8,above=s.top-f.top-h-8;
+    n.style.width=w+'px';var h=n.offsetHeight,above=s.top-f.top-h-8;
     var fits=s.bottom+8+h<=innerHeight||above<0||s.top-h-8<0;
-    y=fits?below:above;where=fits?'below':'above';
+    y=fits?s.bottom-f.top+8:above;where=fits?'below':'above';
+    n.style.setProperty('--ox',Math.max(12,m.left-f.left-x+10)+'px');
   }
   n.style.width=w+'px';n.style.left=x+'px';n.style.top=y+'px';n.setAttribute('data-place',where);
-  n.style.setProperty('--ox',Math.max(12,m.left-f.left-x+10)+'px');
 }
 function close(instant){
   clearTimeout(timer);if(!open)return;var p=open;open=null;pinned=false;
