@@ -120,7 +120,7 @@ A **stray file** is a regular file under the output directory that this build do
 
 The guard depends on determinism: same input, same bytes, from templates plus a pinned formatter (see [build-pipeline.md](./build-pipeline.md)). It grows with the milestones: handlers and the schema in M2, the example's `explain` output in M5, the contracts module in M6 (M2 test 6, M5 test 5, M6 test 4).
 
-There is no continuous integration until the MX packages are published, so the guard runs only when someone runs `verify` ([ADR-0031](../decisions/0031-no-ci-until-mx-is-published.md)). A skipped run is invisible ([roadmap](../roadmap/roadmap.md), section 9, risk 4).
+The guard runs wherever `verify` runs, which for now is a contributor's machine: the `@mxlang` packages are installable from a registry, so the workflow that runs `verify` on every pull request is written and lands in the next pull request ([ADR-0031](../decisions/0031-no-ci-until-mx-is-published.md), amended 2026-10-05). Until then a guard difference is only visible to whoever remembers to run the check ([roadmap](../roadmap/roadmap.md), section 9, risk 4).
 
 ## Run-time errors point at entity files
 

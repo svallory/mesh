@@ -1,9 +1,11 @@
 ---
 title: "0031. No continuous integration until MX is published"
-description: "Decision record 0031: No continuous integration until MX is published. Status: Accepted."
+description: "Decision record 0031: No continuous integration until MX is published. Status: Amended 2026-10-05; its condition is met and the workflow is in the next pull request."
 ---
 
 # 0031. No continuous integration until MX is published
+
+> **Amended** on 2026-10-05: the `@mxlang` packages are published, which is the condition this record set. `packages/compiler` now installs them from the registry by exact version, and the workflow that removes the record's remaining cost lands in the next pull request. The body below is kept as history; see the amendment at the end of the record.
 
 ## Status
 
@@ -83,4 +85,30 @@ The operator chose to accept a visible, bounded gap over building a temporary su
 
 - [x] M0: `verify` is the one command that runs every check (done, PR #6).
 - [ ] M1: have the review protocol require pasted `verify` output.
-- [ ] After v1, or when MX is published, whichever comes first: replace `link:` entries with pinned versions and add CI running `verify`.
+- [x] After v1, or when MX is published, whichever comes first: replace `link:` entries with pinned versions and add CI running `verify` (done 2026-10-05; see the amendment below).
+
+## Amendment — 2026-10-05: MX is published, so CI can exist
+
+The condition this record set has been met. The MX lead published `@mxlang/core` and `@mxlang/data` on
+the operator's registry, `https://npm.saulo.tech`, which the repository's `bunfig.toml` already scoped
+`@mxlang` to, and the registry is read-only for everyone, so a hosted runner needs no token.
+
+What changed, for a reader who came here for the reason the record exists:
+
+- `packages/compiler/package.json` depends on `@mxlang/core` and `@mxlang/data` by exact version
+  (`0.1.0-alpha.2`), not through `link:` entries. `bun.lock` records the registry URL and the integrity
+  hash of each tarball, so `bun install --frozen-lockfile` is reproducible from a clean clone on a
+  machine that has never had an MX checkout.
+- The workflow this record ruled out is written and lands in the next pull request: checkout, Bun 1.3.14
+  (the version `package.json#packageManager` pins), `bun install --frozen-lockfile`, `bun run verify`.
+  Least privilege, actions pinned by commit SHA, no secrets, superseded runs cancelled. It is on its own
+  branch because the machine it was written on cannot push a workflow file yet (see the report), not
+  because the two changes belong apart.
+- Until it is merged, the cost this record listed still stands: "a missed `verify` run is invisible". The
+  review protocol is what catches it, which is what the action item below already asked for.
+
+What did not change: `verify` is still the one command that runs every check, and nothing in it needs a
+browser or a Docker daemon, so the workflow is that script and nothing else. The MX pre-releases are still
+pre-releases: a pinned version is still pinned, so an MX change reaches Mesh when Mesh bumps the pin, not
+the day MX pushes. The `link:` route for an unpublished MX commit is unchanged and still local-only (the
+contributing page, "What exists today").
