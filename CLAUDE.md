@@ -33,3 +33,7 @@ Bun workspace (`workspaces`: `packages/*`, `apps/*`, `examples/*`), one root `bu
   or goes to the MX lead as a grammar gap.
 - `apps/docs/plugins/mx-highlight.js` is MX's highlighter's docmd plugin and not ours to fork: the grammar
   and the queries belong to MX, so the only thing a docs change may touch here is the palette.
+- docmd 0.9.7 reads a raw HTML block until its tags balance, blank lines included, so Markdown (a fence
+  above all) inside an open `<div>` is emitted as raw text. Wrap fences in a docmd container (`::: grids`)
+  instead, and keep each HTML block self-contained. docmd also hides `<html>` until its theme script runs;
+  `plugins/mx-figure.js` adds the `<noscript>` rule that keeps the site readable without JavaScript.
