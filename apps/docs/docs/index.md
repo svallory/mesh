@@ -55,9 +55,9 @@ renameTodo, readTodo, destroyTodo</code></div></div>
 <div class="mh-box" data-box="table" data-from="entity attributes relationships"><h3>The table <code>schema.ts</code></h3><p>The <code>todos</code> table, its columns and the foreign key to <code>List</code>, written by the data adapter.</p><p class="mh-from">from the entity line, <code>attributes</code>, <code>relationships</code></p></div>
 <div class="mh-box" data-box="migrations" data-from="entity attributes relationships" data-via="mesh migrate generate"><h3>Migrations <code>migrations/*.sql</code></h3><p>Plain SQL from <code>mesh migrate generate</code> when the table changes; applied by <code>mesh migrate apply</code>.</p><p class="mh-from">from the table</p></div>
 <p class="mh-group">For your tools</p>
-<div class="mh-box" data-box="rules" data-from="entity attributes relationships actions policies"><h3>Rules for agents <code>rules.md</code></h3><p class="mh-from">from the whole file</p><div class="mh-snip"><code>entity Todo (table "todos")
+<div class="mh-box" data-box="rules" data-from="entity attributes relationships actions policies"><h3>Rules for agents <code>rules.md</code></h3><p class="mh-from">from the whole file</p><div class="mh-snip"><code>entity :Todo table="todos"
   actions: auto read destroy;
-    create accept=("title", "listId")</code></div></div>
+    create :create accept=[:title, :listId]</code></div></div>
 <div class="mh-box" data-box="model" data-from="entity attributes relationships actions policies"><h3>The model <code>model.json</code></h3><p>Every declaration with its source position: what <code>mesh inspect</code> prints.</p><p class="mh-from">from the whole file</p></div>
 </div>
 <script type="module">
@@ -122,8 +122,8 @@ await createTodo({ title: "", listId: list.id }, { actor });
 <div class="mh-tally">
 <h3>What the agent writes, and what it does not</h3>
 <p>It writes the 20 lines of <code>todo.mesh.mx</code> above. It does not write the types, the action functions, the input validators, the authorization checks, the table schema, the migration SQL, the rules file or the model: the diagram above shows where each comes from.</p>
-<pre><code>src/domain/todo/todo.mesh.mx:11:28 error `accept` names "titel",
-which is not an attribute of Todo. Did you mean "title"?</code></pre>
+<pre><code>src/domain/todo/todo.mesh.mx:11:28 error `accept` names :titel,
+which is not an attribute of :Todo. Did you mean :title?</code></pre>
 </div>
 <p class="mh-more">More in <a href="/docs/ai-agents/">Working with AI agents</a>: the rules file, <code>mesh inspect</code>, <code>mesh explain</code>, and what Mesh does not solve for an agent.</p>
 </section>

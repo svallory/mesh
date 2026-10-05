@@ -55,7 +55,7 @@ test("the page's claims about its entity file match the file", () => {
   // a misspelled `:title` in this file's `accept`: same line, same column.
   const row = lines.findIndex((line) => line.includes('create :create accept=[:title'));
   const column = lines[row].indexOf(':title') + 1;
-  expect(page).toContain(`src/domain/todo/todo.mesh.mx:${row + 1}:${column} error \`accept\` names "titel"`);
+  expect(page).toContain(`src/domain/todo/todo.mesh.mx:${row + 1}:${column} error \`accept\` names :titel,`);
   // Every box's function names are the actions the file declares.
   for (const name of ['createTodo', 'renameTodo', 'pendingTodo', 'readTodo', 'destroyTodo']) expect(page).toContain(name);
 });
@@ -74,4 +74,35 @@ test('every box names sections the file has, and the island is loaded from where
 // The headline breaks between its two sentences and nowhere else: each is a block.
 test('the headline is two sentences, one block each', () => {
   expect(page).toContain('<h1 id="mh-title" class="mh-title"><span>Describe your domain once.</span> <span>Mesh builds the rest.</span></h1>');
+});
+
+// The home quotes two things the Docs define: what the rules file says, and what a
+// build error says. Both must read as the Docs pages have them, so a change to
+// either page fails here until the home follows.
+const docsPage = (name) => readFileSync(new URL(`../docs/docs/${name}`, import.meta.url), 'utf8');
+
+test('the rules-file box quotes the rules file as Working with AI agents shows it', () => {
+  const agents = docsPage('ai-agents.md');
+  const rules = /## The rules file[\s\S]*?```text\n([\s\S]*?)```/.exec(agents)?.[1];
+  expect(rules).toBeDefined();
+  const box = /data-box="rules"[\s\S]*?<div class="mh-snip"><code>([\s\S]*?)<\/code><\/div>/.exec(page)?.[1];
+  expect(box).toBeDefined();
+  for (const line of box.split('\n')) expect(rules).toContain(line.trim());
+  // Names are atoms there, so they are atoms here: never a quoted name.
+  expect(box).not.toMatch(/\("|"[a-z]\w*",/);
+});
+
+test('the build error quotes the message as Configuration prints it', () => {
+  const sample = /error `accept` names :titel, which is not an attribute of :Todo\. Did you mean :title\?/;
+  expect(docsPage('configuration.md')).toMatch(sample);
+  const quoted = /<pre><code>(src\/domain\/todo\/todo\.mesh\.mx:[\s\S]*?)<\/code><\/pre>/.exec(page)?.[1];
+  expect(quoted?.replace(/\n/g, ' ')).toMatch(sample);
+});
+
+test('nothing on the home quotes a name where the entity file would write an atom', () => {
+  // A quoted lower-case identifier, outside HTML attributes and the TypeScript
+  // sample (where field names are strings at run time, as the Docs say).
+  const text = page.replace(/```ts[\s\S]*?```/g, '').replace(/<[^>]+>/g, ' ');
+  const quoted = [...text.matchAll(/"([a-z][A-Za-z]*)"/g)].map((m) => m[1]);
+  expect(quoted.filter((name) => name !== 'todos')).toEqual([]);
 });
