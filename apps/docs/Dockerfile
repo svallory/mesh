@@ -16,6 +16,11 @@ RUN bun install --frozen-lockfile
 
 COPY package.json docmd.config.json ./
 COPY docs ./docs
+# plugins/ carries plugins/mx/: MX's tree-sitter grammar as committed .wasm, the
+# two query files and the TypeScript grammar injected into MX. They are committed
+# because this image has no tree-sitter command-line tool, and the highlighter
+# throws at import when one of them is missing, so the build fails loudly instead
+# of shipping plain text. Keep this COPY whole-directory.
 COPY plugins ./plugins
 RUN bun run build
 

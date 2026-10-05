@@ -13,13 +13,13 @@ const processor = () => createMarkdownProcessor({}, (md) => installMxFigure(md))
 
 const aligned = [
   '// @name: Name and table — the entity and its table.',
-  'entity="todo" table="todos"',
+  'entity #Todo table="todos"',
   '// @fields: Fields you send — title is a string.',
   '  attributes',
-  '    attribute="title" type="string"',
+  '    string #title min=1',
   '// @belongs: Linked to a list — `listId` arrives with it.',
   '  relationships',
-  '    belongs-to="list" destination="list"',
+  '    belongs-to=List #list',
   '',
 ].join('\n');
 
@@ -27,13 +27,13 @@ const aligned = [
 // previous segment, so every note describes the lines above it.
 const oneLineLate = [
   '// @name: Name and table — the entity and its table.',
-  'entity="todo" table="todos"',
+  'entity #Todo table="todos"',
   '// @fields: Fields you send — title is a string.',
   '  attributes',
-  '    attribute="title" type="string"',
+  '    string #title min=1',
   '  relationships',
   '// @belongs: Linked to a list — `listId` arrives with it.',
-  '    belongs-to="list" destination="list"',
+  '    belongs-to=List #list',
   '',
 ].join('\n');
 
@@ -55,7 +55,7 @@ test('a segment ending with a line less indented than the next segment starts wi
 
 test('an empty segment, code before the first note and a long note title are all build errors', () => {
   expect(parseMxFigure('// @a: T — b\n// @b: T — b\n', 'x.md').problems[0]).toContain('must hold at least one line');
-  expect(parseMxFigure('entity="todo"\n', 'x.md').problems[0]).toContain('starts with code');
+  expect(parseMxFigure('entity #Todo\n', 'x.md').problems[0]).toContain('starts with code');
   expect(parseMxFigure('// @a: One two three four five — b\nx=1\n', 'x.md').problems[0]).toContain('5-word title');
 });
 
@@ -64,17 +64,42 @@ test('the fence renders one grid row per segment, with a highlighted pre and a n
   expect(html.startsWith('<div class="mx-figure-wrap"><figure class="mx-figure">')).toBe(true);
   expect(html.match(/class="mx-row mx-code"/g)).toHaveLength(3);
   expect(html.match(/class="mx-row mx-note"/g)).toHaveLength(3);
-  expect(html).toContain('class="shiki shiki-themes github-light github-dark"');
-  expect(html).toContain('<span class="mx-badge">1</span>');
-  expect(html).toContain('<strong>Name and table</strong> the entity and its table.');
+  expect(html).toContain('<pre class="hljs mx-hl">');
+  expect(html).toContain('<span class="ts-tag">entity</span>');
+  expect(html).toContain('<span class="ts-constant">#Todo</span>');
   expect(html).toContain('<code>listId</code>');
+});
+
+// A segment is a slice of one file, not a document: `  attributes` on its own is
+// an error tree and colours nothing. The figure parses the file once and reads
+// each segment's line range out of it, so a segment that starts at an indented
+// section tag is coloured like the same lines in a full-file fence.
+test('every segment is coloured, including the ones that start at an indented tag', () => {
+  const html = renderMxFigure(aligned, 'todo.md');
+  expect(html).toContain('<span class="ts-attribute">table</span>');
+  expect(html).toContain('<span class="ts-tag">attributes</span>');
+  expect(html).toContain('<span class="ts-tag">string</span>');
+  expect(html).toContain('<span class="ts-constant">#title</span>');
+  expect(html).toContain('<span class="ts-tag">belongs-to</span>');
+  expect(html).toContain('<span class="ts-type">List</span>');
+  expect(html).toContain('<span class="ts-constant">#list</span>');
+  // The note lines are annotations, never shown, and no segment keeps a newline.
+  expect(html).not.toContain('@belongs');
+  expect(html).not.toContain('</span>\n</code>');
+});
+
+test('a segment matches the same lines highlighted as part of the whole file', () => {
+  const html = renderMxFigure(aligned, 'todo.md');
+  const last = html.slice(html.lastIndexOf('<div class="mx-row mx-code">'));
+  expect(last).toContain('<code class="language-mx">  <span class="ts-tag">relationships</span>');
+  expect(last).toContain('    <span class="ts-tag">belongs-to</span><span class="ts-operator">=</span><span class="ts-type">List</span> <span class="ts-constant">#list</span></code>');
 });
 
 test('a render failure carries the page, the line and the fence', () => {
   const dir = mkdtempSync(join(tmpdir(), 'mx-figure-'));
   try {
     const error = (() => {
-      try { processor().render('```mx-figure\nentity="todo"\n```', { filePath: 'todo.md' }); } catch (cause) { return cause; }
+      try { processor().render('```mx-figure\nentity #Todo\n```', { filePath: 'todo.md' }); } catch (cause) { return cause; }
       return null;
     })();
     expect(String(error)).toContain('starts with code');
@@ -85,6 +110,6 @@ test('a render failure carries the page, the line and the fence', () => {
 test('a render failure is a build failure, not a silent fallback', () => {
   expect(figureStyles).toContain('@container');
   expect(figureStyles).toContain('.mx-figure .mx-code::after');
-  expect(() => renderMxFigure('entity="todo"\n', 'todo.md')).toThrow(/todo\.md: mx-figure starts with code/);
+  expect(() => renderMxFigure('entity #Todo\n', 'todo.md')).toThrow(/todo\.md: mx-figure starts with code/);
   expect(writeFileSync).toBeTypeOf('function');
 });

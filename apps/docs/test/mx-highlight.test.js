@@ -3,31 +3,165 @@ import { createRequire } from 'node:module';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { highlightMx, installMxHighlight, themeStyles } from '../plugins/mx-highlight.js';
+import {
+  highlightMx,
+  installMxHighlight,
+  themeStyles,
+  unstyledCaptureNames,
+} from '../plugins/mx-highlight.js';
 
 // Resolve docmd's own parser, rather than pinning a second markdown implementation.
 const require = createRequire(import.meta.url);
 const coreRequire = createRequire(require.resolve('@docmd/core'));
 const { createMarkdownProcessor, processContentAsync } = await import(coreRequire.resolve('@docmd/parser'));
-const sample = 'resource="todo"\n  attributes\n    attribute="title" type="string" allow-nil=false public=true\n';
 const processor = (renderMx) => createMarkdownProcessor({}, (md) => installMxHighlight(md, renderMx));
 
-test('mx fences render Marko tag and attribute tokens with both theme colors', () => {
-  const html = processor().render('```mx\n' + sample + '```', { filePath: 'todo.md' });
-  expect(html).toContain('class="shiki shiki-themes github-light github-dark"');
-  expect(html).toMatch(/<span style="color:#[A-Fa-f0-9]+;--shiki-dark:#[A-Fa-f0-9]+">resource<\/span>/);
-  expect(html).toMatch(/<span style="color:#[A-Fa-f0-9]+;--shiki-dark:#[A-Fa-f0-9]+"> allow-nil<\/span>/);
-  expect(html).toMatch(/<span style="[^"]+"> public<\/span>/);
-  expect(themeStyles).toContain(':root[data-theme="dark"] .shiki span');
-  expect(themeStyles).toContain('color: var(--shiki-dark) !important');
-  expect(themeStyles).toContain('background-color: var(--shiki-dark-bg) !important');
-  expect(highlightMx(sample)).toContain('--shiki-dark-bg:');
+/** The class of the one span whose text is exactly `text`, or undefined. */
+function classOfText(source, text) {
+  const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const match = new RegExp(`<span class="([^"]+)">${escaped.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</span>`)
+    .exec(highlightMx(source));
+  return match?.[1];
+}
+
+const forms = [
+  {
+    name: 'a regex literal attribute value',
+    code: 'string #number unique match=/^INV-\\d+$/',
+    spans: {
+      string: 'ts-tag',
+      '#number': 'ts-constant',
+      unique: 'ts-attribute',
+      match: 'ts-attribute',
+      '^INV-\\d+$': 'ts-string-special',
+    },
+  },
+  {
+    name: 'a check with a label, an expression argument and a code',
+    code: 'check :invoiceIsSent [ that=({ self }) => self.status === "sent" code="invalid_state" ]',
+    spans: {
+      check: 'ts-tag',
+      ':invoiceIsSent': 'ts-label',
+      that: 'ts-attribute',
+      self: 'ts-variable',
+      status: 'ts-property',
+      '"sent"': 'ts-string',
+      code: 'ts-attribute',
+      '"invalid_state"': 'ts-string',
+    },
+  },
+  {
+    name: 'a relationship with a tagless reference',
+    code: 'belongs-to=Customer #customer',
+    spans: { 'belongs-to': 'ts-tag', Customer: 'ts-type', '#customer': 'ts-constant' },
+  },
+  {
+    name: 'a tagless assignment under set',
+    code: 'set\n    #status="paid"',
+    spans: { set: 'ts-tag', '#status': 'ts-constant', '"paid"': 'ts-string' },
+  },
+  {
+    name: 'a method declared after a name',
+    code: 'boolean #isOverdue({ self }) { return self.dueOn < today() }',
+    spans: {
+      boolean: 'ts-tag',
+      '#isOverdue': 'ts-constant',
+      self: 'ts-variable',
+      return: 'ts-keyword',
+      dueOn: 'ts-property',
+      today: 'ts-function',
+    },
+  },
+  {
+    name: 'actions with auto and on:load',
+    code: 'actions auto=["read"] on:load="visible"',
+    spans: {
+      actions: 'ts-tag',
+      auto: 'ts-attribute',
+      '"read"': 'ts-string',
+      'on:load': 'ts-attribute',
+      '"visible"': 'ts-string',
+    },
+  },
+  {
+    name: 'a number in an attribute value',
+    code: 'string #quantity default=0',
+    spans: { string: 'ts-tag', '#quantity': 'ts-constant', default: 'ts-attribute', '0': 'ts-number' },
+  },
+];
+
+for (const form of forms) {
+  test(`${form.name} is coloured, and does not throw`, () => {
+    const html = highlightMx(form.code + '\n');
+    for (const [text, cls] of Object.entries(form.spans)) {
+      expect(classOfText(form.code, text)).toBe(cls);
+    }
+    expect(html).toContain('<pre class="hljs mx-hl"><code class="language-mx">');
+  });
+}
+
+test('every capture the queries can produce has a decided colour in both themes', () => {
+  expect(unstyledCaptureNames()).toEqual([]);
+  // Tags, names, labels, attribute names, strings, numbers, regex literals and the
+  // TypeScript inside functions each get their own class, in both themes, from the
+  // hexes docmd's own highlight stylesheets use.
+  const expected = {
+    'ts-tag': '#a626a4',
+    'ts-keyword': '#a626a4',
+    'ts-label': '#4078f2',
+    'ts-constant': '#0184bb',
+    'ts-attribute': '#986801',
+    'ts-string': '#50a14f',
+    'ts-string-special': '#50a14f',
+    'ts-number': '#c18401',
+    'ts-function': '#4078f2',
+    'ts-type': '#c18401',
+    'ts-punctuation-bracket': '#a0a1a7',
+    'ts-comment': '#a0a1a7',
+  };
+  for (const [cls, light] of Object.entries(expected)) {
+    expect(themeStyles).toContain(`.mx-hl .${cls}{color:${light}`);
+    expect(themeStyles).toMatch(
+      new RegExp(`:root\\[data-theme="dark"\\] \\.mx-hl \\.${cls}\\{color:#`),
+    );
+  }
+  // A regex is a string in this theme, so the italic is what separates it.
+  expect(themeStyles).toContain('.mx-hl .ts-string-special{color:#50a14f;font-style:italic}');
+  // The box is docmd's: the stylesheet colours spans and sets no background.
+  expect(themeStyles).not.toContain('background');
+  expect(themeStyles).not.toContain('.shiki');
+  expect(highlightMx('entity #Todo\n')).toContain('<pre class="hljs mx-hl">');
+});
+
+test('a plain word carries no span, so it reads in the colour docmd gives a pre', () => {
+  const html = highlightMx('check :paid [ that=(self) => self.done ]\n');
+  expect(html).toContain('<span class="ts-tag">check</span>');
+  expect(html).toContain('<span class="ts-label">:paid</span>');
+  // `self` is a parameter in the list and a variable in the body. Both are plain
+  // words: the span carries its class, and the stylesheet has no rule for it, so
+  // the word reads in the pre colour docmd gives every other block.
+  expect(html).toContain('<span class="ts-variable-parameter">self</span>');
+  expect(html).toContain('<span class="ts-variable">self</span>');
+  expect(themeStyles).not.toContain('.ts-variable{');
+  expect(themeStyles).not.toContain('.ts-variable-parameter{');
+  expect(themeStyles).not.toContain('.ts-property{');
+});
+
+test('a titled mx fence keeps docmd code-block header and copy button markup', () => {
+  const html = processor().render('```mx "todo.mesh.mx"\nentity #Todo\n```', { filePath: 'todo.md' });
+  expect(html).toContain('docmd-code-block-wrapper');
+  expect(html).toContain('docmd-code-block-title');
+  expect(html).toContain('todo.mesh.mx');
+  expect(html).toContain('<pre class="hljs mx-hl">');
 });
 
 test('ts fences are byte-for-byte unchanged from docmd highlighting', () => {
   const source = '```ts "sample.ts"\nconst value: string = "todo";\n```';
   const original = createMarkdownProcessor({});
   expect(processor().render(source)).toBe(original.render(source));
+  // docmd, not this plugin, is what highlights every other language: its
+  // highlight.js classes, with no Shiki markup anywhere in the output.
+  expect(processor().render(source)).not.toContain('shiki');
 });
 
 test('highlight failures abort rendering with page, block line and source', () => {

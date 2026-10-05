@@ -7,6 +7,6 @@
   "devDependencies": {
     "@docmd/core": "0.9.7",
     "@docmd/plugin-search": "0.9.7",
-    "shiki": "4.5.0"
+    "web-tree-sitter": "0.26.9"
   }
 }
