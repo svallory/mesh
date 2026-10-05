@@ -127,11 +127,14 @@ The figure is one entity file cut into segments, so it is parsed once as a whole
 reads its own lines out of the result: a segment that starts at an indented `attributes` tag is not a
 document on its own and would colour as nothing.
 
-A fence is highlighted as a whole file. A `//` comment line after the root line ends the document as
-far as the grammar is concerned, and everything below it is left uncoloured; the figure blanks its own
-`// @key:` annotation lines for that reason. Two smaller gaps in the vendored queries, both reported to
-the MX lead: the names in a destructured lambda parameter (`that=({ self }) => …`) get no colour, and
-so do the `?` and `:` of a ternary.
+A fence is highlighted as a whole file, and a line the grammar cannot read leaves the lines below it
+uncoloured. One case is the language's own rule, not a fault: in concise syntax a line at the left
+margin ends the root tag's block, a comment included, so a comment inside an entity is indented with
+the block it sits in (`[Entities](../docs/entities.md)` says so where it explains the shape of a file).
+The annotated figure's `// @key:` lines are the figure's own notation rather than part of the entity
+file, and the figure renderer blanks them for the same reason. The two forms the vendored queries
+still leave uncoloured are the names in a destructured lambda parameter (`that=({ self }) => …`) and
+the `?` and `:` of a ternary; both are confirmed on the MX side.
 
 ## Layout and file names
 

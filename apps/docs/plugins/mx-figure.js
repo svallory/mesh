@@ -110,10 +110,13 @@ export function renderMxFigure(source, file) {
   // of it: a segment that starts at an indented section tag is not a document on
   // its own and would colour as nothing (see ./mx-highlight.js).
   //
-  // The `// @key:` lines are annotations, not part of the entity file, and a
-  // line comment ends the document as far as the grammar is concerned: left in,
-  // every segment below the first one colours as nothing. Blanking them keeps
-  // the line count, so every segment keeps its range, and renders nothing.
+  // The `// @key:` lines are this figure's own notation, not part of the entity
+  // file, so they are blanked before the file is parsed (the line count stays, so
+  // every segment keeps its range, and no annotation is ever rendered). Blanking
+  // them is also what keeps the parse whole: in concise syntax a line at the
+  // left margin ends the root tag's block, a comment included, so an author who
+  // wrote one of these notes at the left margin inside the entity would end the
+  // entity there and leave every line below it uncoloured.
   const lines = sourceLines(source).map((line) => (NOTE.test(line) ? '' : line));
   const whole = lines.join('\n');
   const lineStart = [];

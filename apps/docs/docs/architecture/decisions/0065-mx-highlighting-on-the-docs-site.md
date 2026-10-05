@@ -61,8 +61,8 @@ Only Option A highlights the syntax the docs show. The vendored copy is temporar
 - The `mx-highlight` plugin of PR #19 is replaced for `mx` fences; other fences keep Shiki, including
   the dark-mode switch, which only the plugin's own stylesheet applied.
 - The grammar is line-tolerant in a way a TextMate grammar is not: a fence is read as one file, so a
-  line the grammar cannot parse can leave the lines below it uncoloured. The build still fails loudly on
-  a missing or unreadable grammar, not on a line the grammar dislikes.
+  line it cannot read can leave the lines below it uncoloured, with no error anywhere. The build still
+  fails loudly on a missing or unreadable grammar, not on a line the grammar dislikes.
 - Open, the operator's call: a private package registry (Verdaccio on the operator's server, the lead's recommendation over GitHub Packages) to share unpublished `@mxlang` and `@meshfw` packages; it would remove the vendoring step.
 
 ## Action items
@@ -70,7 +70,11 @@ Only Option A highlights the syntax the docs show. The vendored copy is temporar
 - [x] Vendor the highlighter, wire it into docmd, probe a regex-literal attribute value (done in the
   `docs/mx-highlighter` branch: `match=/^INV-\d+$/` colours as a regex literal, the `docs` tests cover
   it, and the grammar was not changed to get there).
-- [ ] Two gaps found while switching the site over, both for the MX lead: a `//` comment line after the
-  root line ends the document for the grammar, and the names in a destructured lambda parameter
-  (`that=({ self }) => …`) get no capture.
+- [ ] One query gap confirmed by the MX lead and queued there: the names in a destructured lambda
+  parameter (`that=({ self }) => …`) get no capture, and neither do the `?` and `:` of a ternary.
+- [ ] MX will mark a column-0 line inside an entity as an error. It is the language's rule, not a
+  grammar bug: in concise syntax a line at the left margin ends the root tag's block, a comment
+  included, so a comment inside an entity has to be indented with the block it sits in. The docs site
+  is unaffected (the annotated figure blanks its own annotation lines), but the highlighter currently
+  leaves the lines below such a comment uncoloured without saying why.
 - [ ] When `@mxlang/tree-sitter-mx` is published: import it and delete `apps/docs/plugins/mx/`.

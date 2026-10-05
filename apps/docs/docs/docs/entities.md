@@ -65,7 +65,7 @@ Five things about that file are worth saying outright.
 
 **Sections group the lines.** `attributes`, `relationships`, `computed`, `actions` and `policies`, in any order, and each may be empty or left out. Inside an action there are three more: `arguments`, `validate` and `do`. The order of the sections does not matter; the order of the lines inside one does. To *call* anything, an entity needs at least one action and a policy: an action no policy covers is forbidden, so a file with no `policies` section can be built but nothing in it can be called.
 
-**Indentation nests.** A line indented under another belongs to it and runs as part of it.
+**Indentation nests.** A line indented under another belongs to it and runs as part of it. A line at the left margin ends what came before it, so a comment inside an entity is a `//` line indented with the block it belongs to: a comment at the left margin under `entity #Todo` ends the entity there, and everything below it belongs to nothing.
 
 **Values Mesh reads are literals**: a string, a number, a regular expression, `true`, `false`, a list or an object written out in full. The exceptions are the places whose value is code — `filter`, `when`, `authorize-if`, `forbid-if`, the `that` of a `check`, the right-hand side of a `set` line, and a computed field's body. Those take one of two things, and the difference matters: a function whose body is **one expression** — an arrow `(…) => …`, or a method body with a single `return` — is translated, so it also runs inside the database query. Anything else is plain code and runs in memory. Where the database is required (a `filter`, a `sort`, a policy check), an expression that cannot be translated is a build error naming the line.
 
@@ -73,7 +73,7 @@ Five things about that file are worth saying outright.
 
 **Hand-written code is imported.** A `.mesh.mx` file opens with ordinary `import` lines, and the imported functions are usable inside its expressions. The helper sits beside the entity and is a normal TypeScript module:
 
-```ts "src/domain/invoice/invoice.helpers.ts"
+```ts "src/domain/billing/invoice.helpers.ts"
 export function isStaff(actor: { role: string }): boolean {
   return actor.role === "staff";
 }
@@ -511,7 +511,7 @@ If you want one table and nothing else, this is the whole file.
 
 ## A larger example
 
-One file that puts most of the above together: `src/domain/invoice/invoice.mesh.mx`. It is not a file to copy; it is here because a reader who has followed the sections can check their understanding against it.
+One file that puts most of the above together: `src/domain/billing/invoice.mesh.mx`. It is not a file to copy; it is here because a reader who has followed the sections can check their understanding against it.
 
 ```mx "src/domain/billing/invoice.mesh.mx"
 // src/domain/billing/invoice.mesh.mx
