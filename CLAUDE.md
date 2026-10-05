@@ -27,6 +27,9 @@ Bun workspace (`workspaces`: `packages/*`, `apps/*`, `examples/*`), one root `bu
 - Use bun, never npm.
 - Always write "Mesh" (never "Mash").
 - Architecture docs hold what cannot be understood from a single code file.
-- `apps/docs/plugins/mx/` is MX's highlighter, vendored from mxlang `aa73c86d` and not ours to edit
-  (`apps/docs/plugins/mx/SOURCE.md`); a docs fix goes in `apps/docs/plugins/mx-highlight.js` (the
-  docmd plugin, the capture-name palette) or goes to the MX lead as a grammar gap.
+- The `@mxlang` scope resolves from `https://npm.saulo.tech`, the operator's read-only npm registry (no uplink);
+  `bunfig.toml` points only that scope at it. `@mxlang/tree-sitter-mx` is what the docs site highlights `mx`
+  with; a docs fix goes in `apps/docs/plugins/mx-highlight.js` (the docmd plugin, the capture-name palette)
+  or goes to the MX lead as a grammar gap.
+- `apps/docs/plugins/mx-highlight.js` is MX's highlighter's docmd plugin and not ours to fork: the grammar
+  and the queries belong to MX, so the only thing a docs change may touch here is the palette.
