@@ -25,12 +25,19 @@
 //
 // Without JavaScript, and in print, that list is what the reader gets: the code,
 // then the numbered notes. With JavaScript (the small inline script below, no
-// dependency), the list becomes the set of popovers: hovering a segment or
-// focusing its marker shows its note beside the segment, right-aligned in the
-// code block, whenever the segment's own lines end left of it (otherwise, and in
-// a column under 600px, under the segment, so a note never covers its own lines), the segment's lines are tinted while its
-// note is open, a click, Enter or Space pins the note, and Escape or a click
-// elsewhere closes it.
+// dependency), each figure is marked live and the list gives way to one note
+// panel per figure: hovering a segment or focusing its marker shows that
+// segment's note in the panel and tints the segment's lines; a click, Enter or
+// Space pins it; Escape or a click elsewhere closes it. The panel floats over the
+// right side of the code block and stays in view while the file scrolls (moving
+// to the bottom of the view, or narrowing, when the hovered lines run under it);
+// on a phone it is a sheet that slides in from the bottom, or from the top when
+// the segment is in the lower half, and in landscape a drawer from the right.
+//
+// The live state is a class on each figure, set by a MutationObserver, never a
+// class on the root: docmd's client-side navigation rewrites the root's class
+// attribute (docmd-main.js, `document.documentElement.className = ...`), which
+// once left a page half in list mode and half in popover mode.
 import { mxHighlighter } from './mx-highlight.js';
 
 const NOTE = /^\/\/\s*@([a-z][a-z0-9-]*):\s*(.+?)\s+—\s+(.+)$/;
@@ -182,55 +189,72 @@ export function renderMxFigure(source, file) {
       `<li class="mx-note" id="${id}-n${index + 1}" data-n="${index + 1}">` +
       `<strong>${escapeHtml(segment.title)}</strong> ${noteBody(segment.body)}</li>`)
     .join('');
+  // The stage holds the code and, once the script runs, the note panel, in one
+  // grid cell, so the panel floats over the code. docmd wraps the `<pre>` in its
+  // own `.code-wrapper` for the copy button; nothing here depends on the `<pre>`
+  // being a direct child.
   return `<div class="mx-figure-wrap"><figure class="mx-figure" id="${id}">` +
-    `<pre class="hljs mx-hl"><code class="language-mx">${code}</code></pre>` +
+    `<div class="mx-stage"><div class="mx-code"><pre class="hljs mx-hl"><code class="language-mx">${code}</code></pre></div></div>` +
     `<ol class="mx-notes">${notes}</ol></figure></div>`;
 }
 
 export const figureStyles = `<style>
-.mx-figure-wrap{container-type:inline-size;--mx-accent:var(--link-color,#068ad5);--mx-gutter:3.4em}
+.mx-figure-wrap{--mx-accent:var(--link-color,#068ad5);--mx-gutter:3.4em}
 .mx-figure{position:relative;margin:2rem 0}
+.mx-figure .mx-stage{display:grid}
+.mx-figure .mx-stage>*{grid-area:1/1;min-width:0}
+.mx-figure .mx-code{container-type:inline-size}
 .mx-figure pre.mx-hl{margin:0;padding:.85rem 0;border-radius:10px;border:1px solid var(--border-color-codeblock,#0a0a0a17);overflow-x:auto;font-family:var(--font-family-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:.8rem;line-height:1.65;white-space:pre;tab-size:2;counter-reset:mx-line}
 .mx-figure pre.mx-hl code{display:block;min-width:max-content;font:inherit;background:none;padding:0}
 .mx-figure .mx-seg{display:block;transition:background-color .14s ease,box-shadow .14s ease}
 .mx-figure .mx-line{display:block;position:relative;min-height:1.65em;padding-left:calc(var(--mx-gutter) + var(--i,0) * 1ch);padding-right:1.25rem;text-indent:calc(var(--i,0) * -1ch)}
 .mx-figure .mx-line::before{counter-increment:mx-line;content:counter(mx-line);position:absolute;left:0;width:calc(var(--mx-gutter) - 1.4em);text-align:right;text-indent:0;color:color-mix(in srgb,currentColor 32%,transparent);-webkit-user-select:none;user-select:none}
-.mx-figure .mx-mark{display:inline-flex;align-items:center;justify-content:center;vertical-align:.08em;margin-left:1.2ch;min-width:1.4rem;height:1.4rem;padding:0 .3rem;border:0;border-radius:.4rem;background:color-mix(in srgb,var(--mx-accent) 16%,transparent);color:var(--mx-accent);font:600 .72rem/1 var(--font-family-sans,system-ui,sans-serif);text-indent:0;cursor:pointer;-webkit-user-select:none;user-select:none;transition:background-color .12s ease,color .12s ease,transform .12s ease}
+.mx-figure .mx-mark{display:inline-flex;align-items:center;justify-content:center;vertical-align:.08em;margin-left:1.2ch;min-width:1.4rem;height:1.4rem;padding:0 .3rem;border:0;border-radius:.4rem;background:color-mix(in srgb,var(--mx-accent) 16%,transparent);color:var(--mx-accent);font:600 .72rem/1 var(--font-family-sans,system-ui,sans-serif);text-indent:0;cursor:pointer;-webkit-user-select:none;user-select:none;transition:background-color .12s ease,color .12s ease}
 .mx-figure .mx-mark::before{content:attr(data-n)}
 .mx-figure .mx-mark:focus-visible{outline:2px solid var(--mx-accent);outline-offset:2px}
 .mx-figure .mx-seg.is-active{background:color-mix(in srgb,var(--mx-accent) 9%,transparent);box-shadow:inset 3px 0 0 var(--mx-accent)}
 .mx-figure .mx-seg.is-active .mx-mark,.mx-figure .mx-mark:hover{background:var(--mx-accent);color:var(--bg-color,#fff)}
 .mx-figure .mx-notes{list-style:none;margin:1rem 0 0;padding:0;display:grid;gap:.55rem}
 .mx-figure .mx-note{display:block;position:relative;padding-left:2.2rem;line-height:1.55;max-width:42rem}
-.mx-figure .mx-note::before{content:attr(data-n);position:absolute;left:0;top:.1em;display:inline-flex;align-items:center;justify-content:center;min-width:1.45rem;height:1.45rem;border-radius:.45rem;background:color-mix(in srgb,var(--mx-accent) 16%,transparent);color:var(--mx-accent);font-size:.75rem;font-weight:600}
-.mx-figure .mx-note strong{color:var(--text-heading,inherit)}
-.mx-figure .mx-note code{font-size:.85em}
-.mx-figure .mx-note strong::after{content:" \\2014";font-weight:400}
-/* With the script: the list is the set of popovers. */
-.mx-fig-js .mx-figure .mx-notes{display:block;margin:0}
-.mx-fig-js .mx-figure .mx-note{position:absolute;top:0;left:0;z-index:5;box-sizing:border-box;width:min(24rem,calc(100% - 1rem));max-width:none;padding:.7rem .9rem .75rem 2.75rem;border:1px solid var(--border-color,#e4e4e7);border-radius:10px;background:var(--bg-color,#fff);box-shadow:0 1px 2px rgb(0 0 0/.06),0 12px 32px -8px rgb(0 0 0/.22);font-size:.875rem;opacity:0;visibility:hidden;pointer-events:none;transform:translate3d(var(--dx,0),var(--dy,-6px),0) scale(.97);transform-origin:var(--ox,24px) var(--oy,0);transition:opacity .14s cubic-bezier(.2,.7,.3,1),transform .16s cubic-bezier(.2,.7,.3,1),visibility 0s linear .16s}
-.mx-fig-js .mx-figure .mx-note::before{left:.8rem;top:.8rem}
-.mx-fig-js .mx-figure .mx-note[data-place=right]{--dx:-8px;--dy:0;--ox:0;--oy:1rem}
-.mx-fig-js .mx-figure .mx-note[data-place=above]{--dy:6px;--oy:100%}
-.mx-fig-js .mx-figure .mx-note.is-open{opacity:1;visibility:visible;pointer-events:auto;transform:none;transition-delay:0s}
-.mx-fig-js .mx-figure .mx-note.is-swap{transition:opacity .07s linear,visibility 0s}
-.mx-fig-js .mx-figure .mx-note.is-gone{transition:none}
-:root[data-theme=dark].mx-fig-js .mx-figure .mx-note{background:#1a1a1f;border-color:#34343a;box-shadow:0 12px 32px -8px rgb(0 0 0/.7)}
+.mx-figure :is(.mx-note,.mx-panel)::before{content:attr(data-n);position:absolute;left:0;top:.1em;display:inline-flex;align-items:center;justify-content:center;min-width:1.45rem;height:1.45rem;border-radius:.45rem;background:color-mix(in srgb,var(--mx-accent) 16%,transparent);color:var(--mx-accent);font-size:.75rem;font-weight:600}
+.mx-figure :is(.mx-note,.mx-panel) strong{color:var(--text-heading,inherit)}
+.mx-figure :is(.mx-note,.mx-panel) code{font-size:.85em}
+.mx-figure :is(.mx-note,.mx-panel) strong::after{content:" \\2014";font-weight:400}
+/* Live (the script has marked this figure): the list gives way to one panel. The
+   list stays in the document, hidden, because each marker's aria-describedby
+   points at its item. */
+.mx-figure .mx-panel{display:none}
+.mx-figure.is-live .mx-notes{display:none}
+.mx-figure.is-live .mx-panel{display:block;position:sticky;top:var(--mx-top,64px);align-self:start;justify-self:end;z-index:5;box-sizing:border-box;width:360px;max-width:calc(100% - 24px);margin:48px 12px 12px;padding:.7rem .95rem .8rem 2.85rem;border:1px solid var(--border-color,#e4e4e7);border-radius:12px;background:var(--bg-color,#fff);box-shadow:0 1px 2px rgb(0 0 0/.06),0 14px 36px -10px rgb(0 0 0/.28);font-size:.875rem;line-height:1.55;overflow:hidden;opacity:0;visibility:hidden;pointer-events:none;transform:translate3d(0,var(--dy,-6px),0) scale(.98);transform-origin:top right;transition:opacity .14s cubic-bezier(.2,.7,.3,1),transform .16s cubic-bezier(.2,.7,.3,1),height .16s cubic-bezier(.2,.7,.3,1),visibility 0s linear .16s}
+.mx-figure.is-live .mx-panel::before{left:.8rem;top:.75rem}
+.mx-figure.is-live .mx-panel[data-side=bottom]{align-self:end;top:auto;bottom:16px;--dy:6px;transform-origin:bottom right}
+.mx-figure.is-live .mx-panel.is-open{opacity:1;visibility:visible;pointer-events:auto;transform:none;transition-delay:0s}
+.mx-figure .mx-panel-body.is-swap{animation:mx-swap .12s cubic-bezier(.2,.7,.3,1)}
+@keyframes mx-swap{from{opacity:0;transform:translateY(3px)}}
+/* A phone held upright: a sheet from the bottom, or from the top when the part
+   sits in the lower half of the screen. Held sideways: a drawer from the right.
+   The slide is a clip-path wipe, so the box never sits outside the viewport (a
+   box translated off screen widens a phone's layout viewport). */
+.mx-figure.is-live .mx-panel:is([data-mode=sheet],[data-mode=drawer]){position:fixed;align-self:stretch;justify-self:stretch;height:auto;margin:0;max-width:none;z-index:60;transform:none;transition:opacity .1s linear,clip-path .2s cubic-bezier(.2,.7,.3,1),visibility 0s linear .2s}
+.mx-figure.is-live .mx-panel[data-mode=sheet]{left:8px;right:8px;width:auto;top:auto;bottom:max(8px,env(safe-area-inset-bottom));clip-path:inset(100% 0 0 0 round 12px)}
+.mx-figure.is-live .mx-panel[data-mode=sheet][data-side=top]{top:var(--mx-top,64px);bottom:auto;clip-path:inset(0 0 100% 0 round 12px)}
+.mx-figure.is-live .mx-panel[data-mode=drawer]{top:var(--mx-top,64px);bottom:8px;right:8px;left:auto;overflow:auto;clip-path:inset(0 0 0 100% round 12px)}
+.mx-figure.is-live .mx-panel:is([data-mode=sheet],[data-mode=drawer]).is-open{clip-path:inset(0 round 12px);transition-delay:0s}
+:root[data-theme=dark] .mx-figure.is-live .mx-panel{background:#1a1a1f;border-color:#34343a;box-shadow:0 14px 36px -10px rgb(0 0 0/.75)}
 @media (prefers-reduced-motion:reduce){
-  .mx-fig-js .mx-figure .mx-note{transform:none!important;transition:opacity .06s linear,visibility 0s linear .06s}
+  .mx-figure.is-live .mx-panel,.mx-figure.is-live .mx-panel:is([data-mode=sheet],[data-mode=drawer]){transform:none!important;clip-path:none!important;transition:opacity .06s linear,visibility 0s linear .06s}
+  .mx-figure .mx-panel-body.is-swap{animation:none}
   .mx-figure .mx-seg,.mx-figure .mx-mark{transition:none}
 }
 @container (max-width:640px){
   /* A narrow column wraps a long line under its own indentation instead of
      scrolling it out of the box. Nothing is ever clipped. */
-  .mx-figure-wrap{--mx-gutter:2.6em}
-  .mx-figure pre.mx-hl{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.76rem}
+  .mx-figure pre.mx-hl{--mx-gutter:2.6em;white-space:pre-wrap;overflow-wrap:anywhere;font-size:.76rem}
   .mx-figure pre.mx-hl code{min-width:0}
 }
 @media print{
-  .mx-fig-js .mx-figure .mx-notes{display:grid;margin:1rem 0 0}
-  .mx-fig-js .mx-figure .mx-note{position:static;width:auto;opacity:1;visibility:visible;transform:none;border:0;box-shadow:none;padding:0 0 0 2.2rem;background:none}
-  .mx-fig-js .mx-figure .mx-note::before{left:0;top:.1em}
+  .mx-figure.is-live .mx-notes{display:grid}
+  .mx-figure.is-live .mx-panel{display:none}
   .mx-figure pre.mx-hl{white-space:pre-wrap}
   .mx-figure .mx-seg{background:none!important;box-shadow:none!important}
 }
@@ -238,64 +262,89 @@ export const figureStyles = `<style>
 
 // The behaviour, inline and dependency-free. It listens on the document, so it
 // also works on a page docmd swapped in without a reload (the site is an SPA),
-// and it reads nothing but the markup above.
+// and it reads nothing but the markup above. It writes inline styles only on
+// the panel, and removes them when the panel closes; a note item never gets one.
 export const figureScript = `<script>(function(){
-var d=document,R=d.documentElement,open=null,pinned=false,timer=0;
-R.classList.add('mx-fig-js');
-function parts(seg){var fig=seg.closest('.mx-figure');return{fig:fig,seg:seg,mark:seg.querySelector('.mx-mark'),note:d.getElementById(seg.getAttribute('data-note'))};}
+var d=document,open=null,pinned=false,timer=0,raf=0,touched=0;
+function live(){d.querySelectorAll('.mx-figure:not(.is-live)').forEach(function(f){f.classList.add('is-live');});}
+new MutationObserver(live).observe(d.documentElement,{childList:true,subtree:true});
+d.addEventListener('DOMContentLoaded',live);
+function panelOf(fig){
+  var p=fig.querySelector('.mx-panel');
+  if(!p){p=d.createElement('div');p.className='mx-panel';p.setAttribute('aria-hidden','true');p.innerHTML='<div class="mx-panel-body"></div>';fig.querySelector('.mx-stage').appendChild(p);}
+  return p;
+}
+function parts(seg){var fig=seg.closest('.mx-figure');return{fig:fig,seg:seg,mark:seg.querySelector('.mx-mark'),note:d.getElementById(seg.getAttribute('data-note')),panel:panelOf(fig)};}
+function mode(){return innerHeight<=500&&innerWidth>innerHeight?'drawer':innerWidth<=640?'sheet':'float';}
+function headerBottom(){var h=d.querySelector('.page-header');return h?Math.max(0,h.getBoundingClientRect().bottom):0;}
 function place(p){
-  var n=p.note,f=p.fig.getBoundingClientRect(),c=p.fig.querySelector('pre').getBoundingClientRect(),
-      s=p.seg.getBoundingClientRect(),m=p.mark.getBoundingClientRect(),r=d.createRange(),end=0,w,x,y,where;
+  var n=p.panel,m=mode(),s=p.seg.getBoundingClientRect(),top=headerBottom()+12;
+  n.setAttribute('data-mode',m);n.style.setProperty('--mx-top',top+'px');
+  if(m==='sheet'){n.setAttribute('data-side',(s.top+s.bottom)/2>innerHeight/2?'top':'bottom');return;}
+  var c=p.fig.querySelector('pre').getBoundingClientRect(),r=d.createRange(),end=0,w=Math.min(360,Math.max(240,c.width*.42)),side='top';
   // Where the part's own text ends: a line is a full-width block, so measure its contents.
   p.seg.querySelectorAll('.mx-line').forEach(function(l){r.selectNodeContents(l);end=Math.max(end,r.getBoundingClientRect().right);});
-  w=Math.min(384,c.right-end-28);
-  if(f.width>=600&&w>=240){x=c.right-f.left-w-12;y=s.top-f.top;where='right';n.style.removeProperty('--ox');}
-  else{
-    w=Math.min(f.width-8,384);x=Math.max(4,Math.min(m.left-f.left-24,f.width-w-4));
-    n.style.width=w+'px';var h=n.offsetHeight,above=s.top-f.top-h-8;
-    var fits=s.bottom+8+h<=innerHeight||above<0||s.top-h-8<0;
-    y=fits?s.bottom-f.top+8:above;where=fits?'below':'above';
-    n.style.setProperty('--ox',Math.max(12,m.left-f.left-x+10)+'px');
+  if(m==='drawer'){n.style.width=Math.max(240,Math.min(380,innerWidth-end-24))+'px';return;}
+  if(end>c.right-w-24){
+    var room=c.right-end-36;
+    if(room>=220)w=room;
+    else{
+      // The lines run under the panel: keep them readable by moving the panel to
+      // whichever end of the view they are not in.
+      n.style.width=w+'px';var h=n.offsetHeight,t=Math.max(c.top,top);
+      if(s.top<t+h+8&&s.bottom>t)side='bottom';
+    }
   }
-  n.style.width=w+'px';n.style.left=x+'px';n.style.top=y+'px';n.setAttribute('data-place',where);
+  n.style.width=w+'px';n.setAttribute('data-side',side);
 }
-function close(instant){
-  clearTimeout(timer);if(!open)return;var p=open;open=null;pinned=false;
-  p.seg.classList.remove('is-active');p.mark.setAttribute('aria-expanded','false');
-  if(instant){p.note.classList.add('is-gone');p.note.offsetWidth;}
-  p.note.classList.remove('is-open','is-swap');
-  if(instant)requestAnimationFrame(function(){p.note.classList.remove('is-gone');});
-}
+function release(p){p.seg.classList.remove('is-active');p.mark.setAttribute('aria-expanded','false');}
+// A closed panel keeps no inline style or placement: they are cleared once its
+// fade has finished, unless it was reopened meanwhile.
+function hide(n){n.classList.remove('is-open');setTimeout(function(){if(!n.classList.contains('is-open')){n.removeAttribute('style');n.removeAttribute('data-side');n.removeAttribute('data-mode');}},220);}
+function close(){clearTimeout(timer);if(!open)return;var p=open;open=null;pinned=false;release(p);hide(p.panel);}
 function show(seg,pin){
   clearTimeout(timer);
   if(open&&open.seg===seg){if(pin)pinned=true;return;}
-  var swap=!!open;close(true);
-  var p=parts(seg);if(!p.mark||!p.note)return;open=p;pinned=!!pin;
-  p.seg.classList.add('is-active');p.mark.setAttribute('aria-expanded','true');
-  place(p);p.note.classList.toggle('is-swap',swap);p.note.classList.add('is-open');
+  var p=parts(seg);if(!p.mark||!p.note)return;
+  var n=p.panel,body=n.firstChild,swap=!!(open&&open.panel===n&&n.classList.contains('is-open')),h0=swap?n.offsetHeight:0;
+  if(open){var q=open;open=null;release(q);if(q.panel!==n)hide(q.panel);}
+  open=p;pinned=!!pin;
+  seg.classList.add('is-active');p.mark.setAttribute('aria-expanded','true');
+  body.innerHTML=p.note.innerHTML;n.setAttribute('data-n',p.note.getAttribute('data-n'));
+  n.style.height='';place(p);
+  if(swap){
+    body.classList.remove('is-swap');void body.offsetWidth;body.classList.add('is-swap');
+    if(n.getAttribute('data-mode')==='float'){var h1=n.offsetHeight;n.style.height=h0+'px';void n.offsetHeight;n.style.height=h1+'px';setTimeout(function(){if(open&&open.panel===n)n.style.height='';},180);}
+  }
+  n.classList.add('is-open');
 }
-function later(){clearTimeout(timer);if(open&&!pinned)timer=setTimeout(function(){close(false);},120);}
+function later(){clearTimeout(timer);if(open&&!pinned)timer=setTimeout(close,120);}
 d.addEventListener('pointerover',function(e){
   if(e.pointerType!=='mouse'||!e.target.closest)return;
-  var seg=e.target.closest('.mx-seg');
-  if(seg&&seg.closest('.mx-figure')){if(!pinned)show(seg,false);else if(open&&open.seg===seg)clearTimeout(timer);return;}
-  if(open&&open.note.contains(e.target)){clearTimeout(timer);return;}
+  var seg=e.target.closest('.mx-figure.is-live .mx-seg');
+  if(seg){if(!pinned)show(seg,false);else if(open&&open.seg===seg)clearTimeout(timer);return;}
+  if(open&&open.panel.contains(e.target)){clearTimeout(timer);return;}
   later();
 });
-d.addEventListener('focusin',function(e){var t=e.target;if(t.classList&&t.classList.contains('mx-mark')){if(!(open&&pinned&&open.mark!==t))show(t.closest('.mx-seg'),false);}});
-d.addEventListener('focusout',function(e){if(open&&e.target===open.mark&&!pinned)close(false);});
+d.addEventListener('pointerdown',function(e){if(e.pointerType!=='mouse')touched=Date.now();},true);
+// A tap focuses the marker before its click arrives; the click decides, so a tap
+// is one toggle, not an open followed by a close.
+d.addEventListener('focusin',function(e){var t=e.target;if(Date.now()-touched>600&&t.classList&&t.classList.contains('mx-mark')&&t.closest('.mx-figure.is-live')){if(!(open&&pinned&&open.mark!==t))show(t.closest('.mx-seg'),false);}});
+d.addEventListener('focusout',function(e){if(open&&e.target===open.mark&&!pinned)close();});
 d.addEventListener('click',function(e){
-  var t=e.target.closest&&e.target.closest('.mx-mark,.mx-seg,.mx-note');
-  if(t&&t.classList.contains('mx-note'))return;
-  if(t&&t.closest('.mx-figure')){
+  var t=e.target.closest&&e.target.closest('.mx-mark,.mx-seg,.mx-panel');
+  if(t&&t.classList.contains('mx-panel'))return;
+  if(!t&&e.target.closest&&e.target.closest('.mx-figure.is-live .mx-stage'))return;
+  if(t&&t.closest('.mx-figure.is-live')){
     var seg=t.closest('.mx-seg');
-    if(t.classList.contains('mx-mark')&&open&&open.seg===seg&&pinned){close(false);return;}
+    if(t.classList.contains('mx-mark')&&open&&open.seg===seg&&pinned){close();return;}
     show(seg,true);if(open)pinned=true;return;
   }
-  if(open)close(false);
+  if(open)close();
 });
-d.addEventListener('keydown',function(e){if(e.key==='Escape'&&open){var m=open.mark,inside=open.fig.contains(d.activeElement);close(false);if(inside)m.focus({preventScroll:true});}});
-addEventListener('resize',function(){if(open)place(open);});
+d.addEventListener('keydown',function(e){if(e.key==='Escape'&&open){var m=open.mark,inside=open.fig.contains(d.activeElement);close();if(inside)m.focus({preventScroll:true});}});
+function again(){cancelAnimationFrame(raf);raf=requestAnimationFrame(function(){if(open){if(!open.seg.isConnected){close();return;}place(open);}});}
+addEventListener('resize',again);addEventListener('scroll',again,{passive:true});
 })();</script>`;
 
 // docmd hides the whole page until its theme script runs, so without JavaScript
