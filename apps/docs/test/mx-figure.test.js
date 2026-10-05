@@ -116,23 +116,23 @@ test('two figures on one page get different ids, and the same figure always gets
 // nothing in the markup depends on the script to be read.
 test('the notes are an ordered list after the code, readable without the script', () => {
   const html = renderMxFigure(aligned, 'todo.md');
-  expect(html).toMatch(/<\/code><\/pre><ol class="mx-notes"><li class="mx-note"/);
+  expect(html).toMatch(/<\/code><\/pre><\/div><\/div><ol class="mx-notes"><li class="mx-note"/);
   expect(html.endsWith('</li></ol></figure></div>')).toBe(true);
   expect(html).toContain('<li class="mx-note" id="');
   expect(html).toContain('<strong>Name and table</strong> the entity and its table.</li>');
   expect(html).not.toMatch(/hidden|display:none|aria-hidden/);
   expect(figureStyles).toContain('@media print');
-  expect(figureStyles).toMatch(/\.mx-fig-js \.mx-figure \.mx-note\{position:absolute/);
-  // The popover styles apply only once the script has marked the page.
-  expect(figureStyles).not.toMatch(/(^|\})\.mx-figure \.mx-note\{position:absolute/m);
-  expect(figureScript).toContain("R.classList.add('mx-fig-js')");
+  // The list hides, and the panel shows, only once the script has marked the figure.
+  expect(figureStyles).toContain('.mx-figure.is-live .mx-notes{display:none}');
+  expect(figureStyles).toContain('.mx-figure .mx-panel{display:none}');
+  expect(figureStyles).not.toMatch(/(^|\})\.mx-figure \.mx-notes\{display:none/m);
   expect(noScriptStyles).toBe('<noscript><style>html{visibility:visible!important}</style></noscript>');
 });
 
 test('the script is inline, small and dependency-free, and the motion respects reduced motion', () => {
   expect(figureScript.startsWith('<script>')).toBe(true);
   expect(figureScript).not.toMatch(/\bsrc=|import\(|fetch\(|XMLHttpRequest/);
-  expect(figureScript.length).toBeLessThan(4096);
+  expect(figureScript.length).toBeLessThan(6144);
   for (const key of ["'Escape'", "'pointerover'", "'focusin'", "'focusout'", "'click'", "'keydown'"]) expect(figureScript).toContain(key);
   expect(figureStyles).toContain('prefers-reduced-motion:reduce');
   // 120 to 180 ms for the entrance.
@@ -246,4 +246,32 @@ test('every page gets the rule that shows the page without JavaScript', () => {
   expect(head).toContain(noScriptStyles);
   expect(head).toContain(figureStyles);
   expect(head).toContain(figureScript);
+});
+
+// The live state once lived in a class on <html>. docmd's client-side navigation
+// rewrites that element's class attribute, so a page reached without a reload
+// showed the no-JS list while the script still positioned notes in it. The
+// state now lives on each figure, where nothing of docmd's touches it.
+test('the live state is a class on each figure, set by an observer, never on the root', () => {
+  expect(figureScript).toContain("classList.add('is-live')");
+  expect(figureScript).toContain('new MutationObserver(live).observe(d.documentElement,{childList:true,subtree:true})');
+  expect(figureScript).not.toMatch(/documentElement\.classList|mx-fig-js/);
+  expect(figureStyles).not.toMatch(/:root\.|html\.|\.mx-fig-js/);
+  // Every rule that shows or places the panel is scoped to a live figure; the one
+  // unscoped rule keeps it hidden.
+  for (const [, selector, body] of figureStyles.matchAll(/([^{}]*\.mx-panel[^{}]*)\{([^}]*)\}/g)) {
+    if (body === 'display:none') continue;
+    expect(selector).toMatch(/\.mx-figure\.is-live|:is\(\.mx-note,\.mx-panel\)|\.mx-panel-body/);
+  }
+});
+
+// The other half of the same bug: a note that had been positioned kept its inline
+// left, top and width after it closed, so once the list showed, it sat out of
+// line. Now no note item is ever styled, and the panel's inline style is removed
+// when it closes.
+test('a note item is never given an inline style, and a closed panel loses its own', () => {
+  expect(figureScript).not.toMatch(/note\.style|li\.style/);
+  expect(figureScript).toMatch(/function hide\(n\)\{n\.classList\.remove\('is-open'\);setTimeout\(function\(\)\{if\(!n\.classList\.contains\('is-open'\)\)\{n\.removeAttribute\('style'\);n\.removeAttribute\('data-side'\);n\.removeAttribute\('data-mode'\);/);
+  // Every style the script sets is on the panel (`n`), and on nothing else.
+  for (const write of figureScript.match(/\b\w+\.style\b/g)) expect(write).toBe('n.style');
 });
