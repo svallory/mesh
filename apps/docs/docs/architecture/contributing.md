@@ -102,40 +102,65 @@ The [Ash-to-Mesh mapping](./roadmap/vocabulary-mapping.md) keeps the M1 spelling
 
 ## Code highlighting
 
-`mx` fences are highlighted by MX's own highlighter: the tree-sitter grammar
-`@mxlang/tree-sitter-mx` with its `queries/highlights.scm` and `queries/injections.scm`, run at build
-time through `web-tree-sitter` 0.26.9. TypeScript inside an MX file (a function body, an attribute
-value) is injected and highlighted with the TypeScript grammar, so a lambda in a `check` is coloured
-the same way the `ts` fence above it is. Every other language is highlighted by docmd itself, with
-highlight.js and the light and dark stylesheets docmd ships ([ADR-0065](./decisions/0065-mx-highlighting-on-the-docs-site.md)).
+`mx` fences are highlighted by MX's own highlighter: the published
+`@mxlang/tree-sitter-mx` package with its `queries/highlights.scm` and `queries/injections.scm`, run at
+build time through `web-tree-sitter` 0.26.9, which the package depends on. TypeScript inside an MX file (a
+function body, an attribute value) is injected and highlighted with the TypeScript grammar, so a lambda
+in a `check` is coloured the same way the `ts` fence above it is. Every other language is highlighted by
+docmd itself, with highlight.js and the light and dark stylesheets docmd ships
+([ADR-0065](./decisions/0065-mx-highlighting-on-the-docs-site.md)).
 
 Two files, two jobs:
 
-- `apps/docs/plugins/mx/` is MX's highlighter, vendored unchanged except for two path constants
-  because the `@mxlang` packages are not published. `apps/docs/plugins/mx/SOURCE.md` names the mxlang
-  commit it came from, the two commands that built it, what was changed and how to refresh it. Do not
-  edit it to fix a highlight: the grammar belongs to MX, and the queries are not ours either. When
-  `@mxlang/tree-sitter-mx` is published, import it and delete the directory.
+- `@mxlang/tree-sitter-mx` is the highlighter: the grammar, the two query files and the TypeScript
+  grammar the injections need. It comes from the registry, not from this repository, so there is nothing
+  here to edit and nothing to refresh. To change a colour, change the `PALETTE` table in
+  `apps/docs/plugins/mx-highlight.js`; to change what is coloured, that is the MX lead's
+  `queries/*.scm`. A new capture name in a new package version shows up as a failing test until the
+  table decides it.
 - `apps/docs/plugins/mx-highlight.js` is the docmd plugin and the only entry point for `mx`. It routes
   the fences, it fails the build with the page and the line when a fence cannot be highlighted, and it
   holds the `PALETTE` table that maps each capture name to the light and dark colours docmd's own
   highlight stylesheets use for the other languages, so an `mx` block sits beside a `ts` block without
-  a seam. A new capture name in a refreshed grammar shows up as a failing test until it is given a
-  colour.
+  a seam.
 
 `mx-figure` fences (the annotated figure on the Introduction page) go through the same highlighter.
 The figure is one entity file cut into segments, so it is parsed once as a whole file and each segment
 reads its own lines out of the result: a segment that starts at an indented `attributes` tag is not a
 document on its own and would colour as nothing.
 
-A fence is highlighted as a whole file, and a line the grammar cannot read leaves the lines below it
-uncoloured. One case is the language's own rule, not a fault: in concise syntax a line at the left
-margin ends the root tag's block, a comment included, so a comment inside an entity is indented with
-the block it sits in (`[Entities](../docs/entities.md)` says so where it explains the shape of a file).
-The annotated figure's `// @key:` lines are the figure's own notation rather than part of the entity
-file, and the figure renderer blanks them for the same reason. The two forms the vendored queries
-still leave uncoloured are the names in a destructured lambda parameter (`that=({ self }) => …`) and
-the `?` and `:` of a ternary; both are confirmed on the MX side.
+A fence is read as a whole file, so a line the grammar cannot read would leave the lines below it
+uncoloured. It does not get that far: the grammar reports such a line as an ERROR node, and a block with
+one fails the build like any other bad fence, naming the page, the line of the fence and the line inside
+it. The case that comes up is the language's own rule, not a fault: in concise syntax a line at the left
+margin ends the root tag's block, a comment included, so a comment inside an entity is indented with the
+block it sits in (`[Entities](../docs/entities.md)` says so where it explains the shape of a file). The
+annotated figure's `// @key:` lines are the figure's own notation rather than part of the entity file,
+and the figure renderer blanks them before it parses, which is also what keeps them from ending the
+entity where they are written.
+
+## Dependencies and the registry
+
+The `@mxlang` scope resolves from `https://npm.saulo.tech`, the operator's own npm registry. The
+repository's `bunfig.toml` says so, once:
+
+```toml
+[install.scopes]
+"@mxlang" = "https://npm.saulo.tech"
+```
+
+It is read-only for everyone and has no uplink to the public registry, so an `@mxlang` version that is
+not published there cannot be installed by accident, and nothing outside the `@mxlang` scope is resolved
+from it: every other package comes from the default registry. `@mxlang/core` and `@mxlang/data` are not
+published at all and never will be from this checkout; `packages/compiler` depends on them through
+`link:`, which the scope entry leaves alone, because a `link:` dependency is resolved from this machine
+and not from any registry.
+
+The docs Docker image is the one place that needs the entry twice: it builds from `apps/docs` and never
+sees the repository root, so `apps/docs/docker/bunfig.toml` repeats the same two lines, and the
+Dockerfile copies it next to the manifest it installs from. The two lockfiles — the workspace's and
+`apps/docs/docker/bun.lock` — record the registry URL and the integrity hash of the package, so an
+install from either is reproducible without asking the registry for a version range.
 
 ## Layout and file names
 
