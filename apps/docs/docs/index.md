@@ -7,7 +7,7 @@ toc: false
 <nav class="mh-nav" aria-label="Site"><a href="/docs/">Docs</a><a href="/docs/quick-start/">Quick start</a><a href="/architecture/">Architecture</a></nav>
 
 <section class="mh-hero" aria-labelledby="mh-title">
-<h1 id="mh-title" class="mh-title">Describe your domain once. Mesh builds the rest.</h1>
+<h1 id="mh-title" class="mh-title"><span>Describe your domain once.</span> <span>Mesh builds the rest.</span></h1>
 <p class="mh-lede">Your domain is what your program keeps, what can be done to it, and who may do it. In Mesh you write it down as one small <code>.mesh.mx</code> file per entity.</p>
 <p class="mh-lede">From those files Mesh builds your core domain and business logic as a module of typed TypeScript functions, with the input validation, the authorization, the database tables and the migrations. Connect that module to anything: an HTTP API, a command line, a worker, a user interface, an agent. Change a file and the module is rebuilt from it, so nothing drifts.</p>
 <p class="mh-actions"><a class="mh-btn mh-btn-main" href="/docs/">Read the introduction</a><a class="mh-btn" href="/docs/quick-start/">Quick start</a></p>
@@ -43,31 +43,29 @@ entity :Todo table="todos"
 <div class="mh-out">
 <div class="mh-seam"><span class="mh-build">mesh build</span></div>
 <p class="mh-group">The module you call</p>
-<div class="mh-box" data-box="types" data-from="attributes relationships"><h3>Types</h3><p class="mh-where"><code>.mesh/todo/todo.types.ts</code></p><p class="mh-from">from <code>attributes</code>, <code>relationships</code></p><pre><code>interface Todo {
+<div class="mh-box" data-box="types" data-from="attributes relationships"><h3>Types <code>todo.types.ts</code></h3><p class="mh-from">from <code>attributes</code>, <code>relationships</code></p><div class="mh-snip"><code>interface Todo {
   id: string; title: string;
-  done: boolean; listId: string;
-}</code></pre></div>
-<div class="mh-box" data-box="functions" data-from="actions"><h3>One function per action</h3><p class="mh-where"><code>.mesh/todo/todo.actions.ts</code>, imported from <code>#mesh</code></p><p class="mh-from">from <code>actions</code></p><pre><code>createTodo(input, context)
-renameTodo(input, context)
+  done: boolean; listId: string }</code></div></div>
+<div class="mh-box" data-box="functions" data-from="actions"><h3>Functions <code>todo.actions.ts</code></h3><p class="mh-from">one per action, from <code>actions</code>, imported from <code>#mesh</code></p><div class="mh-snip"><code>createTodo(input, context)
 pendingTodo(input, context)
-readTodo, destroyTodo</code></pre></div>
-<div class="mh-box" data-box="validation" data-from="attributes actions"><h3>Input validation</h3><p class="mh-where"><code>.mesh/todo/todo.validators.ts</code></p><p>Every input is checked before your code runs: a title of at least one character, and no field the action does not accept.</p><p class="mh-from">from <code>attributes</code>, <code>actions</code></p></div>
-<div class="mh-box" data-box="authorization" data-from="policies"><h3>Authorization</h3><p class="mh-where">in every function</p><p>A write is checked against your policies before it runs; a read folds them into its query. <code>canCreateTodo</code> asks first.</p><p class="mh-from">from <code>policies</code></p></div>
+renameTodo, readTodo, destroyTodo</code></div></div>
+<div class="mh-box" data-box="validation" data-from="attributes actions"><h3>Input validation <code>todo.validators.ts</code></h3><p>Every input is checked before your code runs: no empty title, and no field the action does not accept.</p><p class="mh-from">from <code>attributes</code>, <code>actions</code></p></div>
+<div class="mh-box" data-box="authorization" data-from="policies"><h3>Authorization <span>in every function</span></h3><p>A write is checked before it runs; a read gets the policy in its query. <code>canCreateTodo</code> asks first.</p><p class="mh-from">from <code>policies</code></p></div>
 <p class="mh-group">The database</p>
-<div class="mh-box" data-box="table" data-from="entity attributes relationships"><h3>The table</h3><p class="mh-where"><code>.mesh/schema.ts</code>, by the data adapter</p><p>The <code>todos</code> table, its columns, and the foreign key to <code>List</code>.</p><p class="mh-from">from the entity line, <code>attributes</code>, <code>relationships</code></p></div>
-<div class="mh-box" data-box="migrations" data-from="entity attributes relationships" data-via="mesh migrate generate"><h3>Migrations</h3><p class="mh-where"><code>migrations/*.sql</code>, by <code>mesh migrate generate</code></p><p>Plain SQL each time the table changes, applied only when you run <code>mesh migrate apply</code>.</p><p class="mh-from">from the table</p></div>
+<div class="mh-box" data-box="table" data-from="entity attributes relationships"><h3>The table <code>schema.ts</code></h3><p>The <code>todos</code> table, its columns and the foreign key to <code>List</code>, written by the data adapter.</p><p class="mh-from">from the entity line, <code>attributes</code>, <code>relationships</code></p></div>
+<div class="mh-box" data-box="migrations" data-from="entity attributes relationships" data-via="mesh migrate generate"><h3>Migrations <code>migrations/*.sql</code></h3><p>Plain SQL from <code>mesh migrate generate</code> when the table changes; applied by <code>mesh migrate apply</code>.</p><p class="mh-from">from the table</p></div>
 <p class="mh-group">For your tools</p>
-<div class="mh-box" data-box="rules" data-from="entity attributes relationships actions policies"><h3>Rules for agents</h3><p class="mh-where"><code>.mesh/rules.md</code></p><p class="mh-from">from the whole file</p><pre><code>entity Todo (table "todos")
+<div class="mh-box" data-box="rules" data-from="entity attributes relationships actions policies"><h3>Rules for agents <code>rules.md</code></h3><p class="mh-from">from the whole file</p><div class="mh-snip"><code>entity Todo (table "todos")
   actions: auto read destroy;
-    create accept=("title", "listId")</code></pre></div>
-<div class="mh-box" data-box="model" data-from="entity attributes relationships actions policies"><h3>The model</h3><p class="mh-where"><code>.mesh/model.json</code></p><p>Every declaration with its source position: what <code>mesh inspect</code> prints.</p><p class="mh-from">from the whole file</p></div>
+    create accept=("title", "listId")</code></div></div>
+<div class="mh-box" data-box="model" data-from="entity attributes relationships actions policies"><h3>The model <code>model.json</code></h3><p>Every declaration with its source position: what <code>mesh inspect</code> prints.</p><p class="mh-from">from the whole file</p></div>
 </div>
 <script type="module">
 // The diagram is whole without this. It loads the island that redraws the wires
 // side by side, after first paint, only on a screen wide enough for that layout
 // (or once the window grows to it), and never with reduced motion. docmd re-runs
 // this script when it swaps the page in; the module itself loads once.
-const wide = matchMedia('(min-width: 901px)');
+const wide = matchMedia('(min-width: 1181px)');
 const load = () => requestAnimationFrame(() => setTimeout(() => {
   const root = document.querySelector('.mh-hero + .grids');
   if (root) import((window.DOCMD_BASE || '/') + 'assets/home-flow.js').then((m) => m.mount(root), () => {});

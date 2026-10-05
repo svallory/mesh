@@ -1,11 +1,12 @@
 // The home page's island: it takes the static build diagram over after first
-// paint and draws its wires with Svelte Flow, one from each part of the entity
-// file to `mesh build`, and one from the build to each box. The boxes, the file
+// paint and draws its wires with Svelte Flow: one from the entity file to
+// `mesh build`, and one from the build to the middle of each box's left side. The boxes, the file
 // and the build chip stay the page's own HTML; the island lays invisible nodes
 // over them and draws only the edges, so nothing moves when it arrives.
 //
-// Hovering a box lights its edge and the edges of the parts it comes from (the
-// page's CSS already tints those parts' lines). Built by island/build.ts into
+// Hovering a box lights one path end to end: the parts of the file it comes from
+// (whose lines the page's CSS tints), the file's wire, the build, the box's wire.
+// Every other wire dims. Built by island/build.ts into
 // site/assets/home-flow.js; the page loads it with a dynamic import and calls
 // `mount` every time docmd swaps the home page in.
 import { mount as mountSvelte, unmount } from 'svelte';
@@ -24,8 +25,9 @@ ${typeof __mhComponentCss === 'string' ? __mhComponentCss : ''}
 .mh-flow-layer .mh-ghost{visibility:hidden}
 .mh-flow-layer .svelte-flow__edge-path{stroke:var(--mh-wire);stroke-width:1.5;transition:stroke .15s ease,stroke-width .15s ease}
 .mh-flow-layer .mh-e-via .svelte-flow__edge-path{stroke-dasharray:5 4}
-.mh-flow-layer .is-hot .svelte-flow__edge-path{stroke:var(--mh-accent);stroke-width:2.25;stroke-dasharray:6 5;animation:mh-flow 0.6s linear infinite}
-@keyframes mh-flow{to{stroke-dashoffset:-11}}
+.mh-flow-layer .svelte-flow__edge{transition:opacity .15s ease}
+.mh-flow-layer.has-hot .svelte-flow__edge:not(.is-hot){opacity:.2}
+.mh-flow-layer .is-hot .svelte-flow__edge-path{stroke:var(--mh-accent);stroke-width:2.25}
 `;
 
 type Rect = { x: number; y: number; w: number; h: number };
@@ -52,16 +54,13 @@ function measure(root: HTMLElement) {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
   const f = within(file, box);
-  nodes.push(ghost('build', within(build, box)));
-  // One wire from each part of the file, leaving the file's right edge level
-  // with the part's first line.
-  for (const part of root.querySelectorAll<HTMLElement>('.mh-sec[data-section]')) {
-    const line = part.querySelector('.mh-l') ?? part;
-    const r = within(line, box);
-    const id = `sec-${part.dataset.section}`;
-    nodes.push(ghost(id, { x: f.x + f.w - 1, y: r.y + r.h / 2, w: 1, h: 1 }));
-    edges.push({ id, source: id, sourceHandle: 'right', target: 'build', targetHandle: 'left', class: 'mh-e mh-e-sec' });
-  }
+  const b = within(build, box);
+  nodes.push(ghost('build', b));
+  // One wire from the file to the build, level with the build. Which parts of
+  // the file a box comes from is shown by tinting their lines (the page's CSS),
+  // not by more wires: a wire per part ran along the code card's edge.
+  nodes.push(ghost('file', { x: f.x + f.w - 1, y: b.y + b.h / 2, w: 1, h: 1 }));
+  edges.push({ id: 'file', source: 'file', sourceHandle: 'right', target: 'build', targetHandle: 'left', class: 'mh-e mh-e-file' });
   for (const el of root.querySelectorAll<HTMLElement>('.mh-box[data-box]')) {
     const id = `box-${el.dataset.box}`;
     nodes.push(ghost(id, within(el, box)));
@@ -74,8 +73,9 @@ function light(root: HTMLElement, el: HTMLElement | null) {
   const hot = new Set<string>();
   if (el) {
     hot.add(`box-${el.dataset.box}`);
-    for (const part of (el.dataset.from ?? '').split(/\s+/)) if (part) hot.add(`sec-${part}`);
+    hot.add('file');
   }
+  root.querySelector('.mh-flow-layer')?.classList.toggle('has-hot', !!el);
   for (const edge of root.querySelectorAll<SVGGElement>('.mh-flow-layer .svelte-flow__edge')) {
     edge.classList.toggle('is-hot', hot.has(edge.dataset.id ?? ''));
   }

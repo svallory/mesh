@@ -75,12 +75,71 @@ export function renderMxFlow(source, file) {
   return `<pre class="hljs mx-hl mh-file-code"><code class="language-mx">${code}</code></pre>`;
 }
 
+/**
+ * The layout of the side-by-side diagram, in rem, shared by the stylesheet and
+ * the wires: the boxes column is a grid with these fixed rows, so where each box
+ * sits is known when the page is built, and the wires can be drawn then, as a
+ * static SVG that is there without JavaScript, before the island, and in print.
+ */
+export const WIRE = { gap: 14, chipX: 1, chipW: 6.75, label: 1.5, box: 6.25, rowGap: 0.5 };
+
+/** The rows of the boxes column, in order: a group label or a box. */
+export function outRows(html) {
+  return [...html.matchAll(/<p class="mh-group"|<div class="mh-box" data-box="([a-z-]+)"([^>]*)>/g)].map((m) =>
+    m[0].startsWith('<p') ? { kind: 'label' } : { kind: 'box', id: m[1], via: /data-via=/.test(m[2]) });
+}
+
+/**
+ * The static wires for one boxes column: one curve per box from `mesh build` to
+ * the middle of the box's left side. Each leaves the build horizontally, makes
+ * its vertical run in the middle of the gap, and enters its box horizontally, so
+ * no two share more than their start. Plus the per-box rules that light one
+ * wire and dim the rest while its box is hovered.
+ */
+export function wiresFor(html) {
+  const rows = outRows(html);
+  const heights = rows.map((row) => (row.kind === 'label' ? WIRE.label : WIRE.box));
+  const total = heights.reduce((a, b) => a + b, 0) + WIRE.rowGap * (rows.length - 1);
+  const px = (rem) => +(rem * 16).toFixed(2);
+  const x0 = px(WIRE.chipX + WIRE.chipW);
+  const x1 = px(WIRE.gap);
+  const xm = +((x0 + x1) / 2).toFixed(2);
+  const y0 = px(total / 2);
+  let top = 0;
+  const paths = [];
+  rows.forEach((row, index) => {
+    const mid = top + heights[index] / 2;
+    top += heights[index] + WIRE.rowGap;
+    if (row.kind !== 'box') return;
+    const y = px(mid);
+    paths.push(`<path class="mh-wire${row.via ? ' mh-wire-via' : ''}" data-box="${row.id}" d="M${x0} ${y0}C${xm} ${y0} ${xm} ${y} ${x1} ${y}"/>`);
+  });
+  const ids = rows.filter((row) => row.kind === 'box').map((row) => row.id);
+  const scope = '.mh-hero+.grids';
+  const hot = ids.map((id) => `${scope}:has(.mh-box[data-box="${id}"]:hover) .mh-wire[data-box="${id}"]`).join(',');
+  const svg = `<svg class="mh-wires" aria-hidden="true" focusable="false" viewBox="0 0 ${x1} ${px(total)}" preserveAspectRatio="none" style="width:${WIRE.gap}rem;height:${total}rem">${paths.join('')}</svg>`;
+  const style = `<style>${scope} .mh-out{--mh-rows:${heights.map((h) => `${h}rem`).join(' ')}}${hot}{stroke:var(--mh-accent);stroke-width:2.25;opacity:1}</style>`;
+  return { svg, style, total };
+}
+
+/** Puts the wires and the row sizes into the boxes column's HTML block. */
+export function wireOut(html) {
+  // docmd renders a container's content more than once; a block it has already
+  // wired carries the marker and is left alone.
+  if (!html.includes('<div class="mh-out">')) return html;
+  const { svg, style } = wiresFor(html);
+  return html.replace('<div class="mh-out">', `${style}<div class="mh-out" data-wired>${svg}`);
+}
+
 const installed = new WeakSet();
 
 export function installMxFlow(md) {
   // docmd 0.9.7 invokes markdownSetup twice on the same processor.
   if (installed.has(md)) return;
   installed.add(md);
+  md.core.ruler.push('mesh_home_wires', (state) => {
+    for (const token of state.tokens) if (token.type === 'html_block') token.content = wireOut(token.content);
+  });
   const previousFence = md.renderer.rules.fence;
   md.renderer.rules.fence = function (tokens, index, options, env, self) {
     const token = tokens[index];
@@ -108,9 +167,10 @@ ${HOME}{--mh-accent:var(--link-color,#068ad5);--mh-ink:var(--text-heading,#09090
 ${BODY}{--sidebar-width:0px}
 ${BODY} .sidebar,${BODY} #sidebar-toggle-button{display:none}
 ${BODY} .main-content-wrapper{margin-left:0}
-${BODY} .content-area{max-width:84rem}
+${BODY} .content-area{max-width:90rem}
+${HOME}{overflow-x:clip}
 ${HOME}>.docmd-breadcrumbs-row,${HOME}>h1.docmd-focus-title{display:none}
-${HOME}>:is(.mh-nav,.mh-hero,.grids,.mh-section,.mh-doors,.mh-colophon,.docmd-code-block-wrapper){box-sizing:border-box;width:100%;max-width:76rem;margin-left:auto;margin-right:auto}
+${HOME}>:is(.mh-nav,.mh-hero,.grids,.mh-section,.mh-doors,.mh-colophon,.docmd-code-block-wrapper){box-sizing:border-box;width:100%;max-width:84rem;margin-left:auto;margin-right:auto}
 ${HOME} :is(h1,h2,h3){border:0;padding:0}
 ${HOME} .mh-nav{display:flex;flex-wrap:wrap;gap:.25rem 1.5rem;margin-top:.25rem;font-weight:600;font-size:.95rem}
 ${HOME} .mh-nav a{color:var(--mh-ink);text-decoration:none;padding:.35rem 0;border-bottom:2px solid transparent}
@@ -118,7 +178,10 @@ ${HOME} .mh-nav a:hover{border-bottom-color:var(--mh-accent);text-decoration:non
 ${HOME} .mh-hero{padding:clamp(1.75rem,5vw,3.5rem) 0 1.5rem}
 ${HOME} .mh-hero>*{max-width:50rem}
 ${HOME} .mh-hero>.mh-title{max-width:64rem}
-${HOME} .mh-title{margin:0 0 1.25rem;font-size:clamp(2.5rem,5.6vw,4.4rem);line-height:1.02;letter-spacing:-.045em;font-weight:750;color:var(--mh-ink);text-wrap:balance}
+${HOME} .mh-title{margin:0 0 1.25rem;font-size:clamp(2.4rem,5.2vw,4.25rem);line-height:1.04;letter-spacing:-.045em;font-weight:750;color:var(--mh-ink)}
+/* One sentence per line: a line break only ever falls between the two, and a
+   sentence too long for the screen wraps inside itself. */
+${HOME} .mh-title>span{display:block;text-wrap:balance}
 ${HOME} .mh-lede{margin:0 0 1rem;font-size:clamp(1.05rem,1.5vw,1.2rem);line-height:1.6;max-width:46rem}
 ${HOME} .mh-lede+.mh-lede{margin-bottom:1.75rem}
 ${HOME} .mh-lede code{font-size:.88em}
@@ -131,40 +194,65 @@ ${HOME} .mh-btn-main:hover{background:var(--mh-accent);border-color:var(--mh-acc
 ${HOME} :is(.mh-btn,.mh-door,.mh-nav a):focus-visible{outline:2px solid var(--mh-accent);outline-offset:3px}
 ${HOME} .mh-status{margin:0;font-size:.875rem;color:var(--mh-muted)}
 ${HOME} .mh-status::before{content:"";display:inline-block;width:.5rem;height:.5rem;margin-right:.55rem;border-radius:50%;background:#d97706;vertical-align:.05em}
-/* The build diagram: the entity file, the build on the seam, and one box per
-   thing the build writes, wired to a trunk. The wires are CSS, so the diagram is
-   whole without the island; the island hides them and draws its own. */
-${FLOW}{position:relative;display:grid;grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr);gap:var(--mh-gap);align-items:center;margin-top:.5rem;margin-bottom:4.5rem;padding:1.5rem 0;overflow:visible;isolation:isolate;border:0;box-shadow:none;background:none}
-${FLOW}::before{content:"";position:absolute;inset:0 -1.5rem;z-index:-1;background-image:linear-gradient(var(--mh-grid) 1px,transparent 1px),linear-gradient(90deg,var(--mh-grid) 1px,transparent 1px);background-size:22px 22px;background-position:-1px -1px;-webkit-mask-image:radial-gradient(ellipse at center,#000 50%,transparent 100%);mask-image:radial-gradient(ellipse at center,#000 50%,transparent 100%)}
+/* The build diagram. On a wide screen: the entity file, the gap with mesh build
+   and the wires, then one box per thing the build writes. The boxes column has
+   fixed rows (WIRE in this file), so the wires are drawn when the page is built
+   (an SVG the plugin puts into the page): one curve per box, leaving the build
+   horizontally, turning in the middle of the gap, entering the middle of the
+   box's left side. Narrower, it is a vertical flow on a trunk. */
+${FLOW}{position:relative;display:grid;grid-template-columns:minmax(0,1fr);margin-top:.5rem;margin-bottom:3.5rem;padding:0;overflow:visible;isolation:isolate;border:0;box-shadow:none;background:none}
+${FLOW}::before{content:"";position:absolute;inset:-1rem;z-index:-1;background-image:linear-gradient(var(--mh-grid) 1px,transparent 1px),linear-gradient(90deg,var(--mh-grid) 1px,transparent 1px);background-size:22px 22px;background-position:-1px -1px;-webkit-mask-image:radial-gradient(ellipse at center,#000 50%,transparent 100%);mask-image:radial-gradient(ellipse at center,#000 50%,transparent 100%)}
 ${FLOW}>.grid-item{position:relative;overflow:visible;display:flex;flex-direction:column;min-width:0;margin:0;padding:0;border:0;background:none;gap:0}
-${FLOW} .mh-file,${FLOW}>.grid-item>.docmd-code-block-wrapper{margin:0;border-radius:12px;background:var(--mh-panel);box-shadow:0 18px 40px -24px rgb(0 0 0/.35)}
+${FLOW}>.grid-item>.docmd-code-block-wrapper{margin:0;border-radius:12px;background:var(--mh-panel);box-shadow:0 18px 40px -24px rgb(0 0 0/.35)}
 ${FLOW} pre.mh-file-code{margin:0;padding:.9rem 0;font-size:.78rem;line-height:1.7;overflow-x:auto}
 ${FLOW} pre.mh-file-code code{display:block;min-width:max-content;padding:0}
 ${FLOW} .mh-l{display:block;min-height:1.7em;padding:0 1.1rem}
 ${FLOW} .mh-sec{display:block;transition:background-color .15s ease,box-shadow .15s ease}
 ${tints}{background:color-mix(in srgb,var(--mh-accent) 11%,transparent);box-shadow:inset 3px 0 0 var(--mh-accent)}
-${FLOW} .mh-seam{position:absolute;top:0;bottom:0;right:100%;width:var(--mh-gap);display:flex;align-items:center;justify-content:center;z-index:1}
-${FLOW} .mh-seam::before{content:"";position:absolute;top:50%;left:0;right:0;border-top:1.5px solid var(--mh-wire)}
-${FLOW} .mh-build{position:relative;display:inline-flex;align-items:center;gap:.4rem;padding:.4rem .75rem;border-radius:999px;background:var(--bg-color,#fff);border:1.5px solid var(--mh-wire);color:var(--mh-accent);font-family:var(--font-family-mono,ui-monospace,monospace);font-size:.75rem;font-weight:600;white-space:nowrap}
-${FLOW} .mh-out{position:relative;display:flex;flex-direction:column;gap:.5rem;padding-left:var(--mh-stub)}
-${FLOW} .mh-out::before{content:"";position:absolute;left:0;top:2.6rem;bottom:2rem;border-left:1.5px solid var(--mh-wire)}
+${FLOW} .mh-seam{position:relative;height:4.25rem;display:flex;align-items:center}
+${FLOW} .mh-seam::before{content:"";position:absolute;top:0;bottom:0;left:.75rem;border-left:1.5px solid var(--mh-wire);transition:border-color .15s ease}
+${FLOW} .mh-build{position:relative;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;padding:.4rem .75rem;border-radius:999px;background:var(--bg-color,#fff);border:1.5px solid var(--mh-wire);color:var(--mh-accent);font-family:var(--font-family-mono,ui-monospace,monospace);font-size:.75rem;font-weight:600;white-space:nowrap;transition:border-color .15s ease}
+${FLOW} .mh-out{position:relative;display:flex;flex-direction:column;gap:.5rem;padding-left:2rem}
+${FLOW} .mh-out::before{content:"";position:absolute;left:.75rem;top:-.5rem;bottom:2rem;border-left:1.5px solid var(--mh-wire)}
+${FLOW} .mh-wires{display:none}
 ${FLOW} .mh-group{margin:.4rem 0 0;font-size:.8rem;font-weight:650;color:var(--mh-muted)}
-${FLOW} .mh-group:first-child{margin-top:0}
-${FLOW} .mh-box{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.15rem 1rem;align-items:start;padding:.6rem .85rem;border:1px solid var(--mh-line);border-radius:10px;background:var(--bg-color,#fff);transition:border-color .15s ease,box-shadow .15s ease}
-${FLOW} .mh-box::before{content:"";position:absolute;right:100%;top:50%;width:var(--mh-stub);border-top:1.5px solid var(--mh-wire)}
+${FLOW} .mh-group:first-of-type{margin-top:0}
+${FLOW} .mh-box{position:relative;box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr);gap:.15rem 1rem;align-content:center;padding:.6rem .85rem;border:1px solid var(--mh-line);border-radius:10px;background:var(--bg-color,#fff);transition:border-color .15s ease,box-shadow .15s ease,opacity .15s ease}
+${FLOW} .mh-box::before{content:"";position:absolute;right:100%;top:50%;width:1.25rem;border-top:1.5px solid var(--mh-wire)}
 ${FLOW} .mh-box[data-via]::before{border-top-style:dashed}
 ${FLOW} .mh-box:is(:hover,.is-hot){border-color:var(--mh-accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--mh-accent) 14%,transparent)}
+${FLOW}:has(.mh-box:hover) .mh-box:not(:hover){opacity:.5}
+${FLOW}:has(.mh-box:hover) .mh-build,${FLOW}:has(.mh-box:hover) .mh-seam::before{border-color:var(--mh-accent)}
 ${FLOW} .mh-box h3{grid-column:1;margin:0;font-size:.95rem;font-weight:650;letter-spacing:-.01em;color:var(--mh-ink)}
-${FLOW} .mh-box p{grid-column:1;margin:0;font-size:.8rem;line-height:1.5;color:var(--mh-muted)}
-${FLOW} .mh-box pre{grid-column:2;grid-row:1/span 4;align-self:center;margin:0;padding:.45rem .6rem;border-radius:7px;background:var(--mh-panel);font-size:.72rem;line-height:1.55;white-space:pre;overflow-x:auto}
-${FLOW} .mh-box pre code{padding:0;background:none;font-size:inherit}
+${FLOW} .mh-box h3 :is(code,span){margin-left:.4rem;font-size:.72rem;font-weight:400;letter-spacing:0;color:var(--mh-muted)}
+${FLOW} .mh-box p{grid-column:1;margin:0;font-size:.8rem;line-height:1.45;color:var(--mh-muted)}
+/* Snippets are not <pre>: docmd's client wraps every <pre> with a copy button. */
+${FLOW} .mh-snip{grid-column:1;margin:.35rem 0 0;padding:.45rem .6rem;border-radius:7px;background:var(--mh-panel);font-family:var(--font-family-mono,ui-monospace,monospace);font-size:.72rem;line-height:1.5;white-space:pre;overflow-x:auto}
+${FLOW} .mh-snip code{padding:0;background:none;font-size:inherit;border:0}
 ${FLOW} .mh-box code{font-size:.92em}
 ${FLOW} .mh-box .mh-from{font-size:.72rem}
+@media (min-width:1181px){
+  ${FLOW}{grid-template-columns:minmax(0,1.1fr) minmax(0,1.2fr);column-gap:${WIRE.gap}rem;align-items:center;padding:1.5rem 0;margin-bottom:4.5rem}
+  ${FLOW}::before{inset:0 -1.5rem}
+  ${FLOW} .mh-seam{position:absolute;top:0;bottom:0;right:100%;width:${WIRE.gap}rem;height:auto;z-index:1}
+  ${FLOW} .mh-seam::before{top:50%;bottom:auto;left:0;width:${WIRE.chipX}rem;border-left:0;border-top:1.5px solid var(--mh-wire)}
+  ${FLOW} .mh-build{position:absolute;left:${WIRE.chipX}rem;top:50%;width:${WIRE.chipW}rem;transform:translateY(-50%)}
+  ${FLOW} .mh-out{display:grid;grid-template-rows:var(--mh-rows);row-gap:${WIRE.rowGap}rem;padding-left:0}
+  ${FLOW} .mh-out::before,${FLOW} .mh-box::before{display:none}
+  ${FLOW} .mh-wires{display:block;position:absolute;top:0;left:-${WIRE.gap}rem;overflow:visible;pointer-events:none}
+  ${FLOW} .mh-wire{fill:none;stroke:var(--mh-wire);stroke-width:1.5;vector-effect:non-scaling-stroke;transition:stroke .15s ease,opacity .15s ease}
+  ${FLOW} .mh-wire-via{stroke-dasharray:5 4}
+  ${FLOW}:has(.mh-box:hover) .mh-wire{opacity:.2}
+  ${FLOW} .mh-group{margin:0;align-self:end;line-height:1.5rem}
+  ${FLOW} pre.mh-file-code{font-size:.72rem}
+  ${FLOW} .mh-box{height:${WIRE.box}rem;overflow:hidden;grid-template-columns:minmax(0,1fr) auto;align-content:center}
+  ${FLOW} .mh-snip{grid-column:2;grid-row:1/span 4;align-self:center;margin:0}
+}
 /* The island's layer: it draws the wires once it has measured the boxes. */
 ${FLOW} .mh-flow-layer{position:absolute;inset:0;z-index:0;pointer-events:none;opacity:0;transition:opacity .2s ease}
 ${FLOW}.is-flow-live .mh-flow-layer{opacity:1}
-${FLOW}.is-flow-live :is(.mh-seam,.mh-out,.mh-box)::before{opacity:0}
-${FLOW}.is-flow-live :is(.docmd-code-block-wrapper,.mh-out,.mh-build){position:relative;z-index:1}
+${FLOW}.is-flow-live .mh-wires,${FLOW}.is-flow-live .mh-seam::before{opacity:0}
+${FLOW}.is-flow-live :is(.docmd-code-block-wrapper,.mh-box,.mh-group){position:relative;z-index:1}
 /* The sections under the diagram. */
 ${HOME} .mh-section{margin-bottom:4.5rem}
 ${HOME} .mh-section:has(+.docmd-code-block-wrapper){margin-bottom:1.25rem}
@@ -194,20 +282,9 @@ ${HOME} .mh-door strong{display:block;margin-bottom:.4rem;font-size:1.3rem;lette
 ${HOME} .mh-door span{display:block;line-height:1.55;color:var(--mh-muted)}
 ${HOME} .mh-colophon{margin-top:0;font-size:.875rem;color:var(--mh-muted)}
 @media (max-width:1180px){
-  ${FLOW} .mh-box{grid-template-columns:minmax(0,1fr)}
-  ${FLOW} .mh-box pre{grid-column:1;grid-row:auto;margin-top:.35rem}
   ${HOME} .mh-connect{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
-/* A narrow screen: the diagram becomes a vertical flow, file, then build, then
-   the boxes on a trunk down their left side. */
 @media (max-width:900px){
-  ${FLOW}{grid-template-columns:minmax(0,1fr);gap:0;padding:0;margin-bottom:3.5rem}
-  ${FLOW}::before{inset:-1rem}
-  ${FLOW} .mh-seam{position:relative;right:auto;top:auto;bottom:auto;width:auto;height:4.25rem;justify-content:flex-start;padding-left:0}
-  ${FLOW} .mh-seam::before{top:0;bottom:0;left:.75rem;right:auto;border-top:0;border-left:1.5px solid var(--mh-wire)}
-  ${FLOW} .mh-out{padding-left:2rem}
-  ${FLOW} .mh-out::before{left:.75rem;top:-.5rem}
-  ${FLOW} .mh-box::before{width:1.25rem}
   ${HOME} .mh-agent,${HOME} .mh-doors{grid-template-columns:minmax(0,1fr)}
 }
 @media (max-width:560px){
@@ -216,7 +293,7 @@ ${HOME} .mh-colophon{margin-top:0;font-size:.875rem;color:var(--mh-muted)}
 @media (prefers-reduced-motion:reduce){${HOME} :is(.mh-btn,.mh-door,.mh-box,.mh-sec){transition:none}}
 @media print{
   ${FLOW} .mh-flow-layer{display:none}
-  ${FLOW}.is-flow-live :is(.mh-seam,.mh-out,.mh-box)::before{opacity:1}
+  ${FLOW}.is-flow-live .mh-wires,${FLOW}.is-flow-live .mh-seam::before{opacity:1}
   ${FLOW} .mh-sec{background:none!important;box-shadow:none!important}
 }
 </style>`;

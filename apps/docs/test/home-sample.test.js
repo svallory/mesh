@@ -70,3 +70,8 @@ test('every box names sections the file has, and the island is loaded from where
   expect(page).toContain("import((window.DOCMD_BASE || '/') + 'assets/home-flow.js')");
   expect(page).toContain("matchMedia('(prefers-reduced-motion: reduce)')");
 });
+
+// The headline breaks between its two sentences and nowhere else: each is a block.
+test('the headline is two sentences, one block each', () => {
+  expect(page).toContain('<h1 id="mh-title" class="mh-title"><span>Describe your domain once.</span> <span>Mesh builds the rest.</span></h1>');
+});
