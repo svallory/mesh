@@ -80,8 +80,7 @@ entity #Invoice table="invoices"
       return self.status === "sent" && self.dueOn < today()
     }
     string #label({ self }) {
-      const amount = formatMoney(self.total)
-      return self.number + " · " + amount
+      return self.number + " · " + formatMoney(self.total)
     }
     count #lineCount of="lines"
     sum #total of="lines.amount"
@@ -155,7 +154,7 @@ entity #Invoice table="invoices"
 3. An attribute's type is its tag. Attributes are required unless marked `nullable`. Rules about one field (`min`, `max`, `match`) go on its line, never in a `check`.
 4. A relationship names its destination entity as the tag's value: `has-many=InvoiceLine #lines`.
 5. A computed field is either a typed field with a body, or a rollup (`count`, `sum`, `avg`, `min`, `max`) with `of=` a path.
-6. Functions receive `{ self, input, actor, context }`. A function whose body is one expression (an arrow, or a method body that is a single `return`) is translated and also runs in SQL; anything else is plain code.
+6. Functions receive `{ self, input, actor, context }`. A function whose body is one expression (an arrow, or a method body that is a single `return`) is translated when Mesh can translate it, and then also runs in SQL; anything else runs in memory. Where SQL is required (a filter, a sort, a policy), an expression that cannot be translated is a build error.
 7. `actions auto=[...]` generates the plain actions of those types, named after the type. Every written action is `type #name`. `on:load="name"` says which read Mesh uses when it loads this entity through a relationship; without it, the auto read.
 8. `validate` runs first, on the record with the accepted input applied, plus `input`: `require=[...]` and `check :label [ that code message ]` for rules across fields or about stored state. `do` runs next, top to bottom: `set` with `#field=value` lines, `when=cond` with nested steps, `load=[...]`, `run(...) { }` for one-off code.
 9. `always` under `actions` takes an action body and applies it to every action in its scope.
@@ -194,7 +193,7 @@ Option A minimises what a user must remember, which the operator ranks first. It
 - `required` by default inverts Ash's `allow_nil? true` default. A missing `nullable` is a build-time and type-level error, never a silent null.
 - `self` replaces the record name derived from the entity (`post`, `todo`) in every function.
 - New attribute types (`integer`, `float`, `decimal`, `date`, `timestamp`) and the rollups `sum`, `avg`, `min`, `max` enter the registry.
-- The reference file was corrected after the review of the user docs: the one-field rule `amountNotNegative` became `decimal #amount min=0`, the `always` example became the cross-field check `dueAfterIssue` (which needed `date #issuedOn`), and `#label` got a two-statement body so that it stays plain code: its single-`return` form would be translated, and a helper call that reads `self` cannot be translated ([ADR-0056](./0056-translated-expressions-are-one-expression-arrows.md)).
+- The reference file was corrected after the review of the user docs: the one-field rule `amountNotNegative` became `decimal #amount min=0`, the `always` example became the cross-field check `dueAfterIssue` (which needed `date #issuedOn`). `#label` keeps its single `return`: it calls `formatMoney(self.total)`, cannot be translated, and so runs in memory, which is not an error for a computed field ([ADR-0056](./0056-translated-expressions-are-one-expression-arrows.md)).
 - The code on `main` still has the M1 vocabulary until the realignment task ([ADR-0064](./0064-order-of-work-after-approval.md)).
 
 ## Action items

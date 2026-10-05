@@ -37,11 +37,20 @@ The reason: the reference file's `boolean #isOverdue({ self }) { return ... }` i
 
 So the class is decided by the form the author chose, not by what the body contains:
 
-- **Translated**: a body that is one expression. `({ self }) => self.status === "sent"`, or a computed field written `boolean #isOverdue({ self }) { return self.status === "sent" && self.dueOn < today() }`. One tree, run in SQL where a query needs it and in memory otherwise. A construct the translator does not support is an error at that node, in the editor and in the build. It is never silently demoted to plain code.
-- **Plain code**: anything else, such as a method body with more than one statement or a `run` step. Emitted as TypeScript, run in memory only. It cannot appear where SQL is required (a `filter`, a `sort`, a policy check on a read, a rollup's `of`, or inside another translated expression); using a plain-code computed field there is a build error that names the field.
-- The function parameters `{ self, input, actor, context }` are typed so that, inside a translated body, the editor offers only what translates.
+The lead then settled what happens to a computed field whose one-expression body cannot be translated (same file, the row after it):
 
-An author who wants a computed field to stay plain code on purpose (for example because it calls a helper on `self`, which cannot be translated) writes it with more than one statement.
+> It is not an error. A computed field is translated when its body is one expression Mesh can translate; otherwise it runs in memory. The build error comes only where SQL is required: a filter, a sort, a policy, or a translated expression that uses that field. The error names the field and the part that could not be translated. `mesh explain` shows which computed fields are translated. Nobody writes a second statement to opt out.
+
+Without it, `string #label({ self }) { return self.number + " · " + formatMoney(self.total) }` (a helper call on `self`) fails the build, and the only fix is an artificial two-statement body.
+
+So:
+
+- **Translated**: a body that is one expression Mesh can translate. `({ self }) => self.status === "sent"`, or a computed field written `boolean #isOverdue({ self }) { return self.status === "sent" && self.dueOn < today() }`. One tree, run in SQL where a query needs it and in memory otherwise.
+- **Where SQL is required** (a `filter`, a `sort`, a policy check, a rollup's `of`, or inside another translated expression), the expression must translate. A construct the translator does not support there is a build error at that node, in the editor and in the build; using a computed field that runs in memory there is a build error that names the field and the part that could not be translated.
+- **A computed field** whose single expression cannot be translated (`#label`, which calls `formatMoney(self.total)`) is not an error: it runs in memory after the record is loaded. `mesh explain` shows which computed fields are translated.
+- **Plain code**: a body with more than one statement, or a `run` step. Emitted as TypeScript, run in memory only, with the same restriction where SQL is required.
+- Elsewhere (a `check`'s `that`, a `when`, a `set` value), a one-expression body the translator does not support is an error at that node; it is never silently demoted to plain code.
+- The function parameters `{ self, input, actor, context }` are typed so that, inside a translated body, the editor offers only what translates.
 
 **The research** ([expression language](../research/expression-language.md), fact-checked in [its review](../research/reviews/expression-language-review.md)) found no *established* project that captures a normal TypeScript arrow and runs it both in memory and as SQL. It found one young project with the same design: Greffon (<https://github.com/PhenX/Greffon>), which captures TypeScript lambdas at build time and runs one expression tree in memory and as Postgres or SQLite SQL. Greffon's repository was created on 2026-08-14; it has no stars and four downloads a week, and its behaviour is known only from its docs. The lead, delegated by the operator, decided ([rulings of 2026-10-04](./rulings-2026-10-04.md), section "Expression language, after the fact-check"):
 
@@ -74,7 +83,7 @@ The raw-SQL escape hatch is planned after v1.
 
 ## Trade-off analysis
 
-Option A trades flexibility (a multi-statement body never runs in SQL) for predictability, which the project ranks above convenience everywhere else (no silent fallback, [roadmap](../roadmap/roadmap.md), section 2, principle 2). Option C was checked: the only matching project is too young to depend on, though worth reading first.
+Option A trades flexibility (a multi-statement body never runs in SQL; a computed field that cannot be translated cannot be filtered on) for predictability, which the project ranks above convenience everywhere else (no silent fallback, [roadmap](../roadmap/roadmap.md), section 2, principle 2). Option C was checked: the only matching project is too young to depend on, though worth reading first.
 
 ## Consequences
 

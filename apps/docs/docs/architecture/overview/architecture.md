@@ -34,8 +34,7 @@ entity #Todo table="todos"
 
   computed
     string #label({ self }) {
-      const box = self.done ? "[x] " : "[ ] "
-      return box + self.title
+      return (self.done ? "[x] " : "[ ] ") + self.title
     }
 
   actions auto=["read", "destroy"]
