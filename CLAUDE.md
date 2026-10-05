@@ -27,3 +27,6 @@ Bun workspace (`workspaces`: `packages/*`, `apps/*`, `examples/*`), one root `bu
 - Use bun, never npm.
 - Always write "Mesh" (never "Mash").
 - Architecture docs hold what cannot be understood from a single code file.
+- `apps/docs/plugins/mx/` is MX's highlighter, vendored from mxlang `aa73c86d` and not ours to edit
+  (`apps/docs/plugins/mx/SOURCE.md`); a docs fix goes in `apps/docs/plugins/mx-highlight.js` (the
+  docmd plugin, the capture-name palette) or goes to the MX lead as a grammar gap.
