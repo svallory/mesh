@@ -1,13 +1,15 @@
 ---
 title: "0034. The resource vocabulary copies Ash's DSL for v1"
-description: "Decision record 0034: The resource vocabulary copies Ash's DSL for v1. Status: Accepted."
+description: "Decision record 0034: The resource vocabulary copies Ash's DSL for v1. Status: Superseded by ADR-0049."
 ---
 
 # 0034. The resource vocabulary copies Ash's DSL for v1
 
+> **Superseded** by [ADR-0049](./0049-vocabulary-is-meshs-own.md) on 2026-10-05. The body below is kept as history.
+
 ## Status
 
-Accepted
+Superseded by [ADR-0049](./0049-vocabulary-is-meshs-own.md)
 
 ## Date
 

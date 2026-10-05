@@ -1,13 +1,15 @@
 ---
 title: "0002. Resource files are `.mx`, read as a data tree through MX"
-description: "Decision record 0002: Resource files are `.mx`, read as a data tree through MX. Status: Accepted."
+description: "Decision record 0002: Resource files are `.mx`, read as a data tree through MX. Status: Amended by ADR-0049, 0050, 0051."
 ---
 
 # 0002. Resource files are `.mx`, read as a data tree through MX
 
+> **Amended** by [ADR-0049](./0049-vocabulary-is-meshs-own.md), [ADR-0050](./0050-entity-file-syntax.md) and [ADR-0051](./0051-mesh-mx-files-and-the-mesh-host.md) on 2026-10-05: read the successor for what changed. The body below is kept as history.
+
 ## Status
 
-Accepted
+Accepted, amended by [ADR-0049](./0049-vocabulary-is-meshs-own.md), [ADR-0050](./0050-entity-file-syntax.md) and [ADR-0051](./0051-mesh-mx-files-and-the-mesh-host.md)
 
 ## Date
 

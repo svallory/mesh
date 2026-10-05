@@ -1,13 +1,15 @@
 ---
 title: "0022. Policies start as a simple tier, in a first-party extension"
-description: "Decision record 0022: Policies start as a simple tier, in a first-party extension. Status: Accepted."
+description: "Decision record 0022: Policies start as a simple tier, in a first-party extension. Status: Amended by ADR-0055."
 ---
 
 # 0022. Policies start as a simple tier, in a first-party extension
 
+> **Amended** by [ADR-0055](./0055-policies-are-core.md) on 2026-10-05: read the successor for what changed. The body below is kept as history.
+
 ## Status
 
-Accepted
+Accepted, amended by [ADR-0055](./0055-policies-are-core.md)
 
 ## Date
 

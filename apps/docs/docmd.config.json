@@ -307,6 +307,74 @@
             {
               "title": "0048. Schema inside the process for tests",
               "path": "/architecture/decisions/0048-schema-inside-the-process-for-tests/"
+            },
+            {
+              "title": "0049. The vocabulary is Mesh's own; `resource` becomes `entity`",
+              "path": "/architecture/decisions/0049-vocabulary-is-meshs-own/"
+            },
+            {
+              "title": "0050. Entity file syntax: `kind #name options`",
+              "path": "/architecture/decisions/0050-entity-file-syntax/"
+            },
+            {
+              "title": "0051. Entity files end in `.mesh.mx`; Mesh ships an MX host named `mesh`",
+              "path": "/architecture/decisions/0051-mesh-mx-files-and-the-mesh-host/"
+            },
+            {
+              "title": "0052. Actions are always named; `auto` generates plain actions; `on:load` picks the read Mesh uses",
+              "path": "/architecture/decisions/0052-actions-auto-and-on-load/"
+            },
+            {
+              "title": "0053. An action body is `validate`, then `do`; steps are `set`, `when`, `load` and `run`",
+              "path": "/architecture/decisions/0053-validate-then-do/"
+            },
+            {
+              "title": "0054. Mesh infers the write strategy from the action body; there is no `require-atomic`",
+              "path": "/architecture/decisions/0054-write-strategy-is-inferred/"
+            },
+            {
+              "title": "0055. Policies are core; every covering policy must pass; an entity without policies forbids everything",
+              "path": "/architecture/decisions/0055-policies-are-core/"
+            },
+            {
+              "title": "0056. Translated expressions are one-expression arrows; Mesh builds its own translator",
+              "path": "/architecture/decisions/0056-translated-expressions-are-one-expression-arrows/"
+            },
+            {
+              "title": "0057. One domain per app at `src/domain/`; its folders are modules",
+              "path": "/architecture/decisions/0057-one-domain-modules-as-folders/"
+            },
+            {
+              "title": "0058. Generated code lives in `.mesh/`, is committed, and is imported as `#mesh`",
+              "path": "/architecture/decisions/0058-generated-code-in-mesh-imported-as-hash-mesh/"
+            },
+            {
+              "title": "0059. An action's second argument is the flat `ActionContext`",
+              "path": "/architecture/decisions/0059-action-context/"
+            },
+            {
+              "title": "0060. Packages are published as `@meshfw/*`; the command is `mesh`",
+              "path": "/architecture/decisions/0060-meshfw-package-scope/"
+            },
+            {
+              "title": "0061. Generators are Jig templates; a project can export and override them",
+              "path": "/architecture/decisions/0061-generators-are-jig-templates/"
+            },
+            {
+              "title": "0062. Zod 4 stays; a project depends directly on Zod, Drizzle and the OpenTelemetry API",
+              "path": "/architecture/decisions/0062-direct-dependencies-zod-drizzle-opentelemetry/"
+            },
+            {
+              "title": "0063. User docs are written first, in the voice of a released 1.0; development is on hold until they are approved",
+              "path": "/architecture/decisions/0063-user-docs-first-and-the-hold/"
+            },
+            {
+              "title": "0064. After the docs are approved: realignment, then the Jig port, then M2",
+              "path": "/architecture/decisions/0064-order-of-work-after-approval/"
+            },
+            {
+              "title": "0065. The docs site highlights `mx` code with MX's own tree-sitter highlighter",
+              "path": "/architecture/decisions/0065-mx-highlighting-on-the-docs-site/"
             }
           ]
         },

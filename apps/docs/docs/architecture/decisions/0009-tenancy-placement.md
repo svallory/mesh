@@ -1,13 +1,15 @@
 ---
 title: "0009. Where multitenancy lives"
-description: "Decision record 0009: Where multitenancy lives. Status: Proposed."
+description: "Decision record 0009: Where multitenancy lives. Status: Superseded by ADR-0059."
 ---
 
 # 0009. Where multitenancy lives
 
+> **Superseded** by [ADR-0059](./0059-action-context.md) on 2026-10-04. The body below is kept as history.
+
 ## Status
 
-Proposed
+Superseded by [ADR-0059](./0059-action-context.md) (it was Proposed)
 
 ## Date
 

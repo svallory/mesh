@@ -1,13 +1,15 @@
 ---
 title: "0047. Actions are bound to a data layer"
-description: "Decision record 0047: Actions are bound to a data layer. Status: Accepted."
+description: "Decision record 0047: Actions are bound to a data layer. Status: Amended by ADR-0059."
 ---
 
 # 0047. Actions are bound to a data layer
 
+> **Amended** by [ADR-0059](./0059-action-context.md) on 2026-10-04: read the successor for what changed. The body below is kept as history.
+
 ## Status
 
-Accepted
+Accepted, amended by [ADR-0059](./0059-action-context.md)
 
 ## Date
 
