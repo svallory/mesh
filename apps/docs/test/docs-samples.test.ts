@@ -46,7 +46,6 @@ const tsconfig = {
       "@meshfw/data-sqlite": ["../../samples/mesh-api.d.ts"],
       "@meshfw/data-postgres": ["../../samples/mesh-api.d.ts"],
       "@meshfw/cli": ["../../samples/mesh-api.d.ts"],
-      "@meshfw/ext-policies": ["../../samples/mesh-api.d.ts"],
     },
   },
   files: [] as string[],

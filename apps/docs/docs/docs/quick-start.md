@@ -34,7 +34,7 @@ bun create meshfw todo-app
 cd todo-app
 ```
 
-The starter asks which database you want and whether to enable authorization, then installs the packages and writes a project that already builds. It comes with a configuration file, one entity file, one script that calls an action, and a `package.json` with this entry:
+The starter asks which database you want, then installs the packages and writes a project that already builds. It comes with a configuration file, one entity file, one script that calls an action, and a `package.json` with this entry:
 
 ```json
 "imports": { "#mesh": "./.mesh/index.ts" }
@@ -44,32 +44,37 @@ That entry is how your code reaches generated code. You always import `#mesh`, n
 
 ## Replace the entity file
 
-Replace the files in `src/domain/todo/` so `todo.mx` says exactly this, and delete anything else in that folder:
+Replace the files in `src/domain/todo/` so `todo.mesh.mx` says exactly this, and delete anything else in that folder:
 
-```mx "src/domain/todo/todo.mx"
-entity="todo" table="todos"
+```mx "src/domain/todo/todo.mesh.mx"
+entity #Todo table="todos"
   attributes
-    uuid-primary-key="id"
-    attribute="title" type="string" allow-nil=false
-    attribute="done" type="boolean" allow-nil=false default=false
-    create-timestamp="insertedAt"
-    update-timestamp="updatedAt"
+    uuid #id primary-key
+    string #title
+    boolean #done default=false
+    timestamp #insertedAt on="create"
+    timestamp #updatedAt on="update"
 
-  actions defaults=["read"]
-    create="create" accept=["title"]
-      validate=({ todo }) => todo.title.length > 0 message="title must not be empty"
+  actions auto=["read"]
+    create #create accept=["title"]
+      validate
+        check :titleNotEmpty [
+          that=({ self }) => self.title.length > 0
+          code="empty_title"
+          message="title must not be empty"
+        ]
 
   policies
-    policy=action_type(["create", "read"])
+    policy #anyone types=["create", "read"]
       authorize-if=() => true
 ```
 
 Four things to note, because every page here depends on them:
 
-- The file is `.mx`, written in Marko's concise syntax: indentation, no angle brackets.
-- `entity="todo"` names the entity and `table="todos"` names the table.
+- The file ends in `.mesh.mx`, and it is written in Marko's concise syntax: indentation, no angle brackets.
+- `entity #Todo` names the entity and `table="todos"` names the table. The `#` before a name is how you name a declaration.
 - `accept=["title"]` is the whole input of the create action. `done` is not accepted, so a caller cannot create a todo that is already done.
-- The policy block is what allows anything. An action nobody has a policy for is forbidden, so a new action needs a policy before it works.
+- The `policies` section is what allows anything. An action nobody has a policy for is forbidden, so a new action needs a policy before it works.
 
 ## Build it
 
@@ -136,6 +141,6 @@ The todo you just created has a table with a primary key, a boolean with a defau
 ## Next
 
 - [Tutorial: a todo list](./tutorial.md) — a second entity, a relationship, a policy, a test.
-- [Entities](./entities.md) — every tag in the file above, and the ones you will add.
+- [Entities](./entities.md) — every declaration in the file above, and the ones you will add.
 - [Calling actions](./calling-actions.md) — filters, paging, `load` and the error classes.
 - [Project structure](./project-structure.md) — what the starter wrote and what you commit.

@@ -20,27 +20,27 @@ todo-app/
   src/
     domain/               your domain
       accounts/
-        user.mx
+        user.mesh.mx
       todo/
-        list.mx
-        todo.mx
-        todo.helpers.ts    hand-written code that todo.mx calls
+        list.mesh.mx
+        todo.mesh.mx
+        todo.helpers.ts    hand-written code that todo.mesh.mx calls
     extensions/           project-local extensions, if any
     context.ts             declares the action context type
     main.ts               the program
 ```
 
-Mesh prescribes nothing under `src/`. `context.ts` and `main.ts` are the starter's names and are only convention; what matters is that the domain folder is where the `.mx` files are.
+Mesh prescribes nothing under `src/`. `context.ts` and `main.ts` are the starter's names and are only convention; what matters is that the domain folder is where the `.mesh.mx` files are.
 
 ## The domain
 
-`src/domain/` is the domain: everything your program stores. Inside it, each folder is a group of entities that belong together. `src/domain/todo/` holds `list.mx` and `todo.mx`; `src/domain/accounts/` holds `user.mx`.
+`src/domain/` is the domain: everything your program stores. Inside it, each folder is a group of entities that belong together. `src/domain/todo/` holds `list.mesh.mx` and `todo.mesh.mx`; `src/domain/accounts/` holds `user.mesh.mx`.
 
-The folder is the module, so nothing in the file repeats it. `todo.mx` does not carry `domain="todos"`, and the generated code for a folder lands in one place.
+The folder is the module, so nothing in the file repeats it. `todo.mesh.mx` does not carry a `module=` option, and the generated code for a folder lands in one place.
 
-An entity file holds exactly one entity. Two entities in one file is a build error, as are two entities with the same name anywhere in the domain.
+An entity file holds exactly one entity and ends in `.mesh.mx`. Two entities in one file is a build error, as are two entities with the same name anywhere in the domain.
 
-A hand-written helper next to the entity that uses it is the ordinary way to keep an entity file small. `todo.helpers.ts` is a normal TypeScript module; a `change` or a `validate` in `todo.mx` calls into it.
+A hand-written helper next to the entity that uses it is the ordinary way to keep an entity file small. `todo.helpers.ts` is a normal TypeScript module; a `check` or a `do` step in `todo.mesh.mx` calls into it.
 
 ## Generated code
 
@@ -66,7 +66,7 @@ What is inside, for the tutorial's two entities:
 | `.mesh/todo/todo.actions.ts` | `createTodo`, `completeTodo`, `pendingTodo`, and the rest |
 | `.mesh/todo/todo.validators.ts` | The input schemas for those actions |
 | `.mesh/schema.ts` | The database tables, written by the data adapter |
-| `.mesh/model.json` | One document per entity, with the source position of every tag |
+| `.mesh/model.json` | One document per entity, with the source position of every declaration |
 | `.mesh/mx-contracts.js` | The composed tag contracts, for MX tooling in your editor |
 | `.mesh/rules.md` | A short description of your entities and of Mesh's vocabulary, for a coding agent to read |
 
@@ -89,7 +89,7 @@ Two entities that would export the same function name is a build error naming bo
 
 `src/extensions/` holds a project-local extension, if you write one. An extension has two entries: a build-time half that contributes tags, transforms, verifiers, emitters and `mesh` subcommands, and a run-time half that supplies the behaviour. The run-time half imports only `@meshfw/runtime`, never the compiler, so a deployed program does not carry the build pipeline.
 
-First-party extensions are installed from npm and enabled by name in `mesh.config.ts`. `@meshfw/ext-policies` is the one that adds authorization, and the starter enables it. Without it, a `policies` block is not a valid tag and the build fails, so a rule cannot be written and quietly ignored.
+First-party extensions are installed from npm and enabled by name in `mesh.config.ts`. Authorization is not one of them: `policies` is a section of the entity file, so who may do what is core.
 
 ## Your own code
 
@@ -102,7 +102,7 @@ Everything else under `src/` is yours, and Mesh never reads it. In the tutorial:
 
 | Path | Commit? |
 |:--|:--|
-| `src/**/*.mx` | yes |
+| `src/**/*.mesh.mx` | yes |
 | `.mesh/` | yes |
 | `migrations/*.sql` | yes |
 | `mesh.config.ts`, `package.json`, `bun.lock` | yes |

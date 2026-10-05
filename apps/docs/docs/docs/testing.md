@@ -11,7 +11,7 @@ Mesh is not released yet. These pages describe Mesh 1.0.
 
 A Mesh test calls the same functions your program calls, against a real SQL database that lives in memory for the length of the test. There is no fake repository, no stubbed adapter and no interface to reimplement, so a test can pass while the database would have refused the query.
 
-This page assumes the tutorial's `todo.mx` and `list.mx`.
+This page assumes the tutorial's `todo.mesh.mx` and `list.mesh.mx`.
 
 ## Bind, do not connect
 
@@ -104,7 +104,7 @@ test("an empty title is rejected", async () => {
 });
 ```
 
-If you care which rule failed, catch the error and read `issues`, which carries the message and the `.mx` position of the `validate` tag that declared it. See [Errors](./calling-actions.md#errors).
+If you care which rule failed, catch the error and read `issues`, which carries the name and the code of the `check` that declared it, its message, and the `.mesh.mx` position of the line. See [Errors](./calling-actions.md#errors).
 
 ## Asserting a denial
 

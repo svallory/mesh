@@ -1,6 +1,6 @@
 ---
 title: "Mesh"
-description: "Mesh is a TypeScript framework for declaring your data once. Describe an entity in one .mx file and call typed functions."
+description: "Mesh is a TypeScript framework for declaring your data once. Describe an entity in one .mesh.mx file and call typed functions."
 ---
 
 # Mesh
@@ -9,7 +9,7 @@ description: "Mesh is a TypeScript framework for declaring your data once. Descr
 Mesh is not released yet. These pages describe Mesh 1.0.
 :::
 
-Describe each thing your program stores once, in one `.mx` file: its data, the operations on it, and the rules around those operations. Mesh writes the TypeScript you call — types, handlers, input validators, authorization checks, database tables and migrations. Then you call a function.
+Describe each thing your program stores once, in one `.mesh.mx` file: its data, the operations on it, and the rules around those operations. Mesh writes the TypeScript you call — types, handlers, input validators, authorization checks, database tables and migrations. Then you call a function.
 
 ```ts
 const todo = await createTodo({ title: "Buy milk", listId: list.id }, { actor });

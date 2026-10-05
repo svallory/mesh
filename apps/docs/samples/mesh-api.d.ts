@@ -17,8 +17,14 @@ declare module "@meshfw/runtime" {
     [key: string]: unknown;
   }
 
-  /** A structural failure that no declared rule produced carries `source: null`. */
+  /**
+   * One failure. A failure a declared rule produced carries the name and the code
+   * of the `check` that produced it and the position of its line; a structural
+   * failure carries no name, no code and no source.
+   */
   export interface Issue {
+    name: string | null;
+    code: string | null;
     path: (string | number)[];
     message: string;
     source: { file: string; line: number; column: number } | null;
@@ -31,13 +37,13 @@ declare module "@meshfw/runtime" {
     result: boolean;
     decisive: boolean;
   }
-
   export class MeshError extends Error {
     code: string;
   }
 
   export class InvalidInputError extends MeshError {
-    override code: "invalid_input";
+    /** The failing check's `code`, or `invalid_input` when the input did not fit the action. */
+    override code: string;
     issues: Issue[];
   }
 
@@ -93,10 +99,6 @@ declare module "@meshfw/cli" {
   export function defineConfig(config: MeshConfig): MeshConfig;
 }
 
-declare module "@meshfw/ext-policies" {
-  export function policies(): unknown;
-}
-
 declare module "#mesh" {
   import type { ActionContext } from "@meshfw/runtime";
   import type { PostgresDataLayer } from "@meshfw/data-postgres";
@@ -132,6 +134,7 @@ declare module "#mesh" {
     name: string;
     ownerId: string;
     insertedAt: Date;
+    updatedAt: Date;
   }
 
   export interface Decision {
@@ -151,7 +154,7 @@ declare module "#mesh" {
 
   export type TodoOrLabelled = Todo & { label: string };
 
-  /** A calculation is a property only when the read asked for it: two signatures say so. */
+  /** A computed field is a property only when the read asked for it: two signatures say so. */
   export interface PendingTodo {
     (input: { load: readonly ["label"] }, context: ActionContext): Promise<TodoOrLabelled[]>;
     (input: { load?: readonly string[] }, context: ActionContext): Promise<Todo[]>;
