@@ -15,41 +15,41 @@ The code on `main` was built before the rulings of 2026-10-04 evening and 2026-1
 
 Mesh is a TypeScript framework modelled on Ash, a declarative framework for Elixir. A developer writes one *entity file* that declares a piece of data, the operations on it and the rules around them. Mesh derives types, input validators, action functions and the database schema from that file. Mesh runs on Bun only ([ADR-0025](../decisions/0025-bun-only.md)) and is open source under the MIT licence ([ADR-0042](../decisions/0042-open-source-mit.md)). The decision records call the project owner the *operator*.
 
-An entity file is a `.mesh.mx` file ([ADR-0051](../decisions/0051-mesh-mx-files-and-the-mesh-host.md)) in MX concise syntax, which is indentation-based ([ADR-0041](../decisions/0041-mx-concise-syntax.md)). MX is a separate project that parses Marko-syntax files. Mesh invents tag names, not syntax, and reads the result as a static tree of tags and attributes ([ADR-0002](../decisions/0002-resource-files-are-mx.md)). MX is core, not an adapter ([ADR-0043](../decisions/0043-mx-is-core.md)). The vocabulary is Mesh's own, informed by Ash ([ADR-0049](../decisions/0049-vocabulary-is-meshs-own.md)): every declaration is `kind #name options` ([ADR-0050](../decisions/0050-entity-file-syntax.md)).
+An entity file is a `.mesh.mx` file ([ADR-0051](../decisions/0051-mesh-mx-files-and-the-mesh-host.md)) in MX concise syntax, which is indentation-based ([ADR-0041](../decisions/0041-mx-concise-syntax.md)). MX is a separate project with its own parser for `.mx` files. Mesh invents tag names, not syntax, and reads the result as a static tree of tags and attributes ([ADR-0002](../decisions/0002-resource-files-are-mx.md)). MX is core, not an adapter ([ADR-0043](../decisions/0043-mx-is-core.md)). The vocabulary is Mesh's own, informed by Ash ([ADR-0049](../decisions/0049-vocabulary-is-meshs-own.md)): every declaration is `kind :name options` ([ADR-0050](../decisions/0050-entity-file-syntax.md)).
 
 An *action* is one named operation on an entity (create, read, update, destroy). Each becomes a generated TypeScript function, and calling it is the whole interface ([ADR-0005](../decisions/0005-core-interface-is-a-function-call.md)). Its second argument is the *action context*, a flat object the application types once and whose `actor` key says who is calling ([ADR-0059](../decisions/0059-action-context.md)).
 
 A short entity file, `src/domain/todo/todo.mesh.mx` (the full reference file is in [ADR-0050](../decisions/0050-entity-file-syntax.md)):
 
 ```mx
-entity #Todo table="todos"
+entity :Todo table="todos"
   attributes
-    uuid #id primary-key
-    string #title min=1
-    boolean #done default=false
-    timestamp #insertedAt on="create"
+    uuid :id primary-key
+    string :title min=1
+    boolean :done default=false
+    timestamp :insertedAt on=:create
 
   relationships
-    belongs-to=List #list
+    belongs-to=:List :list
 
   computed
-    string #label({ self }) {
+    string :label({ self }) {
       return (self.done ? "[x] " : "[ ] ") + self.title
     }
 
-  actions auto=["read", "destroy"]
-    create #create accept=["title", "listId"]
+  actions auto=[:read, :destroy]
+    create :create accept=[:title, :listId]
 
-    update #complete
+    update :complete
       do
         set
-          #done=true
+          :done=true
 
-    read #pending
+    read :pending
       filter=({ self }) => self.done === false
 
   policies
-    policy #owner
+    policy :owner
       authorize-if=({ self, actor }) => self.list.ownerId === actor.id
 ```
 

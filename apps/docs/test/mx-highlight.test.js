@@ -9,6 +9,7 @@ import {
   mxParseProblems,
   themeStyles,
   unstyledCaptureNames,
+  withAtomSetLines,
 } from '../plugins/mx-highlight.js';
 
 // Resolve docmd's own parser, rather than pinning a second markdown implementation.
@@ -276,6 +277,31 @@ test('mxParseProblems names the line inside the block the grammar could not read
   expect(problems[0]).toContain('docs/entities.md');
   expect(problems[0]).toContain('block line 2 is an ERROR node');
   expect(problems[0]).toContain('a comment inside an entity is indented with the block it sits in');
+});
+
+test('a tagless `:field=value` line in a set is the one allowance, and it is not a hole', () => {
+  // The grammar cannot read an atom as a tagless line's name yet (MX decision
+  // 145/156), so the plugin rewrites those lines before parsing them.
+  const set = [
+    'entity :Todo',
+    '  attributes',
+    '    boolean :done default=false',
+    '  actions',
+    '    update :complete',
+    '      do',
+    '        set',
+    '          :done=true',
+    '',
+  ].join('\n');
+  expect(withAtomSetLines(set)).toContain('          #done=true');
+  // Same length, same line count: the figure's line ranges and the offsets the
+  // highlighter slices by still line up with the author's text.
+  expect(withAtomSetLines(set).split('\n')).toHaveLength(set.split('\n').length);
+  expect(withAtomSetLines(set)).toHaveLength(set.length);
+  expect(mxParseProblems(set, 'todo.md')).toEqual([]);
+  // The allowance is exactly that: a line at the left margin is still an error.
+  expect(mxParseProblems(columnZero + '\n', 'docs/entities.md')).toHaveLength(1);
+  expect(mxParseProblems('entity :Todo\n  attributes\n    string :title min=\n', 'todo.md')).toHaveLength(1);
 });
 
 test('an mx fence the grammar cannot read fails the build with the page and the line', async () => {

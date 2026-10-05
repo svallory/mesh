@@ -1,13 +1,17 @@
 ---
-title: "0050. Entity file syntax: `kind #name options`"
+title: "0050. Entity file syntax: `kind #name options` (amended by ADR-0066)"
 description: "Decision record 0050: the line shape, sections, attributes, relationships and computed fields of an entity file, with the reference file. Status: Accepted."
 ---
 
 # 0050. Entity file syntax: `kind #name options`
 
+Amended by [ADR-0066](./0066-names-and-references-are-atoms.md): a declaration is now `kind :name options`.
+
 ## Status
 
 Accepted. Amends [ADR-0002](./0002-resource-files-are-mx.md) (what the tree contains). Builds on [ADR-0049](./0049-vocabulary-is-meshs-own.md).
+
+**Amended 2026-10-05 (evening) by [ADR-0066](./0066-names-and-references-are-atoms.md)**: names and references are atoms, so a declaration is now `kind :name options` and the reference file below is written in that spelling. The rulings quoted in this record are the ones as they were made on the morning of 2026-10-05, with `#name`; the sample code, the rules list and the option tables below have been moved to the amended spelling, which is the only one the docs use.
 
 ## Date
 
@@ -55,38 +59,38 @@ This is the worked reference the user docs and the code follow. It uses every v1
 // src/domain/billing/invoice.mesh.mx
 import { formatMoney, isStaff } from "./invoice.helpers"
 
-entity #Invoice table="invoices"
+entity :Invoice table="invoices"
   attributes
-    uuid #id primary-key
-    string #number unique match=/^INV-\d+$/
-    enum #status values=["draft", "sent", "paid", "cancelled"] default="draft"
-    decimal #amount min=0
-    date #issuedOn
-    date #dueOn
-    datetime #paidAt nullable
-    string #notes nullable max=2000
-    boolean #needsReview default=false
-    uuid #paidById nullable
-    timestamp #insertedAt on="create"
-    timestamp #updatedAt on="update"
+    uuid :id primary-key
+    string :number unique match=/^INV-\d+$/
+    enum :status values=[:draft, :sent, :paid, :cancelled] default=:draft
+    decimal :amount min=0
+    date :issuedOn
+    date :dueOn
+    datetime :paidAt nullable
+    string :notes nullable max=2000
+    boolean :needsReview default=false
+    uuid :paidById nullable
+    timestamp :insertedAt on=:create
+    timestamp :updatedAt on=:update
 
   relationships
-    belongs-to=Customer #customer
-    has-many=InvoiceLine #lines
-    has-one=Payment #payment
+    belongs-to=:Customer :customer
+    has-many=:InvoiceLine :lines
+    has-one=:Payment :payment
 
   computed
-    boolean #isOverdue({ self }) {
-      return self.status === "sent" && self.dueOn < today()
+    boolean :isOverdue({ self }) {
+      return self.status === :sent && self.dueOn < today()
     }
-    string #label({ self }) {
+    string :label({ self }) {
       return self.number + " · " + formatMoney(self.total)
     }
-    count #lineCount of="lines"
-    sum #total of="lines.amount"
+    count :lineCount of="lines"
+    sum :total of="lines.amount"
 
-  actions auto=["read", "destroy"] on:load="visible"
-    always types=["create", "update"]
+  actions auto=[:read, :destroy] on:load=:visible
+    always types=[:create, :update]
       validate
         check :dueAfterIssue [
           that=({ self }) => self.dueOn >= self.issuedOn
@@ -94,9 +98,9 @@ entity #Invoice table="invoices"
           message="the due date cannot be before the issue date"
         ]
 
-    create #create accept=["number", "customerId", "amount", "issuedOn", "dueOn", "notes"]
+    create :create accept=[:number, :customerId, :amount, :issuedOn, :dueOn, :notes]
 
-    update #send
+    update :send
       validate
         check :invoiceHasLines [
           that=({ self }) => self.lineCount > 0
@@ -105,12 +109,12 @@ entity #Invoice table="invoices"
         ]
       do
         set
-          #status="sent"
+          :status=:sent
 
-    update #pay accept=["paidAt"]
+    update :pay accept=[:paidAt]
       validate
         check :invoiceIsSent [
-          that=({ self }) => self.status === "sent"
+          that=({ self }) => self.status === :sent
           code="invalid_state"
           message="only a sent invoice can be paid"
         ]
@@ -121,58 +125,61 @@ entity #Invoice table="invoices"
         ]
       do
         set
-          #status="paid"
-          #paidById=({ actor }) => actor.id
+          :status=:paid
+          :paidById=({ actor }) => actor.id
         when=({ self }) => self.amount > 10000
           set
-            #needsReview=true
-        load=["customer"]
+            :needsReview=true
+        load=[:customer]
 
-    update #applyDiscount
+    update :applyDiscount
       arguments
-        decimal #percent min=0 max=100
+        decimal :percent min=0 max=100
       do
         set
-          #amount=({ self, input }) => self.amount * (1 - input.percent / 100)
+          :amount=({ self, input }) => self.amount * (1 - input.percent / 100)
 
-    read #visible
-      filter=({ self }) => self.status !== "cancelled"
+    read :visible
+      filter=({ self }) => self.status !== :cancelled
 
-    read #overdue
+    read :overdue
       filter=({ self }) => self.isOverdue
-      sort=["dueOn"]
+      sort
+        asc :dueOn
 
-    read #forCustomer
+    read :forCustomer
       arguments
-        uuid #customerId
+        uuid :customerId
       filter=({ self, input }) => self.customerId === input.customerId
 
   policies
-    policy #staffOrOwnerReads types=["read"]
+    policy :staffOrOwnerReads types=[:read]
       authorize-if=({ self, actor }) => isStaff(actor) || self.customer.userId === actor.id
-    policy #staffWrites types=["create", "update", "destroy"]
+    policy :staffWrites types=[:create, :update, :destroy]
       authorize-if=({ actor }) => isStaff(actor)
-    policy #neverDestroyPaid types=["destroy"]
-      forbid-if=({ self }) => self.status === "paid"
+    policy :neverDestroyPaid types=[:destroy]
+      forbid-if=({ self }) => self.status === :paid
 ```
 
 ### The rules a reader must know
 
-1. A declaration is `kind #name options`: the tag says what it is, `#name` names it. Names are unique within their scope.
+Written in the amended spelling: `kind :name`, not `kind #name` ([ADR-0066](./0066-names-and-references-are-atoms.md)).
+
+1. A declaration is `kind :name options`: the tag says what it is, `:name` names it. Names are unique within their scope.
 2. Sections group declarations: `attributes`, `relationships`, `computed`, `actions`, `policies`; inside an action: `arguments`, `validate`, `do`.
 3. An attribute's type is its tag. Attributes are required unless marked `nullable`. Rules about one field (`min`, `max`, `match`) go on its line, never in a `check`.
-4. A relationship names its destination entity as the tag's value: `has-many=InvoiceLine #lines`.
+4. A relationship names its destination entity as an atom, the tag's value: `has-many=:InvoiceLine :lines`.
 5. A computed field is either a typed field with a body, or a rollup (`count`, `sum`, `avg`, `min`, `max`) with `of=` a path.
 6. Functions receive `{ self, input, actor, context }`. A function whose body is one expression (an arrow, or a method body that is a single `return`) is translated when Mesh can translate it, and then also runs in SQL; anything else runs in memory. Where SQL is required (a filter, a sort, a policy), an expression that cannot be translated is a build error.
-7. `actions auto=[...]` generates the plain actions of those types, named after the type. Every written action is `type #name`. `on:load="name"` says which read Mesh uses when it loads this entity through a relationship; without it, the auto read.
-8. `validate` runs first, on the record with the accepted input applied, plus `input`: `require=[...]` and `check :label [ that code message ]` for rules across fields or about stored state. `do` runs next, top to bottom: `set` with `#field=value` lines, `when=cond` with nested steps, `load=[...]`, `run(...) { }` for one-off code.
+7. `actions auto=[...]` generates the plain actions of those types, named after the type. Every written action is `type :name`. `on:load=:name` says which read Mesh uses when it loads this entity through a relationship; without it, the auto read.
+8. `validate` runs first, on the record with the accepted input applied, plus `input`: `require=[...]` and `check :label [ that code message ]` for rules across fields or about stored state. `do` runs next, top to bottom: `set` with `:field=value` lines, `when=cond` with nested steps, `load=[...]`, `run(...) { }` for one-off code.
 9. `always` under `actions` takes an action body and applies it to every action in its scope.
 10. A policy has a scope (`types=`, `actions=`, or neither for all) and checks. A policy passes when none of its `forbid-if` holds and, if it has any `authorize-if`, at least one holds. Every policy covering an action must pass; an action no policy covers is forbidden.
 11. Files end in `.mesh.mx`; one entity per file; the folder under `src/domain/` is the module.
 
 ### Not in v1
 
-`lock`, `relate`, `after-commit`, reusable steps defined in MX (`step #slugify`), the raw-SQL escape hatch and `bypass` are planned or rejected and are not shown to users ([ADR-0053](./0053-validate-then-do.md), [ADR-0055](./0055-policies-are-core.md), [ADR-0056](./0056-translated-expressions-are-one-expression-arrows.md)).
+`lock`, `relate`, `after-commit`, reusable steps defined in MX (`step :slugify`), the raw-SQL escape hatch and `bypass` are planned or rejected and are not shown to users ([ADR-0053](./0053-validate-then-do.md), [ADR-0055](./0055-policies-are-core.md), [ADR-0056](./0056-translated-expressions-are-one-expression-arrows.md)).
 
 ## Options considered
 

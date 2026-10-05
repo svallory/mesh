@@ -49,47 +49,47 @@ That entry is how your code reaches generated code. You always import `#mesh`, n
 Write these two files in `src/domain/todo/`, and delete anything else in that folder. `list.mesh.mx` is the list a todo belongs to; `todo.mesh.mx` is the same file the [tutorial](./tutorial.md) and the [Introduction](./index.md) use.
 
 ```mx "src/domain/todo/list.mesh.mx"
-entity #List table="lists"
+entity :List table="lists"
   attributes
-    uuid #id primary-key
-    string #name
-    uuid #ownerId
-    timestamp #insertedAt on="create"
+    uuid :id primary-key
+    string :name
+    uuid :ownerId
+    timestamp :insertedAt on=:create
 
-  actions auto=["read", "destroy"]
-    create #create accept=["name"]
+  actions auto=[:read, :destroy]
+    create :create accept=[:name]
       do
         set
-          #ownerId=({ actor }) => actor.id
+          :ownerId=({ actor }) => actor.id
 
   policies
-    policy #anyoneCreates types=["create"]
+    policy :anyoneCreates types=[:create]
       authorize-if=() => true
-    policy #ownerOnly types=["read", "destroy"]
+    policy :ownerOnly types=[:read, :destroy]
       authorize-if=({ self, actor }) => self.ownerId === actor.id
 ```
 
 ```mx "src/domain/todo/todo.mesh.mx"
-entity #Todo table="todos"
+entity :Todo table="todos"
   attributes
-    uuid #id primary-key
-    string #title min=1
-    boolean #done default=false
-    timestamp #insertedAt on="create"
-    timestamp #updatedAt on="update"
+    uuid :id primary-key
+    string :title min=1
+    boolean :done default=false
+    timestamp :insertedAt on=:create
+    timestamp :updatedAt on=:update
 
   relationships
-    belongs-to=List #list
+    belongs-to=:List :list
 
   computed
-    string #label({ self }) {
+    string :label({ self }) {
       return (self.done ? "[x] " : "[ ] ") + self.title
     }
 
-  actions auto=["read", "destroy"]
-    create #create accept=["title", "listId"]
+  actions auto=[:read, :destroy]
+    create :create accept=[:title, :listId]
 
-    update #complete
+    update :complete
       validate
         check :notDoneYet [
           that=({ self }) => !self.done
@@ -98,25 +98,26 @@ entity #Todo table="todos"
         ]
       do
         set
-          #done=true
+          :done=true
 
-    update #rename accept=["title"]
+    update :rename accept=[:title]
 
-    read #pending
+    read :pending
       filter=({ self }) => self.done === false
-      sort=["insertedAt"]
+      sort
+        asc :insertedAt
 
   policies
-    policy #owner types=["create", "read", "update", "destroy"]
+    policy :owner types=[:create, :read, :update, :destroy]
       authorize-if=({ self, actor }) => self.list.ownerId === actor.id
 ```
 
 Five things to note, because every page here depends on them:
 
-- The files end in `.mesh.mx`, and they are written in Marko's concise syntax: indentation, no angle brackets.
-- `entity #Todo` names the entity and `table="todos"` names the table. The `#` before a name is how you name a declaration.
+- The files end in `.mesh.mx`, and they are written in MX syntax: indentation nests, and a line is `kind :name options`.
+- `entity :Todo` names the entity and `table="todos"` names the table. `:name` is an **atom**, the way this language spells a name; `table="todos"` is a string, because a table name is text. [Names are atoms](./entities.md#names-are-atoms) has the whole idea in one table.
 - `min=1` on `title` is the whole rule "a todo needs a title". A rule about one field goes on that field's line; `check :notDoneYet` is there because it is about the state the row is in.
-- `accept=["title", "listId"]` is the whole input of the create action. `done` is not accepted, so a caller cannot create a todo that is already done, and `listId` arrived from `belongs-to=List #list`.
+- `accept=[:title, :listId]` is the whole input of the create action. `done` is not accepted, so a caller cannot create a todo that is already done, and `listId` arrived from `belongs-to=:List :list`.
 - The `policies` section is what allows anything. An action nobody has a policy for is forbidden, so a new action needs a policy before it works.
 
 ## Build it

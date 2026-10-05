@@ -32,65 +32,65 @@ Two entities, because a todo needs a list and a list needs todos. A single file 
 `src/domain/todo/list.mesh.mx`:
 
 ```mx "src/domain/todo/list.mesh.mx"
-entity #List table="lists"
+entity :List table="lists"
   attributes
-    uuid #id primary-key
-    string #name
-    uuid #ownerId
-    timestamp #insertedAt on="create"
-    timestamp #updatedAt on="update"
+    uuid :id primary-key
+    string :name
+    uuid :ownerId
+    timestamp :insertedAt on=:create
+    timestamp :updatedAt on=:update
 
   relationships
-    has-many=Todo #todos
+    has-many=:Todo :todos
 
   computed
-    count #todoCount of="todos"
+    count :todoCount of="todos"
 
-  actions auto=["read", "destroy"]
-    create #create accept=["name"]
+  actions auto=[:read, :destroy]
+    create :create accept=[:name]
       do
         set
-          #ownerId=({ actor }) => actor.id
+          :ownerId=({ actor }) => actor.id
 
   policies
-    policy #anyoneCreates types=["create"]
+    policy :anyoneCreates types=[:create]
       authorize-if=() => true
-    policy #ownerOnly types=["read", "destroy"]
+    policy :ownerOnly types=[:read, :destroy]
       authorize-if=({ self, actor }) => self.ownerId === actor.id
 ```
 
 Four things worth noticing:
 
-- **`accept=["name"]` only.** `ownerId` is not accepted, so no caller can create a list owned by somebody else; a step fills it from the caller's `actor`.
-- **The two policies are separate.** `types=["read", "destroy"]` means "read or destroy", which is one policy for two actions. Two policies are "and": every policy covering an action must pass.
-- **`types=["create"]` on its own policy allows everyone**, because `authorize-if=() => true` always holds. `read` and `destroy` need ownership. An action that no policy covers is forbidden, so a new action needs one before it works.
-- **`count #todoCount`** is a rollup: how many todos the list has. Callers ask for it with `load: ["todoCount"]`.
+- **`accept=[:name]` only.** `ownerId` is not accepted, so no caller can create a list owned by somebody else; a step fills it from the caller's `actor`.
+- **The two policies are separate.** `types=[:read, :destroy]` means "read or destroy", which is one policy for two actions. Two policies are "and": every policy covering an action must pass.
+- **`types=[:create]` on its own policy allows everyone**, because `authorize-if=() => true` always holds. `read` and `destroy` need ownership. An action that no policy covers is forbidden, so a new action needs one before it works.
+- **`count :todoCount`** is a rollup: how many todos the list has. Callers ask for it with `load: ["todoCount"]`.
 
 ## The todo
 
 `src/domain/todo/todo.mesh.mx`, the same file the [quick start](./quick-start.md) wrote:
 
 ```mx "src/domain/todo/todo.mesh.mx"
-entity #Todo table="todos"
+entity :Todo table="todos"
   attributes
-    uuid #id primary-key
-    string #title min=1
-    boolean #done default=false
-    timestamp #insertedAt on="create"
-    timestamp #updatedAt on="update"
+    uuid :id primary-key
+    string :title min=1
+    boolean :done default=false
+    timestamp :insertedAt on=:create
+    timestamp :updatedAt on=:update
 
   relationships
-    belongs-to=List #list
+    belongs-to=:List :list
 
   computed
-    string #label({ self }) {
+    string :label({ self }) {
       return (self.done ? "[x] " : "[ ] ") + self.title
     }
 
-  actions auto=["read", "destroy"]
-    create #create accept=["title", "listId"]
+  actions auto=[:read, :destroy]
+    create :create accept=[:title, :listId]
 
-    update #complete
+    update :complete
       validate
         check :notDoneYet [
           that=({ self }) => !self.done
@@ -99,22 +99,23 @@ entity #Todo table="todos"
         ]
       do
         set
-          #done=true
+          :done=true
 
-    update #rename accept=["title"]
+    update :rename accept=[:title]
 
-    read #pending
+    read :pending
       filter=({ self }) => self.done === false
-      sort=["insertedAt"]
+      sort
+        asc :insertedAt
 
   policies
-    policy #owner types=["create", "read", "update", "destroy"]
+    policy :owner types=[:create, :read, :update, :destroy]
       authorize-if=({ self, actor }) => self.list.ownerId === actor.id
 ```
 
 What this gives you:
 
-- **`listId` was not declared.** `belongs-to=List #list` adds the foreign-key attribute and the relationship that reads it. `todo.list` is there when you ask for it.
+- **`listId` was not declared.** `belongs-to=:List :list` adds the foreign-key attribute and the relationship that reads it. `todo.list` is there when you ask for it.
 - **`min=1` is the whole of "a todo needs a title"**, and it is checked twice: the input validator refuses it before the call, and the column refuses it.
 - **`check :notDoneYet` is about state, not about one field**, which is what a `check` is for. It runs on the record with the caller's input applied, so it fails with the message you wrote before anything is written.
 - **`complete` accepts nothing.** It takes an id and a context, and its check reads the todo it was given, so Mesh reads that row, locked, and writes it in the same transaction rather than running one blind `UPDATE`. Two callers completing the same todo cannot both win on a stale copy. `rename`, which has no check, is the one that runs as a single `UPDATE`.
@@ -194,9 +195,9 @@ not_found
 invalid_input too_short must be at least 1 character
 ```
 
-An empty title is refused at run time by `string #title min=1`, with Mesh's own code and message — a line rule has nowhere to write a custom one — and the issue points at that line in the `.mesh.mx` file. A `check` of your own fails the same way and carries the label and code you gave it.
+An empty title is refused at run time by `string :title min=1`, with Mesh's own code and message — a line rule has nowhere to write a custom one — and the issue points at that line in the `.mesh.mx` file. A `check` of your own fails the same way and carries the label and code you gave it.
 
-Five things to notice:
+Four things to notice:
 
 - **`createList` takes only `name`.** `ownerId` is not in the input type, so a call that sends it does not compile.
 - **`load: ["label"]` is what types `todo.label`.** Without it, reading the property is a type error rather than `undefined`.
@@ -275,4 +276,4 @@ bun test
 
 - Add a `title` filter to the pending read and sort it by title. [Calling actions](./calling-actions.md) has the filter form.
 - Load `todo.list` and `list.todoCount` in one call. [Loading](./calling-actions.md#loading-relationships-and-computed-fields) has the rules.
-- Add a `dueOn` date to the todo, and a `count` of the list's todos you can read on the list. [Computed fields](./entities.md#computed) has both.
+- Add a `dueOn` date to the todo, and a `sum` of what the list's todos cost. [Computed fields](./entities.md#computed) has both.
