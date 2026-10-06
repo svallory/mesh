@@ -79,7 +79,7 @@ Option A costs one host package and a wait on MX; both are needed anyway for edi
 
 - The build discovers `**/*.mesh.mx` under `src/domain/` ([ADR-0057](./0057-one-domain-modules-as-folders.md)).
 - The composed contracts module ([ADR-0021](./0021-composed-contracts-module.md)) becomes what the host hands to MX tooling.
-- Until decision 146 lands, a file with `update #pay` does not parse; the realignment task writes `update#pay` in fixtures or waits.
+- Until decision 146 lands, a file with `update #pay` does not parse; the realignment task writes `update#pay` in fixtures or waits. (Amended 2026-10-06: with `@mxlang/data` 0.1.0-alpha.4 the published parser reads the target form `update :pay`; what does not parse yet is Mesh's own contracts, which is the realignment task.)
 - Mesh reads helper imports from `imports: "pass"`; until that option lands, an entity file with an `import` line does not parse.
 - Reusable step files, when they come, use the same extension ([ADR-0053](./0053-validate-then-do.md)).
 
