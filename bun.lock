@@ -44,8 +44,8 @@
       "version": "0.0.0",
       "dependencies": {
         "@mesh/model": "workspace:*",
-        "@mxlang/core": "0.1.0-alpha.4",
-        "@mxlang/data": "0.1.0-alpha.4",
+        "@mxlang/core": "0.1.0-alpha.5",
+        "@mxlang/data": "0.1.0-alpha.5",
         "prettier": "3.6.2",
       },
       "devDependencies": {
@@ -180,9 +180,9 @@
 
     "@mesh/runtime": ["@mesh/runtime@workspace:packages/runtime"],
 
-    "@mxlang/core": ["@mxlang/core@0.1.0-alpha.4", "https://npm.saulo.tech/@mxlang/core/-/core-0.1.0-alpha.4.tgz", { "dependencies": { "@babel/parser": "7.29.8" } }, "sha512-T3X7woYvIAE+TY9sEaAuq4j0NFIOx6zsUkgSXE4gHyKckIqx2xfuOUj1yk+6P/duJj+XlCLSp/T9HDGajiQg3w=="],
+    "@mxlang/core": ["@mxlang/core@0.1.0-alpha.5", "https://npm.saulo.tech/@mxlang/core/-/core-0.1.0-alpha.5.tgz", { "dependencies": { "@babel/parser": "7.29.8" } }, "sha512-XPx/f4pMyskIj5Q7y7HcasC1A0nQCzMtssaWDIjZnB9hFxmKIIkvZmz6/Q/VUJp4IxwdBxg7j9jyd9LqRokGCA=="],
 
-    "@mxlang/data": ["@mxlang/data@0.1.0-alpha.4", "https://npm.saulo.tech/@mxlang/data/-/data-0.1.0-alpha.4.tgz", { "dependencies": { "@babel/types": "7.29.8", "@mxlang/core": "0.1.0-alpha.4" } }, "sha512-M1CYb83LX/CKH2uckraNIe8nSfRQGgsqwujwDWdz96ucWGV0oa7VfmVL/hYLBHe5dlM05mgIMzMpV3zc96tfkQ=="],
+    "@mxlang/data": ["@mxlang/data@0.1.0-alpha.5", "https://npm.saulo.tech/@mxlang/data/-/data-0.1.0-alpha.5.tgz", { "dependencies": { "@babel/types": "7.29.8", "@mxlang/core": "0.1.0-alpha.5" } }, "sha512-42bdtdgv79Ku5UmKUjaw1AKlnfKVT/YQG3+biun+bCllfIq4Wtv5pxVsguX0rNCKXHMLN+RDt3B4xlhXDoQphg=="],
 
     "@mxlang/tree-sitter-mx": ["@mxlang/tree-sitter-mx@0.1.0-alpha.2", "https://npm.saulo.tech/@mxlang/tree-sitter-mx/-/tree-sitter-mx-0.1.0-alpha.2.tgz", { "dependencies": { "web-tree-sitter": "0.26.9" }, "peerDependencies": { "@types/emscripten": "^1.40.0" }, "optionalPeers": ["@types/emscripten"] }, "sha512-Ahhwu9lBQCVQX1kWwyDXLp1/0K1G/5i7olUCiyrZeINiL3KAQkZx+0yhJf1VXcwh1RGguj7XwOHFtQ7tVVaC0g=="],
 
