@@ -43,6 +43,7 @@ All development is on hold until the operator approves the user docs; only docum
 Two checks run over the pages, and both are in `bun run verify`:
 
 - **Complete `.mx` samples** are parsed by the compiler test in `packages/compiler/test/repository-checks.ts`. Because the contracts still spell the root tag `resource`, the check rewrites `entity=` to `resource=` in memory and parses the result, so every sample is validated. Only a diagnostic that names something the rename itself will change is deferred; those are counted per reason and printed, and any other diagnostic fails the check and is a bug in the page.
+- **Syntax v3 samples** (`entity :Todo`, atoms everywhere) are a second check, `apps/docs/test/docs-mx-syntax.test.ts`, which parses every `mx` fence exactly as the page writes it, with no contracts and no rewrite: `@mxlang/data` 0.1.0-alpha.4 reads every construct of syntax v3, so nothing is normalised any more (amended 2026-10-06 with the alpha.4 pin).
 - **TypeScript samples** are type-checked by `apps/docs/test/docs-samples.test.ts` against `apps/docs/samples/mesh-api.d.ts`, the declarations of the API the pages describe. Every `ts` block must be a complete file: it declares what it uses and its calls match the documented signatures. A fence titled `excerpt` is a signature shown in prose and is not compiled.
 
 Neither check runs any sample. They are not a claim that Mesh exists as a runtime.

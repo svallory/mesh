@@ -176,13 +176,14 @@ function docsMxBlocks(dir: string): DocsBlock[] {
  * read one. Two rules keep the check honest while the atoms realignment has not
  * run:
  *
- *  - a v3 block is parsed for real, by `parseData` with no contracts, after one
- *    in-memory normalisation of the spellings MX does not parse yet;
+ *  - a v3 block is parsed for real, by `parseData` with no contracts, exactly as
+ *    the page writes it — `@mxlang/data` 0.1.0-alpha.4 reads every construct of
+ *    syntax v3 (MX decisions 145 and 156), so nothing is rewritten any more;
  *  - its parse with the contracts is deferred, counted and printed under one name.
  *
- * The spellings the normalisation covers are the ones MX has queued (decisions
- * 145 and 146): an atom in a value, and a tagless `:field=value` line, which
- * needs the parent's `defaultTag`.
+ * What this check does not do is Mesh's own reading of a name: the realignment
+ * task teaches the contracts the v3 tags and options, and the deferred parse
+ * becomes a real one then.
  */
 export const DOCS_SYNTAX = "syntax v3";
 
@@ -198,49 +199,6 @@ export function isV3EntityFile(block: string): boolean {
     return /^entity\s+:\w+/.test(text);
   }
   return false;
-}
-
-/**
- * Rewrites the v3 spellings MX cannot parse yet into today's, in memory only.
- * One function, four rules, in the order they must run:
- *
- *  - a relationship names its destination as an atom, `belongs-to=:Customer :customer`,
- *    becomes `belongs-to#customer=:Customer`: a value cannot be glued to a name
- *    (MX decision 146);
- *  - a tagless line in `set`, `:status=:sent`, becomes `#status=:sent`, the form
- *    today's parser reads as a line of the parent's default tag
- *    (MX decision 145, `defaultTag`);
- *  - a declaration name, `kind :name`, becomes `kind#name`, the one name sigil
- *    alpha.2 parses (it arrives as the tag's `name`);
- *  - every remaining atom becomes a string: `accept=[:title, :listId]`,
- *    `default=:draft`, `on=:create`, `on:load=:visible`, `self.status === :sent`.
- *    An atom is only recognised after the start of a line, whitespace, `=`, `[`,
- *    `(` or `,`, so an attribute name that contains a colon (`on:load`) and the
- *    ` : ` of a ternary are both left alone.
- *
- * Indentation, literals, arrow functions and block bodies are already today's
- * syntax and are kept exactly as written, as is every comment. This whole
- * function disappears when Mesh pins the MX alpha that parses atoms (decision
- * 156); nothing else in the check changes with it.
- */
-const ATOM_AS_VALUE = /(^|[\s=[(,])\s*:([A-Za-z][\w-]*)/g;
-
-export function normaliseV3(source: string): string {
-  return source.split("\n").map((line) => {
-    if (line.trim() === "" || line.trimStart().startsWith("//")) return line;
-    const indent = line.slice(0, line.length - line.trimStart().length);
-    const rest = line.trimStart();
-    const relationship = /^([a-z][a-z0-9-]*)=:(\w+)\s+:(\w+)(.*)$/.exec(rest);
-    const field = /^:(\w+)=(.*)$/.exec(rest);
-    const named = /^([a-z][a-z0-9-]*)\s+:(\w+)(.*)$/.exec(rest);
-    let rewritten = rest;
-    if (relationship) rewritten = `${relationship[1]}#${relationship[3]}="${relationship[2]}"${relationship[4]}`;
-    else if (field) rewritten = `#${field[1]}=${field[2]}`;
-    else if (named) rewritten = `${named[1]}#${named[2]}${named[3]}`;
-    // The last rule runs on the whole line, so an atom in the options of a
-    // declaration (`create :create accept=[:title]`) is normalised as well.
-    return `${indent}${rewritten.replace(ATOM_AS_VALUE, '$1"$2"')}`;
-  }).join("\n");
 }
 
 /**
@@ -302,10 +260,13 @@ export function quotedNameInV3(block: string): string | null {
   return null;
 }
 
-/** Parses a v3 block with no contracts; a parser crash is a finding, not an exception. */
+/**
+ * Parses a v3 block with no contracts, exactly as the page writes it; a parser
+ * crash is a finding, not an exception.
+ */
 export function parseV3(source: string, file: string): DataDiagnostic[] {
   try {
-    return parseData(normaliseV3(source), file).diagnostics;
+    return parseData(source, file).diagnostics;
   } catch (cause) {
     return [{ severity: "error", message: `MX could not parse the block at all: ${(cause as Error).message.split("\n")[0]}`, line: 1, column: 0, offset: 0 }];
   }
