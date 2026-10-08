@@ -33,7 +33,15 @@ Bun workspace (`workspaces`: `packages/*`, `apps/*`, `examples/*`), one root `bu
   or goes to the MX lead as a grammar gap.
 - `apps/docs/plugins/mx-highlight.js` is MX's highlighter's docmd plugin and not ours to fork: the grammar
   and the queries belong to MX. Change the palette only, except for the explicitly approved, tested,
-  counted v4 input allowance above. Do not patch the grammar or broaden that allowance silently.
+  counted v4 input allowance above and `MESH_V4_MEMBER_RENDER`: a Mesh-side render-only overlay
+  that colours operand/bare/sort `&name` heads as `ts-member`, leaving literals, comments and infix
+  operators alone. Both bridges go away with `mesh-syntax-highlighting-route` (MX decision 182
+  addendum 1). Do not patch the grammar or broaden either bridge silently.
+- Home token explanations live in `apps/docs/plugins/mesh-home-hints.js`, wired by `mesh-home.js`.
+  Keep descriptions outside the code so copying and the home-sample hash retain the authored file;
+  every token in the fixed excerpt is checked against the commissioned wording. Browser interactions
+  and screenshots are exercised by `apps/docs/test/browser/home-hints.mjs` in Playwright's Docker
+  image, separately from `bun run verify` (see the script header for its environment variables).
 - docmd 0.9.7 reads a raw HTML block until its tags balance, blank lines included, so Markdown (a fence
   above all) inside an open `<div>` is emitted as raw text. Wrap fences in a docmd container (`::: grids`)
   instead, and keep each HTML block self-contained. docmd also hides `<html>` until its theme script runs;
