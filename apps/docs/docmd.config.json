@@ -376,6 +376,14 @@
             {
               "title": "0065. The docs site highlights `mx` code with MX's own tree-sitter highlighter",
               "path": "/architecture/decisions/0065-mx-highlighting-on-the-docs-site/"
+            },
+            {
+              "title": "0066. Names and references are atoms (amended by 0067)",
+              "path": "/architecture/decisions/0066-names-and-references-are-atoms/"
+            },
+            {
+              "title": "0067. Members, imports, input and static files",
+              "path": "/architecture/decisions/0067-members-imports-input-static-files/"
             }
           ]
         },

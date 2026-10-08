@@ -9,6 +9,8 @@ description: "Decision record 0053: validations, the steps of an action, the sha
 
 Accepted. Amends [ADR-0017](./0017-atomic-by-default-and-classification.md) (what a validation sees, and the end of `change`).
 
+Amended by [ADR-0067](./0067-members-imports-input-static-files.md): unified action input removes `require`; member references, including assignments under `set`, use `&name`.
+
 ## Date
 
 2026-10-05

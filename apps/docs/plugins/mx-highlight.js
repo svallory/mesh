@@ -26,6 +26,41 @@ import {
 } from '@mxlang/tree-sitter-mx/docmd';
 
 /**
+ * MX_V4_INPUT_PENDING_SYNTAX_TABLE — temporary, until MX's
+ * mesh-syntax-highlighting-route (decision 182 addendum 1). alpha.2 treats
+ * `input` as an HTML void tag, even with an ordinary `string :x` child. Only
+ * standalone nested input sections and their bare member lines get same-width
+ * stand-ins. Offsets stay exact; rendering ALWAYS slices the authored source.
+ * No error outside these spellings is suppressed, and the grammar is untouched.
+ */
+const v4Allowances = new Map();
+process.once('exit', () => {
+  if (!v4Allowances.size) return;
+  const lines = [...v4Allowances.values()].reduce((sum, count) => sum + count, 0);
+  console.log(`MX_V4_INPUT_PENDING_SYNTAX_TABLE: ${lines} lines in ${v4Allowances.size} distinct fences bridged for highlighting`);
+});
+export function withV4InputLines(source) {
+  let inputIndent = -1;
+  let count = 0;
+  const result = source.split('\n').map((line) => {
+    const indent = line.match(/^[\t ]*/)[0].length;
+    if (line.trim() && !line.trim().startsWith('//') && indent <= inputIndent) inputIndent = -1;
+    if (/^[\t ]+input[\t ]*$/.test(line)) {
+      inputIndent = indent;
+      count++;
+      return line.replace('input', 'inPut');
+    }
+    if (inputIndent >= 0 && indent > inputIndent && /^[\t ]+&[A-Za-z_]\w*[\t ]*$/.test(line)) {
+      count++;
+      return line.replace('&', '_');
+    }
+    return line;
+  }).join('\n');
+  if (count) v4Allowances.set(source, count);
+  return result;
+}
+
+/**
  * What is wrong with `source`, as build-problem messages, or `[]` when the
  * grammar read all of it.
  *
@@ -46,7 +81,7 @@ import {
  * @returns {string[]}
  */
 export function mxParseProblems(source, file = '<mx block>') {
-  const tree = parseMx(source);
+  const tree = parseMx(withV4InputLines(source));
   if (!tree.rootNode.hasError) return [];
   const rows = new Set();
   const visit = (node) => {
@@ -113,7 +148,14 @@ export function highlightMx(source) {
 export function mxHighlighter(source, file) {
   const problems = mxParseProblems(source, file);
   if (problems.length > 0) throw new Error(problems.join('\n'));
-  const classes = classesOf(source);
+  const standIn = withV4InputLines(source);
+  const classes = classesOf(standIn);
+  // Bare member names have no semantic colour until MX supplies the route.
+  // The stand-in must never lend them the colour of an ordinary tag.
+  for (const match of source.matchAll(/^[\t ]+(&[A-Za-z_]\w*)[\t ]*$/gm)) {
+    const start = match.index + match[0].indexOf('&');
+    if (standIn[start] === '_') classes.fill(null, start, start + match[1].length);
+  }
   return (start, end) => {
     let html = '';
     let at = start;
@@ -150,15 +192,14 @@ const PALETTE = {
   tag: ['#a626a4', '#c678dd'], //        a tag name, like hljs-keyword
   keyword: ['#a626a4', '#c678dd'], //    `return`, `static`
   operator: ['#a626a4', '#c678dd'], //   `=`, `=>`, `===`
-  // A name, in either spelling: `:Todo` (syntax v3) and `#Todo` (the v2 sigil
+  // A name, in either spelling: `:Todo` (syntax v4) and `#Todo` (the old sigil
   // the grammar still reads) are the same node in the same position, so they
   // take the same colour. `label` is what the queries call it.
   label: ['#4078f2', '#61aeee'],
   constant: ['#4078f2', '#61aeee'],
   // An atom value: `:read` in `auto=[:read]`, `:draft` in `default=:draft`,
-  // `:sent` in `self.status === :sent`. It is a value, not a name, so it takes
-  // the literal colour and reads apart from every name above it — including in
-  // `belongs-to=:Customer :customer`, where an atom and a name sit side by side.
+  // `:sent` in `&status === :sent`. It is a value, not a name, so it takes
+  // the literal colour and reads apart from a declaration name.
   'string.special.symbol': ['#0184bb', '#56b6c2'],
   attribute: ['#986801', '#d19a66'], // an attribute name
   string: ['#50a14f', '#98c379'],

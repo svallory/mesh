@@ -7,7 +7,9 @@ description: "Decision record 0066: an entity file writes every name, reference 
 
 ## Status
 
-Accepted. Amends [ADR-0050](./0050-entity-file-syntax.md) (the line shape) and [ADR-0051](./0051-mesh-mx-files-and-the-mesh-host.md) (what Mesh needs from MX). The user docs ([Entities](../../docs/entities.md#names-are-atoms)) and every `mx` sample on this site were rewritten to it on the same day.
+Accepted. Amends [ADR-0050](./0050-entity-file-syntax.md) (the line shape) and [ADR-0051](./0051-mesh-mx-files-and-the-mesh-host.md) (what Mesh needs from MX). The user docs and every current `mx` sample on this site were rewritten to it on the same day.
+
+Amended by [ADR-0067](./0067-members-imports-input-static-files.md): only declarations and fixed-set/enum values remain atoms; member references are `&name`, other entities are imports, actions use `input` and files are static. The decision below is the historical v3 ruling; [Entities](../../docs/entities.md#names-and-references) is the current reference.
 
 ## Date
 

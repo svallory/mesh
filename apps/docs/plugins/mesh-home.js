@@ -51,6 +51,8 @@ export function renderMxFlow(source, file) {
   lines.forEach((line, index) => {
     const indent = line.length - line.trimStart().length;
     const word = line.trim().split(/[\s=]/)[0];
+    // v4 entity imports precede the one root; render them as ordinary code lines.
+    if (indent === 0 && word === 'import' && sections.length === 0) return;
     if (line.trim() !== '' && (indent === 0 || (indent === 2 && FLOW_SECTIONS.includes(word)))) {
       const name = indent === 0 ? 'entity' : word;
       if (indent === 0 && sections.length > 0) throw new Error(`${file}: mx-flow line ${index + 1} is a second root line; an entity file holds one entity`);
@@ -64,8 +66,15 @@ export function renderMxFlow(source, file) {
   });
   // Each line carries its indentation, so where the file is pinned on a phone a
   // long line can wrap under its own first character instead of being cut off.
-  const lineHtml = (k) => `<span class="mh-l" style="--i:${lines[k].length - lines[k].trimStart().length}">` +
-    `${render(starts[k], starts[k] + lines[k].length)}</span>`;
+  const lineHtml = (k) => {
+    // The home is an excerpt: explain the generated key at the relationship,
+    // where a reader first encounters it. Native title works without JS.
+    const note = /^\s+belongs-to :list entity=List$/.test(lines[k])
+      ? ' tabindex="0" title="Creates the listId column. &amp;list in input is how the caller sets it."'
+      : '';
+    return `<span class="mh-l"${note} style="--i:${lines[k].length - lines[k].trimStart().length}">` +
+      `${render(starts[k], starts[k] + lines[k].length)}</span>`;
+  };
   let code = '';
   let next = 0;
   for (const section of sections) {

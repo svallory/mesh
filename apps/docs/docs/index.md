@@ -17,26 +17,34 @@ toc: false
 ::: grids
 ::: grid
 ```mx-flow "src/domain/todo/todo.mesh.mx"
+import { List } from "./list.mesh.mx"
+
 entity :Todo table="todos"
   attributes
     uuid :id primary-key
     string :title min=1
     boolean :done default=false
+    timestamp :insertedAt on=:create
 
   relationships
-    belongs-to=:List :list
+    belongs-to :list entity=List
 
   actions auto=[:read, :destroy]
-    create :create accept=[:title, :listId]
-    update :rename accept=[:title]
+    create :create
+      input
+        &title
+        &list
+    update :rename
+      input
+        &title
     read :pending
-      filter=({ self }) => !self.done
+      filter=() => &done === false
       sort
-        asc :title
+        asc &insertedAt
 
   policies
     policy :owner types=[:create, :read, :update, :destroy]
-      authorize-if=({ self, actor }) => self.list.ownerId === actor.id
+      authorize-if=({ actor }) => &list.ownerId === actor.id
 ```
 :::
 ::: grid
@@ -45,7 +53,10 @@ entity :Todo table="todos"
 <p class="mh-group" data-group="Your app">Your app</p>
 <div class="mh-box" data-box="types" data-from="attributes relationships" data-group="Your app"><h3>Types <code>todo.types.ts</code></h3><p class="mh-from">from <code>attributes</code>, <code>relationships</code></p><div class="mh-snip"><code>interface Todo {
   id: string; title: string;
-  done: boolean; listId: string }</code></div></div>
+  done: boolean; listId: string;
+  insertedAt: Date }
+interface CreateTodoInput {
+  title: string; list: List["id"] }</code></div></div>
 <div class="mh-box" data-box="functions" data-from="actions" data-group="Your app"><h3>Functions <code>todo.actions.ts</code></h3><p class="mh-from">one per action, from <code>actions</code>, imported from <code>#mesh</code></p><div class="mh-snip"><code>createTodo(input, context)
 pendingTodo(input, context)
 renameTodo, readTodo, destroyTodo</code></div></div>
@@ -56,8 +67,11 @@ renameTodo, readTodo, destroyTodo</code></div></div>
 <div class="mh-box" data-box="migrations" data-from="entity attributes relationships" data-via="mesh migrate generate" data-group="The database"><h3>Migrations <code>migrations/*.sql</code></h3><p>Plain SQL from <code>mesh migrate generate</code> when the table changes; applied by <code>mesh migrate apply</code>.</p><p class="mh-from">from the table</p></div>
 <p class="mh-group" data-group="For your tools">For your tools</p>
 <div class="mh-box" data-box="rules" data-from="entity attributes relationships actions policies" data-group="For your tools"><h3>Rules for agents <code>rules.md</code></h3><p class="mh-from">from the whole file</p><div class="mh-snip"><code>entity :Todo table="todos"
-  actions: auto read destroy;
-    create :create accept=[:title, :listId]</code></div></div>
+  actions auto=[:read, :destroy]
+    create :create
+      input
+        &amp;title
+        &amp;list</code></div></div>
 <div class="mh-box" data-box="model" data-from="entity attributes relationships actions policies" data-group="For your tools"><h3>The model <code>model.json</code></h3><p>Every declaration with its source position: what <code>mesh inspect</code> prints.</p><p class="mh-from">from the whole file</p></div>
 </div>
 <script type="module">
@@ -101,14 +115,14 @@ mark();
 <li><strong>Fewer places to make a mistake.</strong> The types, functions, validators and checks are generated, the same for every project and the same on every build, instead of written fresh by the agent each time.</li>
 <li><strong>A smaller diff to review.</strong> You read the change to the entity file, the part that carries the intent. The generated code is committed beside it, but it follows from the file.</li>
 <li><strong>Less to write, less to read.</strong> One file is the whole truth about an entity, so an agent changing a rule reads and writes that file, not a model, a schema and a service layer.</li>
-<li><strong>Mistakes stop at build time, with a fix.</strong> A misspelled field in <code>accept</code> is an error at that name, with the line, the column and a suggestion, which an agent can act on in one step.</li>
+<li><strong>Mistakes stop at build time, with a fix.</strong> A misspelled member in <code>input</code> is an error at that name, with the line, the column and a suggestion, which an agent can act on in one step.</li>
 <li><strong>Tools that answer instead of guessing.</strong> <code>mesh build</code> writes a rules file for the agent to read; <code>mesh inspect</code> prints the model with the source position of every declaration; <code>mesh explain</code> prints the plan a call will follow.</li>
 </ul>
 <div class="mh-tally">
 <h3>What the agent writes, and what it does not</h3>
-<p>It writes the 20 lines of <code>todo.mesh.mx</code> above. It does not write the types, the action functions, the input validators, the authorization checks, the table schema, the migration SQL, the rules file or the model: the diagram above shows where each comes from.</p>
-<pre><code>src/domain/todo/todo.mesh.mx:11:28 error `accept` names :titel,
-which is not an attribute of :Todo. Did you mean :title?</code></pre>
+<p>It writes the 28 lines of <code>todo.mesh.mx</code> above. It does not write the types, the action functions, the input validators, the authorization checks, the table schema, the migration SQL, the rules file or the model: the diagram above shows where each comes from.</p>
+<pre><code>src/domain/todo/todo.mesh.mx:16:9 error &amp;titel is not a member of :Todo.
+Did you mean &amp;title?</code></pre>
 </div>
 <p class="mh-more">More in <a href="/docs/ai-agents/">Working with AI agents</a>: the rules file, <code>mesh inspect</code>, <code>mesh explain</code>, and what Mesh does not solve for an agent.</p>
 </section>

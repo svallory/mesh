@@ -40,7 +40,7 @@ Mesh prescribes nothing under `src/`. `context.ts` and `main.ts` are the starter
 
 The folder is the module, so nothing in the file repeats it. `todo.mesh.mx` does not carry a `module=` option, and the generated code for a folder lands in one place.
 
-An entity file holds exactly one entity and ends in `.mesh.mx`. Two entities in one file is a build error, as are two entities with the same name anywhere in the domain.
+An entity file holds exactly one entity and ends in `.mesh.mx`. Two entities in one file is a build error. Another entity is imported by relative path: `import { List } from "./list.mesh.mx"`, then `belongs-to :list entity=List`. Each file exports its declared entity name. Two folders may each declare an `entity :List` without conflict; the import path distinguishes them. Those declarations do not conflict, but how the generated `#mesh` entry point exposes their same-named action exports is still open ([finding 21](../architecture/open-questions.md#dx-findings)).
 
 A hand-written helper next to the entity that uses it is the ordinary way to keep an entity file small. `todo.helpers.ts` is a normal TypeScript module; a `check` or a `do` step in `todo.mesh.mx` calls into it.
 
@@ -77,7 +77,7 @@ That is the whole of it. You should not have to think about any of it day to day
 - **A reviewer reads what runs.** An entity file is a small declarative change. The TypeScript beside it is what the program actually executes, and reading the two diffs together is how you review a change to a rule.
 - **`git diff` is the record of behaviour.** Adding an attribute shows up as a new column, a new type field and a new input key in one diff, in the file you changed.
 
-Two entities that would export the same function name is a build error naming both. Mesh never renames an export behind your back.
+Entity references are scoped to the importing file, not a project-wide index of names. A folder stays the module; no top-level application name or fully qualified entity name is needed.
 
 ## Configuration
 

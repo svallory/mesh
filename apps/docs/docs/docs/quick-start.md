@@ -57,19 +57,23 @@ entity :List table="lists"
     timestamp :insertedAt on=:create
 
   actions auto=[:read, :destroy]
-    create :create accept=[:name]
+    create :create
+      input
+        &name
       do
         set
-          :ownerId=({ actor }) => actor.id
+          &ownerId=({ actor }) => actor.id
 
   policies
     policy :anyoneCreates types=[:create]
       authorize-if=() => true
     policy :ownerOnly types=[:read, :destroy]
-      authorize-if=({ self, actor }) => self.ownerId === actor.id
+      authorize-if=({ actor }) => &ownerId === actor.id
 ```
 
 ```mx "src/domain/todo/todo.mesh.mx"
+import { List } from "./list.mesh.mx"
+
 entity :Todo table="todos"
   attributes
     uuid :id primary-key
@@ -79,45 +83,50 @@ entity :Todo table="todos"
     timestamp :updatedAt on=:update
 
   relationships
-    belongs-to=:List :list
+    belongs-to :list entity=List
 
   computed
-    string :label({ self }) {
-      return (self.done ? "[x] " : "[ ] ") + self.title
+    string :label() {
+      return (&done ? "[x] " : "[ ] ") + &title
     }
 
   actions auto=[:read, :destroy]
-    create :create accept=[:title, :listId]
+    create :create
+      input
+        &title
+        &list
 
     update :complete
       validate
         check :notDoneYet [
-          that=({ self }) => !self.done
+          that=() => !&done
           code="already_done"
           message="this todo is already complete"
         ]
       do
         set
-          :done=true
+          &done=true
 
-    update :rename accept=[:title]
+    update :rename
+      input
+        &title
 
     read :pending
-      filter=({ self }) => self.done === false
+      filter=() => &done === false
       sort
-        asc :insertedAt
+        asc &insertedAt
 
   policies
     policy :owner types=[:create, :read, :update, :destroy]
-      authorize-if=({ self, actor }) => self.list.ownerId === actor.id
+      authorize-if=({ actor }) => &list.ownerId === actor.id
 ```
 
 Five things to note, because every page here depends on them:
 
 - The files end in `.mesh.mx`, and they are written in MX syntax: indentation nests, and a line is `kind :name options`.
-- `entity :Todo` names the entity and `table="todos"` names the table. `:name` is an **atom**, the way this language spells a name; `table="todos"` is a string, because a table name is text. [Names are atoms](./entities.md#names-are-atoms) has the whole idea in one table.
+- `entity :Todo` names the entity and `table="todos"` names the table. `:name` is an **atom**, the way this language spells a name; `table="todos"` is a string, because a table name is text. `&title` refers to a member of this entity; the imported `List` names another entity. [Names and references](./entities.md#names-and-references) has the whole idea in one table.
 - `min=1` on `title` is the whole rule "a todo needs a title". A rule about one field goes on that field's line; `check :notDoneYet` is there because it is about the state the row is in.
-- `accept=[:title, :listId]` is the whole input of the create action. `done` is not accepted, so a caller cannot create a todo that is already done, and `listId` arrived from `belongs-to=:List :list`.
+- `input` lists `&title` and `&list`: the title and the related list's id. `&list` refers to `belongs-to :list entity=List`. `done` is not in the input, so a caller cannot create a todo that is already done.
 - The `policies` section is what allows anything. An action nobody has a policy for is forbidden, so a new action needs a policy before it works.
 
 ## Build it
@@ -169,7 +178,7 @@ import { alice } from "./context";
 await connect();
 
 const list = await createList({ name: "Groceries" }, { actor: alice });
-const todo = await createTodo({ title: "Buy milk", listId: list.id }, { actor: alice });
+const todo = await createTodo({ title: "Buy milk", list: list.id }, { actor: alice });
 console.log(todo.id, todo.title, todo.done, todo.insertedAt);
 
 for (const row of await pendingTodo({}, { actor: alice })) {

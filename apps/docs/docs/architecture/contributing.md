@@ -40,13 +40,14 @@ All development is on hold until the operator approves the user docs; only docum
 
 ## What the checks enforce
 
-Two checks run over the pages, and both are in `bun run verify`:
+The sample checks run in `bun run verify`:
 
-- **Complete `.mx` samples** are parsed by the compiler test in `packages/compiler/test/repository-checks.ts`. Because the contracts still spell the root tag `resource`, the check rewrites `entity=` to `resource=` in memory and parses the result, so every sample is validated. Only a diagnostic that names something the rename itself will change is deferred; those are counted per reason and printed, and any other diagnostic fails the check and is a bug in the page.
-- **Syntax v3 samples** (`entity :Todo`, atoms everywhere) are a second check, `apps/docs/test/docs-mx-syntax.test.ts`, which parses every `mx` fence exactly as the page writes it, with no contracts and no rewrite: `@mxlang/data` 0.1.0-alpha.4 reads every construct of syntax v3, so nothing is normalised any more (amended 2026-10-06 with the alpha.4 pin).
+- **Complete `.mx` samples** are checked by `packages/compiler/test/repository-checks.ts` and its stricter companion, `apps/docs/test/docs-mx-syntax.test.ts`. Both scan the user pages and ADR-0050's reference. For legacy fixtures only, the contracted path rewrites `entity=` to `resource=`; that is not the syntax-v4 path.
+- **Syntax v4 samples** (`entity :Todo`, `&title`, imported entities) first pass a bounded text guard: obsolete spellings, undeclared member heads, misplaced member lines, assignments in `input`, unimported `entity=X` values and unbound `self.` reads fail before normalization. Then `normaliseV4` adapts the `&` positions pinned alpha.5 cannot parse and calls `parseData` with `structural: "reject", imports: "pass"`. Imports stay authored; only leading file comments are blanked, preserving rows, because the pin wrongly treats comments as structural. Only the contracts parse is deferred, counted and printed under `syntax v4, pending the MX syntax table`. This guard is not full contract/type checking; realignment supplies that.
+- **MX highlighting** has one named, counted allowance, `MX_V4_INPUT_PENDING_SYNTAX_TABLE`: alpha.2 treats nested `input` as an HTML void tag, so same-width stand-ins let it parse while the renderer keeps the authored text. Other grammar errors still fail the build. [MX integration](./in-depth/mx-integration.md) records both bridges and the MX items that remove them.
 - **TypeScript samples** are type-checked by `apps/docs/test/docs-samples.test.ts` against `apps/docs/samples/mesh-api.d.ts`, the declarations of the API the pages describe. Every `ts` block must be a complete file: it declares what it uses and its calls match the documented signatures. A fence titled `excerpt` is a signature shown in prose and is not compiled.
 
-Neither check runs any sample. They are not a claim that Mesh exists as a runtime.
+None of these checks runs a sample. They are not a claim that Mesh exists as a runtime.
 
 ## Build and preview locally
 

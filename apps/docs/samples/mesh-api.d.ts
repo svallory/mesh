@@ -187,7 +187,7 @@ declare module "#mesh" {
     (input: { filter?: Filter<TodoField>; load?: readonly string[] }, context: ActionContext): Promise<Todo[]>;
   }
 
-  /** A read's `arguments` sit in the same input object as `filter`, `sort` and the rest. */
+  /** A read's typed `input` lines sit beside `filter`, `sort` and the rest. */
   export interface ReadInvoiceInput {
     customerId: string;
     filter?: Filter<InvoiceField>;
@@ -201,15 +201,15 @@ declare module "#mesh" {
     createList(input: { name: string }, context: ActionContext): Promise<List>;
     readList(input: ReadTodoInput, context: ActionContext): Promise<List[]>;
     destroyList(input: { id: string }, context: ActionContext): Promise<void>;
-    /** `listId` is required: it comes from `belongs-to=List #list` and a create must send it. */
-    createTodo(input: { title: string; listId: string }, context: ActionContext): Promise<Todo>;
+    /** `&list` in input takes the related id; the returned record still has listId. */
+    createTodo(input: { title: string; list: List["id"] }, context: ActionContext): Promise<Todo>;
     readTodo(input: ReadTodoInput, context: ActionContext): Promise<Todo[]>;
     pendingTodo: PendingTodo;
     completeTodo(input: { id: string }, context: ActionContext): Promise<Todo>;
     renameTodo(input: { id: string; title: string }, context: ActionContext): Promise<Todo>;
     destroyTodo(input: { id: string }, context: ActionContext): Promise<void>;
     forCustomerInvoice(input: ReadInvoiceInput, context: ActionContext): Promise<Invoice[]>;
-    canCreateTodo(input: { title: string; listId: string }, context: ActionContext): Promise<Decision>;
+    canCreateTodo(input: { title: string; list: List["id"] }, context: ActionContext): Promise<Decision>;
     canPendingTodo(input: { load?: readonly string[] }, context: ActionContext): Promise<Decision>;
     canCompleteTodo(input: { id: string }, context: ActionContext): Promise<Decision>;
   };

@@ -29,7 +29,7 @@ test("a new todo starts pending", async () => {
   const todo = bind(db);
 
   const list = await todo.createList({ name: "Groceries" }, { actor: alice });
-  const milk = await todo.createTodo({ title: "Buy milk", listId: list.id }, { actor: alice });
+  const milk = await todo.createTodo({ title: "Buy milk", list: list.id }, { actor: alice });
 
   expect(milk.done).toBe(false);
   expect(milk.insertedAt).toBeInstanceOf(Date);
@@ -64,8 +64,8 @@ test("completing a todo takes it out of the pending list", async () => {
   const todo = bind(db);
 
   const list = await todo.createList({ name: "Groceries" }, { actor: alice });
-  const milk = await todo.createTodo({ title: "Buy milk", listId: list.id }, { actor: alice });
-  await todo.createTodo({ title: "Buy bread", listId: list.id }, { actor: alice });
+  const milk = await todo.createTodo({ title: "Buy milk", list: list.id }, { actor: alice });
+  await todo.createTodo({ title: "Buy bread", list: list.id }, { actor: alice });
 
   await todo.completeTodo({ id: milk.id }, { actor: alice });
 
@@ -96,9 +96,9 @@ test("a todo must have a title, and must not be completed twice", async () => {
   const todo = bind(db);
 
   const list = await todo.createList({ name: "Groceries" }, { actor: alice });
-  const milk = await todo.createTodo({ title: "Buy milk", listId: list.id }, { actor: alice });
+  const milk = await todo.createTodo({ title: "Buy milk", list: list.id }, { actor: alice });
 
-  await expect(todo.createTodo({ title: "", listId: list.id }, { actor: alice }))
+  await expect(todo.createTodo({ title: "", list: list.id }, { actor: alice }))
     .rejects.toBeInstanceOf(InvalidInputError);
   await expect(todo.completeTodo({ id: milk.id }, { actor: alice })).resolves.toBeTruthy();
   await expect(todo.completeTodo({ id: milk.id }, { actor: alice }))
@@ -131,7 +131,7 @@ test("another actor sees no todos and may not complete one", async () => {
   const todo = bind(db);
 
   const list = await todo.createList({ name: "Groceries" }, { actor: alice });
-  const milk = await todo.createTodo({ title: "Buy milk", listId: list.id }, { actor: alice });
+  const milk = await todo.createTodo({ title: "Buy milk", list: list.id }, { actor: alice });
 
   expect(await todo.pendingTodo({}, { actor: bob })).toEqual([]);
   await expect(todo.completeTodo({ id: milk.id }, { actor: bob }))
@@ -155,7 +155,7 @@ test("another actor may not complete a todo", async () => {
   const todo = bind(db);
 
   const list = await todo.createList({ name: "Groceries" }, { actor: alice });
-  const milk = await todo.createTodo({ title: "Buy milk", listId: list.id }, { actor: alice });
+  const milk = await todo.createTodo({ title: "Buy milk", list: list.id }, { actor: alice });
 
   const answer = await todo.canCompleteTodo({ id: milk.id }, { actor: bob });
   expect(answer.allowed).toBe(false);

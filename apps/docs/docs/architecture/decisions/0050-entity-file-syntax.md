@@ -7,6 +7,8 @@ description: "Decision record 0050: the line shape, sections, attributes, relati
 
 Amended by [ADR-0066](./0066-names-and-references-are-atoms.md): a declaration is now `kind :name options`.
 
+Amended by [ADR-0067](./0067-members-imports-input-static-files.md): members are `&name`, entities are imports, actions have one `input` section and files are static. The reference file and rules below use v4; the original decision and quotations remain historical.
+
 ## Status
 
 Accepted. Amends [ADR-0002](./0002-resource-files-are-mx.md) (what the tree contains). Builds on [ADR-0049](./0049-vocabulary-is-meshs-own.md).
@@ -57,6 +59,9 @@ This is the worked reference the user docs and the code follow. It uses every v1
 
 ```mx
 // src/domain/billing/invoice.mesh.mx
+import { Customer } from "./customer.mesh.mx"
+import { InvoiceLine } from "./invoice-line.mesh.mx"
+import { Payment } from "./payment.mesh.mx"
 import { formatMoney, isStaff } from "./invoice.helpers"
 
 entity :Invoice table="invoices"
@@ -75,107 +80,116 @@ entity :Invoice table="invoices"
     timestamp :updatedAt on=:update
 
   relationships
-    belongs-to=:Customer :customer
-    has-many=:InvoiceLine :lines
-    has-one=:Payment :payment
+    belongs-to :customer entity=Customer
+    has-many :lines entity=InvoiceLine
+    has-one :payment entity=Payment
 
   computed
-    boolean :isOverdue({ self }) {
-      return self.status === :sent && self.dueOn < today()
+    boolean :isOverdue() {
+      return &status === :sent && &dueOn < today()
     }
-    string :label({ self }) {
-      return self.number + " · " + formatMoney(self.total)
+    string :label() {
+      return &number + " · " + formatMoney(&total)
     }
     count :lineCount of="lines"
     sum :total of="lines.amount"
 
-  actions auto=[:read, :destroy] on:load=:visible
+  actions auto=[:read, :destroy] on:load=&visible
     always types=[:create, :update]
       validate
         check :dueAfterIssue [
-          that=({ self }) => self.dueOn >= self.issuedOn
+          that=() => &dueOn >= &issuedOn
           code="invalid_dates"
           message="the due date cannot be before the issue date"
         ]
 
-    create :create accept=[:number, :customerId, :amount, :issuedOn, :dueOn, :notes]
+    create :create
+      input
+        &number
+        &customer
+        &amount
+        &issuedOn
+        &dueOn
+        &notes
 
     update :send
       validate
         check :invoiceHasLines [
-          that=({ self }) => self.lineCount > 0
+          that=() => &lineCount > 0
           code="invalid_state"
           message="an invoice needs at least one line"
         ]
       do
         set
-          :status=:sent
+          &status=:sent
 
-    update :pay accept=[:paidAt]
+    update :pay
+      input
+        &paidAt
       validate
         check :invoiceIsSent [
-          that=({ self }) => self.status === :sent
+          that=() => &status === :sent
           code="invalid_state"
           message="only a sent invoice can be paid"
         ]
         check :invoiceHasLines [
-          that=({ self }) => self.lineCount > 0
+          that=() => &lineCount > 0
           code="invalid_state"
           message="an invoice needs at least one line"
         ]
       do
         set
-          :status=:paid
-          :paidById=({ actor }) => actor.id
-        when=({ self }) => self.amount > 10000
+          &status=:paid
+          &paidById=({ actor }) => actor.id
+        when=() => &amount > 10000
           set
-            :needsReview=true
-        load=[:customer]
+            &needsReview=true
+        load=[&customer]
 
     update :applyDiscount
-      arguments
+      input
         decimal :percent min=0 max=100
       do
         set
-          :amount=({ self, input }) => self.amount * (1 - input.percent / 100)
+          &amount=({ input }) => &amount * (1 - input.percent / 100)
 
     read :visible
-      filter=({ self }) => self.status !== :cancelled
+      filter=() => &status !== :cancelled
 
     read :overdue
-      filter=({ self }) => self.isOverdue
+      filter=() => &isOverdue
       sort
-        asc :dueOn
+        asc &dueOn
 
     read :forCustomer
-      arguments
+      input
         uuid :customerId
-      filter=({ self, input }) => self.customerId === input.customerId
+      filter=({ input }) => &customer.id === input.customerId
 
   policies
     policy :staffOrOwnerReads types=[:read]
-      authorize-if=({ self, actor }) => isStaff(actor) || self.customer.userId === actor.id
+      authorize-if=({ actor }) => isStaff(actor) || &customer.userId === actor.id
     policy :staffWrites types=[:create, :update, :destroy]
       authorize-if=({ actor }) => isStaff(actor)
     policy :neverDestroyPaid types=[:destroy]
-      forbid-if=({ self }) => self.status === :paid
+      forbid-if=() => &status === :paid
 ```
 
 ### The rules a reader must know
 
-Written in the amended spelling: `kind :name`, not `kind #name` ([ADR-0066](./0066-names-and-references-are-atoms.md)).
+Written in syntax v4 ([ADR-0067](./0067-members-imports-input-static-files.md)).
 
 1. A declaration is `kind :name options`: the tag says what it is, `:name` names it. Names are unique within their scope.
-2. Sections group declarations: `attributes`, `relationships`, `computed`, `actions`, `policies`; inside an action: `arguments`, `validate`, `do`.
+2. Sections group declarations: `attributes`, `relationships`, `computed`, `actions`, `policies`; inside an action: `input`, `validate`, `do`.
 3. An attribute's type is its tag. Attributes are required unless marked `nullable`. Rules about one field (`min`, `max`, `match`) go on its line, never in a `check`.
-4. A relationship names its destination entity as an atom, the tag's value: `has-many=:InvoiceLine :lines`.
+4. A relationship is `has-many :lines entity=InvoiceLine`, with `InvoiceLine` imported by relative path. Members of this entity are referenced with `&name`; declaration names and fixed-set values remain atoms.
 5. A computed field is either a typed field with a body, or a rollup (`count`, `sum`, `avg`, `min`, `max`) with `of=` a path.
 6. Functions receive `{ self, input, actor, context }`. A function whose body is one expression (an arrow, or a method body that is a single `return`) is translated when Mesh can translate it, and then also runs in SQL; anything else runs in memory. Where SQL is required (a filter, a sort, a policy), an expression that cannot be translated is a build error.
-7. `actions auto=[...]` generates the plain actions of those types, named after the type. Every written action is `type :name`. `on:load=:name` says which read Mesh uses when it loads this entity through a relationship; without it, the auto read.
-8. `validate` runs first, on the record with the accepted input applied, plus `input`: `require=[...]` and `check :label [ that code message ]` for rules across fields or about stored state. `do` runs next, top to bottom: `set` with `:field=value` lines, `when=cond` with nested steps, `load=[...]`, `run(...) { }` for one-off code.
+7. `actions auto=[...]` generates the plain actions of those types, named after the type. Every written action is `type :name`. `on:load=&name` says which read Mesh uses when it loads this entity through a relationship; without it, the auto read.
+8. One `input` section takes declared members (`&number`, `&customer`) or declares typed arguments (`decimal :percent`). Member lines take no options; duplicate input names fail. `validate` runs first, on the record with member inputs applied: `check :label [ that code message ]` covers cross-field or stored-state rules. `do` runs next, top to bottom: `set` with `&field=value` lines, `when=cond` with nested steps, `load=[&customer]`, and `run(...) { }` for plain code.
 9. `always` under `actions` takes an action body and applies it to every action in its scope.
 10. A policy has a scope (`types=`, `actions=`, or neither for all) and checks. A policy passes when none of its `forbid-if` holds and, if it has any `authorize-if`, at least one holds. Every policy covering an action must pass; an action no policy covers is forbidden.
-11. Files end in `.mesh.mx`; one entity per file; the folder under `src/domain/` is the module.
+11. Files end in `.mesh.mx`; one entity per file; the folder under `src/domain/` is the module. Two folders may declare the same entity name: imports distinguish them. Files are static, with no conditionals or loops that change the tree. Conditions are `when=` on a policy or check, or part of an expression.
 
 ### Not in v1
 
