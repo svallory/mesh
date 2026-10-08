@@ -227,7 +227,7 @@ entity :Todo
 | `has-many` | One todo has many comments; the key is on the other entity, and `todo.comments` arrives when loaded |
 | `has-one` | At most one attachment, through that entity's own `belongs-to`; its foreign key is unique |
 
-Add `nullable` to a `belongs-to` when a related row is optional. A caller sets the relationship through `&list` in `input`, sending the list's id. The entity file names the relationship, never its generated key column; [Calling actions](./calling-actions.md#relationship-input-and-record-fields) explains the TypeScript surface.
+Add `nullable` to a `belongs-to` when a related row is optional. A caller sets the relationship through `&list` in `input`, sending the list's id. The entity file names the relationship, never its generated key column; [Using your domain](./using-your-domain.md#relationship-input-and-record-fields) explains the TypeScript surface.
 
 The other side is not automatic. The list knows nothing about its todos until `list.mesh.mx` imports `Todo` and declares `has-many :todos entity=Todo`.
 
@@ -374,7 +374,7 @@ entity :Invoice
         }
 ```
 
-A `run` body may call anything, including logging or messaging code. The pure-helper rule applies to translated expressions, not `run`. Reach for it only when the work is not a field assignment. A `run`, or an untranslatable check, `when` or `set` expression, makes the action read first and write second. [Calling actions](./calling-actions.md#update) explains one statement versus two.
+A `run` body may call anything, including logging or messaging code. The pure-helper rule applies to translated expressions, not `run`. Reach for it only when the work is not a field assignment. A `run`, or an untranslatable check, `when` or `set` expression, makes the action read first and write second. [Using your domain](./using-your-domain.md#update) explains one statement versus two.
 
 ### Reads: filter and sort
 
@@ -404,7 +404,7 @@ entity :Invoice
 
 `filter=` returns a boolean and must translate to SQL. The caller's filter and the policies narrow it further. `&customer.id` compares the related record's id without a join.
 
-`sort` has one line per field, in order: `asc &dueOn` for oldest first, `desc &insertedAt` for newest first. A sort key may be a translatable computed field. The caller uses strings instead: `sort: ["dueOn", "-insertedAt"]`. Paging belongs to the caller's `limit` and `offset`. See [Calling actions](./calling-actions.md#filters-sort-and-paging).
+`sort` has one line per field, in order: `asc &dueOn` for oldest first, `desc &insertedAt` for newest first. A sort key may be a translatable computed field. The caller uses strings instead: `sort: ["dueOn", "-insertedAt"]`. Paging belongs to the caller's `limit` and `offset`. See [Using your domain](./using-your-domain.md#filters-sort-and-paging).
 
 ### always
 
@@ -432,7 +432,7 @@ When a check reads the stored row, Mesh folds it into the statement's filter. A 
 ## Building one
 
 ```bash
-bunx mesh build
+mesh build
 ```
 
 The build rejects unknown declarations, options and members, a member input with options, duplicate input names, two entities in one file, a check without `that`, an `on:load` that does not name a read, an expression that cannot run in SQL where it must, and a capability the adapter does not declare. Each diagnostic names the file, line and column:
@@ -441,7 +441,7 @@ The build rejects unknown declarations, options and members, a member input with
 src/domain/todo/todo.mesh.mx:22:9 error &titel is not a member of :Todo. Did you mean &title?
 ```
 
-Run `mesh inspect Todo` to see the declarations with source positions, and `mesh explain Todo complete` to see the action's plan. Both are in [the command line](./configuration.md).
+Run `mesh inspect Todo` to see the declarations with source positions, and `mesh explain Todo complete` to see the action's plan. Both are in [Command line](./command-line.md).
 
 ## What `self` holds
 
@@ -600,5 +600,6 @@ Six things to notice:
 
 ## Next
 
-- [Calling actions](./calling-actions.md) — what the generated functions take and return.
-- [Configuration and the command line](./configuration.md) — configuration and every command.
+- [Using your domain](./using-your-domain.md) — what the generated functions take and return.
+- [Configuration](./configuration.md) — the project, adapters and extensions.
+- [Command line](./command-line.md) — every `mesh` command.

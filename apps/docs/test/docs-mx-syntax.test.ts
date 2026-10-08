@@ -13,7 +13,7 @@ const docs = new URL("../docs/docs/", import.meta.url).pathname;
 test("every Docs and ADR-0050 MX sample is a syntax v4 entity file that parses", () => {
   const checked = checkDocsSyntaxV4(docs);
   expect(checked.errors).toEqual([]);
-  expect(checked.checked).toBe(17);
+  expect(checked.checked).toBe(15);
 });
 
 test("ADR-0050's Invoice equals Entities' larger example, apart from its path comment", () => {

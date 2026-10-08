@@ -78,7 +78,7 @@ Adapted from [research synthesis](../research/synthesis.md) (section 14) and the
 
 | Ring | Test | Packages ([roadmap](../roadmap/roadmap.md), section 3) |
 |---|---|---|
-| Core | Mesh cannot run without it | `@meshfw/model`, `@meshfw/compiler`, `@meshfw/cli` (build time); `@meshfw/runtime` (run time); the MX host `mesh` |
+| Core | Mesh cannot run without it | `@meshfw/model`, `@meshfw/compiler`, `meshfw` (CLI, build time); `@meshfw/runtime` (run time); the MX host `mesh` |
 | Adapter | One replaceable implementation of a contract core owns | `@meshfw/data-drizzle`, `@meshfw/data-sqlite`, `@meshfw/data-postgres` |
 | Extension | Optional feature built on core's declared extension points | none first-party in v1; project-local extensions in `src/extensions/` |
 

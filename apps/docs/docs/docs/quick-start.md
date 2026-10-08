@@ -1,6 +1,6 @@
 ---
 title: "Quick start"
-description: "Install Bun, create a project, write four small files, build them, and call an action."
+description: "Check the requirements, create a project, build it and call your first action."
 ---
 
 # Quick start
@@ -9,205 +9,65 @@ description: "Install Bun, create a project, write four small files, build them,
 Mesh is not released yet. These pages describe Mesh 1.0.
 :::
 
-One command to create a project, four small files to write, one command to build, one to run. This page assumes nothing. If you already know what an entity file is, read [the tutorial](./tutorial.md) instead.
+Create a runnable project, then call one action. You do not need to write an entity file to check that your setup works.
 
-## Install Bun
+## Requirements
 
-Mesh runs on [Bun](https://bun.sh) and on nothing else. `bun`, `bunx`, `bun run` and `bun test` below are Bun's own commands: `bunx` runs a command from a package you depend on, so `bunx mesh build` is this project's `mesh build`.
+- **Bun 1.3.14 or later** — [install Bun](https://bun.sh/docs/installation). Mesh runs on Bun, not Node.js; use Bun for package commands.
+- **Git 2.x** — [install Git](https://git-scm.com/downloads), to track your domain and the code Mesh builds from it.
+- **An editor**, such as the current stable version of [Visual Studio Code](https://code.visualstudio.com/download). Any editor that can edit TypeScript and text files works.
 
-```bash
-curl -fsSL https://bun.sh/install | bash
+::: callout tip "Let an agent check"
+Copy this prompt into your coding agent:
+
+```text
+Check this machine for Bun 1.3.14 or later, Git 2.x,
+and an editor (the current stable Visual Studio Code is fine).
+Verify each installed version and that each tool opens or runs.
+Install or update anything missing or too old, asking before changes.
+Report each tool's version, what you changed and any remaining problem.
 ```
+:::
 
-Check it:
-
-```bash
-bun --version
-```
-
-Use `bun` for every package command in a Mesh project. `npm` and `yarn` are not supported.
-
-## Create the project
+## Install
 
 ```bash
-bun create meshfw todo-app
+bun create mesh todo-app
 cd todo-app
 ```
 
-**Choose SQLite when the starter asks which database you want.** Every sample here, the whole tutorial and every test are SQLite; the adapter is one line of configuration ([Configuration](./configuration.md)), and nothing else about the project changes if you pick Postgres later.
+Choose **SQLite** when asked. The `create-mesh` starter installs the dependencies, including the `meshfw` package that provides the `mesh` command. It creates a minimal runnable app: one `List` entity in `src/domain/todo/list.mesh.mx`, `mesh.config.ts`, `src/context.ts` with a demo actor named `alice`, and `src/demo.ts`. Its `bun run demo` script calls `createList` and prints the record. The `#mesh` import is already configured.
 
-The starter installs the packages and writes a project that already builds. It comes with a configuration file, one entity file, one script that calls an action, and a `package.json` with this entry:
+For an existing project, install the CLI with `bun add -d meshfw`; [Configuration](./configuration.md#dependencies) lists the runtime and adapter dependencies. The commands below use `mesh`: `bunx mesh build` runs the project's own copy without a global install, and `bun add -g meshfw` gives you a global `mesh`.
 
-```json
-"imports": { "#mesh": "./.mesh/index.ts" }
-```
-
-That entry is how your code reaches generated code. You always import `#mesh`, never a path into `.mesh`.
-
-## Replace the entity files
-
-Write these two files in `src/domain/todo/`, and delete anything else in that folder. `list.mesh.mx` is the list a todo belongs to; `todo.mesh.mx` is the same file the [tutorial](./tutorial.md) and the [Introduction](./index.md) use.
-
-```mx "src/domain/todo/list.mesh.mx"
-entity :List table="lists"
-  attributes
-    uuid :id primary-key
-    string :name
-    uuid :ownerId
-    timestamp :insertedAt on=:create
-
-  actions auto=[:read, :destroy]
-    create :create
-      input
-        &name
-      do
-        set
-          &ownerId=({ actor }) => actor.id
-
-  policies
-    policy :anyoneCreates types=[:create]
-      authorize-if=() => true
-    policy :ownerOnly types=[:read, :destroy]
-      authorize-if=({ actor }) => &ownerId === actor.id
-```
-
-```mx "src/domain/todo/todo.mesh.mx"
-import { List } from "./list.mesh.mx"
-
-entity :Todo table="todos"
-  attributes
-    uuid :id primary-key
-    string :title min=1
-    boolean :done default=false
-    timestamp :insertedAt on=:create
-    timestamp :updatedAt on=:update
-
-  relationships
-    belongs-to :list entity=List
-
-  computed
-    string :label() {
-      return (&done ? "[x] " : "[ ] ") + &title
-    }
-
-  actions auto=[:read, :destroy]
-    create :create
-      input
-        &title
-        &list
-
-    update :complete
-      validate
-        check :notDoneYet [
-          that=() => !&done
-          code="already_done"
-          message="this todo is already complete"
-        ]
-      do
-        set
-          &done=true
-
-    update :rename
-      input
-        &title
-
-    read :pending
-      filter=() => &done === false
-      sort
-        asc &insertedAt
-
-  policies
-    policy :owner types=[:create, :read, :update, :destroy]
-      authorize-if=({ actor }) => &list.ownerId === actor.id
-```
-
-Five things to note, because every page here depends on them:
-
-- The files end in `.mesh.mx`, and they are written in MX syntax: indentation nests, and a line is `kind :name options`.
-- `entity :Todo` names the entity and `table="todos"` names the table. `:name` is an **atom**, the way this language spells a name; `table="todos"` is a string, because a table name is text. `&title` refers to a member of this entity; the imported `List` names another entity. [Names and references](./entities.md#names-and-references) has the whole idea in one table.
-- `min=1` on `title` is the whole rule "a todo needs a title". A rule about one field goes on that field's line; `check :notDoneYet` is there because it is about the state the row is in.
-- `input` lists `&title` and `&list`: the title and the related list's id. `&list` refers to `belongs-to :list entity=List`. `done` is not in the input, so a caller cannot create a todo that is already done.
-- The `policies` section is what allows anything. An action nobody has a policy for is forbidden, so a new action needs a policy before it works.
-
-## Build it
+## Run it
 
 ```bash
-bunx mesh build
-bunx mesh db push
+mesh build
+mesh db push
+bun run demo
 ```
 
-`mesh build` reads the entity files, checks them, and writes the TypeScript you call: types, handlers, input validators, the database schema, and the file your `imports` entry points at. It reports any problem with the file, the line and the column.
+The build writes the functions you call. The schema push creates the table in `todo.db`; use it only for development. The demo connects, creates a list as Alice and disconnects. Expect a record like this; its id and timestamp change on each run:
 
-`mesh db push` creates the two tables and the SQLite file `todo.db` beside it, which is where the data goes from then on. The file comes from `mesh.config.ts`, which the starter wrote for you:
-
-```ts "mesh.config.ts"
-import { defineConfig } from "@meshfw/cli";
-import { sqlite } from "@meshfw/data-sqlite";
-
-export default defineConfig({
-  domain: "src/domain",
-  output: ".mesh",
-  data: sqlite({ file: "todo.db" }),
-});
-```
-
-In development pushing is the quick path; for anything you keep, use migrations ([the command line](./configuration.md#migrations)).
-
-## Call an action
-
-Replace `src/context.ts` with this. It declares the type of every action's second argument, once, for the whole program, and exports one actor to call as:
-
-```ts "src/context.ts"
-import "@meshfw/runtime";
-
-declare module "@meshfw/runtime" {
-  interface ActionContext {
-    actor: { id: string };
-  }
+```text
+{
+  id: "8a3f5c10-0000-4000-8000-000000000001",
+  name: "Groceries",
+  ownerId: "00000000-0000-4000-8000-000000000001",
+  insertedAt: 2026-10-04T09:12:31.004Z
 }
-
-export const alice = { id: "00000000-0000-4000-8000-000000000001" };
 ```
 
-Then save this as `src/main.ts`:
+## Use your domain
 
-```ts "src/main.ts"
-import { connect, disconnect, createList, createTodo, pendingTodo } from "#mesh";
+Import a function from `#mesh` and pass its input and the caller's context:
+```ts "src/demo.ts"
+import { connect, createList, disconnect } from "#mesh";
 import { alice } from "./context";
-
 await connect();
-
-const list = await createList({ name: "Groceries" }, { actor: alice });
-const todo = await createTodo({ title: "Buy milk", list: list.id }, { actor: alice });
-console.log(todo.id, todo.title, todo.done, todo.insertedAt);
-
-for (const row of await pendingTodo({}, { actor: alice })) {
-  console.log(row.title);
-}
-
-await disconnect();
+try {
+  console.log(await createList({ name: "Groceries" }, { actor: alice }));
+} finally { await disconnect(); }
 ```
-
-Run it:
-
-```bash
-bun run src/main.ts
-```
-
-```
-8a3f5c10-0000-4000-8000-000000000001 Buy milk false 2026-10-04T09:12:31.004Z
-Buy milk
-```
-
-Two arguments, always: the input, and the action context. The context says who is calling. It is a plain argument on every call, never something hidden in a global, which is what makes "run this as somebody else" one line in a test.
-
-## What you just avoided
-
-The todo you just created has a table with a primary key, a boolean with a default and two timestamps; a TypeScript type; an input validator that rejects an unknown field and a title of no length; a rule about the state of the row, carrying the message you wrote; an authorization check on every call; and a `git diff` you can review. None of that was hand-written.
-
-## Next
-
-- [Tutorial: a todo list](./tutorial.md) — the same two entities with everything switched on.
-- [Entities](./entities.md) — every declaration in the files above, and the ones you will add.
-- [Calling actions](./calling-actions.md) — filters, paging, `load` and the error classes.
-- [Project structure](./project-structure.md) — what the starter wrote and what you commit.
+Continue with the [Tutorial](./tutorial.md) to add todos, or [Using your domain](./using-your-domain.md) to call actions from your own program.

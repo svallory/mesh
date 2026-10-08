@@ -9,7 +9,7 @@ description: "Where entity files, generated code, configuration, extensions and 
 Mesh is not released yet. These pages describe Mesh 1.0.
 :::
 
-Mesh does not own your project. It reads the entity files you write and writes the code you call; everything else is yours. This page is the layout the starter creates, what each part is for, and what belongs in version control.
+Mesh does not own your project. It reads the entity files you write and writes the code you call; everything else is yours. This page shows how a project grows beyond the starter, what each part is for, and what belongs in version control. The starter has one List entity, `src/context.ts` and `src/demo.ts`; the [tutorial](./tutorial.md) adds Todo, `src/main.ts` and a test.
 
 ```text
 todo-app/
@@ -32,7 +32,7 @@ todo-app/
     todo.test.ts          tests, which bind their own database
 ```
 
-Mesh prescribes nothing under `src/`. `context.ts` and `main.ts` are the starter's names and are only convention; what matters is that the domain folder is where the `.mesh.mx` files are.
+Mesh prescribes nothing under `src/`. `context.ts`, the starter's `demo.ts` and the tutorial's `main.ts` are only convention; what matters is that the domain folder is where the `.mesh.mx` files are.
 
 ## The domain
 
@@ -46,7 +46,7 @@ A hand-written helper next to the entity that uses it is the ordinary way to kee
 
 ## Generated code
 
-`.mesh/` is written by `mesh build` and committed. You import it, and you never edit it: the guard in [the command line](./configuration.md#the-guard) fails the build if a file in it differs from what the build would write.
+`.mesh/` is written by `mesh build` and committed. You import it, and you never edit it: the guard in [the command line](./command-line.md#the-guard) fails the build if a file in it differs from what the build would write.
 
 One entry point, in `package.json`:
 
@@ -81,7 +81,7 @@ Entity references are scoped to the importing file, not a project-wide index of 
 
 ## Configuration
 
-`mesh.config.ts` at the project root names the data adapter, the folder holding your entity files, the output folder and the enabled extensions. [Configuration and the command line](./configuration.md) has it in full.
+`mesh.config.ts` at the project root names the data adapter, the folder holding your entity files, the output folder and the enabled extensions. [Configuration](./configuration.md) has it in full.
 
 ## Migrations
 
@@ -97,7 +97,7 @@ First-party extensions are installed from npm and enabled by name in `mesh.confi
 
 Everything else under `src/` is yours, and Mesh never reads it. In the tutorial:
 
-- `src/context.ts` declares the action context's type, so every action's second argument is typed as whatever your application says it is. See [Calling actions](./calling-actions.md#the-action-context).
+- `src/context.ts` declares the action context's type, so every action's second argument is typed as whatever your application says it is. See [Using your domain](./using-your-domain.md#the-action-context).
 - `src/main.ts` is the program: connect, call actions, disconnect.
 
 ## What to commit
@@ -118,6 +118,7 @@ Everything else under `src/` is yours, and Mesh never reads it. In the tutorial:
 
 ## Next
 
-- [Configuration and the command line](./configuration.md) — `mesh.config.ts` and every command.
+- [Configuration](./configuration.md) — `mesh.config.ts`, the context and adapters.
+- [Command line](./command-line.md) — every `mesh` command.
 - [Testing](./testing.md) — where a test's files go.
 - [Customising generated code](./customising-generated-code.md) — a proposal for changing what the generators emit.

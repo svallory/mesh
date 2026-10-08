@@ -199,6 +199,12 @@ export function renderMxFigure(source, file) {
 }
 
 export const figureStyles = `<style>
+/* Site identity uses the page's text colour, not the theme's link accent. */
+.sidebar-header h1 a{color:var(--text-color,inherit)}
+/* docmd's flex heading splits text around code into separate columns. Keep
+   inline code in the normal text flow, not a code-block-sized badge. */
+.docmd-heading:is(h1,h2,h3,h4):has(code){display:block}
+:is(h1,h2,h3,h4) code{display:inline;font-size:.85em;font-weight:inherit;line-height:inherit;padding:.05em .15em;background:none;border:0;border-radius:0;white-space:normal;overflow-wrap:anywhere}
 .mx-figure-wrap{--mx-accent:var(--link-color,#068ad5);--mx-gutter:3.4em}
 .mx-figure{position:relative;margin:2rem 0}
 .mx-figure .mx-stage{display:grid}
@@ -373,8 +379,24 @@ export function installMxFigure(md, render = renderMxFigure) {
   };
 }
 
+// docmd 0.9.7 renders Markdown in authored headings and TOC entries, but copies
+// frontmatter/navigation titles as escaped plain text in its chrome. Strip paired
+// code delimiters only from those known text-only labels; never decode entities,
+// touch attributes/URLs, or rewrite authored code elements and fences.
+export function cleanTitleLabels(html) {
+  const plain = (text) => text.replace(/`([^`\n]+)`/g, '$1');
+  return html
+    .replace(/(<(?:span|h1|a)\b[^<>]*\bclass="(?:[^"<>]* )?(?:nav-item-title|header-title|docmd-focus-title|toc-link)(?: [^"<>]*)?"[^<>]*>)([^<>]*)(<\/(?:span|h1|a)>)/g,
+      (_match, open, text, close) => open + plain(text) + close)
+    .replace(/(<title>)([^<>]*)(<\/title>)/g,
+      (_match, open, text, close) => open + plain(text) + close)
+    .replace(/(<li\b[^<>]*class="breadcrumb-item active"[^<>]*>\s*<span>)([^<>]*)(<\/span>)/g,
+      (_match, open, text, close) => open + plain(text) + close);
+}
+
 export default {
-  plugin: { name: 'mesh-mx-figure', version: '1.0.0', capabilities: ['markdown', 'head'] },
+  plugin: { name: 'mesh-mx-figure', version: '1.0.0', capabilities: ['markdown', 'head', 'build'] },
   markdownSetup: (md) => installMxFigure(md),
   generateMetaTags: () => figureStyles + figureScript + noScriptStyles,
+  onPageReady: (page) => { page.html = cleanTitleLabels(page.html); },
 };

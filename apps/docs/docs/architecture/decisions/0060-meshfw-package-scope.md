@@ -9,6 +9,8 @@ description: "Decision record 0060: the npm scope, the package names and the com
 
 Accepted. Supersedes [ADR-0040](./0040-package-and-command-names.md).
 
+**Amended 2026-10-09, docs structural review:** the CLI is the unscoped package **`meshfw`**, installed with `bun add -d meshfw`, and its binary is **`mesh`**. `defineConfig` is imported from `meshfw`. The starter is **`create-mesh`**, invoked as `bun create mesh todo-app`; the remaining framework packages stay under `@meshfw/*`. This replaces the earlier CLI name in the historical ruling below. The operator still needs to register `meshfw` and `create-mesh` on npm. See the [docs review ruling](./rulings-2026-10-04.md#docs-review-notes-operator-2026-10-09-0135-and-the-leads-rulings-for-the-docs-structure-round).
+
 ## Date
 
 2026-10-04
@@ -27,7 +29,7 @@ Operator, 2026-10-04 evening, [rulings of 2026-10-04](./rulings-2026-10-04.md), 
 
 > `meshfw`, at least for now (`mesh` is taken on npm). Packages are `@meshfw/*` (`@meshfw/cli`, `@meshfw/runtime`, ...); the product is still called Mesh and the binary `mesh`. Registered by the operator on 2026-10-04.
 
-The v1 packages are `@meshfw/model`, `@meshfw/compiler`, `@meshfw/runtime`, `@meshfw/cli`, `@meshfw/data-drizzle`, `@meshfw/data-sqlite` and `@meshfw/data-postgres`, plus the MX host package `mesh` ([ADR-0051](./0051-mesh-mx-files-and-the-mesh-host.md)), whose name MX fixes. There is no `@meshfw/ext-policies`: policies are core ([ADR-0055](./0055-policies-are-core.md)).
+The v1 packages are `@meshfw/model`, `@meshfw/compiler`, `@meshfw/runtime`, `meshfw` (CLI), `create-mesh` (starter), `@meshfw/data-drizzle`, `@meshfw/data-sqlite` and `@meshfw/data-postgres`, plus the MX host package `mesh` ([ADR-0051](./0051-mesh-mx-files-and-the-mesh-host.md)), whose name MX fixes. There is no `@meshfw/ext-policies`: policies are core ([ADR-0055](./0055-policies-are-core.md)).
 
 ## Options considered
 
@@ -57,4 +59,5 @@ Only Option A can be published. The mismatch between scope and product name is c
 
 ## Action items
 
-- [ ] Realignment task: rename every workspace package, import and import rule.
+- [ ] Operator: register the unscoped `meshfw` and `create-mesh` packages on npm.
+- [ ] Realignment task: rename every workspace package, import and import rule, including the CLI exception.

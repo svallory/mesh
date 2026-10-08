@@ -18,7 +18,7 @@ This page is about the way out short of forking Mesh.
 ## The command
 
 ```bash
-bunx mesh export generators
+mesh export generators
 ```
 
 It copies the generator templates into your project:
