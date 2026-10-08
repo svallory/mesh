@@ -61,6 +61,36 @@ export function withV4InputLines(source) {
 }
 
 /**
+ * MESH_V4_MEMBER_RENDER — Mesh-only colour overlay after MX's captures, removed
+ * by mesh-syntax-highlighting-route (MX decision 182 addendum 1). This bounded
+ * lexer borrows the operand/line-trigger cases from normaliseV4, not test code.
+ * Literal text (including templates), regexes and comments are opaque. A member
+ * starts an operand or a bare/sort line; infix & and && are never members.
+ * Offsets refer to authored text; neither the grammar nor source is changed.
+ */
+export function memberSpans(source) {
+  const tokens = /\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\/(?:\\.|\[(?:\\.|[^\]\\])*\]|[^/\n\\[])+\/[a-z]*|&[A-Za-z_]\w*|[A-Za-z_$][\w$]*|\d+(?:\.\d+)?|===|!==|=>|&&|\|\||==|!=|<=|>=|\S/g;
+  const spans = [];
+  let previous = '';
+  for (let match; (match = tokens.exec(source));) {
+    let token = match[0];
+    if (token.startsWith('//') || token.startsWith('/*')) continue;
+    const operand = previous === '' || /^(?:return|throw|typeof|void|delete|yield|await)$/.test(previous) ||
+      /^(?:=>|&&|\|\||===|!==|==|!=|<=|>=|[=([{,:?!+*/%<>|&^~-])$/.test(previous);
+    // A slash after a value is division, not the start of a regex literal.
+    if (token.startsWith('/') && token.length > 1 && !operand) {
+      token = '/';
+      tokens.lastIndex = match.index + 1;
+    }
+    const prefix = source.slice(source.lastIndexOf('\n', match.index - 1) + 1, match.index);
+    const lineReference = /^[\t ]*(?:(?:asc|desc)[\t ]+)?$/.test(prefix);
+    if (/^&\w/.test(token) && (lineReference || operand)) spans.push([match.index, match.index + token.length]);
+    previous = token;
+  }
+  return spans;
+}
+
+/**
  * What is wrong with `source`, as build-problem messages, or `[]` when the
  * grammar read all of it.
  *
@@ -150,12 +180,13 @@ export function mxHighlighter(source, file) {
   if (problems.length > 0) throw new Error(problems.join('\n'));
   const standIn = withV4InputLines(source);
   const classes = classesOf(standIn);
-  // Bare member names have no semantic colour until MX supplies the route.
-  // The stand-in must never lend them the colour of an ordinary tag.
+  // The stand-in must never lend a member the colour of an ordinary tag.
   for (const match of source.matchAll(/^[\t ]+(&[A-Za-z_]\w*)[\t ]*$/gm)) {
     const start = match.index + match[0].indexOf('&');
     if (standIn[start] === '_') classes.fill(null, start, start + match[1].length);
   }
+  // Render-time overlay, shared by ordinary fences and both figure renderers.
+  for (const [start, end] of memberSpans(source)) classes.fill('ts-member', start, end);
   return (start, end) => {
     let html = '';
     let at = start;
@@ -188,6 +219,8 @@ export function mxHighlighter(source, file) {
  * which is what the other blocks use for a plain word.
  */
 const PALETTE = {
+  // Mesh render-only capture: rose, distinct from blue names and cyan atoms.
+  member: ['#b42350', '#f08ca8'],
   // MX syntax.
   tag: ['#a626a4', '#c678dd'], //        a tag name, like hljs-keyword
   keyword: ['#a626a4', '#c678dd'], //    `return`, `static`
@@ -247,7 +280,7 @@ export function unstyledCaptureNames() {
   return captureNames.filter((name) => !Object.hasOwn(PALETTE, name) && !UNSTYLED.includes(name));
 }
 
-const COLOURED = captureNames.filter((name) => Object.hasOwn(PALETTE, name) && PALETTE[name]);
+const COLOURED = [...captureNames, 'member'].filter((name) => Object.hasOwn(PALETTE, name) && PALETTE[name]);
 
 /**
  * The whole stylesheet: one rule per capture in the light theme, one in the
