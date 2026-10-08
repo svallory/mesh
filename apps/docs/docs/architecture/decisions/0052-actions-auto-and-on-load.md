@@ -7,7 +7,7 @@ description: "Decision record 0052: action declarations, `auto` in place of `def
 
 ## Status
 
-Accepted
+Accepted. Amended by [ADR-0067](./0067-members-imports-input-static-files.md): one `input` section replaces `accept` and `arguments`; `on:load` takes a member reference.
 
 ## Date
 

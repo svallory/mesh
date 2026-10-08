@@ -40,10 +40,12 @@ test('home highlights and the relationship carries the generated-key hover note'
   expect(mxParseProblems(fences[0], 'docs/index.md')).toEqual([]);
   expect(highlightMx(fences[0])).toContain('<span class="ts-tag">entity</span>');
   const html = renderMxFlow(fences[0], 'docs/index.md');
-  expect(html).toContain('title="Creates the listId column. &amp;list in input is how the caller sets it."');
+  const note = 'title="Creates the listId column. &amp;list in input is how the caller sets it."';
+  expect(html.split(note).length - 1).toBe(1);
   expect(html).toContain('tabindex="0"');
   expect(page).toContain('listId: string');
   expect(page).toContain('list: List["id"]');
+  expect(page).toContain('insertedAt: Date');
 });
 
 test('home line count and the planted typo position match its file', () => {

@@ -142,10 +142,13 @@ interface DocsBlock {
   closed: boolean;
 }
 
-/** Every ```mx and ```mx-figure fence on the Docs pages, in page and file order. */
+/** Docs fences plus ADR-0050's current reference, not historical ADR/fixture syntax. */
 function docsMxBlocks(dir: string): DocsBlock[] {
   const blocks: DocsBlock[] = [];
-  for (const name of readdirSync(dir).filter((entry) => entry.endsWith(".md")).sort()) {
+  const pages = readdirSync(dir).filter((entry) => entry.endsWith(".md")).sort();
+  const reference = "../architecture/decisions/0050-entity-file-syntax.md";
+  if (existsSync(join(dir, reference))) pages.push(reference);
+  for (const name of pages) {
     const lines = readFileSync(join(dir, name), "utf8").split(/\r?\n/);
     for (let i = 0; i < lines.length; i++) {
       const opening = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(lines[i]!);
@@ -174,7 +177,8 @@ function docsMxBlocks(dir: string): DocsBlock[] {
  * entity is imported. The pinned parser predates MX's syntax table, so one
  * normalisation below adapts only those spellings before a real, static parse.
  * Contracts still know the resource vocabulary: that parse alone is deferred,
- * counted and printed. Name resolution and Mesh semantics await realignment.
+ * counted and printed. The bounded text guard checks local member names and
+ * positions; full type/contract semantics and cross-file resolution await realignment.
  */
 export const DOCS_SYNTAX = "syntax v4";
 
@@ -239,9 +243,6 @@ export function oldSpellingInV4(block: string): string | null {
     if (/^(?:asc|desc)\s+:|^:\w+\s*=|\b(?:load|actions|fields)\s*=\s*\[[^\]]*:\w|\bon:load\s*=\s*:/.test(text)) {
       return `line ${index + 1}: a member reference is \`&name\`, not an atom (${text})`;
     }
-    if (/^&\w+\s+\S/.test(text)) {
-      return `line ${index + 1}: an input member takes no options; rules belong on its declaration (${text})`;
-    }
     // A read's order is a `sort` section with `asc`/`desc` lines (ADR-0066).
     if (/(?:^|[\s])sort=/.test(text)) {
       return `line ${index + 1}: a read's order is a \`sort\` section with \`asc &field\` and \`desc &field\` lines, not a \`sort=\` option (${text})`;
@@ -257,6 +258,96 @@ export function oldSpellingInV4(block: string): string | null {
     }
     const oldName = /^[a-z][a-z0-9-]*\s+#(\w+)/.exec(text);
     if (oldName) return `line ${index + 1}: a declaration is \`kind :name options\`; \`#${oldName[1]}\` is the old spelling (${text})`;
+  }
+  return invalidMembersInV4(block);
+}
+
+// A bounded text guard for the documented fence shapes, not another MX parser.
+// Strings/comments/regexes are blanked with rows and columns intact. The real
+// strict parse below still owns grammar; contracts will own full semantics after
+// realignment. Keep operand detection shared with the temporary spelling bridge.
+const V4_TOKENS = /\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\/(?:\\.|[^/\n\\])+\/[a-z]*|&[A-Za-z_]\w*|[A-Za-z_$][\w$]*|\d+(?:\.\d+)?|===|!==|=>|&&|\|\||==|!=|<=|>=|\S/g;
+const v4Operand = (previous: string) => previous === "" || /^(?:return|throw|typeof|void|delete|yield|await)$/.test(previous) ||
+  /^(?:=>|&&|\|\||===|!==|==|!=|<=|>=|[=([{,:?!+*/%<>|&^~-])$/.test(previous);
+const v4LineReference = (prefix: string) => /^[\t ]*$/.test(prefix) || /^[\t ]*(?:asc|desc)[\t ]+$/.test(prefix);
+const V4_MEMBER_SECTIONS = new Set(["attributes", "relationships", "computed", "actions", "policies"]);
+
+function invalidMembersInV4(source: string): string | null {
+  const masked = source.replace(V4_TOKENS, (token) => /^["'`/]/.test(token)
+    ? token.replace(/[^\r\n]/g, " ") : token);
+  const members = new Set<string>();
+  const imports = new Set<string>();
+  const uses: { name: string; line: number; imported: boolean }[] = [];
+  const parents: { indent: number; kind: string; self: boolean }[] = [];
+  let previous = "";
+  for (const [index, line] of masked.split("\n").entries()) {
+    const text = line.trim();
+    if (!text) continue;
+    const at = index + 1;
+    const indent = line.length - line.trimStart().length;
+    while (parents.length && parents[parents.length - 1]!.indent >= indent) parents.pop();
+    const parent = parents[parents.length - 1];
+    const kind = /^([a-z][\w-]*)\b/.exec(text)?.[1] ?? "";
+    const declaration = /^[a-z][\w-]*\s+:(\w+)/.exec(text);
+    if (declaration && (V4_MEMBER_SECTIONS.has(parent?.kind ?? "") ||
+      (kind === "check" && parents.some((entry) => entry.kind === "validate")))) members.add(declaration[1]!);
+    const namedImport = /^import\s*\{([^}]+)\}/.exec(text);
+    if (namedImport) for (const entry of namedImport[1]!.split(",")) {
+      const local = /^\s*\w+(?:\s+as\s+(\w+))?\s*$/.exec(entry);
+      if (local) imports.add(local[1] ?? entry.trim());
+    }
+    for (const match of text.matchAll(/\bentity\s*=\s*([A-Za-z_]\w*)/g)) {
+      uses.push({ name: match[1]!, line: at, imported: true });
+    }
+    const bare = /^&(\w+)(.*)$/.exec(text);
+    if (bare) {
+      if (parent?.kind !== "input" && parent?.kind !== "set") return `line ${at}: a member line must sit directly under input or set`;
+      const tail = bare[2]!.trim();
+      if (parent.kind === "input" && tail) return `line ${at}: an input member takes no options or assignment`;
+      if (parent.kind === "set" && tail && !tail.startsWith("=")) return `line ${at}: a set member takes only an assignment`;
+    }
+    if (/^(?:asc|desc)\s+&/.test(text) && parent?.kind !== "sort") return `line ${at}: asc/desc member lines must sit directly under sort`;
+
+    // One-line parameter lists and indented method/arrow bodies are the docs'
+    // shapes. Delimiter depth bounds inline bodies too, so a nested arrow's self
+    // cannot license a read after that arrow has ended. This only tracks scope;
+    // the real parser still validates the syntax and delimiter kinds.
+    const functions = [...line.matchAll(/\(([^()]*)\)\s*(?:=>|\{)|\b[A-Za-z_$]\w*\s*=>/g)].map((match) => {
+      const parameters = match[1] ?? "";
+      const self = /^\s*\{[\s\S]*\}\s*$/.test(parameters) &&
+        /(?:^|,)\s*self\s*(?:,|$|=)/.test(parameters.trim().slice(1, -1));
+      const block = match[0].endsWith("{");
+      let depth = block ? 1 : 0;
+      let end = match.index! + match[0].length;
+      for (; end < line.length; end++) {
+        const char = line[end]!;
+        if ("([{".includes(char)) depth++;
+        else if (")]}".includes(char)) {
+          if (depth === 0 || (--depth === 0 && block)) break;
+        } else if (depth === 0 && ",;".includes(char)) break;
+      }
+      return { start: match.index!, end, self };
+    });
+    for (const read of line.matchAll(/\bself\s*(?:\?\.|\.)/g)) {
+      const fn = functions.filter((entry) => entry.start < read.index! && read.index! < entry.end).at(-1);
+      if (!(fn ? fn.self : parent?.self)) return `line ${at}: self. requires self destructured in this function's parameters; prefer &name`;
+    }
+    for (const token of line.matchAll(V4_TOKENS)) {
+      if (/^&\w/.test(token[0]) && (v4LineReference(line.slice(0, token.index)) || v4Operand(previous))) {
+        uses.push({ name: token[0].slice(1), line: at, imported: false });
+      }
+      previous = token[0];
+    }
+    const fn = functions.filter((entry) => entry.end === line.length).at(-1);
+    parents.push({ indent, kind, self: fn ? fn.self : parent?.self ?? false });
+  }
+  // Resolve after collecting the fence: forward member declarations are legal.
+  for (const use of uses) {
+    if (use.imported ? !imports.has(use.name) : !members.has(use.name)) {
+      return use.imported
+        ? `line ${use.line}: entity=${use.name} must name an import in this fence`
+        : `line ${use.line}: &${use.name} is not a declared member of this entity`;
+    }
   }
   return null;
 }
@@ -280,14 +371,12 @@ export function normaliseV4(source: string): string {
   // must never be rewritten. The core's after-kind reference positions are sort
   // directions; `return &x` is an operand, not a declaration named :x.
   const lines = uncommented;
-  const tokens = /\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\/(?:\\.|[^/\n\\])+\/[a-z]*|&[A-Za-z_]\w*|[A-Za-z_$][\w$]*|\d+(?:\.\d+)?|===|!==|=>|&&|\|\||==|!=|<=|>=|\S/g;
   let previous = "";
-  return lines.replace(tokens, (token, offset: number) => {
+  return lines.replace(V4_TOKENS, (token, offset: number) => {
     if (token.startsWith("//") || token.startsWith("/*")) return token;
     const prefix = lines.slice(lines.lastIndexOf("\n", offset - 1) + 1, offset);
-    const lineReference = /^[\t ]*$/.test(prefix) || /^[\t ]*(?:asc|desc)[\t ]+$/.test(prefix);
-    const operand = previous === "" || /^(?:return|throw|typeof|void|delete|yield|await)$/.test(previous) ||
-      /^(?:=>|&&|\|\||===|!==|==|!=|<=|>=|[=([{,:?!+*/%<>|&^~-])$/.test(previous);
+    const lineReference = v4LineReference(prefix);
+    const operand = v4Operand(previous);
     const result = /^&\w/.test(token)
       ? lineReference ? `:${token.slice(1)}` : operand ? `self.${token.slice(1)}` : token
       : token;
@@ -347,7 +436,7 @@ export function checkDocsSamples(dir: string) {
       parsed++;
       deferred.push({ at: where, reason: DOCS_SYNTAX_PENDING_TABLE });
       const old = oldSpellingInV4(block.join("\n"));
-      if (old) errors.push(`${where}: ${old}`);
+      if (old) errors.push(`${where}: MX fence is not written in ${DOCS_SYNTAX}: ${old}`);
       for (const diagnostic of parseV4(`${block.join("\n")}\n`, where)) {
         errors.push(`${where}: MX block ${diagnostic.line}:${diagnostic.column + 1}: ${diagnostic.message}`);
       }

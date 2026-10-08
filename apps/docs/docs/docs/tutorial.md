@@ -25,7 +25,7 @@ cd todo-app
 - Someone completes a todo, and asks which todos are still pending.
 - Somebody else's todos come back as nothing at all, and the errors say why.
 
-Two entities, because a todo needs a list and a list needs todos. A relationship lets you write `&list.ownerId` in a rule and have Mesh fetch the list for you.
+Two entities, because a todo needs a list and a list needs todos. A relationship lets you write `&list.ownerId` in a rule and have Mesh fetch the list for you. The two files may import each other: TypeScript modules allow cycles, and Mesh reads their static trees rather than executing their code.
 
 ## The list
 

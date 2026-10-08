@@ -147,7 +147,7 @@ Comparisons, `&&`, `||`, `!`, numeric `+ - * /`, `.length`, `today()`, member re
 | `:Todo` | yes | The entity's declared name, in PascalCase; also its named export |
 | `table` | no | The database table; defaults to the entity's name in snake_case |
 
-The folder that holds the file is the module. Entities in `src/domain/todo/` belong together; no line repeats the folder's name. Another entity is imported by relative path. Two folders may each declare an `entity :List` without conflict: their paths distinguish them. See [Project structure](./project-structure.md#the-domain).
+The folder that holds the file is the module. Entities in `src/domain/todo/` belong together; no line repeats the folder's name. Another entity is imported by relative path. Two folders may each declare an `entity :List` without conflict: their paths distinguish them. Those declarations do not conflict, but how the generated `#mesh` entry point exposes their same-named action exports is still open ([finding 21](../architecture/open-questions.md#dx-findings)). See [Project structure](./project-structure.md#the-domain).
 
 ## attributes
 

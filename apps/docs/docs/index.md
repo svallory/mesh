@@ -53,7 +53,8 @@ entity :Todo table="todos"
 <p class="mh-group" data-group="Your app">Your app</p>
 <div class="mh-box" data-box="types" data-from="attributes relationships" data-group="Your app"><h3>Types <code>todo.types.ts</code></h3><p class="mh-from">from <code>attributes</code>, <code>relationships</code></p><div class="mh-snip"><code>interface Todo {
   id: string; title: string;
-  done: boolean; listId: string }
+  done: boolean; listId: string;
+  insertedAt: Date }
 interface CreateTodoInput {
   title: string; list: List["id"] }</code></div></div>
 <div class="mh-box" data-box="functions" data-from="actions" data-group="Your app"><h3>Functions <code>todo.actions.ts</code></h3><p class="mh-from">one per action, from <code>actions</code>, imported from <code>#mesh</code></p><div class="mh-snip"><code>createTodo(input, context)

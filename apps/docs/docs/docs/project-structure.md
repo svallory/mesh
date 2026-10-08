@@ -40,7 +40,7 @@ Mesh prescribes nothing under `src/`. `context.ts` and `main.ts` are the starter
 
 The folder is the module, so nothing in the file repeats it. `todo.mesh.mx` does not carry a `module=` option, and the generated code for a folder lands in one place.
 
-An entity file holds exactly one entity and ends in `.mesh.mx`. Two entities in one file is a build error. Another entity is imported by relative path: `import { List } from "./list.mesh.mx"`, then `belongs-to :list entity=List`. Each file exports its declared entity name. Two folders may each declare an `entity :List` without conflict; the import path distinguishes them.
+An entity file holds exactly one entity and ends in `.mesh.mx`. Two entities in one file is a build error. Another entity is imported by relative path: `import { List } from "./list.mesh.mx"`, then `belongs-to :list entity=List`. Each file exports its declared entity name. Two folders may each declare an `entity :List` without conflict; the import path distinguishes them. Those declarations do not conflict, but how the generated `#mesh` entry point exposes their same-named action exports is still open ([finding 21](../architecture/open-questions.md#dx-findings)).
 
 A hand-written helper next to the entity that uses it is the ordinary way to keep an entity file small. `todo.helpers.ts` is a normal TypeScript module; a `check` or a `do` step in `todo.mesh.mx` calls into it.
 
