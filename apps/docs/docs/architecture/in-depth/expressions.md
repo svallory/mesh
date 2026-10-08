@@ -15,31 +15,31 @@ An entity file holds small functions. From the reference file of [ADR-0050](../d
 
 ```mx
 read :overdue
-  filter=({ self }) => self.isOverdue
+  filter=() => &isOverdue
   sort
-    asc :dueOn
+    asc &dueOn
 ```
 
 ```mx
 do
   set
-    :paidAt=({ input }) => input.paidAt
-  when=({ self }) => self.amount > 10000
+    &paidAt=({ input }) => input.paidAt
+  when=() => &amount > 10000
     set
-      :needsReview=true
+      &needsReview=true
 ```
 
 ```mx
 computed
-  boolean :isOverdue({ self }) {
-    return self.status === :sent && self.dueOn < today()
+  boolean :isOverdue() {
+    return &status === :sent && &dueOn < today()
   }
-  string :label({ self }) {
-    return self.number + " · " + formatMoney(self.total)
+  string :label() {
+    return &number + " · " + formatMoney(&total)
   }
 ```
 
-Every function receives one object with four keys: `self` (the record), `input` (the action's accepted fields and arguments), `actor` (the caller, a shortcut for `context.actor`) and `context` (the [action context](../decisions/0059-action-context.md)). MX does not run these functions. It hands each over as a parsed Babel node (the syntax tree of the Babel parser) with a source span (MX project notes, getting-started, section 1). Conversion to Mesh's tree happens in `@meshfw/compiler` ([ADR-0043](../decisions/0043-mx-is-core.md)).
+Every function receives one object with four keys: `self` (the record), `input` (the fields and arguments of the action's one `input` section), `actor` (the caller, a shortcut for `context.actor`) and `context` (the [action context](../decisions/0059-action-context.md)). Members are written `&name`, lowering to record reads ([ADR-0067](../decisions/0067-members-imports-input-static-files.md)); the empty parameter list means no other context is used. MX does not run these functions. It hands each over as a parsed Babel node (the syntax tree of the Babel parser) with a source span (MX project notes, getting-started, section 1). Conversion to Mesh's tree happens in `@meshfw/compiler` ([ADR-0043](../decisions/0043-mx-is-core.md)).
 
 One rule can be needed in two places. A filter must run in the database so that not every row is loaded. A check on a record already in memory must run in the program. So Mesh turns a function into **one tree** with two evaluators, as Ash does ([ADR-0010](../decisions/0010-one-expression-tree-two-evaluators.md); [research synthesis](../research/synthesis.md), section 2.2).
 
@@ -47,13 +47,13 @@ One rule can be needed in two places. A filter must run in the database so that 
 
 [ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md):
 
-- A function whose **body is one expression Mesh can translate** is **translated**: an arrow, `({ self }) => self.status === :sent`, or a method body that is a single `return`, as in `:isOverdue` above. It becomes a tree; it runs in SQL where a query needs it and in memory otherwise.
+- A function whose **body is one expression Mesh can translate** is **translated**: an arrow, `() => &status === :sent`, or a method body that is a single `return`, as in `:isOverdue` above. It becomes a tree; it runs in SQL where a query needs it and in memory otherwise.
 - **Where SQL is required** (a `filter`, a `sort`, a policy check, a rollup's `of`, or inside another translated expression), the expression must translate. A construct the translator does not support there is a build error at that node, reported in the editor through the contracts' `analyze` hook and again by the build. Using a computed field that runs in memory there is a build error that **names the field and the part that could not be translated**.
-- **A computed field** whose single expression cannot be translated is not an error: `:label` above calls the helper `formatMoney` on `self.total`, so it runs in memory after the record is loaded. `mesh explain` shows which computed fields are translated. Nobody writes a second statement to opt out ([rulings of 2026-10-04](../decisions/rulings-2026-10-04.md), "Rulings after the review of the user docs (2026-10-05, lead under delegation)").
+- **A computed field** whose single expression cannot be translated is not an error: `:label` above calls the helper `formatMoney` on `&total`, so it runs in memory after the record is loaded. `mesh explain` shows which computed fields are translated. Nobody writes a second statement to opt out ([rulings of 2026-10-04](../decisions/rulings-2026-10-04.md), "Rulings after the review of the user docs (2026-10-05, lead under delegation)").
 - **Plain code** is a body with more than one statement, or a `run` step. It is emitted as TypeScript by slicing the authored text at MX's span and runs in memory only.
 - In a `check`'s `that`, a `when` or a `set` value, an expression that cannot be translated is not an error either: it runs in memory, which makes the action read-then-write, and `mesh explain` names the expression that caused it ([ADR-0054](../decisions/0054-write-strategy-is-inferred.md)). Only a `filter`, a `sort` and a policy require SQL.
 
-The parameter types expose only what translates, so the editor offers `self.status` but not, for example, string methods the translator lacks.
+The parameter types expose only what translates, so the editor offers `&status` but not, for example, string methods the translator lacks.
 
 Where the form matters:
 
@@ -92,7 +92,7 @@ The [expression-language research](../research/expression-language.md) found no 
 
 1. Two interpreters over one tree, so a rule cannot be true in one and false in the other.
 2. A small, enumerated node vocabulary, plus a function-call node with a fixed allow-list.
-3. Relationship traversal (`self.customer.userId`) rewritten into joins as a normalisation pass before SQL generation.
+3. Relationship traversal (`&customer.userId`) rewritten into joins as a normalisation pass before SQL generation.
 4. A declared supported subset, checked before anything else, with errors at a source span.
 5. Parameters, never closures.
 6. Policies folded into the query tree, so indexes still work.

@@ -25,13 +25,15 @@ cd todo-app
 - Someone completes a todo, and asks which todos are still pending.
 - Somebody else's todos come back as nothing at all, and the errors say why.
 
-Two entities, because a todo needs a list and a list needs todos. A single file with a `listId` field would also work; a relationship is what lets you write `self.list.ownerId` in a rule and have Mesh fetch it for you.
+Two entities, because a todo needs a list and a list needs todos. A relationship lets you write `&list.ownerId` in a rule and have Mesh fetch the list for you.
 
 ## The list
 
 `src/domain/todo/list.mesh.mx`:
 
 ```mx "src/domain/todo/list.mesh.mx"
+import { Todo } from "./todo.mesh.mx"
+
 entity :List table="lists"
   attributes
     uuid :id primary-key
@@ -41,27 +43,29 @@ entity :List table="lists"
     timestamp :updatedAt on=:update
 
   relationships
-    has-many=:Todo :todos
+    has-many :todos entity=Todo
 
   computed
     count :todoCount of="todos"
 
   actions auto=[:read, :destroy]
-    create :create accept=[:name]
+    create :create
+      input
+        &name
       do
         set
-          :ownerId=({ actor }) => actor.id
+          &ownerId=({ actor }) => actor.id
 
   policies
     policy :anyoneCreates types=[:create]
       authorize-if=() => true
     policy :ownerOnly types=[:read, :destroy]
-      authorize-if=({ self, actor }) => self.ownerId === actor.id
+      authorize-if=({ actor }) => &ownerId === actor.id
 ```
 
 Four things worth noticing:
 
-- **`accept=[:name]` only.** `ownerId` is not accepted, so no caller can create a list owned by somebody else; a step fills it from the caller's `actor`.
+- **Only `&name` in `input`.** `ownerId` is not in the input, so no caller can create a list owned by somebody else; a step fills it from the caller's `actor`.
 - **The two policies are separate.** `types=[:read, :destroy]` means "read or destroy", which is one policy for two actions. Two policies are "and": every policy covering an action must pass.
 - **`types=[:create]` on its own policy allows everyone**, because `authorize-if=() => true` always holds. `read` and `destroy` need ownership. An action that no policy covers is forbidden, so a new action needs one before it works.
 - **`count :todoCount`** is a rollup: how many todos the list has. Callers ask for it with `load: ["todoCount"]`.
@@ -71,6 +75,8 @@ Four things worth noticing:
 `src/domain/todo/todo.mesh.mx`, the same file the [quick start](./quick-start.md) wrote:
 
 ```mx "src/domain/todo/todo.mesh.mx"
+import { List } from "./list.mesh.mx"
+
 entity :Todo table="todos"
   attributes
     uuid :id primary-key
@@ -80,42 +86,47 @@ entity :Todo table="todos"
     timestamp :updatedAt on=:update
 
   relationships
-    belongs-to=:List :list
+    belongs-to :list entity=List
 
   computed
-    string :label({ self }) {
-      return (self.done ? "[x] " : "[ ] ") + self.title
+    string :label() {
+      return (&done ? "[x] " : "[ ] ") + &title
     }
 
   actions auto=[:read, :destroy]
-    create :create accept=[:title, :listId]
+    create :create
+      input
+        &title
+        &list
 
     update :complete
       validate
         check :notDoneYet [
-          that=({ self }) => !self.done
+          that=() => !&done
           code="already_done"
           message="this todo is already complete"
         ]
       do
         set
-          :done=true
+          &done=true
 
-    update :rename accept=[:title]
+    update :rename
+      input
+        &title
 
     read :pending
-      filter=({ self }) => self.done === false
+      filter=() => &done === false
       sort
-        asc :insertedAt
+        asc &insertedAt
 
   policies
     policy :owner types=[:create, :read, :update, :destroy]
-      authorize-if=({ self, actor }) => self.list.ownerId === actor.id
+      authorize-if=({ actor }) => &list.ownerId === actor.id
 ```
 
 What this gives you:
 
-- **`listId` was not declared.** `belongs-to=:List :list` adds the foreign-key attribute and the relationship that reads it. `todo.list` is there when you ask for it.
+- **`&list` takes the related list's id.** The imported `List` is the destination of `belongs-to :list entity=List`. The relationship reads that list, and `todo.list` is there when you ask for it.
 - **`min=1` is the whole of "a todo needs a title"**, and it is checked twice: the input validator refuses it before the call, and the column refuses it.
 - **`check :notDoneYet` is about state, not about one field**, which is what a `check` is for. It runs on the record with the caller's input applied, so it fails with the message you wrote before anything is written.
 - **`complete` accepts nothing.** It takes an id and a context, and its check reads the todo it was given, so Mesh reads that row, locked, and writes it in the same transaction rather than running one blind `UPDATE`. Two callers completing the same todo cannot both win on a stale copy. `rename`, which has no check, is the one that runs as a single `UPDATE`.
@@ -161,9 +172,9 @@ await connect();
 
 const list = await createList({ name: "Groceries" }, { actor: alice });
 
-const milk = await createTodo({ title: "Buy milk", listId: list.id }, { actor: alice });
-await createTodo({ title: "Buy bread", listId: list.id }, { actor: alice });
-await createTodo({ title: "Buy coffee", listId: list.id }, { actor: alice });
+const milk = await createTodo({ title: "Buy milk", list: list.id }, { actor: alice });
+await createTodo({ title: "Buy bread", list: list.id }, { actor: alice });
+await createTodo({ title: "Buy coffee", list: list.id }, { actor: alice });
 
 await completeTodo({ id: milk.id }, { actor: alice });
 
@@ -179,7 +190,7 @@ try {
 }
 
 try {
-  await createTodo({ title: "", listId: list.id }, { actor: alice });
+  await createTodo({ title: "", list: list.id }, { actor: alice });
 } catch (error) {
   if (!(error instanceof InvalidInputError)) throw error;
   console.log(error.code, error.issues[0]?.code, error.issues[0]?.message);
@@ -233,7 +244,7 @@ test("only the owner sees a todo", async () => {
   const todo = bind(db);
 
   const list = await todo.createList({ name: "Groceries" }, { actor: alice });
-  await todo.createTodo({ title: "Buy milk", listId: list.id }, { actor: alice });
+  await todo.createTodo({ title: "Buy milk", list: list.id }, { actor: alice });
 
   const mine = await todo.pendingTodo({ load: ["label"] }, { actor: alice });
   expect(mine.map((row) => row.label)).toEqual(["[ ] Buy milk"]);
@@ -253,7 +264,7 @@ test("a title cannot be empty", async () => {
   const list = await todo.createList({ name: "Groceries" }, { actor: alice });
 
   await expect(
-    todo.createTodo({ title: "", listId: list.id }, { actor: alice }),
+    todo.createTodo({ title: "", list: list.id }, { actor: alice }),
   ).rejects.toBeInstanceOf(InvalidInputError);
 
   await db.close();

@@ -5,10 +5,10 @@ description: "For an Ash user: how each part of Ash's resource DSL is written in
 
 # Ash to Mesh: where each Ash concept went
 
-Date: 2026-10-05. Mesh is modelled on Ash, the declarative framework for Elixir. Until 2026-10-05 Mesh's vocabulary copied Ash's DSL ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md), superseded). It is now Mesh's own, informed by Ash ([ADR-0049](../decisions/0049-vocabulary-is-meshs-own.md)): what Ash calls a *resource* is an *entity*, and every declaration in an entity file is `kind #name options` ([ADR-0050](../decisions/0050-entity-file-syntax.md)). This page tells an Ash user where each Ash concept went, and which have no equivalent yet.
+Updated: 2026-10-08. Mesh is modelled on Ash, the declarative framework for Elixir. Until 2026-10-05 Mesh's vocabulary copied Ash's DSL ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md), superseded). It is now Mesh's own, informed by Ash ([ADR-0049](../decisions/0049-vocabulary-is-meshs-own.md)): what Ash calls a *resource* is an *entity*, and every declaration in an entity file is `kind :name options` ([ADR-0050](../decisions/0050-entity-file-syntax.md)). This page tells an Ash user where each Ash concept went, and which have no equivalent yet.
 
 ::: callout info "Two spellings on this page"
-The code on `main` still reads the vocabulary of the M1 alignment, which copied Ash (`resource`, `attribute="title" type="string"`, `defaults`, `change`, `calculations`, `aggregates`, `policy=action_type("read")`), until the realignment task ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)). Section 3 keeps that spelling in its own column, and its "Contract check" column, because a test in `packages/compiler/test` reads both to check the contracts on `main` (roadmap M1, acceptance test 7). The realignment task moves the column and the test to syntax v2 together.
+The code on `main` still reads the vocabulary of the M1 alignment, which copied Ash (`resource`, `attribute="title" type="string"`, `defaults`, `change`, `calculations`, `aggregates`, `policy=action_type("read")`), until the realignment task ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)). Section 3 keeps that spelling in its own column, and its "Contract check" column, because a test in `packages/compiler/test` reads both to check the contracts on `main` (roadmap M1, acceptance test 7). The 110-row mapping and its fixture are historical, machine-checked and unchanged here. For current spelling, use [Entities](../../docs/entities.md) and [ADR-0067](../decisions/0067-members-imports-input-static-files.md); the realignment rewrites the mapping's Mesh column when the code moves to v4.
 :::
 
 ## 0. How to read this page
@@ -19,7 +19,7 @@ The code on `main` still reads the vocabulary of the M1 alignment, which copied 
 - **Section 4** lists where Mesh's design deliberately differs from Ash, then keeps the record of the M1 alignment as history.
 - **Sections 5 to 7 and the appendices** are the M1 alignment's exceptions, Ash lookups and fixture, kept because they record checked facts about Ash and describe the contracts on `main`.
 
-Names a user chooses (`#title`, `#authorId`, `#commentCount`) are values, not vocabulary, and stay as written. Everything inside a function is JavaScript and must be valid JavaScript.
+In current files, `:title` declares a name, `&title` refers to a member and an imported identifier names another entity. Expressions use TypeScript plus Mesh's member and atom spellings.
 
 ## 1. At a glance
 
@@ -27,30 +27,30 @@ Ash examples follow [Ash features](../research/ash-features.md), section 12; the
 
 | Ash | Mesh | Record |
 |---|---|---|
-| `defmodule MyApp.Blog.Post do use Ash.Resource, domain: MyApp.Blog` | `entity #Post table="posts"` in `src/domain/blog/post.mesh.mx`; the folder is the module | [ADR-0049](../decisions/0049-vocabulary-is-meshs-own.md), [ADR-0057](../decisions/0057-one-domain-modules-as-folders.md) |
+| `defmodule MyApp.Blog.Post do use Ash.Resource, domain: MyApp.Blog` | `entity :Post table="posts"` in `src/domain/blog/post.mesh.mx`; the folder is the module | [ADR-0049](../decisions/0049-vocabulary-is-meshs-own.md), [ADR-0057](../decisions/0057-one-domain-modules-as-folders.md) |
 | `postgres do table "posts" end` | `table="posts"` on the entity line | [ADR-0050](../decisions/0050-entity-file-syntax.md) |
-| `uuid_primary_key :id` | `uuid #id primary-key` | [ADR-0050](../decisions/0050-entity-file-syntax.md) |
-| `attribute :title, :string, allow_nil?: false` | `string #title` (required by default) | [ADR-0050](../decisions/0050-entity-file-syntax.md) |
-| `attribute :notes, :string` (nullable by default) | `string #notes nullable` | [ADR-0050](../decisions/0050-entity-file-syntax.md) |
-| `attribute :state, :atom, constraints: [one_of: [:draft, :published]]` | `enum #state values=["draft", "published"]` | [ADR-0050](../decisions/0050-entity-file-syntax.md) |
+| `uuid_primary_key :id` | `uuid :id primary-key` | [ADR-0050](../decisions/0050-entity-file-syntax.md) |
+| `attribute :title, :string, allow_nil?: false` | `string :title` (required by default) | [ADR-0050](../decisions/0050-entity-file-syntax.md) |
+| `attribute :notes, :string` (nullable by default) | `string :notes nullable` | [ADR-0050](../decisions/0050-entity-file-syntax.md) |
+| `attribute :state, :atom, constraints: [one_of: [:draft, :published]]` | `enum :state values=[:draft, :published]` | [ADR-0050](../decisions/0050-entity-file-syntax.md) |
 | `constraints: [max_length: 2000]`, `constraints: [min: 0]` | `max=2000`, `min=0` on the line (never a `check`) | [ADR-0053](../decisions/0053-validate-then-do.md) |
-| `create_timestamp :inserted_at` | `timestamp #insertedAt on="create"` | [ADR-0050](../decisions/0050-entity-file-syntax.md) |
-| `belongs_to :author, MyApp.Accounts.User` | `belongs-to=User #author` (creates `authorId`; `nullable` makes it optional) | [ADR-0050](../decisions/0050-entity-file-syntax.md) |
-| `has_many :comments, Comment` | `has-many=Comment #comments` | [ADR-0050](../decisions/0050-entity-file-syntax.md) |
-| `calculate :excerpt, :string, expr(...)` | `string #excerpt({ self }) { ... }` in `computed` | [ADR-0050](../decisions/0050-entity-file-syntax.md) |
-| `count :comment_count, :comments` | `count #commentCount of="comments"` in `computed` | [ADR-0050](../decisions/0050-entity-file-syntax.md) |
-| `defaults [:read, :destroy]` | `actions auto=["read", "destroy"]` | [ADR-0052](../decisions/0052-actions-auto-and-on-load.md) |
-| `update :publish do ... end` | `update #publish` | [ADR-0052](../decisions/0052-actions-auto-and-on-load.md) |
-| `argument :paid_at, :utc_datetime` | `arguments` section: `datetime #paidAt` | [ADR-0052](../decisions/0052-actions-auto-and-on-load.md) |
-| `change set_attribute(:state, :published)` | `do` then `set` then `#state="published"` | [ADR-0053](../decisions/0053-validate-then-do.md) |
-| `validate present(:title)` | `validate` then `require=["title"]` | [ADR-0053](../decisions/0053-validate-then-do.md) |
+| `create_timestamp :inserted_at` | `timestamp :insertedAt on=:create` | [ADR-0050](../decisions/0050-entity-file-syntax.md) |
+| `belongs_to :author, MyApp.Accounts.User` | Import `User` by relative path, then `belongs-to :author entity=User` (`nullable` makes it optional) | [ADR-0050](../decisions/0050-entity-file-syntax.md) |
+| `has_many :comments, Comment` | Import `Comment`, then `has-many :comments entity=Comment` | [ADR-0050](../decisions/0050-entity-file-syntax.md) |
+| `calculate :excerpt, :string, expr(...)` | `string :excerpt() { ... }` in `computed` | [ADR-0050](../decisions/0050-entity-file-syntax.md) |
+| `count :comment_count, :comments` | `count :commentCount of="comments"` in `computed` | [ADR-0050](../decisions/0050-entity-file-syntax.md) |
+| `defaults [:read, :destroy]` | `actions auto=[:read, :destroy]` | [ADR-0052](../decisions/0052-actions-auto-and-on-load.md) |
+| `update :publish do ... end` | `update :publish` | [ADR-0052](../decisions/0052-actions-auto-and-on-load.md) |
+| `argument :paid_at, :utc_datetime` | `input` section: `datetime :paidAt` | [ADR-0067](../decisions/0067-members-imports-input-static-files.md) |
+| `change set_attribute(:state, :published)` | `do` then `set` then `&state=:published` | [ADR-0053](../decisions/0053-validate-then-do.md) |
+| `validate present(:title)` | `string :title` is required by default; `input` takes `&title` | [ADR-0067](../decisions/0067-members-imports-input-static-files.md) |
 | a custom validation module with a message | `check :label [ that=fn code=... message=... ]` | [ADR-0053](../decisions/0053-validate-then-do.md) |
 | resource-level `changes` and `validations` | `always types=[...]` under `actions` | [ADR-0053](../decisions/0053-validate-then-do.md) |
 | `require_atomic? false` | nothing: the build infers the write strategy | [ADR-0054](../decisions/0054-write-strategy-is-inferred.md) |
-| `filter expr(state == :published)` | `filter=({ self }) => self.state === "published"` | [ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md) |
+| `filter expr(state == :published)` | `filter=() => &state === :published` | [ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md) |
 | `^actor(:id)`, `^arg(:name)`, `^context(:key)` | `actor.id`, `input.name`, `context.key` | [ADR-0059](../decisions/0059-action-context.md) |
 | `authorizers: [Ash.Policy.Authorizer]` | nothing: policies are core, and an entity without them forbids every action | [ADR-0055](../decisions/0055-policies-are-core.md) |
-| `policy action_type(:read) do authorize_if ... end` | `policy #reads types=["read"]` then `authorize-if=...` | [ADR-0055](../decisions/0055-policies-are-core.md) |
+| `policy action_type(:read) do authorize_if ... end` | `policy :reads types=[:read]` then `authorize-if=...` | [ADR-0055](../decisions/0055-policies-are-core.md) |
 | `bypass actor_attribute_equals(:admin, true)` | none: write `isAdmin(actor) \|\| ...` in each policy | [ADR-0055](../decisions/0055-policies-are-core.md) |
 | `Ash.can?` | a generated `can` function per action | [ADR-0022](../decisions/0022-policies-simple-tier-as-extension.md) |
 | `actor:`, `tenant:`, `context:` options on a call | one `ActionContext` argument: `payInvoice(input, { actor, tenantId })` | [ADR-0059](../decisions/0059-action-context.md) |
@@ -66,9 +66,11 @@ Grouped by why. Row numbers refer to section 3.
 
 ## 3. The mapping
 
-**The "Contract check" column** describes the M1 contracts on `main`, not syntax v2. It is machine-readable and is what the acceptance test reads (`contracts.test.ts`, describe "roadmap M1 acceptance test 7"). Every row whose status says "on main" carries one or more specs separated by `;`, or an explicit `n/a (reason)` when the row is not about a tag or attribute (today only row 110, recorded deviation D37: an expression's contents are not vocabulary); any other row carries `-`. The test pins the list of `n/a` rows, so a row cannot leave the check by being relabelled. The realignment task moves it and the test to the v2 spelling together ([roadmap](./roadmap.md), Realignment). A spec is `tag: tokens`: a plain token is an attribute the contract declares and a clean fixture uses; `>name` is a child tag the contract declares and a clean fixture nests in that tag; `attr=v1,v2` is an attribute that a clean fixture sets to each of those values. For policies, `@action` and `@action_type` require clean fixtures for a single string argument, a one-item list and a two-item list. A row marked "on main" whose cell does not parse fails the test, and so does a tag, attribute, child or value no clean fixture uses.
+This section preserves the M1 fixture's syntax and the then-proposed v2 spelling as historical, machine-checked columns. It is not a current entity-file reference; use [Entities](../../docs/entities.md) and [ADR-0067](../decisions/0067-members-imports-input-static-files.md). The fixture fence and all table columns stay unchanged until realignment.
 
-The "M1 spelling" column is what the contracts on `main` declare after the M1 alignment ("on main (aligned)" in the status column means it has a positive and a negative test). The "Mesh spelling (syntax v2)" column is the spelling users write ([ADR-0050](../decisions/0050-entity-file-syntax.md)); it replaced a column that recorded the contracts before the M1 alignment (`a3b52f4`), which is in this page's Git history. "none yet" means Mesh has no equivalent; section 2 lists them.
+**The "Contract check" column** describes the M1 contracts on `main`, not syntax v2. It is machine-readable and is what the acceptance test reads (`contracts.test.ts`, describe "roadmap M1 acceptance test 7"). Every row whose status says "on main" carries one or more specs separated by `;`, or an explicit `n/a (reason)` when the row is not about a tag or attribute (today only row 110, recorded deviation D37: an expression's contents are not vocabulary); any other row carries `-`. The test pins the list of `n/a` rows, so a row cannot leave the check by being relabelled. The realignment task moves it and the test to the v4 spelling together ([roadmap](./roadmap.md), Realignment). A spec is `tag: tokens`: a plain token is an attribute the contract declares and a clean fixture uses; `>name` is a child tag the contract declares and a clean fixture nests in that tag; `attr=v1,v2` is an attribute that a clean fixture sets to each of those values. For policies, `@action` and `@action_type` require clean fixtures for a single string argument, a one-item list and a two-item list. A row marked "on main" whose cell does not parse fails the test, and so does a tag, attribute, child or value no clean fixture uses.
+
+The "M1 spelling" column is what the contracts on `main` declare after the M1 alignment ("on main (aligned)" in the status column means it has a positive and a negative test). The "Mesh spelling (syntax v2)" column records the spelling proposed at the time ([ADR-0050](../decisions/0050-entity-file-syntax.md)); it replaced a column that recorded the contracts before the M1 alignment (`a3b52f4`), which is in this page's Git history. "none yet" means Mesh has no equivalent; section 2 lists them.
 
 ### 3.1 Resource level
 

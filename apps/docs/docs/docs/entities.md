@@ -11,39 +11,51 @@ Mesh is not released yet. These pages describe Mesh 1.0.
 
 An entity file is one `.mesh.mx` file in your project's domain folder. It holds one entity: its data, the operations on it, and the rules around those operations. This page is the reference for the whole file, in the order you would write it.
 
-Everything here is MX syntax, and two facts are enough to read it: **indentation nests**, and **a declaration is `kind :name options`**. A block starts with its tag and continues until the indentation changes.
+Everything here is MX syntax. **Indentation nests**, and **a declaration is `kind :name options`**. A block starts with its tag and continues until the indentation changes.
 
-## Names are atoms
+## Names and references
 
-`:name` is an **atom**: a name that stands for itself. It is not a string. An entity file uses an atom for every name and for anything chosen out of a fixed set, and uses a string for text and for a path through relationships.
+Three spellings tell you what a name means: **`:name` declares**, **`&name` refers to a member of this entity**, and **an imported `Name` is another entity**.
 
 | It is | Written | Examples |
 |:--|:--|:--|
-| The name of a declaration | `kind :name` | `entity :Invoice`, `uuid :id`, `update :pay`, `policy :staffWrites`, `check :invoiceIsSent` |
-| A reference to something declared | an atom, or a list of atoms | `accept=[:number, :amount]`, `require=[:dueOn]`, `asc :dueOn` under `sort`, `load=[:customer]`, `actions=[:pay]`, `on:load=:visible`, `belongs-to=:Customer` |
+| A declaration | `kind :name` | `entity :Invoice`, `uuid :id`, `update :pay`, `check :invoiceIsSent` |
+| A member of this entity | `&name` | `&title` in `input`, `asc &dueOn`, `load=[&customer]`, `actions=[&pay]`, `on:load=&visible` |
+| Another entity | an imported identifier | `import { Customer } from "./customer.mesh.mx"`, then `belongs-to :customer entity=Customer` |
 | One of a fixed set | an atom | `auto=[:read, :destroy]`, `types=[:create, :update]`, `on=:create` |
-| An enum value | an atom | `values=[:draft, :sent]`, `default=:draft`, `self.status === :sent`, `:status=:paid` |
+| An enum value | an atom | `values=[:draft, :sent]`, `default=:draft`, `&status === :sent`, `&status=:paid` |
 | Text | a string | `table="invoices"`, `message="…"`, `code="invalid_state"` |
 | A path through relationships | a string | `of="lines.amount"`, `of="lines"` |
 | A pattern, a number, a boolean | as in TypeScript | `match=/^INV-\d+$/`, `min=0`, `default=false` |
 
-Five things follow from that one idea, and the rest of this page is full of them.
+An **atom** is a name that stands for itself, not a string. It names a declaration or a value from a fixed set. At run time it is its name as a string: `values=[:draft, :sent]` gives TypeScript the union `"draft" | "sent"`, and your program compares with `invoice.status === "sent"`.
 
-**There is one way to name a thing.** `entity :Invoice`.
+A **member reference** points at something declared in this entity: an attribute, relationship, computed field, action, check or policy. Inside a function, `&status` reads the record's status. A name that is not a member is a build error at that position, with a suggestion: `&titel` suggests `&title`. Strings cannot stand in for member references, and an atom cannot stand in for text: `message=:oops` is an error.
 
-**A string where a name belongs is an error.** `accept=["title"]` is refused, and so is an atom where text belongs: `message=:oops`. Mesh knows which is which, because the vocabulary says what each option holds.
+A `.mesh.mx` file exports its entity under its declared name. Import that name by relative path, then use it in `entity=Customer`. There is no project-wide name lookup and no qualified-name spelling.
 
-**Names are checked.** `accept=[:titel]` is a build error at that position, with a suggestion, in the editor and in `mesh build`.
+### One input section
 
-**Names are written out.** A variable or an expression in one of these positions is an error, because Mesh reads the file without running it: `accept=[acceptedFields]` is refused. A function is ordinary TypeScript; what a translated one may use is in [What a translated arrow may use](#what-a-translated-arrow-may-use).
+An action's `input` is the whole of what the caller may send. Each line is one of two things:
 
-**At run time an atom is its name as a string.** `self.status === :sent` in an entity file is `todo.status === "sent"` in your TypeScript, and `values=[:draft, :sent]` is a `"draft" | "sent"` there. The atom is how you write it in the file; the string is what it is once Mesh has run.
+- **`&title`** takes the declared attribute as it is: its type and rules come from the attribute line. No options are allowed on an `&` line. **`&list`** takes a declared `belongs-to`; the caller sends the related record's id.
+- **`decimal :percent min=0 max=100`** declares an argument with the same shape as an attribute. It is not stored as sent, and reaches code as `input.percent`.
+
+The same name twice in one `input` is a build error, including a member reference and an argument with that name. A read can take an `input` too. The [actions section](#actions) shows both forms in use.
+
+### Static files
+
+An entity file is static: it has no conditionals or loops that add or remove declarations. A condition belongs on the line it conditions, as `when=` on a policy or a check, or inside its expression. A rule over a has-many is an expression such as `&lines.every(...)`, not a loop that creates checks. Expressions still obey the [translation rules](#what-a-translated-arrow-may-use) where SQL is required.
+
+Names and lists are written out, not computed from variables. Imported entity identifiers and function-valued options are the explicit exceptions; Mesh does not run the file to discover its declarations.
 
 ## The shape of a file
 
-This is a complete entity file, small enough to read in one go. It is the same file the [Introduction](./index.md) shows and the [tutorial](./tutorial.md) builds.
+This is the same file the [Introduction](./index.md) shows and the [tutorial](./tutorial.md) builds.
 
 ```mx "src/domain/todo/todo.mesh.mx"
+import { List } from "./list.mesh.mx"
+
 entity :Todo table="todos"
   attributes
     uuid :id primary-key
@@ -53,52 +65,55 @@ entity :Todo table="todos"
     timestamp :updatedAt on=:update
 
   relationships
-    belongs-to=:List :list
+    belongs-to :list entity=List
 
   computed
-    string :label({ self }) {
-      return (self.done ? "[x] " : "[ ] ") + self.title
+    string :label() {
+      return (&done ? "[x] " : "[ ] ") + &title
     }
 
   actions auto=[:read, :destroy]
-    create :create accept=[:title, :listId]
+    create :create
+      input
+        &title
+        &list
 
     update :complete
       validate
         check :notDoneYet [
-          that=({ self }) => !self.done
+          that=() => !&done
           code="already_done"
           message="this todo is already complete"
         ]
       do
         set
-          :done=true
+          &done=true
 
-    update :rename accept=[:title]
+    update :rename
+      input
+        &title
 
     read :pending
-      filter=({ self }) => self.done === false
+      filter=() => &done === false
       sort
-        asc :insertedAt
+        asc &insertedAt
 
   policies
     policy :owner types=[:create, :read, :update, :destroy]
-      authorize-if=({ self, actor }) => self.list.ownerId === actor.id
+      authorize-if=({ actor }) => &list.ownerId === actor.id
 ```
 
-Five things about that file are worth saying outright.
+**Sections group declarations.** `attributes`, `relationships`, `computed`, `actions` and `policies` may be in any order, empty or left out. Inside an action are `input`, `validate` and `do`: validation happens before the steps, however you order those sections. Steps inside `do` run in order. An action no policy covers is forbidden, so a file with no `policies` can be built but nothing in it can be called.
 
-**Every line is `kind :name options`.** The tag says what the line is, `:name` says which one, and the options follow: `uuid :id primary-key` is one line, and so is `policy :owner types=[:create, :read]`. Names are unique within their section, and one entity per file.
+**Indentation nests.** A line at the left margin ends the block before it, including a comment. A comment inside an entity is a `//` line indented with the block it belongs to.
 
-**Sections group the lines.** `attributes`, `relationships`, `computed`, `actions` and `policies`, in any order, and each may be empty or left out. Inside an action there are three more: `arguments`, `validate` and `do`. The order of the sections does not matter; the order of the lines inside one does. To *call* anything, an entity needs at least one action and a policy: an action no policy covers is forbidden, so a file with no `policies` section can be built but nothing in it can be called.
+**Values are written out.** An atom, string, number, regular expression, boolean, list or object is a literal. A member reference and an imported entity have the meanings above. The places whose value is code — `filter`, `when`, `authorize-if`, `forbid-if`, a check's `that`, a `set` value and a computed field's body — take functions.
 
-**Indentation nests.** A line indented under another belongs to it and runs as part of it. A line at the left margin ends what came before it, so a comment inside an entity is a `//` line indented with the block it belongs to: a comment at the left margin under `entity :Todo` ends the entity there, and everything below it belongs to nothing.
+**One expression can be translated.** An arrow `(…) => …`, or a method body with a single `return`, can run inside a database query. A body that cannot be translated runs in memory. Where SQL is required — a filter, sort key or policy check — an expression that cannot be translated is a build error naming the line.
 
-**Values Mesh reads are literals**: an atom, a string, a number, a regular expression, `true`, `false`, a list or an object written out in full. Which one belongs where is [Names are atoms](#names-are-atoms), and it is checked. The exceptions are the places whose value is code — `filter`, `when`, `authorize-if`, `forbid-if`, the `that` of a `check`, the right-hand side of a `set` line, and a computed field's body. Those take one of two things, and the difference matters: a function whose body is **one expression** — an arrow `(…) => …`, or a method body with a single `return` — is translated, so it also runs inside the database query. Anything else is plain code and runs in memory. Where the database is required (a `filter`, a sort key, a policy check), an expression that cannot be translated is a build error naming the line.
+**Functions receive four things.** `self` is the whole record, `input` is what the caller sent, `actor` is who is calling and `context` is the rest of the call. Use `&name` to read a member; a function that reads only members takes no parameters. Destructure `input`, `actor` or `context` when you use them. Destructure `self` when you pass the whole record to a helper, such as `isOwner(self, actor)`. [What `self` holds](#what-self-holds) depends on where the function runs.
 
-**Functions receive four things.** `self` is the record, `input` is what the caller sent, `actor` is who is calling and `context` is the rest of the call. [What `self` holds](#what-self-holds) is one table, and it depends on where the function runs.
-
-**Hand-written code is imported.** A `.mesh.mx` file opens with ordinary `import` lines, and the imported functions are usable inside its expressions. The helper sits beside the entity and is a normal TypeScript module:
+**Hand-written code is imported.** A helper sits beside the entity and is an ordinary TypeScript module:
 
 ```ts "src/domain/billing/invoice.helpers.ts"
 export function isStaff(actor: { role: string }): boolean {
@@ -114,45 +129,40 @@ entity :Invoice
     uuid :id primary-key
     string :number unique match=/^INV-\d+$/
 
-  relationships
-    belongs-to=:Customer :customer
-
   policies
     policy :staffWrites types=[:create, :update, :destroy]
       authorize-if=({ actor }) => isStaff(actor)
 ```
 
-Three rules, and nothing more: only relative imports, only of files inside `src/domain/`, only named imports; and an imported function must be pure — it may not read the clock, the network or anything Mesh did not hand it. A helper that does not read `self`, such as `isStaff(actor)`, is called once before the query and enters the SQL as a bound value, which is why `isStaff(actor)` works in a policy.
+Only relative, named imports of files inside `src/domain/` are allowed. An imported helper in a translated expression must be pure: it may not read the clock, the network or anything Mesh did not hand it. A helper that does not read the record, such as `isStaff(actor)`, runs once before the query and enters SQL as a bound value. A `run` step is different: it is plain code and may call anything.
 
 ### What a translated arrow may use
 
-Comparisons, `&&`, `||`, `!`, `+ - * /`, `.length`, `today()`, the fields of `self`, and imported helpers that do not read `self`. Anything else runs in memory, and the build tells you so if it appears somewhere the database is required.
+Comparisons, `&&`, `||`, `!`, numeric `+ - * /`, `.length`, `today()`, member reads such as `&amount`, the function's parameters, and imported pure helpers that do not read the record. String concatenation, a conditional on a string and helpers that read the record run in memory. The build tells you if one appears where the database is required. Do not add a second statement to opt out of translation: Mesh already makes that decision.
 
 ## The entity line
 
 | Option | Required | Meaning |
 |:--|:--|:--|
-| `:Todo` | yes | The entity's name, in PascalCase. Every generated function is named after it, and it must be unique across the domain |
-| `table` | no | The database table. Defaults to the entity's name in snake_case |
+| `:Todo` | yes | The entity's declared name, in PascalCase; also its named export |
+| `table` | no | The database table; defaults to the entity's name in snake_case |
 
-A relationship points at another entity by that same name, written as an atom, so `belongs-to=:User :author` points at the entity declared as `entity :User`. The destination is an atom rather than a bare word because a bare `User` would read as a TypeScript variable that needs an import.
-
-The folder that holds the file is the module: entities in `src/domain/todo/` belong together, and no line in the file repeats the folder's name.
+The folder that holds the file is the module. Entities in `src/domain/todo/` belong together; no line repeats the folder's name. Another entity is imported by relative path. Two folders may each declare an `entity :List` without conflict: their paths distinguish them. See [Project structure](./project-structure.md#the-domain).
 
 ## attributes
 
-The data fields. One line each: the type is the tag, `:name` is the field.
+One line per stored field: the type is the tag, `:name` is the field.
 
 ```mx "src/domain/post/post.mesh.mx"
 entity :Post
   attributes
     uuid :id primary-key
-    string :title
+    string :title min=1
     enum :status values=[:draft, :published] default=:draft
     string :notes nullable max=2000
     integer :views default=0
     float :rating default=0
-    decimal :price
+    decimal :price min=0
     datetime :publishedAt nullable
     timestamp :insertedAt on=:create
     timestamp :updatedAt on=:update
@@ -162,68 +172,71 @@ entity :Post
 
 | Tag | TypeScript | What it holds |
 |:--|:--|:--|
-| `uuid` | `string` | A UUID. `primary-key` is how you get one, and Mesh generates its value on create |
+| `uuid` | `string` | A UUID; Mesh generates a `primary-key` value on create |
 | `string` | `string` | Text |
-| `integer` | `number` | A whole number: a count, a position, a number of views |
-| `float` | `number` | A number with a fraction, where the exact value does not matter |
-| `decimal` | `number` | An exact number with a fraction: money, a tax rate, anything you add up |
-| `boolean` | `true` or `false` | |
-| `enum` | the union of `values` | One of a fixed set: `enum :status values=[:draft, :published]` |
-| `date` | `Date` | A calendar date, with no time of day: an invoice's issue date |
-| `datetime` | `Date` | A date and a time of day, with no time zone: when a payment happened, in the server's local time |
-| `timestamp` | `Date` | A moment, always with its time zone: a row's `insertedAt` |
+| `integer` | `number` | A whole number: a count or position |
+| `float` | `number` | A fraction where the exact value does not matter |
+| `decimal` | `number` | An exact fraction: money or a tax rate |
+| `boolean` | `boolean` | True or false |
+| `enum` | the union of `values` | One of a fixed set |
+| `date` | `Date` | A calendar date, with no time of day |
+| `datetime` | `Date` | A date and time with no time zone, in the server's local time |
+| `timestamp` | `Date` | A moment, always with its time zone |
 
-`integer`, `float` and `decimal` are all `number` in TypeScript, and they are three types because they are three things to store: a whole number is not a money amount, and money is not a measurement.
-
-`status` above is typed `"draft" | "published"` in TypeScript, so a caller that sends `"archvied"` does not compile, and would be rejected at run time if it slipped past. That is the same rule as everywhere else: **at run time an atom is its name as a string**, so `:draft` in the file is `"draft"` in your TypeScript, and you compare with `todo.status === "draft"`. An atom may be compared with, or assigned to, an `enum` field and nothing else — `string :status` holds text, so `self.status === :sent` on a `string` is an error.
+`integer`, `float` and `decimal` are all `number` in TypeScript, but a whole number, a money amount and a measurement are different things to store. An atom may be compared with, or assigned to, an `enum` field only: `&status === :sent` is an error if `status` is a `string`.
 
 ### Options on an attribute line
 
 | Option | Meaning |
 |:--|:--|
-| `primary-key` | This is the primary key. An entity has one, a database row needs one, and Mesh fills it on create |
-| `nullable` | The field may be absent or null. Every other attribute is required |
-| `default=` | A literal that fits the type: a number, one of an `enum`'s `values`, `true` or `false` |
-| `values=` | On an `enum` only: the allowed values, in full. An empty list, a blank or a repeat is a build error |
-| `unique` | The database refuses a second row with the same value |
-| `min=`, `max=` | For a `string`, the shortest and longest it may be; for a number, the smallest and largest value it may take |
-| `match=` | A regular expression a `string` must match |
-| `on=:create`, `on=:update` | On a `timestamp`: who fills it. `on=:create` fills it on insert, `on=:update` on insert and on every later write, and no caller may set either |
+| `primary-key` | The entity's one primary key, filled by Mesh on create |
+| `nullable` | The field may be absent or null; every other attribute is required |
+| `default=` | A literal that fits the type |
+| `values=` | An enum's allowed atoms; an empty list, blank or repeat is a build error |
+| `unique` | The database refuses a second row with that value |
+| `min=`, `max=` | A string's length bounds or a number's value bounds |
+| `match=` | A regular expression a string must match |
+| `on=:create`, `on=:update` | On a timestamp: fill on insert, or on insert and every later write; callers cannot set it |
 
-`uuid :id primary-key` and the two `timestamp` lines are the three fields almost every entity has, so they are in every example on these pages. `on=:create` and `on=:update` are unrelated to `on:load` on the `actions` line, which chooses an action; see [actions](#actions).
+`on=:create` and `on=:update` are unrelated to `on:load` on `actions`, which chooses a read.
 
 A field name may not be one of JavaScript's built-in object property names: `__proto__`, `constructor`, `prototype`, `hasOwnProperty`, `isPrototypeOf`, `propertyIsEnumerable`, `toLocaleString`, `toString`, `valueOf`, `__defineGetter__`, `__defineSetter__`, `__lookupGetter__` or `__lookupSetter__`. Mesh cannot validate a value safely against those.
 
 ## relationships
 
-Each relationship is one line: the destination entity as the tag's value, and `:name` for the relationship.
+Each relationship is `kind :name entity=ImportedName`:
 
 ```mx "src/domain/todo/todo.mesh.mx"
+import { List } from "./list.mesh.mx"
+import { Comment } from "./comment.mesh.mx"
+import { Attachment } from "./attachment.mesh.mx"
+
 entity :Todo
   attributes
     uuid :id primary-key
 
   relationships
-    belongs-to=:List :list
-    has-many=:Comment :comments
-    has-one=:Attachment :attachment
+    belongs-to :list entity=List
+    has-many :comments entity=Comment
+    has-one :attachment entity=Attachment
 ```
 
-| Line | What it gives you |
+| Kind | What it gives you |
 |:--|:--|
-| `belongs-to=:List :list` | Many todos belong to one list. It adds the `listId` attribute and the foreign key, and `todo.list` when you ask for it |
-| `has-many=:Comment :comments` | One todo has many comments. It adds no attribute, and gives `todo.comments` when you ask for it |
-| `has-one=:Attachment :attachment` | One row at most: it reads one attachment through that entity's own `belongs-to`, and makes that foreign key unique, so two attachments cannot share a todo |
+| `belongs-to` | Many todos belong to one list; the key column is on this entity, and `todo.list` arrives when you load it |
+| `has-many` | One todo has many comments; the key is on the other entity, and `todo.comments` arrives when loaded |
+| `has-one` | At most one attachment, through that entity's own `belongs-to`; its foreign key is unique |
 
-**A `belongs-to` creates its foreign-key attribute from its own name.** `belongs-to=:List :list` gives you `listId`; rename the relationship to `:parent` and the attribute is `parentId`. Add `nullable` and the foreign key is optional, which is what you want when the row does not exist yet at the moment it is written.
+Add `nullable` to a `belongs-to` when a related row is optional. A caller sets the relationship through `&list` in `input`, sending the list's id. The entity file names the relationship, never its generated key column; [Calling actions](./calling-actions.md#relationship-input-and-record-fields) explains the TypeScript surface.
 
-The other side is not automatic. If `todo` declares `belongs-to=:List :list`, the list knows nothing about it until `list.mesh.mx` declares `has-many=:Todo :todos`. Both sides are useful: `todo.list` reads one row, `list.todos` reads many.
+The other side is not automatic. The list knows nothing about its todos until `list.mesh.mx` imports `Todo` and declares `has-many :todos entity=Todo`.
 
 ## computed
 
-Values Mesh derives rather than stores. Two kinds of line, one section.
+Values Mesh derives rather than stores. Two kinds of line, one section:
 
 ```mx "src/domain/billing/invoice.mesh.mx"
+import { InvoiceLine } from "./invoice-line.mesh.mx"
 import { formatMoney } from "./invoice.helpers"
 
 entity :Invoice
@@ -232,65 +245,46 @@ entity :Invoice
     string :number
     enum :status values=[:draft, :sent]
     decimal :amount
-    date :dueOn nullable
+    date :dueOn
 
   relationships
-    has-many=:InvoiceLine :lines
+    has-many :lines entity=InvoiceLine
 
   computed
-    boolean :isOverdue({ self }) {
-      return self.status === :sent && self.dueOn < today()
+    boolean :isOverdue() {
+      return &status === :sent && &dueOn < today()
     }
-    string :label({ self }) {
-      return self.number + " · " + formatMoney(self.amount)
+    string :label() {
+      return &number + " · " + formatMoney(&amount)
     }
     count :lineCount of="lines"
 ```
 
-**A field with a body.** A type, a `:name`, the parameters in brackets, and a body. The parameters are `({ self })` in almost every case; add `actor` when the value depends on who is asking.
+**A field with a body.** A type, a `:name`, parameters and a body. Leave the parameters empty when it reads only members; add `actor` when it depends on who is asking.
 
-**A rollup.** A rollup kind, a `:name` and `of=`, a path: a relationship name, or a relationship name and a field (`of="lines.amount"`). The path is a string even with one step, so a path is never spelled two ways, and `load=[:lines]` — which names the same relationship as a name — is not a path and is an atom. The path is checked at build time against the generated types, so a wrong path is a build error and not a query that returns nothing.
+**A rollup.** A kind, a `:name` and `of=`, a path through relationships. The path is a string even with one step. `load=[&lines]` is a member reference instead, not a path.
 
 | Rollup | Result |
 |:--|:--|
 | `count :lineCount of="lines"` | How many rows the path reaches |
-| `sum :total of="lines.amount"` | The total of a numeric field over them |
-| `avg :averageAmount of="lines.amount"` | The average of the same |
-| `min :firstDueOn of="lines.dueOn"` | The smallest value of the field |
-| `max :lastDueOn of="lines.dueOn"` | The largest |
+| `sum :total of="lines.amount"` | The total of a numeric field |
+| `avg :averageAmount of="lines.amount"` | Its average |
+| `min :firstDueOn of="lines.dueOn"` | The smallest value |
+| `max :lastDueOn of="lines.dueOn"` | The largest value |
 
-Inside the entity file, every computed field is available: a check, a step, a filter and a policy may all read `:lineCount` without asking. A **caller** sees one only when they name it in `load`; reading a field the caller did not load is a type error.
+Paths are checked at build time. Inside the entity, checks, steps, filters and policies can read `&lineCount` without asking. A caller sees a computed field only when they name it in `load`; otherwise reading it is a type error.
 
-Mesh decides at build time whether an expression can be translated, and one that cannot is not a mistake: it runs in memory, after the rows are loaded, and costs one extra pass. `:label` above calls a helper on `self`, so it is one of those, and nothing about it is an error — nobody writes a second statement to make it fail on purpose. The build complains in exactly one place: where the database is required, which is a `filter`, a sort key, a policy check and a rollup's `of` path. String concatenation, a conditional on a string and a helper that reads `self` are not translatable; comparison, boolean operators, numeric arithmetic and `.length` are. `mesh explain` says which computed fields are translated.
+A computed body that cannot be translated runs in memory after the rows load, at the cost of an extra pass. `label` above is one of those, and that is not a mistake. An error arises only where SQL is required: a filter, a sort key, a policy, a rollup's path or another translated expression. `mesh explain` says which computed fields translate.
 
 ## actions
 
-The operations. `auto` lists the plain actions Mesh generates for you, and every action you write yourself is `type :name`.
+`actions auto=[:read, :destroy]` generates the plain actions of those types, named after the type. You may list `:create`, `:read`, `:update` or `:destroy`, with no repeats. Every action you write yourself is `type :name`.
 
-```mx "src/domain/billing/invoice.mesh.mx"
-entity :Invoice
-  attributes
-    uuid :id primary-key
-    string :number unique match=/^INV-\d+$/
-    enum :status values=[:draft, :sent, :cancelled]
+**`on:load=&visible`** chooses the read used when this entity is loaded through a relationship. That read's filter applies. Without it, Mesh uses the auto read. Naming a missing read is a build error, as is loading an entity that has neither choice.
 
-  actions auto=[:read, :destroy] on:load=:visible
-    create :create accept=[:number]
-    read :visible
-      filter=({ self }) => self.status !== :cancelled
-```
+### input
 
-**`auto`.** Any of `create`, `read`, `update`, `destroy`, no repeats. An action listed there is named after its type, which is why the auto read is `readInvoice` and the auto destroy is `destroyInvoice`.
-
-**`on:load`.** It says which read Mesh uses when **this** entity is loaded through a relationship: with `on:load=:visible` above, `invoiceLine.invoice` runs the read named `:visible`, and that read's `filter` applies. Without it, Mesh uses the auto read. Naming a read that does not exist is a build error, and so is loading an entity through a relationship when it has neither `on:load` nor an auto read.
-
-**`accept`.** A list of field names written as atoms, with no blanks and no repeats; `accept=[]` is valid and means the action takes only an id. On a **create**, every accepted field that is required and has no default must be sent. On an **update**, accepted fields are optional: the caller sends only what changes. A `validate` block says what a particular action insists on; see [`require`](#validate). On a create, a required attribute that is not accepted, has no default, is not filled by Mesh and is not set by a step is a build error, not a field silently left empty. A name that is not a field of the entity is a build error too: `accept=[:titel]` says so, at that line, and suggests `:title`.
-
-**Every option goes on the declaration line.** `accept=`, `auto=`, `on:load=`, `types=` and `actions=` are written next to the name they belong to, as in `create :create accept=[:title, :listId]` and `policy :owner types=[:read]`. The things that live on their own lines are the ones that have more than one part: a read's `filter=` and `sort` section, a `validate`'s `require=[:notes]`, and a `do`'s `when=`.
-
-### arguments
-
-An `arguments` line is for a value the action needs that is **not stored as it was sent**, written with the same shape as an attribute:
+An `input` section lists member references and declares arguments. A create must receive every input member that is required and has no default. On an update, member inputs are optional: the caller sends what changes. A typed argument is required unless `nullable`. A create's required attribute must be supplied through input, have a default, be filled by Mesh or be set by a step; otherwise the build fails.
 
 ```mx "src/domain/billing/invoice.mesh.mx"
 entity :Invoice
@@ -299,72 +293,71 @@ entity :Invoice
     decimal :amount min=0
 
   actions
+    create :create
+      input
+        &amount
+
     update :applyDiscount
-      arguments
+      input
         decimal :percent min=0 max=100
       do
         set
-          :amount=({ self, input }) => self.amount * (1 - input.percent / 100)
+          &amount=({ input }) => &amount * (1 - input.percent / 100)
 ```
 
-`applyDiscountInvoice` is then called as `applyDiscountInvoice({ id, percent: 10 }, context)`. An argument is required unless it is `nullable`, exactly like an attribute, and it reaches your code as `input.percent`. Use `accept` for a value that belongs on the record as the caller sent it — `update :pay accept=[:paidAt]` stores what was sent — and `arguments` when it is not: here the percentage is a number the action needs to compute with, and no field holds "10% off".
+Call `applyDiscountInvoice({ id, percent: 10 }, context)`. The percentage reaches the expression as `input.percent`; no field stores "10% off". A member line takes the declaration unchanged, while a typed line is a new argument. An action without `input` takes no declared fields; an update or destroy still takes its id.
+
+Options such as `auto=`, `on:load=`, `types=` and `actions=` sit on the declaration line. Sections such as `input`, `validate`, `do` and `sort` have their own lines.
 
 ### validate
 
-The checks that run before anything is written, on the record with the accepted input applied — see [What `self` holds](#what-self-holds).
+Checks run before anything is written, on the record with the member inputs applied. A rule about one field goes on its declaration: `decimal :amount min=0` says the whole of "the amount cannot be negative". A `check` is for a cross-field or stored-state rule:
 
 ```mx "src/domain/billing/invoice.mesh.mx"
 entity :Invoice
   attributes
     uuid :id primary-key
-    string :number unique match=/^INV-\d+$/
-    decimal :amount min=0
     date :issuedOn
     date :dueOn
-    enum :status values=[:draft, :sent]
-    string :notes nullable
 
   actions
-    create :create accept=[:number, :amount, :issuedOn, :dueOn]
+    create :create
+      input
+        &issuedOn
+        &dueOn
       validate
         check :dueAfterIssue [
-          that=({ self }) => self.dueOn >= self.issuedOn
+          that=() => &dueOn >= &issuedOn
           code="invalid_dates"
           message="the due date cannot be before the issue date"
         ]
-
-    update :send accept=[:notes]
-      validate
-        require=[:notes]
-        check :notSentYet [
-          that=({ self }) => self.status !== :sent
-          code="already_sent"
-          message="this invoice has already been sent"
-        ]
-      do
-        set
-          :status=:sent
 ```
 
-**A rule about one field goes on that field's line**, with `min`, `max` or `match`: `decimal :amount min=0` is the whole of "the amount cannot be negative". A `check` is for a rule across fields, like `:dueAfterIssue`, or about the state the row is in, like `:notSentYet`.
+A line rule carries Mesh's standard message: `string :title min=1` reports `too_short` and "must be at least 1 character". A check is where you write your own message.
 
-A line rule carries Mesh's own message, because there is nowhere in `min=0` to write your own: `string :title min=1` reports `too_short` and "must be at least 1 character", and the error's code is `invalid_input` like any other. The code and message are Mesh's. A `check`, for a rule across fields or about the state of the row, is where you write your own.
-
-**`require=[...]`** lists accepted fields this action insists on, which is how an update says what a caller must send. Its entries are atoms, like every other name.
-
-**`check :label [ … ]`** is one rule. The atom after `check` is the rule's **label**: it names the rule, so name it for the rule that must hold (`check :invoiceIsSent`, `check :dueAfterIssue`), and it is the name the caller sees on the failure. The brackets are what let the options run on separate lines. Inside them:
+The atom after `check` names the rule and is the label the caller sees. Name what must hold: `check :invoiceIsSent`, not the failure you are trying to avoid. Brackets let the options span several lines.
 
 | Option | Meaning |
 |:--|:--|
-| `that=` | An arrow function returning a boolean. It sees the four parameters |
-| `code=` | The caller-facing code for this rule, a string or a number. It is text your program switches on, so it stays a string, not an atom. It is on the issue the caller receives |
+| `that=` | A function returning a boolean |
+| `code=` | The caller-facing code, a string or number, on the issue rather than the error |
 | `message=` | The sentence the caller sees |
+| `when=` | Apply this check only when the condition holds |
 
-A check that fails throws `InvalidInputError`, whose own `code` is always `invalid_input`. Each failure is one entry of `error.issues`, carrying the label, the `code` and `message` you wrote, and the file, line and column of the `check` that declared it. Several checks can fail at once, and each one is its own issue, which is why the declared `code` lives there and not on the error. `when=` nests inside `validate` as it does inside `do`, so a rule may apply only under a condition.
+A failed check throws `InvalidInputError`, whose own code is always `invalid_input`. Each failure has its own entry in `error.issues`, with the label, code, message and source position of the check. Several checks may fail in one call.
 
 ### do
 
-The steps, run top to bottom after the checks pass. Each step sees the record as the earlier steps left it.
+Steps run top to bottom after validation. Each sees the record as earlier steps left it.
+
+| Step | What it does |
+|:--|:--|
+| `set` | Assigns fields with `&field=value` lines; a value is a literal or a one-expression arrow |
+| `when=cond` | Runs the nested steps only when the condition holds |
+| `load=[&customer]` | Loads relationships or computed fields onto the returned record; writes nothing |
+| `run(…) { }` | Plain code inside the transaction; forces a read before the write |
+
+The larger example below shows `set`, `when` and `load`. For the work a field assignment cannot express, use `run`:
 
 ```mx "src/domain/billing/invoice.mesh.mx"
 import { recordAuditEvent } from "./invoice.helpers"
@@ -372,132 +365,69 @@ import { recordAuditEvent } from "./invoice.helpers"
 entity :Invoice
   attributes
     uuid :id primary-key
-    enum :status values=[:draft, :sent, :paid]
-    decimal :amount
-    datetime :paidAt nullable
-    uuid :paidById nullable
-    boolean :needsReview default=false
-
-  relationships
-    belongs-to=:Customer :customer
 
   actions
-    update :pay accept=[:paidAt]
+    update :audit
       do
-        set
-          :status=:paid
-          :paidById=({ actor }) => actor.id
-        when=({ self }) => self.amount > 10000
-          set
-            :needsReview=true
-        load=[:customer]
-        run({ self, input, actor }) {
-          recordAuditEvent("invoice.paid", { id: self.id, by: actor.id });
+        run({ self, actor }) {
+          recordAuditEvent(self, actor);
         }
 ```
 
-| Step | What it does |
-|:--|:--|
-| `set` | Assigns fields. Each child line is `:field=value`, and the value is a literal or a one-expression arrow that sees the four parameters |
-| `when=cond` | Runs the steps nested under it only when the condition holds. Steps at the same level run in the order written |
-| `load=[...]` | Loads relationships and computed fields onto the record this action returns. It writes nothing |
-| `run(…) { }` | Plain code inside the transaction, for the one thing a `set` cannot say. It cannot be translated, so the action reads the record first and writes second |
-
-A `run` body is your own code and may call anything, including a function that writes to a log or sends a message: the rule that imported helpers must be pure applies to **translated expressions**, because Mesh may run those inside the database query. `run` is never translated, so the purity rule does not apply to it.
-
-Reach for `run` only when the work is not a field assignment: calling something outside the database, recording an event, formatting a value another system will read. If the work is a value on a field, it is a `set` line. A `run` step always makes the action read first and write second, and so does an expression Mesh cannot translate in a `check`, a `when` or a `set` value — that is not an error either; `mesh explain` names the expression that caused it. The rule for whether an update is one statement or two is in [Calling actions](./calling-actions.md#update).
+A `run` body may call anything, including logging or messaging code. The pure-helper rule applies to translated expressions, not `run`. Reach for it only when the work is not a field assignment. A `run`, or an untranslatable check, `when` or `set` expression, makes the action read first and write second. [Calling actions](./calling-actions.md#update) explains one statement versus two.
 
 ### Reads: filter and sort
 
-A read has two things of its own: a `filter=` option and a `sort` section. Nothing else.
+A read may take `input` arguments as well as a filter and sort:
 
 ```mx "src/domain/billing/invoice.mesh.mx"
+import { Customer } from "./customer.mesh.mx"
+
 entity :Invoice
   attributes
     uuid :id primary-key
-    enum :status values=[:draft, :sent]
     date :dueOn
+    timestamp :insertedAt on=:create
+
+  relationships
+    belongs-to :customer entity=Customer
 
   actions
-    read :overdue
-      filter=({ self }) => self.status === :sent
+    read :forCustomer
+      input
+        uuid :customerId
+      filter=({ input }) => &customer.id === input.customerId
       sort
-        asc :dueOn
-        desc :insertedAt
+        asc &dueOn
+        desc &insertedAt
 ```
 
-**`filter=`** is a function returning a boolean, and it must be translatable, because it runs as the query's `WHERE`. The caller's own filter and the policies are combined with it before the query is sent, so a read can only ever return fewer rows, never more.
+`filter=` returns a boolean and must translate to SQL. The caller's filter and the policies narrow it further. `&customer.id` compares the related record's id without a join.
 
-**`sort`** is a section, one line per field, in the order the rows come back: `asc :dueOn` for oldest first, `desc :insertedAt` for newest first. The field is an atom, like every other name, and the direction is a word in front of it, never a `-` on the name: a sign on a name would make it an expression, and a name is never one. A field may be a computed one. In your TypeScript the caller sorts with the same names as strings — `sort: ["dueOn"]` — because that is what an atom is at run time. Paging is the caller's: `limit` and `offset` in the input. See [Calling actions](./calling-actions.md#filters-sort-and-paging).
+`sort` has one line per field, in order: `asc &dueOn` for oldest first, `desc &insertedAt` for newest first. A sort key may be a translatable computed field. The caller uses strings instead: `sort: ["dueOn", "-insertedAt"]`. Paging belongs to the caller's `limit` and `offset`. See [Calling actions](./calling-actions.md#filters-sort-and-paging).
 
 ### always
 
-`always` takes the body of an action and applies it to every action in its scope. It is how a rule that applies to everything is written once. Its checks run before the action's own checks, and its steps before the action's own steps.
+`always` takes an action body and applies it across a scope. Its checks run before the action's checks, and its steps before the action's steps. It may hold `validate`, `do` or both.
 
-```mx "src/domain/billing/invoice.mesh.mx"
-entity :Invoice
-  attributes
-    uuid :id primary-key
-    decimal :amount min=0
-    date :issuedOn
-    date :dueOn
-
-  actions
-    always types=[:create, :update]
-      validate
-        check :dueAfterIssue [
-          that=({ self }) => self.dueOn >= self.issuedOn
-          code="invalid_dates"
-          message="the due date cannot be before the issue date"
-        ]
-
-    create :create accept=[:amount, :issuedOn, :dueOn]
-```
-
-`always` takes the same `types=` and `actions=` a policy takes, and may hold `validate`, `do` or both. `types=[:create, :update]` means every create and every update; `actions=[:send, :pay]` means those two by name; neither means every action in the entity.
+The larger example uses `always types=[:create, :update]` for a date rule on every create and update. `actions=[&send, &pay]` instead names particular actions. Neither option means every action in the entity.
 
 ## policies
 
-One policy per line, with a name, a scope and checks.
+One policy per line, with a name, a scope and checks. The larger example below shows all three common patterns: owners or staff may read; staff may write; nobody may destroy a paid invoice.
 
-```mx "src/domain/billing/invoice.mesh.mx"
-import { isStaff } from "./invoice.helpers"
-
-entity :Invoice
-  attributes
-    uuid :id primary-key
-    enum :status values=[:sent, :paid]
-
-  relationships
-    belongs-to=:Customer :customer
-
-  policies
-    policy :staffOrOwnerReads types=[:read]
-      authorize-if=({ self, actor }) => isStaff(actor) || self.customer.userId === actor.id
-    policy :staffWrites types=[:create, :update, :destroy]
-      authorize-if=({ actor }) => isStaff(actor)
-    policy :neverDestroyPaid types=[:destroy]
-      forbid-if=({ self }) => self.status === :paid
-```
-
-**How a policy decides.** The checks inside one policy combine without order: it passes when none of its `forbid-if` holds and, if it has any `authorize-if`, at least one of them holds, so a policy with only `forbid-if` checks passes until one of them is true. Every policy covering an action must pass, and an action that no policy covers is **forbidden** — as is every action of an entity with no `policies` section at all. Forgetting a rule must not open an action.
-
-| Option | Meaning |
+| Option | Scope |
 |:--|:--|
-| `types=[...]` | Any action whose type is **any** of those. `types=[:read]` is every read |
-| `actions=[...]` | Those actions by name. `actions=[:send, :pay]` |
-| neither | Every action of the entity |
+| `types=[:read]` | Every action of any listed type |
+| `actions=[&send, &pay]` | Those actions by name |
+| neither | Every action in the entity |
+| `when=` | Apply the policy only when the condition holds |
 
-The list inside `types=` is "or". Two policies are "and": every policy that covers an action must pass.
+A policy passes when none of its `forbid-if` checks holds and, if it has any `authorize-if`, at least one holds. The checks combine without order. A policy with only `forbid-if` passes until one is true. Every policy covering the action must pass; an action no policy covers is forbidden, including every action in an entity with no policies.
 
-| Check | Meaning |
-|:--|:--|
-| `authorize-if=` | The call is allowed when at least one of them holds |
-| `forbid-if=` | The call is refused when any of them holds |
+An exemption belongs in the condition: `forbid-if=({ actor }) => &status === :paid && !isStaff(actor)` forbids destroying a paid invoice except for staff.
 
-An exemption is written in the condition rather than as an escape hatch: `forbid-if=({ self, actor }) => self.status === :paid && !isStaff(actor)` forbids the destroy of a paid invoice to everyone but staff.
-
-When a check reads the stored row, Mesh folds it into the statement's filter, so a row the caller may not see is reported as not found rather than forbidden. `can<Action>` is how you ask for the reason instead. A `create` policy sees the record the create would write, and reading a related row there is a query inside the transaction before the insert.
+When a check reads the stored row, Mesh folds it into the statement's filter. A row the caller cannot see is reported as not found rather than forbidden; `can<Action>` asks for the reason instead. A create policy sees the proposed record, and a related-row read there is a query inside the transaction before the insert.
 
 ## Building one
 
@@ -505,46 +435,47 @@ When a check reads the stored row, Mesh folds it into the statement's filter, so
 bunx mesh build
 ```
 
-The build rejects a declaration, an option or a value outside this reference, an `accept` naming a field the entity does not have, a `do` step that sets a field the entity does not have, two entities with the same name, two entities in one file, a `check` with no `that`, an `on:load` naming a read that does not exist, an expression the database cannot run where it must, and a data-layer capability the configured adapter does not declare. Every diagnostic names the file, the line and the column:
+The build rejects unknown declarations, options and members, a member input with options, duplicate input names, two entities in one file, a check without `that`, an `on:load` that does not name a read, an expression that cannot run in SQL where it must, and a capability the adapter does not declare. Each diagnostic names the file, line and column:
 
 ```text
-src/domain/todo/todo.mesh.mx:18:28 error `accept` names :titel, which is not an attribute of :Todo. Did you mean :title?
+src/domain/todo/todo.mesh.mx:22:9 error &titel is not a member of :Todo. Did you mean &title?
 ```
 
-To see what Mesh read, including the source position of every declaration, run `mesh inspect Todo`. To see the plan an action's handler follows, run `mesh explain Todo complete`. Both are in [the command line](./configuration.md).
+Run `mesh inspect Todo` to see the declarations with source positions, and `mesh explain Todo complete` to see the action's plan. Both are in [the command line](./configuration.md).
 
 ## What `self` holds
 
-One table, because it depends on where the function runs. `input` is always the caller's own object, `actor` is always the caller and `context` is always the rest of the action context.
+`&name` reads a member of this record. `input` is always the caller's object, `actor` the caller and `context` the rest of the action context.
 
-| Where the function runs | `self` is |
+| Where | The record is |
 |:--|:--|
-| a `check` in `validate` | The record with the accepted input applied: the caller's value for each accepted field, the stored value for every field the caller did not send, and the declared defaults on a create. Nothing from `do` has run |
-| a step in `do` | The record as the earlier steps left it |
-| a `filter` on a read | Each row the query considers |
+| a check in `validate` | The record with member inputs applied: caller values for supplied fields, stored values for omitted ones, defaults on create; nothing from `do` yet |
+| a step in `do` | The record as earlier steps left it |
+| a filter on a read | Each row the query considers |
 | a policy on a read | The row |
-| a policy on an update or a destroy | The stored record |
-| a policy on a create | The proposed record: the accepted input and the defaults |
+| a policy on an update or destroy | The stored record |
+| a policy on a create | The proposed record: member inputs and defaults |
 | a computed field | The loaded record |
 
 ## In short
 
-If you want one table and nothing else, this is the whole file.
-
-| Section | A line looks like | An example |
+| Section | A line looks like | Example |
 |:--|:--|:--|
-| `attributes` | `type :name options`, required unless `nullable` | `string :title min=1` |
-| `relationships` | `kind=:Destination :name`, and `nullable` makes it optional | `belongs-to=:List :list` |
-| `computed` | `type :name({ self }) { … }`, or a rollup with `of=` a path | `count :todoCount of="todos"` |
-| `actions` | `type :name options`, with `arguments`, `validate` and `do` inside | `update :send` |
-| `policies` | `policy :name`, a scope (`types=`, `actions=`) and `authorize-if` / `forbid-if` | `policy :owner types=[:read]` |
+| `attributes` | `type :name options` | `string :title min=1` |
+| `relationships` | `kind :name entity=ImportedName` | `belongs-to :list entity=List` |
+| `computed` | `type :name() { … }` or a rollup | `count :todoCount of="todos"` |
+| `actions` | `type :name`, with `input`, `validate`, `do` | `update :send` |
+| `policies` | `policy :name`, scope and checks | `policy :owner types=[:read]` |
 
 ## A larger example
 
-One file that puts most of the above together: `src/domain/billing/invoice.mesh.mx`. It is not a file to copy; it is here because a reader who has followed the sections can check their understanding against it.
+One file that puts most of the above together. It is here to check your understanding of the sections, rather than to copy into the todo program.
 
 ```mx "src/domain/billing/invoice.mesh.mx"
 // src/domain/billing/invoice.mesh.mx
+import { Customer } from "./customer.mesh.mx"
+import { InvoiceLine } from "./invoice-line.mesh.mx"
+import { Payment } from "./payment.mesh.mx"
 import { formatMoney, isStaff } from "./invoice.helpers"
 
 entity :Invoice table="invoices"
@@ -563,102 +494,111 @@ entity :Invoice table="invoices"
     timestamp :updatedAt on=:update
 
   relationships
-    belongs-to=:Customer :customer
-    has-many=:InvoiceLine :lines
-    has-one=:Payment :payment
+    belongs-to :customer entity=Customer
+    has-many :lines entity=InvoiceLine
+    has-one :payment entity=Payment
 
   computed
-    boolean :isOverdue({ self }) {
-      return self.status === :sent && self.dueOn < today()
+    boolean :isOverdue() {
+      return &status === :sent && &dueOn < today()
     }
-    string :label({ self }) {
-      return self.number + " · " + formatMoney(self.total)
+    string :label() {
+      return &number + " · " + formatMoney(&total)
     }
     count :lineCount of="lines"
     sum :total of="lines.amount"
 
-  actions auto=[:read, :destroy] on:load=:visible
+  actions auto=[:read, :destroy] on:load=&visible
     always types=[:create, :update]
       validate
         check :dueAfterIssue [
-          that=({ self }) => self.dueOn >= self.issuedOn
+          that=() => &dueOn >= &issuedOn
           code="invalid_dates"
           message="the due date cannot be before the issue date"
         ]
 
-    create :create accept=[:number, :customerId, :amount, :issuedOn, :dueOn, :notes]
+    create :create
+      input
+        &number
+        &customer
+        &amount
+        &issuedOn
+        &dueOn
+        &notes
 
     update :send
       validate
         check :invoiceHasLines [
-          that=({ self }) => self.lineCount > 0
+          that=() => &lineCount > 0
           code="invalid_state"
           message="an invoice needs at least one line"
         ]
       do
         set
-          :status=:sent
+          &status=:sent
 
-    update :pay accept=[:paidAt]
+    update :pay
+      input
+        &paidAt
       validate
         check :invoiceIsSent [
-          that=({ self }) => self.status === :sent
+          that=() => &status === :sent
           code="invalid_state"
           message="only a sent invoice can be paid"
         ]
         check :invoiceHasLines [
-          that=({ self }) => self.lineCount > 0
+          that=() => &lineCount > 0
           code="invalid_state"
           message="an invoice needs at least one line"
         ]
       do
         set
-          :status=:paid
-          :paidById=({ actor }) => actor.id
-        when=({ self }) => self.amount > 10000
+          &status=:paid
+          &paidById=({ actor }) => actor.id
+        when=() => &amount > 10000
           set
-            :needsReview=true
-        load=[:customer]
+            &needsReview=true
+        load=[&customer]
 
     update :applyDiscount
-      arguments
+      input
         decimal :percent min=0 max=100
       do
         set
-          :amount=({ self, input }) => self.amount * (1 - input.percent / 100)
+          &amount=({ input }) => &amount * (1 - input.percent / 100)
 
     read :visible
-      filter=({ self }) => self.status !== :cancelled
+      filter=() => &status !== :cancelled
 
     read :overdue
-      filter=({ self }) => self.isOverdue
+      filter=() => &isOverdue
       sort
-        asc :dueOn
+        asc &dueOn
 
     read :forCustomer
-      arguments
+      input
         uuid :customerId
-      filter=({ self, input }) => self.customerId === input.customerId
+      filter=({ input }) => &customer.id === input.customerId
 
   policies
     policy :staffOrOwnerReads types=[:read]
-      authorize-if=({ self, actor }) => isStaff(actor) || self.customer.userId === actor.id
+      authorize-if=({ actor }) => isStaff(actor) || &customer.userId === actor.id
     policy :staffWrites types=[:create, :update, :destroy]
       authorize-if=({ actor }) => isStaff(actor)
     policy :neverDestroyPaid types=[:destroy]
-      forbid-if=({ self }) => self.status === :paid
+      forbid-if=() => &status === :paid
 ```
 
-Six things to notice in it:
+Six things to notice:
 
-- **`customerId` is not declared.** `belongs-to=:Customer :customer` created it, and `create` accepts it by that name.
-- **`decimal :amount min=0` is the whole of "not negative"**, and the `always` block holds the one rule that needs two fields, `check :dueAfterIssue`, instead of restating it.
-- **`:pay` sets three fields and then, under `when`, a fourth.** Steps at the same level run in order, and the nested ones only when the condition holds.
-- **`read :forCustomer` takes an argument**, and the filter compares it against `input.customerId`. A read may be as parameterised as a write.
-- **`:label` calls a helper on `self`**, so it runs in memory. That is not a mistake, and nobody writes a second statement to avoid it; `read :overdue` filters on `:isOverdue`, which is one translatable expression, so it runs in SQL.
-- **`policy :neverDestroyPaid` is a `forbid-if`, and nothing else.** It forbids while the invoice is paid, and passes otherwise, which is what lets every other destroy through.
+- **`&customer` takes the customer's id.** The relationship points at the imported `Customer`, and the create takes it through `input`.
+- **`decimal :amount min=0` says "not negative".** The `always` block holds the rule that needs two fields, `check :dueAfterIssue`.
+- **`pay` stores its input and makes changes in order.** It takes `&paidAt`, sets the status and payer, and marks a large invoice for review under `when`.
+- **`read :forCustomer` declares an argument.** `input.customerId` is compared with `&customer.id`, without a join. It is an input name, not a stored field declared in the file.
+- **`label` calls a helper on `&total`.** It runs in memory; `isOverdue` is one translatable expression and may be used in a SQL filter.
+- **`policy :neverDestroyPaid` has only `forbid-if`.** It forbids while paid and passes otherwise.
 
 ## Next
 
 - [Calling actions](./calling-actions.md) — what the generated functions take and return.
-- [Configuration and the command line](./configuration.md) — the file that points Mesh at this one, and every command.
+- [Configuration and the command line](./configuration.md) — configuration and every command.

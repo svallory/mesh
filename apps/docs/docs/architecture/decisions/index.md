@@ -36,6 +36,10 @@ The operator's rulings of those two days replaced the vocabulary copied from Ash
 
 The code on `main` still uses the names of 2026-10-04 morning until the realignment task ([0064](./0064-order-of-work-after-approval.md)).
 
+## What changed on 2026-10-08
+
+[ADR-0067](./0067-members-imports-input-static-files.md) amends the entity syntax: `:name` declares, `&name` refers to a member, another entity is imported by path, an action takes one `input` section, and files remain static. The [Entities reference](../../docs/entities.md) and ADR-0050's Invoice use that spelling. Earlier decision quotations remain historical.
+
 ## Current records
 
 | ADR | Decision | Status | Deciders |
@@ -94,7 +98,8 @@ The code on `main` still uses the names of 2026-10-04 morning until the realignm
 | [0063](./0063-user-docs-first-and-the-hold.md) | User docs first, in the 1.0 voice; development on hold until approved | Accepted | operator |
 | [0064](./0064-order-of-work-after-approval.md) | After approval: realignment, Jig port, then M2 | Accepted | lead, delegated |
 | [0065](./0065-mx-highlighting-on-the-docs-site.md) | The docs site highlights `mx` code with MX's tree-sitter highlighter | Accepted | lead, delegated, with the MX lead |
-| [0066](./0066-names-and-references-are-atoms.md) | Names and references are atoms: `kind :name options` | Accepted | operator (three points by the lead) |
+| [0066](./0066-names-and-references-are-atoms.md) | Names and references are atoms: `kind :name options` | Accepted, amended by 0067 | operator (three points by the lead) |
+| [0067](./0067-members-imports-input-static-files.md) | Members are `&name`, entities are imports, one `input` section, static files | Accepted | operator; marked choices by the lead |
 
 ## Superseded records
 

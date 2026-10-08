@@ -170,28 +170,19 @@ function docsMxBlocks(dir: string): DocsBlock[] {
 }
 
 /**
- * The operator's entity file syntax v3 (ruling of 2026-10-05 evening, ADR-0066):
- * a declaration is `kind :name` and every name, reference and fixed-set value is
- * an atom, so every Docs sample is a v3 entity file and today's contracts cannot
- * read one. Two rules keep the check honest while the atoms realignment has not
- * run:
- *
- *  - a v3 block is parsed for real, by `parseData` with no contracts, exactly as
- *    the page writes it — `@mxlang/data` 0.1.0-alpha.4 reads every construct of
- *    syntax v3 (MX decisions 145 and 156), so nothing is rewritten any more;
- *  - its parse with the contracts is deferred, counted and printed under one name.
- *
- * What this check does not do is Mesh's own reading of a name: the realignment
- * task teaches the contracts the v3 tags and options, and the deferred parse
- * becomes a real one then.
+ * Syntax v4 (ADR-0067): :name declares, &name refers to a member, and another
+ * entity is imported. The pinned parser predates MX's syntax table, so one
+ * normalisation below adapts only those spellings before a real, static parse.
+ * Contracts still know the resource vocabulary: that parse alone is deferred,
+ * counted and printed. Name resolution and Mesh semantics await realignment.
  */
-export const DOCS_SYNTAX = "syntax v3";
+export const DOCS_SYNTAX = "syntax v4";
 
-/** The one named reason a v3 block's contracts parse is deferred under. */
-export const DOCS_SYNTAX_PENDING_ATOMS = `${DOCS_SYNTAX}, pending the atoms realignment`;
+/** The one named reason a v4 block's contracts parse is deferred under. */
+export const DOCS_SYNTAX_PENDING_TABLE = `${DOCS_SYNTAX}, pending the MX syntax table`;
 
-/** A complete v3 entity file: comments and imports may come first, then `entity :Name`. */
-export function isV3EntityFile(block: string): boolean {
+/** A complete v4 entity file: comments and imports may come first, then `entity :Name`. */
+export function isV4EntityFile(block: string): boolean {
   for (const line of block.split("\n")) {
     const text = line.trim();
     if (text === "" || text.startsWith("//")) continue;
@@ -203,11 +194,11 @@ export function isV3EntityFile(block: string): boolean {
 
 /**
  * An option whose value is a single name or enum value, written as a string:
- * `accept="title"`, `default="draft"`, `on:load="visible"`. A list is handled
- * by `V3_LIST_OF_QUOTED_NAMES` below.
+ * `default="draft"`, `on:load="visible"`. A list is handled
+ * by `V4_LIST_OF_QUOTED_NAMES` below.
  */
-const V3_QUOTED_NAME =
-  /(?:^|[\s])(accept|auto|types|actions|load|sort|require|default|on|on:load|belongs-to|has-many|has-one)=("[^"]*")/;
+const V4_QUOTED_NAME =
+  /(?:^|[\s])(auto|types|actions|load|sort|default|on|on:load|entity)=("[^"]*")/;
 
 /**
  * An option whose value is a list written as quoted identifiers: `fields=[
@@ -223,36 +214,46 @@ const V3_QUOTED_NAME =
  * an option nobody has declared, `"some text"` and a name look the same, and
  * guessing would produce false findings on ordinary text.
  */
-const V3_TEXT_LIST_OPTIONS = new Set<string>();
-const V3_LIST_OF_QUOTED_NAMES =
+const V4_TEXT_LIST_OPTIONS = new Set<string>();
+const V4_LIST_OF_QUOTED_NAMES =
   /(\b[a-z][a-z0-9-]*)=(\[\s*(?:"[\w-]+"\s*,?\s*)+\])/g;
 
 /**
- * The first line of a block that is not written in syntax v3, or `null`.
+ * The first line of a block that is not written in syntax v4, or `null`.
  *
  * The parser cannot see any of this: `accept=["title"]` and `sort=[:dueOn]`
  * are perfectly good input to MX, so the block would parse and the page would
  * drift back to the old syntax without any check noticing. These are the rules
  * of the syntax the docs enforce, and this is where it enforces them.
  */
-export function quotedNameInV3(block: string): string | null {
+export function oldSpellingInV4(block: string): string | null {
   for (const [index, line] of block.split("\n").entries()) {
     const text = line.trim();
     if (text === "" || text.startsWith("//")) continue;
-    // A `set` step's own line names a field with an atom, not an option.
-    if (/^set\b/.test(text)) continue;
+    if (/(?:^|\s)(?:accept|require)\s*=|^arguments\b/.test(text)) {
+      return `line ${index + 1}: action input belongs in one \`input\` section (${text})`;
+    }
+    if (/\b(?:belongs-to|has-many|has-one)\s*=/.test(text) || /\bentity\s*=\s*:/.test(text)) {
+      return `line ${index + 1}: a relationship is \`kind :name entity=ImportedName\` (${text})`;
+    }
+    if (/^(?:asc|desc)\s+:|^:\w+\s*=|\b(?:load|actions|fields)\s*=\s*\[[^\]]*:\w|\bon:load\s*=\s*:/.test(text)) {
+      return `line ${index + 1}: a member reference is \`&name\`, not an atom (${text})`;
+    }
+    if (/^&\w+\s+\S/.test(text)) {
+      return `line ${index + 1}: an input member takes no options; rules belong on its declaration (${text})`;
+    }
     // A read's order is a `sort` section with `asc`/`desc` lines (ADR-0066).
     if (/(?:^|[\s])sort=/.test(text)) {
-      return `line ${index + 1}: a read's order is a \`sort\` section with \`asc :field\` and \`desc :field\` lines, not a \`sort=\` option (${text})`;
+      return `line ${index + 1}: a read's order is a \`sort\` section with \`asc &field\` and \`desc &field\` lines, not a \`sort=\` option (${text})`;
     }
-    const name = V3_QUOTED_NAME.exec(text);
+    const name = V4_QUOTED_NAME.exec(text);
     if (name) {
-      return `line ${index + 1}: \`${name[1]}\` takes a name as an atom, not a string (${text})`;
+      return `line ${index + 1}: \`${name[1]}\` takes an atom, member reference or imported name, not a string (${text})`;
     }
-    V3_LIST_OF_QUOTED_NAMES.lastIndex = 0;
-    for (let list = V3_LIST_OF_QUOTED_NAMES.exec(text); list; list = V3_LIST_OF_QUOTED_NAMES.exec(text)) {
-      if (V3_TEXT_LIST_OPTIONS.has(list[1]!)) continue;
-      return `line ${index + 1}: \`${list[1]}\` takes a list of names as atoms, not strings (${text})`;
+    V4_LIST_OF_QUOTED_NAMES.lastIndex = 0;
+    for (let list = V4_LIST_OF_QUOTED_NAMES.exec(text); list; list = V4_LIST_OF_QUOTED_NAMES.exec(text)) {
+      if (V4_TEXT_LIST_OPTIONS.has(list[1]!)) continue;
+      return `line ${index + 1}: \`${list[1]}\` takes atoms or member references, not strings (${text})`;
     }
     const oldName = /^[a-z][a-z0-9-]*\s+#(\w+)/.exec(text);
     if (oldName) return `line ${index + 1}: a declaration is \`kind :name options\`; \`#${oldName[1]}\` is the old spelling (${text})`;
@@ -261,36 +262,68 @@ export function quotedNameInV3(block: string): string | null {
 }
 
 /**
- * Parses a v3 block with no contracts, exactly as the page writes it; a parser
- * crash is a finding, not an exception.
+ * Temporary spelling bridge for alpha.5, removed when Mesh pins MX's syntax
+ * table (MX decision 182 addendum 1, including lineTriggers). Never changes the
+ * page or evaluates code. Imports pass through alpha.5's imports:pass option.
+ * Quoted text, expression comments, regex literals and infix &/&& stay untouched.
  */
-export function parseV3(source: string, file: string): DataDiagnostic[] {
+export function normaliseV4(source: string): string {
+  // alpha.5 also rejects comments under structural:reject (owed to MX).
+  // Blank only leading file comments, keeping rows. In-body comments remain
+  // untouched so a column-0 comment cannot silently hide an indentation error.
+  let beforeEntity = true;
+  const uncommented = source.split("\n").map((line) => {
+    if (/^entity\b/.test(line)) beforeEntity = false;
+    return beforeEntity && /^\/\//.test(line) ? "" : line;
+  }).join("\n");
+  // Tokenise before adapting line triggers too: a line inside a quoted template
+  // must never be rewritten. The core's after-kind reference positions are sort
+  // directions; `return &x` is an operand, not a declaration named :x.
+  const lines = uncommented;
+  const tokens = /\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\/(?:\\.|[^/\n\\])+\/[a-z]*|&[A-Za-z_]\w*|[A-Za-z_$][\w$]*|\d+(?:\.\d+)?|===|!==|=>|&&|\|\||==|!=|<=|>=|\S/g;
+  let previous = "";
+  return lines.replace(tokens, (token, offset: number) => {
+    if (token.startsWith("//") || token.startsWith("/*")) return token;
+    const prefix = lines.slice(lines.lastIndexOf("\n", offset - 1) + 1, offset);
+    const lineReference = /^[\t ]*$/.test(prefix) || /^[\t ]*(?:asc|desc)[\t ]+$/.test(prefix);
+    const operand = previous === "" || /^(?:return|throw|typeof|void|delete|yield|await)$/.test(previous) ||
+      /^(?:=>|&&|\|\||===|!==|==|!=|<=|>=|[=([{,:?!+*/%<>|&^~-])$/.test(previous);
+    const result = /^&\w/.test(token)
+      ? lineReference ? `:${token.slice(1)}` : operand ? `self.${token.slice(1)}` : token
+      : token;
+    previous = token;
+    return result;
+  });
+}
+
+/** A parser crash is a finding, not an exception. */
+export function parseV4(source: string, file: string): DataDiagnostic[] {
   try {
-    return parseData(source, file).diagnostics;
+    return parseData(normaliseV4(source), file, { structural: "reject", imports: "pass" }).diagnostics;
   } catch (cause) {
     return [{ severity: "error", message: `MX could not parse the block at all: ${(cause as Error).message.split("\n")[0]}`, line: 1, column: 0, offset: 0 }];
   }
 }
 
 /**
- * The stricter companion: every MX fence on the Docs pages must be a complete v3
+ * The stricter companion: every MX fence on the Docs pages must be a complete v4
  * entity file, so a page cannot drift back to another syntax, and every one of them
  * must parse. A block whose root is not `entity :Name` fails here.
  */
-export function checkDocsSyntaxV3(dir: string) {
+export function checkDocsSyntaxV4(dir: string) {
   let checked = 0;
   const errors: string[] = [];
   for (const { name, line, block, closed } of docsMxBlocks(dir)) {
     const where = `${name}:${line}`;
     if (!closed) { errors.push(`${where}: unclosed MX fence`); continue; }
-    if (!isV3EntityFile(block.join("\n"))) {
+    if (!isV4EntityFile(block.join("\n"))) {
       errors.push(`${where}: MX fence is not a complete ${DOCS_SYNTAX} entity file: its root must be \`entity :Name\``);
       continue;
     }
     checked++;
-    const quoted = quotedNameInV3(block.join("\n"));
+    const quoted = oldSpellingInV4(block.join("\n"));
     if (quoted) errors.push(`${where}: MX fence is not written in ${DOCS_SYNTAX}: ${quoted}`);
-    for (const diagnostic of parseV3(`${block.join("\n")}\n`, where)) {
+    for (const diagnostic of parseV4(`${block.join("\n")}\n`, where)) {
       errors.push(`${where}: MX block ${diagnostic.line}:${diagnostic.column + 1}: ${diagnostic.message}`);
     }
   }
@@ -302,19 +335,20 @@ export function checkDocsSyntaxV3(dir: string) {
 export function checkDocsSamples(dir: string) {
   let parsed = 0;
   let skipped = 0;
-  let v3 = 0;
+  let v4 = 0;
   const deferred: { at: string; reason: string }[] = [];
   const errors: string[] = [];
   for (const { name, line, block, closed } of docsMxBlocks(dir)) {
     const where = `${name}:${line}`;
     if (!closed) errors.push(`${where}: unclosed MX fence`);
-    // A v3 entity file is parsed here for real, without the contracts, and its
-    // contracts parse is deferred under one name rather than counted as a finding.
-    if (isV3EntityFile(block.join("\n"))) {
-      v3++;
+    // A v4 entity file still gets a real parse; only its contracts are deferred.
+    if (isV4EntityFile(block.join("\n"))) {
+      v4++;
       parsed++;
-      deferred.push({ at: where, reason: DOCS_SYNTAX_PENDING_ATOMS });
-      for (const diagnostic of parseV3(`${block.join("\n")}\n`, where)) {
+      deferred.push({ at: where, reason: DOCS_SYNTAX_PENDING_TABLE });
+      const old = oldSpellingInV4(block.join("\n"));
+      if (old) errors.push(`${where}: ${old}`);
+      for (const diagnostic of parseV4(`${block.join("\n")}\n`, where)) {
         errors.push(`${where}: MX block ${diagnostic.line}:${diagnostic.column + 1}: ${diagnostic.message}`);
       }
       continue;
@@ -335,7 +369,7 @@ export function checkDocsSamples(dir: string) {
   }
   const byReason = new Map<string, number>();
   for (const { reason } of deferred) byReason.set(reason, (byReason.get(reason) ?? 0) + 1);
-  console.log(`Docs MX samples: parsed ${parsed} (${v3} of them ${DOCS_SYNTAX} entity files, parsed without contracts), deferred ${deferred.length}, skipped ${skipped} fragments`);
+  console.log(`Docs MX samples: parsed ${parsed} (${v4} of them ${DOCS_SYNTAX} entity files, parsed without contracts), deferred ${deferred.length}, skipped ${skipped} fragments`);
   for (const [reason, count] of byReason) console.log(`  deferred (${count}): ${reason}`);
   if (parsed === 0 && deferred.length === 0) errors.push("Docs sample check parsed no complete entity blocks");
   return { parsed, skipped, deferred, errors };

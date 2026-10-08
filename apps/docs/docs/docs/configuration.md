@@ -141,10 +141,10 @@ Exit codes: `0` success, `1` errors were found, `2` usage error.
 Every diagnostic names the file, the line and the column, both 1-based, and says what to do:
 
 ```text
-src/domain/todo/todo.mesh.mx:18:28 error `accept` names :titel, which is not an attribute of :Todo. Did you mean :title?
+src/domain/todo/todo.mesh.mx:22:9 error &titel is not a member of :Todo. Did you mean &title?
 ```
 
-The same shape is used for an unknown declaration, one the build does not implement, a duplicate entity name, a free variable in an expression and a capability the adapter does not declare. Nothing is silently dropped.
+The same shape is used for an unknown declaration, one the build does not implement, a duplicate input name, a free variable in an expression and a capability the adapter does not declare. Nothing is silently dropped.
 
 ## The guard
 
@@ -180,15 +180,15 @@ Prints the plan the generated handler follows. The plan is chosen at build time;
 
 ```text
 Todo.complete (update)
-  strategy     read-then-write: check notDoneYet reads self
-  steps        done = true
-  policy       self.list.ownerId === actor.id   folded into the statement as a filter
+  strategy     read-then-write: check notDoneYet reads &done
+  steps        &done = true
+  policy       &list.ownerId === actor.id   folded into the statement as a filter
   checks       notDoneYet
 ```
 
 Two lines are worth learning:
 
-- **`strategy`** is one statement (`atomic`) or `read-then-write`, and `explain` says why: a `check` or `when` that reads `self`, a `run` step, or an expression Mesh cannot translate. `Todo.complete` is the first because `check :notDoneYet` reads `self.done`; `Todo.rename` is one statement because it has no check.
+- **`strategy`** is one statement (`atomic`) or `read-then-write`, and `explain` says why: a `check` or `when` that reads `self`, a `run` step, or an expression Mesh cannot translate. `Todo.complete` is the first because `check :notDoneYet` reads `&done`; `Todo.rename` is one statement because it has no check.
 - **`folded into the statement`** means the rule costs no extra query. A rule that cannot fold runs in memory on the row read inside the transaction instead.
 
 `explain` prints a plan, not SQL. Queries are assembled at run time from the entity's filter, the caller's filter and the policies, because which of those apply is only known when the call arrives.

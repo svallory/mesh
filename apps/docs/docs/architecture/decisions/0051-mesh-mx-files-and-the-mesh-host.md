@@ -9,6 +9,8 @@ description: "Decision record 0051: the file extension, the MX host package, and
 
 Accepted. Amends [ADR-0002](./0002-resource-files-are-mx.md) (the file name).
 
+Amended by [ADR-0067](./0067-members-imports-input-static-files.md): entity imports and `&name` members use the syntax table; one `input` section replaces split input; files stay static on the `tree` target (MX decisions 182 addendum 1 and 187 addendum 2).
+
 **Amended 2026-10-05 (evening) by [ADR-0066](./0066-names-and-references-are-atoms.md)**: names and references are written as atoms, which adds one more thing Mesh needs from MX — a parser that reads `:name` after a tag and an atom in a value (MX decision 156, pending). The table below is the state as it was on the morning of 2026-10-05 and is left as the record; the current list is on [open questions](../open-questions.md).
 
 ## Date

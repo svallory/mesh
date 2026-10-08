@@ -15,17 +15,30 @@ Most of the code a framework asks you to write is code an agent has to read befo
 
 An entity file is short, declarative and in one place. To add a field, an action or a rule, an agent edits that file and nothing else: no schema object, no migration by hand, no DTO, no controller, no service layer to keep in step. The types, the input checks, the table and the migration all follow from the edit.
 
-The tutorial's two entity files are 25 and 39 lines. That is the whole surface an agent has to understand before it can add an action to a program with a list, a todo, ownership rules and derived values.
+The tutorial's two entity files are the whole surface an agent has to understand before it can add an action to a program with a list, a todo, ownership rules and derived values.
 
 ## The rules file
 
-`mesh build` writes `.mesh/rules.md`: a short description of your entities — which actions exist and what they accept — and of Mesh's vocabulary: the field types, the action types and the declarations an extension adds. It is generated, so it cannot drift from the code. Condensed onto three lines, the todo above looks like this:
+`mesh build` writes `.mesh/rules.md`: a short description of your entities — which actions exist and what they accept — and of Mesh's vocabulary: the field types, the action types and the declarations an extension adds. It is generated, so it cannot drift from the code. An excerpt for the tutorial's todo looks like this:
 
 ```text
+import { List } from "./list.mesh.mx"
+
 entity :Todo table="todos"
-  attributes: :id uuid primary-key, :title string min=1, :done boolean default=false
-  actions: auto read destroy; create :create accept=[:title, :listId]; update :complete, :rename
-  policy :owner types=[:create, :read, :update, :destroy]: authorize-if self.list.ownerId === actor.id
+  attributes
+    uuid :id primary-key
+    string :title min=1
+    boolean :done default=false
+  relationships
+    belongs-to :list entity=List
+  actions auto=[:read, :destroy]
+    create :create
+      input
+        &title
+        &list
+  policies
+    policy :owner types=[:create, :read, :update, :destroy]
+      authorize-if=({ actor }) => &list.ownerId === actor.id
 ```
 
 (That is the shape of the content, not the file's exact text: the real file is longer and lists every entity.) It writes names and lists of names the way an entity file does, because that is what it is teaching: an agent that copies a line from it into a `.mesh.mx` file has written a valid one.
@@ -50,9 +63,9 @@ bunx mesh explain Todo complete
 
 ```text
 Todo.complete (update)
-  strategy     read-then-write: check notDoneYet reads self
-  steps        done = true
-  policy       self.list.ownerId === actor.id   folded into the statement as a filter
+  strategy     read-then-write: check notDoneYet reads &done
+  steps        &done = true
+  policy       &list.ownerId === actor.id   folded into the statement as a filter
   checks       notDoneYet
 ```
 

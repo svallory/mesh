@@ -17,6 +17,9 @@ Mesh is a TypeScript framework: you describe each thing your program stores once
 This is a complete `src/domain/todo/todo.mesh.mx`, top to bottom, as your editor shows it. Point at a numbered marker, or at the lines it sits on, to read what that part gives you; every part is something you would otherwise write by hand.
 
 ```mx-figure
+// @imports: Another entity — `List` is imported from the file that declares it. The path tells Mesh which list this todo belongs to.
+import { List } from "./list.mesh.mx"
+
 // @name: Name and table — a name is written `:name`, so this is `:Todo`; it lives in the `todos` table. The type, the functions and the migration come from this one line.
 entity :Todo table="todos"
 // @fields: Fields you send — `title` is a string of at least one character, `done` a boolean that starts false.
@@ -27,39 +30,51 @@ entity :Todo table="todos"
 // @times: Fields the database fills — `insertedAt` on create, `updatedAt` on every write. No caller sets either.
     timestamp :insertedAt on=:create
     timestamp :updatedAt on=:update
-// @belongs: Linked to a list — `listId` becomes a field and the foreign key is created, and `todo.list` arrives when you ask.
+
+// @belongs: Linked to a list — this creates the `listId` column; `&list` in `input` is how the caller sets it. `todo.list` arrives when you ask.
   relationships
-    belongs-to=:List :list
+    belongs-to :list entity=List
+
 // @derived: A computed value — ask for `label` and it is on the result; leave it out and it does not exist.
   computed
-    string :label({ self }) {
-      return (self.done ? "[x] " : "[ ] ") + self.title
+    string :label() {
+      return (&done ? "[x] " : "[ ] ") + &title
     }
+
 // @create: Calling createTodo — you call `createTodo(input, context)`. A field it does not accept never reaches your code, and a rule about one field is one word on that field's line.
   actions auto=[:read, :destroy]
-    create :create accept=[:title, :listId]
+    create :create
+      input
+        &title
+        &list
+
 // @complete: Rule and change — `completeTodo({ id }, context)` refuses a todo that is already done, then writes it in one turn.
     update :complete
       validate
         check :notDoneYet [
-          that=({ self }) => !self.done
+          that=() => !&done
           code="already_done"
           message="this todo is already complete"
         ]
       do
         set
-          :done=true
+          &done=true
+
 // @rename: One more action — `renameTodo({ id, title }, context)` accepts a field and changes nothing else.
-    update :rename accept=[:title]
+    update :rename
+      input
+        &title
+
 // @pending: A query — `pendingTodo(input, context)` filters in SQL, and your call can narrow it with its own `filter`.
     read :pending
-      filter=({ self }) => self.done === false
+      filter=() => &done === false
       sort
-        asc :insertedAt
+        asc &insertedAt
+
 // @who: Who may do it — an action no policy covers is forbidden, and a todo in someone else's list is simply not found.
   policies
     policy :owner types=[:create, :read, :update, :destroy]
-      authorize-if=({ self, actor }) => self.list.ownerId === actor.id
+      authorize-if=({ actor }) => &list.ownerId === actor.id
 ```
 
 ## What you call
@@ -67,7 +82,7 @@ entity :Todo table="todos"
 An action becomes an ordinary TypeScript function with an ordinary signature:
 
 ```ts "src/main.ts (excerpt)"
-const todo = await createTodo({ title: "Buy milk", listId: list.id }, { actor });
+const todo = await createTodo({ title: "Buy milk", list: list.id }, { actor });
 ```
 
 There is no server, no route and no client to generate. Mesh serves a command line, a worker, a daemon or an HTTP endpoint equally, because the function is the whole interface.
