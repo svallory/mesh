@@ -22,6 +22,7 @@
 // in both directions of docmd's client-side navigation, which swaps the content
 // without a reload and resets the body's classes.
 import { mxHighlighter } from './mx-highlight.js';
+import { renderHintLine, renderHintNotes, homeHintStyles, homeHintScript } from './mesh-home-hints.js';
 
 const HOME = '.main-content:has(>.mh-hero)';
 const BODY = 'body:has(.mh-hero)';
@@ -67,13 +68,8 @@ export function renderMxFlow(source, file) {
   // Each line carries its indentation, so where the file is pinned on a phone a
   // long line can wrap under its own first character instead of being cut off.
   const lineHtml = (k) => {
-    // The home is an excerpt: explain the generated key at the relationship,
-    // where a reader first encounters it. Native title works without JS.
-    const note = /^\s+belongs-to :list entity=List$/.test(lines[k])
-      ? ' tabindex="0" title="Creates the listId column. &amp;list in input is how the caller sets it."'
-      : '';
-    return `<span class="mh-l"${note} style="--i:${lines[k].length - lines[k].trimStart().length}">` +
-      `${render(starts[k], starts[k] + lines[k].length)}</span>`;
+    return `<span class="mh-l" style="--i:${lines[k].length - lines[k].trimStart().length}">` +
+      `${renderHintLine(lines[k], starts[k], render)}</span>`;
   };
   let code = '';
   let next = 0;
@@ -86,7 +82,7 @@ export function renderMxFlow(source, file) {
   for (; next < lines.length; next++) code += lineHtml(next);
   // docmd's own fence rule wraps this in its titled code block (the header with
   // the file name and the copy button), as it does every fence with a title.
-  return `<pre class="hljs mx-hl mh-file-code"><code class="language-mx">${code}</code></pre>`;
+  return `<pre class="hljs mx-hl mh-file-code"><code class="language-mx">${code}</code></pre>` + renderHintNotes();
 }
 
 const installed = new WeakSet();
@@ -285,5 +281,5 @@ ${HOME} .mh-colophon{margin-top:0;font-size:.875rem;color:var(--mh-muted)}
 export default {
   plugin: { name: 'mesh-home', version: '1.0.0', capabilities: ['markdown', 'head'] },
   markdownSetup: (md) => installMxFlow(md),
-  generateMetaTags: () => homeStyles,
+  generateMetaTags: () => homeStyles + homeHintStyles + homeHintScript,
 };

@@ -17,6 +17,7 @@ const intro = /```mx-figure\n([\s\S]*?)```/.exec(docsPage('index.md'))[1]
 test('the home excerpt uses v4 and every nonblank line occurs in order in the full file', () => {
   expect(fences).toHaveLength(1);
   expect(fences[0]).toStartWith('import { List } from "./list.mesh.mx"\n');
+  expect(createHash('sha256').update(fences[0]).digest('hex')).toBe('ad19a0f0112a3d92e92a7c6fc0827ca4f203c554388279c9f0cade65eb8092eb');
   expect(oldSpellingInV4(fences[0])).toBeNull();
   expect(parseV4(fences[0], 'home.mx')).toEqual([]);
   expect(fences[0]).toContain('belongs-to :list entity=List');
@@ -36,12 +37,14 @@ test('the three full flagship files are byte-identical, including blank lines', 
   console.log('Flagship SHA-256:', createHash('sha256').update(files[0]).digest('hex'));
 });
 
-test('home highlights and the relationship carries the generated-key hover note', () => {
+test('home highlights and the relationship carries the generated-key token hint', () => {
   expect(mxParseProblems(fences[0], 'docs/index.md')).toEqual([]);
   expect(highlightMx(fences[0])).toContain('<span class="ts-tag">entity</span>');
   const html = renderMxFlow(fences[0], 'docs/index.md');
-  const note = 'title="Creates the listId column. &amp;list in input is how the caller sets it."';
-  expect(html.split(note).length - 1).toBe(1);
+  expect(html).not.toContain(' title=');
+  expect(html).toContain('aria-describedby="mh-hint-relationship"');
+  expect(html.split('id="mh-hint-relationship"').length - 1).toBe(1);
+  expect(html).toContain('Creates the <code>listId</code> column; <code>&amp;list</code> in <code>input</code> is how the caller sets it.');
   expect(html).toContain('tabindex="0"');
   expect(page).toContain('listId: string');
   expect(page).toContain('list: List["id"]');
