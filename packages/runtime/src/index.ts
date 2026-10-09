@@ -17,3 +17,4 @@ export type { Issue, IssueSource } from "./errors.ts";
 export { parseInput } from "./input.ts";
 export type { StandardSchemaV1 } from "./standard-schema.ts";
 export type { Row, Key, TableHandle, DataOperations, DataLayer } from "./data-layer.ts";
+export type { DataAdapter } from "./data-adapter.ts";

@@ -60,6 +60,13 @@
         "create-mesh": "./src/bin.ts",
       },
     },
+    "packages/data-sqlite": {
+      "name": "@meshfw/data-sqlite",
+      "version": "0.0.0",
+      "dependencies": {
+        "@meshfw/runtime": "workspace:*",
+      },
+    },
     "packages/model": {
       "name": "@meshfw/model",
       "version": "0.0.0",
@@ -179,6 +186,8 @@
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.28.2", "", { "os": "win32", "cpu": "x64" }, "sha512-5ebpxr3nWMzrL/rnUI755Jkuee0bHL/Gq0WTF9lvcpv73wAp5eu8MfBUgWK9bhWvZjj7yX8etf/8tI8Ney695g=="],
 
     "@meshfw/compiler": ["@meshfw/compiler@workspace:packages/compiler"],
+
+    "@meshfw/data-sqlite": ["@meshfw/data-sqlite@workspace:packages/data-sqlite"],
 
     "@meshfw/model": ["@meshfw/model@workspace:packages/model"],
 
