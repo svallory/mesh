@@ -36,6 +36,8 @@ export interface DataLayer {
   transaction<T>(run: (tx: DataOperations) => Promise<T>): Promise<T>;
   /** Release the adapter's connection and other owned handles. Rejects while
    * transactions are running or queued, leaving the layer open. Idempotent.
+   * Releases handles only: a later transaction may reopen the layer on the same
+   * storage (so `disconnect()` then `connect()` reuses the configured layer).
    */
   close(): Promise<void>;
 }

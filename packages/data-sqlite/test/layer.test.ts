@@ -64,20 +64,50 @@ test("sqlite validates configuration and exposes frozen build metadata without o
     expect(existsSync(layer.options.file)).toBe(true);
     await layer.close();
     await layer.close();
-    expect(() => layer.transaction(async () => {})).toThrow(FrameworkError);
-    await expect(createSchema(layer, { table })).rejects.toThrow(FrameworkError);
+    await layer.transaction(async () => {});
+    await layer.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test("closing before first use never opens a file", async () => {
+test("closing before first use never opens a file; the next transaction does", async () => {
   const dir = mkdtempSync(join(tmpdir(), "mesh-unopened-"));
   try {
     const file = join(dir, "no.db");
     const layer = sqlite({ file });
     await layer.close();
     expect(existsSync(file)).toBe(false);
-    expect(() => layer.transaction(async () => {})).toThrow("closed");
+    await layer.transaction(async () => {});
+    expect(existsSync(file)).toBe(true);
+    await layer.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("close releases the connection and a later transaction reopens the same file", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "mesh-reopen-"));
+  try {
+    const layer = sqlite({ file: join(dir, "reopen.db") });
+    await createSchema(layer, { table });
+    await layer.transaction(async (tx) => { await tx.insert(table, sampleRow); });
+    await layer.close();
+    await layer.close();
+    // Another layer can take the write lock once the first is closed.
+    const other = sqlite({ file: join(dir, "reopen.db") });
+    await other.transaction(async (tx) => expect(await tx.selectAll(table)).toEqual([sampleRow]));
+    await other.close();
+    await layer.transaction(async (tx) => expect(await tx.selectAll(table)).toEqual([sampleRow]));
+    await layer.close();
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("a :memory: layer reopens empty after close", async () => {
+  const layer = sqlite({ file: ":memory:" });
+  try {
+    await createSchema(layer, { table });
+    await layer.transaction(async (tx) => { await tx.insert(table, sampleRow); });
+    await layer.close();
+    await createSchema(layer, { table });
+    await layer.transaction(async (tx) => expect(await tx.selectAll(table)).toEqual([]));
+  } finally { await layer.close(); }
 });
 
 test("createSchema push API creates tables on the same connection and is idempotent", async () => {
@@ -247,17 +277,21 @@ test.each(["memory", "file"])("ROLLBACK failure fails closed for queued and late
         expect(result.reason.cause.transaction).toBe(transaction);
         expect(result.reason.cause.rollback).toBe(rollback);
         expect(result.reason.message).toBe(index === 0 ? "Transaction failed and ROLLBACK failed" :
-          "this data layer is unusable: a rollback failed, so its connection may still be inside a transaction. Close it and create a new one.");
+          "this data layer is unusable: a rollback failed, so its connection may still be inside a transaction. Close it; the next transaction opens a new connection.");
       }
       await expect(layer.transaction(async () => { callbacks++; })).rejects.toThrow("this data layer is unusable");
       await expect(createSchema(layer, { table })).rejects.toThrow("this data layer is unusable");
       expect(callbacks).toBe(0);
       expect(statements).toEqual(["BEGIN IMMEDIATE", "ROLLBACK"]);
     } finally { spy.mockRestore(); }
-    // No out-of-band rollback: closing is the only permitted cleanup/recovery.
+    // No out-of-band rollback: closing is the only permitted cleanup/recovery, and it recovers.
     await layer.close();
     await layer.close();
-    expect(() => layer.transaction(async () => {})).toThrow("SQLite data layer is closed");
+    // The old handle was inside a transaction: its native close, and the file's write
+    // lock, wait for it to be finalised (see the next test).
+    Bun.gc(true);
+    if (kind === "memory") await createSchema(layer, { table });
+    await layer.transaction(async (tx) => expect(await tx.selectAll(table)).toEqual([]));
   } finally { await layer.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 
