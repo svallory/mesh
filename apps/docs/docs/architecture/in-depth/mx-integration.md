@@ -5,22 +5,22 @@ description: "How Mesh reads static entity files through MX, the syntax-v4 parse
 
 # How Mesh uses MX
 
-Status: the loader and the closed v4 contracts are built (PR #47, MX pinned at `0.1.0-alpha.11`), and `verify` checks the MX import boundary and complete MX samples in the Docs pages. The authored `&` member positions after a kind and inside expressions wait for MX's lowering; the composed contracts module is built in M6; the `mesh` MX host package follows MX decision 148 ([ADR-0051](../decisions/0051-mesh-mx-files-and-the-mesh-host.md)).
+Status: the loader and the closed v4 contracts are built (PR #47), MX is pinned at `0.1.0-alpha.13`, which lowers every `&` member position through Mesh's syntax module, and `verify` checks the MX import boundary and complete MX samples in the Docs pages. The composed contracts module is built in M6; the `mesh` MX host package follows MX decision 148 ([ADR-0051](../decisions/0051-mesh-mx-files-and-the-mesh-host.md)).
 
 ::: callout info "What the code does today"
-`packages/compiler/src/contracts.ts` on `main` declares the closed contracts of entity file syntax v4 ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)). The `&` member positions are pending MX's lowering: `test.todo`s (21) mark them, and the Docs samples are normalised in a test-only step that production never calls. The mechanisms below (the call, the tree, `analyze`, the import boundary) are as built.
+`packages/compiler/src/contracts.ts` on `main` declares the closed contracts of entity file syntax v4 ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)), and `packages/compiler/src/syntax.ts` is Mesh's `&` syntax module, which the compiler passes to every parse. The Docs samples parse as authored. The mechanisms below (the call, the tree, `analyze`, the import boundary) are as built.
 :::
 
 ## What MX is, and why it is core
 
-MX is the separate language project that parses entity files. `@mxlang/data` returns a static tree of tags and attributes with contracts enforced at parse time. Mesh's target design builds on `tree`, the renamed static target (MX decision 187 addendum 2); the package remains `@mxlang/data`. Nothing in an entity file is evaluated to produce declarations. Mesh contributes its vocabulary through contracts now, and its `:name`/atom/member triggers through the syntax table when that lands (MX decision 182 addendum 1). [ADR-0067](../decisions/0067-members-imports-input-static-files.md) records this division and the static-file ruling.
+MX is the separate language project that parses entity files. `@mxlang/data` returns a static tree of tags and attributes with contracts enforced at parse time. Mesh's target design builds on `tree`, the renamed static target (MX decision 187 addendum 2); the package remains `@mxlang/data`. Nothing in an entity file is evaluated to produce declarations. Mesh contributes its vocabulary through contracts and its `&` member trigger through a syntax module (MX decision 182 addenda 1 and 5). [ADR-0067](../decisions/0067-members-imports-input-static-files.md) records this division and the static-file ruling.
 
 MX is core, not an adapter: it is not replaceable, there is no front-end slot and no front-end package, and the tag contracts live in `@meshfw/compiler` ([ADR-0043](../decisions/0043-mx-is-core.md)). `compiler` depends on MX; `model` and `runtime` never import it. `packages/compiler/test/repository-checks.test.ts` checks this boundary as **M1 test 8**, so the compiler's `test` script makes it part of root `verify`. It reads every `.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, `.cjs` and `.json` file under `packages/`, `apps/` and `examples/` as text, without parsing syntax. Any occurrence of the substring `@mxlang` outside the one allow-list constant, currently `packages/compiler`, fails: comments and strings count intentionally, and the diagnostic names the file and the line of its first occurrence. This also forbids MX dependencies in any `package.json` dependency field outside the allow-list. The MX host package and tag-contract extensions join the allow-list when they exist. Only paths with a `node_modules` segment, `apps/docs/site`, `apps/docs/docs`, and lock files are excluded; unrelated folders called `build`, `dist`, `site` or `coverage` remain scanned. Planted reviewer reproductions and dependency declarations prove the check fails, while MX-free angle-bracket assertions and JSX pass. A specifier assembled at run time from separate pieces can evade a substring check; the dependency rule and code review are the backstop.
 
 The same test file walks every `apps/docs/docs/docs/*.md` page and ADR-0050's reference. There are two distinct paths:
 
 - **Legacy fences:** `checkDocsSamples` parses complete resource-style blocks with contracts, `structural: "reject"` and `unknownTags: "reject"`. Only this path rewrites a leading `entity=` to `resource=`; diagnostics caused solely by the old entity/module rename are deferred and counted. Fragments are skipped here. This is retained for legacy fixtures, not how current user examples are checked.
-- **Syntax-v4 fences:** both `checkDocsSamples` and the stricter `checkDocsSyntaxV4` first reject obsolete spellings and run a bounded text guard over the authored fence. Member heads must be declared, input/set/sort lines must be in position, input members take no options or assignment, entity identifiers must be imported, and a `self.` read needs destructured self parameters in that function. Then `normaliseV4` adapts unsupported member spellings for a real `parseData` call with `structural: "reject", imports: "pass"`. Only the contracts parse is deferred under `syntax v4, pending the MX syntax table`. The stricter walker rejects fragments rather than skipping them; neither walker treats normalization as proof of member validity.
+- **Syntax-v4 fences:** both `checkDocsSamples` and the stricter `checkDocsSyntaxV4` first reject obsolete spellings and run a bounded text guard over the authored fence: member heads must be declared, entity identifiers must be imported, and a `self.` read needs destructured self parameters in that function. Then the fence parses as authored through the compiler's own parse (the production contracts and Mesh's syntax module), which rejects misplaced member lines and assignments in `input`. The stricter walker rejects fragments rather than skipping them.
 
 Counts and deferred reasons are printed, an empty set of complete blocks fails, and findings name the page and fence line. Planted failures exercise both paths, including a broken ADR reference. This is documentation guard code, not a replacement for the realignment's contracts, types or cross-file checks.
 
@@ -32,37 +32,41 @@ The vocabulary is Mesh's own, informed by Ash ([ADR-0049](../decisions/0049-voca
 
 ## The MX features syntax v4 depends on
 
-Measured on `@mxlang/data` alpha.5, before the pin moved to alpha.11; not re-measured since.
+Measured on `@mxlang/data` `0.1.0-alpha.13` through the compiler's parse (`parseEntitySource`: the production contracts, `syntax: MESH_SYNTAX`, `structural: "reject"`, `unknownTags: "reject"`, `imports: "pass"`), on an Invoice with each spelling below. Every row parses with no diagnostic.
 
-| Feature | Used for | State on the parser as measured |
+| Feature | Used for | State on alpha.13 |
 |---|---|---|
 | Atoms and `kind :name` | Declarations and fixed-set/enum values | Parses; whole-value atoms are `DataAttr { kind: "atom", name, value }`; expression atoms have `extra.mxAtom` |
-| Entity imports and `entity=Customer` | Cross-file identity | Both parse with `structural: "reject", imports: "pass"`, verified in that measurement; without the imports option, imports are rejected |
-| `&name` after a kind | `asc &dueOn` | Invalid attribute name until the syntax table |
-| `&name` at an operand position | `() => &status === :sent`, `load=[&customer]`, `on:load=&visible` | Unexpected token until the syntax table |
-| A tagless member line | `&title` in `input`, `&status=:sent` in `set` | Accepted syntactically, but the table supplies its intended lowering and meaning |
-| `lineTriggers`, `attributeTriggers`, `expressionTriggers` | Mesh's layer-2 member syntax | MX decision 182 addendum 1, pending the parser port |
+| Comments | `// …` before the entity, at the end of a line and on their own line in a body | Parse under structural rejection |
+| Entity imports and `entity=Customer` | Cross-file identity | Parse; each `DataImport` carries `from` and `names` (`imported`, `local`, `kind`, `typeOnly`), read by the compiler. A name has no span yet, so an import diagnostic points at the statement |
+| `&name` after a kind | `asc &dueOn` | Lowered to `DataAttr { kind: "member", name: "member", value: "dueOn", span }`; a second member in the slot is an MX error |
+| `&name` in an expression | `() => &status === :sent`, a method body (`boolean :isOverdue() { return &status === :sent }`), `load=[&customer]` | Lowered to `self.status`, a `MemberExpression` marked `extra.mxMember = { span, name }`; arrays hold marked members |
+| `&name` as a whole value | `on:load=&visible` | One marked member, which the contract type `member` accepts |
+| A tagless member line | `&dueOn` in `input`, `&status=:sent` in `set` | Lowered to a `member` child tag with a string `name` and, when written, a `value` of the kind written (boolean, atom, string or expression) |
+| Syntax module | Mesh's `&` trigger in `lineTriggers`, `attributeTriggers` and `expressionTriggers` | `packages/compiler/src/syntax.ts`, passed as the `syntax` option (MX decision 182 addendum 5); nothing names it in `package.json#mx.syntax` |
 | A `mesh` host with `builtOn: "tree"` | `.mesh.mx` tooling | Target design, MX decisions 148 and 187 addendum 2 |
 
-The docs bridge only these unsupported spellings in memory, then parse. It maps tagless/after-kind member spellings to the older name form and operand members to record reads, leaving strings, expression comments and infix operators alone. Imports pass unchanged with the `imports: "pass"` option. Structural rejection stays on. Because the pin also rejects comments, leading file comments are blanked without removing lines; in-body comments remain untouched and rejected, an MX gap. MX decision 131 addendum 5 schedules `tree-comments-not-structural` for the next alpha: comments remain `Comment` nodes even under structural rejection, with no new option. Realignment pins that release and removes the comment bridge. Remove `normaliseV4` when the syntax-table release is pinned. Runtime/compiler code must still consume MX's tree, never this bridge.
+MX does not police member semantics. It lowers `&a = 1` inside an expression to `self.a = 1` without complaint, so the compiler reports it as `MESH_MEMBER_ASSIGN`; whether a member exists is the compiler's `MESH_UNKNOWN_MEMBER`.
 
 The highlighter's separate gap is `input`: alpha.2 treats it as an HTML void tag, even with a plain `string :x` child and no sigil. The named `MX_V4_INPUT_PENDING_SYNTAX_TABLE` allowance uses same-width stand-ins for nested input sections and bare member lines, renders the authored text, and counts and prints affected lines. Imports already highlight. Member-reference semantic colour awaits MX item `mesh-syntax-highlighting-route`; uncoloured members are accepted for the docs review. Other ERROR nodes still stop the site build. [Open questions](../open-questions.md#syntax-v4) has the measured matrix.
 
 ## The call
 
-`compiler` calls `parseData(source, file, options)` and gets `{ tree, diagnostics }` (MX project notes, getting-started, section 1). The options ([roadmap](../roadmap/roadmap.md), M1; `packages/compiler/test/helpers.ts`):
+`compiler` calls `parseData(source, file, options)` and gets `{ tree, diagnostics }` (MX project notes, getting-started, section 1). The options ([roadmap](../roadmap/roadmap.md), M1; `parseEntitySource` in `packages/compiler/src/build.ts`, the one call site):
 
 | Option | Value | Effect |
 |---|---|---|
 | `customTags` | Mesh's contracts, one `CustomTag` per tag name | Declares the allowed attributes, children and parents. |
 | `structural` | `"reject"` | Mesh wants tags and attributes only; `if`, `for` and text are errors. |
 | `unknownTags` | `"reject"` | A tag at any depth with no contract is a positioned error with a did-you-mean hint (MX project notes, updates, entry of 2026-10-03 23:05). |
+| `syntax` | `MESH_SYNTAX` | Mesh's `&` member trigger, lowered before anything reads the tree. |
+| `imports` | `"pass"` | Top-level imports arrive in `DataDocument.imports` instead of being rejected as structural. |
 
 Attribute tags (written `@name`) are governed by the parent's `attributeTags`, not by `unknownTags` (same entry). Mesh imports its contracts directly and passes them as `customTags` instead of letting MX scan for contract files, so a stray local tag file in a user's project cannot change the build ([roadmap](../roadmap/roadmap.md), M1; Mesh's answers to MX on `mx.contracts`, 2026-10-04, "For decision 142", item 1).
 
 ## The tree
 
-`DataDocument { statements, children }`. A `DataTag` has `name`, `nameSpan`, `span`, `attrs`, `args`, `params`, `attrTags` and `children`. An attribute is a `string`, a `boolean`, an `expression` or a `spread`. A tag's default attribute arrives as `value`; v4 relationships instead have an explicit `entity` expression referring to an imported binding. The `:name` sugar arrives as the attribute `name`. Member references await the syntax table's lowering. Reserved names that cannot be data tags: `if`, `else`, `else-if`, `for`, `const`, `define`, `return`, `import`, `export`, `static`, `try`. Duplicate attribute names on one tag: last wins, with a warning (all: MX project notes, getting-started, section 1).
+`DataDocument { statements, children }`. A `DataTag` has `name`, `nameSpan`, `span`, `attrs`, `args`, `params`, `attrTags` and `children`. An attribute is a `string`, a `boolean`, an `expression` or a `spread`. A tag's default attribute arrives as `value`; v4 relationships instead have an explicit `entity` expression referring to an imported binding. The `:name` sugar arrives as the attribute `name`. A member arrives in one of the shapes in the table above. Reserved names that cannot be data tags: `if`, `else`, `else-if`, `for`, `const`, `define`, `return`, `import`, `export`, `static`, `try`. Duplicate attribute names on one tag: last wins, with a warning (all: MX project notes, getting-started, section 1).
 
 Diagnostics carry `severity`, `message`, `line`, `column`, `offset` (UTF-16) and `file`. `tree` is `undefined` when there is an error. `line` is 1-based and `column` is 0-based: Mesh's tests assert `line: 1, column: 0` for a bad tag at the start of line 1 (`packages/compiler/test/contracts.test.ts`), and MX's note of 2026-10-04 00:32 reports `1:0` for the root tag and `2:2` for an indented child (MX project notes, updates). MX change #227 ("every printed position 1-based") concerns printed positions, not these fields (MX project notes, updates, entry of 2026-10-03 23:02). Which convention Mesh itself prints in its own messages is not decided.
 
