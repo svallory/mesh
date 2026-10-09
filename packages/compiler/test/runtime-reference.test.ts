@@ -37,8 +37,8 @@ type PolicyParity = Assert<Same<Docs.PolicyCheck, Actual.PolicyCheck>>;
 // Negative tripwires pin both directions of the comparator.
 // @ts-expect-error optional Issue metadata must fail parity
 type OptionalIssue = Assert<Same<Docs.Issue, Omit<Actual.Issue, "label"> & { label?: string | null }>>;
-// @ts-expect-error optional PolicyCheck metadata must fail parity
-type OptionalPolicy = Assert<Same<Docs.PolicyCheck, Omit<Actual.PolicyCheck, "label"> & { label?: string | null }>>;
+// @ts-expect-error optional PolicyCheck members must fail parity
+type OptionalPolicy = Assert<Same<Docs.PolicyCheck, Omit<Actual.PolicyCheck, "decisive"> & { decisive?: boolean }>>;
 // @ts-expect-error extra required runtime members must fail parity
 type ExtraIssue = Assert<Same<Docs.Issue, Actual.Issue & { extra: string }>>;
 `;
