@@ -28,7 +28,20 @@ test("every documented runtime instance/type satisfies the emitted real declarat
     expect(names).toEqual(["ActionContext", "Issue", "PolicyCheck", "MeshError", "InvalidInputError", "NotFoundError", "ForbiddenError", "FrameworkError"]);
     // Check every documented member. Real errors additionally expose entity/key;
     // that extra API is not promised by the sample's deliberately smaller shape.
-    const probe = `import type * as Docs from "mesh-runtime-reference";\nimport type * as Actual from "./actual/index";\n${names.map((name) => `declare const ${name}: Docs.${name};\n${name} satisfies Pick<Actual.${name}, keyof Docs.${name}>;`).join("\n")}\n`;
+    const probe = `import type * as Docs from "mesh-runtime-reference";\nimport type * as Actual from "./actual/index";\n${names.map((name) => `declare const ${name}: Docs.${name};\n${name} satisfies Pick<Actual.${name}, keyof Docs.${name}>;`).join("\n")}
+// Data contracts must also reject widening, optional metadata and extra required fields.
+type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+type Assert<T extends true> = T;
+type IssueParity = Assert<Same<Docs.Issue, Actual.Issue>>;
+type PolicyParity = Assert<Same<Docs.PolicyCheck, Actual.PolicyCheck>>;
+// Negative tripwires pin both directions of the comparator.
+// @ts-expect-error optional Issue metadata must fail parity
+type OptionalIssue = Assert<Same<Docs.Issue, Omit<Actual.Issue, "label"> & { label?: string | null }>>;
+// @ts-expect-error optional PolicyCheck metadata must fail parity
+type OptionalPolicy = Assert<Same<Docs.PolicyCheck, Omit<Actual.PolicyCheck, "label"> & { label?: string | null }>>;
+// @ts-expect-error extra required runtime members must fail parity
+type ExtraIssue = Assert<Same<Docs.Issue, Actual.Issue & { extra: string }>>;
+`;
     await writeFile(join(root, "probe.ts"), probe);
     expect(compile(["--noEmit", "reference.d.ts", "probe.ts"], root)).toEqual({ code: 0, output: "" });
     // Tripwire: the comparator must not silently resolve both sides to Docs.
