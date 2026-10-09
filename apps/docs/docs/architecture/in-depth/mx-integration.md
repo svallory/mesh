@@ -5,7 +5,7 @@ description: "How Mesh reads static entity files through MX, the syntax-v4 parse
 
 # How Mesh uses MX
 
-Status: the loader and the closed v4 contracts are built (PR #47), MX is pinned at `0.1.0-alpha.13`, which lowers every `&` member position through Mesh's syntax module, and `verify` checks the MX import boundary and complete MX samples in the Docs pages. The composed contracts module is built in M6; the `mesh` MX host package follows MX decision 148 ([ADR-0051](../decisions/0051-mesh-mx-files-and-the-mesh-host.md)).
+Status: the loader and the closed v4 contracts are built (PR #47), MX is pinned at `0.1.0-alpha.14`, which lowers every `&` member position through Mesh's syntax module, and `verify` checks the MX import boundary and complete MX samples in the Docs pages. The composed contracts module is built in M6; the `mesh` MX host package follows MX decision 148 ([ADR-0051](../decisions/0051-mesh-mx-files-and-the-mesh-host.md)).
 
 ::: callout info "What the code does today"
 `packages/compiler/src/contracts.ts` on `main` declares the closed contracts of entity file syntax v4 ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)), and `packages/compiler/src/syntax.ts` is Mesh's `&` syntax module, which the compiler passes to every parse. The Docs samples parse as authored. The mechanisms below (the call, the tree, `analyze`, the import boundary) are as built.
@@ -32,18 +32,18 @@ The vocabulary is Mesh's own, informed by Ash ([ADR-0049](../decisions/0049-voca
 
 ## The MX features syntax v4 depends on
 
-Measured on `@mxlang/data` `0.1.0-alpha.13` through the compiler's parse (`parseEntitySource`: the production contracts, `syntax: MESH_SYNTAX`, `structural: "reject"`, `unknownTags: "reject"`, `imports: "pass"`), on an Invoice with each spelling below. Every row parses with no diagnostic.
+Measured on `@mxlang/data` `0.1.0-alpha.14` through the compiler's parse (`parseEntitySource`: the production contracts, `syntax: MESH_SYNTAX`, `structural: "reject"`, `unknownTags: "reject"`, `imports: "pass"`), on an Invoice with each spelling below. Every row parses with no diagnostic.
 
-| Feature | Used for | State on alpha.13 |
+| Feature | Used for | State on alpha.14 |
 |---|---|---|
 | Atoms and `kind :name` | Declarations and fixed-set/enum values | Parses; whole-value atoms are `DataAttr { kind: "atom", name, value }`; expression atoms have `extra.mxAtom` |
 | Comments | `// …` before the entity, at the end of a line and on their own line in a body | Parse under structural rejection |
-| Entity imports and `entity=Customer` | Cross-file identity | Parse; each `DataImport` carries `from` and `names` (`imported`, `local`, `kind`, `typeOnly`), read by the compiler. A name has no span yet, so an import diagnostic points at the statement |
+| Entity imports and `entity=Customer` | Cross-file identity | Parse; each `DataImport` carries `from` and `names` (`imported`, `local`, `kind`, `typeOnly`), read by the compiler. Each name carries `span` (and `localSpan` for an alias), so an import diagnostic points at the name |
 | `&name` after a kind | `asc &dueOn` | Lowered to `DataAttr { kind: "member", name: "member", value: "dueOn", span }`; a second member in the slot is an MX error |
 | `&name` in an expression | `() => &status === :sent`, a method body (`boolean :isOverdue() { return &status === :sent }`), `load=[&customer]` | Lowered to `self.status`, a `MemberExpression` marked `extra.mxMember = { span, name }`; arrays hold marked members |
 | `&name` as a whole value | `on:load=&visible` | One marked member, which the contract type `member` accepts |
-| A tagless member line | `&dueOn` in `input`, `&status=:sent` in `set` | Lowered to a `member` child tag with a string `name` and, when written, a `value` of the kind written (boolean, atom, string or expression) |
-| Syntax module | Mesh's `&` trigger in `lineTriggers`, `attributeTriggers` and `expressionTriggers` | `packages/compiler/src/syntax.ts`, passed as the `syntax` option (MX decision 182 addendum 5); nothing names it in `package.json#mx.syntax` |
+| A tagless member line | `&dueOn` in `input`, `&status=:sent` in `set` | Lowered to a `member` child tag, marked `trigger.id === "member"` (an authored `member` tag has none), with a string `name` and, when written, a `value` of the kind written (boolean, atom, string or expression) |
+| Syntax module | Mesh's `&` trigger in `lineTriggers`, `attributeTriggers` and `expressionTriggers` | `packages/compiler/src/syntax.ts` (MX's `@mxlang/core/syntax/member` with `productName: "Mesh"`), passed as the `syntax` option (MX decision 182 addendum 5); nothing names it in `package.json#mx.syntax` |
 | A `mesh` host with `builtOn: "tree"` | `.mesh.mx` tooling | Target design, MX decisions 148 and 187 addendum 2 |
 
 MX does not police member semantics. It lowers `&a = 1` inside an expression to `self.a = 1` without complaint, so the compiler reports it as `MESH_MEMBER_ASSIGN`; whether a member exists is the compiler's `MESH_UNKNOWN_MEMBER`.

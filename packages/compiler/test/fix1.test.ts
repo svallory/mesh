@@ -10,9 +10,8 @@ test("fix2: imported name must be exported by the target entity", () => {
   const result = buildModel(project(fixture("fix1/import-name-mismatch.mesh.mx").source));
   expect(result.document).toBeNull();
   expect(result.diagnostics).toHaveLength(1);
-  // At the import statement: DataImportName has no span on @mxlang/data
-  // 0.1.0-alpha.13. When MX adds one, this moves to the name (1:9).
-  expect(result.diagnostics[0]).toMatchObject({ code: "MESH_UNKNOWN_IMPORT", message: "`Usr` is not what ./list.mesh.mx declares; it declares `List`", position: { line: 1, column: 0 } });
+  // At the imported name (`DataImportName.span`), not the statement.
+  expect(result.diagnostics[0]).toMatchObject({ code: "MESH_UNKNOWN_IMPORT", message: "`Usr` is not what ./list.mesh.mx declares; it declares `List`", position: { line: 1, column: 9 } });
   const alias = fixture("fix1/import-name-mismatch.mesh.mx").source.replace("{ Usr }", "{ List as Usr }");
   expect(buildModel(project(alias)).diagnostics).toEqual([]);
 });
@@ -49,6 +48,13 @@ test("fix6: member is not an authored tag", () => {
 test("fix10: import diagnostics distinguish duplicates, forms and relative paths", () => {
   const duplicate = buildModel(project('import { List } from "./list.mesh.mx"\nimport { List } from "./list.mesh.mx"\n' + keyed));
   expect(duplicate.diagnostics.map((d) => d.code)).toEqual(["MESH_DUPLICATE_IMPORT"]);
+  // Positioned at the second `List` (line 2, column 9), not at the statement.
+  expect(duplicate.diagnostics[0]!.position).toMatchObject({ line: 2, column: 9 });
+  const aliased = buildModel(project('import { List } from "./list.mesh.mx"\nimport { List as Other, List as List } from "./list.mesh.mx"\n' + keyed));
+  expect(aliased.diagnostics.map((d) => [d.code, d.position.line, d.position.column])).toEqual([["MESH_DUPLICATE_IMPORT", 2, 32]]);
+  // A wrong imported name is positioned at the name, an alias is not what is wrong.
+  const wrongAlias = buildModel(project('import { Usr as List } from "./list.mesh.mx"\n' + keyed));
+  expect(wrongAlias.diagnostics.map((d) => [d.code, d.position.line, d.position.column])).toEqual([["MESH_UNKNOWN_IMPORT", 1, 9]]);
   for (const declaration of ['import List from "./list.mesh.mx"', 'import * as List from "./list.mesh.mx"', 'import "./list.mesh.mx"']) {
     expect(buildModel(project(declaration + '\n' + keyed)).diagnostics).toEqual([expect.objectContaining({ code: "MESH_IMPORT_FORM", message: "import the entity by name: `import { List } from …`" })]);
   }

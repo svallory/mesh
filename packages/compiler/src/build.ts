@@ -111,7 +111,8 @@ export function error(
 /** An entity import as MX parsed it (`DataImport.from`/`names`); never re-parsed. */
 interface ParsedImport {
   names: string[];
-  bindings: { local: string; imported: string; offset: number }[];
+  /** `offset`: the imported name as written; `localOffset`: the local binding (the alias when written). */
+  bindings: { local: string; imported: string; offset: number; localOffset: number }[];
   from: string;
   offset: number;
 }
@@ -153,9 +154,12 @@ function readImports(imports: readonly DataImport[]): {
     }
     result.push({
       names: entry.names.map((name) => name.local),
-      // DataImportName carries no span in @mxlang/data 0.1.0-alpha.13, so a
-      // binding is positioned at its import statement until MX adds one.
-      bindings: entry.names.map((name) => ({ local: name.local, imported: name.imported, offset })),
+      bindings: entry.names.map((name) => ({
+        local: name.local,
+        imported: name.imported,
+        offset: name.span.sourceStart,
+        localOffset: (name.localSpan ?? name.span).sourceStart,
+      })),
       from: entry.from,
       offset,
     });
@@ -221,13 +225,15 @@ function buildEntity(
   );
   const importNames = new Map<string, Import>();
   for (const entry of entity.imports)
-    for (const name of entry.identifiers) {
-      if (importNames.has(name))
+    for (const [index, name] of entry.identifiers.entries()) {
+      if (importNames.has(name)) {
+        const localOffset = importDetails.get(entry)?.bindings[index]?.localOffset;
         fail(
           "MESH_DUPLICATE_IMPORT",
           `Duplicate import identifier ${name}`,
-          entry.position,
+          localOffset === undefined ? entry.position : at(localOffset),
         );
+      }
       importNames.set(name, entry);
     }
   const pending: {
@@ -759,7 +765,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
       ...parsed.diagnostics.filter((d, _, all) => {
         // MX reports both parent rejection and unknown-tag rejection for the
         // same unknown child. Keep the specific unknown-tag error only.
-        // The match is on MX's message text because MX 0.1.0-alpha.13's
+        // The match is on MX's message text because MX 0.1.0-alpha.14's
         // DataDiagnostic has no `code`. It stands until MX exposes diagnostic
         // codes; do not replace it with an offset-only rule, which would
         // depend on MX's diagnostic order instead.
