@@ -12,7 +12,7 @@ export async function createSchema(layer: DataLayer, tables: Readonly<Record<str
   const state = sqliteState(layer);
   checkTableNames(tables);
   await state.exclusive(async (db) => {
-    const push = await planSchemaPush(db, tables);
+    const push = await planSchemaPush(db, tables, "createSchema");
     if (push.losesData) {
       throw new FrameworkError(`createSchema refuses statements that would lose data:\n${[...push.statements, ...push.warnings].join("\n")}`);
     }

@@ -3,7 +3,7 @@ import { pathToFileURL } from "node:url";
 import type { AdapterCommand } from "@meshfw/compiler";
 import { FrameworkError, type TableHandle } from "@meshfw/runtime";
 import { sqlite, sqliteState } from "./layer.ts";
-import { checkTableNames, planSchemaPush } from "./push-schema.ts";
+import { checkTableNames, planSchemaPush, type DrizzleKitLoader } from "./push-schema.ts";
 
 /**
  * `mesh db push [--force]`: apply the committed `<output>/schema.ts` to the configured
@@ -13,10 +13,10 @@ import { checkTableNames, planSchemaPush } from "./push-schema.ts";
  */
 export const pushCommand: AdapterCommand = (context) => push(context);
 
-/** The command, with the schema tool's importer replaceable for missing-tool tests. */
+/** The command, with the schema tool's loader replaceable for missing-tool tests. */
 export async function push(
   { projectRoot, config, args, stdout, stderr }: Parameters<AdapterCommand>[0],
-  importer?: Parameters<typeof planSchemaPush>[2],
+  loader?: DrizzleKitLoader,
 ): Promise<number> {
   const unknown = args.filter((arg) => arg !== "--force");
   if (unknown.length) {
@@ -43,7 +43,7 @@ export async function push(
     if (!tables || typeof tables !== "object") throw new FrameworkError(`${schemaFile} does not export tables; run mesh build`);
     checkTableNames(tables);
     return await sqliteState(db, "db push").exclusive(async (database) => {
-      const plan = await planSchemaPush(database, tables, importer);
+      const plan = await planSchemaPush(database, tables, "mesh db push", loader);
       if (plan.statements.length === 0) {
         stdout(`schema is up to date: ${file}\n`);
         return 0;

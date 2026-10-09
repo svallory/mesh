@@ -10,7 +10,7 @@ import { FrameworkError, type DataOperations } from "@meshfw/runtime";
 import { dataLayerConformance } from "@meshfw/runtime/testing";
 import { createSchema, sqlite } from "../src/index.ts";
 import { sqliteState } from "../src/layer.ts";
-import { MISSING_DRIZZLE_KIT, planSchemaPush } from "../src/push-schema.ts";
+import { missingDrizzleKit, planSchemaPush } from "../src/push-schema.ts";
 
 const table = sqliteTable("records", {
   id: text("id").primaryKey().notNull(), title: text("title").notNull(), count: integer("count").notNull(),
@@ -107,19 +107,63 @@ test("createSchema rejects a foreign layer and invalid table handles", async () 
   });
 });
 
-test("missing development tooling reports the exact installation instruction and cause", async () => {
+test("a drizzle-kit that is not installed reports the exact installation instruction, naming the caller, and the cause", async () => {
+  expect(missingDrizzleKit("createSchema")).toBe("createSchema needs drizzle-kit, a development dependency. Run: bun add -d drizzle-kit@0.31.11. Production databases are prepared with migrations, not with createSchema.");
+  expect(missingDrizzleKit("mesh db push")).toBe("mesh db push needs drizzle-kit, a development dependency. Run: bun add -d drizzle-kit@0.31.11. Production databases are prepared with migrations, not with mesh db push.");
   await withLayer(async (layer) => {
-    const cause = new Error("module not found");
+    const cause = new Error("Cannot find package 'drizzle-kit'");
+    let loaded = false;
     await sqliteState(layer).exclusive(async (db) => {
-      try { await planSchemaPush(db, { table }, async () => { throw cause; }); throw new Error("did not reject"); }
-      catch (error) {
-        expect(error).toBeInstanceOf(FrameworkError);
-        expect(MISSING_DRIZZLE_KIT).toBe("createSchema needs drizzle-kit, a development dependency. Run: bun add -d drizzle-kit@0.31.11. Production databases are prepared with migrations, not with createSchema.");
-        expect((error as Error).message).toBe(MISSING_DRIZZLE_KIT);
-        expect((error as Error).cause).toBe(cause);
-      }
+      const error = await frameworkFailure(planSchemaPush(db, { table }, "createSchema",
+        { resolve: () => { throw cause; }, load: async () => { loaded = true; return {}; } }));
+      expect(error.message).toBe(missingDrizzleKit("createSchema"));
+      expect(error.cause).toBe(cause);
+    });
+    expect(loaded).toBe(false);
+  });
+});
+
+test("a drizzle-kit that is installed but fails to load is not reported as missing", async () => {
+  await withLayer(async (layer) => {
+    const cause = new SyntaxError("Unexpected token in drizzle-kit/api.js");
+    await sqliteState(layer).exclusive(async (db) => {
+      const error = await frameworkFailure(planSchemaPush(db, { table }, "createSchema",
+        { resolve: () => "/project/node_modules/drizzle-kit/api.js", load: async () => { throw cause; } }));
+      expect(error.message).toBe("createSchema cannot load drizzle-kit, which is installed (/project/node_modules/drizzle-kit/api.js): Unexpected token in drizzle-kit/api.js");
+      expect(error.cause).toBe(cause);
     });
   });
+});
+
+test("concurrent pushes on two layers mute the schema tool's spinner and restore stdout afterwards", async () => {
+  const original = process.stdout.write;
+  const written: string[] = [];
+  const spy = ((chunk: unknown) => { written.push(String(chunk)); return true; }) as typeof process.stdout.write;
+  process.stdout.write = spy;
+  const first = sqlite({ file: ":memory:" });
+  const second = sqlite({ file: ":memory:" });
+  try {
+    await Promise.all([createSchema(first, { table }), createSchema(second, { table }), createSchema(first, { table })]);
+    expect(process.stdout.write).toBe(spy);
+    expect(written.join("")).not.toContain("Pulling schema");
+    process.stdout.write("after\n");
+    expect(written).toEqual(["after\n"]);
+    // A failed push restores it too.
+    await expect(Promise.all([createSchema(first, { table }), createSchema(second, { bad: sqliteTable("b`ad", { id: text("id") }) })])).rejects.toThrow(FrameworkError);
+    expect(process.stdout.write).toBe(spy);
+  } finally {
+    process.stdout.write = original;
+    await first.close();
+    await second.close();
+  }
+  expect(process.stdout.write).toBe(original);
+});
+
+test("no shipped source names drizzle-kit in a static or literal import, so type-checking never resolves it", async () => {
+  for (const file of new Bun.Glob("src/**/*.ts").scanSync({ cwd: join(import.meta.dir, "..") })) {
+    const source = await Bun.file(join(import.meta.dir, "..", file)).text();
+    expect(source).not.toMatch(/(?:from\s*|import\s*\(\s*|import\s+)["'`]drizzle-kit/);
+  }
 });
 
 test("synchronous throw rolls back and preserves the error object", async () => {

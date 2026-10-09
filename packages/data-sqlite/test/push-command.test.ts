@@ -7,7 +7,7 @@ import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
 import build from "../src/build.ts";
 import { push, pushCommand } from "../src/push-command.ts";
-import { MISSING_DRIZZLE_KIT } from "../src/push-schema.ts";
+import { missingDrizzleKit } from "../src/push-schema.ts";
 
 const dirs: string[] = [];
 afterEach(async () => { for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true }); });
@@ -76,11 +76,12 @@ test("an unknown argument is a usage error and opens nothing", async () => {
   expect(existsSync(join(config.root, "app.db"))).toBe(false);
 });
 
-test("a missing drizzle-kit reports the same message as createSchema, exit 1", async () => {
+test("a missing drizzle-kit names mesh db push in the installation instruction, exit 1", async () => {
   const config = await project("app.db");
   const streams = io();
-  expect(await push({ projectRoot: config.root, config, args: [], ...streams }, async () => { throw new Error("Cannot find package"); })).toBe(1);
-  expect(streams.err).toEqual([`db push failed: ${MISSING_DRIZZLE_KIT}\n`]);
+  const loader = { resolve: () => { throw new Error("Cannot find package"); }, load: async () => ({}) };
+  expect(await push({ projectRoot: config.root, config, args: [], ...streams }, loader)).toBe(1);
+  expect(streams.err).toEqual([`db push failed: ${missingDrizzleKit("mesh db push")}\n`]);
 });
 
 test("a schema.ts without tables is reported, exit 1", async () => {
