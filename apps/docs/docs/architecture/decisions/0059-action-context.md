@@ -77,5 +77,5 @@ Option A puts the cost (learning declaration merging) once, in one file, and rem
 
 ## Action items
 
-- [ ] Realignment task: `ActionContext` in `runtime`, generated signatures, the example's `context.ts`.
+- [x] Realignment task: `ActionContext` in `runtime`, generated signatures, the example's `context.ts`. (`ActionContext` in PR #48; `ContextArgument`, the generated `(input, ...[context]: ContextArgument)` signatures and `examples/blog/src/context.ts` in [PR #54](https://github.com/svallory/mesh/pull/54).)
 - [ ] M6: the manifest entry for context keys and the clash error.

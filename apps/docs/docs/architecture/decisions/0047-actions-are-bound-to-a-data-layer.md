@@ -108,7 +108,7 @@ Applications connect once and use top-level functions. Tests can bind independen
 
 ## Action items
 
-- [ ] M2: emit `bind`, `connect`, `disconnect` and default action delegates.
-- [ ] M2: test a top-level call before `connect` and two independent bindings.
-- [ ] M2: test duplicate `connect` rejection, action calls after `disconnect`, reconnect, a no-op `disconnect`, lazy connection opening, and caller-owned cleanup of explicit bindings.
-- [ ] M2: prepare test schemas on the binding's own connection, following ADR-0048. (`createSchema(db, tables)` works on the value `sqlite()` returns, which is the data layer `bind` takes; PR #53. The binding itself comes with the action functions.)
+- [x] M2: emit `bind`, `connect`, `disconnect` and default action delegates. ([PR #54](https://github.com/svallory/mesh/pull/54): `connect()` takes no options; it reads the adapter from `mesh.config.ts`, per ADR-0059.)
+- [x] M2: test a top-level call before `connect` and two independent bindings. (`examples/blog/test/blog.test.ts`, `packages/compiler/test/index.test.ts`.)
+- [x] M2: test duplicate `connect` rejection, action calls after `disconnect`, reconnect, a no-op `disconnect`, lazy connection opening, and caller-owned cleanup of explicit bindings. (Same tests; lazy opening in `packages/data-sqlite/test/layer.test.ts`. Reconnect works because `close()` returns a `sqlite()` layer to its unopened state, PR #54.)
+- [x] M2: prepare test schemas on the binding's own connection, following ADR-0048. (`createSchema(db, tables)` works on the value `sqlite()` returns, which is the data layer `bind` takes; PR #53. The binding itself comes with the action functions.)
