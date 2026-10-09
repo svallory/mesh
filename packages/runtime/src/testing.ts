@@ -1,4 +1,11 @@
 import type { DataLayer, DataOperations, Key, Row, TableHandle } from "./data-layer.ts";
+import { FrameworkError } from "./errors.ts";
+
+function gate(): { promise: Promise<void>; release: () => void } {
+  let release!: () => void;
+  const promise = new Promise<void>((resolve) => { release = resolve; });
+  return { promise, release };
+}
 
 /** A fresh isolated layer with an empty, prepared table. Supply two complete rows
  * with distinct primary keys, and non-key changes that change the sample row.
@@ -67,6 +74,81 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
   };
 
   return {
+    "concurrent transactions never interleave statements": withLayer(async ({ layer, table, sampleRow, secondRow }) => {
+      const started = gate();
+      const resume = gate();
+      const events: string[] = [];
+      const first = layer.transaction(async (tx) => {
+        await tx.insert(table, sampleRow);
+        events.push("first write");
+        started.release();
+        await resume.promise;
+        await tx.selectAll(table);
+        events.push("first read");
+      });
+      await started.promise;
+      const second = layer.transaction(async (tx) => {
+        await tx.insert(table, secondRow);
+        events.push("second write");
+        await tx.selectAll(table);
+        events.push("second read");
+      });
+      // Let an incorrectly concurrent callback advance before releasing the first:
+      // a macrotask, so every pending microtask (and any driver step) runs first.
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      resume.release();
+      await Promise.all([first, second]);
+      assert(events.join(",") === "first write,first read,second write,second read", "transactions must not interleave statements");
+      await layer.transaction(async (tx) => rowsEqual(await tx.selectAll(table), [sampleRow, secondRow], "both queued transactions must commit"));
+    }),
+    "throw after a write leaves no row": withLayer(async ({ layer, table, sampleRow }) => {
+      const error = new Error("throw after write");
+      let caught: unknown;
+      try { await layer.transaction(async (tx) => { await tx.insert(table, sampleRow); throw error; }); }
+      catch (cause) { caught = cause; }
+      assert(caught === error, "throw after write must rethrow the same error");
+      await layer.transaction(async (tx) => assert((await tx.selectAll(table)).length === 0, "throw after write must leave no row"));
+    }),
+    "rejected promise after a write leaves no row": withLayer(async ({ layer, table, sampleRow }) => {
+      const error = new Error("rejection after write");
+      let caught: unknown;
+      try { await layer.transaction(async (tx) => { await tx.insert(table, sampleRow); return Promise.reject(error); }); }
+      catch (cause) { caught = cause; }
+      assert(caught === error, "rejected promise must rethrow the same error");
+      await layer.transaction(async (tx) => assert((await tx.selectAll(table)).length === 0, "rejected promise must leave no row"));
+    }),
+    "queue continues after a failed transaction": withLayer(async ({ layer, table, sampleRow, secondRow }) => {
+      const error = new Error("queued failure");
+      const first = layer.transaction(async (tx) => { await tx.insert(table, sampleRow); throw error; });
+      const second = layer.transaction(async (tx) => { await tx.insert(table, secondRow); });
+      const [failed, succeeded] = await Promise.allSettled([first, second]);
+      assert(failed.status === "rejected" && failed.reason === error, "first queued transaction must fail unchanged");
+      assert(succeeded.status === "fulfilled", "failed transaction must not poison the queue");
+      await layer.transaction(async (tx) => rowsEqual(await tx.selectAll(table), [secondRow], "only successful queued write must persist"));
+    }),
+    "close with a transaction in flight rejects and leaves the layer open": withLayer(async ({ layer, table, sampleRow }) => {
+      const started = gate();
+      const resume = gate();
+      const pending = layer.transaction(async (tx) => {
+        started.release();
+        await resume.promise;
+        await tx.insert(table, sampleRow);
+      });
+      await started.promise;
+      let caught: unknown;
+      try { await layer.close(); } catch (cause) { caught = cause; }
+      finally { resume.release(); await pending; }
+      assert(caught instanceof FrameworkError, "close with an in-flight transaction must reject with FrameworkError");
+      await layer.transaction(async (tx) => rowsEqual(await tx.selectAll(table), [sampleRow], "rejected close must leave the layer open and transaction able to commit"));
+    }),
+    "nested transaction is rejected": withLayer(async ({ layer }) => {
+      await layer.transaction(async () => {
+        let caught: unknown;
+        try { await layer.transaction(async () => undefined); } catch (cause) { caught = cause; }
+        // The message is the adapter's; the contract is the error class.
+        assert(caught instanceof FrameworkError, "nested transaction must reject with FrameworkError");
+      });
+    }),
     "insert returns the stored row": withLayer(async ({ layer, table, sampleRow, key }) => {
       await layer.transaction(async (tx) => {
         const stored = await tx.insert(table, sampleRow);

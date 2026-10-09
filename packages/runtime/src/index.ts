@@ -7,3 +7,4 @@ export { parseInput } from "./input.ts";
 export type { StandardSchemaV1 } from "./standard-schema.ts";
 export type { Row, Key, TableHandle, DataOperations, DataLayer } from "./data-layer.ts";
 export type { DataAdapter } from "./data-adapter.ts";
+export { defineConfig, type MeshConfig, type ExtensionDescriptor } from "./config.ts";

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { defineConfig, loadConfig, loadProject } from "../src/index.ts";
 import { keyed } from "./v4.ts";
-const data = { kind: "data-adapter", name: "sqlite", options: { file: "app.db" } } as const;
+const data = { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", options: { file: "app.db" } } as const;
 const adapter = JSON.stringify(data);
 const roots: string[] = [];
 afterEach(async () => {
@@ -84,7 +84,7 @@ test("the removed resources key has its exact rename hint", async () => {
     fix: "`resources` was renamed `domain`", position: { line: 1, column: 17 },
   }]);
 });
-test.each(["undefined", "null", "false", "[]", '"sqlite"', "{}", '{kind:"wrong",name:"sqlite",options:{}}', '{kind:"data-adapter",name:"",options:{}}', '{kind:"data-adapter",name:"sqlite",options:[]}']) (
+test.each(["undefined", "null", "false", "[]", '"sqlite"', "{}", '{kind:"wrong",name:"sqlite",options:{}}', '{kind:"data-adapter",name:"",options:{}}', '{kind:"data-adapter",name:"sqlite",build:"@meshfw/data-sqlite/build",options:[]}', '{kind:"data-adapter",name:"sqlite",options:{}}', '{kind:"data-adapter",name:"sqlite",build:"",options:{}}', '{kind:"data-adapter",name:"sqlite",build:3,options:{}}']) (
   "invalid data %s names its positioned key and adapter import hint", async (value) => {
     const root = await project(`export default {\n  domain: "src/domain", output: ".mesh",\n  data: ${value}\n}`);
     expect((await loadConfig(root)).diagnostics).toMatchObject([{

@@ -1,8 +1,9 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { chmod, link, mkdtemp, mkdir, readFile, readdir, readlink, rm, symlink, writeFile, rename, lstat } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { stableJsonStringify } from "@meshfw/compiler";
+import { RESERVED_COMMAND_WORDS, stableJsonStringify } from "@meshfw/compiler";
 import { defineConfig } from "../src/index.ts";
 
 const repo = resolve(import.meta.dir, "../../..");
@@ -51,9 +52,15 @@ async function project(config = true): Promise<string> {
   await symlink(join(repo, "packages/compiler/node_modules/zod"), join(root, "node_modules/zod"));
   await writeFile(join(root, sourcePath), source);
   if (config) await writeFile(join(root, "mesh.config.ts"), `import { defineConfig } from "meshfw";
-export default defineConfig({ domain: "domain", output: "generated", data: { kind: "data-adapter", name: "sqlite", options: { file: ":memory:" } } });\n`);
+export default defineConfig({ domain: "domain", output: "generated", data: { kind: "data-adapter", name: "sqlite", build: "./adapter.ts", options: { file: ":memory:" } } });\n`);
+  // The data adapter's build half: no generators, so the core tree is what these tests see.
+  await writeFile(join(root, "adapter.ts"), adapterSource);
   return root;
 }
+const adapterSource = "export default { generators: [] };\n";
+const fakeAdapter = join(repo, "packages/compiler/test/fixtures/fake-adapter");
+/** A build half re-exporting the compiler's fake adapter: one generator (`fake.ts`) and a `db push` command. */
+const fakeAdapterSource = `export { default } from ${JSON.stringify(join(fakeAdapter, "build.ts"))};\n`;
 function run(root: string, ...args: string[]) {
   const child = Bun.spawnSync([process.execPath, command, ...args], { cwd: root });
   return { code: child.exitCode, stdout: child.stdout.toString(), stderr: child.stderr.toString() };
@@ -66,7 +73,7 @@ async function builtProject(): Promise<string> {
 }
 
 test("defineConfig is re-exported from meshfw", () => {
-  const config = { domain: "domain", output: "generated", data: { kind: "data-adapter" as const, name: "sqlite", options: { file: ":memory:" } } };
+  const config = { domain: "domain", output: "generated", data: { kind: "data-adapter" as const, name: "sqlite", build: "@meshfw/data-sqlite/build", options: { file: ":memory:" } } };
   expect(defineConfig(config)).toBe(config);
 });
 
@@ -154,7 +161,7 @@ test("missing config is exit 1 with a diagnostic, with no upward search", async 
 
 test("invalid config is exit 1 with exact position", async () => {
   const root = await project();
-  await writeFile(join(root, "mesh.config.ts"), 'export default { domain: "domain", output: 3, data: { kind: "data-adapter", name: "sqlite", options: {} } };\n');
+  await writeFile(join(root, "mesh.config.ts"), 'export default { domain: "domain", output: 3, data: { kind: "data-adapter", name: "sqlite", build: "./adapter.ts", options: {} } };\n');
   expect(run(root, "build")).toEqual({ code: 1, stdout: "", stderr: "mesh.config.ts:1:36 error Configuration field `output` must be a non-empty relative directory path\n  fix: Fix the output field in mesh.config.ts\n1 error, 0 warnings\n" });
 });
 
@@ -182,7 +189,6 @@ test.each([[], ["unknown"], ["build", "--unknown"], ["build", "extra"], ["inspec
 test.each([
   { args: ["init"], milestone: "not scheduled" },
   { args: ["explain", "todo", "create"], milestone: "M5" },
-  { args: ["db", "push"], milestone: "M2" },
   { args: ["migrate", "generate", "--allow", "drop:todo.title"], milestone: "M9" },
   { args: ["migrate", "apply"], milestone: "M9" },
 ])("unavailable command names its milestone: $args", async ({ args, milestone }) => {
@@ -363,6 +369,80 @@ test("help lists only implemented commands and needs no config", async () => {
   for (const pending of ["init", "explain", "db push", "migrate"]) expect(result.stdout).not.toContain(pending);
 });
 
+describe("data adapter commands (mesh db push)", () => {
+  async function fakeProject(): Promise<string> {
+    const root = await project();
+    await writeFile(join(root, "adapter.ts"), fakeAdapterSource);
+    expect(run(root, "build").code).toBe(0);
+    return root;
+  }
+
+  test("--help lists the adapter's commands under the adapter's name", async () => {
+    const result = run(await fakeProject(), "--help");
+    expect(result.code).toBe(0);
+    expect(result.stdout).toEndWith('\nCommands from the data adapter "sqlite":\n  db push\n');
+  });
+
+  test("--help without a valid config prints the base help only", async () => {
+    const root = await project();
+    await writeFile(join(root, "adapter.ts"), "export default 1;\n");
+    const result = run(root, "--help");
+    expect(result).toEqual({ code: 0, stdout: run(await project(false), "--help").stdout, stderr: "" });
+    expect(result.stdout).not.toContain("Commands from the data adapter");
+  });
+
+  test("the adapter's command gets the arguments after its words and decides the exit code", async () => {
+    const root = await fakeProject();
+    expect(run(root, "db", "push", "--force")).toEqual({ code: 0, stdout: "fake push sqlite --force\n", stderr: "" });
+    expect(run(root, "db", "push", "--fail")).toEqual({ code: 1, stdout: "fake push sqlite --fail\n", stderr: "" });
+  });
+
+  test("the guard runs first: a stale generated tree stops the command before the adapter runs", async () => {
+    const root = await fakeProject();
+    await writeFile(join(root, "generated/fake.ts"), "// edited\n");
+    expect(run(root, "db", "push")).toEqual({ code: 1, stdout: "",
+      stderr: "the generated tree is out of date: run mesh build first\ngenerated/fake.ts:1:1 error Generated bytes differ; run mesh build and commit the generated tree\n1 error, 0 warnings\n" });
+    await rm(join(root, "generated/fake.ts"));
+    expect(run(root, "db", "push").stderr).toContain("generated/fake.ts:1:1 error Generated file is missing");
+  });
+
+  test("an adapter without the command says so, exit 1", async () => {
+    const root = await project();
+    expect(run(root, "build").code).toBe(0);
+    expect(run(root, "db", "push")).toEqual({ code: 1, stdout: "",
+      stderr: 'mesh.config.ts:1:1 error the data adapter "sqlite" does not provide "db push"\n1 error, 0 warnings\n' });
+    expect(run(await fakeProject(), "db", "reset").stderr).toBe('mesh.config.ts:1:1 error the data adapter "sqlite" does not provide "db reset"\n1 error, 0 warnings\n');
+  });
+
+  test("a reserved word never reaches the adapter: each is a core command or a scheduled one", async () => {
+    const root = await fakeProject();
+    for (const word of RESERVED_COMMAND_WORDS) {
+      const result = run(root, word, "push");
+      expect(result.stdout).not.toContain("fake push");
+      expect(result.code).not.toBe(0);
+    }
+  });
+
+  test("an unknown command is a usage error, with or without a config", async () => {
+    for (const root of [await fakeProject(), await project(false)]) {
+      expect(run(root, "frobnicate")).toEqual({ code: 2, stdout: "", stderr: 'Unknown command "frobnicate"; use mesh --help\n' });
+    }
+  });
+
+  test("mesh db push without mesh.config.ts reports the missing config, exit 1", async () => {
+    expect(run(await project(false), "db", "push")).toEqual({ code: 1, stdout: "",
+      stderr: "mesh.config.ts:1:1 error Cannot read mesh.config.ts (ENOENT)\n  fix: Create mesh.config.ts with domain, output and data\n1 error, 0 warnings\n" });
+  });
+
+  test("an entity error stops the command before the adapter runs", async () => {
+    const root = await fakeProject();
+    await writeFile(join(root, sourcePath), "entity :Todo\n");
+    const result = run(root, "db", "push");
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+  });
+});
+
 describe("roadmap Jig port, acceptance 4: a project template overrides Mesh's", () => {
   async function tree(root: string): Promise<Record<string, string>> {
     const out: Record<string, string> = {};
@@ -412,6 +492,27 @@ describe("roadmap Jig port, acceptance 4: a project template overrides Mesh's", 
   });
 });
 
+describe("the data adapter's build half in mesh build", () => {
+  test("its generators write beside the core files and the guard covers them", async () => {
+    const root = await project();
+    await writeFile(join(root, "adapter.ts"), fakeAdapterSource);
+    expect(run(root, "build")).toEqual({ code: 0, stdout: "", stderr: "0 errors, 0 warnings\n" });
+    expect(await readFile(join(root, "generated/fake.ts"), "utf8")).toBe('// Written by the fake adapter.\nexport const names = ["Todo"];\n');
+    expect(run(root, "build", "--check")).toEqual({ code: 0, stdout: "", stderr: "0 errors, 0 warnings\n" });
+    await writeFile(join(root, "generated/fake.ts"), "// edited\n");
+    expect(run(root, "build", "--check")).toEqual({ code: 1, stdout: "",
+      stderr: "generated/fake.ts:1:1 error Generated bytes differ; run mesh build and commit the generated tree\n1 error, 0 warnings\n" });
+  });
+
+  test.each(["build", "inspect"])("mesh %s reports an uninstalled build half as MESH_ADAPTER_BUILD and writes nothing", async (name) => {
+    const root = await project();
+    await writeFile(join(root, "mesh.config.ts"), 'export default { domain: "domain", output: "generated", data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", options: { file: ":memory:" } } };\n');
+    expect(run(root, name)).toEqual({ code: 1, stdout: "",
+      stderr: "mesh.config.ts:1:1 error the data adapter's build entry \"@meshfw/data-sqlite/build\" cannot be resolved from this project: either @meshfw/data-sqlite is not installed, or the installed version does not export \"@meshfw/data-sqlite/build\". Run: bun add @meshfw/data-sqlite\n  fix: Install the package of the data adapter that mesh.config.ts names, in a version that has this build entry\n1 error, 0 warnings\n" });
+    expect(existsSync(join(root, "generated"))).toBe(false);
+  });
+});
+
 describe("mesh export generators (roadmap Jig port, acceptance 3)", () => {
   const templates = join(repo, "packages/compiler/templates");
   const names = ["types.ts.jig", "validators.ts.jig"];
@@ -428,6 +529,22 @@ describe("mesh export generators (roadmap Jig port, acceptance 3)", () => {
       stdout: "nothing to export: .mesh-generators/ already holds Mesh's templates\n" });
     // The exported copies are Mesh's templates, so the build output is unchanged.
     expect(run(root, "build")).toEqual({ code: 0, stdout: "", stderr: summary });
+  });
+
+  test("the data adapter's templates are exported too, read from its templateDir", async () => {
+    const root = await project();
+    await writeFile(join(root, "adapter.ts"), fakeAdapterSource);
+    expect(run(root, "export", "generators")).toEqual({ code: 0, stderr: summary,
+      stdout: [...names, "fake.ts.jig"].map((name) => `wrote .mesh-generators/${name}\n`).join("") });
+    expect(await readFile(join(root, ".mesh-generators/fake.ts.jig"), "utf8")).toBe(await readFile(join(fakeAdapter, "templates/fake.ts.jig"), "utf8"));
+  });
+
+  test("an invalid adapter build half stops the export before anything is written", async () => {
+    const root = await project();
+    await writeFile(join(root, "adapter.ts"), "export const nothing = 1;\n");
+    expect(run(root, "export", "generators")).toEqual({ code: 1, stdout: "",
+      stderr: 'mesh.config.ts:1:1 error the data adapter\'s build entry "./adapter.ts" has no default export of an AdapterBuild object\n  fix: Use a data adapter whose build entry default-exports { generators, commands }\n1 error, 0 warnings\n' });
+    expect(existsSync(join(root, ".mesh-generators"))).toBe(false);
   });
 
   test("writes only the absent templates when the others are identical", async () => {
@@ -485,4 +602,19 @@ describe("mesh export generators (roadmap Jig port, acceptance 3)", () => {
   test("--help lists the command", async () => {
     expect(run(await project(false), "--help").stdout).toContain("export generators   Copy Mesh's generator templates into .mesh-generators/");
   });
+});
+
+test("importing meshfw loads the runtime's defineConfig and no compiler code (ADR-0033)", () => {
+  // A fresh process: this test file itself has already loaded the compiler.
+  const probe = `
+    const { defineConfig } = await import("meshfw");
+    const runtime = await import("@meshfw/runtime");
+    if (defineConfig !== runtime.defineConfig) throw new Error("meshfw's defineConfig is not the runtime's");
+    const loaded = Object.keys(require.cache);
+    console.log(JSON.stringify(loaded.filter((path) => path.includes("/packages/compiler/") || path.includes("@meshfw/compiler"))));
+    console.log(JSON.stringify(loaded.some((path) => path.includes("/packages/runtime/"))));
+  `;
+  const result = Bun.spawnSync([process.execPath, "--eval", probe], { cwd: join(import.meta.dir, ".."), stdout: "pipe", stderr: "pipe" });
+  expect(result.stderr.toString()).toBe("");
+  expect(result.stdout.toString()).toBe("[]\ntrue\n");
 });

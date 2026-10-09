@@ -237,12 +237,12 @@ A test binds its own database. Nothing global is connected, no file is touched, 
 import { expect, test } from "bun:test";
 import { createSchema, sqlite } from "@meshfw/data-sqlite";
 import { InvalidInputError } from "@meshfw/runtime";
-import { bind } from "#mesh";
+import { bind, tables } from "#mesh";
 import { alice, bob } from "../src/context";
 
 test("only the owner sees a todo", async () => {
   const db = sqlite({ file: ":memory:" });
-  await createSchema(db);
+  await createSchema(db, tables);
   const todo = bind(db);
 
   const list = await todo.createList({ name: "Groceries" }, { actor: alice });
@@ -260,7 +260,7 @@ test("only the owner sees a todo", async () => {
 
 test("a title cannot be empty", async () => {
   const db = sqlite({ file: ":memory:" });
-  await createSchema(db);
+  await createSchema(db, tables);
   const todo = bind(db);
 
   const list = await todo.createList({ name: "Groceries" }, { actor: alice });
@@ -282,7 +282,7 @@ bun test
 [Testing](./testing.md) has the rules in full, and the next three are the ones you will meet first:
 
 - **Bind, do not connect.** A test that calls a top-level function without `bind` throws `FrameworkError`, because there is no default binding.
-- **The schema must exist on that connection.** `createSchema(db)` creates the emitted tables on the connection you just opened. `mesh db push` runs in another process and cannot reach a private in-memory database.
+- **The schema must exist on that connection.** `createSchema(db, tables)` creates the generated tables on the connection you just opened. `mesh db push` runs in another process and cannot reach a private in-memory database.
 - **Close what you opened.** `db.close()` is yours to call; `disconnect()` never touches a data layer you passed to `bind`.
 
 ## What to build next

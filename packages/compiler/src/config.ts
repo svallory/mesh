@@ -2,21 +2,11 @@ import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { readFile, stat, realpath, lstat } from "node:fs/promises";
 import type { Diagnostic } from "@meshfw/model";
-import type { DataAdapter } from "@meshfw/runtime";
+import type { DataAdapter, ExtensionDescriptor } from "@meshfw/runtime";
+export { defineConfig, type MeshConfig, type ExtensionDescriptor } from "@meshfw/runtime";
 import { buildModel, error, positionAt, type BuildResult } from "./build.ts";
 import { absolutePath, canonicalFuturePath, confinedGlob, foreignAbsolute, inside, normalizePath, projectPath, resolveEntityFile, errorCode } from "./paths.ts";
 
-/** Only the extension's identity is understood before M2. */
-export interface ExtensionDescriptor { readonly name: string }
-export interface MeshConfig {
-  /** Entity folder (recursive .mesh.mx discovery), glob or file list. */
-  domain: string | string[];
-  /** Output folder relative to mesh.config.ts, conventionally .mesh. */
-  output: string;
-  data: DataAdapter;
-  /** Kept opaque beyond identity; extensions are not activated here. */
-  extensions?: readonly ExtensionDescriptor[];
-}
 export interface ResolvedConfig {
   root: string;
   configFile: string;
@@ -27,11 +17,10 @@ export interface ResolvedConfig {
   extensions?: readonly ExtensionDescriptor[];
 }
 export interface ConfigResult { config: ResolvedConfig | null; diagnostics: Diagnostic[] }
-export function defineConfig(config: MeshConfig): MeshConfig { return config; }
 const nonEmpty = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 function isDataAdapter(value: unknown): value is DataAdapter {
-  return record(value) && value.kind === "data-adapter" && nonEmpty(value.name) && record(value.options);
+  return record(value) && value.kind === "data-adapter" && nonEmpty(value.name) && nonEmpty(value.build) && record(value.options);
 }
 
 /** mesh.config.ts is trusted executable project code, not an entity declaration.

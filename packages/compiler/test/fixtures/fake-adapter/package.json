@@ -1,0 +1,12 @@
+{
+  "name": "fake-mesh-adapter",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./build": "./build.ts",
+    "./clash": "./clash.ts",
+    "./no-default": "./no-default.ts",
+    "./not-generators": "./not-generators.ts",
+    "./throws": "./throws.ts"
+  }
+}

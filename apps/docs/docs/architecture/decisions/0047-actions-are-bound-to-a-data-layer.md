@@ -111,4 +111,4 @@ Applications connect once and use top-level functions. Tests can bind independen
 - [ ] M2: emit `bind`, `connect`, `disconnect` and default action delegates.
 - [ ] M2: test a top-level call before `connect` and two independent bindings.
 - [ ] M2: test duplicate `connect` rejection, action calls after `disconnect`, reconnect, a no-op `disconnect`, lazy connection opening, and caller-owned cleanup of explicit bindings.
-- [ ] M2: prepare test schemas on the binding's own connection, following ADR-0048.
+- [ ] M2: prepare test schemas on the binding's own connection, following ADR-0048. (`createSchema(db, tables)` works on the value `sqlite()` returns, which is the data layer `bind` takes; PR #53. The binding itself comes with the action functions.)

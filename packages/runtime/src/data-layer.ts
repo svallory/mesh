@@ -27,8 +27,15 @@ export interface DataOperations {
 
 /** A bound data adapter; handlers always open a transaction before operations. */
 export interface DataLayer {
-  /** Runs run in one transaction: commits when it resolves, rolls back and rethrows when it rejects. */
+  /** Runs run in one transaction: commits when it resolves, rolls back and rethrows when it rejects.
+   * One transaction runs at a time per layer; unrelated concurrent calls queue, and
+   * a failed transaction does not block the queue unless its own rollback failed, which
+   * makes the layer unusable: queued and later calls reject and only close() works.
+   * A nested call from inside a running transaction is an error.
+   */
   transaction<T>(run: (tx: DataOperations) => Promise<T>): Promise<T>;
-  /** Release the adapter's connection and other owned handles. */
+  /** Release the adapter's connection and other owned handles. Rejects while
+   * transactions are running or queued, leaving the layer open. Idempotent.
+   */
   close(): Promise<void>;
 }

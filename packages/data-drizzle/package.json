@@ -1,0 +1,12 @@
+{
+  "name": "@meshfw/data-drizzle",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "files": ["src"],
+  "exports": { ".": "./src/index.ts" },
+  "description": "Shared Drizzle operations behind Mesh's data-layer contract",
+  "scripts": { "test": "bun test", "typecheck": "tsc --noEmit" },
+  "dependencies": { "@meshfw/runtime": "workspace:*", "drizzle-orm": "0.45.3" }
+}

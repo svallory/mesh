@@ -1,0 +1,6 @@
+// Written by the fake adapter.
+export const names = [
+  @each(name in names)
+  "{{ name }}",
+  @end
+];
