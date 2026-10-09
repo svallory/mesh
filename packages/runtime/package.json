@@ -9,7 +9,7 @@
     ".": "./src/index.ts",
     "./testing": "./src/testing.ts"
   },
-  "description": "Mesh run-time scope, errors, validation and data-layer contracts",
+  "description": "Mesh action context, errors, validation and data-layer contracts",
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit && tsc --noEmit -p test/augmented/tsconfig.json"

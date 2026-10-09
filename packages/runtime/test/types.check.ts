@@ -1,15 +1,8 @@
-import type { Actor, DataLayer, Key, Scope, StandardSchemaV1, TableHandle } from "@meshfw/runtime";
+import type { ActionContext, DataLayer, Key, StandardSchemaV1, TableHandle } from "@meshfw/runtime";
 import { parseInput } from "@meshfw/runtime";
 
-type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
-type Assert<T extends true> = T;
-type UnregisteredActor = Assert<Equal<Scope["actor"], unknown>>;
-type ActorAlias = Assert<Equal<Actor, unknown>>;
-const scope: Scope = { actor: null, context: { trace: "one" } };
-// @ts-expect-error actor is required even when its type is unknown
-const missingActor: Scope = {};
-// @ts-expect-error context is a record
-const invalidContext: Scope = { actor: null, context: "wrong" };
+const context: ActionContext = {};
+void context;
 // @ts-expect-error table handles are opaque objects, not SQL strings
 const table: TableHandle = "posts";
 function contracts(layer: DataLayer, key: Key) {
