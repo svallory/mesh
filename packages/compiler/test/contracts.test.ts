@@ -114,6 +114,7 @@ describe("v4 contracts", () => {
       "unknown-option": ["MESH_SYNTAX", 1, 13],
       "member-assignment": ["MESH_SYNTAX", 7, 8],
       "member-assign-expression": ["MESH_MEMBER_ASSIGN", 6, 33],
+      "duplicate-set": ["MESH_DUPLICATE_SET", 10, 10],
       "check-that": ["MESH_SYNTAX", 7, 8],
       "atom-sort": ["MESH_SYNTAX", 7, 12],
       "has-many-nullable": ["MESH_SYNTAX", 5, 32],

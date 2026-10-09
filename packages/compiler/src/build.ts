@@ -450,6 +450,7 @@ function buildEntity(
   const steps = (holder: DataTag): Step[] =>
     tags(holder.children).map((tag): Step => {
       const position = pos(tag);
+      const assigned = new Set<string>();
       if (tag.name === "set")
         return {
           kind: "set",
@@ -459,6 +460,9 @@ function buildEntity(
             if (read.diagnostic) { diagnostics.push(read.diagnostic); return []; }
             const member = read.value;
             checkRef(member.ref, "set");
+            if (assigned.has(member.ref.name))
+              fail("MESH_DUPLICATE_SET", `\`&${member.ref.name}\` is set twice in this action`, line);
+            assigned.add(member.ref.name);
             if (!member.value) {
               fail("MESH_MEMBER_LINE_OPTIONS", `\`&${member.ref.name}\` under \`set\` needs a value: \`&${member.ref.name}=…\``, line);
               return [];

@@ -80,6 +80,9 @@ test.each([
 test.each([
   ["(() => { &done = true; return true })", [["MESH_MEMBER_ASSIGN", 6, 33]]],
   ["(() => { &done++; return true })", [["MESH_MEMBER_ASSIGN", 6, 33]]],
+  ["(() => { &done.x = 1; return true })", [["MESH_MEMBER_ASSIGN", 6, 33]]],
+  ["(() => { &done[0] = 1; return true })", [["MESH_MEMBER_ASSIGN", 6, 33]]],
+  ["(() => { const o = {}; o[&done] = 1; return true })", []],
   ["(() => &done === true)", []],
   ["(() => { const done = &done; return done })", []],
 ] as const)("MESH_MEMBER_ASSIGN is positioned on the assignment: %s", (filter, expected) => {
@@ -87,4 +90,19 @@ test.each([
   const result = build(source);
   expect(result.diagnostics.map((d) => [d.code, d.position.line, d.position.column])).toEqual(expected.map((e) => [...e]));
   if (expected.length) expect(result.diagnostics[0]!.message).toBe("`&done` cannot be assigned inside an expression; use a `set` line");
+});
+
+test.each([
+  ["          &title=\"a\"\n          &title=\"b\"\n", [["MESH_DUPLICATE_SET", 11, 10]]],
+  ["          &title=\"a\"\n          &done=true\n", []],
+] as const)("MESH_DUPLICATE_SET is positioned on the second line: %s", (lines, expected) => {
+  const source = title + "    boolean :done\n  actions\n    update :change\n      do\n        set\n" + lines;
+  const result = build(source);
+  expect(result.diagnostics.map((d) => [d.code, d.position.line, d.position.column])).toEqual(expected.map((e) => [...e]));
+  if (expected.length) expect(result.diagnostics[0]!.message).toBe("`&title` is set twice in this action");
+});
+
+test("the same member in two separate set blocks is not a duplicate", () => {
+  const source = title + "  actions\n    update :change\n      do\n        when=() => true\n          set\n            &title=\"a\"\n        set\n          &title=\"b\"\n";
+  expect(build(source).diagnostics).toEqual([]);
 });

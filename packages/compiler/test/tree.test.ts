@@ -73,6 +73,10 @@ test.each([
   ["() => { &a++; return true }", "&a++", ["a"]],
   ["() => { [&a, &b] = [1, 2]; return true }", "[&a, &b] =", ["a", "b"]],
   ["() => { for (&a of [1]) {} return true }", "for (", ["a"]],
+  ["() => { &a.x = 1; return true }", "&a.x = 1", ["a"]],
+  ["() => { &a[0] = 1; return true }", "&a[0] = 1", ["a"]],
+  ["() => { &a.b.c++; return true }", "&a.b.c++", ["a"]],
+  ["() => { [&a.x] = [1]; return true }", "[&a.x] =", ["a"]],
 ] as const)("assignments to a member are reported at the assignment: %s", (body, start, names) => {
   const source = `check value=(${body})\n`;
   const { root, at } = lowered(source);
@@ -91,6 +95,8 @@ test.each([
   "() => { const x = &a; return x === 1 }",
   "() => { let x = 0; x = &a; return x }",
   "(x = &a) => x",
+  "() => { const x = {}; x[&a] = 1; return x }",
+  "() => { const x = {}; x.y = &a.z; return x }",
 ])("reading a member is not an assignment: %s", (body) => {
   const source = `check value=(${body})\n`;
   const { root, at } = lowered(source);

@@ -19,6 +19,7 @@ export interface SyntaxNode {
   properties?: SyntaxNode[];
   key?: SyntaxNode;
   left?: SyntaxNode;
+  object?: SyntaxNode;
   params?: SyntaxNode[];
   pattern?: string;
   flags?: string;
@@ -192,10 +193,14 @@ export function expression(
     position: at(data.span.sourceStart),
   };
 }
-/** The members an assignment or update writes to, from MX's marks only. */
+/** The members an assignment or update writes to or through (`&a`, `&a.b`,
+ * `&a[0]`), from MX's marks only: the target's member-access root is marked. */
 function assignedMembers(target: SyntaxNode | undefined): SyntaxNode[] {
   if (!target) return [];
-  if (target.extra?.mxMember) return [target];
+  let root = target;
+  while (!root.extra?.mxMember && (root.type === "MemberExpression" || root.type === "OptionalMemberExpression") && root.object)
+    root = root.object;
+  if (root.extra?.mxMember) return [root];
   if (target.type === "ArrayPattern")
     return (target.elements ?? []).flatMap((e) => assignedMembers(e ?? undefined));
   if (target.type === "ObjectPattern")
