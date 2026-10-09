@@ -33,6 +33,7 @@ import {
   type Step,
 } from "@meshfw/model";
 import contracts from "./contracts.ts";
+import { MESH_SYNTAX } from "./syntax.ts";
 import { nearestName } from "./nearest-name.ts";
 import { literalFits } from "./literal-types.ts";
 import { readImports, type ParsedImport } from "./imports.ts";
@@ -622,6 +623,17 @@ function buildEntity(
   return entity;
 }
 
+/** The compiler's one MX parse: closed contracts, Mesh's syntax module, rejection on. */
+export function parseEntitySource(source: string, file: string) {
+  return parseData(source, file, {
+    syntax: MESH_SYNTAX,
+    customTags: contracts,
+    structural: "reject",
+    unknownTags: "reject",
+    imports: "pass",
+  });
+}
+
 /** Parse with closed MX contracts, then project the static tree without executing it. */
 export function buildModel(project: ProjectDescription): BuildResult {
   const diagnostics: Diagnostic[] = [];
@@ -661,12 +673,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
       continue;
     }
     const file = path.file;
-    const parsed = parseData(input.source, file, {
-      customTags: contracts,
-      structural: "reject",
-      unknownTags: "reject",
-      imports: "pass",
-    });
+    const parsed = parseEntitySource(input.source, file);
     diagnostics.push(
       ...parsed.diagnostics.filter((d, _, all) => {
         // MX reports both parent rejection and unknown-tag rejection for the
