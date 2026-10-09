@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const repo = resolve(import.meta.dir, "../../..");
@@ -11,9 +11,7 @@ function compile(args: string[], cwd: string) {
 }
 
 test("every documented runtime instance/type satisfies the emitted real declarations", async () => {
-  const scratch = join(homedir(), "tmp/realignment-2");
-  await mkdir(scratch, { recursive: true });
-  const root = await mkdtemp(join(scratch, "runtime-reference-"));
+  const root = await mkdtemp(join(tmpdir(), "mesh-runtime-reference-"));
   try {
     const reference = await readFile(join(repo, "apps/docs/samples/mesh-api.d.ts"), "utf8");
     const start = reference.indexOf('declare module "@meshfw/runtime" {');
