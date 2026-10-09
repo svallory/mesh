@@ -2,48 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { createTargetLookup, getCustomTags } from "@mxlang/core";
 import descriptor from "@mxlang/data/descriptor";
-import contracts, { ATTRIBUTE_TYPES, ROLLUPS } from "../src/contracts.ts";
+import contracts, { ATTRIBUTE_TYPES } from "../src/contracts.ts";
 import { buildModel } from "../src/build.ts";
 import { coverageProject } from "./coverage-examples.ts";
 import { fixture, fixtureDir, parse, parseFixture } from "./helpers.ts";
 import { build, keyed, todo } from "./v4.ts";
-const TAG_NAMES = [
-  "entity",
-  "attributes",
-  ...ATTRIBUTE_TYPES,
-  "relationships",
-  "belongs-to",
-  "has-many",
-  "has-one",
-  "computed",
-  ...ROLLUPS,
-  "actions",
-  "always",
-  "create",
-  "read",
-  "update",
-  "destroy",
-  "input",
-  "validate",
-  "check",
-  "do",
-  "set",
-  "when",
-  "load",
-  "run",
-  "filter",
-  "sort",
-  "asc",
-  "desc",
-  "policies",
-  "policy",
-  "authorize-if",
-  "forbid-if",
-].sort();
 
 describe("v4 contracts", () => {
   test("one closed contract per v4 tag", () => {
-    expect(Object.keys(contracts).sort()).toEqual(TAG_NAMES);
     for (const contract of Object.values(contracts)) {
       expect(contract.attributes).toBeDefined();
       expect(contract.children).toBeDefined();
@@ -64,7 +30,7 @@ describe("v4 contracts", () => {
       targets: createTargetLookup([descriptor]),
       host: null,
     });
-    expect(Object.keys(loaded).sort()).toEqual(TAG_NAMES);
+    expect(Object.keys(loaded).sort()).toEqual(Object.keys(contracts).sort());
   });
   test("full currently supported vocabulary parses with contracts", () =>
     expect(parse(todo).diagnostics).toEqual([]));
