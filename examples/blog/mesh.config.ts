@@ -1,4 +1,4 @@
-import { defineConfig } from "meshfw";
+import { defineConfig } from "@meshfw/runtime";
 import { sqlite } from "@meshfw/data-sqlite";
 
 export default defineConfig({

@@ -9,7 +9,7 @@ description: "Decision record 0060: the npm scope, the package names and the com
 
 Accepted. Supersedes [ADR-0040](./0040-package-and-command-names.md).
 
-**Amended 2026-10-09, docs structural review:** the CLI is the unscoped package **`meshfw`**, installed with `bun add -d meshfw`, and its binary is **`mesh`**. `defineConfig` is imported from `meshfw`. The starter is **`create-mesh`**, invoked as `bun create mesh todo-app`; the remaining framework packages stay under `@meshfw/*`. This replaces the earlier CLI name in the historical ruling below. The operator still needs to register `meshfw` and `create-mesh` on npm. See the [docs review ruling](./rulings-2026-10-04.md#docs-review-notes-operator-2026-10-09-0135-and-the-leads-rulings-for-the-docs-structure-round).
+**Amended 2026-10-09, docs structural review:** the CLI is the unscoped package **`meshfw`**, installed with `bun add -d meshfw`, and its binary is **`mesh`**. `defineConfig` is imported from `meshfw`. (Superseded by the lead's ruling in the review of [PR #54](https://github.com/svallory/mesh/pull/54), 2026-10-09: `connect()` loads `mesh.config.ts` in the running program, and `meshfw` is a dev dependency, so a config imports `defineConfig` from `@meshfw/runtime`; `meshfw` keeps the re-export for compatibility.) The starter is **`create-mesh`**, invoked as `bun create mesh todo-app`; the remaining framework packages stay under `@meshfw/*`. This replaces the earlier CLI name in the historical ruling below. The operator still needs to register `meshfw` and `create-mesh` on npm. See the [docs review ruling](./rulings-2026-10-04.md#docs-review-notes-operator-2026-10-09-0135-and-the-leads-rulings-for-the-docs-structure-round).
 
 ## Date
 

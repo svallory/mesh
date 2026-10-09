@@ -98,7 +98,7 @@ Each adapter has two halves: a build-time half that emits Drizzle table definiti
 
 ### One value: the descriptor and the data layer
 
-`sqlite({ file })` returns one frozen value that is both the `DataAdapter` a project names in `mesh.config.ts` (`kind`, `name: "sqlite"`, `build: "@meshfw/data-sqlite/build"`, `options: { file }`) and its run-time `DataLayer`. The same value is passed to `createSchema`, to `bind` and closed with `close()`, so there is one way to name a database. Making it opens nothing: the connection opens on the first transaction, so the build can import `mesh.config.ts` freely. A missing or empty `file` is a `FrameworkError`; using the layer after `close()` is one too; `close()` twice does nothing. `defineConfig` lives in the runtime, so a program that imports its configuration at run time loads no compiler code ([ADR-0033](../decisions/0033-core-split-build-time-run-time.md)).
+`sqlite({ file })` returns one frozen value that is both the `DataAdapter` a project names in `mesh.config.ts` (`kind`, `name: "sqlite"`, `build: "@meshfw/data-sqlite/build"`, `options: { file }`) and its run-time `DataLayer`. The same value is passed to `createSchema`, to `bind` and closed with `close()`, so there is one way to name a database. Making it opens nothing: the connection opens on the first transaction, so the build can import `mesh.config.ts` freely. A missing or empty `file` is a `FrameworkError`; after `close()` the next transaction opens a new connection; `close()` twice does nothing. `defineConfig` lives in the runtime, so a program that imports its configuration at run time loads no compiler code ([ADR-0033](../decisions/0033-core-split-build-time-run-time.md)).
 
 ### Transactions are Mesh's own on SQLite
 
