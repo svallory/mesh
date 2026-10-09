@@ -48,9 +48,16 @@ test("domain discovers only .mesh.mx, deterministically, and records only adapte
 });
 test("explicit list deduplicates and config reload reflects edits", async () => {
   const root = await project(configSource(["src/domain/blog/todo.mesh.mx", "src/domain/blog/todo.mesh.mx"]));
-  expect((await loadConfig(root)).config!.entityFiles).toHaveLength(1);
-  await writeFile(resolve(root, "mesh.config.ts"), configSource("src/domain/**/*.mesh.mx"));
-  expect((await loadConfig(root)).config!.entityFiles).toHaveLength(2);
+  const first = (await loadConfig(root)).config!;
+  expect(first.entityFiles).toHaveLength(1);
+  expect(first.output).toBe(resolve(root, ".mesh"));
+  await writeFile(
+    resolve(root, "mesh.config.ts"),
+    `export default ${JSON.stringify({ domain: "src/domain/**/*.mesh.mx", output: "output", data })}`,
+  );
+  const reloaded = (await loadConfig(root)).config!;
+  expect(reloaded.entityFiles).toHaveLength(2);
+  expect(reloaded.output).toBe(resolve(root, "output"));
 });
 test.each([
   "export default null", "export default []",
