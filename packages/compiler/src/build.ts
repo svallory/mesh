@@ -759,10 +759,17 @@ export function buildModel(project: ProjectDescription): BuildResult {
       ...parsed.diagnostics.filter((d, _, all) => {
         // MX reports both parent rejection and unknown-tag rejection for the
         // same unknown child. Keep the specific unknown-tag error only.
+        // The match is on MX's message text because MX 0.1.0-alpha.13's
+        // DataDiagnostic has no `code`. It stands until MX exposes diagnostic
+        // codes; do not replace it with an offset-only rule, which would
+        // depend on MX's diagnostic order instead.
         const denied = /`<([^>]+)>` is not allowed here;/.exec(d.message)?.[1];
         return !denied || !all.some((other) => other.offset === d.offset &&
           other.message.startsWith(`\`<${denied}>\` is not a known tag:`));
       }).map((d): Diagnostic => {
+        // Mesh's contracts report their own code as a `MESH_X: ` message
+        // prefix, because MX's `ctx.fail(message, at?)` takes no code. This
+        // stands until MX accepts a code there and returns it on the diagnostic.
         const coded = /\b(MESH_[A-Z_]+): (.*)/s.exec(d.message);
         return {
           severity: d.severity,
