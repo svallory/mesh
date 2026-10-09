@@ -8,7 +8,7 @@ description: "For an Ash user: how each part of Ash's resource DSL is written in
 Updated: 2026-10-08. Mesh is modelled on Ash, the declarative framework for Elixir. Until 2026-10-05 Mesh's vocabulary copied Ash's DSL ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md), superseded). It is now Mesh's own, informed by Ash ([ADR-0049](../decisions/0049-vocabulary-is-meshs-own.md)): what Ash calls a *resource* is an *entity*, and every declaration in an entity file is `kind :name options` ([ADR-0050](../decisions/0050-entity-file-syntax.md)). This page tells an Ash user where each Ash concept went, and which have no equivalent yet.
 
 ::: callout info "Two spellings on this page"
-The code on `main` still reads the vocabulary of the M1 alignment, which copied Ash (`resource`, `attribute="title" type="string"`, `defaults`, `change`, `calculations`, `aggregates`, `policy=action_type("read")`), until the realignment task ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)). Section 3 keeps that spelling in its own column, and its "Contract check" column, because a test in `packages/compiler/test` reads both to check the contracts on `main` (roadmap M1, acceptance test 7). The 110-row mapping and its fixture are historical, machine-checked and unchanged here. For current spelling, use [Entities](../../docs/entities.md) and [ADR-0067](../decisions/0067-members-imports-input-static-files.md); the realignment rewrites the mapping's Mesh column when the code moves to v4.
+The code on `main` reads entity file syntax v4 since PR #47 and PR #48 (2026-10-09). Section 3 is in that spelling, and a test in `packages/compiler/test` reads it to check the contracts on `main` (roadmap M1, acceptance test 7). Sections 4.0.1 and 5 to 7 and the appendices record the M1 alignment, which copied Ash (`resource`, `attribute="title" type="string"`, `defaults`, `change`, `calculations`, `aggregates`, `policy=action_type("read")`), and are history. For current spelling, use [Entities](../../docs/entities.md) and [ADR-0067](../decisions/0067-members-imports-input-static-files.md).
 :::
 
 ## 0. How to read this page
@@ -17,7 +17,7 @@ The code on `main` still reads the vocabulary of the M1 alignment, which copied 
 - **Section 2** lists the Ash concepts Mesh has no equivalent for yet, and why.
 - **Section 3** is the full mapping, 110 rows, one per Ash section, entity or option that Mesh v1 touches, with the source in the research for each Ash fact.
 - **Section 4** lists where Mesh's design deliberately differs from Ash, then keeps the record of the M1 alignment as history.
-- **Sections 5 to 7 and the appendices** are the M1 alignment's exceptions, Ash lookups and fixture, kept because they record checked facts about Ash and describe the contracts on `main`.
+- **Sections 5 to 7 and the appendices** are the M1 alignment's exceptions, Ash lookups and fixture, kept because they record checked facts about Ash. The contracts they describe are the M1 contracts, replaced in PR #47.
 
 In current files, `:title` declares a name, `&title` refers to a member and an imported identifier names another entity. Expressions use TypeScript plus Mesh's member and atom spellings.
 
@@ -253,7 +253,7 @@ These are deliberate. Each has its record.
 
 History: the M1 alignment as decided on 2026-10-04. The vocabulary decisions that superseded it are records 0049 to 0056 (section 4.0); where a sentence below disagrees with them, the records win.
 
-The rest of this section, and sections 5 to 7, record the alignment of the contracts with Ash's DSL done in M1, when the vocabulary still copied Ash. They describe the code on `main`. "Now" below means the contracts before that alignment.
+The rest of this section, and sections 5 to 7, record the alignment of the contracts with Ash's DSL done in M1, when the vocabulary still copied Ash. They describe the M1 contracts, not the code on `main`. "Now" below means the contracts before that alignment.
 
 "Now" is what `contracts.ts` or the roadmap has today. "Alignment" is the change the ruling implies. Exceptions go to Section 5; open research to Section 6.
 
@@ -401,7 +401,7 @@ The builder also derives modules from the domain root, diagnoses duplicate entit
 ## Appendix B. What this page did not verify
 
 - Checked by the alignment (no longer open): an untyped contract attribute keeps `literalOnly` for an object literal (D9). An identifier is rejected (`literal-only-constraints`) and an object literal is accepted (every fixture with `constraints`).
-- The two values `@mesh/model` records where this page was silent are now checked (Section 6, row "model"): `uuid-primary-key` is allow-nil false and public true; `create-timestamp` and `update-timestamp` are allow-nil false and public false. They match what the model records.
+- The two values the model package (`@meshfw/model`) records where this page was silent are now checked (Section 6, row "model"): `uuid-primary-key` is allow-nil false and public true; `create-timestamp` and `update-timestamp` are allow-nil false and public false. They match what the model records.
 - The two sub-claims Section 6 keeps open: how Mesh spells the validation and check builtins (G3), and the `{MyModule, :my_func, []}` example of G5.
 - Where adapters and extensions are enabled for a project in the Ash sense (rows 3 and 5): the roadmap places it in the project configuration, M1 and M6.
 - Who proposed each finding in rounds 1 to 4 of the review of PR #1: the PR records what changed, not the author of each finding.

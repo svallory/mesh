@@ -1,6 +1,6 @@
 ---
 title: "Roadmap"
-description: "The order in which Mesh is built: what is done, the hold, the realignment task and the Jig port, the v1 milestones, and what comes after."
+description: "The order in which Mesh is built: what is done, the move to the documented names, the Jig port, the v1 milestones, and what comes after."
 ---
 
 # Roadmap
@@ -11,7 +11,7 @@ Date: 2026-10-05. This is revision 4 of the implementation plan. Revision 3 (202
 
 **Mesh** is a TypeScript framework modelled on Ash, the declarative framework for Elixir. One *entity file* declares a piece of data, the operations on it and the rules around them; Mesh derives types, input validators, action functions and the database schema from that file. This page says in what order Mesh is built. Each decision it rests on has its own decision record, listed in [decision records](../decisions/index.md) and cited as "[ADR-0050](../decisions/0050-entity-file-syntax.md)".
 
-**Where things stand (2026-10-05).** M0 and M1 are done. M2 is partly merged: PR #18 (the rulings before M2) and PR #19 (`mx` highlighting on the docs site) are documentation; PR #20 (the run-time library) and PR #21 (input validators and the generated-import check) are framework code. PR #22 (the SQLite adapter on Drizzle) is open and held. **All development is on hold** until the operator approves the user docs ([ADR-0063](../decisions/0063-user-docs-first-and-the-hold.md)). After approval come two tasks that this revision adds, the realignment task and the Jig port, and then M2 resumes ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)).
+**Where things stand (2026-10-09).** M0 and M1 are done, and the move to the documented names is done: PR #47 (2026-10-09, `61c8202`) moved the contracts and model to the entity syntax and PR #48 (2026-10-09, `c497438`) the packages, layout, configuration, CLI and runtime. M2 is partly merged: PR #18 (the rulings before M2) and PR #19 (`mx` highlighting on the docs site) are documentation; PR #20 (the run-time library) and PR #21 (input validators and the generated-import check) are framework code. PR #22 (the SQLite adapter on Drizzle) is not on `main`: `@meshfw/data-sqlite` there returns a descriptor only. Pending: the remaining emitters (for the action functions, `schema.ts`, `index.ts`, `mx-contracts.js` and `rules.md`), the MX lowering of the `&` member positions, and the Jig port, and then M2 resumes ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)).
 
 Sources, with the short names used below:
 
@@ -39,12 +39,12 @@ Terms:
 ## 1. Summary
 
 1. **v1 is ten milestones, M0 to M9**: workspace, build skeleton, run skeleton, data-layer contract, expressions, action lifecycle, extension host, relationships and computed fields, policies, and migrations with Postgres ([ADR-0019](../decisions/0019-v1-scope.md)).
-2. **Two tasks come before M2 resumes**: the realignment task (the code takes the names and syntax of 2026-10-04 evening and 2026-10-05) and the Jig port (the existing emitters become Jig templates) ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)).
+2. **Two tasks come before M2 resumes**: the realignment task (the code takes the names and syntax of 2026-10-04 evening and 2026-10-05; done, PR #47 and PR #48, 2026-10-09) and the Jig port (the existing emitters become Jig templates) ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)).
 3. **The walking skeleton is M0 to M2 and ends in a function call**: an entity file is parsed, turned into a model, emitted as committed TypeScript, and a test and a short script call the generated functions against SQLite. No command line, no server ([ADR-0005](../decisions/0005-core-interface-is-a-function-call.md)).
 4. **After v1**, in no fixed order yet: bulk actions, identities and upserts; reusable steps and the planned steps; the agent and test surface; a command-line adapter for agents; outbox, jobs and workflows; HTTP; a single binary (section 6).
 5. **Bun only** ([ADR-0025](../decisions/0025-bun-only.md)), **established tools first** ([ADR-0030](../decisions/0030-established-tools-first.md)), **`verify` runs on every pull request** ([ADR-0031](../decisions/0031-no-ci-until-mx-is-published.md)).
 6. **User docs first.** Behaviour is written on a Docs page, in the voice of a released 1.0, before it is built; code follows the page or changes it in the same pull request ([ADR-0063](../decisions/0063-user-docs-first-and-the-hold.md)).
-7. **The vocabulary is Mesh's own**, informed by Ash, always in MX concise syntax ([ADR-0049](../decisions/0049-vocabulary-is-meshs-own.md), [ADR-0041](../decisions/0041-mx-concise-syntax.md)). The M1 contracts copied Ash's DSL; the realignment task replaces them. The [Ash-to-Mesh mapping](./vocabulary-mapping.md) says where each Ash concept went.
+7. **The vocabulary is Mesh's own**, informed by Ash, always in MX concise syntax ([ADR-0049](../decisions/0049-vocabulary-is-meshs-own.md), [ADR-0041](../decisions/0041-mx-concise-syntax.md)). The M1 contracts copied Ash's DSL; PR #47 replaced them. The [Ash-to-Mesh mapping](./vocabulary-mapping.md) says where each Ash concept went.
 8. **Mesh is open source under the MIT licence** and its docs are public ([ADR-0042](../decisions/0042-open-source-mit.md)).
 
 ## 2. Principles every milestone is checked against
@@ -61,7 +61,7 @@ Terms:
 
 ## 3. Packages
 
-A bun workspace in `svallory/mesh`. Packages are published as `@meshfw/*` and the command is `mesh` ([ADR-0060](../decisions/0060-meshfw-package-scope.md)). On `main` they are still `@mesh/*` until the realignment task.
+A bun workspace in `svallory/mesh`. Packages are published as `@meshfw/*`, the CLI package is `meshfw` and the command is `mesh` ([ADR-0060](../decisions/0060-meshfw-package-scope.md)); the workspace packages on `main` carry those names since PR #48.
 
 ```
 apps/docs/            the docs site (docmd): Docs for users, Architecture for contributors
@@ -123,21 +123,22 @@ Sizes: **S** one pull request; **M** two to four; **L** five or more, split into
 
 ### M1 — Build skeleton: entity file to model to emitted types (M, done)
 
-- **Status.** Done on 2026-10-04, in the vocabulary of that morning, which copied Ash's DSL ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md), since superseded): the vocabulary alignment (PR #11, PR #13), load and model (PR #12, with `@mesh/model` in PR #9), the emitters for `model.json` and types (PR #15), the `mesh` command with `build`, `build --check` and `inspect` (PR #16), and the blog example guarded by `verify` (PR #17).
+- **Status.** Done on 2026-10-04, in the vocabulary of that morning, which copied Ash's DSL ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md), since superseded; renamed to the entity syntax by PR #47 and PR #48, 2026-10-09): the vocabulary alignment (PR #11, PR #13), load and model (PR #12, with the model package in PR #9), the emitters for `model.json` and types (PR #15), the `mesh` command with `build`, `build --check` and `inspect` (PR #16), and the blog example guarded by `verify` (PR #17).
 - **What it did.** Build stages 1, 2, 3, 7 and 8 of Synthesis section 16 in their simplest form: `parseData` with the contracts imported directly, `structural: "reject"` and `unknownTags: "reject"`; one root tag per file; a plain-data model with source positions; duplicate-name, missing-primary-key and unknown-`accept` checks; `model.json` and a types file per entity, from templates through a pinned formatter, byte-for-byte deterministic; the guard; the not-implemented rule ([ADR-0018](../decisions/0018-not-implemented-is-a-build-error.md)); the MX import boundary.
 - **Acceptance tests (as passed).** (1) A reduced example builds; emitted types pass `tsc --noEmit`. (2) Two builds give identical bytes. (3) A hand edit to a generated file fails `mesh build --check`, which names the file. (4) An empty file, two root tags in one file, a duplicate name and an unknown `accept` name each fail with the expected message and position. (5) The full fixture fails with the not-implemented error for its first unsupported tag. (6) The registry-against-contract drift test. (7) Every row of the [mapping page](./vocabulary-mapping.md) marked "on main" has a contract and a fixture that match it. (8) `@mxlang/*` is imported only by packages that declare tag contracts.
-- **What changes later.** The realignment task rewrites the vocabulary, the configuration key and the output folder; tests 4, 5 and 7 keep their meaning with the new names. Test 7 reads the mapping page's "Contract check" column, which describes the M1 contracts until the realignment task replaces it.
+- **What changed later.** The realignment task rewrote the vocabulary, the configuration key and the output folder (PR #47, PR #48); tests 4, 5 and 7 keep their meaning with the new names. Test 7 reads the section 3 examples of the mapping page, now in the v4 spelling.
 
 ### Realignment — the code takes the current names and syntax (L, after the docs are approved)
 
 The acceptance tests of this task and of the Jig port below are the lead's design, delegated by the operator, pending the operator's review; the order of the two tasks is [ADR-0064](../decisions/0064-order-of-work-after-approval.md).
 
+- **Status.** Merged on 2026-10-09 in two pull requests: PR #47 (`61c8202`): MX `0.1.0-alpha.11` (target `tree`), the closed entity contracts and the entity model; PR #48 (`c497438`): `meshfw` and `@meshfw/*`, `src/domain`, `.mesh/`, the `{ domain, output, data, extensions? }` configuration, the CLI and the runtime contracts. Not part of it: the `&` member positions wait for MX's lowering (21 `test.todo`s), and the emitters still write only `types` and `validators` per entity, with the rest not built yet.
 - **Goal.** Everything on `main` uses the names and syntax of [ADR-0049](../decisions/0049-vocabulary-is-meshs-own.md) to [ADR-0062](../decisions/0062-direct-dependencies-zod-drizzle-opentelemetry.md), so that M2 onward is built once ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)).
 - **In scope.**
   - *Contracts.* Entity file syntax v2 ([ADR-0050](../decisions/0050-entity-file-syntax.md)): `entity`; attribute-type tags generated from the type registry ([ADR-0037](../decisions/0037-vocabulary-source-of-truth.md) ruled first); the attribute types `uuid`, `string`, `integer`, `float`, `decimal`, `boolean`, `enum`, `date`, `datetime`, `timestamp`; `nullable`, `primary-key`, `unique`, `default`, `min`, `max`, `match`, `on`; relationship tags with the destination as value; `computed`; `actions` with `auto` and `on:load`, typed actions with `#name`, `arguments`; `validate` with `require` and `check`; `do` with `set`, `when`, `load`, `run`; `always`; `policies` with `policy #name types=[...] actions=[...]`, `authorize-if`, `forbid-if`. Tags whose semantics come later stay behind the not-implemented rule.
   - *Model and checks.* `entity` everywhere; `#name` uniqueness within each scope; the module from the folder; required by default.
   - *Configuration and layout.* `domain` replaces `resources` in `mesh.config.ts`; `.mesh.mx` discovery under `src/domain/` (plain `.mx` accepted until MX decision 148 lands); output `.mesh/`; the `#mesh` entry in `package.json#imports`; `.gitattributes` with `linguist-generated` ([ADR-0057](../decisions/0057-one-domain-modules-as-folders.md), [ADR-0058](../decisions/0058-generated-code-in-mesh-imported-as-hash-mesh.md)).
-  - *Run-time library.* `ActionContext` replaces `Scope` ([ADR-0059](../decisions/0059-action-context.md)).
+  - *Run-time library.* `ActionContext` replaces `Scope` ([ADR-0059](../decisions/0059-action-context.md)). Done in PR #48 (2026-10-09).
   - *Packages.* Every workspace package renamed to `@meshfw/*`, with the import rules in `verify` ([ADR-0060](../decisions/0060-meshfw-package-scope.md)).
   - *Example.* `examples/blog` rewritten in syntax v2 under `src/domain/blog/`, with a `src/context.ts`.
   - *Docs checks.* The Docs-page sample check parses blocks rooted at `entity` instead of deferring them.
@@ -316,7 +317,7 @@ Not planned at all, with reasons: a policy solver (Ruling 6 defers it); `bypass`
 
 ## 9. Risks
 
-1. **The code and the docs disagree until the realignment task.** Every Architecture page that describes code on `main` says so in a callout; the Docs pages state the target. A contributor who reads only the code sees the old vocabulary.
+1. **The code and the docs differ by what is not built.** PR #47 and PR #48 (2026-10-09) moved the code to the documented names; the remaining emitters and the MX lowering are pending. Every Architecture page that describes design the code does not implement says so in a callout; the Docs pages state the target.
 2. **MX is pre-release** (MX notes, getting-started section 5). `packages/compiler` pins `@mxlang/core` and `@mxlang/data` to exact pre-release versions, so nothing resolves a range and a breaking change stops Mesh when the pin moves, not the day MX pushes. Syntax v2 also waits on MX decisions 145, 146 and 148 and on `imports: "pass"`.
 3. **Drizzle v1 is a release candidate, its relations API is being replaced, drizzle-kit is mid-rewrite** (Synthesis section 12, risk 1; section 10). M2 uses the stable pair `drizzle-orm@0.45.3` / `drizzle-kit@0.31.11` ([ADR-0048](../decisions/0048-schema-inside-the-process-for-tests.md), [ADR-0062](../decisions/0062-direct-dependencies-zod-drizzle-opentelemetry.md)). Mitigation: exact pins; Drizzle imported only in `data-*`; an upgrade is its own pull request and must pass the suite; Mesh does not use the relations API.
 4. **CI runs `verify` and nothing more** ([ADR-0031](../decisions/0031-no-ci-until-mx-is-published.md), amended 2026-10-05). A green run says the checks in `verify` passed, not that a change is correct; the review protocol still carries that.

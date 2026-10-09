@@ -5,10 +5,10 @@ description: "How Mesh reads static entity files through MX, the syntax-v4 parse
 
 # How Mesh uses MX
 
-Status: the M1 loader and contracts are built, and `verify` checks the MX import boundary and complete MX samples in the Docs pages. The realignment task rewrites the contracts for entity file syntax v4 ([ADR-0067](../decisions/0067-members-imports-input-static-files.md)); the composed contracts module is built in M6; the `mesh` MX host package follows MX decision 148 ([ADR-0051](../decisions/0051-mesh-mx-files-and-the-mesh-host.md)).
+Status: the loader and the closed v4 contracts are built (PR #47, MX pinned at `0.1.0-alpha.11`), and `verify` checks the MX import boundary and complete MX samples in the Docs pages. The authored `&` member positions after a kind and inside expressions wait for MX's lowering; the composed contracts module is built in M6; the `mesh` MX host package follows MX decision 148 ([ADR-0051](../decisions/0051-mesh-mx-files-and-the-mesh-host.md)).
 
-::: callout info "The code still uses the old names"
-`packages/compiler/src/contracts.ts` on `main` declares the 26 contracts of the M1 vocabulary, copied from Ash (`resource`, `attribute`, `defaults`, `change`, `calculations`, `aggregates`, policy check calls). Syntax v4 replaces them in the realignment task ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)). The mechanisms below (the call, the tree, `analyze`, the import boundary) are unchanged.
+::: callout info "What the code does today"
+`packages/compiler/src/contracts.ts` on `main` declares the closed contracts of entity file syntax v4 ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)). The `&` member positions are pending MX's lowering: `test.todo`s (21) mark them, and the Docs samples are normalised in a test-only step that production never calls. The mechanisms below (the call, the tree, `analyze`, the import boundary) are as built.
 :::
 
 ## What MX is, and why it is core
@@ -32,17 +32,19 @@ The vocabulary is Mesh's own, informed by Ash ([ADR-0049](../decisions/0049-voca
 
 ## The MX features syntax v4 depends on
 
-| Feature | Used for | State on the pinned parser, alpha.5 |
+Measured on `@mxlang/data` alpha.5, before the pin moved to alpha.11; not re-measured since.
+
+| Feature | Used for | State on the parser as measured |
 |---|---|---|
 | Atoms and `kind :name` | Declarations and fixed-set/enum values | Parses; whole-value atoms are `DataAttr { kind: "atom", name, value }`; expression atoms have `extra.mxAtom` |
-| Entity imports and `entity=Customer` | Cross-file identity | Both parse with `structural: "reject", imports: "pass"`, verified on alpha.5; without the imports option, imports are rejected |
+| Entity imports and `entity=Customer` | Cross-file identity | Both parse with `structural: "reject", imports: "pass"`, verified in that measurement; without the imports option, imports are rejected |
 | `&name` after a kind | `asc &dueOn` | Invalid attribute name until the syntax table |
 | `&name` at an operand position | `() => &status === :sent`, `load=[&customer]`, `on:load=&visible` | Unexpected token until the syntax table |
 | A tagless member line | `&title` in `input`, `&status=:sent` in `set` | Accepted syntactically, but the table supplies its intended lowering and meaning |
 | `lineTriggers`, `attributeTriggers`, `expressionTriggers` | Mesh's layer-2 member syntax | MX decision 182 addendum 1, pending the parser port |
 | A `mesh` host with `builtOn: "tree"` | `.mesh.mx` tooling | Target design, MX decisions 148 and 187 addendum 2 |
 
-The docs bridge only these unsupported spellings in memory, then parse. It maps tagless/after-kind member spellings to the older name form and operand members to record reads, leaving strings, expression comments and infix operators alone. Imports pass unchanged with alpha.5's verified `imports: "pass"` option. Structural rejection stays on. Because the pin also rejects comments, leading file comments are blanked without removing lines; in-body comments remain untouched and rejected, an MX gap. MX decision 131 addendum 5 schedules `tree-comments-not-structural` for the next alpha: comments remain `Comment` nodes even under structural rejection, with no new option. Realignment pins that release and removes the comment bridge. Remove `normaliseV4` when the syntax-table release is pinned. Runtime/compiler code must still consume MX's tree, never this bridge.
+The docs bridge only these unsupported spellings in memory, then parse. It maps tagless/after-kind member spellings to the older name form and operand members to record reads, leaving strings, expression comments and infix operators alone. Imports pass unchanged with the `imports: "pass"` option. Structural rejection stays on. Because the pin also rejects comments, leading file comments are blanked without removing lines; in-body comments remain untouched and rejected, an MX gap. MX decision 131 addendum 5 schedules `tree-comments-not-structural` for the next alpha: comments remain `Comment` nodes even under structural rejection, with no new option. Realignment pins that release and removes the comment bridge. Remove `normaliseV4` when the syntax-table release is pinned. Runtime/compiler code must still consume MX's tree, never this bridge.
 
 The highlighter's separate gap is `input`: alpha.2 treats it as an HTML void tag, even with a plain `string :x` child and no sigil. The named `MX_V4_INPUT_PENDING_SYNTAX_TABLE` allowance uses same-width stand-ins for nested input sections and bare member lines, renders the authored text, and counts and prints affected lines. Imports already highlight. Member-reference semantic colour awaits MX item `mesh-syntax-highlighting-route`; uncoloured members are accepted for the docs review. Other ERROR nodes still stop the site build. [Open questions](../open-questions.md#syntax-v4) has the measured matrix.
 

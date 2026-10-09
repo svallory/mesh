@@ -9,6 +9,8 @@ description: "Decision record 0063: the docs-first practice, the 1.0 voice, wher
 
 Accepted
 
+Amended 2026-10-09: the operator approved the user docs and lifted the hold; development resumed.
+
 ## Date
 
 2026-10-04

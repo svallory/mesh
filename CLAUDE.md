@@ -10,11 +10,11 @@ Bun workspace (`workspaces`: `packages/*`, `apps/*`, `examples/*`), one root `bu
 - `packages/compiler` (`@meshfw/compiler`): closed v4 MX contracts, entity builder and type/validator emitters (`src/contracts.ts`, tests in `test/`)
 - `packages/model` (`@meshfw/model`): plain-data entity model, ten attribute types and four action types, diagnostic types; imports nothing
 - `packages/runtime` (`@meshfw/runtime`): flat, project-augmented `ActionContext`, errors, Standard Schema input validation, `DataAdapter` descriptors and data-layer contract v0; zero run-time dependencies; adapter conformance checks at `@meshfw/runtime/testing`
-- `packages/data-sqlite` (`@meshfw/data-sqlite`, private): `sqlite({ file })` returns a frozen descriptor only; no connection or `createSchema` until M2
+- `packages/data-sqlite` (`@meshfw/data-sqlite`, private): `sqlite({ file })` returns a frozen descriptor only; it has no connection and no `createSchema`
 - `packages/cli` (`meshfw`): the Bun-only `mesh` developer command, a thin compiler shell; re-exports `defineConfig` for project configuration
 - `packages/create-mesh` (`create-mesh`, public): the starter behind `bun create mesh`; today a placeholder bin that prints "Mesh is coming soon" and the site URL, published by the operator to reserve the name
 - `apps/docs`: the docs site (docmd)
-- `examples/blog` (`blog-example`, private): entity files under `src/domain/blog/`, committed output under `.mesh/`; `#mesh` maps to the not-yet-emitted `.mesh/index.ts` (round 3), so nothing imports it yet
+- `examples/blog` (`blog-example`, private): entity files under `src/domain/blog/`, committed output under `.mesh/`; `#mesh` maps to `.mesh/index.ts`, which the emitters do not write, so nothing imports it
 - `tsconfig.base.json`: shared strict config that packages extend (root `tsconfig.json` covers `scripts/`); `scripts/verify.ts`: the `verify` runner
 
 ## Commands

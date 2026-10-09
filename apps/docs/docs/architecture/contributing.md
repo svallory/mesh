@@ -31,7 +31,7 @@ The reason is that writing the page is a test of the design. A page that has to 
 
 ## The hold, and who decides
 
-All development is on hold until the operator approves the user docs; only documentation work proceeds, and open feature pull requests wait ([ADR-0063](./decisions/0063-user-docs-first-and-the-hold.md)). After approval the order is the realignment task, the Jig port, then M2 ([ADR-0064](./decisions/0064-order-of-work-after-approval.md); [roadmap](./roadmap/roadmap.md)).
+The hold on development ([ADR-0063](./decisions/0063-user-docs-first-and-the-hold.md)) was lifted on 2026-10-09, when the operator approved the user docs. The move to the documented names was merged in PR #47 and PR #48 on 2026-10-09; the Jig port and M2 follow ([ADR-0064](./decisions/0064-order-of-work-after-approval.md); [roadmap](./roadmap/roadmap.md)).
 
 - The **operator** (the project owner) rules on design. On 2026-10-05 he delegated every open decision to the **lead**.
 - The **lead** decides what is delegated and records it. Contributors never ask the operator; questions go to the lead.
@@ -43,7 +43,7 @@ All development is on hold until the operator approves the user docs; only docum
 The sample checks run in `bun run verify`:
 
 - **Complete `.mx` samples** are checked by `packages/compiler/test/repository-checks.ts` and its stricter companion, `apps/docs/test/docs-mx-syntax.test.ts`. Both scan the user pages and ADR-0050's reference. For legacy fixtures only, the contracted path rewrites `entity=` to `resource=`; that is not the syntax-v4 path.
-- **Syntax v4 samples** (`entity :Todo`, `&title`, imported entities) first pass a bounded text guard: obsolete spellings, undeclared member heads, misplaced member lines, assignments in `input`, unimported `entity=X` values and unbound `self.` reads fail before normalization. Then `normaliseV4` adapts the `&` positions pinned alpha.5 cannot parse and calls `parseData` with `structural: "reject", imports: "pass"`. Imports stay authored; only leading file comments are blanked, preserving rows, because the pin wrongly treats comments as structural. Only the contracts parse is deferred, counted and printed under `syntax v4, pending the MX syntax table`. This guard is not full contract/type checking; realignment supplies that.
+- **Syntax v4 samples** (`entity :Todo`, `&title`, imported entities) first pass a bounded text guard: obsolete spellings, undeclared member heads, misplaced member lines, assignments in `input`, unimported `entity=X` values and unbound `self.` reads fail before normalization. Then `normaliseV4` adapts the `&` positions that the pinned alpha.11 does not lower yet and calls `parseData` with `structural: "reject", imports: "pass"`. Imports and comments stay authored, because alpha.11 accepts both under structural rejection. Only the contracts parse is deferred, counted and printed under `syntax v4, pending the MX syntax table`. This guard is not full contract/type checking.
 - **MX highlighting** has one named, counted allowance, `MX_V4_INPUT_PENDING_SYNTAX_TABLE`: alpha.2 treats nested `input` as an HTML void tag, so same-width stand-ins let it parse while the renderer keeps the authored text. Other grammar errors still fail the build. [MX integration](./in-depth/mx-integration.md) records both bridges and the MX items that remove them.
 - **TypeScript samples** are type-checked by `apps/docs/test/docs-samples.test.ts` against `apps/docs/samples/mesh-api.d.ts`, the declarations of the API the pages describe. Every `ts` block must be a complete file: it declares what it uses and its calls match the documented signatures. A fence titled `excerpt` is a signature shown in prose and is not compiled.
 
@@ -69,11 +69,13 @@ Run `bun run build` and `bun run validate` before you open a pull request. From 
 
 This section is for contributors. Nothing under [Docs](../docs/index.md) says any of it, because those pages are written as if 1.0 were released.
 
-- **`packages/compiler`** holds the tag contracts for entity files (`src/contracts.ts`) and the loader, model builder and emitters written so far. Its tests include the Docs `.mx` sample check described above.
+- **`packages/compiler`** (`@meshfw/compiler`) holds the closed entity tag contracts for entity files (`src/contracts.ts`), the loader, the model builder and the `types` and `validators` emitters. Its tests include the Docs `.mx` sample check described above.
 - **`packages/model`** holds the plain-data entity model: fields, actions, relationships, the type registries and the diagnostic type. It imports nothing.
-- **`packages/runtime`** holds the run-time library generated code will import: the second argument's type (still `Scope` in code), the error classes and the data-layer contract, with conformance checks under its `testing` entry.
-- **`packages/cli`** holds the Bun-only `mesh` developer command, still a thin compiler shell. It re-exports `defineConfig`.
-- **`examples/blog`** is the fixture project. `mesh build` there writes its generated tree, which is committed.
+- **`packages/runtime`** holds the run-time library generated code will import: the flat, project-augmented `ActionContext` (the second argument's type), the errors (`MeshError`, `InvalidInputError`, `NotFoundError(entity, key)`, and `ForbiddenError` with its `breakdown`, built on the documented `Issue`), Standard Schema input validation, the `DataAdapter` descriptors and the data-layer contract v0, with conformance checks under its `testing` entry. It has no run-time dependencies.
+- **`packages/cli`** (`meshfw`) holds the Bun-only `mesh` developer command, still a thin compiler shell. It re-exports `defineConfig`, which takes `{ domain, output, data, extensions? }`.
+- **`packages/data-sqlite`** (`@meshfw/data-sqlite`, private) returns a frozen `sqlite({ file })` descriptor; it opens no connection until M2.
+- **`packages/create-mesh`** (`create-mesh`) is the starter behind `bun create mesh`; today a placeholder bin that prints "Mesh is coming soon".
+- **`examples/blog`** is the fixture project: entity files under `src/domain/blog/`. `mesh build` there writes `.mesh/` (`model.json` and the `types` and `validators` files per entity), which is committed. `.mesh/index.ts`, which `#mesh` maps to, is not written yet, so nothing imports it.
 - **`apps/docs`** is this site.
 
 From the repository root:
@@ -96,13 +98,13 @@ cd examples/blog
 mesh build
 ```
 
-With `@mesh/cli` installed, the command runs from the project root containing `mesh.config.ts`, with no upward search. For another project in this checkout, invoke it as `bun /absolute/path/to/packages/cli/src/bin.ts` from that project. `mesh build` never deletes files; move stray output yourself. Exit codes: `0` success, `1` build, configuration or guard errors, `2` usage errors.
+With `meshfw` installed, the command runs from the project root containing `mesh.config.ts`, with no upward search. For another project in this checkout, invoke it as `bun /absolute/path/to/packages/cli/src/bin.ts` from that project. `mesh build` never deletes files; move stray output yourself. Exit codes: `0` success, `1` build, configuration or guard errors, `2` usage errors.
 
-## The vocabulary gap
+## Vocabulary and what is pending
 
-The Docs pages and the Architecture section use the current terms and entity file syntax v2 (`entity`, `.mesh.mx`, modules under `src/domain/`, `.mesh/` imported as `#mesh`, the `ActionContext`, `@meshfw/*`). The code on `main` still uses the older ones (`resource`, Ash-style tags, the `domain=` attribute, `generated/`, `scope`, `@mesh/*`) until the realignment task ([ADR-0064](./decisions/0064-order-of-work-after-approval.md)). Architecture pages that describe code say so once, in a callout at the top. Do not rename code in a documentation pull request.
+The Docs pages, the Architecture section and the code use the same terms and the entity syntax (`entity`, `.mesh.mx`, modules under `src/domain/`, `.mesh/` imported as `#mesh`, the `ActionContext`, `@meshfw/*`); PR #47 and PR #48 (merged 2026-10-09) brought the code there. What is pending is the remaining emitters (the action functions, `index.ts` and the rest) and MX's lowering of the `&` member positions; see the [roadmap](./roadmap/roadmap.md). Architecture pages that describe design the code does not implement yet say so once, in a callout at the top.
 
-The [Ash-to-Mesh mapping](./roadmap/vocabulary-mapping.md) keeps the M1 spelling in its section 3 on purpose: a compiler test reads that table.
+The [Ash-to-Mesh mapping](./roadmap/vocabulary-mapping.md) section 3 is in the current spelling, and a compiler test reads that table.
 
 ## Code highlighting
 
