@@ -405,14 +405,12 @@ export function parseV4(source: string, file: string): DataDiagnostic[] {
  */
 export function checkDocsSyntaxV4(dir: string) {
   let checked = 0;
-  let rejected = 0;
   const blocks = docsMxBlocks(dir);
   const errors: string[] = [];
   for (const { name, line, block, closed } of blocks) {
     const where = `${name}:${line}`;
-    if (!closed) { rejected++; errors.push(`${where}: unclosed MX fence`); continue; }
+    if (!closed) { errors.push(`${where}: unclosed MX fence`); continue; }
     if (!isV4EntityFile(block.join("\n"))) {
-      rejected++;
       errors.push(`${where}: MX fence is not a complete ${DOCS_SYNTAX} entity file: its root must be \`entity :Name\``);
       continue;
     }
@@ -423,16 +421,14 @@ export function checkDocsSyntaxV4(dir: string) {
       errors.push(`${where}: MX block ${diagnostic.line}:${diagnostic.column + 1}: ${diagnostic.message}`);
     }
   }
-  const deferred = blocks.length - checked - rejected;
-  console.log(`Docs ${DOCS_SYNTAX} entity files: ${checked} checked with parseData and v4 contracts, deferred ${deferred}, ${errors.length} findings`);
   if (checked === 0) errors.push(`Docs ${DOCS_SYNTAX} check found no entity file on any Docs page`);
-  return { checked, deferred, errors };
+  console.log(`Docs ${DOCS_SYNTAX} entity files: ${checked} checked, ${errors.length} findings`);
+  return { checked, errors };
 }
 
 export function checkDocsSamples(dir: string) {
   let parsed = 0;
   let skipped = 0;
-  let v4 = 0;
   const blocks = docsMxBlocks(dir);
   const errors: string[] = [];
   for (const { name, line, block, closed } of blocks) {
@@ -440,7 +436,6 @@ export function checkDocsSamples(dir: string) {
     if (!closed) errors.push(`${where}: unclosed MX fence`);
     // Every complete v4 fence is parsed with the production-derived contracts.
     if (isV4EntityFile(block.join("\n"))) {
-      v4++;
       parsed++;
       const old = oldSpellingInV4(block.join("\n"));
       if (old) errors.push(`${where}: MX fence is not written in ${DOCS_SYNTAX}: ${old}`);
@@ -458,8 +453,7 @@ export function checkDocsSamples(dir: string) {
       errors.push(`${where}: MX block ${diagnostic.line}:${diagnostic.column + 1}: ${diagnostic.message}`);
     }
   }
-  const deferred = blocks.length - parsed - skipped;
-  console.log(`Docs MX samples: parsed ${parsed} (${v4} of them ${DOCS_SYNTAX} entity files, parsed with v4 contracts), deferred ${deferred}, skipped ${skipped} fragments`);
-  if (parsed === 0 && deferred === 0) errors.push("Docs sample check parsed no complete entity blocks");
-  return { parsed, skipped, deferred, errors };
+  if (parsed === 0) errors.push("Docs sample check parsed no complete entity blocks");
+  console.log(`Docs MX samples: ${parsed} entity files checked, ${errors.length} findings`);
+  return { parsed, skipped, errors };
 }
