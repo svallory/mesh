@@ -39,7 +39,7 @@ afterEach(async () => {
 async function linkPackages(root: string): Promise<void> {
   await mkdir(join(root, "node_modules/@meshfw"), { recursive: true });
   await symlink(join(repo, "packages/cli"), join(root, "node_modules/meshfw"));
-  for (const name of ["compiler", "model"]) {
+  for (const name of ["compiler", "model", "runtime"]) {
     await symlink(join(repo, "packages", name), join(root, "node_modules/@meshfw", name));
   }
 }
@@ -137,7 +137,7 @@ describe("M1 test 3: guard differences", () => {
 
 test("missing output reports every produced file in path order and writes nothing", async () => {
   const root = await project();
-  expect(run(root, "build", "--check")).toEqual({ code: 1, stdout: "", stderr: `generated/model.json:1:1 error Generated file is missing; run mesh build and commit the generated tree\n${file}:1:1 error Generated file is missing; run mesh build and commit the generated tree\ngenerated/todos/todo.validators.ts:1:1 error Generated file is missing; run mesh build and commit the generated tree\n3 errors, 0 warnings\n` });
+  expect(run(root, "build", "--check")).toEqual({ code: 1, stdout: "", stderr: `generated/model.json:1:1 error Generated file is missing; run mesh build and commit the generated tree\ngenerated/todos/todo.actions.ts:1:1 error Generated file is missing; run mesh build and commit the generated tree\n${file}:1:1 error Generated file is missing; run mesh build and commit the generated tree\ngenerated/todos/todo.validators.ts:1:1 error Generated file is missing; run mesh build and commit the generated tree\n4 errors, 0 warnings\n` });
   expect(await Bun.file(join(root, "generated/model.json")).exists()).toBe(false);
 });
 
@@ -515,14 +515,14 @@ describe("the data adapter's build half in mesh build", () => {
 
 describe("mesh export generators (roadmap Jig port, acceptance 3)", () => {
   const templates = join(repo, "packages/compiler/templates");
-  const names = ["types.ts.jig", "validators.ts.jig"];
+  const names = ["types.ts.jig", "validators.ts.jig", "actions.ts.jig"];
   const summary = "0 errors, 0 warnings\n";
 
   test("writes every template Mesh ships, then a second run is a no-op", async () => {
     const root = await project();
     expect(run(root, "export", "generators")).toEqual({ code: 0, stderr: summary,
       stdout: names.map((name) => `wrote .mesh-generators/${name}\n`).join("") });
-    expect((await readdir(join(root, ".mesh-generators"))).sort()).toEqual(names);
+    expect((await readdir(join(root, ".mesh-generators"))).sort()).toEqual([...names].sort());
     for (const name of names)
       expect(await readFile(join(root, ".mesh-generators", name), "utf8")).toBe(await readFile(join(templates, name), "utf8"));
     expect(run(root, "export", "generators")).toEqual({ code: 0, stderr: summary,
@@ -551,7 +551,7 @@ describe("mesh export generators (roadmap Jig port, acceptance 3)", () => {
     const root = await project();
     await mkdir(join(root, ".mesh-generators"));
     await writeFile(join(root, ".mesh-generators/types.ts.jig"), await readFile(join(templates, "types.ts.jig")));
-    expect(run(root, "export", "generators")).toEqual({ code: 0, stderr: summary, stdout: "wrote .mesh-generators/validators.ts.jig\n" });
+    expect(run(root, "export", "generators")).toEqual({ code: 0, stderr: summary, stdout: "wrote .mesh-generators/validators.ts.jig\nwrote .mesh-generators/actions.ts.jig\n" });
   });
 
   test("a differing template stops the export: nothing is written, the file is listed, exit 1", async () => {

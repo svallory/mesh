@@ -9,7 +9,7 @@ entity :Todo table="todos"
     enum :status values=[:draft, :sent] default=:draft
     integer :views default=0
     float :rating nullable
-    decimal :amount min=0
+    decimal :amount min=0 default=0
     date :dueOn nullable
     datetime :paidAt nullable
     timestamp :insertedAt on=:create
