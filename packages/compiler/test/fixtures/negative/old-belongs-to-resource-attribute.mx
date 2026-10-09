@@ -1,5 +1,0 @@
-resource="post"
-  attributes
-    uuid-primary-key="id"
-  relationships
-    belongs-to="author" resource="user"

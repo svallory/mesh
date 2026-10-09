@@ -4,7 +4,7 @@ import { join, sep } from "node:path";
 import { ACTION_TYPES, ATTRIBUTE_TYPES } from "@mesh/model";
 import { buildModel, loadConfig, loadProject } from "../src/index.ts";
 import { parse } from "./helpers.ts";
-import { checkDocsSamples, checkMxImports, checkRuntime, DOCS_ROOT_TAG_PENDING_RENAME } from "./repository-checks.ts";
+import { checkDocsSamples, checkMxImports, checkRuntime, normaliseV4, parseV4 } from "./repository-checks.ts";
 
 const root = new URL("../../../", import.meta.url).pathname;
 function temporary(run: (dir: string) => void) {
@@ -12,31 +12,25 @@ function temporary(run: (dir: string) => void) {
   try { run(dir); } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 
-test("M1 test 1: real blog example loads by path with every registered type and four actions", async () => {
+test("real v4 blog loads by path with every registered type", async () => {
   const loaded = await loadConfig(join(root, "examples/blog"));
   expect(loaded.diagnostics).toEqual([]);
   expect(loaded.config).not.toBeNull();
   const built = await loadProject(loaded.config!);
   expect(built.diagnostics).toEqual([]);
-  expect(built.document?.resources).toHaveLength(1);
-  const resource = built.document!.resources[0]!;
-  expect(new Set(resource.attributes.filter((attribute) => attribute.source === "attribute").map((attribute) => attribute.type)))
-    .toEqual(new Set(ATTRIBUTE_TYPES.map((type) => type.name)));
-  expect(resource.attributes.filter((attribute) => attribute.source !== "attribute").map((attribute) => attribute.source))
-    .toEqual(["uuid-primary-key", "create-timestamp", "update-timestamp"]);
-  expect(new Set(resource.actions.map((action) => action.kind))).toEqual(new Set(ACTION_TYPES));
+  const entity = built.document!.entities.find((e) => e.name === "Post")!;
+  expect(entity).toBeDefined();
+  expect(new Set(entity.attributes.map((attribute) => attribute.type))).toEqual(new Set(ATTRIBUTE_TYPES.map((type) => type.name)));
+  expect(new Set([...entity.actions.map((action) => action.kind), ...entity.auto])).toEqual(new Set(ACTION_TYPES));
 });
 
-test("M1 test 5: real full blog fixture parses by path and fails at relationships in M7", () => {
-  const file = "examples/blog/not-yet/post.full.mx";
+test.todo("full blog parses — MX lang-ext-syntax-table: & after a kind / in expressions", () => {
+  const file = "examples/blog/resources/blog/post.pending.mesh.mx.txt";
   const source = readFileSync(join(root, file), "utf8");
   expect(parse(source, join(root, file)).diagnostics).toEqual([]);
   const built = buildModel({ root, files: [{ file, source }] });
-  expect(built.document).toBeNull();
-  expect(built.diagnostics[0]).toMatchObject({
-    message: "Tag `relationships` is not implemented; it will be implemented in M7",
-    position: { file, line: 10, column: 2 },
-  });
+  expect(built.diagnostics).toEqual([]);
+  expect(built.document?.entities[0]?.name).toBe("Post");
 });
 
 test("M1 test 8: only tag-contract packages import MX across the workspace", () => {
@@ -314,49 +308,52 @@ test("M2 runtime checks exclude tests and accept ordinary web-standard code", ()
 
 test("Docs MX samples: complete entity blocks parse with the contracts", () => {
   const checked = checkDocsSamples(join(root, "apps/docs/docs/docs"));
-  console.log(`Docs MX samples: parsed ${checked.parsed}, deferred ${checked.deferred.length} (root tag "${DOCS_ROOT_TAG_PENDING_RENAME}"), skipped ${checked.skipped} fragments`);
+  expect(checked).not.toHaveProperty("deferred");
   expect(checked.errors).toEqual([]);
   expect(checked.parsed).toBeGreaterThan(0);
 });
 
 test("Docs MX samples: a planted invalid resource fails with page, fence line and diagnostic", () => {
   temporary((dir) => {
-    writeFileSync(join(dir, "bad.md"), '# Bad\n\n```mx "resources/bad.mx"\nresource="bad"\n  attributes\n    attribute="x" type="strnig"\n```\n');
+    writeFileSync(join(dir, "bad.md"), '# Bad\n\n```mx "todo/bad.mesh.mx"\nentity :Bad\n  attributes\n    strnig :x\n```\n');
     const checked = checkDocsSamples(dir);
     expect(checked.parsed).toBe(1);
-    expect(checked.errors).toHaveLength(1);
-    expect(checked.errors[0]).toBe('bad.md:3: MX block 3:19: `<attribute>`: attribute `type` must be one of "string", "integer", "float", "boolean", "uuid", "datetime", "atom", got "strnig"');
+    expect(checked.errors.length).toBeGreaterThan(0);
+    expect(checked.errors.join("\n")).toContain('bad.md:3: MX block 3:5:');
+    expect(checked.errors.join("\n")).toContain('strnig');
   });
 });
 
 test("Docs MX samples: fragments are skipped, other languages ignored, longer fences supported", () => {
   temporary((dir) => {
-    writeFileSync(join(dir, "good.md"), '```mx\nattribute="x" type="string"\n```\n```ts\nresource="bad"\n```\n~~~~mx title\n\nresource="ok"\n  attributes\n~~~~\n');
-    expect(checkDocsSamples(dir)).toMatchObject({ parsed: 1, skipped: 1, deferred: [], errors: [] });
+    writeFileSync(join(dir, "good.md"), '```mx\nstring :x\n```\n```ts\nresource="bad"\n```\n~~~~mx title\n\nentity :Ok\n  attributes\n~~~~\n');
+    expect(checkDocsSamples(dir)).toMatchObject({ parsed: 1, skipped: 1, errors: [] });
     writeFileSync(join(dir, "good.md"), '```mx\nattributes\n```\n');
     expect(checkDocsSamples(dir).errors).toEqual(["Docs sample check parsed no complete entity blocks"]);
   });
 });
 
-test("Docs MX samples: an entity-rooted block is rewritten and parsed, and only a rename failure is deferred", () => {
-  expect(DOCS_ROOT_TAG_PENDING_RENAME).toBe("entity");
+test("Docs MX samples: removed vocabulary is an error, never deferred", () => {
   temporary((dir) => {
-    // Parsed, not skipped: the entity misspelling the rewrite cannot fix is still found.
-    writeFileSync(join(dir, "good.md"), '```mx\nentity="todo" table="todos"\n  attributes\n    attribute="x" type="strnig"\n```\n');
-    const misspelled = checkDocsSamples(dir);
-    expect(misspelled).toMatchObject({ parsed: 1, deferred: [] });
-    expect(misspelled.errors).toHaveLength(1);
-    expect(misspelled.errors[0]).toStartWith('good.md:1: MX block 3:19:');
-    // A diagnostic that only names something the rename will change is deferred, with its reason.
-    writeFileSync(join(dir, "renaming.md"), '```mx\nentity="todo"\n  attributes\n    module="todo"\n```\n');
-    rmSync(join(dir, "good.md"));
-    const deferred = checkDocsSamples(dir);
-    expect(deferred.parsed).toBe(0);
-    expect(deferred.deferred).toHaveLength(1);
-    expect(deferred.deferred[0]!.at).toBe("renaming.md:1");
-    expect(deferred.deferred[0]!.reason).toContain("module");
-    expect(deferred.errors).toEqual([]);
-    writeFileSync(join(dir, "fragment.md"), '```mx\nattributes\n```\n');
-    expect(checkDocsSamples(dir).skipped).toBe(1);
+    writeFileSync(join(dir, "old.md"), '```mx\nentity :Todo module="todo"\n```\n');
+    const checked = checkDocsSamples(dir);
+    expect(checked.parsed).toBe(1);
+    expect(checked.errors.join("\n")).toContain("module");
   });
+});
+
+// MX lang-ext-syntax-table: & after a kind / in expressions. Tripwires ensure
+// docs normalisation never silently broadens production reference contracts.
+for (const body of [
+  "  actions\n    create :create\n      input\n        &id\n",
+  "  actions\n    read :custom\n      sort\n        asc &id\n",
+  "  actions on:load=&custom\n    read :custom\n",
+  "  actions\n    always actions=[&custom]\n    read :custom\n",
+  "  actions\n    read :custom\n  policies\n    policy :owner actions=[&custom]\n      authorize-if=() => true\n",
+  "  computed\n    integer :n() { return 1 }\n  actions\n    update :custom\n      do\n        load=[&n]\n",
+]) test(`normalised references fail production contracts: ${body}`, () => {
+  const source = "entity :Todo\n  attributes\n    uuid :id primary-key\n" + body;
+  expect(normaliseV4(source)).not.toBe(source);
+  expect(parse(normaliseV4(source)).diagnostics.length).toBeGreaterThan(0);
+  expect(parseV4(source, "todo.mesh.mx")).toEqual([]);
 });

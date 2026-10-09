@@ -1,7 +1,8 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { extname, join, relative, sep } from "node:path";
 import { parseData, type DataDiagnostic } from "@mxlang/data";
-import { parse } from "./helpers.ts";
+import type { ContractMap, WildcardChildEntry } from "@mxlang/core";
+import contracts from "../src/contracts.ts";
 
 // ADR-0043: only packages declaring tag contracts may mention MX; extensions join in M6.
 export const MX_IMPORT_PACKAGES = ["packages/compiler"] as const;
@@ -112,25 +113,6 @@ export function checkRuntime(root: string, rule: "imports" | "web"): string[] {
   return errors;
 }
 
-/**
- * The Docs pages write the entity root tag as `entity` (the operator's ruling of
- * 2026-10-04). The tag contracts still know `resource`, so before parsing, the
- * check rewrites the root tag in memory: every Docs sample is still parsed by
- * today's contracts, and the check keeps its teeth.
- *
- * What the rename task will change is anything the vocabulary itself touches.
- * A block that fails only for one of those reasons is deferred, counted per
- * reason and printed; any other failure is a finding in the page.
- */
-export const DOCS_ROOT_TAG_PENDING_RENAME = "entity";
-
-/** Diagnostic text that names something the entity/module rename or the import rule will change. */
-const RENAME_AFFECTED = /\b(entity|module|domain|import)\b/i;
-
-function withCurrentRootTag(block: string) {
-  return block.replace(new RegExp(`^(\\s*)${DOCS_ROOT_TAG_PENDING_RENAME}(\\s*=)`, "m"), "$1resource$2");
-}
-
 interface DocsBlock {
   /** Page the fence is on. */
   name: string;
@@ -176,14 +158,10 @@ function docsMxBlocks(dir: string): DocsBlock[] {
  * Syntax v4 (ADR-0067): :name declares, &name refers to a member, and another
  * entity is imported. The pinned parser predates MX's syntax table, so one
  * normalisation below adapts only those spellings before a real, static parse.
- * Contracts still know the resource vocabulary: that parse alone is deferred,
- * counted and printed. The bounded text guard checks local member names and
- * positions; full type/contract semantics and cross-file resolution await realignment.
+ * The parse uses production v4 contracts with only the normalised member slots
+ * adapted below. The bounded text guard still checks authored member spellings.
  */
 export const DOCS_SYNTAX = "syntax v4";
-
-/** The one named reason a v4 block's contracts parse is deferred under. */
-export const DOCS_SYNTAX_PENDING_TABLE = `${DOCS_SYNTAX}, pending the MX syntax table`;
 
 /** A complete v4 entity file: comments and imports may come first, then `entity :Name`. */
 export function isV4EntityFile(block: string): boolean {
@@ -385,10 +363,36 @@ export function normaliseV4(source: string): string {
   });
 }
 
+/**
+ * MX lang-ext-syntax-table: & after a kind / in expressions.
+ * Test-only, derived from production contracts, never a second vocabulary:
+ * - normalised tagless :name lines use defaultTag=member with an atom name;
+ * - sort's normalised :name occupies name rather than the future member slot;
+ * - unmarked self.x / [self.x] bypass only the member-reference analyze checks.
+ * Delete with normaliseV4 when MX reads authored member syntax.
+ */
+export function relaxedDocsContracts(production: ContractMap): ContractMap {
+  const result: ContractMap = { ...production };
+  for (const name of ["input", "set"]) result[name] = { ...production[name], defaultTag: "member", children: { ...production[name]!.children, member: { repeatable: true } } };
+  const memberLine = production.set!.children!["*"] as WildcardChildEntry;
+  // One normalized test-only tag serves both bare input and assigned set lines.
+  result.member = { ...memberLine, parents: ["input", "set"], attributes: { ...memberLine.attributes, value: { ...memberLine.attributes!.value, required: false }, name: { type: "atom", required: true } } };
+  const slots: Record<string, string[]> = { actions: ["on:load"], always: ["actions"], policy: ["actions"], load: ["value"], asc: ["member"], desc: ["member"] };
+  for (const [name, skipped] of Object.entries(slots)) {
+    const original = production[name]!;
+    result[name] = { ...original, analyze(calls, ctx) { original.analyze?.(calls.map((call) => ({ ...call, attrs: call.attrs.filter((a) => a.kind === "spread" || !skipped.includes(a.name)) })), ctx); } };
+    if (name === "asc" || name === "desc") {
+      const { member: _member, ...attributes } = original.attributes!;
+      result[name]!.attributes = { ...attributes, name: { type: "atom", required: true } };
+    }
+  }
+  return result;
+}
+
 /** A parser crash is a finding, not an exception. */
 export function parseV4(source: string, file: string): DataDiagnostic[] {
   try {
-    return parseData(normaliseV4(source), file, { structural: "reject", imports: "pass" }).diagnostics;
+    return parseData(normaliseV4(source), file, { customTags: relaxedDocsContracts(contracts), structural: "reject", unknownTags: "reject", imports: "pass" }).diagnostics;
   } catch (cause) {
     return [{ severity: "error", message: `MX could not parse the block at all: ${(cause as Error).message.split("\n")[0]}`, line: 1, column: 0, offset: 0 }];
   }
@@ -401,8 +405,9 @@ export function parseV4(source: string, file: string): DataDiagnostic[] {
  */
 export function checkDocsSyntaxV4(dir: string) {
   let checked = 0;
+  const blocks = docsMxBlocks(dir);
   const errors: string[] = [];
-  for (const { name, line, block, closed } of docsMxBlocks(dir)) {
+  for (const { name, line, block, closed } of blocks) {
     const where = `${name}:${line}`;
     if (!closed) { errors.push(`${where}: unclosed MX fence`); continue; }
     if (!isV4EntityFile(block.join("\n"))) {
@@ -416,25 +421,22 @@ export function checkDocsSyntaxV4(dir: string) {
       errors.push(`${where}: MX block ${diagnostic.line}:${diagnostic.column + 1}: ${diagnostic.message}`);
     }
   }
-  console.log(`Docs ${DOCS_SYNTAX} entity files: ${checked} checked with parseData, no contracts, ${errors.length} findings`);
   if (checked === 0) errors.push(`Docs ${DOCS_SYNTAX} check found no entity file on any Docs page`);
+  console.log(`Docs ${DOCS_SYNTAX} entity files: ${checked} checked, ${errors.length} findings`);
   return { checked, errors };
 }
 
 export function checkDocsSamples(dir: string) {
   let parsed = 0;
   let skipped = 0;
-  let v4 = 0;
-  const deferred: { at: string; reason: string }[] = [];
+  const blocks = docsMxBlocks(dir);
   const errors: string[] = [];
-  for (const { name, line, block, closed } of docsMxBlocks(dir)) {
+  for (const { name, line, block, closed } of blocks) {
     const where = `${name}:${line}`;
     if (!closed) errors.push(`${where}: unclosed MX fence`);
-    // A v4 entity file still gets a real parse; only its contracts are deferred.
+    // Every complete v4 fence is parsed with the production-derived contracts.
     if (isV4EntityFile(block.join("\n"))) {
-      v4++;
       parsed++;
-      deferred.push({ at: where, reason: DOCS_SYNTAX_PENDING_TABLE });
       const old = oldSpellingInV4(block.join("\n"));
       if (old) errors.push(`${where}: MX fence is not written in ${DOCS_SYNTAX}: ${old}`);
       for (const diagnostic of parseV4(`${block.join("\n")}\n`, where)) {
@@ -444,22 +446,14 @@ export function checkDocsSamples(dir: string) {
     }
     const root = block.find((text) => text.trim() !== "")?.trimStart() ?? "";
     // An entity file may open with its imports, so an `import` line heads a complete block too.
-    if (!/^(resource\b|import\s)/.test(root) && !root.startsWith(DOCS_ROOT_TAG_PENDING_RENAME)) { skipped++; continue; }
-    const diagnostics = parse(withCurrentRootTag(`${block.join("\n")}\n`), join(dir, name)).diagnostics;
-    const renaming = diagnostics.filter((diagnostic) => RENAME_AFFECTED.test(diagnostic.message));
-    if (renaming.length > 0 && renaming.length === diagnostics.length) {
-      deferred.push({ at: where, reason: renaming[0]!.message });
-      continue;
-    }
+    if (!/^(entity\b|resource\b|import\s)/.test(root)) { skipped++; continue; }
+    const diagnostics = parseData(`${block.join("\n")}\n`, join(dir, name), { customTags: contracts, structural: "reject", unknownTags: "reject", imports: "pass" }).diagnostics;
     parsed++;
     for (const diagnostic of diagnostics) {
       errors.push(`${where}: MX block ${diagnostic.line}:${diagnostic.column + 1}: ${diagnostic.message}`);
     }
   }
-  const byReason = new Map<string, number>();
-  for (const { reason } of deferred) byReason.set(reason, (byReason.get(reason) ?? 0) + 1);
-  console.log(`Docs MX samples: parsed ${parsed} (${v4} of them ${DOCS_SYNTAX} entity files, parsed without contracts), deferred ${deferred.length}, skipped ${skipped} fragments`);
-  for (const [reason, count] of byReason) console.log(`  deferred (${count}): ${reason}`);
-  if (parsed === 0 && deferred.length === 0) errors.push("Docs sample check parsed no complete entity blocks");
-  return { parsed, skipped, deferred, errors };
+  if (parsed === 0) errors.push("Docs sample check parsed no complete entity blocks");
+  console.log(`Docs MX samples: ${parsed} entity files checked, ${errors.length} findings`);
+  return { parsed, skipped, errors };
 }

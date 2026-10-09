@@ -18,7 +18,7 @@ export function emitError(
   code: string,
   message: string,
   position: Diagnostic["position"],
-  fix: string,
+  fix: string | null = null,
 ): EmitError {
   return new EmitError({ severity: "error", code, message, position, fix });
 }

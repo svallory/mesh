@@ -10,11 +10,12 @@ export function fixture(name: string): { source: string; file: string } {
 }
 
 /** Direct call: contracts passed as `customTags`, structural and unknown-tag rejection on. */
-export function parse(source: string, file = "resource.mx") {
+export function parse(source: string, file = "todo/todo.mesh.mx") {
   return parseData(source, file, {
     customTags: contracts,
     structural: "reject",
     unknownTags: "reject",
+    imports: "pass",
   });
 }
 

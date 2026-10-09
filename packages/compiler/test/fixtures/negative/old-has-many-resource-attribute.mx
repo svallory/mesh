@@ -1,5 +1,0 @@
-resource="post"
-  attributes
-    uuid-primary-key="id"
-  relationships
-    has-many="comments" resource="comment"

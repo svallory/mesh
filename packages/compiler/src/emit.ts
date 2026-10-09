@@ -7,8 +7,8 @@ import type { ResolvedConfig } from "./config.ts";
 import { errorCode, inside } from "./paths.ts";
 import { EmitError } from "./emit-error.ts";
 import { modelJsonEmitter } from "./emitters/model-json.ts";
-import { resourceTypesEmitter } from "./emitters/resource-types.ts";
-import { resourceValidatorsEmitter } from "./emitters/resource-validators.ts";
+import { entityTypesEmitter } from "./emitters/resource-types.ts";
+import { entityValidatorsEmitter } from "./emitters/resource-validators.ts";
 import { compareText, outputPrefix } from "./emitters/order.ts";
 
 export { EmitError } from "./emit-error.ts";
@@ -46,7 +46,7 @@ export interface Emitter {
 }
 
 /** The emitters of the core build, in a fixed order. The result is sorted by path anyway. */
-export const EMITTERS: readonly Emitter[] = Object.freeze([modelJsonEmitter, resourceTypesEmitter, resourceValidatorsEmitter]);
+export const EMITTERS: readonly Emitter[] = Object.freeze([modelJsonEmitter, entityTypesEmitter, entityValidatorsEmitter]);
 
 /** Preflight every generated import before writing; check/inspect need no installed runtime dependencies. */
 export function generatedImportDiagnostics(projectRoot: string, emitters: readonly Emitter[] = EMITTERS): Diagnostic[] {

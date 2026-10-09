@@ -1,4 +1,0 @@
-resource="post"
-  attributes
-    attribute="title" type="string"
-      @foo

@@ -1,6 +1,0 @@
-resource="post"
-  attributes
-    uuid-primary-key="id"
-  actions
-    read="all"
-      change=({ post }) => { post.x = 1 }

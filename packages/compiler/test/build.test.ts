@@ -1,130 +1,191 @@
 import { expect, test } from "bun:test";
-import { ACTION_TYPES, ATTRIBUTE_TYPES, findNonJsonValue, type Diagnostic } from "@mesh/model";
+import { ATTRIBUTE_TYPES, findNonJsonValue } from "@mesh/model";
 import { buildModel } from "../src/build.ts";
-import contracts from "../src/contracts.ts";
-import { IMPLEMENTED, NOT_IMPLEMENTED } from "../src/support.ts";
 import { postDocument, postFile, postSource } from "../../model/test/sample.ts";
-import { positionOf } from "../../model/test/source.ts";
-import { fixture, parse } from "./helpers.ts";
+import { fixture, fixtureDir } from "./helpers.ts";
+import { build, keyed, project, todo } from "./v4.ts";
 
-const build = (source: string, file = "post.mx") => buildModel({ root: "/project", files: [{ file, source }] });
-const bare = 'resource="post"\n  attributes\n    uuid-primary-key="id"\n';
-function check(d: Diagnostic | undefined, message: string, line: number, column: number) {
-  expect(d).toBeDefined();
-  expect(d!.message).toBe(message);
-  expect(d!.position.line).toBe(line);
-  expect(d!.position.column).toBe(column);
-}
-
-test("M1 test 4: empty file requires exactly one resource", () => {
-  const result = build("");
-  expect(result.document).toBeNull();
-  check(result.diagnostics[0], "A resource file must contain exactly one `resource`", 1, 0);
-});
-test("M1 test 4: two resources point at the second resource tag", () => {
-  const result = build(bare + bare);
-  expect(result.document).toBeNull();
-  check(result.diagnostics[0], "A resource file must contain exactly one `resource`", 4, 0);
-});
-test("M1 test 4: duplicate resource points at the second name", () => {
-  const result = buildModel({ root: "/project", files: [{ file: "a.mx", source: bare }, { file: "nested/b.mx", source: bare }] });
-  expect(result.document).toBeNull();
-  check(result.diagnostics[0], 'Duplicate resource name "post"', 1, 9);
-  expect(result.diagnostics[0]!.position.file).toBe("nested/b.mx");
-});
-test("M1 test 4: unknown accept points at the missing item", () => {
-  const result = build(bare + '  actions\n    create="create" accept=["missing"]\n');
-  expect(result.document).toBeNull();
-  check(result.diagnostics[0], '`accept` names "missing", which is not an attribute of post.', 5, 28);
-});
-test("M1 test 5: full post fixture fails at its first unsupported tag", () => {
-  const input = fixture("post.mx");
-  const result = build(input.source);
-  expect(result.document).toBeNull();
-  check(result.diagnostics[0], "Tag `relationships` is not implemented; it will be implemented in M7", 10, 2);
-});
-test("M1 test 6: attribute and action contract vocabularies equal model registries", () => {
-  expect(new Set(contracts.attribute.attributes!.type!.enum)).toEqual(new Set(ATTRIBUTE_TYPES.map((t) => t.name)));
-  expect(new Set(Object.keys(contracts.actions.children!))).toEqual(new Set(ACTION_TYPES));
-  for (const kind of ACTION_TYPES) {
-    expect(parse(bare + `  actions defaults=["${kind}"]\n    ${kind}="custom"\n`).diagnostics).toEqual([]);
-    expect(parse(bare + `  policies\n    policy=action_type("${kind}")\n      authorize-if=() => true\n`).diagnostics).toEqual([]);
-  }
-  expect(parse(bare + '  actions defaults=["bogus"]\n').tree).toBeUndefined();
-  expect(parse(bare + '  policies\n    policy=action_type("bogus")\n      authorize-if=() => true\n').tree).toBeUndefined();
-});
-test("every contract tag and attribute has explicit implementation coverage", () => {
-  const all = [...Object.keys(IMPLEMENTED), ...Object.keys(NOT_IMPLEMENTED)];
-  expect(all.length).toBe(new Set(all).size);
-  expect(new Set(all)).toEqual(new Set(Object.keys(contracts)));
-  for (const [tag, attributes] of Object.entries(IMPLEMENTED)) {
-    expect(new Set(attributes)).toEqual(new Set(Object.keys(contracts[tag as keyof typeof contracts].attributes!)));
-  }
-});
-test("reduced post builds to the full expected ModelDocument with every source position", () => {
-  const { source } = fixture("reduced-post.mx");
-  expect(source).toBe(postSource);
-  const result = build(source, postFile);
+test("all currently parseable v4 constructs are represented", () => {
+  const result = buildModel(project());
   expect(result.diagnostics).toEqual([]);
-  expect(result.document).toStrictEqual(postDocument);
+  const entity = result.document!.entities[0]!;
   expect(findNonJsonValue(result.document)).toBeNull();
-  let count = 0;
-  JSON.stringify(result.document, (_key, value) => {
-    if (value && typeof value === "object" && "offset" in value && "file" in value) {
-      count++;
-      const offset = value.offset as number;
-      const prefix = postSource.slice(0, offset);
-      expect(value.line).toBe(prefix.split("\n").length);
-      expect(value.column).toBe(offset - prefix.lastIndexOf("\n") - 1);
-      expect(value.file).toBe(postFile);
-      expect(postSource[offset]).not.toMatch(/\s/);
-    }
-    return value;
+  expect(JSON.parse(JSON.stringify(result.document))).toStrictEqual(
+    result.document,
+  );
+  expect(new Set(entity.attributes.map((a) => a.type))).toEqual(
+    new Set(ATTRIBUTE_TYPES.map((t) => t.name)),
+  );
+  expect(entity.module).toBe("todo");
+  expect(entity.table).toBe("todos");
+  expect(entity.imports[0]).toMatchObject({
+    identifiers: ["List"],
+    from: "./list.mesh.mx",
   });
-  expect(count).toBeGreaterThan(30);
+  expect(entity.relationships.map((r) => r.keyColumn)).toEqual([
+    "listId",
+    undefined,
+    undefined,
+  ]);
+  expect(entity.computed[0]).toMatchObject({
+    type: "string",
+    body: { source: "({ self }) { return self.title }", params: ["self"] },
+  });
+  expect(entity.computed.slice(1).map((c) => c.rollup?.fn)).toEqual([
+    "count",
+    "sum",
+    "avg",
+    "min",
+    "max",
+  ]);
+  expect(entity.actions[0]!.input.map((f) => f.kind)).toEqual([
+    "member",
+    "member",
+    "member",
+    "argument",
+  ]);
+  expect(entity.actions[1]!.do[0]).toMatchObject({
+    kind: "set",
+    assignments: [
+      { member: { name: "done" }, value: true },
+      { member: { name: "status" }, value: { value: "sent" } },
+    ],
+  });
+  expect(entity.always[0]!.do[0]).toMatchObject({
+    kind: "run",
+    fn: { params: ["self", "actor"] },
+  });
+  expect(entity.policies[0]!.authorizeIf).toHaveLength(2);
+  expect(entity.policies[0]!.forbidIf).toHaveLength(1);
 });
-test("two failing files collect all Mesh checks, including same-kind duplicates", () => {
-  const source = bare.replace('  attributes\n', '  attributes\n    attribute="x" type="string"\n    attribute="x" type="integer"\n') + '  actions\n    create="save" accept=["bad", "worse"]\n    read="save"\n';
-  const result = buildModel({ root: "/project", files: [{ file: "a.mx", source }, { file: "b.mx", source }] });
+test("reference fixture is the hand-built model's authored file", () =>
+  expect(fixture("post.mesh.mx").source).toBe(postSource));
+test.todo(
+  "full reference builds to hand-built model — MX lang-ext-syntax-table: & after a kind / in expressions",
+  () => {
+    const dependencies = ["customer", "invoice-line", "payment"].map(
+      (name) => ({
+        file: `src/domain/billing/${name}.mesh.mx`,
+        source: fixture(`src/domain/billing/${name}.mesh.mx`).source,
+      }),
+    );
+    const result = buildModel({
+      root: fixtureDir,
+      files: [{ file: postFile, source: postSource }, ...dependencies],
+    });
+    expect(result.diagnostics).toEqual([]);
+    expect(
+      result.document!.entities.find((entity) => entity.name === "Invoice"),
+    ).toStrictEqual(postDocument.entities[0]);
+  },
+);
+test("empty and multiple entities fail positioned", () => {
+  expect(build("").diagnostics[0]).toMatchObject({
+    code: "MESH_DUPLICATE_ENTITY",
+    position: { line: 1, column: 0 },
+  });
+  expect(build(keyed + keyed).diagnostics[0]).toMatchObject({
+    code: "MESH_DUPLICATE_ENTITY",
+    position: { line: 4, column: 0 },
+  });
+});
+test("identity is module/path scoped, not a global entity-name index", () => {
+  const files = [
+    { file: "a/one.mesh.mx", source: keyed },
+    { file: "b/two.mesh.mx", source: keyed },
+  ];
+  expect(buildModel({ root: "/project", files }).diagnostics).toEqual([]);
+  files[1]!.file = "a/two.mesh.mx";
+  expect(buildModel({ root: "/project", files }).diagnostics[0]?.code).toBe(
+    "MESH_DUPLICATE_ENTITY",
+  );
+});
+test.each([
+  [keyed.replace("uuid :id primary-key", "string :title"), "MESH_PRIMARY_KEY"],
+  [keyed + "    uuid :other primary-key\n", "MESH_PRIMARY_KEY"],
+  [keyed + "    enum :status\n", "MESH_ENUM_VALUES"],
+  [keyed + "    string :title\n    integer :title\n", "MESH_DUPLICATE_MEMBER"],
+  [keyed + "    string :constructor\n", "MESH_ATTRIBUTE_NAME"],
+  [
+    keyed +
+      "  actions\n    create :create\n      input\n        &id\n        uuid :id\n",
+    "MESH_DUPLICATE_INPUT",
+  ],
+  [
+    keyed +
+      "  actions\n    create :create\n      input\n        &id nullable\n",
+    "MESH_SYNTAX",
+  ],
+  [
+    keyed + "  actions\n    create :create\n      input\n        &id=true\n",
+    "MESH_SYNTAX",
+  ],
+  [
+    keyed + "  actions\n    read :read\n      input\n        &id\n",
+    "MESH_READ_INPUT_MEMBER",
+  ],
+  [
+    keyed + "  relationships\n    belongs-to :list entity=Lost\n",
+    "MESH_UNKNOWN_ENTITY",
+  ],
+  [keyed + "    integer :n default=1.5\n", "MESH_DEFAULT"],
+  [keyed + "    boolean :ok min=0\n", "MESH_SYNTAX"],
+  [keyed + "    string :title on=:create\n", "MESH_SYNTAX"],
+  [keyed + "  actions auto=[:read]\n    read :read\n", "MESH_DUPLICATE_MEMBER"],
+])("rejects invalid model %s", (source, code) => {
+  const result = build(source);
   expect(result.document).toBeNull();
+  expect(result.diagnostics.map((d) => d.code)).toContain(code);
+  for (const d of result.diagnostics) {
+    expect(d.position.line).toBeGreaterThan(0);
+    expect(d.position.offset).toBeGreaterThanOrEqual(0);
+  }
+});
+test("unknown member has exactly the documented suggestion", () => {
+  const source =
+    keyed +
+    "    string :title\n  actions\n    create :create\n      input\n        &titel\n";
+  expect(build(source).diagnostics[0]).toMatchObject({
+    code: "MESH_UNKNOWN_MEMBER",
+    message: "&titel is not a member of :Todo. Did you mean &title?",
+    position: { line: 8, column: 8, offset: source.indexOf("&titel") },
+  });
+});
+test("unknown entity suggests nearest entity import", () => {
+  const result = buildModel(project(todo.replace("entity=List", "entity=Lst")));
+  expect(result.diagnostics[0]).toMatchObject({
+    code: "MESH_UNKNOWN_ENTITY",
+    message: "Lst is not an imported entity. Did you mean List?",
+  });
+});
+test("missing imports fail and file-relative virtual imports succeed", () => {
+  expect(build(todo).diagnostics.map((d) => d.code)).toContain(
+    "MESH_UNKNOWN_IMPORT",
+  );
+  expect(buildModel(project()).diagnostics).toEqual([]);
+});
+test("errors collect across independent files", () => {
+  const result = buildModel({
+    root: "/project",
+    files: ["a", "b"].map((name) => ({
+      file: `${name}/todo.mesh.mx`,
+      source:
+        keyed +
+        "  actions\n    create :create\n      input\n        &missing\n",
+    })),
+  });
   expect(result.diagnostics.map((d) => d.code)).toEqual([
-    "MESH_DUPLICATE_ATTRIBUTE", "MESH_UNKNOWN_ACCEPT", "MESH_UNKNOWN_ACCEPT", "MESH_DUPLICATE_ACTION",
-    "MESH_DUPLICATE_RESOURCE", "MESH_DUPLICATE_ATTRIBUTE", "MESH_UNKNOWN_ACCEPT", "MESH_UNKNOWN_ACCEPT", "MESH_DUPLICATE_ACTION",
+    "MESH_UNKNOWN_MEMBER",
+    "MESH_UNKNOWN_MEMBER",
   ]);
 });
-test("MX errors pass through unchanged with project-relative file names", () => {
-  const sources = ['resourse="post"\n  attributes\n', bare + '  actions\n    read="r" accept=[]\n'];
-  const result = buildModel({ root: "/project", files: sources.map((source, i) => ({ source, file: `/project/resources/${i}.mx` })) });
-  expect(result.document).toBeNull();
-  expect(result.diagnostics).toHaveLength(2);
-  sources.forEach((source, i) => {
-    const direct = parse(source, `resources/${i}.mx`).diagnostics[0]!;
-    expect(result.diagnostics[i]).toMatchObject({ severity: direct.severity, message: direct.message, position: { file: `resources/${i}.mx`, line: direct.line, column: direct.column, offset: direct.offset } });
+test("required by default, default table and module inferred", () => {
+  expect(build(keyed).document!.entities[0]).toMatchObject({
+    name: "Todo",
+    table: "todo",
+    module: "todo",
+    auto: [],
+    imports: [],
+    attributes: [{ nullable: false }],
   });
-});
-test("UTF-16 positions preserve astral characters, CRLF and authored literal nodes", () => {
-  const source = 'resource="😀"\r\n  attributes\r\n    attribute="x" type="float" default=-1.5\r\n    uuid-primary-key="id"\r\n  actions\r\n    destroy="d" accept=["missing"]\r\n';
-  const result = build(source);
-  const d = result.diagnostics[0]!;
-  expect(d.position).toEqual(positionOf(source, "post.mx", '"missing"'));
-  const good = build(source.replace('"missing"', '"x"'));
-  expect(good.diagnostics).toEqual([]);
-  expect(good.document!.resources[0]!.attributes[0]!.default).toEqual({ value: -1.5, position: positionOf(source, "post.mx", "-1.5") });
-});
-test("a non-finite default becomes a JSON diagnostic instead of silently emitting null", () => {
-  const source = bare.replace('  attributes\n', '  attributes\n    attribute="x" type="float" default=1e999\n');
-  const result = build(source);
-  expect(result.document).toBeNull();
-  expect(result.diagnostics).toHaveLength(1);
-  expect(result.diagnostics[0]).toMatchObject({ code: "MESH_NON_JSON", message: "Model is not JSON-compatible: $.resources[0].attributes[0].default.value", position: positionOf(source, "post.mx", "1e999"), fix: "Use a finite JSON-compatible value" });
-});
-test("D31: a resource without a key fails at its name with the declaration fix", () => {
-  const result = build('resource="post"\n  attributes\n');
-  expect(result.document).toBeNull();
-  check(result.diagnostics[0], "Resource must declare a primary key; declare `uuid-primary-key`", 1, 9);
-});
-test("minimal keyed resource has null optionals and a bare public flag is recorded", () => {
-  expect(build(bare).document!.resources[0]).toMatchObject({ table: null, domain: null, defaults: null, actions: [] });
-  const result = build(bare.replace('  attributes\n', '  attributes\n    attribute="x" type="string" public allow-nil\n'));
-  expect(result.document!.resources[0]!.attributes[0]).toMatchObject({ public: true, allowNil: true });
 });

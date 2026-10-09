@@ -8,19 +8,20 @@
     ".": "./src/index.ts",
     "./contracts": "./src/contracts.ts"
   },
-  "description": "Mesh resource-file vocabulary as MX CustomTag contracts",
+  "description": "Mesh entity-file syntax v4 as MX CustomTag contracts",
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
   "mx": {
-    "target": "data",
+    "target": "tree",
     "contracts": "./src/contracts.ts"
   },
   "dependencies": {
+    "@babel/parser": "^7.29.8",
     "@mesh/model": "workspace:*",
-    "@mxlang/core": "0.1.0-alpha.5",
-    "@mxlang/data": "0.1.0-alpha.5",
+    "@mxlang/core": "0.1.0-alpha.11",
+    "@mxlang/data": "0.1.0-alpha.11",
     "prettier": "3.6.2"
   },
   "devDependencies": {

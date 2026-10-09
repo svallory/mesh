@@ -1,5 +1,0 @@
-resource="post"
-  attributes
-    uuid-primary-key="id"
-  actions
-    create="c" accept=fields

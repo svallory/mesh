@@ -1,3 +1,0 @@
-resource="post"
-  attributes foo="x"
-    create-timestamp="insertedAt"

@@ -1,3 +1,0 @@
-resource="post" schema="blog"
-  attributes
-    uuid-primary-key="id"

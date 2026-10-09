@@ -14,6 +14,7 @@ test("every Docs and ADR-0050 MX sample is a syntax v4 entity file that parses",
   const checked = checkDocsSyntaxV4(docs);
   expect(checked.errors).toEqual([]);
   expect(checked.checked).toBe(15);
+  expect(checked).not.toHaveProperty("deferred");
 });
 
 test("ADR-0050's Invoice equals Entities' larger example, apart from its path comment", () => {

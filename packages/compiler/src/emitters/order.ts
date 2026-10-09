@@ -1,5 +1,5 @@
 import { relative, resolve } from "node:path";
-import { isProjectRelativePath, type ModelDocument, type Resource, type Spanned } from "@mesh/model";
+import { isProjectRelativePath, type ModelDocument, type Entity, type Spanned } from "@mesh/model";
 import type { ResolvedConfig } from "../config.ts";
 import { emitError } from "../emit-error.ts";
 import { normalizePath } from "../paths.ts";
@@ -12,17 +12,17 @@ export function compareText(a: string, b: string): number {
 }
 
 /**
- * Resources in a fixed order, whatever order the loader read the files in. The
+ * Entities in a fixed order, whatever order the loader read the files in. The
  * guard compares bytes, so the file order on disk and in `mesh.config.ts` must not
  * reach the emitted tree (roadmap M1, determinism).
  */
-export function orderedResources(document: ModelDocument): Resource[] {
-  return [...document.resources].sort((a, b) => compareText(a.name.value, b.name.value));
+export function orderedEntities(document: ModelDocument): Entity[] {
+  return [...document.entities].sort((a, b) => compareText(a.file, b.file));
 }
 
-/** The same document with its resources ordered; nothing else is touched. */
+/** The same document with its entities ordered; nothing else is touched. */
 export function orderedDocument(document: ModelDocument): ModelDocument {
-  return { ...document, resources: orderedResources(document) };
+  return { ...document, entities: orderedEntities(document) };
 }
 
 /**
@@ -51,7 +51,7 @@ export function outputPrefix(config: ResolvedConfig): string {
  * path at all. Rejecting them here, before any path is built, keeps the rule in
  * one place instead of leaving it to each caller.
  */
-const SEGMENT_FORBIDDEN = /[/\\\0\n\r\u2028\u2029]/;
+const SEGMENT_FORBIDDEN = /[:/\\\0\n\r\u2028\u2029]/;
 
 export function isPathSegment(value: string): boolean {
   return value.length > 0 && value !== "." && value !== ".." && !SEGMENT_FORBIDDEN.test(value);

@@ -5,7 +5,7 @@ export type DiagnosticSeverity = "error" | "warning";
 /** One build error of Mesh's own (not MX's). Names the file, the line and, when known, the fix. */
 export interface Diagnostic {
   severity: DiagnosticSeverity;
-  /** Stable identifier, for example `MESH_DUPLICATE_RESOURCE`. Never reworded once shipped. */
+  /** Stable identifier, for example `MESH_DUPLICATE_ENTITY`. Never reworded once shipped. */
   code: string;
   message: string;
   position: SourcePosition;
