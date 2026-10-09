@@ -390,17 +390,15 @@ function buildEntity(
       else entity.computed.push({ ...base, type: tag.name as AttributeType, body: body.value });
     }
   }
-  const checks = (holder: DataTag): Check[] =>
-    tags(
-      tags(holder.children).find((t) => t.name === "validate")?.children ?? [],
-    ).map((tag) => ({
-      label: declaredName(tag),
-      that: expr(attr(tag, "that")),
-      code: String(opt(tag, "code")),
-      message: String(opt(tag, "message")),
-      ...(attr(tag, "when") ? { when: expr(attr(tag, "when")) } : {}),
-      position: pos(tag),
-    }));
+  const checks = (holder: DataTag): Check[] => {
+    const names = new Set<string>();
+    return tags(tags(holder.children).find((t) => t.name === "validate")?.children ?? []).map((tag) => {
+      const label = declaredName(tag);
+      if (names.has(label)) fail("MESH_DUPLICATE_MEMBER", `Duplicate member :${label}`, tag);
+      names.add(label);
+      return { label, that: expr(attr(tag, "that")), code: String(opt(tag, "code")), message: String(opt(tag, "message")), ...(attr(tag, "when") ? { when: expr(attr(tag, "when")) } : {}), position: pos(tag) };
+    });
+  };
   const steps = (holder: DataTag): Step[] =>
     tags(holder.children).map((tag): Step => {
       const position = pos(tag);
@@ -580,6 +578,7 @@ function buildEntity(
     ...entity.relationships,
     ...entity.computed,
     ...entity.actions,
+    ...entity.policies,
     ...entity.auto.map((name) => ({
       name,
       position: actionSection ? pos(actionSection) : entity.position,

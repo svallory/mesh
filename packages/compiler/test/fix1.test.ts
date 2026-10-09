@@ -18,6 +18,15 @@ test.each(["sum", "avg", "min", "max"])("fix3: %s must cross a relationship", (f
   expect(result.diagnostics[0]).toMatchObject({ code: "MESH_ROLLUP_PATH", message: "`n` is an attribute of :Invoice, not a relationship; `of` is a path through relationships", position: { line: 6, column: 12 + fn.length } });
 });
 
+test("fix4: duplicate policy and check names use member diagnostics", () => {
+  const policies = build(keyed + "  policies\n    policy :p\n    policy :p\n");
+  expect(policies.diagnostics).toEqual([expect.objectContaining({ code: "MESH_DUPLICATE_MEMBER", message: "Duplicate member :p", position: expect.objectContaining({ line: 6, column: 4 }) })]);
+  const check = '        check :a that=() => true code="bad" message="bad"\n';
+  const prefix = keyed + "  actions\n    update :change\n      validate\n";
+  expect(build(prefix + check + check).diagnostics).toEqual([expect.objectContaining({ code: "MESH_DUPLICATE_MEMBER", message: "Duplicate member :a", position: expect.objectContaining({ line: 8, column: 8 }) })]);
+  expect(build(prefix + check + "    update :other\n      validate\n" + check).diagnostics).toEqual([]);
+});
+
 for (const [name, codes] of [
   ["computed-missing-body", [["MESH_MODEL_SHAPE", 6, 4]]],
   ["set-missing-value", [["MESH_MEMBER_LINE_OPTIONS", 9, 10]]],
