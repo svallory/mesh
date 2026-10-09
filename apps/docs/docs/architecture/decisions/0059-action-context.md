@@ -73,7 +73,7 @@ Option A puts the cost (learning declaration merging) once, in one file, and rem
 - `runtime` exports `ActionContext` instead of `Scope`; generated signatures become `(input, context: ActionContext)`.
 - [ADR-0047](./0047-actions-are-bound-to-a-data-layer.md) stands with the new argument name: `bind(dataLayer)` and `connect()` are unchanged.
 - The extension manifest gains "context keys read" ([extension host](../in-depth/extension-host.md)).
-- The code on `main` (`@mesh/runtime`) still exports `Scope` until the realignment task.
+- The code on `main` (`@meshfw/runtime`) exports `ActionContext` since PR #48 (2026-10-09).
 
 ## Action items
 

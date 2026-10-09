@@ -55,7 +55,7 @@ Only Option A can be published. The mismatch between scope and product name is c
 ## Consequences
 
 - Generated code imports `@meshfw/runtime`; the import rules checked by `verify` name `@meshfw/*`.
-- The workspace packages on `main` are still `@mesh/*` until the realignment task.
+- The workspace packages on `main` are `meshfw` and `@meshfw/*` since PR #48 (2026-10-09).
 
 ## Action items
 

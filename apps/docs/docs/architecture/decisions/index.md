@@ -34,7 +34,7 @@ The operator's rulings of those two days replaced the vocabulary copied from Ash
 - **Project shape**: one domain at `src/domain/` with modules as folders ([0057](./0057-one-domain-modules-as-folders.md)); generated code in `.mesh/`, imported as `#mesh` ([0058](./0058-generated-code-in-mesh-imported-as-hash-mesh.md)); the flat `ActionContext` ([0059](./0059-action-context.md)); packages `@meshfw/*` ([0060](./0060-meshfw-package-scope.md)); Jig templates ([0061](./0061-generators-are-jig-templates.md)); Zod 4, Drizzle and OpenTelemetry as direct dependencies ([0062](./0062-direct-dependencies-zod-drizzle-opentelemetry.md)).
 - **Process**: docs first in the 1.0 voice, and the hold ([0063](./0063-user-docs-first-and-the-hold.md)); the order of work after approval ([0064](./0064-order-of-work-after-approval.md)); highlighting `mx` code on this site ([0065](./0065-mx-highlighting-on-the-docs-site.md)).
 
-The code on `main` still uses the names of 2026-10-04 morning until the realignment task ([0064](./0064-order-of-work-after-approval.md)).
+The code on `main` uses these records' names since the realignment task (PR #47, PR #48, 2026-10-09; [0064](./0064-order-of-work-after-approval.md)).
 
 ## What changed on 2026-10-08
 
