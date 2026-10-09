@@ -1,5 +1,5 @@
 {
   "extends": "../../tsconfig.base.json",
   "include": ["src", "test"],
-  "exclude": ["test/augmented"]
+  "exclude": ["test/augmented", "test/optional"]
 }

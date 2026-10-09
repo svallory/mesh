@@ -99,6 +99,8 @@ function check(root: string, files: string[]) {
       "--exactOptionalPropertyTypes",
       "--verbatimModuleSyntax",
       "--isolatedModules",
+      // The generated actions import @meshfw/runtime, whose sources import with `.ts`.
+      "--allowImportingTsExtensions",
       ...files,
     ],
     { cwd: root },
@@ -175,10 +177,13 @@ test("nullable, omitted and explicit undefined inputs preserve v4 requiredness",
 
 test("generated validators and all ten scalar mappings typecheck with exact optional flags", async () => {
   const out = await emitted();
+  // The data adapter writes schema.ts; a stub stands in for it with the same `tables` key.
+  await writeFile(resolve(out.root, "generated/schema.ts"), "export const postTable = {};\nexport const tables = { post: postTable };\n");
+  await writeFile(resolve(out.root, "mesh.config.ts"), "export default { data: { kind: \"data-adapter\", name: \"memory\", build: \"./none\", options: {} } };\n");
   expect(
     check(
       out.root,
-      out.files.filter((f) => f.path.endsWith(".ts")).map((f) => f.path),
+      [...out.files.filter((f) => f.path.endsWith(".ts")).map((f) => f.path), "generated/schema.ts", "mesh.config.ts"],
     ),
   ).toEqual({ code: 0, output: "" });
   expect(Object.keys(VALIDATOR_TYPES).sort()).toEqual(

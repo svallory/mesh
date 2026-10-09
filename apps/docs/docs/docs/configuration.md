@@ -22,8 +22,8 @@ bun add -d drizzle-kit
 
 | Package | What it is |
 |:--|:--|
-| `meshfw` (dev) | The `mesh` command and `defineConfig` |
-| `@meshfw/runtime` | What generated code imports: the action context's type, the error classes, the data-layer contract |
+| `meshfw` (dev) | The `mesh` command |
+| `@meshfw/runtime` | `defineConfig`, and what generated code imports: the action context's type, the error classes, the data-layer contract. `connect()` loads `mesh.config.ts` in the running program, so the config imports only run-time packages |
 | `@meshfw/data-sqlite` or `@meshfw/data-postgres` | Exactly one data adapter |
 | `zod`, `drizzle-orm`, `@opentelemetry/api` | Imported by generated code itself, so they are ordinary dependencies of your project, not hidden behind `@meshfw/runtime` |
 | `drizzle-kit` (dev) | The schema and migration work behind `mesh db push` and `mesh migrate` |
@@ -35,7 +35,7 @@ For Postgres, swap `@meshfw/data-sqlite` for `@meshfw/data-postgres` in the firs
 One file at the project root, written in TypeScript, so your editor checks it and it can read the environment.
 
 ```ts "mesh.config.ts"
-import { defineConfig } from "meshfw";
+import { defineConfig } from "@meshfw/runtime";
 import { sqlite } from "@meshfw/data-sqlite";
 
 export default defineConfig({
@@ -89,7 +89,7 @@ data: sqlite({ file: "todo.db" }),
 **Postgres** reads a URL. There is no default: if the variable is unset, `connect()` throws rather than guessing.
 
 ```ts "mesh.config.ts"
-import { defineConfig } from "meshfw";
+import { defineConfig } from "@meshfw/runtime";
 import { postgres } from "@meshfw/data-postgres";
 
 export default defineConfig({

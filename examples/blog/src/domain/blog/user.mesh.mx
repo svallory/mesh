@@ -3,3 +3,6 @@ entity :User table="users"
     uuid :id primary-key
     string :name
   actions auto=[:read]
+    create :create
+      input
+        &name

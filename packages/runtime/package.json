@@ -12,6 +12,6 @@
   "description": "Mesh action context, errors, validation and data-layer contracts",
   "scripts": {
     "test": "bun test",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p test/augmented/tsconfig.json"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p test/augmented/tsconfig.json && tsc --noEmit -p test/optional/tsconfig.json"
   }
 }

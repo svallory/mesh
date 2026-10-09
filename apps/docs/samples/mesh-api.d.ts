@@ -12,6 +12,19 @@
 // them per entity. `anyField` is the union a reader would expect from the entity file.
 
 declare module "@meshfw/runtime" {
+  import type { PostgresDataLayer } from "@meshfw/data-postgres";
+  import type { SqliteDataLayer } from "@meshfw/data-sqlite";
+
+  /** What `mesh.config.ts` default-exports. In the runtime, because `connect()` loads the config at run time. */
+  export type MeshConfig = {
+    domain: string;
+    output: string;
+    data: SqliteDataLayer | PostgresDataLayer;
+    extensions?: unknown[];
+  };
+
+  export function defineConfig(config: MeshConfig): MeshConfig;
+
   /**
    * Empty in the runtime, as ruled: the project adds its keys, `actor` included,
    * by declaration merging in `src/context.ts`. Declaring `actor` here would make
@@ -89,17 +102,8 @@ declare module "@meshfw/data-postgres" {
 }
 
 declare module "meshfw" {
-  import type { PostgresDataLayer } from "@meshfw/data-postgres";
-  import type { SqliteDataLayer } from "@meshfw/data-sqlite";
-
-  export interface MeshConfig {
-    domain: string;
-    output: string;
-    data: SqliteDataLayer | PostgresDataLayer;
-    extensions?: unknown[];
-  }
-
-  export function defineConfig(config: MeshConfig): MeshConfig;
+  /** Re-exported for compatibility; a config imports `defineConfig` from `@meshfw/runtime`. */
+  export { defineConfig, type MeshConfig } from "@meshfw/runtime";
 }
 
 declare module "#mesh" {

@@ -56,7 +56,8 @@ test("Quick start is requirements, installation, running and a short domain call
 
 test("project configuration and command reference stay separate", () => {
   const project = page("configuration");
-  expect(project).toContain('import { defineConfig } from "meshfw"');
+  expect(project).toContain('import { defineConfig } from "@meshfw/runtime"');
+  expect(project).not.toContain('from "meshfw"');
   expect(project).toContain("## src/context.ts");
   expect(project).toContain("## Environment");
   expect(project).not.toContain("## The guard");

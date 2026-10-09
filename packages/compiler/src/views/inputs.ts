@@ -186,3 +186,17 @@ export function entityPath(entity: Entity): string {
   const modules = entity.module === "" ? [] : entity.module.split("/").map((value) => pathSegment({ value, position: entity.position }));
   return [...modules, entitySegment(entity)].join("/");
 }
+/** PascalCase with the first letter lower-cased: the same word rule, for values (`publish`, `blogPost`). */
+export function camelCase(name: string): string {
+  const pascal = pascalCase(name);
+  const leading = /^_*/.exec(pascal)?.[0] ?? "";
+  const rest = pascal.slice(leading.length);
+  return leading + (rest[0] ?? "").toLowerCase() + rest.slice(1);
+}
+/** A value name: `camelCase(name)`, or `MESH_EMIT_NAME` when that is not a TypeScript identifier. */
+export function valueName(name: string, position: SourcePosition): string {
+  const result = camelCase(name);
+  if (!IDENTIFIER.test(result))
+    throw emitError("MESH_EMIT_NAME", `${JSON.stringify(name)} does not become a valid TypeScript name`, position);
+  return result;
+}

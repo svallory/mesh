@@ -8,6 +8,8 @@
     "#mesh": "./.mesh/index.ts"
   },
   "scripts": {
+    "start": "bun run src/main.ts",
+    "test": "mesh build --check && bun test",
     "typecheck": "tsc --noEmit",
     "validate": "mesh build --check",
     "db:push": "mesh db push"
@@ -18,6 +20,7 @@
   },
   "dependencies": {
     "@meshfw/data-sqlite": "workspace:*",
+    "@meshfw/runtime": "workspace:*",
     "drizzle-orm": "0.45.3",
     "zod": "4.6.5"
   }

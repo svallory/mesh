@@ -286,6 +286,14 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
         rowEquals(await tx.selectByKey(table, key), sampleRow, "resolved run must commit");
       });
     }),
+    "a transaction after close reopens the layer": withLayer(async ({ layer }) => {
+      await layer.close();
+      await layer.close();
+      // Storage may not survive a close (an in-memory database does not), so the
+      // check runs no table operation: it asks only that the layer opens again.
+      const value = {};
+      assert(await layer.transaction(async () => value) === value, "a transaction after close must open the layer again and return its result");
+    }),
     "two layers do not see each other's rows": withLayer(async (first) => {
       const second = await makeLayer();
       try {

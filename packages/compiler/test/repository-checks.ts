@@ -99,6 +99,30 @@ export function checkDrizzleImports(root: string): string[] {
   });
 }
 
+/**
+ * Acceptance test 4 for generated code: nothing under a project's output folder
+ * (`.mesh/`) imports the build half or Drizzle. Every code file under a `.mesh/`
+ * folder in `examples/` and `apps/` is read as text, comments and strings included:
+ * `@meshfw/model`, `@meshfw/compiler` and `model.json` are forbidden everywhere,
+ * and Drizzle everywhere except the emitted `.mesh/schema.ts`. `model.json` itself
+ * is data, not code, and is not scanned. Finding no `.mesh/` folder is an error, so
+ * the rule cannot pass vacuously.
+ */
+export function checkGeneratedImports(root: string): string[] {
+  const files = ["examples", "apps"].filter((group) => existsSync(join(root, group)))
+    .flatMap((group) => walk(root, join(root, group), false, "drizzle"))
+    .filter((file) => relative(root, file).split(sep).includes(".mesh") && extname(file) !== ".json").sort();
+  if (files.length === 0) return ["examples: No generated .mesh/ files scanned"];
+  return files.flatMap((file) => {
+    const source = readFileSync(file, "utf8");
+    const path = relative(root, file).split(sep).join("/");
+    const schema = /(?:^|\/)\.mesh\/schema\.ts$/.test(path);
+    const forbidden = schema ? /@meshfw\/model|@meshfw\/compiler|model\.json/g : /@meshfw\/model|@meshfw\/compiler|model\.json|drizzle-[a-z]+/g;
+    return [...source.matchAll(forbidden)].map((match) =>
+      `${path}:${source.slice(0, match.index).split(/\r\n|\r|\n/).length}: Generated code must not import ${match[0]} (roadmap M2, acceptance 4); it imports only @meshfw/runtime, zod, its sibling files, the adapter's schema.ts and (index.ts only) ../mesh.config`);
+  });
+}
+
 const runtimeForbidden = ["@meshfw/model", "@meshfw/compiler", "drizzle-orm", "drizzle-kit"];
 
 /** M2's text rules reuse M1's directory walker, scanning every runtime source file. */

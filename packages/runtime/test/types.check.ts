@@ -1,4 +1,4 @@
-import type { ActionContext, DataLayer, Key, StandardSchemaV1, TableHandle } from "@meshfw/runtime";
+import type { ActionContext, ContextArgument, DataLayer, Key, StandardSchemaV1, TableHandle } from "@meshfw/runtime";
 import { parseInput } from "@meshfw/runtime";
 
 const context: ActionContext = {};
@@ -19,3 +19,10 @@ function inference(schema: StandardSchemaV1<unknown, { count: number }>) {
   const wrong: Promise<string> = parseInput(schema, "text");
   return value;
 }
+
+// With nothing merged into ActionContext, a generated action's context is optional.
+declare function generated(input: { title: string }, ...[context]: ContextArgument): Promise<void>;
+void generated({ title: "a" });
+void generated({ title: "a" }, {});
+// @ts-expect-error the input stays required
+void generated();

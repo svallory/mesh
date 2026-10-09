@@ -5,10 +5,10 @@ description: "What Mesh generates and commits, why the behaviour lives there, an
 
 # Generated code and the guard
 
-Status: the M1 model, types, `mesh build`, `mesh build --check` and `mesh inspect` are built; the blog example's committed tree is guarded and type-checked by `verify`; M2 added input validators and the generated-import preflight ([PR #21](https://github.com/svallory/mesh/pull/21)). Action functions and the Drizzle schema come in the rest of M2, expression forms in M4, the contracts module in M6.
+Status: the M1 model, types, `mesh build`, `mesh build --check` and `mesh inspect` are built; the blog example's committed tree is guarded and type-checked by `verify`; M2 added input validators and the generated-import preflight ([PR #21](https://github.com/svallory/mesh/pull/21)). The Drizzle schema came in PR #53, and the action functions with `.mesh/index.ts` in [PR #54](https://github.com/svallory/mesh/pull/54), which completes M2; expression forms come in M4, the contracts module in M6.
 
 ::: callout info "What the code does today"
-On `main` the example writes `.mesh/`: the `types` and `validators` generators write two files per entity, each a view rendered through a Jig template, and a plain emitter writes `model.json` ([ADR-0058](../decisions/0058-generated-code-in-mesh-imported-as-hash-mesh.md), [ADR-0061](../decisions/0061-generators-are-jig-templates.md)). `#mesh` maps to `.mesh/index.ts`, which is not written yet, so nothing imports it. The action functions, `schema.ts`, `index.ts`, `mx-contracts.js` and `rules.md` are not built yet ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)). Handlers take the action context as the second argument ([ADR-0059](../decisions/0059-action-context.md)).
+On `main` the example writes `.mesh/`: the `types`, `validators` and `actions` generators write three files per entity and the `index` generator writes `.mesh/index.ts`, each a view rendered through a Jig template; the data adapter's generator writes `schema.ts`, and a plain emitter writes `model.json` ([ADR-0058](../decisions/0058-generated-code-in-mesh-imported-as-hash-mesh.md), [ADR-0061](../decisions/0061-generators-are-jig-templates.md), [PR #54](https://github.com/svallory/mesh/pull/54)). The example's program and test import `#mesh`. An action function takes `(input, context)`, the context optional until `ActionContext` has a required key ([ADR-0059](../decisions/0059-action-context.md)); its body validates the input, runs one transaction and calls the data layer. In M2 it applies a `set` whose values are literals or atoms, and runs no `validate` check, other step, `on:load` or policy: one comment at the top of each method names what it skips, and a read with `filter` or `sort` throws `FrameworkError` naming M4. `mx-contracts.js` and `rules.md` are not built yet ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)).
 :::
 
 ## The rule
@@ -83,7 +83,7 @@ The function body holds the lifecycle steps in order: validate input, open a tra
 
 A reader should expect to see:
 
-- The action context as the required second argument, typed `ActionContext` ([ADR-0059](../decisions/0059-action-context.md)). A call without one is a type error (M2, acceptance test 5).
+- The action context as the second argument, typed `ActionContext` and spread as `...[context]: ContextArgument`: optional until the project's merged `ActionContext` has a required key, then required ([ADR-0059](../decisions/0059-action-context.md)). With a required key, a call without one is a type error (M2, acceptance test 5).
 - Checks and steps as TypeScript. Translated expressions have an in-memory form emitted here; block bodies are the authored text sliced from the entity file (M4).
 - For atomic updates, the `set` values folded into the `UPDATE` statement; for read-then-write actions, read the row with a write lock, run `validate` and `do` in memory, write, in one transaction. The build chooses which from the body ([ADR-0054](../decisions/0054-write-strategy-is-inferred.md); M5).
 - Calls to the data-layer contract and never to Drizzle (M2).
@@ -108,7 +108,7 @@ If handlers become unreadable, the point of the ruling is lost (section 9, risk 
 Checked by `verify` from M2 ([roadmap](../roadmap/roadmap.md), M2, acceptance test 4):
 
 - Nothing in `runtime` imports `model`, `compiler` or Drizzle.
-- No generated handler imports them or `model.json`.
+- No generated handler imports them or `model.json`. Generated files import only `@meshfw/runtime`, `zod`, each other, the adapter's `schema.ts` and, in `index.ts` only, `mesh.config.ts`, which `connect()` loads at run time (so the config imports `defineConfig` from `@meshfw/runtime`).
 - Drizzle is imported only under `packages/data-*` and in the emitted schema file.
 
 Reasons are in [three-rings.md](./three-rings.md).
@@ -143,4 +143,4 @@ The aim of the ruling is that a reader can follow an action function top to bott
 
 ## Changing what is generated
 
-`mesh export generators` copies Mesh's Jig templates into the project; for each template, the project's copy wins when it exists ([ADR-0061](../decisions/0061-generators-are-jig-templates.md)). The template receives a typed view, not the raw model, so the view types are the contract an overriding project depends on. An overridden template no longer receives Mesh's fixes; the guard still compares the rendered output with what is committed. `mesh export generators` compares before it writes: absent templates are created and byte-identical ones left alone; if any existing file differs from Mesh's template, nothing is written, the differing files are listed and the command exits 1, so an edited template is never overwritten. It refuses symlinks like the writer (`packages/cli/src/export.ts`). It writes the templates Mesh ships today, `types.ts.jig` and `validators.ts.jig`; the user docs list the 1.0 set.
+`mesh export generators` copies Mesh's Jig templates into the project; for each template, the project's copy wins when it exists ([ADR-0061](../decisions/0061-generators-are-jig-templates.md)). The template receives a typed view, not the raw model, so the view types are the contract an overriding project depends on. An overridden template no longer receives Mesh's fixes; the guard still compares the rendered output with what is committed. `mesh export generators` compares before it writes: absent templates are created and byte-identical ones left alone; if any existing file differs from Mesh's template, nothing is written, the differing files are listed and the command exits 1, so an edited template is never overwritten. It refuses symlinks like the writer (`packages/cli/src/export.ts`). It writes the templates Mesh ships today, `types.ts.jig`, `validators.ts.jig`, `actions.ts.jig` and `index.ts.jig`, and the data adapter's (`schema.ts.jig` for SQLite).

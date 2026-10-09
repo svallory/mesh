@@ -1,18 +1,36 @@
 # Blog example
 
-This Mesh project declares posts, users, and comments in [entity file syntax v4](../../apps/docs/docs/docs/entities.md). The compiler builds a plain-data model, TypeScript record and action-input types, and Zod input validators. It does not execute actions or policies.
+This Mesh project declares posts, users and comments in [entity file syntax v4](../../apps/docs/docs/docs/entities.md), and runs them: a script and a test call the generated action functions against SQLite.
 
-## Build and check
+## Run it
 
-From this folder, run `bunx mesh build` after changing an entity file or an emitter. Commit `.mesh/` with the source change. Build never deletes files; remove obsolete output yourself.
+From this folder:
 
-`bun run validate` runs `mesh build --check` without writing files. At the repository root, `bun run verify` runs this guard and type-checks the generated files.
+```bash
+bunx mesh build      # after changing an entity file, a view or a template; commit .mesh/
+bun run db:push      # create the tables in blog.db (mesh db push)
+bun run start        # src/main.ts: create a user and a post, read, publish, destroy
+bun run test         # mesh build --check, then bun test against an in-memory database
+```
 
-## Entity files and output
+`bun run start` can run again: it reuses `blog.db` (gitignored). Delete the file to start over.
 
-- [`src/domain/blog/post.mesh.mx`](src/domain/blog/post.mesh.mx) is the Post declaration. It covers all ten attribute types, relationships, computed fields, action inputs, validation, steps, a filtered and sorted read, `on:load`, and policies, with `&name` member references in every position.
-- [`user.mesh.mx`](src/domain/blog/user.mesh.mx) and [`comment.mesh.mx`](src/domain/blog/comment.mesh.mx) provide the imported entities.
+## What is here
 
-`mesh.config.ts` reads `src/domain/`, selects the SQLite adapter descriptor, and writes `.mesh/`. The folder relative to the domain root is the module: these entities belong to `blog`, so their types and validators land under `.mesh/blog/`. `.mesh/model.json` includes the adapter's name, never its options. SQLite is only a frozen descriptor in this round; no database is opened.
+- [`src/domain/blog/post.mesh.mx`](src/domain/blog/post.mesh.mx) is the Post declaration. It covers all ten attribute types, relationships, computed fields, action inputs, validation, steps, a filtered and sorted read, `on:load`, and policies, with `&name` member references in every position. [`user.mesh.mx`](src/domain/blog/user.mesh.mx) and [`comment.mesh.mx`](src/domain/blog/comment.mesh.mx) are the imported entities.
+- [`src/context.ts`](src/context.ts) declares the action context: a required `actor`, so every call passes `{ actor }` ([`test/context.check.ts`](test/context.check.ts) checks that leaving it out does not compile).
+- [`src/main.ts`](src/main.ts) is the program: `connect()`, the calls, `disconnect()`.
+- [`test/blog.test.ts`](test/blog.test.ts) binds its own `sqlite({ file: ":memory:" })` with `createSchema(db, tables)` and `bind(db)`, and covers the M2 acceptance tests.
 
-`package.json` maps `#mesh` to `./.mesh/index.ts`. **That file does not exist yet:** nothing generates the entry point, the action functions or the `connect`/`disconnect`/`bind` exports; they come with M2. This example has no `src/main.ts` and nothing imports `#mesh` yet. Do not replace that future public entry point with direct imports into `.mesh/`. Handlers and connection behavior belong to M2.
+`mesh.config.ts` reads `src/domain/`, selects the SQLite adapter and writes `.mesh/`. The folder relative to the domain root is the module, so the per-entity files land under `.mesh/blog/`. `package.json` maps `#mesh` to `./.mesh/index.ts`, which exports `connect`, `disconnect`, `bind`, every action function, every record and input type, and `tables`. Code in this example imports `#mesh`, never a path inside `.mesh/`.
+
+## What this version runs
+
+Mesh is at milestone M2 ([roadmap](../../apps/docs/docs/architecture/roadmap/roadmap.md)). A generated action validates its input (an unknown field is rejected), runs one transaction and writes or reads the row. Not yet:
+
+- `validate` checks, and `do` steps other than a `set` whose values are literals or atoms (M4, M5): `publishPost` sets `state` to `published` but does not check `titlePresent`;
+- a read with `filter` or `sort` (M4): `publishedPost` throws a `FrameworkError` rather than return unfiltered rows;
+- `load`, computed fields and `on:load` (M7);
+- policies and `can<Action>` (M8): nothing checks who calls.
+
+Each generated method starts with a comment naming what it does not run yet.

@@ -8,22 +8,12 @@ import { EmitError, generateFiles, writeGeneratedFiles } from "../src/emit.ts";
 import { orderedDocument } from "../src/emitters/order.ts";
 import { entityInputs } from "../src/views/inputs.ts";
 import { project } from "./v4.ts";
+import { checkTypes, configOf } from "./generated.ts";
 
 const roots: string[] = [];
 afterEach(async () => {
   for (const root of roots.splice(0))
     await rm(root, { recursive: true, force: true });
-});
-export const configOf = (
-  root: string,
-  output = "generated",
-): ResolvedConfig => ({
-  root,
-  configFile: resolve(root, "mesh.config.ts"),
-  entityFiles: [],
-  domainRoot: root,
-  data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", options: { file: ":memory:" } },
-  output: resolve(root, output),
 });
 function documentOf(): ModelDocument {
   const built = buildModel(project());
@@ -32,36 +22,6 @@ function documentOf(): ModelDocument {
 }
 const todo = (document: ModelDocument): Entity =>
   document.entities.find((entity) => entity.name === "Todo")!;
-export function checkTypes(root: string, files: string[]) {
-  const child = Bun.spawnSync(
-    [
-      resolve(import.meta.dir, "../../../node_modules/.bin/tsc"),
-      "--ignoreConfig",
-      "--noEmit",
-      "--strict",
-      "--noUncheckedIndexedAccess",
-      "--module",
-      "esnext",
-      "--moduleResolution",
-      "bundler",
-      "--target",
-      "es2022",
-      "--skipLibCheck",
-      "--noUnusedLocals",
-      "--noUnusedParameters",
-      "--exactOptionalPropertyTypes",
-      "--verbatimModuleSyntax",
-      "--isolatedModules",
-      ...files,
-    ],
-    { cwd: root },
-  );
-  return {
-    code: child.exitCode,
-    output: child.stdout.toString() + child.stderr.toString(),
-  };
-}
-
 test("v4 record and input types preserve the legacy layout and action names", async () => {
   const document = documentOf();
   const files = await generateFiles({ document, config: configOf("/project") });
@@ -125,6 +85,9 @@ test("generated types and validators typecheck with strict exact-optional flags 
   const config = configOf(root);
   const files = await generateFiles({ document: documentOf(), config });
   await writeGeneratedFiles(files, config);
+  // The data adapter writes schema.ts; a stub stands in for it with the same `tables` keys.
+  await writeFile(resolve(root, "generated/schema.ts"), "export const listTable = {};\nexport const todoTable = {};\nexport const tables = { list: listTable, todo: todoTable };\n");
+  await writeFile(resolve(root, "mesh.config.ts"), "export default { data: { kind: \"data-adapter\", name: \"memory\", build: \"./none\", options: {} } };\n");
   await writeFile(
     resolve(root, "consumer.ts"),
     `import type { CreateTodoInput, CompleteTodoInput, DestroyTodoInput, Todo } from "./generated/todo/todo.types";
@@ -141,6 +104,8 @@ export { update, destroy, bad, computed };
   expect(
     checkTypes(root, [
       ...files.filter((f) => f.path.endsWith(".ts")).map((f) => f.path),
+      "generated/schema.ts",
+      "mesh.config.ts",
       "consumer.ts",
     ]),
   ).toEqual({ code: 0, output: "" });
@@ -197,7 +162,7 @@ test("empty inputs reject extra properties and primitives; records without actio
   const entity = todo(document);
   document.entities = [entity];
   entity.actions = [];
-  entity.auto = ["create"];
+  entity.auto = ["read"];
   entity.relationships = [];
   let files = await generateFiles({ document, config: configOf("/project") });
   expect(files.find((f) => f.path.endsWith("types.ts"))!.contents).toContain(
@@ -268,7 +233,7 @@ test("Date type shadows are diagnosed only where the global is used", async () =
   );
   expect(
     (await generateFiles({ document, config: configOf("/project") })).length,
-  ).toBe(3);
+  ).toBe(5);
 });
 
 test("source path line terminators are escaped in headers", async () => {

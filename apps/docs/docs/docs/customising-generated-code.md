@@ -25,7 +25,8 @@ It copies the generator templates into your project:
 
 ```text
 .mesh-generators/
-  action.ts.jig
+  actions.ts.jig
+  index.ts.jig
   types.ts.jig
   validators.ts.jig
   schema.ts.jig
@@ -55,13 +56,13 @@ If none of those is your situation, the generated code is better left alone. The
 
 ## Overriding one template
 
-You do not have to copy all four. Delete the ones you are not changing and keep one:
+You do not have to copy all five. Delete the ones you are not changing and keep one:
 
 ```bash
-rm .mesh-generators/types.ts.jig .mesh-generators/validators.ts.jig .mesh-generators/schema.ts.jig
+rm .mesh-generators/index.ts.jig .mesh-generators/types.ts.jig .mesh-generators/validators.ts.jig .mesh-generators/schema.ts.jig
 ```
 
-The build now uses your `action.ts.jig` and Mesh's own for the rest, and a Mesh release that improves the other three reaches you as usual. Start there: copy one template when one template is what does not fit, and only copy the rest when you have a reason for each.
+The build now uses your `actions.ts.jig` and Mesh's own for the rest, and a Mesh release that improves the other four reaches you as usual. Start there: copy one template when one template is what does not fit, and only copy the rest when you have a reason for each.
 
 ## Next
 
