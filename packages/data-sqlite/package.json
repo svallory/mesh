@@ -4,8 +4,16 @@
   "private": true,
   "license": "MIT",
   "type": "module",
-  "description": "Mesh SQLite adapter descriptor (connection behavior arrives in M2)",
+  "files": ["src"],
+  "description": "Mesh SQLite data adapter on bun:sqlite and Drizzle",
   "exports": { ".": "./src/index.ts" },
   "scripts": { "test": "bun test", "typecheck": "tsc --noEmit" },
-  "dependencies": { "@meshfw/runtime": "workspace:*" }
+  "dependencies": {
+    "@meshfw/data-drizzle": "workspace:*",
+    "@meshfw/runtime": "workspace:*",
+    "drizzle-orm": "0.45.3"
+  },
+  "peerDependencies": { "drizzle-kit": "0.31.11" },
+  "peerDependenciesMeta": { "drizzle-kit": { "optional": true } },
+  "devDependencies": { "drizzle-kit": "0.31.11" }
 }
