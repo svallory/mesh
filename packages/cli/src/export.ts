@@ -1,4 +1,4 @@
-import { lstat, mkdir, open, readFile } from "node:fs/promises";
+import { lstat, mkdir, open as openFile, readFile } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import { join } from "node:path";
 import { GENERATORS, MESH_TEMPLATES_DIR, PROJECT_TEMPLATES_DIR } from "@meshfw/compiler";
@@ -26,8 +26,10 @@ async function entry(absolute: string): Promise<Stats | null> {
  * a target that exists and differs from Mesh's template stops the whole export,
  * so a project's edited template is never overwritten. Byte-identical targets are
  * left alone; absent ones are created. Symlinks are refused, never followed.
+ * If creating a later file fails, the files already written are kept and named in
+ * the error. `open` is replaceable only so that tests can make a creation fail.
  */
-export async function exportGenerators(root: string): Promise<ExportResult> {
+export async function exportGenerators(root: string, open: typeof openFile = openFile): Promise<ExportResult> {
   const diagnostics: Diagnostic[] = [];
   const folder = join(root, PROJECT_TEMPLATES_DIR);
   const folderInfo = await entry(folder);
@@ -56,10 +58,17 @@ export async function exportGenerators(root: string): Promise<ExportResult> {
   const written: string[] = [];
   if (pending.length) await mkdir(folder, { recursive: true });
   for (const { path, contents } of pending) {
-    // Exclusive creation: a file that appeared since the comparison is not replaced.
-    const handle = await open(join(root, path), "wx", 0o644);
-    try { await handle.writeFile(contents, "utf8"); }
-    finally { await handle.close(); }
+    try {
+      // Exclusive creation: a file that appeared since the comparison is not replaced.
+      const handle = await open(join(root, path), "wx", 0o644);
+      try { await handle.writeFile(contents, "utf8"); }
+      finally { await handle.close(); }
+    } catch (cause) {
+      // Files already written are kept (they are Mesh's templates, byte for byte)
+      // and named, so a failed export never leaves an unreported change.
+      const kept = written.length ? `; already written: ${written.join(", ")}` : "; nothing was written";
+      return { written, diagnostics: [diagnostic(path, `Cannot create it (${errorCode(cause)})${kept}`)] };
+    }
     written.push(path);
   }
   return { written, diagnostics };

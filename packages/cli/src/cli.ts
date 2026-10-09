@@ -23,7 +23,7 @@ Options:
 interface Command { kind: "build" | "inspect" | "export" | "help"; check: boolean; entity?: string }
 function parseCommand(args: string[]): Command {
   const [first] = args;
-  const pending: Record<string, string> = { init: "not scheduled", explain: "M5", db: "M2", migrate: "M9",  };
+  const pending: Record<string, string> = { init: "not scheduled", explain: "M5", db: "M2", migrate: "M9" };
   if (first && Object.hasOwn(pending, first)) {
     throw new Error(`mesh ${first === "db" ? "db push" : first} is not available yet (${pending[first]})`);
   }
