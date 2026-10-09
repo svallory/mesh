@@ -93,9 +93,9 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
         await tx.selectAll(table);
         events.push("second read");
       });
-      // Let an incorrectly concurrent callback advance before releasing the first.
-      await Promise.resolve();
-      await Promise.resolve();
+      // Let an incorrectly concurrent callback advance before releasing the first:
+      // a macrotask, so every pending microtask (and any driver step) runs first.
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
       resume.release();
       await Promise.all([first, second]);
       assert(events.join(",") === "first write,first read,second write,second read", "transactions must not interleave statements");
@@ -145,7 +145,8 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
       await layer.transaction(async () => {
         let caught: unknown;
         try { await layer.transaction(async () => undefined); } catch (cause) { caught = cause; }
-        assert(caught instanceof FrameworkError && caught.message.includes("nested transactions are not supported"), "nested transaction must reject with FrameworkError");
+        // The message is the adapter's; the contract is the error class.
+        assert(caught instanceof FrameworkError, "nested transaction must reject with FrameworkError");
       });
     }),
     "insert returns the stored row": withLayer(async ({ layer, table, sampleRow, key }) => {
