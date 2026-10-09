@@ -10,7 +10,7 @@ The pages under [Docs](../docs/index.md) are written in the terms the operator r
 
 The rest of this section was brought to the same vocabulary in [PR #24](https://github.com/svallory/mesh/pull/24), and the framework packages are `@meshfw/*` (`@meshfw/runtime`, `@meshfw/data-sqlite`, `@meshfw/data-postgres`). The [2026-10-09 amendment to ADR-0060](./decisions/0060-meshfw-package-scope.md) names the CLI package `meshfw` and the starter `create-mesh`, invoked with `bun create mesh <dir>`; authorization is core, so there is no policies package. The product is Mesh, the command is `mesh`, the import specifier is `#mesh` and the configuration file is `mesh.config.ts`.
 
-**The code and the Docs now share one vocabulary.** Realignment rounds 1 and 2 (PR #47, PR #48, 2026-10-09) moved `packages/`, `examples/blog` and the compiler's fixtures to `entity`, `src/domain`, `.mesh/` and the action context. What differs from the Docs is what is not built: the emitters stop at `types` and `validators` per entity (round 3 adds the action functions), and the `&` member positions wait for MX's lowering. Where a Docs page and a source file disagree, the Docs page states the target.
+**The code and the Docs now share one vocabulary.** PR #47 and PR #48 (merged 2026-10-09) moved `packages/`, `examples/blog` and the compiler's fixtures to `entity`, `src/domain`, `.mesh/` and the action context. What differs from the Docs is what is not built: the emitters stop at `types` and `validators` per entity (the action functions are not built yet), and the `&` member positions wait for MX's lowering. Where a Docs page and a source file disagree, the Docs page states the target.
 :::
 
 The pages under Docs are written as if Mesh 1.0 were released: no open questions, no milestones, no hedges. Everything below is what those pages had to leave out, and where each item has to be settled. A page under Docs that has to say "this is not decided" has found a gap, which is the point of writing it first.
@@ -47,7 +47,7 @@ The findings below came from writing the Docs pages against the design. Each nam
 
 ## New open points
 
-- **Imports and the pinned parser.** Entity and helper imports are part of v4. The compiler pins MX alpha.11, which accepts imports and comments under `structural: "reject"`; alpha.5 rejected imports unless `imports: "pass"` was set. The compiler passes that option. The docs' temporary spelling bridge and its removal condition are below.
+- **Imports and the pinned parser.** Entity and helper imports are part of the entity syntax. The compiler pins MX alpha.11, which accepts imports and comments under `structural: "reject"`; an earlier alpha rejected imports unless `imports: "pass"` was set. The compiler passes that option. The docs' temporary spelling bridge and its removal condition are below.
 - **No page on writing an extension.** Three pages describe what an extension may contribute and none shows how to write one. It is its own piece of work.
 
 - **The action context's type.** The operator ruled on 2026-10-04 that the second argument is one flat `ActionContext` the user declares by declaration merging. Two records still describe the older shape and have to be amended in the rename task: [ADR-0007](decisions/0007-scope-is-a-plain-argument.md) and [ADR-0047](decisions/0047-actions-are-bound-to-a-data-layer.md) both say "scope" and describe `{ actor, context }`.
@@ -56,20 +56,20 @@ The findings below came from writing the Docs pages against the design. Each nam
 
 ## Syntax v4
 
-The operator's 2026-10-08 rulings distinguish declarations (`:name`), members (`&name`) and imported entities (`Name`), put all action input in one `input` section, and keep entity files static. [ADR-0067](./decisions/0067-members-imports-input-static-files.md) records the rules, the lead's choices and MX decisions 182 addendum 1 and 187 addendum 2. **The Docs pages are the target; the compiler and example follow v4 (PR #47, PR #48) except the `&` positions that await MX's lowering.**
+The operator's 2026-10-08 rulings distinguish declarations (`:name`), members (`&name`) and imported entities (`Name`), put all action input in one `input` section, and keep entity files static. [ADR-0067](./decisions/0067-members-imports-input-static-files.md) records the rules, the lead's choices and MX decisions 182 addendum 1 and 187 addendum 2. **The Docs pages are the target; the compiler and example follow the entity syntax (PR #47, PR #48) except the `&` positions that await MX's lowering.**
 
-The pinned `@mxlang/data` alpha.5, with `structural: "reject"`, and `@mxlang/tree-sitter-mx` alpha.2 have these measured gaps:
+Measured on `@mxlang/data` alpha.5 with `structural: "reject"`, before the pin moved to alpha.11, and not re-measured since; the highlighter column is `@mxlang/tree-sitter-mx` alpha.2:
 
 | Spelling | Parser | Highlighter |
 |:--|:--|:--|
-| `import { Customer } from "./customer.mesh.mx"` | Accepted with `imports: "pass"`, verified on alpha.5; rejected without it under structural rejection | Already accepted |
+| `import { Customer } from "./customer.mesh.mx"` | Accepted with `imports: "pass"`, as measured; rejected without it under structural rejection | Already accepted |
 | `asc &dueOn` | Invalid attribute name | Accepted by the grammar, not a semantic member token |
 | `() => &status === :sent`, `load=[&customer]` | Unexpected token at the operand | No MX ERROR, but layer-2 member highlighting is still owed |
 | `&title` in `input` | Accepted syntactically, without Mesh semantics | Rejected: `input` is treated as an HTML void tag, even with an ordinary `string :x` child |
 | `&status=:sent` under `set` | Accepted syntactically | Accepted |
 | `belongs-to :customer entity=Customer` | Accepted | Accepted |
 
-**One temporary parser bridge.** `normaliseV4` in `packages/compiler/test/repository-checks.ts` rewrites a member after a kind and a tagless member line to the atom spelling the pin understands, and rewrites an expression's operand member to a record read. Imports pass unchanged through alpha.5's verified `imports: "pass"` option. Strings, expression comments and infix `&`/`&&` stay untouched. The parser still uses `structural: "reject"`. That option also rejects comments on the pin, so only leading file comments are blanked, preserving rows; body comments remain untouched and rejected until MX fixes that gap. Remove it when Mesh pins MX's syntax table, including `lineTriggers` (decision 182 addendum 1). This is test-only compatibility, not a second parser in Mesh's compiler.
+**One temporary parser bridge.** `normaliseV4` in `packages/compiler/test/repository-checks.ts` rewrites a member after a kind and a tagless member line to the atom spelling the pin understands, and rewrites an expression's operand member to a record read. Imports pass unchanged through the `imports: "pass"` option. Strings, expression comments and infix `&`/`&&` stay untouched. The parser still uses `structural: "reject"`. That option also rejects comments on the pin, so only leading file comments are blanked, preserving rows; body comments remain untouched and rejected until MX fixes that gap. Remove it when Mesh pins MX's syntax table, including `lineTriggers` (decision 182 addendum 1). This is test-only compatibility, not a second parser in Mesh's compiler.
 
 **One temporary highlighter allowance.** `MX_V4_INPUT_PENDING_SYNTAX_TABLE` uses same-width stand-ins for standalone nested `input` sections and their bare member lines. It renders the original text, leaves those member names uncoloured, counts and prints the bridged lines, and still fails all other grammar errors. Tests pin both halves. MX item `mesh-syntax-highlighting-route` owns the permanent route, through semantic tokens or a Mesh grammar; no grammar is patched here.
 

@@ -32,17 +32,19 @@ The vocabulary is Mesh's own, informed by Ash ([ADR-0049](../decisions/0049-voca
 
 ## The MX features syntax v4 depends on
 
-| Feature | Used for | State on the pinned parser, alpha.5 |
+Measured on `@mxlang/data` alpha.5, before the pin moved to alpha.11; not re-measured since.
+
+| Feature | Used for | State on the parser as measured |
 |---|---|---|
 | Atoms and `kind :name` | Declarations and fixed-set/enum values | Parses; whole-value atoms are `DataAttr { kind: "atom", name, value }`; expression atoms have `extra.mxAtom` |
-| Entity imports and `entity=Customer` | Cross-file identity | Both parse with `structural: "reject", imports: "pass"`, verified on alpha.5; without the imports option, imports are rejected |
+| Entity imports and `entity=Customer` | Cross-file identity | Both parse with `structural: "reject", imports: "pass"`, verified in that measurement; without the imports option, imports are rejected |
 | `&name` after a kind | `asc &dueOn` | Invalid attribute name until the syntax table |
 | `&name` at an operand position | `() => &status === :sent`, `load=[&customer]`, `on:load=&visible` | Unexpected token until the syntax table |
 | A tagless member line | `&title` in `input`, `&status=:sent` in `set` | Accepted syntactically, but the table supplies its intended lowering and meaning |
 | `lineTriggers`, `attributeTriggers`, `expressionTriggers` | Mesh's layer-2 member syntax | MX decision 182 addendum 1, pending the parser port |
 | A `mesh` host with `builtOn: "tree"` | `.mesh.mx` tooling | Target design, MX decisions 148 and 187 addendum 2 |
 
-The docs bridge only these unsupported spellings in memory, then parse. It maps tagless/after-kind member spellings to the older name form and operand members to record reads, leaving strings, expression comments and infix operators alone. Imports pass unchanged with alpha.5's verified `imports: "pass"` option. Structural rejection stays on. Because the pin also rejects comments, leading file comments are blanked without removing lines; in-body comments remain untouched and rejected, an MX gap. MX decision 131 addendum 5 schedules `tree-comments-not-structural` for the next alpha: comments remain `Comment` nodes even under structural rejection, with no new option. Realignment pins that release and removes the comment bridge. Remove `normaliseV4` when the syntax-table release is pinned. Runtime/compiler code must still consume MX's tree, never this bridge.
+The docs bridge only these unsupported spellings in memory, then parse. It maps tagless/after-kind member spellings to the older name form and operand members to record reads, leaving strings, expression comments and infix operators alone. Imports pass unchanged with the `imports: "pass"` option. Structural rejection stays on. Because the pin also rejects comments, leading file comments are blanked without removing lines; in-body comments remain untouched and rejected, an MX gap. MX decision 131 addendum 5 schedules `tree-comments-not-structural` for the next alpha: comments remain `Comment` nodes even under structural rejection, with no new option. Realignment pins that release and removes the comment bridge. Remove `normaliseV4` when the syntax-table release is pinned. Runtime/compiler code must still consume MX's tree, never this bridge.
 
 The highlighter's separate gap is `input`: alpha.2 treats it as an HTML void tag, even with a plain `string :x` child and no sigil. The named `MX_V4_INPUT_PENDING_SYNTAX_TABLE` allowance uses same-width stand-ins for nested input sections and bare member lines, renders the authored text, and counts and prints affected lines. Imports already highlight. Member-reference semantic colour awaits MX item `mesh-syntax-highlighting-route`; uncoloured members are accepted for the docs review. Other ERROR nodes still stop the site build. [Open questions](../open-questions.md#syntax-v4) has the measured matrix.
 

@@ -8,7 +8,7 @@ description: "One action call from start to finish: the eight phases, `validate`
 Status: design; built in milestone M5 ([roadmap](../roadmap/roadmap.md), M5). A first version (validate the input, open a transaction, call the data layer, commit) arrives in M2. Nothing on this page exists as code yet. Policies, which fill the authorizer slot, arrive in M8.
 
 ::: callout info "What the code does today"
-The run-time library on `main` (`@meshfw/runtime`) exports `ActionContext` for the second argument ([ADR-0059](../decisions/0059-action-context.md)), with `MeshError`, `InvalidInputError`, `NotFoundError(entity, key)` and `ForbiddenError`. The emitters do not write action functions yet; they arrive in round 3, so this page describes the lifecycle as designed, in entity file syntax v4 ([ADR-0067](../decisions/0067-members-imports-input-static-files.md)).
+The run-time library on `main` (`@meshfw/runtime`) exports `ActionContext` for the second argument ([ADR-0059](../decisions/0059-action-context.md)), with `MeshError`, `InvalidInputError`, `NotFoundError(entity, key)` and `ForbiddenError` and `FrameworkError`. The emitters do not write action functions yet; they are not built yet, so this page describes the lifecycle as designed, in the entity syntax ([ADR-0067](../decisions/0067-members-imports-input-static-files.md)).
 :::
 
 This page follows one action call from the caller to the result. Related: [overview](../overview/architecture.md), [three rings](./three-rings.md), [build pipeline](./build-pipeline.md), [generated code and the guard](./generated-code-and-guard.md), [expressions](./expressions.md), [data layer](./data-layer.md).

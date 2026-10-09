@@ -31,7 +31,7 @@ The reason is that writing the page is a test of the design. A page that has to 
 
 ## The hold, and who decides
 
-The hold on development ([ADR-0063](./decisions/0063-user-docs-first-and-the-hold.md)) was lifted on 2026-10-09, when the operator approved the user docs. The realignment task is done (PR #47, PR #48); the Jig port and M2 follow ([ADR-0064](./decisions/0064-order-of-work-after-approval.md); [roadmap](./roadmap/roadmap.md)).
+The hold on development ([ADR-0063](./decisions/0063-user-docs-first-and-the-hold.md)) was lifted on 2026-10-09, when the operator approved the user docs. The move to the documented names was merged in PR #47 and PR #48 on 2026-10-09; the Jig port and M2 follow ([ADR-0064](./decisions/0064-order-of-work-after-approval.md); [roadmap](./roadmap/roadmap.md)).
 
 - The **operator** (the project owner) rules on design. On 2026-10-05 he delegated every open decision to the **lead**.
 - The **lead** decides what is delegated and records it. Contributors never ask the operator; questions go to the lead.
@@ -69,13 +69,13 @@ Run `bun run build` and `bun run validate` before you open a pull request. From 
 
 This section is for contributors. Nothing under [Docs](../docs/index.md) says any of it, because those pages are written as if 1.0 were released.
 
-- **`packages/compiler`** (`@meshfw/compiler`) holds the closed v4 tag contracts for entity files (`src/contracts.ts`), the loader, the model builder and the `types` and `validators` emitters. Its tests include the Docs `.mx` sample check described above.
+- **`packages/compiler`** (`@meshfw/compiler`) holds the closed entity tag contracts for entity files (`src/contracts.ts`), the loader, the model builder and the `types` and `validators` emitters. Its tests include the Docs `.mx` sample check described above.
 - **`packages/model`** holds the plain-data entity model: fields, actions, relationships, the type registries and the diagnostic type. It imports nothing.
 - **`packages/runtime`** holds the run-time library generated code will import: the flat, project-augmented `ActionContext` (the second argument's type), the errors (`MeshError`, `InvalidInputError`, `NotFoundError(entity, key)`, and `ForbiddenError` with its `breakdown`, built on the documented `Issue`), Standard Schema input validation, the `DataAdapter` descriptors and the data-layer contract v0, with conformance checks under its `testing` entry. It has no run-time dependencies.
 - **`packages/cli`** (`meshfw`) holds the Bun-only `mesh` developer command, still a thin compiler shell. It re-exports `defineConfig`, which takes `{ domain, output, data, extensions? }`.
 - **`packages/data-sqlite`** (`@meshfw/data-sqlite`, private) returns a frozen `sqlite({ file })` descriptor; it opens no connection until M2.
 - **`packages/create-mesh`** (`create-mesh`) is the starter behind `bun create mesh`; today a placeholder bin that prints "Mesh is coming soon".
-- **`examples/blog`** is the fixture project: entity files under `src/domain/blog/`. `mesh build` there writes `.mesh/` (`model.json` and the `types` and `validators` files per entity), which is committed. `.mesh/index.ts`, which `#mesh` maps to, is not written until round 3, so nothing imports it.
+- **`examples/blog`** is the fixture project: entity files under `src/domain/blog/`. `mesh build` there writes `.mesh/` (`model.json` and the `types` and `validators` files per entity), which is committed. `.mesh/index.ts`, which `#mesh` maps to, is not written yet, so nothing imports it.
 - **`apps/docs`** is this site.
 
 From the repository root:
@@ -102,9 +102,9 @@ With `meshfw` installed, the command runs from the project root containing `mesh
 
 ## Vocabulary and what is pending
 
-The Docs pages, the Architecture section and the code use the same terms and entity file syntax v4 (`entity`, `.mesh.mx`, modules under `src/domain/`, `.mesh/` imported as `#mesh`, the `ActionContext`, `@meshfw/*`); realignment rounds 1 and 2 (PR #47, PR #48, 2026-10-09) brought the code there. What is pending is round 3 (the emitters that write the action functions, `index.ts` and the rest) and MX's lowering of the `&` member positions; see the [roadmap](./roadmap/roadmap.md). Architecture pages that describe design the code does not implement yet say so once, in a callout at the top.
+The Docs pages, the Architecture section and the code use the same terms and the entity syntax (`entity`, `.mesh.mx`, modules under `src/domain/`, `.mesh/` imported as `#mesh`, the `ActionContext`, `@meshfw/*`); PR #47 and PR #48 (merged 2026-10-09) brought the code there. What is pending is the remaining emitters (the action functions, `index.ts` and the rest) and MX's lowering of the `&` member positions; see the [roadmap](./roadmap/roadmap.md). Architecture pages that describe design the code does not implement yet say so once, in a callout at the top.
 
-The [Ash-to-Mesh mapping](./roadmap/vocabulary-mapping.md) section 3 is in the v4 spelling, and a compiler test reads that table.
+The [Ash-to-Mesh mapping](./roadmap/vocabulary-mapping.md) section 3 is in the current spelling, and a compiler test reads that table.
 
 ## Code highlighting
 
