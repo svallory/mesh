@@ -65,3 +65,15 @@ test.each([
     expect.objectContaining({ code: "MESH_SYNTAX" }),
   ]);
 });
+
+// build.ts picks MESH_MEMBER_LINE_OPTIONS by matching MX's message text because
+// alpha.11 diagnostics expose no code. Fail here, naming the cause, if MX rewords it.
+test.each([
+  ["      do\n        set\n          &title\n", "`<&title>` (inline contract): missing required attribute `value`"],
+  ["      do\n        set\n          &title=1 min=2\n", "unknown attribute"],
+])("MX message wording that build.ts matches for member-line options: %s", (body, wording) => {
+  const messages = parse(title + "  actions\n    update :change\n" + body).diagnostics.map((d) => d.message);
+  expect(messages).toHaveLength(1);
+  expect(messages[0]).toContain(wording);
+  expect(messages[0]).toMatch(/`<&[A-Za-z_][A-Za-z0-9_]*>`.*(?:unknown attribute|missing required attribute)/);
+});

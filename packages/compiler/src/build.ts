@@ -386,14 +386,6 @@ function buildEntity(
             if (read.diagnostic) { diagnostics.push(read.diagnostic); return []; }
             const member = read.value;
             checkRef(member.ref, "set");
-            if (member.options || !member.value) {
-              fail(
-                "MESH_MEMBER_LINE_OPTIONS",
-                "A set member takes exactly one assignment and no options",
-                line,
-              );
-              return [];
-            }
             const value = readAt(line, at, () => {
               const n = nodeOf(member.value);
               if (n && ["ArrowFunctionExpression", "FunctionExpression"].includes(n.type)) return expr(member.value);
