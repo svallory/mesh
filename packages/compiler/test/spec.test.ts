@@ -57,10 +57,10 @@ test.each(['"opaque"', "false", "123", "{}", "null", "undefined"])("non-array ex
   expect(result.config).toBeNull();
   expect(result.diagnostics[0]).toMatchObject({ code: "MESH_CONFIG", message: "Configuration field `extensions` must be an array" });
 });
-test.each(["null", "undefined", '"opaque"', "42", "[]", "{}", "{name:42}", '(() => "extension")'])("invalid extension element %s fails", async (value) => {
+test.each(["null", "undefined", '"opaque"', "42", "[]", "{}", "{name:42}", '{name:""}', '{name:"  "}', '(() => "extension")'])("invalid extension element %s fails", async (value) => {
   const result = await loadConfig(await project(`export default {domain:"src/domain",output:".mesh",data:${adapter},extensions:[${value}]}`));
   expect(result.config).toBeNull();
-  expect(result.diagnostics[0]?.message).toBe("Configuration field `extensions[0]` must be an object with a name string");
+  expect(result.diagnostics[0]?.message).toBe("Configuration field `extensions[0]` must be an object with a non-empty name string");
 });
 test("named extension objects remain identical and hooks unexecuted", async () => {
   const extensions = [{ name: "audit", hook() { throw new Error("do not call"); }, opaque: Symbol("opaque") }];

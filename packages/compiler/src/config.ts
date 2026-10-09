@@ -88,7 +88,7 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
   if (Object.hasOwn(config, "extensions")) {
     if (!Array.isArray(extensions)) fail("extensions", "Configuration field `extensions` must be an array");
     else for (const [index, extension] of extensions.entries()) {
-      if (!record(extension) || typeof extension.name !== "string") fail("extensions", `Configuration field \`extensions[${index}]\` must be an object with a name string`);
+      if (!record(extension) || !nonEmpty(extension.name)) fail("extensions", `Configuration field \`extensions[${index}]\` must be an object with a non-empty name string`);
     }
   }
   if (diagnostics.length) return { config: null, diagnostics };
