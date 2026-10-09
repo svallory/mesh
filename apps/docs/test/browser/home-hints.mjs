@@ -120,6 +120,17 @@ try {
   await page.screenshot({ path: `${shots}/home-list-1280-dark.png` });
   await hint(page, 'types-create').hover();
   await connected(page, 'types-create', 'action-create');
+  // Same-line auto atoms retain the outline but cannot loop back onto their
+  // own row. Moving from/to a policy atom must remove/restore the shared path.
+  for (const type of ['read', 'destroy']) {
+    await hint(page, `auto-${type}`).hover();
+    await opened(page, `auto-${type}`);
+    same(await page.locator('.mh-hint-destination').getAttribute('data-hint-anchor'), 'actions', 'same-line destination remains outlined');
+    same(await page.locator('.mh-hint-destination').evaluate((n) => getComputedStyle(n).outlineStyle), 'dashed', 'same-line outline remains dashed');
+    same(await page.locator('.mh-hint-connector').count(), 0, 'same-line reference has no path');
+    await hint(page, `types-${type}`).hover();
+    await connected(page, `types-${type}`, 'actions');
+  }
   for (const value of ['light', 'dark']) {
     await theme(page, value);
     const colours = await page.evaluate(() => ['.ts-member', '.ts-name', '.ts-atom'].map((selector) => {

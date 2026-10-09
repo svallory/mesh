@@ -234,6 +234,11 @@ export function installHomeHints(d, w) {
       outlined = destination;
       outlined.classList.add('mh-hint-destination');
     }
+    // Generated auto actions already sit on their destination line. Keep its
+    // outline, but remove any previous path instead of looping back onto it.
+    if (destination.closest('.mh-l') === open.closest('.mh-l')) {
+      overlay?.remove(); overlay = null; return;
+    }
     const host = pre.closest('.grid-item');
     if (!host) return;
     const a = open.getClientRects()[0], b = destination.getBoundingClientRect();
