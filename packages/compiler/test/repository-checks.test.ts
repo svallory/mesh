@@ -25,7 +25,7 @@ test("real v4 blog loads by path with every registered type", async () => {
 });
 
 test.todo("full blog parses — MX lang-ext-syntax-table: & after a kind / in expressions", () => {
-  const file = "examples/blog/resources/blog/post.pending.mesh.mx.txt";
+  const file = "examples/blog/src/domain/blog/post.pending.mesh.mx.txt";
   const source = readFileSync(join(root, file), "utf8");
   expect(parse(source, join(root, file)).diagnostics).toEqual([]);
   const built = buildModel({ root, files: [{ file, source }] });

@@ -11,7 +11,7 @@ export function inside(root: string, file: string): boolean {
   const rel = relative(root, file);
   return rel === "" || isProjectRelativePath(normalizePath(rel));
 }
-export function resolveResource(root: string, input: string): { absolute: string; file: string } | null {
+export function resolveEntityFile(root: string, input: string): { absolute: string; file: string } | null {
   if (foreignAbsolute(input)) return null;
   const absolute = resolve(root, normalizePath(input));
   const file = normalizePath(relative(root, absolute));
@@ -20,7 +20,7 @@ export function resolveResource(root: string, input: string): { absolute: string
 /** Diagnostics never use an escaping or absolute filename. Invalid input paths
  * are attributed to the project configuration rather than echoed verbatim. */
 export function projectPath(root: string, input: string): string {
-  return resolveResource(resolve(root), input)?.file ?? "mesh.config.ts";
+  return resolveEntityFile(resolve(root), input)?.file ?? "mesh.config.ts";
 }
 export function errorCode(cause: unknown): string | null {
   if (cause && typeof cause === "object" && "code" in cause && typeof cause.code === "string") return cause.code;

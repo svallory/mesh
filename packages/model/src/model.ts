@@ -143,4 +143,6 @@ export interface Entity {
 }
 export interface ModelDocument {
   entities: Entity[];
+  /** Selected adapter identity only; options may contain secrets and never serialize. */
+  data?: { name: string };
 }

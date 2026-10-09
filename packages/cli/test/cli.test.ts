@@ -9,7 +9,7 @@ const repo = resolve(import.meta.dir, "../../..");
 const projects: string[] = [];
 let command: string;
 let buildDir: string;
-const sourcePath = "resources/todos/todo.mesh.mx";
+const sourcePath = "domain/todos/todo.mesh.mx";
 const source = `entity :Todo
   attributes
     uuid :id primary-key
@@ -46,12 +46,12 @@ async function linkPackages(root: string): Promise<void> {
 async function project(config = true): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "mesh-cli-project-"));
   projects.push(root);
-  await mkdir(join(root, "resources/todos"), { recursive: true });
+  await mkdir(join(root, "domain/todos"), { recursive: true });
   await linkPackages(root);
   await symlink(join(repo, "packages/compiler/node_modules/zod"), join(root, "node_modules/zod"));
   await writeFile(join(root, sourcePath), source);
   if (config) await writeFile(join(root, "mesh.config.ts"), `import { defineConfig } from "meshfw";
-export default defineConfig({ resources: "resources", output: "generated" });\n`);
+export default defineConfig({ domain: "domain", output: "generated", data: { kind: "data-adapter", name: "sqlite", options: { file: ":memory:" } } });\n`);
   return root;
 }
 function run(root: string, ...args: string[]) {
@@ -66,7 +66,7 @@ async function builtProject(): Promise<string> {
 }
 
 test("defineConfig is re-exported from meshfw", () => {
-  const config = { resources: "resources", output: "generated" };
+  const config = { domain: "domain", output: "generated", data: { kind: "data-adapter" as const, name: "sqlite", options: { file: ":memory:" } } };
   expect(defineConfig(config)).toBe(config);
 });
 
@@ -149,13 +149,13 @@ test.each([["titel", " Did you mean &title?"], ["unknown", ""]])("unknown member
 
 test("missing config is exit 1 with a diagnostic, with no upward search", async () => {
   const root = await project();
-  expect(run(join(root, "resources"), "build")).toEqual({ code: 1, stdout: "", stderr: "mesh.config.ts:1:1 error Cannot read mesh.config.ts (ENOENT) (fix: Create mesh.config.ts with resources and output)\n1 error, 0 warnings\n" });
+  expect(run(join(root, "domain"), "build")).toEqual({ code: 1, stdout: "", stderr: "mesh.config.ts:1:1 error Cannot read mesh.config.ts (ENOENT) (fix: Create mesh.config.ts with domain, output and data)\n1 error, 0 warnings\n" });
 });
 
 test("invalid config is exit 1 with exact position", async () => {
   const root = await project();
-  await writeFile(join(root, "mesh.config.ts"), 'export default { resources: "resources", output: 3 };\n');
-  expect(run(root, "build")).toEqual({ code: 1, stdout: "", stderr: "mesh.config.ts:1:42 error Configuration field `output` must be a non-empty relative directory path (fix: Fix the output field in mesh.config.ts)\n1 error, 0 warnings\n" });
+  await writeFile(join(root, "mesh.config.ts"), 'export default { domain: "domain", output: 3, data: { kind: "data-adapter", name: "sqlite", options: {} } };\n');
+  expect(run(root, "build")).toEqual({ code: 1, stdout: "", stderr: "mesh.config.ts:1:36 error Configuration field `output` must be a non-empty relative directory path (fix: Fix the output field in mesh.config.ts)\n1 error, 0 warnings\n" });
 });
 
 test("inspect prints precisely the built model bytes or the named resource with the same serialiser", async () => {
@@ -191,7 +191,7 @@ test.each([
 
 test("inspect orders multiple resources exactly like model.json and lists known names", async () => {
   const root = await project();
-  await writeFile(join(root, "resources/z.mesh.mx"), source.replace('entity :Todo', 'entity :Alpha'));
+  await writeFile(join(root, "domain/z.mesh.mx"), source.replace('entity :Todo', 'entity :Alpha'));
   expect(run(root, "build").code).toBe(0);
   const bytes = await readFile(join(root, "generated/model.json"), "utf8");
   expect(run(root, "inspect").stdout).toBe(bytes);
@@ -203,9 +203,9 @@ test("build errors are sorted across files and preserve an existing tree", async
   const root = await builtProject();
   const before = await readFile(join(root, file));
   await writeFile(join(root, sourcePath), "");
-  await writeFile(join(root, "resources/a.mesh.mx"), "");
+  await writeFile(join(root, "domain/a.mesh.mx"), "");
   expect(run(root, "build")).toEqual({ code: 1, stdout: "", stderr:
-    `resources/a.mesh.mx:1:1 error An entity file must contain exactly one entity\n${sourcePath}:1:1 error An entity file must contain exactly one entity\n2 errors, 0 warnings\n` });
+    `domain/a.mesh.mx:1:1 error An entity file must contain exactly one entity\n${sourcePath}:1:1 error An entity file must contain exactly one entity\n2 errors, 0 warnings\n` });
   expect(await readFile(join(root, file))).toEqual(before);
 });
 

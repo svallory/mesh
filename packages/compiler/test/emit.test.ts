@@ -20,7 +20,9 @@ export const configOf = (
 ): ResolvedConfig => ({
   root,
   configFile: resolve(root, "mesh.config.ts"),
-  resourceFiles: [],
+  entityFiles: [],
+  domainRoot: root,
+  data: { kind: "data-adapter", name: "sqlite", options: { file: ":memory:" } },
   output: resolve(root, output),
 });
 function documentOf(): ModelDocument {
@@ -229,7 +231,7 @@ test("generated paths and type declarations refuse collisions", async () => {
   ).rejects.toBeInstanceOf(EmitError);
 });
 
-test.each(["../escape", "a/b", "a\\b", ".", "", "C:"])(
+test.each(["../escape", "/escape", "a\\b", ".", "a//b", "C:"])(
   "unsafe module %s never escapes output",
   async (module) => {
     const document = documentOf();
@@ -239,6 +241,16 @@ test.each(["../escape", "a/b", "a\\b", ".", "", "C:"])(
     ).rejects.toBeInstanceOf(EmitError);
   },
 );
+
+test.each(["", "sales/billing"])("module %j emits verbatim relative paths", async (module) => {
+  const document = documentOf();
+  const entity = todo(document);
+  entity.module = module;
+  const files = await generateFiles({ document, config: configOf("/project", ".mesh") });
+  const prefix = module ? `.mesh/${module}` : ".mesh";
+  expect(files.map((file) => file.path)).toContain(`${prefix}/todo.types.ts`);
+  expect(files.map((file) => file.path)).toContain(`${prefix}/todo.validators.ts`);
+});
 
 test("Date type shadows are diagnosed only where the global is used", async () => {
   const document = documentOf();

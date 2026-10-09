@@ -20,6 +20,7 @@
   "dependencies": {
     "@babel/parser": "^7.29.8",
     "@meshfw/model": "workspace:*",
+    "@meshfw/runtime": "workspace:*",
     "@mxlang/core": "0.1.0-alpha.11",
     "@mxlang/data": "0.1.0-alpha.11",
     "prettier": "3.6.2"

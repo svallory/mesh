@@ -1,10 +1,10 @@
-import { basename, dirname, resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 import { realpathSync, statSync } from "node:fs";
 import {
   foreignAbsolute,
   inside,
   normalizePath,
-  resolveResource,
+  resolveEntityFile,
 } from "./paths.ts";
 export { projectPath } from "./paths.ts";
 import { parseData } from "@mxlang/data";
@@ -76,6 +76,8 @@ export interface EntityFile {
 }
 export interface ProjectDescription {
   root: string;
+  /** Defaults to the project root for callers building virtual files. */
+  domainRoot?: string;
   files: readonly EntityFile[];
 }
 export interface BuildResult {
@@ -118,6 +120,7 @@ function buildEntity(
   diagnostics: Diagnostic[],
   rollups: PendingRollup[],
   importDetails: Map<Import, ParsedImport>,
+  module: string,
 ): Entity {
   const at = (offset: number) => positionAt(source, file, offset);
   const pos = (tag: DataTag) => at(tag.nameSpan.sourceStart);
@@ -133,7 +136,7 @@ function buildEntity(
     name: declaredName(root),
     table: String(opt(root, "table") ?? snakeCase(declaredName(root))),
     file,
-    module: basename(dirname(file)),
+    module,
     imports: [],
     attributes: [],
     relationships: [],
@@ -144,6 +147,10 @@ function buildEntity(
     policies: [],
     position: pos(root),
   };
+  for (const segment of module ? module.split("/") : []) {
+    if (!/^[A-Za-z0-9_-]+$/.test(segment))
+      fail("MESH_MODULE_NAME", `Module segment ${JSON.stringify(segment)} must contain only letters, digits, - or _`, root);
+  }
   const imports = readImports(tree.imports ?? []);
   for (const problem of imports.problems)
     fail(problem.code, problem.message, at(problem.span.sourceStart));
@@ -646,11 +653,16 @@ export function buildModel(project: ProjectDescription): BuildResult {
       ],
     };
   const rootPath = resolve(normalizePath(project.root));
+  const domainRoot = resolve(rootPath, normalizePath(project.domainRoot ?? "."));
+  if (!inside(rootPath, domainRoot)) return {
+    document: null,
+    diagnostics: [error("MESH_PROJECT_PATH", "Domain root must stay inside the project", positionAt("", "mesh.config.ts", 0))],
+  };
   const virtualFiles = new Set(
-    project.files.map((f) => resolveResource(rootPath, f.file)?.absolute),
+    project.files.map((f) => resolveEntityFile(rootPath, f.file)?.absolute),
   );
   for (const input of project.files) {
-    const path = resolveResource(rootPath, input.file);
+    const path = resolveEntityFile(rootPath, input.file);
     if (!path) {
       diagnostics.push(
         error(
@@ -711,6 +723,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
             diagnostics,
             rollups,
             importDetails,
+            normalizePath(relative(domainRoot, dirname(path.absolute))),
           ),
         );
       } catch (cause) {
@@ -724,25 +737,25 @@ export function buildModel(project: ProjectDescription): BuildResult {
       }
     }
   }
-  const identities = new Set<string>();
+  const identities = new Map<string, string>();
   for (const entity of document.entities) {
-    const identity = `${dirname(entity.file)}/${entity.name}`;
+    const identity = `${entity.module}/${entity.name}`;
     if (identities.has(identity))
       diagnostics.push(
         error(
           "MESH_DUPLICATE_ENTITY",
-          `Duplicate entity :${entity.name} in ${dirname(entity.file)}`,
+          `Duplicate entity :${entity.name} in module ${JSON.stringify(entity.module)}; first declared in ${identities.get(identity)}`,
           entity.position,
         ),
       );
-    identities.add(identity);
+    else identities.set(identity, entity.file);
     for (const imported of entity.imports) {
       const target = resolve(rootPath, dirname(entity.file), imported.from);
       const targetEntity = document.entities.find((candidate) => resolve(rootPath, candidate.file) === target);
       if (imported.from.endsWith(".mesh.mx") && targetEntity) {
         for (const binding of importDetails.get(imported)?.bindings ?? []) {
           if (binding.imported !== targetEntity.name) {
-            const source = project.files.find((input) => resolveResource(rootPath, input.file)?.file === entity.file)!.source;
+            const source = project.files.find((input) => resolveEntityFile(rootPath, input.file)?.file === entity.file)!.source;
             diagnostics.push(error("MESH_UNKNOWN_IMPORT", `\`${binding.imported}\` is not what ${imported.from} declares; it declares \`${targetEntity.name}\``, positionAt(source, entity.file, binding.span.sourceStart)));
           }
         }

@@ -181,7 +181,8 @@ export function entitySegment(entity: Entity): string {
   });
 }
 export function entityPath(entity: Entity): string {
-  return `${pathSegment({ value: entity.module, position: entity.position })}/${entitySegment(entity)}`;
+  const modules = entity.module === "" ? [] : entity.module.split("/").map((value) => pathSegment({ value, position: entity.position }));
+  return [...modules, entitySegment(entity)].join("/");
 }
 export function header(entity: Entity): string {
   const file = entity.file.replace(
@@ -192,7 +193,7 @@ export function header(entity: Entity): string {
 }
 const declaration = (name: string, members: string[]) =>
   `export type ${name} = {\n${members.length ? members.join("\n") : "[key: string]: never;"}\n};`;
-/** Stable legacy emitter id; round 3 owns emitter naming and output layout. */
+/** Stable legacy emitter id; round 3 owns emitter naming and content. */
 export const entityTypesEmitter: Emitter = {
   name: "resource-types",
   async emit({ document, config }) {
