@@ -5,7 +5,7 @@ import { dataLayerConformance } from "@meshfw/runtime/testing";
 import type { DataLayerFixture } from "@meshfw/runtime/testing";
 
 // Only a test double for the suite: never shipped as an adapter.
-function fake(mode: "correct" | "no rollback" | "wrong error" | "no commit" | "bad update" | "ignores keys" | "ignores select key" | "ignores update key" | "ignores delete key" | "interleaves" | "closes while busy" | "allows nesting" | "poisoned queue" = "correct"): DataLayerFixture & { closed: () => boolean } {
+function fake(mode: "correct" | "no rollback" | "wrong error" | "no commit" | "bad update" | "ignores keys" | "ignores select key" | "ignores update key" | "ignores delete key" | "interleaves" | "closes while busy" | "allows nesting" | "poisoned queue" | "stays closed" = "correct"): DataLayerFixture & { closed: () => boolean } {
   let rows = new Map<unknown, Row>();
   let closed = false;
   const table = {};
@@ -13,7 +13,8 @@ function fake(mode: "correct" | "no rollback" | "wrong error" | "no commit" | "b
   let tail: Promise<void> = Promise.resolve();
   let pendingCount = 0;
   const execute = async <T>(run: (tx: DataOperations) => Promise<T>): Promise<T> => {
-      if (closed) throw new Error("closed");
+      if (closed && mode === "stays closed") throw new Error("closed");
+      closed = false;
       const pending = structuredClone(rows);
       const lookupKey = (key: Key, operation: "select" | "update" | "delete") =>
         mode === "ignores keys" || mode === `ignores ${operation} key` ? pending.keys().next().value : key.id;
@@ -87,6 +88,7 @@ test.each([
   ["no rollback", "rejected run rolls back every write and rethrows the same error", "rejected insert must roll back"],
   ["wrong error", "rejected run rolls back every write and rethrows the same error", "transaction must rethrow the same error"],
   ["no commit", "resolved run commits and returns its result", "resolved run must commit"],
+  ["stays closed", "a transaction after close reopens the layer", "closed"],
   ["bad update", "updateByKey changes and returns the stored row", "update must return changed row"],
 ] as const)("conformance detects %s and closes failed layer", async (mode, name, message) => {
   const fixture = fake(mode);

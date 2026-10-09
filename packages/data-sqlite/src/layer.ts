@@ -24,7 +24,10 @@ export interface SQLiteLayer extends DataAdapter, DataLayer {
    * that never settles holds the queue; close rejects with running/queued counts
    * and leaves the layer open rather than rolling back under a running callback.
    * A failed rollback is fatal: queued and later work rejects until the caller
-   * closes this layer. close() drops the native handle and
+   * closes this layer. For a file database, the reopened connection can still find
+   * the file locked until the old native handle is finalised by garbage collection
+   * (Bun.gc(true) forces it); until then a transaction fails with SQLITE_BUSY.
+   * close() drops the native handle and
    * its prepared statements, so a file database's write lock is released once that
    * handle is finalised (immediately after one Bun.gc(true), or at process exit).
    * Other failures release the queue. After close() the layer is unopened again:
@@ -74,7 +77,7 @@ export function sqlite(options: SQLiteOptions): SQLiteLayer {
   let db: BunSQLiteDatabase | undefined;
   let unusable: { transaction: unknown; rollback: unknown } | undefined;
   const healthError = () => unusable === undefined ? undefined : new FrameworkError(
-    "this data layer is unusable: a rollback failed, so its connection may still be inside a transaction. Close it; the next transaction opens a new connection.",
+    "this data layer is unusable: a rollback failed, so its connection may still be inside a transaction. Close it; the next transaction opens a new connection, which for a file database can find the file locked until the old connection is garbage-collected.",
     { cause: unusable },
   );
   let running = 0;

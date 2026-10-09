@@ -1,4 +1,4 @@
-import { describe, expect, spyOn, test } from "bun:test";
+import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -24,13 +24,17 @@ const secondRow = { ...sampleRow, id: "00000000-0000-4000-8000-000000000002", ti
 
 for (const kind of ["memory", "file"] as const) {
   describe(`${kind} database conformance`, () => {
+    // A closed layer may be reopened (one check does), so the folders go after the suite.
+    const dirs: string[] = [];
+    afterAll(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
     const checks = dataLayerConformance(async () => {
       const dir = kind === "file" ? mkdtempSync(join(tmpdir(), "mesh-sqlite-")) : undefined;
+      if (dir) dirs.push(dir);
       const layer = sqlite({ file: dir ? join(dir, "test.db") : ":memory:" });
       try { await createSchema(layer, { table }); }
       catch (error) { await layer.close(); if (dir) rmSync(dir, { recursive: true, force: true }); throw error; }
       return {
-        layer: { transaction: layer.transaction, close: async () => { await layer.close(); if (dir) rmSync(dir, { recursive: true, force: true }); } },
+        layer: { transaction: layer.transaction, close: layer.close },
         table, sampleRow, secondRow, key: { id: sampleRow.id }, secondKey: { id: secondRow.id },
         changes: { title: "Changed", active: true, at: new Date("2026-02-01T00:00:00.456Z") },
       };
@@ -277,7 +281,7 @@ test.each(["memory", "file"])("ROLLBACK failure fails closed for queued and late
         expect(result.reason.cause.transaction).toBe(transaction);
         expect(result.reason.cause.rollback).toBe(rollback);
         expect(result.reason.message).toBe(index === 0 ? "Transaction failed and ROLLBACK failed" :
-          "this data layer is unusable: a rollback failed, so its connection may still be inside a transaction. Close it; the next transaction opens a new connection.");
+          "this data layer is unusable: a rollback failed, so its connection may still be inside a transaction. Close it; the next transaction opens a new connection, which for a file database can find the file locked until the old connection is garbage-collected.");
       }
       await expect(layer.transaction(async () => { callbacks++; })).rejects.toThrow("this data layer is unusable");
       await expect(createSchema(layer, { table })).rejects.toThrow("this data layer is unusable");
