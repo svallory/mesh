@@ -74,8 +74,8 @@ declare module "@meshfw/data-sqlite" {
 
   export function sqlite(options: { file: string }): SqliteDataLayer;
 
-  /** Creates the tables of the emitted schema on this connection. Tests and development only. */
-  export function createSchema(dataLayer: SqliteDataLayer): Promise<void>;
+  /** Creates the tables of the emitted schema (`tables` from `#mesh`) on this connection. Tests and development only. */
+  export function createSchema(dataLayer: SqliteDataLayer, tables: Readonly<Record<string, object>>): Promise<void>;
 }
 
 declare module "@meshfw/data-postgres" {
@@ -219,6 +219,9 @@ declare module "#mesh" {
   export function connect(): Promise<void>;
   export function disconnect(): Promise<void>;
   export function bind(dataLayer: DataLayer): Bound;
+
+  /** The emitted schema's tables, for `createSchema(db, tables)`. */
+  export const tables: { readonly list: object; readonly todo: object };
 
   export const createList: Bound["createList"];
   export const readList: Bound["readList"];

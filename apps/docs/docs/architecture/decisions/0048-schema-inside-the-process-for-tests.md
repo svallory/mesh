@@ -143,7 +143,7 @@ Tests prepare the emitted schema on their own connection before calling bound ac
 
 ## Action items
 
-- [ ] M2: pin the accepted stable pair in the SQL adapter packages.
-- [ ] M2: isolate the push call and cast in one adapter function; dynamically import kit with an actionable missing-dependency error.
-- [ ] M2: test schema creation, insert and select on the same `:memory:` connection, plus missing drizzle-kit.
+- [x] M2: pin the accepted stable pair in the SQL adapter packages (`drizzle-orm@0.45.3`, `drizzle-kit@0.31.11`; PR #53).
+- [x] M2: isolate the push call and cast in one adapter function; dynamically import kit with an actionable missing-dependency error (`planSchemaPush`, shared by `createSchema(db, tables)` and `mesh db push`; PR #53).
+- [x] M2: test schema creation, insert and select on the same `:memory:` connection, plus missing drizzle-kit (PR #53).
 - [ ] Drizzle v1 release or M7: repeat the spike; use guarded emitted DDL if programmatic push remains unavailable.

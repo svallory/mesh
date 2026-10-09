@@ -20,12 +20,12 @@ Your application calls `connect()` once at start-up. A test does not: it binds i
 ```ts "test/todo.test.ts"
 import { expect, test } from "bun:test";
 import { createSchema, sqlite } from "@meshfw/data-sqlite";
-import { bind } from "#mesh";
+import { bind, tables } from "#mesh";
 import { alice } from "../src/context";
 
 test("a new todo starts pending", async () => {
   const db = sqlite({ file: ":memory:" });
-  await createSchema(db);
+  await createSchema(db, tables);
   const todo = bind(db);
 
   const list = await todo.createList({ name: "Groceries" }, { actor: alice });
@@ -43,7 +43,7 @@ Three lines of setup, and they are always the same three:
 | Line | Why |
 |:--|:--|
 | `sqlite({ file: ":memory:" })` | A private database. Two tests in the same file, and two test files, never see each other's rows |
-| `await createSchema(db)` | Creates the tables on **this** connection. `mesh db push` runs in another process and cannot reach a private in-memory database |
+| `await createSchema(db, tables)` | Creates the tables of the generated schema on **this** connection. `mesh db push` runs in another process and cannot reach a private in-memory database |
 | `bind(db)` | The action functions bound to it. `connect()` is not used, so nothing global changes and tests can run in parallel |
 
 You own the data layer you pass to `bind`, so you close it. `disconnect()` never touches one.
@@ -55,12 +55,12 @@ Actions return the record, or an array of records, typed from the entity file. A
 ```ts "test/todo.test.ts"
 import { expect, test } from "bun:test";
 import { createSchema, sqlite } from "@meshfw/data-sqlite";
-import { bind } from "#mesh";
+import { bind, tables } from "#mesh";
 import { alice } from "../src/context";
 
 test("completing a todo takes it out of the pending list", async () => {
   const db = sqlite({ file: ":memory:" });
-  await createSchema(db);
+  await createSchema(db, tables);
   const todo = bind(db);
 
   const list = await todo.createList({ name: "Groceries" }, { actor: alice });
@@ -87,12 +87,12 @@ Actions throw. Narrow the caught error before reading it, then assert on the cla
 import { expect, test } from "bun:test";
 import { createSchema, sqlite } from "@meshfw/data-sqlite";
 import { InvalidInputError } from "@meshfw/runtime";
-import { bind } from "#mesh";
+import { bind, tables } from "#mesh";
 import { alice } from "../src/context";
 
 test("a todo must have a title, and must not be completed twice", async () => {
   const db = sqlite({ file: ":memory:" });
-  await createSchema(db);
+  await createSchema(db, tables);
   const todo = bind(db);
 
   const list = await todo.createList({ name: "Groceries" }, { actor: alice });
@@ -122,12 +122,12 @@ An action that no policy covers is forbidden, and a policy that reads the stored
 import { expect, test } from "bun:test";
 import { createSchema, sqlite } from "@meshfw/data-sqlite";
 import { NotFoundError } from "@meshfw/runtime";
-import { bind } from "#mesh";
+import { bind, tables } from "#mesh";
 import { alice, bob } from "../src/context";
 
 test("another actor sees no todos and may not complete one", async () => {
   const db = sqlite({ file: ":memory:" });
-  await createSchema(db);
+  await createSchema(db, tables);
   const todo = bind(db);
 
   const list = await todo.createList({ name: "Groceries" }, { actor: alice });
@@ -146,12 +146,12 @@ For a write, `can` is the better thing to assert on, because it is data rather t
 ```ts "test/todo.test.ts"
 import { expect, test } from "bun:test";
 import { createSchema, sqlite } from "@meshfw/data-sqlite";
-import { bind } from "#mesh";
+import { bind, tables } from "#mesh";
 import { alice, bob } from "../src/context";
 
 test("another actor may not complete a todo", async () => {
   const db = sqlite({ file: ":memory:" });
-  await createSchema(db);
+  await createSchema(db, tables);
   const todo = bind(db);
 
   const list = await todo.createList({ name: "Groceries" }, { actor: alice });
