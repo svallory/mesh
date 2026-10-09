@@ -115,8 +115,8 @@ describe("typesView", () => {
     expect(view.inputs[0]!.members).toEqual([
       { name: "title", optional: false, key: "title", type: "string" },
       { name: "list", optional: false, key: "list", type: 'List["id"]' },
-      { name: "status", optional: true, key: "status?", type: '"draft" | "sent" | undefined' },
-      { name: "reason", optional: true, key: "reason?", type: "string | null | undefined" },
+      { name: "status", optional: true, key: "status", type: '"draft" | "sent" | undefined' },
+      { name: "reason", optional: true, key: "reason", type: "string | null | undefined" },
     ]);
   });
 
@@ -127,10 +127,10 @@ describe("typesView", () => {
 
   test("inputs: update members are optional patches after the required row selector", () => {
     const complete = types(documentOf(), "Todo").inputs.find((input) => input.name === "CompleteTodoInput")!;
-    expect(complete.members.map((m) => [m.key, m.type])).toEqual([
-      ["id", "string"],
-      ["title?", "string | undefined"],
-      ["count", "number"],
+    expect(complete.members.map((m) => [m.key, m.optional, m.type])).toEqual([
+      ["id", false, "string"],
+      ["title", true, "string | undefined"],
+      ["count", false, "number"],
     ]);
   });
 
@@ -139,7 +139,7 @@ describe("typesView", () => {
     entityOf(document, "Todo").relationships.find((r) => r.name === "list")!.nullable = true;
     const create = types(document, "Todo").inputs[0]!;
     expect(create.members.find((m) => m.name === "list")).toEqual({
-      name: "list", optional: true, key: "list?", type: 'List["id"] | null | undefined',
+      name: "list", optional: true, key: "list", type: 'List["id"] | null | undefined',
     });
   });
 

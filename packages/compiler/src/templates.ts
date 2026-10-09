@@ -1,5 +1,5 @@
-import { lstat, readFile } from "node:fs/promises";
-import type { Stats } from "node:fs";
+import { lstat, open, readFile } from "node:fs/promises";
+import { constants, type Stats } from "node:fs";
 import { join, resolve } from "node:path";
 import type { Generator } from "./emit.ts";
 import { emitError } from "./emit-error.ts";
@@ -31,21 +31,34 @@ export async function loadTemplates(generators: readonly Generator[], projectRoo
   if (folder && !folder.isDirectory()) throw readError(PROJECT_TEMPLATES_DIR, `"${PROJECT_TEMPLATES_DIR}" is not a directory; delete or move it`);
   for (const { template } of generators) {
     const path = `${PROJECT_TEMPLATES_DIR}/${template}`;
-    const info = folder ? await entry(join(projectRoot, path), path) : null;
-    if (info === null) {
+    const contents = folder ? await readOverride(join(projectRoot, path), path) : null;
+    if (contents === null) {
       const mesh = join(MESH_TEMPLATES_DIR, template);
       templates.set(template, { path: mesh, contents: await readFile(mesh, "utf8") });
-      continue;
-    }
-    if (info.isSymbolicLink()) throw readError(path, `The template "${path}" is a symlink; reading it would follow the link. Copy the file in instead`);
-    if (!info.isFile()) throw readError(path, `The template "${path}" is not a regular file; delete or move it`);
-    try {
-      templates.set(template, { path, contents: await readFile(join(projectRoot, path), "utf8") });
-    } catch (cause) {
-      throw readError(path, `Cannot read the template "${path}" (${errorCode(cause) ?? "UNKNOWN"}); fix its permissions`);
-    }
+    } else templates.set(template, { path, contents });
   }
   return templates;
+}
+
+/**
+ * Read a project template, or `null` when nothing is at its path. The file is opened
+ * with `O_NOFOLLOW` (and `O_NONBLOCK`, so a FIFO cannot hang the build) and checked through the open handle, so what is checked is what
+ * is read: no symlink is followed and nothing can be swapped in between.
+ */
+async function readOverride(absolute: string, path: string): Promise<string | null> {
+  let handle;
+  try { handle = await open(absolute, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK); }
+  catch (cause) {
+    const code = errorCode(cause);
+    if (code === "ENOENT") return null;
+    if (code === "ELOOP") throw readError(path, `The template "${path}" is a symlink; reading it would follow the link. Copy the file in instead`);
+    throw readError(path, `Cannot read the template "${path}" (${code ?? "UNKNOWN"}); fix its permissions`);
+  }
+  try {
+    if (!(await handle.stat()).isFile()) throw readError(path, `The template "${path}" is not a regular file; delete or move it`);
+    try { return await handle.readFile("utf8"); }
+    catch (cause) { throw readError(path, `Cannot read the template "${path}" (${errorCode(cause) ?? "UNKNOWN"}); fix its permissions`); }
+  } finally { await handle.close(); }
 }
 
 /** `lstat`, with a missing entry as `null`; any other failure is a read error. */

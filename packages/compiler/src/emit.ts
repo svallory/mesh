@@ -5,7 +5,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { isProjectRelativePath, type Diagnostic, type ModelDocument } from "@meshfw/model";
 import type { ResolvedConfig } from "./config.ts";
 import { errorCode, inside } from "./paths.ts";
-import { EmitError } from "./emit-error.ts";
+import { EmitError, emitError } from "./emit-error.ts";
 import { modelJsonEmitter } from "./emitters/model-json.ts";
 import { typesGenerator } from "./emitters/types.ts";
 import { validatorsGenerator } from "./emitters/validators.ts";
@@ -48,7 +48,9 @@ export interface Emitter {
 
 /** One file a generator writes: its project-relative path and the view its template renders. */
 export interface GeneratedView<View extends object> {
+  /** Project-relative path of the generated file, with `/` separators. */
   readonly path: string;
+  /** The plain data the generator's template renders into that file. */
   readonly view: View;
 }
 
@@ -68,6 +70,7 @@ export interface Generator<View extends object = object> {
   readonly template: string;
   /** Bare packages imported by generated code, resolved from the consumer root. */
   readonly requires?: readonly string[];
+  /** One view per generated file; pure and synchronous, throwing `EmitError` for a model it cannot render. */
   views(input: EmitInput): readonly GeneratedView<View>[];
 }
 
@@ -79,10 +82,25 @@ export async function renderGenerator<View extends object>(
 ): Promise<GeneratedFile[]> {
   const template: Template | undefined = templates.get(generator.template);
   if (!template) throw new Error(`No template "${generator.template}" for generator "${generator.name}"`);
-  return Promise.all(generator.views(input).map(async ({ path, view }) => ({
-    path,
-    contents: await formatTypescript(await renderTemplate(template, view, generator.name)),
-  })));
+  // One file at a time, in view order, so the first error reported is always the same one.
+  const files: GeneratedFile[] = [];
+  for (const { path, view } of generator.views(input)) {
+    const rendered = await renderTemplate(template, view, generator.name);
+    try {
+      files.push({ path, contents: await formatTypescript(rendered) });
+    } catch (cause) {
+      // A project template can print anything; text the formatter cannot parse is the
+      // template's error, named on the template, not an unpositioned build failure.
+      const reason = (cause instanceof Error ? cause.message : String(cause)).split("\n")[0];
+      throw emitError(
+        "MESH_TEMPLATE_RENDER",
+        `Generator "${generator.name}" cannot render ${template.path}: rendered output for ${path} is not valid TypeScript: ${reason}`,
+        { file: template.path, line: 1, column: 0, offset: 0 },
+        "Fix the template so that it prints valid TypeScript",
+      );
+    }
+  }
+  return files;
 }
 
 /** The emitters of the core build, in a fixed order. The result is sorted by path anyway. */

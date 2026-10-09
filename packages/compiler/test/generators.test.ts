@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel } from "../src/build.ts";
@@ -77,21 +77,33 @@ describe("MESH_TEMPLATE_RENDER", () => {
   });
 
   test("an unknown view field read at render time is positioned on its line", async () => {
-    const error = await renderError("a\nb\n{{ record.missing.name }}\n");
+    // Jig reports no column for an error raised while rendering, only the line: the
+    // expression is indented so that a real column would not read as 0.
+    const error = await renderError("a\nb\n  x {{ record.missing.name }}\n");
     expect(error.diagnostic.code).toBe("MESH_TEMPLATE_RENDER");
     expect(error.diagnostic.position).toEqual({ file: ".mesh-generators/types.ts.jig", line: 3, column: 0, offset: 0 });
     expect(error.diagnostic.message).toStartWith('Generator "types" cannot render .mesh-generators/types.ts.jig: ');
   });
 });
 
+test("output the formatter rejects is positioned on the template, naming the generator and the file", async () => {
+  const error = await renderError("const = ;\n");
+  expect(error.diagnostic.code).toBe("MESH_TEMPLATE_RENDER");
+  expect(error.diagnostic.position).toEqual({ file: ".mesh-generators/types.ts.jig", line: 1, column: 0, offset: 0 });
+  expect(error.diagnostic.message).toStartWith(
+    'Generator "types" cannot render .mesh-generators/types.ts.jig: rendered output for generated/todo/list.types.ts is not valid TypeScript: ',
+  );
+  expect(error.diagnostic.fix).toBe("Fix the template so that it prints valid TypeScript");
+});
+
 describe("templates only render", () => {
   // Acceptance 5 is reviewed; this pins the part that can be checked: a template
-  // uses only `@if`, `@each` and `@end`, and prints only view fields.
-  test("tags are @if/@each/@end on view fields; mustaches print a view field path", async () => {
+  // uses only `@if`, `@else`, `@each` and `@end`, and prints only view fields.
+  test("tags are @if/@else/@each/@end on view fields; mustaches print a view field path", async () => {
     for (const name of await readdir(MESH_TEMPLATES_DIR)) {
       const text = await readFile(join(MESH_TEMPLATES_DIR, name), "utf8");
       for (const line of text.split("\n").map((l) => l.trim()).filter((l) => l.startsWith("@")))
-        expect(line).toMatch(/^@(?:end|if\([a-z][A-Za-z.]*\)|each\([a-z]+ in [a-z][A-Za-z.]*\))$/);
+        expect(line).toMatch(/^@(?:end|else|if\([a-z][A-Za-z.]*\)|each\([a-z]+ in [a-z][A-Za-z.]*\))~?$/);
       for (const [, expression] of text.matchAll(/\{\{(.*?)\}\}/g))
         expect(expression!.trim()).toMatch(/^[a-z][A-Za-z]*(?:\.[a-z][A-Za-z]*)*$/);
     }
@@ -102,14 +114,18 @@ describe("acceptance 6: Jig stays in the compiler", () => {
   test("runtime, model, the CLI and the generated example never mention @jig-lang", async () => {
     const offenders: string[] = [];
     const walk = async (dir: string): Promise<void> => {
-      for (const entry of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
+      for (const entry of await readdir(dir, { withFileTypes: true })) {
         if (entry.name === "node_modules") continue;
         const path = join(dir, entry.name);
         if (entry.isDirectory()) await walk(path);
         else if (entry.isFile() && (await readFile(path, "utf8")).includes("@jig-lang")) offenders.push(path);
       }
     };
-    for (const dir of ["packages/runtime", "packages/model", "packages/cli", "examples/blog/.mesh"]) await walk(join(repo, dir));
+    for (const dir of ["packages/runtime", "packages/model", "packages/cli", "examples/blog/.mesh"]) {
+      // A missing root would pass vacuously: each must be a directory that is walked.
+      expect((await stat(join(repo, dir))).isDirectory()).toBe(true);
+      await walk(join(repo, dir));
+    }
     expect(offenders).toEqual([]);
   });
 

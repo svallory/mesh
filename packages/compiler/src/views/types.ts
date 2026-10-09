@@ -45,7 +45,7 @@ export interface RecordDeclaration {
 
 /** `export type <name> = { ... };` for an action input. */
 export interface TypeDeclaration {
-  /** The exported type's name, e.g. `Post` or `CreatePostInput`. */
+  /** The exported input type's name, e.g. `CreatePostInput`. */
   readonly name: string;
   /** True when the type has no members; it is then printed as a closed empty object, `[key: string]: never`. */
   readonly empty: boolean;
@@ -53,13 +53,13 @@ export interface TypeDeclaration {
   readonly members: readonly TypeMember[];
 }
 
-/** `<key>: <type>;` */
+/** `<key>: <type>;`, or `<key>?: <type>;` when `optional`. */
 export interface TypeMember {
   /** The authored attribute, argument or relationship name. */
   readonly name: string;
-  /** Whether the member may be omitted. */
+  /** Whether the member may be omitted; the template prints `?` after the key when true. Always false in a record. */
   readonly optional: boolean;
-  /** The property key as printed: the name, JSON-quoted when it is not an identifier, followed by `?` when optional. */
+  /** The property key as printed: the name, JSON-quoted when it is not an identifier. */
   readonly key: string;
   /** The TypeScript type as printed, with `| null` when nullable and `| undefined` when optional. */
   readonly type: string;
@@ -125,7 +125,7 @@ function member({ attribute, optional, reference }: PlannedField): TypeMember {
   return {
     name: attribute.name,
     optional,
-    key: `${propertyName(attribute.name)}${optional ? "?" : ""}`,
+    key: propertyName(attribute.name),
     type: `${type}${optional ? " | undefined" : ""}`,
   };
 }

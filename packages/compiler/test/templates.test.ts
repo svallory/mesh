@@ -71,6 +71,15 @@ describe("MESH_TEMPLATE_READ", () => {
     expect(error.diagnostic.message).toContain("is a symlink");
   });
 
+  test("a FIFO at the template's path is refused without blocking", async () => {
+    const root = await projectRoot();
+    await mkdir(join(root, ".mesh-generators"));
+    expect(Bun.spawnSync(["mkfifo", join(root, ".mesh-generators/types.ts.jig")]).exitCode).toBe(0);
+    const error = await readError(root);
+    expect(error.diagnostic.position).toEqual(at(".mesh-generators/types.ts.jig"));
+    expect(error.diagnostic.message).toBe('The template ".mesh-generators/types.ts.jig" is not a regular file; delete or move it');
+  });
+
   test("a symlinked .mesh-generators/ is refused", async () => {
     const root = await projectRoot();
     await mkdir(join(root, "elsewhere"));

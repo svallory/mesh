@@ -12,6 +12,7 @@ import { emitError } from "./emit-error.ts";
 export interface Template {
   /** Where the template was read from: project-relative for a project's override, absolute for Mesh's own. */
   readonly path: string;
+  /** The template's text, as read. */
   readonly contents: string;
 }
 

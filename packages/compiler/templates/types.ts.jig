@@ -17,7 +17,11 @@ export type {{ input.name }} = {
   [key: string]: never;
   @end
   @each(member in input.members)
+  @if(member.optional)~
+  {{ member.key }}?: {{ member.type }};
+  @else~
   {{ member.key }}: {{ member.type }};
+  @end~
   @end
 };
 
