@@ -190,7 +190,7 @@ const recordMembers = (resource: Resource): string[] =>
 
 /**
  * One input type per action, in the shape the live action spec gives
- * (`calling-actions.md`, "Signatures" and "Inputs"):
+ * (`using-your-domain.md`, "Signatures" and "Inputs"):
  * - `create`: exactly the accepted attributes, required unless the attribute allows
  *   nil or carries a default, because the runtime can supply either.
  * - `update`: `{ id, ...accepted }`; the selector is required, every accepted
