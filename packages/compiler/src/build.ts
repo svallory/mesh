@@ -739,7 +739,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
       diagnostics.push(
         error(
           "MESH_DUPLICATE_ENTITY",
-          `Duplicate entity :${entity.name} in module ${JSON.stringify(entity.module)}; first declared in ${identities.get(identity)}`,
+          `Duplicate entity :${entity.name} ${entity.module ? `in module ${JSON.stringify(entity.module)}` : "at the domain root"}; first declared in ${identities.get(identity)}`,
           entity.position,
         ),
       );
