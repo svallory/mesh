@@ -229,7 +229,7 @@ entity :Todo
 
 Add `nullable` to a `belongs-to` when a related row is optional. A caller sets the relationship through `&list` in `input`, sending the list's id. The entity file names the relationship, never its generated key column; [Using your domain](./using-your-domain.md#relationship-input-and-record-fields) explains the TypeScript surface.
 
-The other side is not automatic. The list knows nothing about its todos until `list.mesh.mx` imports `Todo` and declares `has-many :todos entity=Todo`.
+Two entity files may import each other: `todo.mesh.mx` imports `List` while `list.mesh.mx` imports `Todo`. The other side is not automatic. The list knows nothing about its todos until `list.mesh.mx` imports `Todo` and declares `has-many :todos entity=Todo`.
 
 ## computed
 
@@ -346,6 +346,64 @@ The atom after `check` names the rule and is the label the caller sees. Name wha
 
 A failed check throws `InvalidInputError`, whose own code is always `invalid_input`. Each failure has its own entry in `error.issues`, with the label, code, message and source position of the check. Several checks may fail in one call.
 
+#### A check that reads a related record
+
+A check may read through a `belongs-to`, including a rollup on the related entity. This one limits a free-plan owner to 20 todos:
+
+```mx "src/domain/todo/todo.mesh.mx"
+import { User } from "./user.mesh.mx"
+
+entity :Todo
+  attributes
+    uuid :id primary-key
+    string :title min=1
+
+  relationships
+    belongs-to :owner entity=User
+
+  actions
+    create :create
+      input
+        &title
+        &owner
+      validate
+        check :underQuota [
+          that=() => &owner.todoCount < 20
+          when=() => &owner.plan === :free
+          code="quota_exceeded"
+          message="free plan allows 20 todos"
+        ]
+```
+
+`&owner.todoCount` is a related read. It runs inside the transaction, as a policy's related-row read does. The rollup lives on `User`, which also holds the `plan` that `when` compares with an atom. That comparison works because `plan` is an [`enum`](#the-types).
+
+```mx "src/domain/todo/user.mesh.mx"
+import { Todo } from "./todo.mesh.mx"
+
+entity :User
+  attributes
+    uuid :id primary-key
+    string :name min=1
+    enum :plan values=[:free, :paid] default=:free
+
+  relationships
+    has-many :todos entity=Todo
+
+  computed
+    count :todoCount of="todos"
+
+  actions
+    create :create
+      input
+        &name
+
+  policies
+    policy :self types=[:read, :update]
+      authorize-if=({ actor }) => &id === actor.id
+```
+
+**Check or policy.** A rule about the data, such as a quota, a date or a total, is a check: it reports a code and a message. A rule about who is calling, such as a plan tier or a role, is a policy. The owner is usually the caller, so `authorize-if=({ actor }) => actor.plan === "paid"` reads the actor and costs no query. `actor` is your program's object, not a member, so the comparison uses a string: an atom is only compared with an `enum` field.
+
 ### do
 
 Steps run top to bottom after validation. Each sees the record as earlier steps left it.
@@ -449,7 +507,7 @@ Run `mesh inspect Todo` to see the declarations with source positions, and `mesh
 
 | Where | The record is |
 |:--|:--|
-| a check in `validate` | The record with member inputs applied: caller values for supplied fields, stored values for omitted ones, defaults on create; nothing from `do` yet |
+| a check in `validate` | The record with member inputs applied: caller values for supplied fields, stored values for omitted ones, defaults on create; nothing from `do` yet. Related records (`&owner.todoCount`) are read on demand |
 | a step in `do` | The record as earlier steps left it |
 | a filter on a read | Each row the query considers |
 | a policy on a read | The row |
