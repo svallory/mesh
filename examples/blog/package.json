@@ -8,6 +8,8 @@
     "#mesh": "./.mesh/index.ts"
   },
   "scripts": {
+    "start": "bun run src/main.ts",
+    "test": "mesh build --check && bun test",
     "typecheck": "tsc --noEmit",
     "validate": "mesh build --check",
     "db:push": "mesh db push"

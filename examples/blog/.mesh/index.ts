@@ -16,7 +16,7 @@ import type {
   DestroyPostInput,
 } from "./blog/post.types";
 import { bindUser } from "./blog/user.actions";
-import type { User, ReadUserInput } from "./blog/user.types";
+import type { User, CreateUserInput, ReadUserInput } from "./blog/user.types";
 
 export type {
   Comment,
@@ -29,6 +29,7 @@ export type {
   ReadPostInput,
   DestroyPostInput,
   User,
+  CreateUserInput,
   ReadUserInput,
 };
 export { tables, commentTable, postTable, userTable } from "./schema";
@@ -49,6 +50,7 @@ export function bind(layer: DataLayer) {
     publishedPost: post.published,
     readPost: post.read,
     destroyPost: post.destroy,
+    createUser: user.create,
     readUser: user.read,
   });
 }
@@ -145,6 +147,13 @@ export async function destroyPost(
   ...context: ContextArgument
 ): Promise<void> {
   return connected("destroyPost").destroyPost(input, ...context);
+}
+
+export async function createUser(
+  input: CreateUserInput,
+  ...context: ContextArgument
+): Promise<User> {
+  return connected("createUser").createUser(input, ...context);
 }
 
 export async function readUser(input: ReadUserInput, ...context: ContextArgument): Promise<User[]> {

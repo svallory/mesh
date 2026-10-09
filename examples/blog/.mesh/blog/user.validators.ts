@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 
-import type { ReadUserInput } from "./user.types";
+import type { CreateUserInput, ReadUserInput } from "./user.types";
 
 type Keys<T> = T extends Record<string, never> ? never : keyof T;
 
@@ -18,6 +18,14 @@ type SameShape<A, B> = [Keys<A>] extends [Keys<B>]
   : false;
 
 type Assert<T extends true> = T;
+
+export const createUserInput = z.strictObject({
+  name: z.string(),
+}) satisfies z.ZodType<CreateUserInput>;
+
+export type CreateUserInputShape = Assert<
+  SameShape<z.output<typeof createUserInput>, CreateUserInput>
+>;
 
 export const readUserInput = z.strictObject({}) satisfies z.ZodType<ReadUserInput>;
 

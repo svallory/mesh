@@ -6,6 +6,10 @@ export type User = {
   name: string;
 };
 
+export type CreateUserInput = {
+  name: string;
+};
+
 export type ReadUserInput = {
   [key: string]: never;
 };

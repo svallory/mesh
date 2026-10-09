@@ -615,7 +615,34 @@
       "table": "posts"
     },
     {
-      "actions": [],
+      "actions": [
+        {
+          "do": [],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "name",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/blog/user.mesh.mx",
+                  "line": 8,
+                  "offset": 144
+                }
+              }
+            }
+          ],
+          "kind": "create",
+          "name": "create",
+          "position": {
+            "column": 4,
+            "file": "src/domain/blog/user.mesh.mx",
+            "line": 6,
+            "offset": 109
+          },
+          "validate": []
+        }
+      ],
       "always": [],
       "attributes": [
         {
