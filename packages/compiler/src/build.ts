@@ -48,6 +48,7 @@ import {
   attrOffset,
   declaredName,
   expression,
+  isMemberLine,
   nodeOf,
   readAt,
   readMember,
@@ -188,7 +189,24 @@ function buildEntity(
     return ref;
   };
   const expr = (a: DataAttr | undefined): Expression =>
-    expression(a, source, at, (ref) => checkRef(ref, "expression"));
+    expression(
+      a,
+      source,
+      at,
+      (ref) => checkRef(ref, "expression"),
+      ({ ref, position }) =>
+        fail(
+          "MESH_MEMBER_ASSIGN",
+          `\`&${ref.name}\` cannot be assigned inside an expression; use a \`set\` line`,
+          position,
+        ),
+    );
+  const authoredMember = (line: DataTag) =>
+    fail(
+      "MESH_SYNTAX",
+      "`<member>` is not a known tag: write a member line as `&name`",
+      line,
+    );
   const applyOptions = (tag: DataTag) => {
     const result: Pick<
       Attribute,
@@ -383,10 +401,15 @@ function buildEntity(
         return {
           kind: "set",
           assignments: tags(tag.children).flatMap((line) => {
+            if (!isMemberLine(line)) { authoredMember(line); return []; }
             const read = readAt(line, at, () => readMemberLine(line, at));
             if (read.diagnostic) { diagnostics.push(read.diagnostic); return []; }
             const member = read.value;
             checkRef(member.ref, "set");
+            if (!member.value) {
+              fail("MESH_MEMBER_LINE_OPTIONS", `\`&${member.ref.name}\` under \`set\` needs a value: \`&${member.ref.name}=…\``, line);
+              return [];
+            }
             const value = readAt(line, at, () => {
               const n = nodeOf(member.value);
               if (n && ["ArrowFunctionExpression", "FunctionExpression"].includes(n.type)) return expr(member.value);
@@ -469,7 +492,8 @@ function buildEntity(
         tags(tag.children).find((t) => t.name === "input")?.children ?? [],
       )) {
         let field: InputField;
-        if (line.name.startsWith("&")) {
+        if (line.name === "member") {
+          if (!isMemberLine(line)) { authoredMember(line); continue; }
           const read = readAt(line, at, () => readMemberLine(line, at));
           if (read.diagnostic) { diagnostics.push(read.diagnostic); continue; }
           const member = read.value;
@@ -683,17 +707,9 @@ export function buildModel(project: ProjectDescription): BuildResult {
           other.message.startsWith(`\`<${denied}>\` is not a known tag:`));
       }).map((d): Diagnostic => {
         const coded = /\b(MESH_[A-Z_]+): (.*)/s.exec(d.message);
-        // @mxlang/data alpha.11 diagnostics carry no code or tag position, so a
-        // member line with bad options is recognised by MX's message wording
-        // ("`<&name>` (inline contract): missing required attribute `value`").
-        // test/fix2.test.ts pins that wording and fails if MX rewords it.
-        const memberOptions =
-          /`<&[A-Za-z_][A-Za-z0-9_]*>`.*(?:unknown attribute|missing required attribute)/.test(d.message);
         return {
           severity: d.severity,
-          code:
-            coded?.[1] ??
-            (memberOptions ? "MESH_MEMBER_LINE_OPTIONS" : "MESH_SYNTAX"),
+          code: coded?.[1] ?? "MESH_SYNTAX",
           message: coded?.[2] ?? d.message,
           position: { file, line: d.line, column: d.column, offset: d.offset },
           fix: null,

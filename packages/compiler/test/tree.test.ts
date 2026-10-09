@@ -1,109 +1,111 @@
 import { expect, test } from "bun:test";
-import { parseExpression } from "@babel/parser";
-import type { DataAttr, DataTag } from "@mxlang/data/tree";
+import { parseData } from "@mxlang/data";
+import type { DataNode, DataTag } from "@mxlang/data/tree";
 import { positionAt } from "../src/build.ts";
+import { MESH_SYNTAX } from "../src/syntax.ts";
 import {
+  attr,
   expression,
-  readAt,
+  isMemberLine,
   readMember,
   readMemberLine,
   readMembers,
-  type MemberAttribute,
-  type SyntaxNode,
+  type MemberAssignment,
 } from "../src/tree.ts";
 
-const source = "asc &dueOn";
-const span = { sourceStart: 4, sourceEnd: 10 };
-const at = (offset: number) => positionAt(source, "todo.mesh.mx", offset);
-const mark = (node: unknown, name = "dueOn") => {
-  (node as SyntaxNode).extra = { mxMember: { name, span } };
-  return node;
-};
-function dynamic(text: string): Extract<DataAttr, { kind: "expression" }> {
-  return {
-    kind: "expression",
-    name: "value",
-    nameSpan: { sourceStart: 0, sourceEnd: 1 },
-    value: { code: text, shape: "other", span, node: parseExpression(text) },
-  };
+// Real lowered trees from MESH_SYNTAX (no contracts): the readers take members
+// from MX's shapes only, never from `code` or the text.
+const tagsOf = (nodes: readonly DataNode[]) =>
+  nodes.filter((n): n is DataTag => n.kind === "tag");
+function lowered(source: string) {
+  const result = parseData(source, "todo.mesh.mx", { syntax: MESH_SYNTAX });
+  expect(result.diagnostics).toEqual([]);
+  const at = (offset: number) => positionAt(source, "todo.mesh.mx", offset);
+  return { root: tagsOf(result.tree!.children)[0]!, at };
 }
 
-test("MX addendum: after-kind DataAttr member uses value, not attribute name", () => {
-  const attribute: MemberAttribute = {
-    kind: "member",
-    name: "member",
-    value: "dueOn",
-    span,
-  };
-  expect(readMember(attribute, at)).toEqual({ name: "dueOn", position: at(4) });
-  expect(
-    readMember(
-      { ...attribute, nameSpan: { sourceStart: 0, sourceEnd: 3 } },
-      at,
-    ),
-  ).toEqual({ name: "dueOn", position: at(4) });
+test("after a kind: the { kind: \"member\" } attribute's value, positioned at the &", () => {
+  const { root, at } = lowered("sort\n  asc &dueOn\n");
+  const asc = tagsOf(root.children)[0]!;
+  expect(readMember(attr(asc, "member"), at)).toEqual({ name: "dueOn", position: at(11) });
 });
 
-test("MX addendum: marked member expressions and arrays carry authored token spans", () => {
-  const single = dynamic("self.dueOn");
-  mark(single.value.node);
-  expect(readMember(single, at)).toEqual({ name: "dueOn", position: at(4) });
-  const list = dynamic("[self.dueOn, self.title]");
-  const elements = (list.value.node as unknown as SyntaxNode).elements!;
-  mark(elements[0]);
-  mark(elements[1], "title");
-  expect(readMembers(list, at).map((ref) => ref.name)).toEqual([
-    "dueOn",
-    "title",
+test("whole value: on:load=&visible is one marked member", () => {
+  const { root, at } = lowered("actions on:load=&visible\n");
+  expect(readMember(attr(root, "on:load"), at)).toEqual({ name: "visible", position: at(16) });
+});
+
+test("arrays of marked members; unmarked values are refused", () => {
+  const { root, at } = lowered("always actions=[&publish, &archive] other=[self.x] one=(self.x)\n");
+  expect(readMembers(attr(root, "actions"), at)).toEqual([
+    { name: "publish", position: at(16) },
+    { name: "archive", position: at(26) },
   ]);
-  expect(() => readMember(dynamic("self.dueOn"), at)).toThrow(
-    "Expected a member reference",
-  );
-  expect(() => readMembers(dynamic('["dueOn"]'), at)).toThrow(
-    "Expected a member reference",
-  );
+  expect(() => readMembers(attr(root, "other"), at)).toThrow("Expected a member reference");
+  expect(() => readMember(attr(root, "one"), at)).toThrow("Expected a member reference");
 });
 
-test("MX addendum: expression source uses authored text, params and marked references", () => {
-  const value = dynamic("({ self, actor }) => self.dueOn === actor.id");
-  const body = (value.value.node as unknown as { body: { left: unknown } })
-    .body;
-  mark(body.left);
-  Object.assign(value.value, {
-    text: "({ self, actor }) => &dueOn === actor.id",
-  });
+test("expressions: authored source, destructured params, every marked member", () => {
+  const source = "boolean :ok value=(({ self, actor }) => &author.id === actor.id && [&title].length > 0)\n";
+  const { root, at } = lowered(source);
   const names: string[] = [];
-  expect(expression(value, source, at, (ref) => names.push(ref.name))).toEqual({
-    source: "({ self, actor }) => &dueOn === actor.id",
+  const result = expression(attr(root, "value"), source, at, (ref) => names.push(ref.name));
+  expect(result).toEqual({
+    source: "({ self, actor }) => &author.id === actor.id && [&title].length > 0",
     params: ["self", "actor"],
-    position: at(4),
+    position: at(19),
   });
-  expect(names).toEqual(["dueOn"]);
+  expect(names).toEqual(["author", "title"]);
 });
 
-test("MX addendum: promised tagless member line and provisional line share one reader", () => {
-  const tag: DataTag = {
-    kind: "tag",
-    name: "member",
-    attrs: [{ kind: "string", name: "name", value: "dueOn", valueSpan: span }],
-    args: [],
-    params: [],
-    attrTags: [],
-    children: [],
-    nameSpan: span,
-    span,
-  };
-  const expected = { ref: { name: "dueOn", position: at(4) }, options: false };
-  expect(() => readMemberLine(tag, at)).toThrow("Expected a tagless member line");
-  expect(readMemberLine(tag, at, true)).toEqual(expected);
-  expect(readMemberLine({ ...tag, name: "&dueOn", attrs: [] }, at)).toEqual(
-    expected,
+test("method shorthand bodies are walked", () => {
+  const source = "boolean :isOverdue() { return &status === :sent }\n";
+  const { root, at } = lowered(source);
+  const names: string[] = [];
+  expression(attr(root, "value"), source, at, (ref) => names.push(ref.name));
+  expect(names).toEqual(["status"]);
+});
+
+// [body, the assignment's authored start, the members it writes]
+test.each([
+  ["() => { &a = 1; return true }", "&a = 1", ["a"]],
+  ["() => { &a += 1; return true }", "&a += 1", ["a"]],
+  ["() => { &a++; return true }", "&a++", ["a"]],
+  ["() => { [&a, &b] = [1, 2]; return true }", "[&a, &b] =", ["a", "b"]],
+  ["() => { for (&a of [1]) {} return true }", "for (", ["a"]],
+] as const)("assignments to a member are reported at the assignment: %s", (body, start, names) => {
+  const source = `check value=(${body})\n`;
+  const { root, at } = lowered(source);
+  const assignments: MemberAssignment[] = [];
+  expression(attr(root, "value"), source, at, () => {}, (a) => assignments.push(a));
+  expect(assignments).toEqual(
+    names.map((name) => ({
+      ref: { name, position: at(source.indexOf(`&${name}`)) },
+      position: at(source.indexOf(start)),
+    })),
   );
-  const malformed = { ...tag, attrs: [] };
-  expect(readAt(malformed, at, () => readMemberLine(malformed, at, true))).toMatchObject({
-    diagnostic: { code: "MESH_MODEL_SHAPE", position: at(4) },
-  });
-  const value = dynamic("() => 1");
-  tag.attrs.push(value);
-  expect(readMemberLine(tag, at, true)).toEqual({ ...expected, value });
+});
+
+test.each([
+  "() => &a === 1",
+  "() => { const x = &a; return x === 1 }",
+  "() => { let x = 0; x = &a; return x }",
+  "(x = &a) => x",
+])("reading a member is not an assignment: %s", (body) => {
+  const source = `check value=(${body})\n`;
+  const { root, at } = lowered(source);
+  const assignments: MemberAssignment[] = [];
+  expression(attr(root, "value"), source, at, () => {}, (a) => assignments.push(a));
+  expect(assignments).toEqual([]);
+});
+
+test("tagless lines are lowered member tags; an authored member tag is not", () => {
+  const source = 'set\n  &dueOn\n  &done=true\n  member name="title" value=1\n';
+  const { root, at } = lowered(source);
+  const [dueOn, done, authored] = tagsOf(root.children);
+  expect(isMemberLine(dueOn!)).toBe(true);
+  expect(readMemberLine(dueOn!, at)).toEqual({ ref: { name: "dueOn", position: at(6) } });
+  expect(readMemberLine(done!, at)).toMatchObject({ ref: { name: "done" }, value: { kind: "boolean", name: "value" } });
+  expect(isMemberLine(authored!)).toBe(false);
+  expect(() => readMemberLine(authored!, at)).toThrow("Expected a tagless member line");
 });
