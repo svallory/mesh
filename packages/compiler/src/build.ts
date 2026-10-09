@@ -676,6 +676,10 @@ export function buildModel(project: ProjectDescription): BuildResult {
           other.message.startsWith(`\`<${denied}>\` is not a known tag:`));
       }).map((d): Diagnostic => {
         const coded = /\b(MESH_[A-Z_]+): (.*)/s.exec(d.message);
+        // @mxlang/data alpha.11 diagnostics carry no code or tag position, so a
+        // member line with bad options is recognised by MX's message wording
+        // ("`<&name>` (inline contract): missing required attribute `value`").
+        // test/fix2.test.ts pins that wording and fails if MX rewords it.
         const memberOptions =
           /`<&[A-Za-z_][A-Za-z0-9_]*>`.*(?:unknown attribute|missing required attribute)/.test(d.message);
         return {
