@@ -1,6 +1,6 @@
 import type { AttributeType, Entity } from "@meshfw/model";
 import type { EmitInput } from "../emit.ts";
-import { entityInputs, entitySegment, propertyName, type FieldShape } from "../emitters/resource-types.ts";
+import { entityInputs, entitySegment, propertyName, type FieldShape } from "./inputs.ts";
 import { entityFileComment } from "./types.ts";
 
 /**

@@ -9,7 +9,7 @@ import {
   typeName,
   valueType,
   type PlannedField,
-} from "../emitters/resource-types.ts";
+} from "./inputs.ts";
 
 /**
  * What `types.ts.jig` renders for one entity: the record type and one input type per

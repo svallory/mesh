@@ -8,6 +8,10 @@
     ".": "./src/index.ts",
     "./contracts": "./src/contracts.ts"
   },
+  "files": [
+    "src",
+    "templates"
+  ],
   "description": "Mesh entity-file syntax v4 as MX CustomTag contracts",
   "scripts": {
     "test": "bun test",
