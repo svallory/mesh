@@ -1,4 +1,3 @@
-import { NotFoundError } from "@meshfw/runtime";
 import { connect, createPost, createUser, destroyPost, disconnect, publishPost, readPost } from "#mesh";
 import { alice } from "./context";
 
@@ -15,7 +14,8 @@ await destroyPost({ id: post.id }, { actor: alice });
 try {
   await publishPost({ id: post.id }, { actor: alice });
 } catch (error) {
-  if (!(error instanceof NotFoundError)) throw error;
+  // Every Mesh error carries a `code`, so the program needs nothing but #mesh to tell them apart.
+  if (!(error instanceof Error && "code" in error && error.code === "not_found")) throw error;
   console.log(error.code);
 }
 

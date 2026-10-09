@@ -83,7 +83,7 @@ The function body holds the lifecycle steps in order: validate input, open a tra
 
 A reader should expect to see:
 
-- The action context as the required second argument, typed `ActionContext` ([ADR-0059](../decisions/0059-action-context.md)). A call without one is a type error (M2, acceptance test 5).
+- The action context as the second argument, typed `ActionContext` and spread as `...[context]: ContextArgument`: optional until the project's merged `ActionContext` has a required key, then required ([ADR-0059](../decisions/0059-action-context.md)). With a required key, a call without one is a type error (M2, acceptance test 5).
 - Checks and steps as TypeScript. Translated expressions have an in-memory form emitted here; block bodies are the authored text sliced from the entity file (M4).
 - For atomic updates, the `set` values folded into the `UPDATE` statement; for read-then-write actions, read the row with a write lock, run `validate` and `do` in memory, write, in one transaction. The build chooses which from the body ([ADR-0054](../decisions/0054-write-strategy-is-inferred.md); M5).
 - Calls to the data-layer contract and never to Drizzle (M2).
@@ -108,7 +108,7 @@ If handlers become unreadable, the point of the ruling is lost (section 9, risk 
 Checked by `verify` from M2 ([roadmap](../roadmap/roadmap.md), M2, acceptance test 4):
 
 - Nothing in `runtime` imports `model`, `compiler` or Drizzle.
-- No generated handler imports them or `model.json`.
+- No generated handler imports them or `model.json`. Generated files import only `@meshfw/runtime`, `zod`, each other, the adapter's `schema.ts` and, in `index.ts` only, `mesh.config.ts`, which `connect()` loads at run time (so the config imports `defineConfig` from `@meshfw/runtime`).
 - Drizzle is imported only under `packages/data-*` and in the emitted schema file.
 
 Reasons are in [three-rings.md](./three-rings.md).

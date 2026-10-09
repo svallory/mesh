@@ -119,7 +119,7 @@ export function checkGeneratedImports(root: string): string[] {
     const schema = /(?:^|\/)\.mesh\/schema\.ts$/.test(path);
     const forbidden = schema ? /@meshfw\/model|@meshfw\/compiler|model\.json/g : /@meshfw\/model|@meshfw\/compiler|model\.json|drizzle-[a-z]+/g;
     return [...source.matchAll(forbidden)].map((match) =>
-      `${path}:${source.slice(0, match.index).split(/\r\n|\r|\n/).length}: Generated code must not import ${match[0]} (roadmap M2, acceptance 4); it imports only @meshfw/runtime, zod and its sibling files`);
+      `${path}:${source.slice(0, match.index).split(/\r\n|\r|\n/).length}: Generated code must not import ${match[0]} (roadmap M2, acceptance 4); it imports only @meshfw/runtime, zod, its sibling files, the adapter's schema.ts and (index.ts only) ../mesh.config`);
   });
 }
 

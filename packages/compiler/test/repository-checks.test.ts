@@ -235,7 +235,7 @@ test.each(["@meshfw/model", "@meshfw/compiler", "model.json", "drizzle-orm", "dr
       const paths = ["examples/blog/.mesh/index.ts", "examples/blog/.mesh/blog/post.actions.ts", "apps/demo/.mesh/x/y.validators.js"];
       for (const path of paths) put(path, `// Do not edit\n// ${name}`);
       expect(checkGeneratedImports(dir)).toEqual(paths.sort().map((path) =>
-        `${path}:2: Generated code must not import ${name} (roadmap M2, acceptance 4); it imports only @meshfw/runtime, zod and its sibling files`));
+        `${path}:2: Generated code must not import ${name} (roadmap M2, acceptance 4); it imports only @meshfw/runtime, zod, its sibling files, the adapter's schema.ts and (index.ts only) ../mesh.config`));
     });
   },
 );
@@ -247,7 +247,7 @@ test("M2 test 4: the emitted schema may import Drizzle but not the build half; m
     put("examples/blog/src/main.ts", 'import "@meshfw/model";');
     put("examples/blog/node_modules/x/.mesh/index.ts", 'import "@meshfw/model";');
     expect(checkGeneratedImports(dir)).toEqual([
-      "examples/blog/.mesh/schema.ts:2: Generated code must not import @meshfw/compiler (roadmap M2, acceptance 4); it imports only @meshfw/runtime, zod and its sibling files",
+      "examples/blog/.mesh/schema.ts:2: Generated code must not import @meshfw/compiler (roadmap M2, acceptance 4); it imports only @meshfw/runtime, zod, its sibling files, the adapter's schema.ts and (index.ts only) ../mesh.config",
     ]);
   });
 });
