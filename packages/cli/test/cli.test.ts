@@ -180,7 +180,6 @@ test.each([[], ["unknown"], ["build", "--unknown"], ["build", "extra"], ["inspec
 });
 
 test.each([
-  { args: ["export", "generators"], milestone: "round 3" },
   { args: ["init"], milestone: "not scheduled" },
   { args: ["explain", "todo", "create"], milestone: "M5" },
   { args: ["db", "push"], milestone: "M2" },
@@ -410,5 +409,80 @@ describe("roadmap Jig port, acceptance 4: a project template overrides Mesh's", 
       expect(result.code).toBe(1);
       expect(result.stderr).toStartWith('.mesh-generators/validators.ts.jig:1:1 error The template ".mesh-generators/validators.ts.jig" is not a regular file');
     }
+  });
+});
+
+describe("mesh export generators (roadmap Jig port, acceptance 3)", () => {
+  const templates = join(repo, "packages/compiler/templates");
+  const names = ["types.ts.jig", "validators.ts.jig"];
+  const summary = "0 errors, 0 warnings\n";
+
+  test("writes every template Mesh ships, then a second run is a no-op", async () => {
+    const root = await project();
+    expect(run(root, "export", "generators")).toEqual({ code: 0, stderr: summary,
+      stdout: names.map((name) => `wrote .mesh-generators/${name}\n`).join("") });
+    expect((await readdir(join(root, ".mesh-generators"))).sort()).toEqual(names);
+    for (const name of names)
+      expect(await readFile(join(root, ".mesh-generators", name), "utf8")).toBe(await readFile(join(templates, name), "utf8"));
+    expect(run(root, "export", "generators")).toEqual({ code: 0, stderr: summary,
+      stdout: "nothing to export: .mesh-generators/ already holds Mesh's templates\n" });
+    // The exported copies are Mesh's templates, so the build output is unchanged.
+    expect(run(root, "build")).toEqual({ code: 0, stdout: "", stderr: summary });
+  });
+
+  test("writes only the absent templates when the others are identical", async () => {
+    const root = await project();
+    await mkdir(join(root, ".mesh-generators"));
+    await writeFile(join(root, ".mesh-generators/types.ts.jig"), await readFile(join(templates, "types.ts.jig")));
+    expect(run(root, "export", "generators")).toEqual({ code: 0, stderr: summary, stdout: "wrote .mesh-generators/validators.ts.jig\n" });
+  });
+
+  test("a differing template stops the export: nothing is written, the file is listed, exit 1", async () => {
+    const root = await project();
+    await mkdir(join(root, ".mesh-generators"));
+    await writeFile(join(root, ".mesh-generators/validators.ts.jig"), "// mine\n");
+    expect(run(root, "export", "generators")).toEqual({ code: 1, stdout: "",
+      stderr: ".mesh-generators/validators.ts.jig:1:1 error Differs from Mesh's template; nothing was exported. Move your template aside to export Mesh's, or keep it and export nothing\n1 error, 0 warnings\n" });
+    expect(await readdir(join(root, ".mesh-generators"))).toEqual(["validators.ts.jig"]);
+    expect(await readFile(join(root, ".mesh-generators/validators.ts.jig"), "utf8")).toBe("// mine\n");
+  });
+
+  test.each(["template", "folder"])("a symlinked %s is refused and not followed", async (kind) => {
+    const root = await project();
+    await mkdir(join(root, "elsewhere"));
+    if (kind === "folder") await symlink(join(root, "elsewhere"), join(root, ".mesh-generators"));
+    else {
+      await mkdir(join(root, ".mesh-generators"));
+      await symlink(join(root, "elsewhere/types.ts.jig"), join(root, ".mesh-generators/types.ts.jig"));
+    }
+    const result = run(root, "export", "generators");
+    expect(result.code).toBe(1);
+    expect(result.stderr).toStartWith(kind === "folder" ? ".mesh-generators:1:1 error" : ".mesh-generators/types.ts.jig:1:1 error Is a symlink");
+    expect(await readdir(join(root, "elsewhere"))).toEqual([]);
+    if (kind === "template") expect(await Bun.file(join(root, ".mesh-generators/validators.ts.jig")).exists()).toBe(false);
+  });
+
+  test("a directory at a template's path is refused", async () => {
+    const root = await project();
+    await mkdir(join(root, ".mesh-generators/types.ts.jig"), { recursive: true });
+    const result = run(root, "export", "generators");
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain(".mesh-generators/types.ts.jig:1:1 error Is not a regular file");
+  });
+
+  test("without mesh.config.ts nothing is written", async () => {
+    const root = await project(false);
+    expect(run(root, "export", "generators").code).toBe(1);
+    expect(await Bun.file(join(root, ".mesh-generators/types.ts.jig")).exists()).toBe(false);
+  });
+
+  test.each([[["export"]], [["export", "templates"]], [["export", "generators", "extra"]], [["export", "generators", "--check"]]])("usage error exits 2: %j", async (args) => {
+    const result = run(await project(), ...args);
+    expect(result.code).toBe(2);
+    expect(result.stdout).toBe("");
+  });
+
+  test("--help lists the command", async () => {
+    expect(run(await project(false), "--help").stdout).toContain("export generators   Copy Mesh's generator templates into .mesh-generators/");
   });
 });
