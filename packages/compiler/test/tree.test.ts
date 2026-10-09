@@ -93,11 +93,12 @@ test("MX addendum: promised tagless member line and provisional line share one r
     span,
   };
   const expected = { ref: { name: "dueOn", position: at(4) }, options: false };
-  expect(readMemberLine(tag, at)).toEqual(expected);
+  expect(() => readMemberLine(tag, at)).toThrow("Expected a tagless member line");
+  expect(readMemberLine(tag, at, true)).toEqual(expected);
   expect(readMemberLine({ ...tag, name: "&dueOn", attrs: [] }, at)).toEqual(
     expected,
   );
   const value = dynamic("() => 1");
   tag.attrs.push(value);
-  expect(readMemberLine(tag, at)).toEqual({ ...expected, value });
+  expect(readMemberLine(tag, at, true)).toEqual({ ...expected, value });
 });

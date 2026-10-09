@@ -700,7 +700,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
       ...parsed.diagnostics.map((d): Diagnostic => {
         const coded = /\b(MESH_[A-Z_]+): (.*)/s.exec(d.message);
         const memberOptions =
-          /(?:as `member`|`<member>`).*unknown attribute/.test(d.message);
+          /(?:as `member`|`<member>`|`<&[A-Za-z_][A-Za-z0-9_]*>`).*unknown attribute/.test(d.message);
         return {
           severity: d.severity,
           code:

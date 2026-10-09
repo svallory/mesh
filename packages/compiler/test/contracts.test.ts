@@ -22,7 +22,6 @@ const TAG_NAMES = [
   "update",
   "destroy",
   "input",
-  "member",
   "validate",
   "check",
   "do",

@@ -68,7 +68,7 @@ Grouped by why. Row numbers refer to section 3.
 
 This table follows [entity file syntax v4](../decisions/0067-members-imports-input-static-files.md) and [Entities](../../docs/entities.md). Each contract cell names a CustomTag or one of its options in `packages/compiler/src/contracts.ts`. The compiler test reads this section and requires exactly one row for every tag and option. Options shared by type tags are subject to the context and type rules in [Entities](../../docs/entities.md#options-on-an-attribute-line): an argument has no primary-key, unique or on; a computed function takes its name and body.
 
-“On main” records contract and model coverage, not runtime execution. Authored `&` after a kind and inside expressions still wait for MX’s `lang-ext-syntax-table`; executable todo tests record those parser gaps. The production compiler never rewrites source. The internal `member` contract describes MX’s line-trigger output for tagless input and assignment lines.
+“On main” records contract and model coverage, not runtime execution. Authored `&` after a kind and inside expressions still wait for MX’s `lang-ext-syntax-table`; executable todo tests record those parser gaps. The production compiler never rewrites source. Tagless input and assignment lines use inline wildcard contracts; `member` is internal lowering output, not an authorable tag.
 
 | Construct | Example | Contract | Status |
 |---|---|---|---|
@@ -210,9 +210,6 @@ This table follows [entity file syntax v4](../decisions/0067-members-imports-inp
 | `max` | `max :total of="lines.amount"` | `max` | on main |
 | `max.name` | `:name` | `max.name` | on main |
 | `max.of` | `of="lines.amount"` | `max.of` | on main |
-| `member` | `&title` | `member` | on main |
-| `member.name` | `&title` | `member.name` | on main |
-| `member.value` | `() => true` | `member.value` | on main |
 | `min` | `min :total of="lines.amount"` | `min` | on main |
 | `min.name` | `:name` | `min.name` | on main |
 | `min.of` | `of="lines.amount"` | `min.of` | on main |

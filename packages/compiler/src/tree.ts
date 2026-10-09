@@ -146,12 +146,16 @@ export function readMembers(a: DataAttr | undefined, at: At): MemberRef[] {
 export function readMemberLine(
   tag: DataTag,
   at: At,
+  parsedWithSyntaxTable = false,
 ): { ref: MemberRef; value?: DataAttr; options: boolean } {
   const name = attr(tag, "name");
   const provisional = /^&([A-Za-z_][A-Za-z0-9_]*)$/.exec(tag.name);
   const text =
     provisional?.[1] ??
-    (tag.name === "member" && name?.kind === "string" ? name.value : undefined);
+    // MX lang-ext-syntax-table: & after a kind / in expressions.
+    // Alpha.11 cannot mark lowering provenance, so canonical tags are never
+    // accepted by production until the document is parsed with that table.
+    (parsedWithSyntaxTable && tag.name === "member" && name?.kind === "string" ? name.value : undefined);
   if (!text) throw new Error("Expected a tagless member line (&name)");
   const value = attr(tag, "value");
   return {

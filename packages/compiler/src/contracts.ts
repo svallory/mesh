@@ -106,6 +106,8 @@ const options = () => ({
 });
 const steps = children("set", "when", "load", "run");
 const body = { validate: {}, do: {} };
+// Inline wildcard contract, not an authorable `member` tag.
+const memberLine = { attributes: { value: {} }, attributeTags: {}, children: {} };
 
 const contracts: ContractMap = {
   entity: closed({
@@ -149,8 +151,8 @@ const contracts: ContractMap = {
   input: closed({
     parents: [...ACTION_TYPES],
     children: {
-      ...children(...ATTRIBUTE_TYPES, "member"),
-      "*": { pattern: "&[A-Za-z_][A-Za-z0-9_]*", contract: "member" },
+      ...children(...ATTRIBUTE_TYPES),
+      "*": { ...memberLine, pattern: "&[A-Za-z_][A-Za-z0-9_]*" },
     },
   }),
   validate: closed({
@@ -171,15 +173,8 @@ const contracts: ContractMap = {
   set: closed({
     parents: ["do", "when"],
     children: {
-      member: { repeatable: true },
-      "*": { pattern: "&[A-Za-z_][A-Za-z0-9_]*", contract: "member" },
+      "*": { ...memberLine, pattern: "&[A-Za-z_][A-Za-z0-9_]*" },
     },
-  }),
-  // The current accidental &title tag and the future `member` child share this
-  // contract. readMemberLine is the sole model reader (lang-ext-syntax-table).
-  member: closed({
-    parents: ["input", "set"],
-    attributes: { name: text(), value: {} },
   }),
   when: closed({
     parents: ["do", "when"],

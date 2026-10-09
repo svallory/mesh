@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { extname, join, relative, sep } from "node:path";
 import { parseData, type DataDiagnostic } from "@mxlang/data";
-import type { ContractMap } from "@mxlang/core";
+import type { ContractMap, WildcardChildEntry } from "@mxlang/core";
 import contracts from "../src/contracts.ts";
 
 // ADR-0043: only packages declaring tag contracts may mention MX; extensions join in M6.
@@ -373,8 +373,9 @@ export function normaliseV4(source: string): string {
  */
 export function relaxedDocsContracts(production: ContractMap): ContractMap {
   const result: ContractMap = { ...production };
-  for (const name of ["input", "set"]) result[name] = { ...production[name], defaultTag: "member" };
-  result.member = { ...production.member, attributes: { ...production.member!.attributes, name: { type: "atom", required: true } } };
+  for (const name of ["input", "set"]) result[name] = { ...production[name], defaultTag: "member", children: { ...production[name]!.children, member: { repeatable: true } } };
+  const memberLine = production.input!.children!["*"] as WildcardChildEntry;
+  result.member = { ...memberLine, parents: ["input", "set"], attributes: { ...memberLine.attributes, name: { type: "atom", required: true } } };
   const slots: Record<string, string[]> = { actions: ["on:load"], always: ["actions"], policy: ["actions"], load: ["value"], asc: ["member"], desc: ["member"] };
   for (const [name, skipped] of Object.entries(slots)) {
     const original = production[name]!;
