@@ -12,7 +12,8 @@ import type {
 import { positionOf } from "./source.ts";
 export const postFile = "src/domain/billing/invoice.mesh.mx";
 export const postSource = readFileSync(
-  new URL("./invoice.mesh.mx", import.meta.url),
+  // One authored reference file; the model oracle below remains hand-built.
+  new URL("../../compiler/test/fixtures/post.mesh.mx", import.meta.url),
   "utf8",
 );
 const at = (needle: string, nth = 0) =>
