@@ -308,8 +308,8 @@ test("M2 runtime checks exclude tests and accept ordinary web-standard code", ()
 
 test("Docs MX samples: complete entity blocks parse with the contracts", () => {
   const checked = checkDocsSamples(join(root, "apps/docs/docs/docs"));
-  console.log(`Docs MX samples: parsed ${checked.parsed}, deferred ${checked.deferred.length}, skipped ${checked.skipped} fragments`);
-  expect(checked.deferred).toEqual([]);
+  console.log(`Docs MX samples: parsed ${checked.parsed}, deferred ${checked.deferred}, skipped ${checked.skipped} fragments`);
+  expect(checked.deferred).toBe(0);
   expect(checked.errors).toEqual([]);
   expect(checked.parsed).toBeGreaterThan(0);
 });
@@ -328,7 +328,7 @@ test("Docs MX samples: a planted invalid resource fails with page, fence line an
 test("Docs MX samples: fragments are skipped, other languages ignored, longer fences supported", () => {
   temporary((dir) => {
     writeFileSync(join(dir, "good.md"), '```mx\nstring :x\n```\n```ts\nresource="bad"\n```\n~~~~mx title\n\nentity :Ok\n  attributes\n~~~~\n');
-    expect(checkDocsSamples(dir)).toMatchObject({ parsed: 1, skipped: 1, deferred: [], errors: [] });
+    expect(checkDocsSamples(dir)).toMatchObject({ parsed: 1, skipped: 1, deferred: 0, errors: [] });
     writeFileSync(join(dir, "good.md"), '```mx\nattributes\n```\n');
     expect(checkDocsSamples(dir).errors).toEqual(["Docs sample check parsed no complete entity blocks"]);
   });
@@ -338,7 +338,7 @@ test("Docs MX samples: removed vocabulary is an error, never deferred", () => {
   temporary((dir) => {
     writeFileSync(join(dir, "old.md"), '```mx\nentity :Todo module="todo"\n```\n');
     const checked = checkDocsSamples(dir);
-    expect(checked.parsed).toBe(1); expect(checked.deferred).toEqual([]);
+    expect(checked.parsed).toBe(1); expect(checked.deferred).toBe(0);
     expect(checked.errors.join("\n")).toContain("module");
   });
 });
