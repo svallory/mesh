@@ -1,4 +1,7 @@
 import { expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { buildModel } from "../src/build.ts";
 import { fixture } from "./helpers.ts";
 import { build, keyed, list, project } from "./v4.ts";
@@ -48,6 +51,19 @@ test("fix10: import diagnostics distinguish duplicates, forms and relative paths
   }
   const nonrelative = build('import { List } from "lists"\n' + keyed);
   expect(nonrelative.diagnostics).toEqual([expect.objectContaining({ code: "MESH_UNKNOWN_IMPORT", message: "The import path must be relative (start with ./ or ../)" })]);
+});
+
+test("fix11: existing but unconfigured entity imports are rejected", () => {
+  const root = mkdtempSync(join(tmpdir(), "mesh-import-"));
+  try {
+    mkdirSync(join(root, "todo"));
+    writeFileSync(join(root, "todo/list.mesh.mx"), list);
+    const configured = project('import { List } from "./list.mesh.mx"\n' + keyed);
+    const result = buildModel({ root, files: configured.files.slice(0, 1) });
+    expect(result.document).toBeNull();
+    expect(result.diagnostics).toEqual([expect.objectContaining({ code: "MESH_UNKNOWN_ENTITY", message: "./list.mesh.mx exists but is not under the configured entity directories", position: expect.objectContaining({ line: 1, column: 0 }) })]);
+    expect(buildModel({ ...configured, root }).diagnostics).toEqual([]);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 for (const [name, codes] of [

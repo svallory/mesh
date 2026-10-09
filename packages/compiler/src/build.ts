@@ -784,6 +784,8 @@ export function buildModel(project: ProjectDescription): BuildResult {
           return false;
         }
       });
+      if (found && imported.from.endsWith(".mesh.mx") && !virtualFiles.has(target))
+        diagnostics.push(error("MESH_UNKNOWN_ENTITY", `${imported.from} exists but is not under the configured entity directories`, imported.position));
       if (!found)
         diagnostics.push(
           error(
