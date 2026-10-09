@@ -54,8 +54,8 @@ const node = (a: Attr | undefined): Node | undefined =>
     : undefined;
 const isMember = (n: Node | null | undefined) =>
   n?.type === "MemberExpression" && !!n.extra?.mxMember;
-/** MX lang-ext-syntax-table: member is a future value kind. Until its dedicated
- * contract type ships, expression + analyze declares precisely the same shape. */
+/** Use type: "member" once MX ships it (MX decision 182 addendum 4);
+ * expression accepts a member meanwhile. Mesh still resolves membership. */
 const member = (required = false): CustomTagAttribute => ({
   type: "expression",
   required,
