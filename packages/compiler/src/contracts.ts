@@ -213,7 +213,7 @@ for (const type of ATTRIBUTE_TYPES)
     attributes: {
       ...named(),
       ...options(type),
-      "primary-key": flag(),
+      ...(["uuid", "integer", "string"].includes(type) ? { "primary-key": flag() } : {}),
       unique: flag(),
       ...(type === "timestamp" ? { on: { type: "atom" as const, values: ["create", "update"] } } : {}),
       value: fn(),

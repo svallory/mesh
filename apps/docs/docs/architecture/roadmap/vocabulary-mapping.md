@@ -94,7 +94,6 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `boolean.name` | `boolean :field` | `boolean.name` | on main |
 | `boolean.nullable` | `boolean :field nullable` | `boolean.nullable` | on main |
 | `boolean.default` | `boolean :field default=false` | `boolean.default` | on main |
-| `boolean.primary-key` | `boolean :field primary-key` | `boolean.primary-key` | on main |
 | `boolean.unique` | `boolean :field unique` | `boolean.unique` | on main |
 | `boolean.value` | `boolean :field() { return false }` | `boolean.value` | on main |
 | `check` | `check :valid that=() => true code="invalid" message="Invalid input"` | `check` | on main |
@@ -113,14 +112,12 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `date.name` | `date :field` | `date.name` | on main |
 | `date.nullable` | `date :field nullable` | `date.nullable` | on main |
 | `date.default` | `date :field default="2026-10-09"` | `date.default` | on main |
-| `date.primary-key` | `date :field primary-key` | `date.primary-key` | on main |
 | `date.unique` | `date :field unique` | `date.unique` | on main |
 | `date.value` | `date :field() { return new Date() }` | `date.value` | on main |
 | `datetime` | `datetime :field` | `datetime` | on main |
 | `datetime.name` | `datetime :field` | `datetime.name` | on main |
 | `datetime.nullable` | `datetime :field nullable` | `datetime.nullable` | on main |
 | `datetime.default` | `datetime :field default="2026-10-09T12:00:00Z"` | `datetime.default` | on main |
-| `datetime.primary-key` | `datetime :field primary-key` | `datetime.primary-key` | on main |
 | `datetime.unique` | `datetime :field unique` | `datetime.unique` | on main |
 | `datetime.value` | `datetime :field() { return new Date() }` | `datetime.value` | on main |
 | `decimal` | `decimal :field` | `decimal` | on main |
@@ -129,7 +126,6 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `decimal.default` | `decimal :field default=1.5` | `decimal.default` | on main |
 | `decimal.min` | `decimal :field min=0` | `decimal.min` | on main |
 | `decimal.max` | `decimal :field max=100` | `decimal.max` | on main |
-| `decimal.primary-key` | `decimal :field primary-key` | `decimal.primary-key` | on main |
 | `decimal.unique` | `decimal :field unique` | `decimal.unique` | on main |
 | `decimal.value` | `decimal :field() { return 1.5 }` | `decimal.value` | on main |
 | `desc` | `desc &title` | `desc` | on main |
@@ -145,7 +141,6 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `enum.nullable` | `enum :field values=[:draft, :sent] nullable` | `enum.nullable` | on main |
 | `enum.default` | `enum :field values=[:draft, :sent] default=:draft` | `enum.default` | on main |
 | `enum.values` | `enum :field values=[:draft, :sent]` | `enum.values` | on main |
-| `enum.primary-key` | `enum :field values=[:draft, :sent] primary-key` | `enum.primary-key` | on main |
 | `enum.unique` | `enum :field values=[:draft, :sent] unique` | `enum.unique` | on main |
 | `enum.value` | `enum :field() { return :draft }` | `enum.value` | on main |
 | `filter` | `filter=() => true` | `filter` | on main |
@@ -156,7 +151,6 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `float.default` | `float :field default=0.5` | `float.default` | on main |
 | `float.min` | `float :field min=0` | `float.min` | on main |
 | `float.max` | `float :field max=100` | `float.max` | on main |
-| `float.primary-key` | `float :field primary-key` | `float.primary-key` | on main |
 | `float.unique` | `float :field unique` | `float.unique` | on main |
 | `float.value` | `float :field() { return 0.5 }` | `float.value` | on main |
 | `forbid-if` | `forbid-if=() => false` | `forbid-if` | on main |
@@ -220,7 +214,6 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `timestamp.name` | `timestamp :field` | `timestamp.name` | on main |
 | `timestamp.nullable` | `timestamp :field nullable` | `timestamp.nullable` | on main |
 | `timestamp.default` | `timestamp :field default="2026-10-09T12:00:00Z"` | `timestamp.default` | on main |
-| `timestamp.primary-key` | `timestamp :field primary-key` | `timestamp.primary-key` | on main |
 | `timestamp.unique` | `timestamp :field unique` | `timestamp.unique` | on main |
 | `timestamp.on` | `timestamp :field on=:create` | `timestamp.on` | on main |
 | `timestamp.value` | `timestamp :field() { return new Date() }` | `timestamp.value` | on main |
@@ -370,97 +363,40 @@ These were gaps in the research. Each was looked up in Ash's documentation and s
 
 The fact-check said the first lookups' quoted sentences for G1, G2, G3, G5, G6, G7 and G8 were not literal text of Ash's documentation; none of those sentences is used here.
 
-## 7. The fixture on `main` (M1 vocabulary)
+## 7. Current fixtures
 
-This is `post.mx` as it is on main after the alignment: `packages/compiler/test/fixtures/post.mx`, and the identical `examples/blog/post.mx`. It carries every alignment of Section 4 that is on main and the naming rule of Section 0 (tag names and attribute names only). Expressions keep arrow functions with declared parameters until M4 is designed (D16, D37); the author-chosen names (`authorId`, `insertedAt`, `commentCount`) are values and stay as in the file before the alignment (D33). Concise syntax.
+The compiler fixtures and the blog now use [entity file syntax v4](../../docs/entities.md). They serve different purposes; the full reference is not a copy of the runnable blog.
 
-```mx
-resource="post" table="posts" domain="blog"
-  attributes
-    uuid-primary-key="id"
-    attribute="title" type="string" allow-nil=false public
-    attribute="body" type="string" public
-    attribute="state" type="atom" constraints={ one_of: ["draft", "published"] } default="draft"
-    create-timestamp="insertedAt"
-    update-timestamp="updatedAt"
+| File | What it checks | Current limit |
+|---|---|---|
+| [`packages/compiler/test/fixtures/post.mesh.mx`](https://github.com/svallory/mesh/blob/main/packages/compiler/test/fixtures/post.mesh.mx) | The full Invoice reference, including imported Customer, InvoiceLine and Payment entities, computed fields, checks, action steps and policies | Despite its historical filename, it declares `Invoice`. The full parse/model comparison waits for MX's member lowering |
+| [`packages/model/test/sample.ts`](https://github.com/svallory/mesh/blob/main/packages/model/test/sample.ts) | The independently hand-written Invoice model used as the compiler's expected result | Plain data, not generated from the compiler |
+| [`packages/compiler/test/v4.ts`](https://github.com/svallory/mesh/blob/main/packages/compiler/test/v4.ts) | Executable Todo and List fixtures covering the currently parseable vocabulary | Uses declared `self` parameters for record reads in functions |
+| [`examples/blog/src/domain/blog/post.mesh.mx`](https://github.com/svallory/mesh/blob/main/examples/blog/src/domain/blog/post.mesh.mx) | Runnable Post declaration: ten scalar types, User/Comment imports, relationships, a computed body and rollup, validation, steps, filtered read and policies | Builds types, validators and the model, not action behaviour |
+| [`examples/blog/src/domain/blog/post.pending.mesh.mx.txt`](https://github.com/svallory/mesh/blob/main/examples/blog/src/domain/blog/post.pending.mesh.mx.txt) | Full authored Post, including member expressions and after-kind references | The `.txt` suffix deliberately excludes it from domain discovery |
 
-  relationships
-    belongs-to="author" destination="user"
-    has-many="comments" destination="comment"
+Mesh pins MX alpha.11 until the lowering PR supports every authored member position. Alpha.12 rejects the tagless `&name` lines that alpha.11 currently accepts. The full Invoice and pending Post remain explicit test todos; production never normalises source or executes expressions. The docs-only normalisation is not evidence that the full files compile.
 
-  actions defaults=["read", "destroy"]
-
-    create="create" accept=["title", "body"]
-      change=({ post, actor }) => { post.authorId = actor.id }
-
-    update="publish"
-      change=({ post }) => { post.state = "published" }
-      validate=({ post }) => post.title.length > 0 message="title required"
-
-    read="published"
-      filter=({ post }) => post.state === "published"
-      sort=["-insertedAt"]
-
-  policies
-    policy=action_type("read")
-      authorize-if=({ post }) => post.state === "published"
-      authorize-if=({ post, actor }) => post.authorId === actor.id
-
-    policy=action("publish")
-      authorize-if=({ post, actor }) => post.authorId === actor.id
-
-  calculations
-    calculate="excerpt" type="string"
-      value({ post }) {
-        return post.body.slice(0, 200)
-      }
-
-  aggregates
-    count="commentCount" relationship-path="comments"
-```
-
-**One difference from the proposal this section first held.** The proposal put `require-atomic=false` on `publish` (D21). `require-atomic` is vocabulary for M5, not on main, so the fixture keeps the pre-alignment form of `publish` (no such attribute); the contracts reject the attribute until M5 adds it. `action_type("read")` and `action("publish")` are Ash's check calls `action_type(:read)` and `action(:publish)`. They sit inside an expression, so they are JavaScript identifiers and keep Ash's snake_case (Section 0). Differences from the file before the alignment (Appendix A): `allow-nil`, `create-timestamp` and `update-timestamp`; `type="atom"` with `constraints`; `defaults` as an attribute of `actions`; the policy condition as a check call; `relationship-path`; `destination` on the two relationship tags.
+The blog's domain root is `src/domain/`; its `blog` folder supplies the module name. `mesh build` writes the committed `.mesh/blog/*.types.ts`, `.validators.ts` and `.mesh/model.json`. The guard compares those bytes with a fresh in-memory build. The `#mesh` entry point and action-function emitters arrive in round 3.
 
 ---
 
-## Appendix A. The vocabulary on `main`, after the alignment
+## Appendix A. Current contract and model boundaries
 
-History: the contracts as the M1 alignment left them on 2026-10-04, which are still the code on `main` until the realignment task. The vocabulary decisions that superseded them are records 0049 to 0056.
+The source of truth is [`packages/compiler/src/contracts.ts`](https://github.com/svallory/mesh/blob/main/packages/compiler/src/contracts.ts). [Section 3](#3-contract-coverage) enumerates its 44 authorable tags, their applicable options and the two tagless member forms. Each contract is closed: unlisted options, children and attribute tags are errors. `member` is reserved for MX's future lowering output, not an authored Mesh tag.
 
-Everything here is read from `contracts.ts` as it is now (26 tags). Line numbers are not given: the file is the authority, and the tests in `packages/compiler/test/contracts.test.ts` pin each row. Helpers: `str()` is a string attribute with `literalOnly`; `strings()` is an array of strings, `literalOnly`; `flag()` is a boolean, `literalOnly`; `code()` is a `function` attribute, required; `name()` is the default attribute `value`, a required literal string. `literalOnly` means the authored value must be a literal, not an identifier (header comment of the file). It accepts an object or array literal, which is what `constraints={ one_of: [...] }` relies on. The exceptions to `literalOnly` are the `function` attributes and the `policy` condition, which is a call. `closed()` makes every contract list its `attributes`, `attributeTags` and `children` explicitly; an empty record means none. Child cardinality: `{}` is optional and at most once; `{ repeatable: true }` any number; `{ required: true }` exactly once; both flags at least once. Analyze helpers: `nonEmpty(...)` rejects an empty or whitespace string; `nonEmptyList` rejects `[]`; `listItems`/`checkItems` reject blank or repeated items.
+| Group | Current form | Where checked |
+|---|---|---|
+| Entity and sections | `entity :Name`, optional `table`, and `attributes`, `relationships`, `computed`, `actions`, `policies` | Contracts constrain nesting; the builder requires exactly one entity per file and a PascalCase name |
+| Stored attributes and arguments | `uuid`, `string`, `integer`, `float`, `decimal`, `boolean`, `enum`, `date`, `datetime`, `timestamp` | Type-specific options in contracts; defaults and scalar formats in the builder. Attributes are required unless `nullable` |
+| Primary keys | `primary-key` on `uuid`, `integer` or `string` only | Contracts reject other types; the builder requires exactly one non-null key |
+| Relationships | `belongs-to`, `has-many`, `has-one`, each with an imported entity identifier | Contracts check the written identifier; the builder resolves named imports and their relative paths |
+| Computed fields | A typed function body, or `count`, `sum`, `avg`, `min`, `max` with `of` | Function text is preserved; rollups resolve attributes through relationships, not computed fields |
+| Actions | `create`, `read`, `update`, `destroy`, plus shared `always` rules and `auto` | The builder resolves input members, rejects managed input fields and duplicate names, and preserves checks and ordered steps |
+| Checks and steps | `validate`/`check`, `do`/`set`/`when`/`load`/`run` | Checks retain labels, codes and messages. Literal assignments must fit the member's scalar type; functions are not evaluated |
+| Query and policy declarations | `filter`, `sort`/`asc`/`desc`, `policy`, `authorize-if`, `forbid-if` | Contracts check function/reference shapes; the model retains declarations without executing SQL or authorization |
 
-| Tag | Parents | Attributes (type, required, literal-only) | Children (cardinality) | Analyze |
-|---|---|---|---|---|
-| `resource` | `#root` | `value` string, required, literal; `table` string, literal; `domain` string, literal | `attributes` required once; `relationships`, `actions`, `policies`, `calculations`, `aggregates` optional once | `nonEmpty("value", "table", "domain")` |
-| `attributes` | `resource` | none | `uuid-primary-key`, `create-timestamp`, `update-timestamp` optional once; `attribute` optional, repeatable | none |
-| `uuid-primary-key` | `attributes` | `value` string, required, literal (`name()`) | none | `nonEmpty("value")` |
-| `attribute` | `attributes` | `value` string required; `type` string required, enum of `ATTRIBUTE_TYPES` (`string`, `integer`, `float`, `boolean`, `atom`, `uuid`, `datetime`); `constraints` untyped, literal; `allow-nil` boolean, literal; `public` boolean, literal; `default` untyped, literal | none | `nonEmpty("value")` and `analyzeAttribute`: `constraints` only for `atom` and required for it, an object literal naming `one_of` and nothing else, `one_of` a non-empty list of non-blank, non-repeated strings; `default` a string, number or boolean literal that fits the type (an integer for `integer`, one of `one_of` for `atom`) |
-| `create-timestamp`, `update-timestamp` | `attributes` | `value` string, required, literal (`name()`) | none | `nonEmpty("value")` |
-| `relationships` | `resource` | none | `belongs-to` repeatable; `has-many` repeatable | none |
-| `belongs-to`, `has-many` | `relationships` | `value` required; `destination` string, required, literal | none | `nonEmpty("value", "destination")` |
-| `actions` | `resource` | `defaults` array of string, literal | `create`, `update`, `read`, `destroy` repeatable | `nonEmptyList("defaults")`; `analyzeDefaults`: each item one of `create`, `read`, `update`, `destroy` (`ACTION_TYPES`), no blank or repeated items |
-| `create`, `update`, `destroy` | `actions` | `value` required; `accept` array of string, literal | `change` repeatable; `validate` repeatable | `nonEmpty("value")`; `listItems("accept", "accept")` |
-| `read` | `actions` | `value` required | `filter` optional once; `sort` optional once; `validate` repeatable | `nonEmpty("value")` |
-| `change` | `create`, `update`, `destroy` | `value` function, required | none | none |
-| `validate` | `create`, `update`, `destroy`, `read` | `value` function, required; `message` string, literal | none | `nonEmpty("message")` |
-| `filter` | `read` | `value` function, required | none | none |
-| `sort` | `read` | `value` array of string, required, literal | none | `nonEmptyList("sort")`; `listItems("sort")` |
-| `policies` | `resource` | none | `policy` repeatable | none |
-| `policy` | `policies` | `value` untyped, required (a check call or a list of them) | `authorize-if` repeatable, required (at least one) | `analyzePolicy`: each check is a call to `action` or `action_type` with one string literal or a non-empty string-literal array, no blanks or repeats; every `action_type` name is in `ACTION_TYPES`; `action` is not empty; a condition list is non-empty and means all checks |
-| `authorize-if` | `policy` | `value` function, required | none | none |
-| `calculations` | `resource` | none | `calculate` repeatable | none |
-| `calculate` | `calculations` | `value` string, required; `type` string, required, enum of `CALCULATION_TYPES` (the attribute types without `atom`) | `value` required once | `nonEmpty("value")` |
-| `value` | `calculate` | `value` function, required | none | none |
-| `aggregates` | `resource` | none | `count` repeatable | none |
-| `count` | `aggregates` | `value` required; `relationship-path` string, required, literal | none | `nonEmpty("value", "relationship-path")` |
-
-Rules that are not in any tag: exactly one `resource` per file, and "an empty file" are not in the contracts; MX has no root cardinality, so Mesh's model stage enforces them (header comment of the file; PR #1 review round 3, item 2, with two tests that pin MX accepting both).
-
-### The fixture
-
-The fixture is Section 7: `packages/compiler/test/fixtures/post.mx`, identical to `examples/blog/post.mx`. It parses with zero diagnostics. Its first version was a copy of MX's own fixture; the alignment replaced that form (`required`, `type="enum" values=[...]`, `timestamps`, `defaults` as a child, `policy action-type="read"`, `relationship="comments"`, `resource="user"` and `resource="comment"` on the relationship tags).
-
-How expressions are treated is now [ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md): a body that is one expression is translated when Mesh can translate it, otherwise it runs in memory, and only a filter, a sort or a policy requires SQL.
+The builder also derives modules from the domain root, diagnoses duplicate entity names within a module, and retains source positions. [The fixtures in section 7](#7-current-fixtures) separate executable coverage from the authored member positions still waiting for MX. Translation described by [ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md) is later work; preserving a function in the model does not implement it.
 
 ## Appendix B. What this page did not verify
 

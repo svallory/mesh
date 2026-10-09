@@ -34,6 +34,7 @@ import {
 } from "@meshfw/model";
 import contracts from "./contracts.ts";
 import { nearestName } from "./nearest-name.ts";
+import { literalFits } from "./literal-types.ts";
 import { readImports, type ParsedImport } from "./imports.ts";
 import {
   resolveRollups,
@@ -147,6 +148,8 @@ function buildEntity(
     policies: [],
     position: pos(root),
   };
+  if (!/^[A-Z][A-Za-z0-9]*$/.test(entity.name))
+    fail("MESH_ENTITY_NAME", `Entity :${entity.name} must have a PascalCase name, such as :Todo`, root);
   for (const segment of module ? module.split("/") : []) {
     if (!/^[A-Za-z0-9_-]+$/.test(segment))
       fail("MESH_MODULE_NAME", `Module segment ${JSON.stringify(segment)} must contain only letters, digits, - or _`, root);
@@ -234,7 +237,6 @@ function buildEntity(
         "An enum requires non-empty, distinct values",
         field.position,
       );
-    const numeric = ["integer", "float", "decimal"].includes(field.type);
     if (
       field.min !== undefined &&
       field.max !== undefined &&
@@ -265,20 +267,7 @@ function buildEntity(
     }
     const def = field.default;
     if (def !== undefined) {
-      let valid =
-        def === null
-          ? field.nullable
-          : field.type === "enum"
-            ? typeof def === "object" &&
-              "value" in def &&
-              values?.includes(String(def.value))
-            : numeric
-              ? typeof def === "number" &&
-                Number.isFinite(def) &&
-                (field.type !== "integer" || Number.isInteger(def))
-              : field.type === "boolean"
-                ? typeof def === "boolean"
-                : typeof def === "string";
+      let valid = literalFits(def, field);
       if (
         valid &&
         (typeof def === "number" ||
@@ -407,8 +396,14 @@ function buildEntity(
             }
             const value = readAt(line, at, () => {
               const n = nodeOf(member.value);
-              return n && ["ArrowFunctionExpression", "FunctionExpression"].includes(n.type)
-                ? expr(member.value) : valueOf(member.value);
+              if (n && ["ArrowFunctionExpression", "FunctionExpression"].includes(n.type)) return expr(member.value);
+              let literal: ReturnType<typeof valueOf>;
+              try { literal = valueOf(member.value); }
+              catch { throw new Error(`\`&${member.ref.name}=\` needs a literal value here`); }
+              const field = entity.attributes.find((attribute) => attribute.name === member.ref.name);
+              if (field && (!literalFits(literal, field) || n?.type === "ObjectExpression"))
+                fail("MESH_SET_VALUE", `\`&${member.ref.name}=\` needs a literal that fits ${field.type}${field.type === "enum" ? ` (${field.values?.map((atom) => `:${atom.value}`).join(", ")})` : ""}`, member.ref.position);
+              return literal;
             });
             if (value.diagnostic) { diagnostics.push(value.diagnostic); return []; }
             return [{ member: member.ref, value: value.value }];
@@ -557,11 +552,11 @@ function buildEntity(
     ...entity.relationships,
     ...entity.computed,
     ...entity.actions,
-    ...entity.policies,
     ...entity.auto.map((name) => ({
       name,
       position: actionSection ? pos(actionSection) : entity.position,
     })),
+    ...entity.policies,
   ];
   const names = new Set<string>();
   for (const member of members) {

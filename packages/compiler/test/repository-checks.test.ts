@@ -313,7 +313,7 @@ test("Docs MX samples: complete entity blocks parse with the contracts", () => {
   expect(checked.parsed).toBeGreaterThan(0);
 });
 
-test("Docs MX samples: a planted invalid resource fails with page, fence line and diagnostic", () => {
+test("Docs MX samples: a planted invalid entity fails with page, fence line and diagnostic", () => {
   temporary((dir) => {
     writeFileSync(join(dir, "bad.md"), '# Bad\n\n```mx "todo/bad.mesh.mx"\nentity :Bad\n  attributes\n    strnig :x\n```\n');
     const checked = checkDocsSamples(dir);
@@ -326,7 +326,7 @@ test("Docs MX samples: a planted invalid resource fails with page, fence line an
 
 test("Docs MX samples: fragments are skipped, other languages ignored, longer fences supported", () => {
   temporary((dir) => {
-    writeFileSync(join(dir, "good.md"), '```mx\nstring :x\n```\n```ts\nresource="bad"\n```\n~~~~mx title\n\nentity :Ok\n  attributes\n~~~~\n');
+    writeFileSync(join(dir, "good.md"), '```mx\nstring :x\n```\n```ts\nrecord="bad"\n```\n~~~~mx title\n\nentity :Ok\n  attributes\n~~~~\n');
     expect(checkDocsSamples(dir)).toMatchObject({ parsed: 1, skipped: 1, errors: [] });
     writeFileSync(join(dir, "good.md"), '```mx\nattributes\n```\n');
     expect(checkDocsSamples(dir).errors).toEqual(["Docs sample check parsed no complete entity blocks"]);

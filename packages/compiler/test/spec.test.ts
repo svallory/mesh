@@ -16,7 +16,7 @@ async function project(source = `export default { domain: "src/domain", output: 
   for (const name of ["nested/a", ".hidden/b", ".secret", "node_modules/pkg/dep", "z"]) {
     const file = resolve(root, `src/domain/${name}.mesh.mx`);
     await mkdir(resolve(file, ".."), { recursive: true });
-    await writeFile(file, keyed.replace(":Todo", `:Name${name.replace(/\W/g, "")}`));
+    await writeFile(file, keyed.replace(":Todo", `:Name${name.replace(/[^A-Za-z0-9]/g, "")}`));
   }
   await writeFile(resolve(root, "src/domain/old.mx"), "ignored");
   await writeFile(resolve(root, "mesh.config.ts"), source);

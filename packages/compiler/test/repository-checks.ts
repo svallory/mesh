@@ -446,7 +446,7 @@ export function checkDocsSamples(dir: string) {
     }
     const root = block.find((text) => text.trim() !== "")?.trimStart() ?? "";
     // An entity file may open with its imports, so an `import` line heads a complete block too.
-    if (!/^(entity\b|resource\b|import\s)/.test(root)) { skipped++; continue; }
+    if (!/^(entity\b|import\s)/.test(root)) { skipped++; continue; }
     const diagnostics = parseData(`${block.join("\n")}\n`, join(dir, name), { customTags: contracts, structural: "reject", unknownTags: "reject", imports: "pass" }).diagnostics;
     parsed++;
     for (const diagnostic of diagnostics) {

@@ -59,7 +59,7 @@ export function attrOffset(a: DataAttr): number {
   return a.kind === "string" ? a.valueSpan.sourceStart : a.nameSpan.sourceStart;
 }
 export function readLiteral(n: SyntaxNode | null | undefined): Literal | Atom {
-  if (!n) throw new Error("Missing literal node");
+  if (!n) throw new Error("Use a literal value here");
   if (n.type === "StringLiteral")
     return n.extra?.mxAtom ? { value: String(n.value) } : String(n.value);
   if (n.type === "NumericLiteral" || n.type === "BooleanLiteral")
@@ -77,7 +77,7 @@ export function readLiteral(n: SyntaxNode | null | undefined): Literal | Atom {
     const result: { [key: string]: Literal } = {};
     for (const p of n.properties ?? []) {
       if (p.type !== "ObjectProperty" || p.computed || !p.key)
-        throw new Error("Expected literal object properties");
+        throw new Error("Use literal object properties here");
       Object.defineProperty(result, String(p.key.name ?? p.key.value), {
         value: readLiteral(p.value as SyntaxNode),
         enumerable: true,
@@ -87,10 +87,10 @@ export function readLiteral(n: SyntaxNode | null | undefined): Literal | Atom {
     }
     return result;
   }
-  throw new Error(`Expected a literal, got ${n.type}`);
+  throw new Error("Use a literal value here");
 }
 export function valueOf(a: DataAttr | undefined): Literal | Atom {
-  if (!a) throw new Error("Missing attribute");
+  if (!a) throw new Error("This option needs a value");
   if (a.kind === "atom") return { value: a.value };
   if (a.kind === "string") return a.value;
   if (a.kind === "boolean") return true;
@@ -100,10 +100,10 @@ export function atomList(a: DataAttr | undefined): string[] {
   if (!a) return [];
   const n = nodeOf(a);
   if (n?.type !== "ArrayExpression")
-    throw new Error("Expected a list of atoms");
+    throw new Error("Use a list of atoms, such as [:create, :update]");
   return (n.elements ?? []).map((e) => {
     if (e?.type !== "StringLiteral" || !e.extra?.mxAtom)
-      throw new Error("Expected an atom in list");
+      throw new Error("Each value in this list must be an atom, such as :create");
     return String(e.value);
   });
 }
@@ -134,7 +134,7 @@ export function readMember(
 }
 export function readMembers(a: DataAttr | undefined, at: At): MemberRef[] {
   const n = nodeOf(a);
-  if (n?.type !== "ArrayExpression") throw new Error("Expected a member list");
+  if (n?.type !== "ArrayExpression") throw new Error("Use a list of member references, such as [&title]");
   return (n.elements ?? []).map((e) => {
     const ref = memberNode(e, at);
     if (!ref) throw new Error("Expected a member reference (&name)");
@@ -176,10 +176,10 @@ export function expression(
   visit: (ref: MemberRef) => void,
 ): Expression {
   if (a?.kind !== "expression")
-    throw new Error("Expected a function expression");
+    throw new Error("This declaration needs a function body");
   const n = nodeOf(a);
   if (!n || !["ArrowFunctionExpression", "FunctionExpression"].includes(n.type))
-    throw new Error("Expected a function expression");
+    throw new Error("This declaration needs a function body");
   walkMembers(n, at, visit);
   const params = (n.params ?? []).flatMap((p) =>
     p.type === "ObjectPattern"
