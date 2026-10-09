@@ -4,6 +4,7 @@ import type { DataAttr, DataTag } from "@mxlang/data/tree";
 import { positionAt } from "../src/build.ts";
 import {
   expression,
+  readAt,
   readMember,
   readMemberLine,
   readMembers,
@@ -98,6 +99,10 @@ test("MX addendum: promised tagless member line and provisional line share one r
   expect(readMemberLine({ ...tag, name: "&dueOn", attrs: [] }, at)).toEqual(
     expected,
   );
+  const malformed = { ...tag, attrs: [] };
+  expect(readAt(malformed, at, () => readMemberLine(malformed, at, true))).toMatchObject({
+    diagnostic: { code: "MESH_MODEL_SHAPE", position: at(4) },
+  });
   const value = dynamic("() => 1");
   tag.attrs.push(value);
   expect(readMemberLine(tag, at, true)).toEqual({ ...expected, value });

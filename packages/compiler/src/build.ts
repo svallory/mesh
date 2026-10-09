@@ -474,12 +474,10 @@ function buildEntity(
         tags(tag.children).find((t) => t.name === "input")?.children ?? [],
       )) {
         let field: InputField;
-        if (
-          line.name === "member" ||
-          line.contract === "member" ||
-          line.name.startsWith("&")
-        ) {
-          const member = readMemberLine(line, at);
+        if (line.name.startsWith("&")) {
+          const read = readAt(line, at, () => readMemberLine(line, at));
+          if (read.diagnostic) { diagnostics.push(read.diagnostic); continue; }
+          const member = read.value;
           if (kind === "read")
             fail(
               "MESH_READ_INPUT_MEMBER",
@@ -671,7 +669,13 @@ export function buildModel(project: ProjectDescription): BuildResult {
       imports: "pass",
     });
     diagnostics.push(
-      ...parsed.diagnostics.map((d): Diagnostic => {
+      ...parsed.diagnostics.filter((d, _, all) => {
+        // MX reports both parent rejection and unknown-tag rejection for the
+        // same unknown child. Keep the specific unknown-tag error only.
+        const denied = /`<([^>]+)>` is not allowed here;/.exec(d.message)?.[1];
+        return !denied || !all.some((other) => other.offset === d.offset &&
+          other.message.startsWith(`\`<${denied}>\` is not a known tag:`));
+      }).map((d): Diagnostic => {
         const coded = /\b(MESH_[A-Z_]+): (.*)/s.exec(d.message);
         const memberOptions =
           /`<&[A-Za-z_][A-Za-z0-9_]*>`.*(?:unknown attribute|missing required attribute)/.test(d.message);

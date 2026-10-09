@@ -39,6 +39,7 @@ test.each(["id", "insertedAt", "updatedAt"])("fix5: managed &%s is rejected by t
 test("fix6: member is not an authored tag", () => {
   const result = build(fixture("fix1/authored-member.mesh.mx").source);
   expect(result.document).toBeNull();
+  expect(result.diagnostics).toHaveLength(1);
   expect(result.diagnostics[0]).toMatchObject({ code: "MESH_SYNTAX", position: { line: 8, column: 8 } });
   expect(result.diagnostics[0]!.message).toContain("member");
 });
