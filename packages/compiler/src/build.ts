@@ -227,23 +227,7 @@ function buildEntity(
         "An enum requires non-empty, distinct values",
         field.position,
       );
-    if (field.type !== "enum" && values)
-      fail(
-        "MESH_ENUM_VALUES",
-        "values is only allowed on enum",
-        field.position,
-      );
     const numeric = ["integer", "float", "decimal"].includes(field.type);
-    if (
-      (field.min !== undefined || field.max !== undefined) &&
-      field.type !== "string" &&
-      !numeric
-    )
-      fail(
-        "MESH_ATTRIBUTE_RULE",
-        "min/max require a string or numeric type",
-        field.position,
-      );
     if (
       field.min !== undefined &&
       field.max !== undefined &&
@@ -261,8 +245,6 @@ function buildEntity(
         "String bounds must be non-negative integers",
         field.position,
       );
-    if (field.match && field.type !== "string")
-      fail("MESH_ATTRIBUTE_RULE", "match requires a string", field.position);
     if (field.match) {
       try {
         new RegExp(field.match.pattern, field.match.flags);
@@ -322,8 +304,6 @@ function buildEntity(
         "A stored attribute cannot have a function body",
         tag,
       );
-    if (field.on && field.type !== "timestamp")
-      fail("MESH_ATTRIBUTE_RULE", "on is only allowed on timestamp", tag);
     if (field.primaryKey && field.nullable)
       fail("MESH_PRIMARY_KEY", "A primary key cannot be nullable", tag);
     checkShape(field);

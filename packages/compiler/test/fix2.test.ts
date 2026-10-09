@@ -16,3 +16,17 @@ test.each([
     expect.objectContaining({ code }),
   ]);
 });
+
+test.each([
+  "boolean :flag values=[:yes]",
+  "boolean :flag min=0",
+  "boolean :flag max=1",
+  "boolean :flag match=/yes/",
+  "string :label on=:create",
+])("wrong-type options are rejected by contracts: %s", (field) => {
+  const source = keyed + `    ${field}\n`;
+  expect(parse(source).diagnostics).toHaveLength(1);
+  expect(build(source).diagnostics).toEqual([
+    expect.objectContaining({ code: "MESH_SYNTAX" }),
+  ]);
+});
