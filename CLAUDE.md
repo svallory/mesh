@@ -7,7 +7,7 @@ The emitters write per-entity types and validators plus `model.json`; they emit 
 ## Layout
 
 Bun workspace (`workspaces`: `packages/*`, `apps/*`, `examples/*`), one root `bun.lock`.
-- `packages/compiler` (`@meshfw/compiler`): closed v4 MX contracts (`src/contracts.ts`), Mesh's `&` syntax module (`src/syntax.ts`, exported as the frozen `MESH_SYNTAX`), entity builder and type/validator emitters (tests in `test/`). `parseEntitySource` in `src/build.ts` is the one `parseData` call: contracts, `syntax: MESH_SYNTAX`, `structural`/`unknownTags: "reject"`, `imports: "pass"`; tests and the docs checks use it too
+- `packages/compiler` (`@meshfw/compiler`): closed v4 MX contracts (`src/contracts.ts`), Mesh's `&` syntax module (`src/syntax.ts`, exported as the frozen `MESH_SYNTAX`), entity builder and type/validator emitters (tests in `test/`). `parseEntitySource` in `src/build.ts` is the one `parseData` call: contracts, `syntax: MESH_SYNTAX`, `structural`/`unknownTags: "reject"`, `imports: "pass"`; the test helper and the docs checks use it too (two unit tests, `test/syntax.test.ts` and `test/tree.test.ts`, call `parseData` with only `MESH_SYNTAX` on purpose, to pin the lowered shapes without contracts)
 - `packages/model` (`@meshfw/model`): plain-data entity model, ten attribute types and four action types, diagnostic types; imports nothing
 - `packages/runtime` (`@meshfw/runtime`): flat, project-augmented `ActionContext`, errors, Standard Schema input validation, `DataAdapter` descriptors and data-layer contract v0; zero run-time dependencies; adapter conformance checks at `@meshfw/runtime/testing`
 - `packages/data-sqlite` (`@meshfw/data-sqlite`, private): `sqlite({ file })` returns a frozen descriptor only; it has no connection and no `createSchema`

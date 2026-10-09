@@ -47,7 +47,7 @@ The findings below came from writing the Docs pages against the design. Each nam
 
 ## New open points
 
-- **Imports and the pinned parser.** Entity and helper imports are part of the entity syntax. The compiler pins MX alpha.11, which accepts imports and comments under `structural: "reject"`; an earlier alpha rejected imports unless `imports: "pass"` was set. The compiler passes that option. The docs' temporary spelling bridge and its removal condition are below.
+- **Imports and the pinned parser.** Entity and helper imports are part of the entity syntax. The compiler pins MX `0.1.0-alpha.13`, which accepts imports and comments under `structural: "reject"` when `imports: "pass"` is set, and parses each import into `from` and `names`. The compiler passes that option. There is no parser bridge: the docs samples parse as authored.
 - **No page on writing an extension.** Three pages describe what an extension may contribute and none shows how to write one. It is its own piece of work.
 
 - **The action context's type.** The operator ruled on 2026-10-04 that the second argument is one flat `ActionContext` the user declares by declaration merging. Two records still describe the older shape and have to be amended in the rename task: [ADR-0007](decisions/0007-scope-is-a-plain-argument.md) and [ADR-0047](decisions/0047-actions-are-bound-to-a-data-layer.md) both say "scope" and describe `{ actor, context }`.

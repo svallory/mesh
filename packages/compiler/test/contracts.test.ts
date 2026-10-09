@@ -51,7 +51,7 @@ describe("v4 contracts", () => {
       ).toEqual([]);
     },
   );
-  test("comments are non-structural under alpha.11", () =>
+  test("comments are non-structural under structural rejection", () =>
     expect(
       parse("// comment\n" + keyed + "    // inside\n").diagnostics,
     ).toEqual([]));
