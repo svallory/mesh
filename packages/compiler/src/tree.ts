@@ -133,18 +133,12 @@ export function readMembers(a: DataAttr | undefined, at: At): MemberRef[] {
 }
 /**
  * Whether a `member` tag is MX's lowering of a tagless `&name` line through
- * `MESH_SYNTAX`: the lowered `name` attribute shares the tag's span (both cover
- * `&name`). An authored `member name="x"` does not; `member` is lowering
- * output, never authored.
+ * `MESH_SYNTAX`: MX marks a tag a syntax module's hook built with
+ * `trigger: { id: "member", … }`. An authored `member name="x"` has no
+ * `trigger`; `member` is lowering output, never authored.
  */
 export function isMemberLine(tag: DataTag): boolean {
-  const name = attr(tag, "name");
-  return (
-    tag.name === "member" &&
-    name?.kind === "string" &&
-    name.nameSpan?.sourceStart === tag.nameSpan.sourceStart &&
-    name.nameSpan.sourceEnd === tag.nameSpan.sourceEnd
-  );
+  return tag.name === "member" && tag.trigger?.id === "member";
 }
 /** A lowered tagless `&name` / `&name=value` line (see `isMemberLine`). */
 export function readMemberLine(
