@@ -41,3 +41,52 @@ test('title cleanup leaves authored content, HTML escaping and targets intact', 
   expect(cleanTitleLabels(source)).toBe(result);
   expect(cleanTitleLabels(result)).toBe(result);
 });
+
+test('social titles clean only their content attribute without decoding HTML entities', () => {
+  const source = [
+    '<meta property="og:title" content="Use `&quot;x&quot; &amp; &lt;y&gt;`" data-note="`keep`">',
+    "<meta content='Use `&#39;x&#39;`' name='twitter:title'>",
+    '<meta property="og:url" content="https://example.test/`path`">',
+    '<meta name="description" content=\'property="og:title" `keep`\'>',
+    '<meta data-property="og:title" content="`keep`">',
+    '<meta property="og:title" data-note=\' content="`keep`"\' content="`title`">',
+  ].join('\n');
+  const expected = [
+    '<meta property="og:title" content="Use &quot;x&quot; &amp; &lt;y&gt;" data-note="`keep`">',
+    "<meta content='Use &#39;x&#39;' name='twitter:title'>",
+    '<meta property="og:url" content="https://example.test/`path`">',
+    '<meta name="description" content=\'property="og:title" `keep`\'>',
+    '<meta data-property="og:title" content="`keep`">',
+    '<meta property="og:title" data-note=\' content="`keep`"\' content="title">',
+  ].join('\n');
+  expect(cleanTitleLabels(source)).toBe(expected);
+  expect(cleanTitleLabels(expected)).toBe(expected);
+});
+
+test('BreadcrumbList names clean safely while other JSON values retain their meaning', () => {
+  const name = '`src/domain/` and `"quoted"` and `</script><script>alert(1)</script>` and `\\\\path` & \u2028\u2029';
+  const url = 'https://example.test/`keep`?x="quoted"&y=1';
+  const data = {
+    '@context': 'https://schema.org', '@type': 'BreadcrumbList', name: '`keep root name`',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name, item: url, description: '`keep description`' },
+      { '@type': 'Thing', name: '`keep other type`' },
+      null,
+    ],
+  };
+  const script = (value) => '<script type="application/ld+json">' +
+    JSON.stringify(value).replace(/</g, '\\u003c') + '</script>';
+  const result = cleanTitleLabels(script(data));
+  const body = result.slice(result.indexOf('>') + 1, result.lastIndexOf('</script>'));
+  const parsed = JSON.parse(body);
+  expect(parsed).toEqual({ ...data, itemListElement: [
+    { ...data.itemListElement[0], name: name.replace(/`([^`\n]+)`/g, '$1') },
+    data.itemListElement[1], null,
+  ] });
+  expect(body).not.toMatch(/[<>&\u2028\u2029]/);
+  expect(cleanTitleLabels(result)).toBe(result);
+  const unrelated = script({ '@type': 'Article', name: '`keep`', url });
+  expect(cleanTitleLabels(unrelated)).toBe(unrelated);
+  const malformed = '<script type="application/ld+json">{"@type":"BreadcrumbList", bad}</script>';
+  expect(cleanTitleLabels(malformed)).toBe(malformed);
+});

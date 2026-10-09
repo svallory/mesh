@@ -76,4 +76,11 @@ test("integration snippets are explicitly excerpts rather than claimed type-chec
   expect(integrations).toContain("status(400");
   expect(integrations).toContain("status(403");
   expect(integrations).toContain('"use server";');
+  const solidStartSection = integrations.split("## In a web app")[1]!;
+  const solidStart = /```ts[^\n]*\n([\s\S]*?)```/.exec(solidStartSection)![1]!;
+  expect(solidStart).toContain('return { data: await createList({ name }, { actor }) };');
+  for (const error of ["InvalidInputError", "ForbiddenError"]) {
+    expect(solidStart).toContain(`if (error instanceof ${error}) return { error: { code: error.code } };`);
+  }
+  expect(solidStart).not.toMatch(/return[^\n]*(?:issues|breakdown|source)/);
 });

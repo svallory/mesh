@@ -381,17 +381,52 @@ export function installMxFigure(md, render = renderMxFigure) {
 
 // docmd 0.9.7 renders Markdown in authored headings and TOC entries, but copies
 // frontmatter/navigation titles as escaped plain text in its chrome. Strip paired
-// code delimiters only from those known text-only labels; never decode entities,
-// touch attributes/URLs, or rewrite authored code elements and fences.
+// code delimiters only from known text-only labels and title metadata. Keep HTML
+// entities encoded, URLs untouched, and JSON-LD safe inside its script element.
+// Authored code elements and fences are never rewritten.
 export function cleanTitleLabels(html) {
   const plain = (text) => text.replace(/`([^`\n]+)`/g, '$1');
+  const socialTitle = (tag) => {
+    // Read complete quoted attributes, so attribute-like text inside a value
+    // cannot accidentally select this tag or become a replacement target.
+    const attrs = [...tag.matchAll(/(\s+)([^\s=/>]+)(\s*=\s*)(?:"([^"]*)"|'([^']*)')/g)];
+    if (!attrs.some((a) => (a[2] === 'property' && (a[4] ?? a[5]) === 'og:title') ||
+      (a[2] === 'name' && (a[4] ?? a[5]) === 'twitter:title'))) return tag;
+    const content = attrs.find((a) => a[2] === 'content');
+    if (!content) return tag;
+    const quote = content[4] === undefined ? "'" : '"';
+    const value = content[4] ?? content[5];
+    const replacement = content[1] + content[2] + content[3] + quote + plain(value) + quote;
+    return tag.slice(0, content.index) + replacement + tag.slice(content.index + content[0].length);
+  };
+  const breadcrumbs = (match, open, source, close) => {
+    let data;
+    try { data = JSON.parse(source); } catch { return match; }
+    // Only the top-level BreadcrumbList shape docmd emits, not arbitrary JSON-LD.
+    if (data?.['@type'] !== 'BreadcrumbList' || !Array.isArray(data.itemListElement)) return match;
+    let changed = false;
+    for (const item of data.itemListElement) {
+      if (item?.['@type'] !== 'ListItem' || typeof item.name !== 'string') continue;
+      const name = plain(item.name);
+      changed ||= name !== item.name;
+      item.name = name;
+    }
+    if (!changed) return match;
+    // JSON.stringify handles quotes/backslashes; HTML-significant characters
+    // must stay escaped so a name can never terminate the containing script.
+    const json = JSON.stringify(data).replace(/[<>&\u2028\u2029]/g,
+      (char) => '\\u' + char.charCodeAt(0).toString(16).padStart(4, '0'));
+    return open + json + close;
+  };
   return html
     .replace(/(<(?:span|h1|a)\b[^<>]*\bclass="(?:[^"<>]* )?(?:nav-item-title|header-title|docmd-focus-title|toc-link)(?: [^"<>]*)?"[^<>]*>)([^<>]*)(<\/(?:span|h1|a)>)/g,
       (_match, open, text, close) => open + plain(text) + close)
     .replace(/(<title>)([^<>]*)(<\/title>)/g,
       (_match, open, text, close) => open + plain(text) + close)
     .replace(/(<li\b[^<>]*class="breadcrumb-item active"[^<>]*>\s*<span>)([^<>]*)(<\/span>)/g,
-      (_match, open, text, close) => open + plain(text) + close);
+      (_match, open, text, close) => open + plain(text) + close)
+    .replace(/<meta\b(?:[^"'<>]|"[^"]*"|'[^']*')*>/g, socialTitle)
+    .replace(/(<script\s+type="application\/ld\+json"\s*>)([\s\S]*?)(<\/script>)/g, breadcrumbs);
 }
 
 export default {

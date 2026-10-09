@@ -398,11 +398,20 @@ The [error classes](#errors) stay the same: `invalid_input` is a bad request, `f
 export async function addList(name: string) {
   "use server";
   const { createList } = await import("#mesh");
+  const { InvalidInputError, ForbiddenError } = await import("@meshfw/runtime");
   const { requireActor } = await import("./auth");
   const actor = await requireActor();
-  return createList({ name }, { actor });
+  try {
+    return { data: await createList({ name }, { actor }) };
+  } catch (error) {
+    if (error instanceof InvalidInputError) return { error: { code: error.code } };
+    if (error instanceof ForbiddenError) return { error: { code: error.code } };
+    throw error;
+  }
 }
 ```
+
+The function returns only an error code for invalid input or a denied call, keeping policy breakdowns and source positions out of the browser response; unexpected errors belong in your server's error handler.
 
 Your server start-up connects once, and your `requireActor()` helper reads the authenticated server session. Keep both the database access and actor lookup on the server: the browser sends input, never a trusted context. These excerpts show calls, not ready-made Mesh integrations; framework setup, authentication and response handling belong to your application.
 
