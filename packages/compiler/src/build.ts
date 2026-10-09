@@ -12,7 +12,6 @@ import type { DataAttr, DataDocument, DataTag } from "@mxlang/data/tree";
 import {
   findNonJsonValue,
   isActionKind,
-  type Action,
   type ActionType,
   type Always,
   type Argument,
@@ -48,6 +47,7 @@ import {
   declaredName,
   expression,
   nodeOf,
+  readAt,
   readMember,
   readMemberLine,
   readMembers,
@@ -384,11 +384,9 @@ function buildEntity(
           "A computed function takes only its name and body",
           tag,
         );
-      entity.computed.push({
-        ...base,
-        type: tag.name as AttributeType,
-        body: expr(attr(tag, "value")),
-      });
+      const body = readAt(tag, at, () => expr(attr(tag, "value")));
+      if (body.diagnostic) diagnostics.push(body.diagnostic);
+      else entity.computed.push({ ...base, type: tag.name as AttributeType, body: body.value });
     }
   }
   const checks = (holder: DataTag): Check[] =>
@@ -408,25 +406,26 @@ function buildEntity(
       if (tag.name === "set")
         return {
           kind: "set",
-          assignments: tags(tag.children).map((line) => {
-            const member = readMemberLine(line, at);
-            if (member.options || !member.value)
+          assignments: tags(tag.children).flatMap((line) => {
+            const read = readAt(line, at, () => readMemberLine(line, at));
+            if (read.diagnostic) { diagnostics.push(read.diagnostic); return []; }
+            const member = read.value;
+            checkRef(member.ref, "set");
+            if (member.options || !member.value) {
               fail(
                 "MESH_MEMBER_LINE_OPTIONS",
                 "A set member takes exactly one assignment and no options",
                 line,
               );
-            const n = nodeOf(member.value);
-            return {
-              member: checkRef(member.ref, "set"),
-              value:
-                n &&
-                ["ArrowFunctionExpression", "FunctionExpression"].includes(
-                  n.type,
-                )
-                  ? expr(member.value)
-                  : valueOf(member.value),
-            };
+              return [];
+            }
+            const value = readAt(line, at, () => {
+              const n = nodeOf(member.value);
+              return n && ["ArrowFunctionExpression", "FunctionExpression"].includes(n.type)
+                ? expr(member.value) : valueOf(member.value);
+            });
+            if (value.diagnostic) { diagnostics.push(value.diagnostic); return []; }
+            return [{ member: member.ref, value: value.value }];
           }),
           position,
         };

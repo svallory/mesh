@@ -1,6 +1,7 @@
 import type { DataAttr, DataExpr, DataNode, DataTag } from "@mxlang/data/tree";
 import type {
   Atom,
+  Diagnostic,
   Expression,
   Literal,
   MemberRef,
@@ -35,6 +36,14 @@ export interface MemberAttribute {
   span: Span;
 }
 export type At = (offset: number) => SourcePosition;
+export type ReadResult<T> = { value: T; diagnostic?: never } | { value?: never; diagnostic: Diagnostic };
+/** A recoverable tree-read boundary: report the offending tag, not its entity. */
+export function readAt<T>(tag: DataTag, at: At, read: () => T): ReadResult<T> {
+  try { return { value: read() }; }
+  catch (cause) {
+    return { diagnostic: { severity: "error", code: "MESH_MODEL_SHAPE", message: cause instanceof Error ? cause.message : String(cause), position: at(tag.nameSpan.sourceStart), fix: null } };
+  }
+}
 export const tags = (nodes: readonly DataNode[]): DataTag[] =>
   nodes.filter((n): n is DataTag => n.kind === "tag");
 export const attr = (tag: DataTag, name: string): DataAttr | undefined =>
