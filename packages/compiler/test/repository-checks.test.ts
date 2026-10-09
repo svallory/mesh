@@ -4,7 +4,7 @@ import { join, sep } from "node:path";
 import { ACTION_TYPES, ATTRIBUTE_TYPES } from "@meshfw/model";
 import { buildModel, loadConfig, loadProject } from "../src/index.ts";
 import { parse } from "./helpers.ts";
-import { checkDocsSamples, checkMxImports, checkRuntime, normaliseV4, parseV4 } from "./repository-checks.ts";
+import { checkDocsSamples, checkMxImports, checkRuntime } from "./repository-checks.ts";
 
 const root = new URL("../../../", import.meta.url).pathname;
 function temporary(run: (dir: string) => void) {
@@ -24,13 +24,21 @@ test("real v4 blog loads by path with every registered type", async () => {
   expect(new Set([...entity.actions.map((action) => action.kind), ...entity.auto])).toEqual(new Set(ACTION_TYPES));
 });
 
-test.todo("full blog parses — MX lang-ext-syntax-table: & after a kind / in expressions", () => {
-  const file = "examples/blog/src/domain/blog/post.pending.mesh.mx.txt";
-  const source = readFileSync(join(root, file), "utf8");
-  expect(parse(source, join(root, file)).diagnostics).toEqual([]);
-  const built = buildModel({ root, files: [{ file, source }] });
+test("full blog post, members included, parses and builds", () => {
+  const files = ["post", "user", "comment"].map((name) => {
+    const file = `examples/blog/src/domain/blog/${name}.mesh.mx`;
+    return { file, source: readFileSync(join(root, file), "utf8") };
+  });
+  const [post] = files;
+  expect(parse(post!.source, join(root, post!.file)).diagnostics).toEqual([]);
+  const built = buildModel({ root, files });
   expect(built.diagnostics).toEqual([]);
   expect(built.document?.entities[0]?.name).toBe("Post");
+  const entity = built.document!.entities[0]!;
+  expect(entity.onLoad?.name).toBe("published");
+  expect(entity.actions.find((action) => action.kind === "read")?.sort).toEqual([
+    expect.objectContaining({ direction: "desc", member: expect.objectContaining({ name: "insertedAt" }) }),
+  ]);
 });
 
 test("M1 test 8: only tag-contract packages import MX across the workspace", () => {
@@ -350,20 +358,4 @@ test("Docs MX samples: removed vocabulary is an error, never deferred", () => {
     expect(checked.parsed).toBe(1);
     expect(checked.errors.join("\n")).toContain("module");
   });
-});
-
-// MX lang-ext-syntax-table: & after a kind / in expressions. Tripwires ensure
-// docs normalisation never silently broadens production reference contracts.
-for (const body of [
-  "  actions\n    create :create\n      input\n        &id\n",
-  "  actions\n    read :custom\n      sort\n        asc &id\n",
-  "  actions on:load=&custom\n    read :custom\n",
-  "  actions\n    always actions=[&custom]\n    read :custom\n",
-  "  actions\n    read :custom\n  policies\n    policy :owner actions=[&custom]\n      authorize-if=() => true\n",
-  "  computed\n    integer :n() { return 1 }\n  actions\n    update :custom\n      do\n        load=[&n]\n",
-]) test(`normalised references fail production contracts: ${body}`, () => {
-  const source = "entity :Todo\n  attributes\n    uuid :id primary-key\n" + body;
-  expect(normaliseV4(source)).not.toBe(source);
-  expect(parse(normaliseV4(source)).diagnostics.length).toBeGreaterThan(0);
-  expect(parseV4(source, "todo.mesh.mx")).toEqual([]);
 });

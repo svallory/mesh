@@ -66,9 +66,9 @@ Grouped by why. Row numbers refer to section 3.
 
 ## 3. Contract coverage
 
-Each example is a complete tag or tagless member line, tested in a minimal entity with its declared ancestors, stored fields, and an imported Line entity. The test parses **and builds** every cell, with executable todos only for MX's unsupported member positions. The rows equal the production contracts: options unavailable for a particular type have no row. Tagless input/assignment lines use inline wildcard contracts: `input.*` has no options, while `set.*.value` requires its assignment value. The coverage test enumerates these wildcard options as well as the named contracts; `member` is not an authored tag.
+Each example is a complete tag or tagless member line, tested in a minimal entity with its declared ancestors, stored fields, and an imported Line entity. The test parses **and builds** every cell. The rows equal the production contracts: options unavailable for a particular type have no row. MX lowers a tagless `&title` line to a `member` child tag, which an inline wildcard contract under `input` and `set` accepts: `input.member` takes no value, while `set.member.value` holds the assigned value (the compiler requires it). The coverage test enumerates these wildcard options as well as the named contracts; `member` is not an authored tag. Slots that hold one member only (`asc`/`desc` and `on:load`) have MX's contract type `member`; lists of members (`load`, `actions`) are arrays whose elements Mesh checks.
 
-“On main” records the delivered compiler/model coverage, not runtime execution. Authored `&` after a kind and inside expressions still wait for MX's lowering; the production compiler never rewrites source.
+“On main” records the delivered compiler/model coverage, not runtime execution. MX lowers authored `&` in every position through Mesh's syntax module; the production compiler never rewrites source.
 
 | Construct | Example | Contract | Status |
 |---|---|---|---|
@@ -162,7 +162,7 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `has-one.name` | `has-one :related entity=Line` | `has-one.name` | on main |
 | `has-one.entity` | `has-one :related entity=Line` | `has-one.entity` | on main |
 | `input` | `input` | `input` | on main |
-| `input` member line | `&title` | `input.*` | on main |
+| `input` member line | `&title` | `input.member` | on main |
 | `integer` | `integer :field` | `integer` | on main |
 | `integer.name` | `integer :field` | `integer.name` | on main |
 | `integer.nullable` | `integer :field nullable` | `integer.nullable` | on main |
@@ -195,7 +195,7 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `run` | `run({ self }) { audit(self) }` | `run` | on main |
 | `run.value` | `run({ self }) { audit(self) }` | `run.value` | on main |
 | `set` | `set` | `set` | on main |
-| `set` assignment line | `&title="new"` | `set.*.value` | on main |
+| `set` assignment line | `&title="new"` | `set.member.value` | on main |
 | `sort` | `sort` | `sort` | on main |
 | `string` | `string :field` | `string` | on main |
 | `string.name` | `string :field` | `string.name` | on main |
@@ -369,13 +369,12 @@ The compiler fixtures and the blog now use [entity file syntax v4](../../docs/en
 
 | File | What it checks | Current limit |
 |---|---|---|
-| [`packages/compiler/test/fixtures/post.mesh.mx`](https://github.com/svallory/mesh/blob/main/packages/compiler/test/fixtures/post.mesh.mx) | The full Invoice reference, including imported Customer, InvoiceLine and Payment entities, computed fields, checks, action steps and policies | Despite its historical filename, it declares `Invoice`. The full parse/model comparison waits for MX's member lowering |
+| [`packages/compiler/test/fixtures/post.mesh.mx`](https://github.com/svallory/mesh/blob/main/packages/compiler/test/fixtures/post.mesh.mx) | The full Invoice reference, including imported Customer, InvoiceLine and Payment entities, computed fields, checks, action steps and policies | Despite its historical filename, it declares `Invoice`. The compiler test builds it and compares the result with the hand-built model |
 | [`packages/model/test/sample.ts`](https://github.com/svallory/mesh/blob/main/packages/model/test/sample.ts) | The independently hand-written Invoice model used as the compiler's expected result | Plain data, not generated from the compiler |
 | [`packages/compiler/test/v4.ts`](https://github.com/svallory/mesh/blob/main/packages/compiler/test/v4.ts) | Executable Todo and List fixtures covering the currently parseable vocabulary | Uses declared `self` parameters for record reads in functions |
-| [`examples/blog/src/domain/blog/post.mesh.mx`](https://github.com/svallory/mesh/blob/main/examples/blog/src/domain/blog/post.mesh.mx) | Runnable Post declaration: ten scalar types, User/Comment imports, relationships, a computed body and rollup, validation, steps, filtered read and policies | Builds types, validators and the model, not action behaviour |
-| [`examples/blog/src/domain/blog/post.pending.mesh.mx.txt`](https://github.com/svallory/mesh/blob/main/examples/blog/src/domain/blog/post.pending.mesh.mx.txt) | Full authored Post, including member expressions and after-kind references | The `.txt` suffix deliberately excludes it from domain discovery |
+| [`examples/blog/src/domain/blog/post.mesh.mx`](https://github.com/svallory/mesh/blob/main/examples/blog/src/domain/blog/post.mesh.mx) | Post declaration: ten scalar types, User/Comment imports, relationships, a computed body and rollup, validation, steps, a filtered and sorted read, `on:load`, policies, and `&name` members in every position | Builds types, validators and the model, not action behaviour |
 
-Mesh pins MX alpha.11 until the lowering PR supports every authored member position. Alpha.12 rejects the tagless `&name` lines that alpha.11 currently accepts. The full Invoice and pending Post remain explicit test todos; production never normalises source or executes expressions. The docs-only normalisation is not evidence that the full files compile.
+Mesh reads `&name` through its syntax module (`packages/compiler/src/syntax.ts`), which MX lowers before the compiler reads the tree; production never rewrites source or executes expressions.
 
 The blog's domain root is `src/domain/`; its `blog` folder supplies the module name. `mesh build` writes the committed `.mesh/blog/*.types.ts`, `.validators.ts` and `.mesh/model.json`. The guard compares those bytes with a fresh in-memory build. The `#mesh` entry point and action-function emitters arrive in round 3.
 

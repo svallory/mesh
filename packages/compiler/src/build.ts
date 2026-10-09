@@ -8,7 +8,7 @@ import {
 } from "./paths.ts";
 export { projectPath } from "./paths.ts";
 import { parseData } from "@mxlang/data";
-import type { DataAttr, DataDocument, DataTag } from "@mxlang/data/tree";
+import type { DataAttr, DataDocument, DataImport, DataTag } from "@mxlang/data/tree";
 import {
   findNonJsonValue,
   isActionKind,
@@ -33,9 +33,9 @@ import {
   type Step,
 } from "@meshfw/model";
 import contracts from "./contracts.ts";
+import { MESH_SYNTAX } from "./syntax.ts";
 import { nearestName } from "./nearest-name.ts";
 import { literalFits } from "./literal-types.ts";
-import { readImports, type ParsedImport } from "./imports.ts";
 import {
   resolveRollups,
   unknownMember,
@@ -47,6 +47,7 @@ import {
   attrOffset,
   declaredName,
   expression,
+  isMemberLine,
   nodeOf,
   readAt,
   readMember,
@@ -107,6 +108,60 @@ export function error(
 ): Diagnostic {
   return { severity: "error", code, message, position, fix };
 }
+/** An entity import as MX parsed it (`DataImport.from`/`names`); never re-parsed. */
+interface ParsedImport {
+  names: string[];
+  bindings: { local: string; imported: string; offset: number }[];
+  from: string;
+  offset: number;
+}
+interface ImportProblem {
+  code: "MESH_UNKNOWN_IMPORT" | "MESH_IMPORT_FORM";
+  message: string;
+  offset: number;
+}
+/** Entity files import other entities by name only: `import { List } from "./list.mesh.mx"`. */
+function readImports(imports: readonly DataImport[]): {
+  imports: ParsedImport[];
+  problems: ImportProblem[];
+} {
+  const result: ParsedImport[] = [];
+  const problems: ImportProblem[] = [];
+  for (const entry of imports) {
+    const offset = entry.span.sourceStart;
+    if (
+      !entry.names.length ||
+      entry.typeOnly ||
+      entry.names.some((name) => name.kind !== "named" || name.typeOnly)
+    ) {
+      problems.push({
+        code: "MESH_IMPORT_FORM",
+        message: entry.typeOnly || entry.names.some((name) => name.typeOnly)
+          ? "import the entity by name, not as a type: `import { List } from …`"
+          : "import the entity by name: `import { List } from …`",
+        offset,
+      });
+      continue;
+    }
+    if (!entry.from.startsWith("./") && !entry.from.startsWith("../")) {
+      problems.push({
+        code: "MESH_UNKNOWN_IMPORT",
+        message: "The import path must be relative (start with ./ or ../)",
+        offset,
+      });
+      continue;
+    }
+    result.push({
+      names: entry.names.map((name) => name.local),
+      // DataImportName carries no span in @mxlang/data 0.1.0-alpha.13, so a
+      // binding is positioned at its import statement until MX adds one.
+      bindings: entry.names.map((name) => ({ local: name.local, imported: name.imported, offset })),
+      from: entry.from,
+      offset,
+    });
+  }
+  return { imports: result, problems };
+}
 const snakeCase = (name: string) =>
   name
     .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
@@ -156,10 +211,10 @@ function buildEntity(
   }
   const imports = readImports(tree.imports ?? []);
   for (const problem of imports.problems)
-    fail(problem.code, problem.message, at(problem.span.sourceStart));
+    fail(problem.code, problem.message, at(problem.offset));
   entity.imports = imports.imports.map(
     (i): Import => {
-      const value = { identifiers: i.names, from: i.from, position: at(i.span.sourceStart) };
+      const value = { identifiers: i.names, from: i.from, position: at(i.offset) };
       importDetails.set(value, i);
       return value;
     },
@@ -187,7 +242,24 @@ function buildEntity(
     return ref;
   };
   const expr = (a: DataAttr | undefined): Expression =>
-    expression(a, source, at, (ref) => checkRef(ref, "expression"));
+    expression(
+      a,
+      source,
+      at,
+      (ref) => checkRef(ref, "expression"),
+      ({ ref, position }) =>
+        fail(
+          "MESH_MEMBER_ASSIGN",
+          `\`&${ref.name}\` cannot be assigned inside an expression; use a \`set\` line`,
+          position,
+        ),
+    );
+  const authoredMember = (line: DataTag) =>
+    fail(
+      "MESH_SYNTAX",
+      "`<member>` is not a known tag: write a member line as `&name`",
+      line,
+    );
   const applyOptions = (tag: DataTag) => {
     const result: Pick<
       Attribute,
@@ -378,14 +450,23 @@ function buildEntity(
   const steps = (holder: DataTag): Step[] =>
     tags(holder.children).map((tag): Step => {
       const position = pos(tag);
+      const assigned = new Set<string>();
       if (tag.name === "set")
         return {
           kind: "set",
           assignments: tags(tag.children).flatMap((line) => {
+            if (!isMemberLine(line)) { authoredMember(line); return []; }
             const read = readAt(line, at, () => readMemberLine(line, at));
             if (read.diagnostic) { diagnostics.push(read.diagnostic); return []; }
             const member = read.value;
             checkRef(member.ref, "set");
+            if (assigned.has(member.ref.name))
+              fail("MESH_DUPLICATE_SET", `\`&${member.ref.name}\` is set twice in this action`, line);
+            assigned.add(member.ref.name);
+            if (!member.value) {
+              fail("MESH_MEMBER_LINE_OPTIONS", `\`&${member.ref.name}\` under \`set\` needs a value: \`&${member.ref.name}=…\``, line);
+              return [];
+            }
             const value = readAt(line, at, () => {
               const n = nodeOf(member.value);
               if (n && ["ArrowFunctionExpression", "FunctionExpression"].includes(n.type)) return expr(member.value);
@@ -468,7 +549,8 @@ function buildEntity(
         tags(tag.children).find((t) => t.name === "input")?.children ?? [],
       )) {
         let field: InputField;
-        if (line.name.startsWith("&")) {
+        if (line.name === "member") {
+          if (!isMemberLine(line)) { authoredMember(line); continue; }
           const read = readAt(line, at, () => readMemberLine(line, at));
           if (read.diagnostic) { diagnostics.push(read.diagnostic); continue; }
           const member = read.value;
@@ -622,6 +704,17 @@ function buildEntity(
   return entity;
 }
 
+/** The compiler's one MX parse: closed contracts, Mesh's syntax module, rejection on. */
+export function parseEntitySource(source: string, file: string) {
+  return parseData(source, file, {
+    syntax: MESH_SYNTAX,
+    customTags: contracts,
+    structural: "reject",
+    unknownTags: "reject",
+    imports: "pass",
+  });
+}
+
 /** Parse with closed MX contracts, then project the static tree without executing it. */
 export function buildModel(project: ProjectDescription): BuildResult {
   const diagnostics: Diagnostic[] = [];
@@ -661,12 +754,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
       continue;
     }
     const file = path.file;
-    const parsed = parseData(input.source, file, {
-      customTags: contracts,
-      structural: "reject",
-      unknownTags: "reject",
-      imports: "pass",
-    });
+    const parsed = parseEntitySource(input.source, file);
     diagnostics.push(
       ...parsed.diagnostics.filter((d, _, all) => {
         // MX reports both parent rejection and unknown-tag rejection for the
@@ -676,17 +764,9 @@ export function buildModel(project: ProjectDescription): BuildResult {
           other.message.startsWith(`\`<${denied}>\` is not a known tag:`));
       }).map((d): Diagnostic => {
         const coded = /\b(MESH_[A-Z_]+): (.*)/s.exec(d.message);
-        // @mxlang/data alpha.11 diagnostics carry no code or tag position, so a
-        // member line with bad options is recognised by MX's message wording
-        // ("`<&name>` (inline contract): missing required attribute `value`").
-        // test/fix2.test.ts pins that wording and fails if MX rewords it.
-        const memberOptions =
-          /`<&[A-Za-z_][A-Za-z0-9_]*>`.*(?:unknown attribute|missing required attribute)/.test(d.message);
         return {
           severity: d.severity,
-          code:
-            coded?.[1] ??
-            (memberOptions ? "MESH_MEMBER_LINE_OPTIONS" : "MESH_SYNTAX"),
+          code: coded?.[1] ?? "MESH_SYNTAX",
           message: coded?.[2] ?? d.message,
           position: { file, line: d.line, column: d.column, offset: d.offset },
           fix: null,
@@ -747,7 +827,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
         for (const binding of importDetails.get(imported)?.bindings ?? []) {
           if (binding.imported !== targetEntity.name) {
             const source = project.files.find((input) => resolveEntityFile(rootPath, input.file)?.file === entity.file)!.source;
-            diagnostics.push(error("MESH_UNKNOWN_IMPORT", `\`${binding.imported}\` is not what ${imported.from} declares; it declares \`${targetEntity.name}\``, positionAt(source, entity.file, binding.span.sourceStart)));
+            diagnostics.push(error("MESH_UNKNOWN_IMPORT", `\`${binding.imported}\` is not what ${imported.from} declares; it declares \`${targetEntity.name}\``, positionAt(source, entity.file, binding.offset)));
           }
         }
       }

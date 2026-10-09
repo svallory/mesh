@@ -47,7 +47,7 @@ The findings below came from writing the Docs pages against the design. Each nam
 
 ## New open points
 
-- **Imports and the pinned parser.** Entity and helper imports are part of the entity syntax. The compiler pins MX alpha.11, which accepts imports and comments under `structural: "reject"`; an earlier alpha rejected imports unless `imports: "pass"` was set. The compiler passes that option. The docs' temporary spelling bridge and its removal condition are below.
+- **Imports and the pinned parser.** Entity and helper imports are part of the entity syntax. The compiler pins MX `0.1.0-alpha.13`, which accepts imports and comments under `structural: "reject"` when `imports: "pass"` is set, and parses each import into `from` and `names`. The compiler passes that option. There is no parser bridge: the docs samples parse as authored.
 - **No page on writing an extension.** Three pages describe what an extension may contribute and none shows how to write one. It is its own piece of work.
 
 - **The action context's type.** The operator ruled on 2026-10-04 that the second argument is one flat `ActionContext` the user declares by declaration merging. Two records still describe the older shape and have to be amended in the rename task: [ADR-0007](decisions/0007-scope-is-a-plain-argument.md) and [ADR-0047](decisions/0047-actions-are-bound-to-a-data-layer.md) both say "scope" and describe `{ actor, context }`.
@@ -56,7 +56,7 @@ The findings below came from writing the Docs pages against the design. Each nam
 
 ## Syntax v4
 
-The operator's 2026-10-08 rulings distinguish declarations (`:name`), members (`&name`) and imported entities (`Name`), put all action input in one `input` section, and keep entity files static. [ADR-0067](./decisions/0067-members-imports-input-static-files.md) records the rules, the lead's choices and MX decisions 182 addendum 1 and 187 addendum 2. **The Docs pages are the target; the compiler and example follow the entity syntax (PR #47, PR #48) except the `&` positions that await MX's lowering.**
+The operator's 2026-10-08 rulings distinguish declarations (`:name`), members (`&name`) and imported entities (`Name`), put all action input in one `input` section, and keep entity files static. [ADR-0067](./decisions/0067-members-imports-input-static-files.md) records the rules, the lead's choices and MX decisions 182 addendum 1 and 187 addendum 2. **The Docs pages are the target; the compiler and example follow the entity syntax (PR #47, PR #48), `&` positions included since the MX alpha.13 pin.**
 
 Measured on `@mxlang/data` alpha.5 with `structural: "reject"`, before the pin moved to alpha.11, and not re-measured since; the highlighter column is `@mxlang/tree-sitter-mx` alpha.2:
 
@@ -69,7 +69,7 @@ Measured on `@mxlang/data` alpha.5 with `structural: "reject"`, before the pin m
 | `&status=:sent` under `set` | Accepted syntactically | Accepted |
 | `belongs-to :customer entity=Customer` | Accepted | Accepted |
 
-**One temporary parser bridge.** `normaliseV4` in `packages/compiler/test/repository-checks.ts` rewrites a member after a kind and a tagless member line to the atom spelling the pin understands, and rewrites an expression's operand member to a record read. Imports pass unchanged through the `imports: "pass"` option. Strings, expression comments and infix `&`/`&&` stay untouched. The parser still uses `structural: "reject"`. That option also rejects comments on the pin, so only leading file comments are blanked, preserving rows; body comments remain untouched and rejected until MX fixes that gap. Remove it when Mesh pins MX's syntax table, including `lineTriggers` (decision 182 addendum 1). This is test-only compatibility, not a second parser in Mesh's compiler.
+**No parser bridge.** Mesh's syntax module (`packages/compiler/src/syntax.ts`) gives MX the `&` trigger, and MX lowers every member position before the compiler or the docs checks read the tree, so fences parse as authored, comments and imports included. Production and tests never rewrite source.
 
 **One temporary highlighter allowance.** `MX_V4_INPUT_PENDING_SYNTAX_TABLE` uses same-width stand-ins for standalone nested `input` sections and their bare member lines. It renders the original text, leaves those member names uncoloured, counts and prints the bridged lines, and still fails all other grammar errors. Tests pin both halves. MX item `mesh-syntax-highlighting-route` owns the permanent route, through semantic tokens or a Mesh grammar; no grammar is patched here.
 
@@ -79,7 +79,7 @@ A declaration name and atom value still have separate colours (`ts-name`, `ts-at
 
 **Static by ruling, not just by parser limitation.** Declaration and member names are written out; entities use explicit imports. A condition is `when=` on its policy or check, or part of the expression. The future evaluated `data` target is not Mesh's target (MX decision 187 addendum 2).
 
-**The checks keep their teeth.** Only the contracts parse is deferred, under `syntax v4, pending the MX syntax table`; every fence still passes a real normalised parse. `checkDocsSyntaxV4` requires `entity :Name`, and `oldSpellingInV4` rejects old input options, the old relationship shape, atoms in reference positions, quoted names and `sort=`. Planted fence tests prove these failures in both the compiler's sample check and the Docs check. Contract semantics and reference resolution are checked by the production contracts and builder (PR #47); the `&` positions wait for MX's lowering.
+**The checks keep their teeth.** Every fence passes the compiler's own parse with the production contracts. `checkDocsSyntaxV4` requires `entity :Name`, and `oldSpellingInV4` rejects old input options, the old relationship shape, atoms in reference positions, quoted names and `sort=`. Planted fence tests prove these failures in both the compiler's sample check and the Docs check. Contract semantics and reference resolution are checked by the production contracts and builder.
 
 Two consequences for records that predate v2: [ADR-0034](./decisions/0034-vocabulary-copies-ash-dsl.md) ("copy Ash's DSL") is superseded for entity files, and [ADR-0022](./decisions/0022-policies-simple-tier-as-extension.md) is superseded on packaging, since `policies` is now a section of the entity file rather than an extension. [ADR-0017](./decisions/0017-atomic-by-default-and-classification.md) is amended again: `validate` sees the record with the accepted input applied, not the record after the changes, and `require-atomic` does not appear in v2 — a `run(…) { }` step, or any expression Mesh cannot translate to SQL, is what makes an action read-then-write.
 

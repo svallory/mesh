@@ -54,31 +54,18 @@ const node = (a: Attr | undefined): Node | undefined =>
     : undefined;
 const isMember = (n: Node | null | undefined) =>
   n?.type === "MemberExpression" && !!n.extra?.mxMember;
-/** Use type: "member" once MX ships it (MX decision 182 addendum 4);
- * expression accepts a member meanwhile. Mesh still resolves membership. */
+/** A slot that holds one member only (MX decision 182 addendum 4): MX checks
+ * the `&name` form, after a kind or as a whole value; Mesh resolves membership. */
 const member = (required = false): CustomTagAttribute => ({
-  type: "expression",
+  type: "member",
   required,
 });
+/** A list of members (`actions=[&publish]`): MX's `"member"` type takes one
+ * member, so a list is an array whose elements Mesh checks for marks. */
 const members = (): CustomTagAttribute => ({ type: "array" });
-function references(
-  single: string[] = [],
-  lists: string[] = [],
-): NonNullable<CustomTag["analyze"]> {
+function references(lists: string[]): NonNullable<CustomTag["analyze"]> {
   return (calls, ctx) => {
     for (const call of calls) {
-      for (const key of single) {
-        const a = get(call, key);
-        if (
-          a &&
-          !isMember(node(a)) &&
-          (a as { kind: string }).kind !== "member"
-        )
-          ctx.fail(
-            `MESH_MEMBER_REFERENCE: \`${key}\` requires a member reference (&name)`,
-            a.loc,
-          );
-      }
       for (const key of lists) {
         const a = get(call, key);
         if (!a) continue;
@@ -105,8 +92,15 @@ const options = (type: string) => ({
 });
 const steps = children("set", "when", "load", "run");
 const body = { validate: {}, do: {} };
-// Inline wildcard contract, not an authorable `member` tag.
-const memberLine = { attributeTags: {}, children: {} };
+// The `member` child MX lowers a tagless `&name` line to (`MESH_SYNTAX`). An
+// inline wildcard contract, so no `member` tag is authorable at large; under
+// input/set the builder still refuses an authored `member name="x"`.
+const memberLine = (attributes: Record<string, CustomTagAttribute>) => ({
+  pattern: "member",
+  attributes: { name: { type: "string", required: true } as CustomTagAttribute, ...attributes },
+  attributeTags: {},
+  children: {},
+});
 
 const contracts: ContractMap = {
   entity: closed({
@@ -139,19 +133,18 @@ const contracts: ContractMap = {
       "on:load": member(),
     },
     children: children(...ACTION_TYPES, "always"),
-    analyze: references(["on:load"]),
   }),
   always: closed({
     parents: ["actions"],
     attributes: scope(),
     children: body,
-    analyze: references([], ["actions"]),
+    analyze: references(["actions"]),
   }),
   input: closed({
     parents: [...ACTION_TYPES],
     children: {
       ...children(...ATTRIBUTE_TYPES),
-      "*": { ...memberLine, attributes: {}, pattern: "&[A-Za-z_][A-Za-z0-9_]*" },
+      "*": memberLine({}),
     },
   }),
   validate: closed({
@@ -172,7 +165,9 @@ const contracts: ContractMap = {
   set: closed({
     parents: ["do", "when"],
     children: {
-      "*": { ...memberLine, attributes: { value: { required: true } }, pattern: "&[A-Za-z_][A-Za-z0-9_]*" },
+      // `value` takes whatever was written (`&done=true`, `&status=:sent`,
+      // `&title=""`, an expression); the builder requires it and type-checks it.
+      "*": memberLine({ value: {} }),
     },
   }),
   when: closed({
@@ -183,7 +178,7 @@ const contracts: ContractMap = {
   load: closed({
     parents: ["do", "when"],
     attributes: { value: { ...members(), required: true } },
-    analyze: references([], ["value"]),
+    analyze: references(["value"]),
   }),
   run: closed({ parents: ["do", "when"], attributes: { value: fn(true) } }),
   filter: closed({ parents: ["read"], attributes: { value: fn(true) } }),
@@ -199,7 +194,7 @@ const contracts: ContractMap = {
       "forbid-if": fn(),
     },
     children: children("authorize-if", "forbid-if"),
-    analyze: references([], ["actions"]),
+    analyze: references(["actions"]),
   }),
   "authorize-if": closed({
     parents: ["policy"],
@@ -273,7 +268,6 @@ for (const kind of ["asc", "desc"])
   contracts[kind] = closed({
     parents: ["sort"],
     attributes: { member: member(true) },
-    analyze: references(["member"]),
   });
 // E1's function/array checks accept dynamic unknowns by design. This static
 // dialect requires the written shape, not a runtime value of a compatible type.

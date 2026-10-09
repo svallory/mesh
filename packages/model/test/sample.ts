@@ -206,7 +206,8 @@ export const postDocument: ModelDocument = {
             "issuedOn",
             "dueOn",
             "notes",
-          ].map((name) => ({ kind: "member", ref: ref(name, `&${name}\n`) })),
+          // `&issuedOn\n` also ends the always check's `that` line, above the input.
+          ].map((name) => ({ kind: "member", ref: ref(name, `&${name}\n`, name === "issuedOn" ? 1 : 0) })),
         }),
         action("update", "send", {
           validate: [

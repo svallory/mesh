@@ -10,8 +10,7 @@ From this folder, run `bunx mesh build` after changing an entity file or an emit
 
 ## Entity files and output
 
-- [`src/domain/blog/post.mesh.mx`](src/domain/blog/post.mesh.mx) is the runnable Post declaration. It covers all ten attribute types, relationships, computed fields, action inputs, validation, steps, a filtered read, and policies. Functions use the supported `self.x` spelling.
-- [`src/domain/blog/post.pending.mesh.mx.txt`](src/domain/blog/post.pending.mesh.mx.txt) is the full Post declaration with member references after a kind and inside expressions. Those positions await **MX lang-ext-syntax-table: & after a kind / in expressions**. Its `.txt` suffix keeps it out of discovery; it is not a second entity loaded by the project.
+- [`src/domain/blog/post.mesh.mx`](src/domain/blog/post.mesh.mx) is the Post declaration. It covers all ten attribute types, relationships, computed fields, action inputs, validation, steps, a filtered and sorted read, `on:load`, and policies, with `&name` member references in every position.
 - [`user.mesh.mx`](src/domain/blog/user.mesh.mx) and [`comment.mesh.mx`](src/domain/blog/comment.mesh.mx) provide the imported entities.
 
 `mesh.config.ts` reads `src/domain/`, selects the SQLite adapter descriptor, and writes `.mesh/`. The folder relative to the domain root is the module: these entities belong to `blog`, so their types and validators land under `.mesh/blog/`. `.mesh/model.json` includes the adapter's name, never its options. SQLite is only a frozen descriptor in this round; no database is opened.

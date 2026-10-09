@@ -63,7 +63,7 @@ export function withV4InputLines(source) {
 /**
  * MESH_V4_MEMBER_RENDER — Mesh-only colour overlay after MX's captures, removed
  * by mesh-syntax-highlighting-route (MX decision 182 addendum 1). This bounded
- * lexer borrows the operand/line-trigger cases from normaliseV4, not test code.
+ * lexer finds operand and line-start members by token position, not test code.
  * Literal text (including templates), regexes and comments are opaque. A member
  * starts an operand or a bare/sort line; infix & and && are never members.
  * Offsets refer to authored text; neither the grammar nor source is changed.

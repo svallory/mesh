@@ -51,7 +51,7 @@ describe("v4 contracts", () => {
       ).toEqual([]);
     },
   );
-  test("comments are non-structural under alpha.11", () =>
+  test("comments are non-structural under structural rejection", () =>
     expect(
       parse("// comment\n" + keyed + "    // inside\n").diagnostics,
     ).toEqual([]));
@@ -112,7 +112,9 @@ describe("v4 contracts", () => {
       "unknown-member": ["MESH_UNKNOWN_MEMBER", 7, 8],
       "old-arguments": ["MESH_SYNTAX", 6, 6],
       "unknown-option": ["MESH_SYNTAX", 1, 13],
-      "member-assignment": ["MESH_SYNTAX", 7, 11],
+      "member-assignment": ["MESH_SYNTAX", 7, 8],
+      "member-assign-expression": ["MESH_MEMBER_ASSIGN", 6, 33],
+      "duplicate-set": ["MESH_DUPLICATE_SET", 10, 10],
       "check-that": ["MESH_SYNTAX", 7, 8],
       "atom-sort": ["MESH_SYNTAX", 7, 12],
       "has-many-nullable": ["MESH_SYNTAX", 5, 32],
@@ -151,7 +153,7 @@ describe("v4 contracts", () => {
   });
 });
 
-const pending = [
+const members = [
   [
     "asc member",
     keyed + "  actions\n    read :custom\n      sort\n        asc &id\n",
@@ -180,16 +182,16 @@ const pending = [
     keyed + "  actions\n    read :custom filter=() => &id !== null\n",
   ],
 ] as const;
-for (const [name, source] of pending)
-  test.todo(
-    `${name} — MX lang-ext-syntax-table: & after a kind / in expressions`,
+for (const [name, source] of members)
+  test(
+    `${name} parses and builds`,
     () => {
       expect(parse(source).diagnostics).toEqual([]);
       expect(build(source).diagnostics).toEqual([]);
     },
   );
-test.todo(
-  "unknown expression member suggests nearest — MX lang-ext-syntax-table: & after a kind / in expressions",
+test(
+  "unknown expression member suggests nearest",
   () => {
     expect(
       build(
@@ -202,8 +204,8 @@ test.todo(
     });
   },
 );
-test.todo(
-  "on:load must name a read — MX lang-ext-syntax-table: & after a kind / in expressions",
+test(
+  "on:load must name a read",
   () => {
     expect(
       build(
@@ -212,8 +214,8 @@ test.todo(
     ).toContain("MESH_ON_LOAD");
   },
 );
-test.todo(
-  "reference fixture parses — MX lang-ext-syntax-table: & after a kind / in expressions",
+test(
+  "reference fixture parses",
   () => expect(parseFixture("post.mesh.mx").diagnostics).toEqual([]),
 );
 
@@ -242,24 +244,23 @@ describe("vocabulary-mapping section 3 Contract coverage", () => {
     const cell = row[2]!.replaceAll("`", "");
     const [tag, option] = cell.split(".");
     const example = row[1]!.replace(/^`|`$/g, "");
-    const pending = /(?:asc|desc) &|=\[&|=&/.test(example);
     const check = () => {
       const project = coverageProject(tag!, option, example);
       for (const file of project.files) expect(parse(file.source).diagnostics).toEqual([]);
       expect(buildModel(project).diagnostics).toEqual([]);
     };
-    if (pending) test.todo(`${cell} example — MX lang-ext-syntax-table: & after a kind / in expressions`, check);
-    else test(`${cell} example parses and builds`, check);
+    test(`${cell} example parses and builds`, check);
   }
   test("one row per tag and option, no untested or stale contract cells", () => {
     const expected = Object.entries(contracts)
       .flatMap(([tag, contract]) => {
         const wildcard = contract.children?.["*"] as WildcardChildEntry | undefined;
-        const options = Object.keys(wildcard?.attributes ?? {});
-        // A tagless form has no named-tag row: list its options, or its bare line.
+        // The lowered `member` line has no named-tag row: list its options
+        // beyond the lowered `name`, or the bare line.
+        const options = Object.keys(wildcard?.attributes ?? {}).filter((option) => option !== "name");
         const inline = !wildcard ? [] : options.length
-          ? options.map((option) => `${tag}.*.${option}`)
-          : [`${tag}.*`];
+          ? options.map((option) => `${tag}.${wildcard.pattern}.${option}`)
+          : [`${tag}.${wildcard.pattern}`];
         return [tag, ...Object.keys(contract.attributes ?? {}).map((option) => `${tag}.${option}`), ...inline];
       })
       .sort();
