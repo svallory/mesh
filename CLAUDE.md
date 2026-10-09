@@ -39,9 +39,15 @@ Bun workspace (`workspaces`: `packages/*`, `apps/*`, `examples/*`), one root `bu
   addendum 1). Do not patch the grammar or broaden either bridge silently.
 - Home token explanations live in `apps/docs/plugins/mesh-home-hints.js`, wired by `mesh-home.js`.
   Keep descriptions outside the code so copying and the home-sample hash retain the authored file;
-  every token in the fixed excerpt is checked against the commissioned wording. Browser interactions
-  and screenshots are exercised by `apps/docs/test/browser/home-hints.mjs` in Playwright's Docker
-  image, separately from `bun run verify` (see the script header for its environment variables).
+  every token in the fixed excerpt is checked against the commissioned wording. Each note has a shared
+  family sentence followed by optional context; inline fragments use `mxHighlighter` at build time
+  (TypeScript through its injection grammar), never a browser highlighter. Reference tokens name
+  scoped targets for a single dashed SVG connector and outline. Keyboard navigation has one tab stop
+  per nonblank line, with Left/Right and Home/End within it. Mutation/resize observers run only while
+  a note is open; the panel is re-created after body replacement. Browser interactions and screenshots
+  are exercised by `apps/docs/test/browser/home-hints.mjs` in Playwright's Docker image, separately
+  from `bun run verify` (see the script header for its environment variables; screenshots default
+  under `os.tmpdir()`, not the checkout).
 - docmd 0.9.7 reads a raw HTML block until its tags balance, blank lines included, so Markdown (a fence
   above all) inside an open `<div>` is emitted as raw text. Wrap fences in a docmd container (`::: grids`)
   instead, and keep each HTML block self-contained. docmd also hides `<html>` until its theme script runs;
