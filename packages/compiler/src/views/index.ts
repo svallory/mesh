@@ -37,7 +37,7 @@ export interface IndexEntity {
   readonly bindName: string;
   /** The entity's actions file, quoted, e.g. `"./blog/post.actions"`. */
   readonly actionsFromLiteral: string;
-  /** The local name of the entity's bound object inside `bind`, e.g. `post`. */
+  /** The local name of the entity's bound object inside `bind`: the entity name, camelCase, plus `Actions`, e.g. `postActions`. A fixed suffix, so no entity name becomes a reserved word or `bind`'s `layer`. */
   readonly local: string;
 }
 
@@ -51,7 +51,7 @@ export interface IndexFunction {
   readonly inputType: string;
   /** The resolved type, e.g. `Post`. */
   readonly returnType: string;
-  /** The bound method it is, e.g. `post.publish`. */
+  /** The bound method it is, e.g. `postActions.publish`. */
   readonly method: string;
 }
 
@@ -66,10 +66,11 @@ export function indexView(input: EmitInput): IndexView {
   const handles: string[] = [];
   for (const entity of orderedEntities(document)) {
     const actions = actionsView(input, entity);
-    const local = camelCase(entity.name);
+    const key = camelCase(entity.name);
+    const local = `${key}Actions`;
     const entityTypes = [typeName(entity.name, entity.position), ...entityInputs(entity, document).map((i) => i.name)];
     types.push(...entityTypes);
-    handles.push(`${local}Table`);
+    handles.push(`${key}Table`);
     entities.push({
       types: entityTypes,
       typesFromLiteral: quote(`${entityPath(entity)}.types`),

@@ -142,6 +142,21 @@ describe("connect and disconnect (ADR-0047)", () => {
     await disconnect();
   });
 
+  test("disconnect waits for a call already made to settle before it closes the layer", async () => {
+    await connect();
+    const author = await createUser({ name: "Bob" }, context);
+    // Not awaited: the call is in flight (validating its input) when disconnect starts.
+    const pending = createPost({ title: "In flight", author: author.id }, context);
+    let settled = false;
+    void pending.then(() => { settled = true; });
+    await disconnect();
+    expect(settled).toBe(true);
+    expect((await pending).title).toBe("In flight");
+    await connect();
+    expect((await readPost({}, context)).map((post) => post.title)).toContain("In flight");
+    await disconnect();
+  });
+
   test("disconnect never closes a layer passed to bind", async () => {
     const { db, blog } = await fresh();
     try {

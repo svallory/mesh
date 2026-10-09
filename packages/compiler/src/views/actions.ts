@@ -18,7 +18,11 @@ export interface ActionsView {
   readonly hasActions: boolean;
   /** The exported binding function, e.g. `bindPost`. */
   readonly bindName: string;
-  /** Value imports from `@meshfw/runtime`, sorted, e.g. `["NotFoundError", "parseInput"]`. */
+  /**
+   * Value imports from `@meshfw/runtime` as printed inside `import { ... }`, sorted by name.
+   * A class is imported under a `$` alias (`NotFoundError as $NotFoundError`): no entity
+   * name becomes a `$` name, so an entity's types can never collide with Mesh's imports.
+   */
   readonly runtimeValues: readonly string[];
   /** Type imports from the types file: the record type, then each input type. */
   readonly typeImports: readonly string[];
@@ -168,9 +172,18 @@ function columnOf(entity: Entity, name: string, position: SourcePosition): { nam
 
 const KEY = "key";
 
+/** Global types the generated actions and index files name; an entity's record type must not shadow them. */
+export const GLOBAL_TYPES: readonly string[] = Object.freeze(["Partial", "Promise", "ReturnType"]);
+
+/** `NotFoundError as $NotFoundError` for a class; a function keeps its name. */
+const runtimeImport = (name: string) => (/^[A-Z]/.test(name) ? `${name} as $${name}` : name);
+
 /** The actions view of one entity. Pure and synchronous; a model it cannot render is an `EmitError`. */
 export function actionsView({ document }: EmitInput, entity: Entity): ActionsView {
   const recordName = typeName(entity.name, entity.position);
+  if (GLOBAL_TYPES.includes(recordName))
+    throw emitError("MESH_EMIT_NAME", `Entity :${entity.name} would generate the type ${recordName}, which shadows the global ${recordName} the generated code uses`,
+      entity.position, "Rename the entity");
   const key = entity.attributes.find((a) => a.primaryKey)!;
   const inputs = entityInputs(entity, document);
   const actions = effectiveActions(entity);
@@ -211,7 +224,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         runtime.add("NotFoundError");
         return { ...base, returnType: "void", unsupported: null, usesParsed: true, statements: [
           `const ${KEY} = ${keyObject};`,
-          `if (!(await tx.deleteByKey(${table}, ${KEY}))) throw new NotFoundError(${JSON.stringify(entity.name)}, ${KEY});`,
+          `if (!(await tx.deleteByKey(${table}, ${KEY}))) throw new $NotFoundError(${JSON.stringify(entity.name)}, ${KEY});`,
         ] };
       }
       case "update": {
@@ -231,7 +244,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         }
         statements.push(
           `const row = await tx.updateByKey(${table}, ${KEY}, changes);`,
-          `if (row === undefined) throw new NotFoundError(${JSON.stringify(entity.name)}, ${KEY});`,
+          `if (row === undefined) throw new $NotFoundError(${JSON.stringify(entity.name)}, ${KEY});`,
           `return row as ${recordName};`,
         );
         return { ...base, returnType: recordName, unsupported: null, usesParsed: true, statements };
@@ -286,7 +299,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     entityFile: entityFileComment(entity),
     hasActions: methods.length > 0,
     bindName: `bind${recordName}`,
-    runtimeValues: [...runtime].sort(compareCode),
+    runtimeValues: [...runtime].sort(compareCode).map(runtimeImport),
     typeImports: methods.length ? [recordName, ...inputs.map((input) => input.name)] : [],
     typesFromLiteral: JSON.stringify(`./${entitySegment(entity)}.types`),
     validatorImports: methods.map((method) => method.validator),

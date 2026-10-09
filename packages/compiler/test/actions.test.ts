@@ -108,7 +108,7 @@ describe("actions view", () => {
       ["read", "readArticle", "ReadArticleInput", "readArticleInput", "Article[]"],
       ["destroy", "destroyArticle", "DestroyArticleInput", "destroyArticleInput", "void"],
     ]);
-    expect(view.runtimeValues).toEqual(["FrameworkError", "NotFoundError", "parseInput"]);
+    expect(view.runtimeValues).toEqual(["FrameworkError as $FrameworkError", "NotFoundError as $NotFoundError", "parseInput"]);
     expect(view.typesFromLiteral).toBe('"./article.types"');
     expect(view.validatorsFromLiteral).toBe('"./article.validators"');
     expect(view.schemaFromLiteral).toBe('"../schema"');
@@ -145,7 +145,7 @@ describe("actions view", () => {
       "const now = new Date();",
       "changes.updatedAt = now;",
       "const row = await tx.updateByKey(tables.article, key, changes);",
-      'if (row === undefined) throw new NotFoundError("Article", key);',
+      'if (row === undefined) throw new $NotFoundError("Article", key);',
       "return row as Article;",
     ]);
     expect(publish!.statements.slice(2, 3)).toEqual(['changes.state = "live";']);
@@ -167,7 +167,7 @@ describe("actions view", () => {
     const destroy = viewOf("Article").methods.find((m) => m.name === "destroy")!;
     expect(destroy.statements).toEqual([
       "const key = { id: parsed.id };",
-      'if (!(await tx.deleteByKey(tables.article, key))) throw new NotFoundError("Article", key);',
+      'if (!(await tx.deleteByKey(tables.article, key))) throw new $NotFoundError("Article", key);',
     ]);
     expect(destroy.notRun).toBe("Not run in this version: policies everyone");
   });

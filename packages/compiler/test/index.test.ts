@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
-import { FrameworkError, NotFoundError } from "@meshfw/runtime";
+import { FrameworkError, InvalidInputError, NotFoundError } from "@meshfw/runtime";
 import { buildModel } from "../src/build.ts";
 import { EmitError, generateFiles, writeGeneratedFiles } from "../src/emit.ts";
 import { actionsGenerator } from "../src/emitters/actions.ts";
@@ -39,16 +39,16 @@ describe("index view", () => {
     const view = indexView({ document: documentOf(), config: configOf("/project", ".mesh") });
     expect(view.configFromLiteral).toBe('"../mesh.config"');
     expect(view.functions.map((fn) => [fn.name, fn.method, fn.inputType, fn.returnType])).toEqual([
-      ["createNote", "note.create", "CreateNoteInput", "Note"],
-      ["editNote", "note.edit", "EditNoteInput", "Note"],
-      ["readNote", "note.read", "ReadNoteInput", "Note[]"],
-      ["destroyNote", "note.destroy", "DestroyNoteInput", "void"],
+      ["createNote", "noteActions.create", "CreateNoteInput", "Note"],
+      ["editNote", "noteActions.edit", "EditNoteInput", "Note"],
+      ["readNote", "noteActions.read", "ReadNoteInput", "Note[]"],
+      ["destroyNote", "noteActions.destroy", "DestroyNoteInput", "void"],
     ]);
     expect(view.types).toEqual(["Note", "CreateNoteInput", "EditNoteInput", "ReadNoteInput", "DestroyNoteInput", "Tag"]);
     expect(view.schemaExports).toEqual(["tables", "noteTable", "tagTable"]);
     expect(view.entities.map((e) => [e.local, e.hasActions, e.actionsFromLiteral, e.typesFromLiteral])).toEqual([
-      ["note", true, '"./notes/note.actions"', '"./notes/note.types"'],
-      ["tag", false, '"./tag.actions"', '"./tag.types"'],
+      ["noteActions", true, '"./notes/note.actions"', '"./notes/note.types"'],
+      ["tagActions", false, '"./tag.actions"', '"./tag.types"'],
     ]);
   });
 
@@ -70,6 +70,7 @@ describe("index view", () => {
 /** A config whose `data` is a Map-backed layer counting its closes, or a descriptor without a run-time half. */
 const memoryConfig = `const rows = new Map();
 export const closes = { count: 0 };
+export const events = [];
 const ops = {
   async insert(_table, row) { rows.set(row.id, { ...row }); return { ...row }; },
   async selectByKey(_table, key) { return rows.get(key.id); },
@@ -83,7 +84,8 @@ const ops = {
   async deleteByKey(_table, key) { return rows.delete(key.id); },
 };
 export default { data: { kind: "data-adapter", name: "memory", build: "./none", options: {},
-  transaction: (run) => run(ops), close: async () => { closes.count++; } } };
+  transaction: async (run) => { const result = await run(ops); events.push("commit"); return result; },
+  close: async () => { closes.count++; events.push("close"); } } };
 `;
 const descriptorConfig = `export default { data: { kind: "data-adapter", name: "remote", build: "./none", options: {} } };\n`;
 
@@ -129,6 +131,23 @@ describe("the generated index", () => {
     await mesh.disconnect();
   });
 
+  test("disconnect waits for calls already made, refuses new ones at once, then closes", async () => {
+    const { root } = await generated();
+    const mesh = await import(resolve(root, ".mesh/index.ts"));
+    const { events } = await import(resolve(root, "mesh.config.ts"));
+    await mesh.connect();
+    const pending = mesh.createNote({ text: "in flight" });
+    const failing = mesh.createNote({ text: 42 }).then(() => null, (error: unknown) => error);
+    const closing = mesh.disconnect();
+    await expect(mesh.readNote({})).rejects.toBeInstanceOf(FrameworkError);
+    await expect(mesh.connect()).resolves.toBeUndefined();
+    await mesh.disconnect();
+    await closing;
+    expect((await pending).text).toBe("in flight");
+    expect(await failing).toBeInstanceOf(InvalidInputError);
+    expect(events).toEqual(["commit", "close", "close"]);
+  });
+
   test("bind returns frozen functions over a caller's layer and disconnect never closes it", async () => {
     const { root } = await generated();
     const mesh = await import(resolve(root, ".mesh/index.ts"));
@@ -154,5 +173,41 @@ describe("the generated index", () => {
     await expect(mesh.connect()).rejects.toThrow(new FrameworkError(
       'The data adapter "remote" configured in mesh.config.ts has no run-time half: connect() needs a data layer with transaction() and close()'));
     await expect(mesh.readNote({})).rejects.toBeInstanceOf(FrameworkError);
+  });
+});
+
+describe("entity names never break the generated files", () => {
+  // Reserved words, `bind`'s parameter, and the names of Mesh's own imports.
+  const names = ["Class", "Default", "Function", "Layer", "DataLayer", "ContextArgument", "FrameworkError", "NotFoundError", "Tables"];
+  const files = Object.fromEntries(names.map((name) => [`${name.toLowerCase()}.mesh.mx`,
+    `entity :${name}\n  attributes\n    uuid :id primary-key\n    string :label\n  actions auto=[:read, :destroy]\n    create :create\n      input\n        &label\n    update :edit\n      input\n        &label\n`]));
+  const key = (name: string) => name[0]!.toLowerCase() + name.slice(1);
+
+  test("they build, type-check strictly and run", async () => {
+    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-index-names-"));
+    roots.push(root);
+    const config = configOf(root, ".mesh");
+    const generatedFiles = await generateFiles({ document: documentOf(files), config });
+    await writeGeneratedFiles(generatedFiles, config);
+    await writeFile(resolve(root, ".mesh/schema.ts"), [
+      ...names.map((name) => `export const ${key(name)}Table = {};`),
+      `export const tables = { ${names.map((name) => `${key(name)}: ${key(name)}Table`).join(", ")} };`, ""].join("\n"));
+    await writeFile(resolve(root, "mesh.config.ts"), descriptorConfig);
+    expect(checkTypes(root, [...generatedFiles.filter((f) => f.path.endsWith(".ts")).map((f) => f.path), ".mesh/schema.ts", "mesh.config.ts"]))
+      .toEqual({ code: 0, output: "" });
+    const mesh = await import(resolve(root, ".mesh/index.ts"));
+    const rows: object[] = [];
+    const bound = mesh.bind({ transaction: (run: (tx: object) => Promise<unknown>) => run({ insert: async (_t: object, row: object) => { rows.push(row); return row; } }), close: async () => {} });
+    for (const name of names) expect((await bound[`create${name}`]({ label: name })).label).toBe(name);
+    expect(rows).toHaveLength(names.length);
+  });
+
+  test.each(["Promise", "Partial", "ReturnType"])("an entity named %s, which would shadow a global type the generated code uses, is MESH_EMIT_NAME", (name) => {
+    let error: unknown;
+    try { actionsGenerator.views({ document: documentOf({ "x.mesh.mx": files["class.mesh.mx"]!.replace(":Class", `:${name}`) }), config: configOf("/project") }); }
+    catch (cause) { error = cause; }
+    expect(error).toBeInstanceOf(EmitError);
+    expect((error as EmitError).diagnostic).toMatchObject({ code: "MESH_EMIT_NAME", fix: "Rename the entity",
+      message: `Entity :${name} would generate the type ${name}, which shadows the global ${name} the generated code uses` });
   });
 });
