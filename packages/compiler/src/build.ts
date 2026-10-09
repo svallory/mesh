@@ -146,7 +146,7 @@ function buildEntity(
   };
   const imports = readImports(tree.imports ?? []);
   for (const problem of imports.problems)
-    fail("MESH_UNKNOWN_IMPORT", problem.message, at(problem.span.sourceStart));
+    fail(problem.code, problem.message, at(problem.span.sourceStart));
   entity.imports = imports.imports.map(
     (i): Import => {
       const value = { identifiers: i.names, from: i.from, position: at(i.span.sourceStart) };
@@ -159,7 +159,7 @@ function buildEntity(
     for (const name of entry.identifiers) {
       if (importNames.has(name))
         fail(
-          "MESH_UNKNOWN_IMPORT",
+          "MESH_DUPLICATE_IMPORT",
           `Duplicate import identifier ${name}`,
           entry.position,
         );

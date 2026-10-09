@@ -10,6 +10,7 @@ export interface ParsedImport {
   span: SourceSpan;
 }
 export interface ImportProblem {
+  code: "MESH_UNKNOWN_IMPORT" | "MESH_IMPORT_FORM";
   message: string;
   span: SourceSpan;
 }
@@ -20,6 +21,7 @@ export function readImports(imports: readonly DataImport[]): {
   const result: ParsedImport[] = [];
   const problems: ImportProblem[] = [];
   for (const entry of imports) {
+    let code: ImportProblem["code"] = "MESH_UNKNOWN_IMPORT";
     try {
       const statements = parse(entry.code, {
         sourceType: "module",
@@ -28,9 +30,13 @@ export function readImports(imports: readonly DataImport[]): {
       const statement = statements[0];
       if (statements.length !== 1 || statement?.type !== "ImportDeclaration")
         throw new Error("Expected exactly one import declaration");
+      if (!statement.specifiers.length || statement.specifiers.some((specifier) => specifier.type !== "ImportSpecifier")) {
+        code = "MESH_IMPORT_FORM";
+        throw new Error("import the entity by name: `import { List } from …`");
+      }
       const from = statement.source.value;
       if (!from.startsWith("./") && !from.startsWith("../"))
-        throw new Error("An import must name a relative file");
+        throw new Error("The import path must be relative (start with ./ or ../)");
       result.push({
         names: statement.specifiers.map((specifier) => specifier.local.name),
         bindings: statement.specifiers.map((specifier) => {
@@ -42,6 +48,7 @@ export function readImports(imports: readonly DataImport[]): {
       });
     } catch (cause) {
       problems.push({
+        code,
         message: cause instanceof Error ? cause.message : String(cause),
         span: entry.span,
       });

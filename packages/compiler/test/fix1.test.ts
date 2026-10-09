@@ -40,6 +40,16 @@ test("fix6: member is not an authored tag", () => {
   expect(result.diagnostics[0]!.message).toContain("member");
 });
 
+test("fix10: import diagnostics distinguish duplicates, forms and relative paths", () => {
+  const duplicate = buildModel(project('import { List } from "./list.mesh.mx"\nimport { List } from "./list.mesh.mx"\n' + keyed));
+  expect(duplicate.diagnostics.map((d) => d.code)).toEqual(["MESH_DUPLICATE_IMPORT"]);
+  for (const declaration of ['import List from "./list.mesh.mx"', 'import * as List from "./list.mesh.mx"', 'import "./list.mesh.mx"']) {
+    expect(buildModel(project(declaration + '\n' + keyed)).diagnostics).toEqual([expect.objectContaining({ code: "MESH_IMPORT_FORM", message: "import the entity by name: `import { List } from …`" })]);
+  }
+  const nonrelative = build('import { List } from "lists"\n' + keyed);
+  expect(nonrelative.diagnostics).toEqual([expect.objectContaining({ code: "MESH_UNKNOWN_IMPORT", message: "The import path must be relative (start with ./ or ../)" })]);
+});
+
 for (const [name, codes] of [
   ["computed-missing-body", [["MESH_MODEL_SHAPE", 6, 4]]],
   ["set-missing-value", [["MESH_MEMBER_LINE_OPTIONS", 9, 10]]],
