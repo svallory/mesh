@@ -5,11 +5,14 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { isProjectRelativePath, type Diagnostic, type ModelDocument } from "@meshfw/model";
 import type { ResolvedConfig } from "./config.ts";
 import { errorCode, inside } from "./paths.ts";
-import { EmitError } from "./emit-error.ts";
+import { EmitError, emitError } from "./emit-error.ts";
 import { modelJsonEmitter } from "./emitters/model-json.ts";
-import { entityTypesEmitter } from "./emitters/resource-types.ts";
-import { entityValidatorsEmitter } from "./emitters/resource-validators.ts";
+import { typesGenerator } from "./emitters/types.ts";
+import { validatorsGenerator } from "./emitters/validators.ts";
 import { compareText, outputPrefix } from "./emitters/order.ts";
+import { formatTypescript } from "./format.ts";
+import { renderTemplate, type Template } from "./render.ts";
+import { loadTemplates, type Templates } from "./templates.ts";
 
 export { EmitError } from "./emit-error.ts";
 
@@ -30,12 +33,10 @@ export interface EmitInput {
 }
 
 /**
- * One source of generated files.
+ * A source of generated files that is not a template: `model.json` is the model
+ * serialised as data, so it has no view and no template a project could override.
  *
- * UNSTABLE UNTIL M6: from M6 the extension host registers emitters through this
- * interface (the data adapter's schema emitter and extension emitters alike), so the
- * shape may still change. Keep it to the smallest thing that can produce files: an
- * emitter is a pure function of the model and the configuration.
+ * UNSTABLE UNTIL M6, like `Generator`: the extension host registers both shapes.
  */
 export interface Emitter {
   /** Stable name, used in the error that two emitters wrote the same path. */
@@ -45,11 +46,75 @@ export interface Emitter {
   emit(input: EmitInput): Promise<readonly GeneratedFile[]>;
 }
 
+/** One file a generator writes: its project-relative path and the view its template renders. */
+export interface GeneratedView<View extends object> {
+  /** Project-relative path of the generated file, with `/` separators. */
+  readonly path: string;
+  /** The plain data the generator's template renders into that file. */
+  readonly view: View;
+}
+
+/**
+ * A generator is a view and a template (ADR-0061). `views` is pure and synchronous
+ * and makes every decision; the template named by `template` only prints each view,
+ * and `renderGenerator` formats the result. A project's `.mesh-generators/<template>`
+ * replaces Mesh's copy of the template; the view type is the contract it renders.
+ *
+ * UNSTABLE UNTIL M6: from M6 the extension host registers generators through this
+ * interface, so the shape may still change.
+ */
+export interface Generator<View extends object = object> {
+  /** Stable name, used in errors: two generators writing one path, a template that fails to render. */
+  readonly name: string;
+  /** The template's file name, in Mesh's `templates/` folder and in a project's `.mesh-generators/`. */
+  readonly template: string;
+  /** Bare packages imported by generated code, resolved from the consumer root. */
+  readonly requires?: readonly string[];
+  /** One view per generated file; pure and synchronous, throwing `EmitError` for a model it cannot render. */
+  views(input: EmitInput): readonly GeneratedView<View>[];
+}
+
+/** Render every view of one generator with its template and format the result. */
+export async function renderGenerator<View extends object>(
+  generator: Generator<View>,
+  input: EmitInput,
+  templates: Templates,
+): Promise<GeneratedFile[]> {
+  const template: Template | undefined = templates.get(generator.template);
+  if (!template) throw new Error(`No template "${generator.template}" for generator "${generator.name}"`);
+  // One file at a time, in view order, so the first error reported is always the same one.
+  const files: GeneratedFile[] = [];
+  for (const { path, view } of generator.views(input)) {
+    const rendered = await renderTemplate(template, view, generator.name);
+    try {
+      files.push({ path, contents: await formatTypescript(rendered) });
+    } catch (cause) {
+      // A project template can print anything; text the formatter cannot parse is the
+      // template's error, named on the template, not an unpositioned build failure.
+      const reason = (cause instanceof Error ? cause.message : String(cause)).split("\n")[0];
+      throw emitError(
+        "MESH_TEMPLATE_RENDER",
+        `Generator "${generator.name}" cannot render ${template.path}: rendered output for ${path} is not valid TypeScript: ${reason}`,
+        { file: template.path, line: 1, column: 0, offset: 0 },
+        "Fix the template so that it prints valid TypeScript",
+      );
+    }
+  }
+  return files;
+}
+
 /** The emitters of the core build, in a fixed order. The result is sorted by path anyway. */
-export const EMITTERS: readonly Emitter[] = Object.freeze([modelJsonEmitter, entityTypesEmitter, entityValidatorsEmitter]);
+export const EMITTERS: readonly (Emitter | Generator)[] = Object.freeze([modelJsonEmitter, typesGenerator, validatorsGenerator]);
+
+/** The generators among `EMITTERS`: the ones with a template. */
+export const GENERATORS: readonly Generator[] = Object.freeze(EMITTERS.filter(isGenerator));
+
+function isGenerator(entry: Emitter | Generator): entry is Generator {
+  return "template" in entry;
+}
 
 /** Preflight every generated import before writing; check/inspect need no installed runtime dependencies. */
-export function generatedImportDiagnostics(projectRoot: string, emitters: readonly Emitter[] = EMITTERS): Diagnostic[] {
+export function generatedImportDiagnostics(projectRoot: string, emitters: readonly (Emitter | Generator)[] = EMITTERS): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
   const required = new Set(emitters.flatMap((emitter) => [...emitter.requires ?? []]));
   for (const specifier of [...required].sort(compareText)) {
@@ -67,13 +132,15 @@ export function generatedImportDiagnostics(projectRoot: string, emitters: readon
  * Run every emitter and return the whole generated tree as text, sorted by path.
  * Nothing is written: this is what `mesh build --check` and `mesh inspect` compare
  * against the committed files. Two emitters writing one path is a build error, not
- * a last-one-wins merge.
+ * a last-one-wins merge. Templates are looked up once per call.
  */
 export async function generateFiles(input: EmitInput): Promise<GeneratedFile[]> {
   const files: GeneratedFile[] = [];
   const owners = new Map<string, string>();
+  const templates = await loadTemplates(GENERATORS, input.config.root);
   for (const emitter of EMITTERS) {
-    for (const file of await emitter.emit(input)) {
+    const produced = isGenerator(emitter) ? await renderGenerator(emitter, input, templates) : await emitter.emit(input);
+    for (const file of produced) {
       if (!isProjectRelativePath(file.path)) {
         throw new EmitError({
           severity: "error",

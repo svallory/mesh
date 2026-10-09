@@ -8,6 +8,10 @@
     ".": "./src/index.ts",
     "./contracts": "./src/contracts.ts"
   },
+  "files": [
+    "src",
+    "templates"
+  ],
   "description": "Mesh entity-file syntax v4 as MX CustomTag contracts",
   "scripts": {
     "test": "bun test",
@@ -18,6 +22,7 @@
     "contracts": "./src/contracts.ts"
   },
   "dependencies": {
+    "@jig-lang/jig": "1.0.1",
     "@meshfw/model": "workspace:*",
     "@meshfw/runtime": "workspace:*",
     "@mxlang/core": "0.1.0-alpha.13",

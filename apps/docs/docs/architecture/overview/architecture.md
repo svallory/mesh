@@ -5,10 +5,10 @@ description: "What Mesh is, its three rings, the build-time and run-time workflo
 
 # Architecture overview
 
-Status: design. M0 (the workspace), M1 (the build skeleton) and the move to the documented names (merged in PR #47 and PR #48 on 2026-10-09) are done; part of M2 is merged. The operator approved the user docs and lifted the hold on 2026-10-09 ([ADR-0063](../decisions/0063-user-docs-first-and-the-hold.md)); next come round 3, the Jig port and the rest of M2 ([roadmap](../roadmap/roadmap.md)).
+Status: design. M0 (the workspace), M1 (the build skeleton), the move to the documented names (merged in PR #47 and PR #48 on 2026-10-09) and the Jig port (PR #51) are done; part of M2 is merged. The operator approved the user docs and lifted the hold on 2026-10-09 ([ADR-0063](../decisions/0063-user-docs-first-and-the-hold.md)); next comes the rest of M2 ([roadmap](../roadmap/roadmap.md)).
 
 ::: callout info "What the code does today"
-The code on `main` implements the names of the rulings of 2026-10-04 evening and 2026-10-05: `entity` in the entity syntax, `.mesh/` output, `ActionContext`, `meshfw` and `@meshfw/*` (PR #47, PR #48, 2026-10-09). Pending: the action functions and the remaining emitters (the remaining emitters), the Jig port, and the MX lowering that lets the compiler read the authored `&` member positions after a kind and inside expressions ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)).
+The code on `main` implements the names of the rulings of 2026-10-04 evening and 2026-10-05: `entity` in the entity syntax, `.mesh/` output, `ActionContext`, `meshfw` and `@meshfw/*` (PR #47, PR #48, 2026-10-09). MX lowers the authored `&` member positions (PR #50), and the `types` and `validators` files are rendered from typed views through Jig templates a project can override (PR #51, [ADR-0061](../decisions/0061-generators-are-jig-templates.md)). Pending: the action functions, `schema.ts` and `index.ts` ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)).
 :::
 
 ## What Mesh is
@@ -138,8 +138,8 @@ v1 is milestones M0 to M9 ([ADR-0019](../decisions/0019-v1-scope.md)), with two 
 |---|---|---|
 | M0 | Workspace and `verify` script | done |
 | M1 | Build skeleton: model, types, guard, `mesh build` and `inspect` | done (in the old vocabulary) |
-| Realignment | Syntax v2 and the new names across contracts, model, compiler, CLI, runtime and example | after the docs are approved |
-| Jig port | Existing emitters split into a view and a Jig template | after the move to the documented names |
+| Realignment | Syntax v2 and the new names across contracts, model, compiler, CLI, runtime and example | done (PR #47, PR #48) |
+| Jig port | Existing emitters split into a view and a Jig template; `mesh export generators` | done (PR #51) |
 | M2 | Generated action functions on SQLite (the walking skeleton ends in a function call) | part merged, rest held |
 | M3 | Data-layer contract, capabilities, conformance suite | planned |
 | M4 | Expressions: one tree, two evaluators | planned |

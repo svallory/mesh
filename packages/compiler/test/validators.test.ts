@@ -8,7 +8,7 @@ import {
   generatedImportDiagnostics,
   writeGeneratedFiles,
 } from "../src/emit.ts";
-import { VALIDATOR_TYPES } from "../src/emitters/resource-validators.ts";
+import { VALIDATOR_TYPES } from "../src/views/validators.ts";
 interface StandardSchemaV1 {
   "~standard": {
     validate(

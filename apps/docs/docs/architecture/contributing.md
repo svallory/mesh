@@ -69,11 +69,11 @@ Run `bun run build` and `bun run validate` before you open a pull request. From 
 
 This section is for contributors. Nothing under [Docs](../docs/index.md) says any of it, because those pages are written as if 1.0 were released.
 
-- **`packages/compiler`** (`@meshfw/compiler`) holds the closed entity tag contracts for entity files (`src/contracts.ts`), the loader, the model builder and the `types` and `validators` emitters. Its tests include the Docs `.mx` sample check described above.
+- **`packages/compiler`** (`@meshfw/compiler`) holds the closed entity tag contracts for entity files (`src/contracts.ts`), the loader, the model builder, the `types` and `validators` generators (views in `src/views/`, Jig templates in `templates/`) and the `model.json` emitter. Its tests include the Docs `.mx` sample check described above.
 - **`packages/model`** holds the plain-data entity model: fields, actions, relationships, the type registries and the diagnostic type. It imports nothing.
 - **`packages/runtime`** holds the run-time library generated code will import: the flat, project-augmented `ActionContext` (the second argument's type), the errors (`MeshError`, `InvalidInputError`, `NotFoundError(entity, key)`, and `ForbiddenError` with its `breakdown`, built on the documented `Issue`), Standard Schema input validation, the `DataAdapter` descriptors and the data-layer contract v0, with conformance checks under its `testing` entry. It has no run-time dependencies.
 - **`packages/cli`** (`meshfw`) holds the Bun-only `mesh` developer command, still a thin compiler shell. It re-exports `defineConfig`, which takes `{ domain, output, data, extensions? }`.
-- **`packages/data-sqlite`** (`@meshfw/data-sqlite`, private) returns a frozen `sqlite({ file })` descriptor; it opens no connection until M2.
+- **`packages/data-sqlite`** (`@meshfw/data-sqlite`, private) returns a frozen `sqlite({ file })` descriptor and opens no connection.
 - **`packages/create-mesh`** (`create-mesh`) is the starter behind `bun create mesh`; today a placeholder bin that prints "Mesh is coming soon".
 - **`examples/blog`** is the fixture project: entity files under `src/domain/blog/`. `mesh build` there writes `.mesh/` (`model.json` and the `types` and `validators` files per entity), which is committed. `.mesh/index.ts`, which `#mesh` maps to, is not written yet, so nothing imports it.
 - **`apps/docs`** is this site.
@@ -102,7 +102,7 @@ With `meshfw` installed, the command runs from the project root containing `mesh
 
 ## Vocabulary and what is pending
 
-The Docs pages, the Architecture section and the code use the same terms and the entity syntax (`entity`, `.mesh.mx`, modules under `src/domain/`, `.mesh/` imported as `#mesh`, the `ActionContext`, `@meshfw/*`); PR #47 and PR #48 (merged 2026-10-09) brought the code there. What is pending is the remaining emitters (the action functions, `index.ts` and the rest) and MX's lowering of the `&` member positions; see the [roadmap](./roadmap/roadmap.md). Architecture pages that describe design the code does not implement yet say so once, in a callout at the top.
+The Docs pages, the Architecture section and the code use the same terms and the entity syntax (`entity`, `.mesh.mx`, modules under `src/domain/`, `.mesh/` imported as `#mesh`, the `ActionContext`, `@meshfw/*`); PR #47 and PR #48 (merged 2026-10-09) brought the code there. What is pending is the remaining generators (the action functions, `schema.ts`, `index.ts` and the rest); see the [roadmap](./roadmap/roadmap.md). Architecture pages that describe design the code does not implement yet say so once, in a callout at the top.
 
 The [Ash-to-Mesh mapping](./roadmap/vocabulary-mapping.md) section 3 is in the current spelling, and a compiler test reads that table.
 
