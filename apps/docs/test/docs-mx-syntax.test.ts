@@ -1,11 +1,11 @@
 // ADR-0067: every Docs fence is a complete syntax-v4 entity. Only the compiler
-// test helper may call the MX parser (ADR-0043); the spelling bridge lives there.
+// test helper may call the MX parser (ADR-0043); fences parse as authored.
 import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  checkDocsSyntaxV4, checkDocsSamples, normaliseV4, oldSpellingInV4, parseV4,
+  checkDocsSyntaxV4, checkDocsSamples, oldSpellingInV4, parseV4,
 } from "../../../packages/compiler/test/repository-checks.ts";
 
 const docs = new URL("../docs/docs/", import.meta.url).pathname;
@@ -55,7 +55,6 @@ const oldForms = [
   "    update :rename\n      do\n        set\n          :title=\"new\"",
   "    policy :owner actions=[:rename]",
   "    actions on:load=:visible",
-  "    create :create\n      input\n        &title min=2",
 ];
 for (const planted of oldForms) {
   test(`rejects planted old or invalid input spelling: ${planted.trim()}`, () => {
@@ -78,10 +77,6 @@ entity :Todo
 const memberFailures = [
   ["misspelled input", "  actions\n    create :create\n      input\n        &titel", "&titel is not a declared member"],
   ["generated key is not a member", "  actions\n    create :create\n      input\n        &listId", "&listId is not a declared member"],
-  ["input assignment", "  actions\n    create :create\n      input\n        &title=1", "input member takes no options or assignment"],
-  ["bare member in attributes", "  attributes\n    &title", "directly under input or set"],
-  ["member nested beneath input argument", "  actions\n    create :create\n      input\n        string :argument\n          &title", "directly under input or set"],
-  ["sort member outside sort", "  actions\n    read :read\n      asc &title", "directly under sort"],
   ["unknown sort member", "  actions\n    read :read\n      sort\n        asc &zzz", "&zzz is not a declared member"],
   ["unimported entity", "  relationships\n    belongs-to :other entity=Nope", "entity=Nope must name an import"],
   ["unknown dotted head", "  actions\n    read :read\n      filter=() => &missing.id === &list.id", "&missing is not a declared member"],
@@ -94,7 +89,7 @@ const memberFailures = [
   ["inline inner binding cannot leak outward", "  actions\n    read :read\n      filter=() => some(({ self }) => self.title) + self.title", "self. requires self destructured"],
 ] as const;
 for (const [rule, planted, message] of memberFailures) {
-  test(`before normalisation, both walkers reject ${rule}`, () => {
+  test(`the text guard, in both walkers, rejects ${rule}`, () => {
     const dir = mkdtempSync(join(tmpdir(), "mesh-v4-member-"));
     try {
       writeFileSync(join(dir, "planted.md"), `\`\`\`mx\n${members}${planted}\n\`\`\`\n`);
@@ -144,30 +139,40 @@ entity :Todo
   expect(oldSpellingInV4(`${members}  actions\n    read :read\n      filter=() => some(({ self }) => self.title)\n`)).toBeNull();
 });
 
-test("normalisation bridges only the spellings pending the syntax table", () => {
-  const source = 'import { List } from "./list.mesh.mx"\nentity :Todo\n  attributes\n    string :title\n    boolean :done\n    integer :flags\n  actions\n    create :create\n      input\n        &title\n    update :rename\n      do\n        set\n          &title=() => &title + "&title"\n    read :pending\n      filter=() => !&done && (&flags & mask) === 0\n      sort\n        asc &title\n';
-  const normal = normaliseV4(source);
-  expect(normal.split("\n").length).toBe(source.split("\n").length);
-  expect(normal).toContain('import { List } from "./list.mesh.mx"');
-  expect(normal).toContain("        :title");
-  expect(normal).toContain('          :title=() => self.title + "&title"');
-  expect(normal).toContain("!self.done && (self.flags & mask)");
-  expect(normal).toContain("asc :title");
+// Member placement is the parse's job now: MX lowers `&name` through MESH_SYNTAX
+// and the production contracts refuse a member line out of place.
+const placementFailures = [
+  ["input assignment", "  actions\n    create :create\n      input\n        &title=1", "unknown attribute `value`"],
+  ["input member options", "  actions\n    create :create\n      input\n        &title min=2", "only whitespace may follow it"],
+  ["bare member in computed", "  computed\n    &title", "`<member>`"],
+  ["member nested beneath input argument", "  actions\n    create :create\n      input\n        string :argument\n          &title", "`<member>`"],
+  ["sort member outside sort", "  actions\n    read :read\n      asc &title", "`<asc>`"],
+] as const;
+for (const [rule, planted, message] of placementFailures) {
+  test(`the parse, in both walkers, rejects ${rule}`, () => {
+    const dir = mkdtempSync(join(tmpdir(), "mesh-v4-placement-"));
+    try {
+      writeFileSync(join(dir, "planted.md"), `\`\`\`mx\n${members}${planted}\n\`\`\`\n`);
+      for (const check of [checkDocsSyntaxV4, checkDocsSamples]) {
+        const errors = check(dir).errors.join("\n");
+        expect(errors).toContain("MX block");
+        expect(errors).toContain(message);
+      }
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+}
+
+test("fences parse as authored: comments, members and atoms need no adapting", () => {
+  const source = '// todo.mesh.mx\nimport { List } from "./list.mesh.mx"\nentity :Todo\n  attributes\n    string :title\n    boolean :done\n    integer :flags\n  actions\n    create :create\n      input\n        &title\n    update :rename\n      do\n        set\n          &title=() => &title + "&title"\n    read :pending\n      filter=() => !&done && (&flags & mask) === 0\n      sort\n        asc &title\n';
   expect(oldSpellingInV4(source)).toBeNull();
   expect(parseV4(source, "todo.mx")).toEqual([]);
-  expect(normaliseV4('// &title\nentity :Todo\n  attributes\n    string :title match=/&title/\n')).toContain('match=/&title/');
-  expect(normaliseV4('filter=() => flags &mask')).toBe('filter=() => flags &mask');
-  expect(normaliseV4('      return &status === :sent && &dueOn < today()')).toBe('      return self.status === :sent && self.dueOn < today()');
-  expect(normaliseV4('value=`first\n&title\nlast`')).toBe('value=`first\n&title\nlast`');
 });
 
-test("leading comments are bridged but structural rejection stays on", () => {
-  expect(normaliseV4('// invoice.mesh.mx\nentity :Invoice\n')).toBe('\nentity :Invoice\n');
-  expect(parseV4('// invoice.mesh.mx\nentity :Invoice\n', 'invoice.mx')).toEqual([]);
+test("structural rejection stays on", () => {
   expect(parseV4('entity :Invoice\n// unindented\n  attributes\n    uuid :id\n', 'bad.mx').length).toBeGreaterThan(0);
 });
 
-test("syntax and static-file errors still fail after normalisation", () => {
+test("syntax and static-file errors fail", () => {
   for (const code of [
     'entity :Todo\n  attributes\n    string :title min=\n',
     'entity :Todo\n  if=true\n    attributes\n      string :title\n',

@@ -4,7 +4,7 @@ import { join, sep } from "node:path";
 import { ACTION_TYPES, ATTRIBUTE_TYPES } from "@meshfw/model";
 import { buildModel, loadConfig, loadProject } from "../src/index.ts";
 import { parse } from "./helpers.ts";
-import { checkDocsSamples, checkMxImports, checkRuntime, normaliseV4, parseV4 } from "./repository-checks.ts";
+import { checkDocsSamples, checkMxImports, checkRuntime } from "./repository-checks.ts";
 
 const root = new URL("../../../", import.meta.url).pathname;
 function temporary(run: (dir: string) => void) {
@@ -358,20 +358,4 @@ test("Docs MX samples: removed vocabulary is an error, never deferred", () => {
     expect(checked.parsed).toBe(1);
     expect(checked.errors.join("\n")).toContain("module");
   });
-});
-
-// Docs-sample member normalisation (deleted in the next commit). Tripwires ensure
-// docs normalisation never silently broadens production reference contracts.
-for (const body of [
-  "  actions\n    create :create\n      input\n        &id\n",
-  "  actions\n    read :custom\n      sort\n        asc &id\n",
-  "  actions on:load=&custom\n    read :custom\n",
-  "  actions\n    always actions=[&custom]\n    read :custom\n",
-  "  actions\n    read :custom\n  policies\n    policy :owner actions=[&custom]\n      authorize-if=() => true\n",
-  "  computed\n    integer :n() { return 1 }\n  actions\n    update :custom\n      do\n        load=[&n]\n",
-]) test(`normalised references fail production contracts: ${body}`, () => {
-  const source = "entity :Todo\n  attributes\n    uuid :id primary-key\n" + body;
-  expect(normaliseV4(source)).not.toBe(source);
-  expect(parse(normaliseV4(source)).diagnostics.length).toBeGreaterThan(0);
-  expect(parseV4(source, "todo.mesh.mx")).toEqual([]);
 });

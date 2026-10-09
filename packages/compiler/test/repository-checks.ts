@@ -1,8 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { extname, join, relative, sep } from "node:path";
-import { parseData, type DataDiagnostic } from "@mxlang/data";
-import type { ContractMap, WildcardChildEntry } from "@mxlang/core";
-import contracts from "../src/contracts.ts";
+import type { DataDiagnostic } from "@mxlang/data";
+import { parseEntitySource } from "../src/build.ts";
 
 // ADR-0043: only packages declaring tag contracts may mention MX; extensions join in M6.
 export const MX_IMPORT_PACKAGES = ["packages/compiler"] as const;
@@ -156,10 +155,10 @@ function docsMxBlocks(dir: string): DocsBlock[] {
 
 /**
  * Syntax v4 (ADR-0067): :name declares, &name refers to a member, and another
- * entity is imported. The pinned parser predates MX's syntax table, so one
- * normalisation below adapts only those spellings before a real, static parse.
- * The parse uses production v4 contracts with only the normalised member slots
- * adapted below. The bounded text guard still checks authored member spellings.
+ * entity is imported. Fences parse as authored, through the compiler's own
+ * parse (production contracts and `MESH_SYNTAX`). The bounded text guard below
+ * adds what a parse of one fence cannot see: undeclared member heads,
+ * unimported entity names and unbound `self.` reads.
  */
 export const DOCS_SYNTAX = "syntax v4";
 
@@ -242,8 +241,8 @@ export function oldSpellingInV4(block: string): string | null {
 
 // A bounded text guard for the documented fence shapes, not another MX parser.
 // Strings/comments/regexes are blanked with rows and columns intact. The real
-// strict parse below still owns grammar; contracts will own full semantics after
-// realignment. Keep operand detection shared with the temporary spelling bridge.
+// parse owns grammar and member placement; this only resolves member heads and
+// entity names within one fence.
 const V4_TOKENS = /\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\/(?:\\.|[^/\n\\])+\/[a-z]*|&[A-Za-z_]\w*|[A-Za-z_$][\w$]*|\d+(?:\.\d+)?|===|!==|=>|&&|\|\||==|!=|<=|>=|\S/g;
 const v4Operand = (previous: string) => previous === "" || /^(?:return|throw|typeof|void|delete|yield|await)$/.test(previous) ||
   /^(?:=>|&&|\|\||===|!==|==|!=|<=|>=|[=([{,:?!+*/%<>|&^~-])$/.test(previous);
@@ -277,14 +276,6 @@ function invalidMembersInV4(source: string): string | null {
     for (const match of text.matchAll(/\bentity\s*=\s*([A-Za-z_]\w*)/g)) {
       uses.push({ name: match[1]!, line: at, imported: true });
     }
-    const bare = /^&(\w+)(.*)$/.exec(text);
-    if (bare) {
-      if (parent?.kind !== "input" && parent?.kind !== "set") return `line ${at}: a member line must sit directly under input or set`;
-      const tail = bare[2]!.trim();
-      if (parent.kind === "input" && tail) return `line ${at}: an input member takes no options or assignment`;
-      if (parent.kind === "set" && tail && !tail.startsWith("=")) return `line ${at}: a set member takes only an assignment`;
-    }
-    if (/^(?:asc|desc)\s+&/.test(text) && parent?.kind !== "sort") return `line ${at}: asc/desc member lines must sit directly under sort`;
 
     // One-line parameter lists and indented method/arrow bodies are the docs'
     // shapes. Delimiter depth bounds inline bodies too, so a nested arrow's self
@@ -330,69 +321,10 @@ function invalidMembersInV4(source: string): string | null {
   return null;
 }
 
-/**
- * Temporary spelling bridge for alpha.5, removed when Mesh pins MX's syntax
- * table (MX decision 182 addendum 1, including lineTriggers). Never changes the
- * page or evaluates code. Imports pass through alpha.5's imports:pass option.
- * Quoted text, expression comments, regex literals and infix &/&& stay untouched.
- */
-export function normaliseV4(source: string): string {
-  // alpha.5 also rejects comments under structural:reject (owed to MX).
-  // Blank only leading file comments, keeping rows. In-body comments remain
-  // untouched so a column-0 comment cannot silently hide an indentation error.
-  let beforeEntity = true;
-  const uncommented = source.split("\n").map((line) => {
-    if (/^entity\b/.test(line)) beforeEntity = false;
-    return beforeEntity && /^\/\//.test(line) ? "" : line;
-  }).join("\n");
-  // Tokenise before adapting line triggers too: a line inside a quoted template
-  // must never be rewritten. The core's after-kind reference positions are sort
-  // directions; `return &x` is an operand, not a declaration named :x.
-  const lines = uncommented;
-  let previous = "";
-  return lines.replace(V4_TOKENS, (token, offset: number) => {
-    if (token.startsWith("//") || token.startsWith("/*")) return token;
-    const prefix = lines.slice(lines.lastIndexOf("\n", offset - 1) + 1, offset);
-    const lineReference = v4LineReference(prefix);
-    const operand = v4Operand(previous);
-    const result = /^&\w/.test(token)
-      ? lineReference ? `:${token.slice(1)}` : operand ? `self.${token.slice(1)}` : token
-      : token;
-    previous = token;
-    return result;
-  });
-}
-
-/**
- * Docs-sample member normalisation (deleted in the next commit).
- * Test-only, derived from production contracts, never a second vocabulary:
- * - normalised tagless :name lines use defaultTag=member with an atom name;
- * - sort's normalised :name occupies name rather than the future member slot;
- * - unmarked self.x / [self.x] bypass only the member-reference analyze checks.
- * Delete with normaliseV4 when MX reads authored member syntax.
- */
-export function relaxedDocsContracts(production: ContractMap): ContractMap {
-  const result: ContractMap = { ...production };
-  for (const name of ["input", "set"]) result[name] = { ...production[name], defaultTag: "member", children: { ...production[name]!.children, member: { repeatable: true } } };
-  const memberLine = production.set!.children!["*"] as WildcardChildEntry;
-  // One normalized test-only tag serves both bare input and assigned set lines.
-  result.member = { ...memberLine, parents: ["input", "set"], attributes: { ...memberLine.attributes, value: { ...memberLine.attributes!.value, required: false }, name: { type: "atom", required: true } } };
-  const slots: Record<string, string[]> = { actions: ["on:load"], always: ["actions"], policy: ["actions"], load: ["value"], asc: ["member"], desc: ["member"] };
-  for (const [name, skipped] of Object.entries(slots)) {
-    const original = production[name]!;
-    result[name] = { ...original, analyze(calls, ctx) { original.analyze?.(calls.map((call) => ({ ...call, attrs: call.attrs.filter((a) => a.kind === "spread" || !skipped.includes(a.name)) })), ctx); } };
-    if (name === "asc" || name === "desc") {
-      const { member: _member, ...attributes } = original.attributes!;
-      result[name]!.attributes = { ...attributes, name: { type: "atom", required: true } };
-    }
-  }
-  return result;
-}
-
 /** A parser crash is a finding, not an exception. */
 export function parseV4(source: string, file: string): DataDiagnostic[] {
   try {
-    return parseData(normaliseV4(source), file, { customTags: relaxedDocsContracts(contracts), structural: "reject", unknownTags: "reject", imports: "pass" }).diagnostics;
+    return parseEntitySource(source, file).diagnostics;
   } catch (cause) {
     return [{ severity: "error", message: `MX could not parse the block at all: ${(cause as Error).message.split("\n")[0]}`, line: 1, column: 0, offset: 0 }];
   }
@@ -434,7 +366,7 @@ export function checkDocsSamples(dir: string) {
   for (const { name, line, block, closed } of blocks) {
     const where = `${name}:${line}`;
     if (!closed) errors.push(`${where}: unclosed MX fence`);
-    // Every complete v4 fence is parsed with the production-derived contracts.
+    // Every complete v4 fence is parsed as authored, with the production contracts.
     if (isV4EntityFile(block.join("\n"))) {
       parsed++;
       const old = oldSpellingInV4(block.join("\n"));
@@ -448,7 +380,7 @@ export function checkDocsSamples(dir: string) {
     // An entity file may open with its imports, so an `import` line heads a complete block too.
     if (!/^(entity\b|resource\b|import\s)/.test(root)) { skipped++; continue; }
     if (/^resource\b/.test(root)) errors.push(`${where}: MX fence is not written in ${DOCS_SYNTAX}: use entity :Name, not resource`);
-    const diagnostics = parseData(`${block.join("\n")}\n`, join(dir, name), { customTags: contracts, structural: "reject", unknownTags: "reject", imports: "pass" }).diagnostics;
+    const diagnostics = parseEntitySource(`${block.join("\n")}\n`, join(dir, name)).diagnostics;
     parsed++;
     for (const diagnostic of diagnostics) {
       errors.push(`${where}: MX block ${diagnostic.line}:${diagnostic.column + 1}: ${diagnostic.message}`);
