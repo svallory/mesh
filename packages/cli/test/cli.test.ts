@@ -363,3 +363,52 @@ test("help lists only implemented commands and needs no config", async () => {
   expect(result.stdout).toContain("inspect [entity]");
   for (const pending of ["init", "explain", "db push", "migrate"]) expect(result.stdout).not.toContain(pending);
 });
+
+describe("roadmap Jig port, acceptance 4: a project template overrides Mesh's", () => {
+  async function tree(root: string): Promise<Record<string, string>> {
+    const out: Record<string, string> = {};
+    for (const name of (await readdir(join(root, "generated"), { recursive: true })).sort()) {
+      const path = join(root, "generated", String(name));
+      if ((await lstat(path)).isFile()) out[String(name)] = await readFile(path, "utf8");
+    }
+    return out;
+  }
+  const meshTemplate = join(repo, "packages/compiler/templates/validators.ts.jig");
+
+  test("an overridden validators.ts.jig changes only the *.validators.ts files, and --check passes on the new output", async () => {
+    const root = await builtProject();
+    await writeFile(join(root, "domain/todos/list.mesh.mx"), "entity :List\n  attributes\n    uuid :id primary-key\n");
+    expect(run(root, "build").code).toBe(0);
+    const before = await tree(root);
+    await mkdir(join(root, ".mesh-generators"));
+    await writeFile(join(root, ".mesh-generators/validators.ts.jig"), `// House rule: validators are reviewed by the platform team.\n${await readFile(meshTemplate, "utf8")}`);
+    expect(run(root, "build", "--check").code).toBe(1);
+    expect(run(root, "build")).toEqual({ code: 0, stdout: "", stderr: "0 errors, 0 warnings\n" });
+    const after = await tree(root);
+    expect(Object.keys(after)).toEqual(Object.keys(before));
+    const changed = Object.keys(after).filter((path) => after[path] !== before[path]);
+    expect(changed).toEqual(["todos/list.validators.ts", "todos/todo.validators.ts"]);
+    for (const path of changed) expect(after[path]).toBe(`// House rule: validators are reviewed by the platform team.\n${before[path]}`);
+    expect(run(root, "build", "--check")).toEqual({ code: 0, stdout: "", stderr: "0 errors, 0 warnings\n" });
+  });
+
+  test("build, --check and inspect read the same override and name it in a render error", async () => {
+    const root = await builtProject();
+    await mkdir(join(root, ".mesh-generators"));
+    await writeFile(join(root, ".mesh-generators/types.ts.jig"), "// ok\n@if(\n");
+    const expected = { code: 1, stdout: "", stderr: '.mesh-generators/types.ts.jig:2:5 error Generator "types" cannot render .mesh-generators/types.ts.jig: Missing token ")"\n  fix: Fix the template; it receives the view documented for this generator\n1 error, 0 warnings\n' };
+    expect(run(root, "build")).toEqual(expected);
+    expect(run(root, "build", "--check")).toEqual(expected);
+    expect(run(root, "inspect")).toEqual(expected);
+  });
+
+  test("an unreadable override is MESH_TEMPLATE_READ for every command", async () => {
+    const root = await builtProject();
+    await mkdir(join(root, ".mesh-generators/validators.ts.jig"), { recursive: true });
+    for (const args of [["build"], ["build", "--check"], ["inspect"]]) {
+      const result = run(root, ...args);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toStartWith('.mesh-generators/validators.ts.jig:1:1 error The template ".mesh-generators/validators.ts.jig" is not a regular file');
+    }
+  });
+});

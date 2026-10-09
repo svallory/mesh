@@ -119,7 +119,7 @@ export function generatedImportDiagnostics(projectRoot: string, emitters: readon
 export async function generateFiles(input: EmitInput): Promise<GeneratedFile[]> {
   const files: GeneratedFile[] = [];
   const owners = new Map<string, string>();
-  const templates = await loadTemplates(GENERATORS);
+  const templates = await loadTemplates(GENERATORS, input.config.root);
   for (const emitter of EMITTERS) {
     const produced = isGenerator(emitter) ? await renderGenerator(emitter, input, templates) : await emitter.emit(input);
     for (const file of produced) {

@@ -46,14 +46,14 @@ describe("generators", () => {
 
   test("a generator renders one formatted file per view, at the view's path", async () => {
     const input = inputOf();
-    const files = await renderGenerator(typesGenerator, input, await loadTemplates(GENERATORS));
+    const files = await renderGenerator(typesGenerator, input, await loadTemplates(GENERATORS, "/project"));
     expect(files.map((file) => file.path)).toEqual(typesGenerator.views(input).map((view) => view.path));
     expect(files[0]!.contents.endsWith(";\n")).toBe(true);
   });
 
   test("a generator whose template is missing from the set is a Mesh bug, not a silent skip", async () => {
     const generator: Generator = { ...typesGenerator, template: "absent.ts.jig" };
-    await expect(renderGenerator(generator, inputOf(), await loadTemplates(GENERATORS))).rejects.toThrow(
+    await expect(renderGenerator(generator, inputOf(), await loadTemplates(GENERATORS, "/project"))).rejects.toThrow(
       'No template "absent.ts.jig" for generator "types"',
     );
   });
