@@ -784,6 +784,12 @@ export function buildModel(project: ProjectDescription): BuildResult {
         document.entities[0]?.position ?? positionAt("", "mesh.config.ts", 0),
       ),
     );
+  diagnostics.sort((a, b) =>
+    a.position.file.localeCompare(b.position.file) ||
+    a.position.line - b.position.line ||
+    a.position.column - b.position.column ||
+    a.position.offset - b.position.offset,
+  );
   return {
     document: diagnostics.some((d) => d.severity === "error") ? null : document,
     diagnostics,

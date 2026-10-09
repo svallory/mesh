@@ -4,5 +4,5 @@ entity :Todo
   actions
     create :create
       input
-        &id
+        uuid :id
         uuid :id

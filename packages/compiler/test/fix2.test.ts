@@ -1,8 +1,24 @@
 import { expect, test } from "bun:test";
+import { buildModel } from "../src/build.ts";
 import { parse } from "./helpers.ts";
 import { build, keyed } from "./v4.ts";
 
 const title = keyed + "    string :title\n";
+
+test("diagnostics follow authored positions, not validation phase order", () => {
+  const result = build(title + "  actions\n    update :change\n      input\n        &titel\n      do\n        set\n          &title=foo\n");
+  expect(result.diagnostics.map((d) => [d.code, d.position.line, d.position.column])).toEqual([
+    ["MESH_UNKNOWN_MEMBER", 8, 8], ["MESH_MODEL_SHAPE", 11, 10],
+  ]);
+});
+
+test("diagnostics are ordered by file before source position", () => {
+  const source = keyed + "    mystery :field\n";
+  const result = buildModel({ root: "/project", files: [
+    { file: "z.mesh.mx", source }, { file: "a.mesh.mx", source },
+  ] });
+  expect(result.diagnostics.map((d) => d.position.file)).toEqual(["a.mesh.mx", "z.mesh.mx"]);
+});
 
 test.each([
   ["      input\n        member name=\"title\"\n", 8, 8],
