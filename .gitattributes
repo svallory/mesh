@@ -1,4 +1,3 @@
 # The blog example's generated tree is written by `mesh build` and committed so a
 # reviewer reads what the program runs (see apps/docs/docs/docs/project-structure.md).
-.mesh/** linguist-generated=true
 examples/blog/.mesh/** linguist-generated=true
