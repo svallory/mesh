@@ -14,13 +14,13 @@
     "typecheck": "tsc --noEmit"
   },
   "mx": {
-    "target": "data",
+    "target": "tree",
     "contracts": "./src/contracts.ts"
   },
   "dependencies": {
     "@mesh/model": "workspace:*",
-    "@mxlang/core": "0.1.0-alpha.5",
-    "@mxlang/data": "0.1.0-alpha.5",
+    "@mxlang/core": "0.1.0-alpha.11",
+    "@mxlang/data": "0.1.0-alpha.11",
     "prettier": "3.6.2"
   },
   "devDependencies": {
