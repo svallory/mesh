@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { ATTRIBUTE_TYPES } from "@mesh/model";
+import { ATTRIBUTE_TYPES } from "@meshfw/model";
 import { buildModel, BUILTIN_OBJECT_PROPERTY_NAMES } from "../src/build.ts";
 import {
   generateFiles,

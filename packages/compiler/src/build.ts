@@ -31,7 +31,7 @@ import {
   type Rollup,
   type SourcePosition,
   type Step,
-} from "@mesh/model";
+} from "@meshfw/model";
 import contracts from "./contracts.ts";
 import { nearestName } from "./nearest-name.ts";
 import { readImports, type ParsedImport } from "./imports.ts";

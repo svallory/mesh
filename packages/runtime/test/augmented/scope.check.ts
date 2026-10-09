@@ -1,6 +1,6 @@
-import type { Actor, Scope } from "@mesh/runtime";
+import type { Actor, Scope } from "@meshfw/runtime";
 
-declare module "@mesh/runtime" {
+declare module "@meshfw/runtime" {
   interface Register {
     actor: { id: string };
   }

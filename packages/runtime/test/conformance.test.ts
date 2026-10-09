@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import type { DataLayer, DataOperations, Key, Row } from "@mesh/runtime";
-import { dataLayerConformance } from "@mesh/runtime/testing";
-import type { DataLayerFixture } from "@mesh/runtime/testing";
+import type { DataLayer, DataOperations, Key, Row } from "@meshfw/runtime";
+import { dataLayerConformance } from "@meshfw/runtime/testing";
+import type { DataLayerFixture } from "@meshfw/runtime/testing";
 
 // Only a test double for the suite: never shipped as an adapter.
 function fake(mode: "correct" | "no rollback" | "wrong error" | "no commit" | "bad update" | "ignores keys" | "ignores select key" | "ignores update key" | "ignores delete key" = "correct"): DataLayerFixture & { closed: () => boolean } {

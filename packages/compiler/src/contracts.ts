@@ -5,8 +5,8 @@ import type {
   CustomTagAttribute,
   TagCall,
 } from "@mxlang/core";
-import { ACTION_TYPES, ATTRIBUTE_TYPES as REGISTRY } from "@mesh/model";
-export { ACTION_TYPES } from "@mesh/model";
+import { ACTION_TYPES, ATTRIBUTE_TYPES as REGISTRY } from "@meshfw/model";
+export { ACTION_TYPES } from "@meshfw/model";
 export const ATTRIBUTE_TYPES = REGISTRY.map((t) => t.name);
 export const ROLLUPS = ["count", "sum", "avg", "min", "max"] as const;
 

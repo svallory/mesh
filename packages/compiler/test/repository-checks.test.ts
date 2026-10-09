@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, sep } from "node:path";
-import { ACTION_TYPES, ATTRIBUTE_TYPES } from "@mesh/model";
+import { ACTION_TYPES, ATTRIBUTE_TYPES } from "@meshfw/model";
 import { buildModel, loadConfig, loadProject } from "../src/index.ts";
 import { parse } from "./helpers.ts";
 import { checkDocsSamples, checkMxImports, checkRuntime, normaliseV4, parseV4 } from "./repository-checks.ts";
@@ -185,7 +185,7 @@ test("M2 test 7: runtime uses web-standard APIs only", () => {
   expect(checkRuntime(root, "web")).toEqual([]);
 });
 
-test.each(["@mesh/model", "@mesh/compiler", "drizzle-orm", "drizzle-kit"])(
+test.each(["@meshfw/model", "@meshfw/compiler", "drizzle-orm", "drizzle-kit"])(
   "M2 test 4: planted source mention of %s fails", (name) => {
     workspace((dir, put) => {
       put("packages/runtime/package.json", "{}");
@@ -201,7 +201,7 @@ test.each(["dependencies", "devDependencies", "peerDependencies", "optionalDepen
   "M2 test 4: planted forbidden dependencies fail in %s", (field) => {
     workspace((dir, put) => {
       put("packages/runtime/src/index.ts", "export {};");
-      const names = ["@mesh/model", "@mesh/compiler", "drizzle-orm", "drizzle-kit"];
+      const names = ["@meshfw/model", "@meshfw/compiler", "drizzle-orm", "drizzle-kit"];
       put("packages/runtime/package.json", JSON.stringify({ [field]: field.startsWith("bundle") ? names : Object.fromEntries(names.map((name) => [name, "*"])) }));
       expect(checkRuntime(dir, "imports")).toHaveLength(4);
       expect(checkRuntime(dir, "imports").every((error) => error.startsWith("packages/runtime/package.json:1:"))).toBe(true);
@@ -210,7 +210,7 @@ test.each(["dependencies", "devDependencies", "peerDependencies", "optionalDepen
 );
 
 for (const field of ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"]) {
-  test.each(["@mesh/model", "@mesh/compiler", "drizzle-orm", "drizzle-kit"])(
+  test.each(["@meshfw/model", "@meshfw/compiler", "drizzle-orm", "drizzle-kit"])(
     `M2 test 4: planted npm alias for %s fails in ${field}`, (name) => {
       workspace((dir, put) => {
         put("packages/runtime/src/alias.ts", 'import { x } from "db/subpath";');
@@ -223,7 +223,7 @@ for (const field of ["dependencies", "devDependencies", "peerDependencies", "opt
   );
 }
 
-test.each(["@mesh/model", "@mesh/compiler", "drizzle-orm", "drizzle-kit"])(
+test.each(["@meshfw/model", "@meshfw/compiler", "drizzle-orm", "drizzle-kit"])(
   "M2 test 4: whole manifest text rejects %s outside dependency fields", (name) => {
     workspace((dir, put) => {
       put("packages/runtime/src/index.ts", "export {};");
@@ -289,7 +289,7 @@ test("M2 runtime scans every regular file under src regardless of extension or d
   workspace((dir, put) => {
     put("packages/runtime/package.json", "{}");
     for (const path of ["build/bad.ts", "node_modules/bad.js", "bun.lock", "nested/text", "site/bad.json"]) {
-      put(`packages/runtime/src/${path}`, '// @mesh/model\nimport "bun:test";');
+      put(`packages/runtime/src/${path}`, '// @meshfw/model\nimport "bun:test";');
     }
     expect(checkRuntime(dir, "imports")).toHaveLength(5);
     expect(checkRuntime(dir, "web")).toHaveLength(5);
@@ -299,7 +299,7 @@ test("M2 runtime scans every regular file under src regardless of extension or d
 test("M2 runtime checks exclude tests and accept ordinary web-standard code", () => {
   workspace((dir, put) => {
     put("packages/runtime/package.json", "{}");
-    put("packages/runtime/test/allowed.test.ts", 'import { test } from "bun:test"; // @mesh/model');
+    put("packages/runtime/test/allowed.test.ts", 'import { test } from "bun:test"; // @meshfw/model');
     put("packages/runtime/src/index.ts", 'export const parsed = JSON.parse("{}"); const notBun = {}; const Bunny = "bun";');
     expect(checkRuntime(dir, "web")).toEqual([]);
     expect(checkRuntime(dir, "imports")).toEqual([]);

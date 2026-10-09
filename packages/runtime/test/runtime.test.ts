@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import * as runtime from "@mesh/runtime";
-import { FrameworkError, InvalidInputError, MeshError, NotFoundError, parseInput } from "@mesh/runtime";
-import type { Issue, StandardSchemaV1 } from "@mesh/runtime";
+import * as runtime from "@meshfw/runtime";
+import { FrameworkError, InvalidInputError, MeshError, NotFoundError, parseInput } from "@meshfw/runtime";
+import type { Issue, StandardSchemaV1 } from "@meshfw/runtime";
 
 const cause = new Error("original");
 test.each([

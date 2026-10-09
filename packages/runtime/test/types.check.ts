@@ -1,5 +1,5 @@
-import type { Actor, DataLayer, Key, Scope, StandardSchemaV1, TableHandle } from "@mesh/runtime";
-import { parseInput } from "@mesh/runtime";
+import type { Actor, DataLayer, Key, Scope, StandardSchemaV1, TableHandle } from "@meshfw/runtime";
+import { parseInput } from "@meshfw/runtime";
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
 type Assert<T extends true> = T;

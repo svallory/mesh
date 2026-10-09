@@ -1,1 +1,1 @@
-export { defineConfig, type MeshConfig } from "@mesh/compiler";
+export { defineConfig, type MeshConfig } from "@meshfw/compiler";

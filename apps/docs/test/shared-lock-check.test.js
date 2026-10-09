@@ -11,6 +11,6 @@ test('shared lock packages reject an unrelated Docker version upgrade', () => {
 test('matching shared lock packages allow workspace-only and image-only entries', () => {
   expect(sharedLockProblems(
     { 'lucide-static': ['lucide-static@1.51.0'], 'image-only': ['image-only@1.0.0'] },
-    { 'lucide-static': ['lucide-static@1.51.0'], '@mesh/compiler': ['@mesh/compiler@workspace:packages/compiler'] },
+    { 'lucide-static': ['lucide-static@1.51.0'], '@meshfw/compiler': ['@meshfw/compiler@workspace:packages/compiler'] },
   )).toEqual([]);
 });

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ATTRIBUTE_TYPES, findNonJsonValue } from "@mesh/model";
+import { ATTRIBUTE_TYPES, findNonJsonValue } from "@meshfw/model";
 import { buildModel } from "../src/build.ts";
 import { postDocument, postFile, postSource } from "../../model/test/sample.ts";
 import { fixture, fixtureDir } from "./helpers.ts";

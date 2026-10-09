@@ -1,5 +1,5 @@
 {
-  "name": "@mesh/example-blog",
+  "name": "blog-example",
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
@@ -9,7 +9,7 @@
     "validate": "mesh build --check"
   },
   "devDependencies": {
-    "@mesh/cli": "workspace:*"
+    "meshfw": "workspace:*"
   },
   "dependencies": {
     "zod": "4.6.5"

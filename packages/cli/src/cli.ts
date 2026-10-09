@@ -1,7 +1,7 @@
 import { parseArgs } from "node:util";
 import { join } from "node:path";
-import { EmitError, generatedImportDiagnostics, generateFiles, loadConfig, loadProject, stableJsonStringify, writeGeneratedFiles } from "@mesh/compiler";
-import type { Diagnostic } from "@mesh/model";
+import { EmitError, generatedImportDiagnostics, generateFiles, loadConfig, loadProject, stableJsonStringify, writeGeneratedFiles } from "@meshfw/compiler";
+import type { Diagnostic } from "@meshfw/model";
 import { compareText, diagnostic, printDiagnostics } from "./diagnostics.ts";
 import { checkGeneratedFiles, projectPath } from "./guard.ts";
 

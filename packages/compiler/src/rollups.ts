@@ -6,7 +6,7 @@ import type {
   MemberRef,
   ModelDocument,
   SourcePosition,
-} from "@mesh/model";
+} from "@meshfw/model";
 import { nearestName } from "./nearest-name.ts";
 
 export function unknownMember(

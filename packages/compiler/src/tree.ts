@@ -6,7 +6,7 @@ import type {
   Literal,
   MemberRef,
   SourcePosition,
-} from "@mesh/model";
+} from "@meshfw/model";
 
 /** Small read-only projection of MX's Babel tree, including future member marks. */
 export interface SyntaxNode {

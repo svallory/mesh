@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { readFile, stat, realpath, lstat } from "node:fs/promises";
-import type { Diagnostic } from "@mesh/model";
+import type { Diagnostic } from "@meshfw/model";
 import { buildModel, error, positionAt, type BuildResult } from "./build.ts";
 import { absolutePath, canonicalFuturePath, confinedGlob, foreignAbsolute, inside, normalizePath, projectPath, resolveResource, errorCode } from "./paths.ts";
 

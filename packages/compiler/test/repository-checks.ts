@@ -71,7 +71,7 @@ export function checkMxImports(root: string): string[] {
   });
 }
 
-const runtimeForbidden = ["@mesh/model", "@mesh/compiler", "drizzle-orm", "drizzle-kit"];
+const runtimeForbidden = ["@meshfw/model", "@meshfw/compiler", "drizzle-orm", "drizzle-kit"];
 
 /** M2's text rules reuse M1's directory walker, scanning every runtime source file. */
 export function checkRuntime(root: string, rule: "imports" | "web"): string[] {

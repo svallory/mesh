@@ -1,6 +1,6 @@
 import { isAbsolute, relative, resolve } from "node:path";
 import { realpath, lstat } from "node:fs/promises";
-import { isProjectRelativePath } from "@mesh/model";
+import { isProjectRelativePath } from "@meshfw/model";
 
 /** Portable inputs: both separator styles, but drive and UNC paths are never
  * interpreted as relative paths on a POSIX host. */

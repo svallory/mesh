@@ -7,7 +7,7 @@ import {
   type Entity,
   type ModelDocument,
   type SourcePosition,
-} from "@mesh/model";
+} from "@meshfw/model";
 import { formatTypescript } from "../format.ts";
 import { emitError } from "../emit-error.ts";
 import type { Emitter } from "../emit.ts";

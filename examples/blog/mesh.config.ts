@@ -1,4 +1,4 @@
-import { defineConfig } from "@mesh/cli";
+import { defineConfig } from "meshfw";
 
 export default defineConfig({
   resources: "resources",

@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test
 import { chmod, link, mkdtemp, mkdir, readFile, readdir, readlink, rm, symlink, writeFile, rename, lstat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { stableJsonStringify } from "@mesh/compiler";
+import { stableJsonStringify } from "@meshfw/compiler";
 import { defineConfig } from "../src/index.ts";
 
 const repo = resolve(import.meta.dir, "../../..");
@@ -36,9 +36,10 @@ afterEach(async () => {
 // Bun's isolated linker keeps workspace dependencies at each package, not at
 // the root. Link the packages explicitly for a real external project fixture.
 async function linkPackages(root: string): Promise<void> {
-  await mkdir(join(root, "node_modules/@mesh"), { recursive: true });
-  for (const name of ["cli", "compiler", "model"]) {
-    await symlink(join(repo, "packages", name), join(root, "node_modules/@mesh", name));
+  await mkdir(join(root, "node_modules/@meshfw"), { recursive: true });
+  await symlink(join(repo, "packages/cli"), join(root, "node_modules/meshfw"));
+  for (const name of ["compiler", "model"]) {
+    await symlink(join(repo, "packages", name), join(root, "node_modules/@meshfw", name));
   }
 }
 
@@ -49,7 +50,7 @@ async function project(config = true): Promise<string> {
   await linkPackages(root);
   await symlink(join(repo, "packages/compiler/node_modules/zod"), join(root, "node_modules/zod"));
   await writeFile(join(root, sourcePath), source);
-  if (config) await writeFile(join(root, "mesh.config.ts"), `import { defineConfig } from "@mesh/cli";
+  if (config) await writeFile(join(root, "mesh.config.ts"), `import { defineConfig } from "meshfw";
 export default defineConfig({ resources: "resources", output: "generated" });\n`);
   return root;
 }
@@ -64,7 +65,7 @@ async function builtProject(): Promise<string> {
   return root;
 }
 
-test("defineConfig is re-exported from @mesh/cli", () => {
+test("defineConfig is re-exported from meshfw", () => {
   const config = { resources: "resources", output: "generated" };
   expect(defineConfig(config)).toBe(config);
 });

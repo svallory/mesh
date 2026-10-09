@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import type { Entity, ModelDocument } from "@mesh/model";
+import type { Entity, ModelDocument } from "@meshfw/model";
 import { buildModel } from "../src/build.ts";
 import type { ResolvedConfig } from "../src/config.ts";
 import { EmitError, generateFiles, writeGeneratedFiles } from "../src/emit.ts";
