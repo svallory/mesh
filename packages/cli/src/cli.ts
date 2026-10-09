@@ -1,6 +1,6 @@
 import { parseArgs } from "node:util";
 import { join } from "node:path";
-import { EmitError, buildEmitters, generatedImportDiagnostics, generateFiles, loadAdapterBuild, loadConfig, loadProject, stableJsonStringify, writeGeneratedFiles, type AdapterBuild, type ResolvedConfig } from "@meshfw/compiler";
+import { EmitError, RESERVED_COMMAND_WORDS, buildEmitters, generatedImportDiagnostics, generateFiles, loadAdapterBuild, loadConfig, loadProject, stableJsonStringify, writeGeneratedFiles, type AdapterBuild, type ResolvedConfig } from "@meshfw/compiler";
 import type { Diagnostic } from "@meshfw/model";
 import { compareText, diagnostic, printDiagnostics } from "./diagnostics.ts";
 import { exportGenerators } from "./export.ts";
@@ -24,7 +24,6 @@ Options:
 `;
 
 interface Command { kind: "build" | "inspect" | "export" | "help"; check: boolean; entity?: string }
-const CORE = new Set(["build", "inspect", "export"]);
 function parseCommand(args: string[]): Command {
   const [first] = args;
   const pending: Record<string, string> = { init: "not scheduled", explain: "M5", migrate: "M9" };
@@ -51,7 +50,7 @@ export async function runCli(args: string[], root = process.cwd(), io = {
 }): Promise<number> {
   // A first word that is not a core command or flag may be one the data adapter adds.
   const [first] = args;
-  if (first !== undefined && !first.startsWith("-") && !CORE.has(first) && !["init", "explain", "migrate"].includes(first)) {
+  if (first !== undefined && !first.startsWith("-") && !RESERVED_COMMAND_WORDS.includes(first)) {
     return runAdapterCommand(args, root, io);
   }
   let command: Command;

@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { buildEmitters, generateFiles, generatedImportDiagnostics, loadAdapterBuild, loadConfig, loadProject, loadTemplates, type ResolvedConfig } from "../src/index.ts";
+import { RESERVED_COMMAND_WORDS, buildEmitters, generateFiles, generatedImportDiagnostics, loadAdapterBuild, loadConfig, loadProject, loadTemplates, type ResolvedConfig } from "../src/index.ts";
 import { keyed } from "./v4.ts";
 
 const fakeAdapter = resolve(import.meta.dir, "fixtures/fake-adapter");
@@ -80,14 +80,19 @@ test("adapter generators' requires join the generated-import preflight", async (
     'generated code imports "not-installed-anywhere", which is not installed in this project. Run: bun add not-installed-anywhere');
 });
 
+const unresolved = (specifier: string, pkg: string) =>
+  `the data adapter's build entry "${specifier}" cannot be resolved from this project: either ${pkg} is not installed, or the installed version does not export "${specifier}". Run: bun add ${pkg}`;
 test.each([
-  ["fake-mesh-adapter/build", 'the data adapter\'s build entry "fake-mesh-adapter/build" is not installed in this project. Run: bun add fake-mesh-adapter'],
-  ["@acme/mesh-data/build", 'the data adapter\'s build entry "@acme/mesh-data/build" is not installed in this project. Run: bun add @acme/mesh-data'],
-])("MESH_ADAPTER_BUILD: %s not installed", async (specifier, message) => {
-  const config = await project(specifier, false);
+  // Not installed at all, unscoped and scoped.
+  ["fake-mesh-adapter/build", false, "fake-mesh-adapter"],
+  ["@acme/mesh-data/build", false, "@acme/mesh-data"],
+  // Installed, but this version has no such export.
+  ["fake-mesh-adapter/missing-build", true, "fake-mesh-adapter"],
+] as const)("MESH_ADAPTER_BUILD: %s cannot be resolved (installed: %s); the message names both causes", async (specifier, install, pkg) => {
+  const config = await project(specifier, install);
   expect(await loadAdapterBuild(config)).toEqual({ build: null, diagnostics: [{
-    severity: "error", code: "MESH_ADAPTER_BUILD", message, position: at,
-    fix: "Install the package of the data adapter that mesh.config.ts names",
+    severity: "error", code: "MESH_ADAPTER_BUILD", message: unresolved(specifier, pkg), position: at,
+    fix: "Install the package of the data adapter that mesh.config.ts names, in a version that has this build entry",
   }] });
 });
 
@@ -117,11 +122,17 @@ test.each([
   ['{ generators: [], commands: { "db  push": async () => 0 } }', 'command "db  push" is not lowercase words separated by single spaces'],
   ['{ generators: [], commands: { "--force": async () => 0 } }', 'command "--force" is not lowercase words separated by single spaces'],
   ['{ generators: [], commands: { "db push": "push" } }', 'command "db push" is not a function'],
+  ...RESERVED_COMMAND_WORDS.map((word) => [`{ generators: [], commands: { "${word} all": async () => 0 } }`, `command "${word} all" starts with "${word}", which the mesh command reserves`]),
+  ['{ generators: [], commands: { "migrate": async () => 0 } }', 'command "migrate" starts with "migrate", which the mesh command reserves'],
 ])("MESH_ADAPTER_BUILD: shape %s", async (shape, problem) => {
   const config = await project("./adapter.ts", false);
   await writeFile(resolve(config.root, "adapter.ts"), `export default ${shape};\n`);
   const { diagnostics } = await loadAdapterBuild(config);
   expect(diagnostics.map((d) => d.message)).toEqual([`the data adapter's build entry "./adapter.ts" ${problem}`]);
+});
+
+test("the reserved words are the core commands and the scheduled ones", () => {
+  expect([...RESERVED_COMMAND_WORDS].sort()).toEqual(["build", "explain", "export", "help", "init", "inspect", "migrate"]);
 });
 
 test("a valid inline build half with commands and no generators loads", async () => {

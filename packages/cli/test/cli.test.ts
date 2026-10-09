@@ -3,7 +3,7 @@ import { chmod, link, mkdtemp, mkdir, readFile, readdir, readlink, rm, symlink, 
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { stableJsonStringify } from "@meshfw/compiler";
+import { RESERVED_COMMAND_WORDS, stableJsonStringify } from "@meshfw/compiler";
 import { defineConfig } from "../src/index.ts";
 
 const repo = resolve(import.meta.dir, "../../..");
@@ -414,6 +414,15 @@ describe("data adapter commands (mesh db push)", () => {
     expect(run(await fakeProject(), "db", "reset").stderr).toBe('mesh.config.ts:1:1 error the data adapter "sqlite" does not provide "db reset"\n1 error, 0 warnings\n');
   });
 
+  test("a reserved word never reaches the adapter: each is a core command or a scheduled one", async () => {
+    const root = await fakeProject();
+    for (const word of RESERVED_COMMAND_WORDS) {
+      const result = run(root, word, "push");
+      expect(result.stdout).not.toContain("fake push");
+      expect(result.code).not.toBe(0);
+    }
+  });
+
   test("an unknown command is a usage error, with or without a config", async () => {
     for (const root of [await fakeProject(), await project(false)]) {
       expect(run(root, "frobnicate")).toEqual({ code: 2, stdout: "", stderr: 'Unknown command "frobnicate"; use mesh --help\n' });
@@ -499,7 +508,7 @@ describe("the data adapter's build half in mesh build", () => {
     const root = await project();
     await writeFile(join(root, "mesh.config.ts"), 'export default { domain: "domain", output: "generated", data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", options: { file: ":memory:" } } };\n');
     expect(run(root, name)).toEqual({ code: 1, stdout: "",
-      stderr: "mesh.config.ts:1:1 error the data adapter's build entry \"@meshfw/data-sqlite/build\" is not installed in this project. Run: bun add @meshfw/data-sqlite\n  fix: Install the package of the data adapter that mesh.config.ts names\n1 error, 0 warnings\n" });
+      stderr: "mesh.config.ts:1:1 error the data adapter's build entry \"@meshfw/data-sqlite/build\" cannot be resolved from this project: either @meshfw/data-sqlite is not installed, or the installed version does not export \"@meshfw/data-sqlite/build\". Run: bun add @meshfw/data-sqlite\n  fix: Install the package of the data adapter that mesh.config.ts names, in a version that has this build entry\n1 error, 0 warnings\n" });
     expect(existsSync(join(root, "generated"))).toBe(false);
   });
 });

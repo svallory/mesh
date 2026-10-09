@@ -38,6 +38,13 @@ export interface AdapterBuildResult {
   readonly diagnostics: Diagnostic[];
 }
 
+/**
+ * First words the `mesh` command keeps for itself, built in or scheduled
+ * (`init`, `explain`, `migrate`). An adapter command starting with one would be
+ * registered but never reached, so the loader refuses it. The CLI routes by this list.
+ */
+export const RESERVED_COMMAND_WORDS: readonly string[] = Object.freeze(["build", "inspect", "export", "init", "explain", "migrate", "help"]);
+
 const CONFIG_POSITION = { file: "mesh.config.ts", line: 1, column: 0, offset: 0 } as const;
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 const nonEmpty = (value: unknown): value is string => typeof value === "string" && value.length > 0;
@@ -69,6 +76,8 @@ function shapeProblem(value: unknown): string | null {
     for (const [name, command] of Object.entries(value.commands)) {
       if (!/^[a-z][a-z0-9-]*( [a-z][a-z0-9-]*)*$/.test(name)) return `command "${name}" is not lowercase words separated by single spaces`;
       if (typeof command !== "function") return `command "${name}" is not a function`;
+      const first = name.split(" ")[0]!;
+      if (RESERVED_COMMAND_WORDS.includes(first)) return `command "${name}" starts with "${first}", which the mesh command reserves`;
     }
   }
   return null;
@@ -87,8 +96,9 @@ export async function loadAdapterBuild(config: ResolvedConfig): Promise<AdapterB
   let resolved: string;
   try { resolved = Bun.resolveSync(specifier, config.root); }
   catch {
-    return fail(`the data adapter's build entry "${specifier}" is not installed in this project. Run: bun add ${packageName(specifier)}`,
-      `Install the package of the data adapter that mesh.config.ts names`);
+    const pkg = packageName(specifier);
+    return fail(`the data adapter's build entry "${specifier}" cannot be resolved from this project: either ${pkg} is not installed, or the installed version does not export "${specifier}". Run: bun add ${pkg}`,
+      `Install the package of the data adapter that mesh.config.ts names, in a version that has this build entry`);
   }
   let module: Record<string, unknown>;
   try { module = await import(pathToFileURL(resolved).href); }

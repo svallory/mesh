@@ -9,4 +9,4 @@ export { FORMATTER_OPTIONS, formatTypescript } from "./format.ts";
 export { stableJsonStringify } from "./stable-json.ts";
 export { typesView, type TypesView, type TypeImport, type RecordDeclaration, type TypeDeclaration, type TypeMember } from "./views/types.ts";
 export { validatorsView, type ValidatorsView, type InputSchema, type SchemaField } from "./views/validators.ts";
-export { loadAdapterBuild, type AdapterBuild, type AdapterBuildResult, type AdapterCommand, type AdapterCommandContext } from "./adapter.ts";
+export { RESERVED_COMMAND_WORDS, loadAdapterBuild, type AdapterBuild, type AdapterBuildResult, type AdapterCommand, type AdapterCommandContext } from "./adapter.ts";
