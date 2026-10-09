@@ -44,7 +44,8 @@ test('home highlights and the relationship carries the generated-key token hint'
   expect(html).not.toContain(' title=');
   expect(html).toContain('aria-describedby="mh-hint-relationship"');
   expect(html.split('id="mh-hint-relationship"').length - 1).toBe(1);
-  expect(html).toContain('Creates the <code>listId</code> column; <code>&amp;list</code> in <code>input</code> is how the caller sets it.');
+  const prose = html.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&');
+  expect(prose).toContain('A Todo belongs to one List. Mesh adds a listId column to todos for you.');
   expect(html).toContain('tabindex="0"');
   expect(page).toContain('listId: string');
   expect(page).toContain('list: List["id"]');

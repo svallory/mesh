@@ -1,46 +1,130 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { HOME_HINTS, homeHintTokens, renderHintLine, homeHintScript } from '../plugins/mesh-home-hints.js';
+import { HOME_FAMILIES, HOME_CONTEXTS, HOME_HINTS, homeHintTokens, renderHintLine, renderHintText, highlightHintFragment, homeHintScript } from '../plugins/mesh-home-hints.js';
 import { renderMxFlow } from '../plugins/mesh-home.js';
+import { mxHighlighter } from '../plugins/mx-highlight.js';
 
 const page = readFileSync(new URL('../docs/index.md', import.meta.url), 'utf8');
 const source = /```mx-flow[^\n]*\n([\s\S]*?)```/.exec(page)[1].trimEnd();
-const textOf = (html) => html.replace(/<[^>]*>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+const textOf = (html) => html.replace(/<[^>]*>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
 
-// Independent copy of the commissioned wording: changing the registry alone
-// must not silently change what readers are taught.
-const wording = [
-  'Another entity is imported like any TypeScript module. `List` lives in `list.mesh.mx`, next to this file.',
-  'Declares the entity. `:Todo` is its name: an atom, a name that stands for itself.',
-  'Text is a string. The table this entity is stored in.',
-  'A section. Indentation nests; a line is `kind :name options`.',
-  'An attribute: its type, its name, its rules. `primary-key` is a flag.',
-  'A rule about one field goes on its line. `min=1`: at least one character.',
-  'A default, written as in TypeScript.',
-  '`:create` is one of a fixed set, so it is an atom. Set when the record is created.',
-  'Where this entity connects to others.',
-  "`:list` is the relationship's name; `List` the imported entity. Creates the `listId` column; `&list` in `input` is how the caller sets it.",
-  'What can be done. `auto` asks Mesh to generate these two actions.',
-  'An action: its type and its name. Mesh builds the function `createTodo` from it.',
-  'Everything this action takes, one line per field.',
-  '`&name` refers to a member of this entity. Takes `title` as declared above: same type, same rules.',
-  'Takes the related `List`: the caller sends its id.',
-  'An update action; it changes one existing record.',
-  'A read action: a query with a name.',
-  'A function, ordinary TypeScript. Mesh translates it to SQL when it can.',
-  'Order, one field per line.',
-  'Who may call what. An action no policy covers is forbidden.',
-  'A rule for these action types.',
-  'Allowed when the caller owns the list. `actor` is whoever calls.',
-];
+// Independent copy of the lead's 01:55 addendum; editing implementation prose
+// alone must not silently change what readers are taught.
+const families = {
+  kind: 'Every line is `kind :name options`. The first word says what the line declares.',
+  declaration: ':name is a name. The colon says so: not a string, not a variable, the name itself.',
+  'value-atom': ':value picks one option from a fixed list that Mesh defines.',
+  member: '&name points at something declared in this file: an attribute, a relationship, an action.',
+  'imported-entity': 'List is another entity, imported at the top like any TypeScript module.',
+  section: 'A section header. Everything indented under it belongs to it.',
+  option: "An option on its line. Rules about a field live on that field's line, so one line tells the whole story.",
+  string: 'Plain text, in quotes.',
+  literal: 'A number or a boolean, exactly as in TypeScript.',
+  function: 'Plain TypeScript. Mesh turns it into SQL when it can and runs it otherwise.',
+  import: 'A regular TypeScript import. Entity files import each other by path.',
+  direction: 'Sort order: asc or desc, one field per line.',
+};
+families.kind = families.kind.replaceAll('`', '');
+const contexts = {
+  entity: 'Declares the entity this file is about: one file, one entity.',
+  'entity-name': "The entity's name. It shows up in everything Mesh builds: the `Todo` type, the `createTodo` function.",
+  table: 'The database table. Mesh writes its schema and its migrations.',
+  attributes: 'What a `Todo` stores: one line per column.',
+  uuid: "The attribute's type: `uuid`, which becomes `string` in TypeScript.",
+  string: "The attribute's type: `string`, which becomes `string` in TypeScript.",
+  boolean: "The attribute's type: `boolean`, which becomes `boolean` in TypeScript.",
+  timestamp: "The attribute's type: `timestamp`, which becomes `Date` in TypeScript.",
+  id: "The record's id.",
+  'primary-key': 'This field identifies the record.',
+  'title-name': "The todo's text.",
+  min: 'At least one character. An empty title is rejected before your code runs.',
+  'done-name': 'Whether the todo is complete.',
+  default: 'A new todo starts not done.',
+  'insertedAt-name': 'When the record was created.',
+  on: 'Filled in when the record is created, never by the caller.',
+  'on-create': 'On the `create` action.',
+  relationships: 'How a `Todo` connects to other entities.',
+  relationship: 'A `Todo` belongs to one `List`. Mesh adds a `listId` column to `todos` for you.',
+  'list-name': "The relationship's name. Load it as `todo.list`; refer to it here as `&list`.",
+  'entity-option': 'The entity on the other side.',
+  'entity-list': 'Imported at the top of the file.',
+  'import-list': 'Lives in `list.mesh.mx`, next to this file.',
+  actions: 'Everything you can do with a `Todo`. Each action becomes one function.',
+  auto: 'Two actions Mesh writes for you: `readTodo` and `destroyTodo`.',
+  'auto-read': 'The generated `readTodo`.',
+  'auto-destroy': 'The generated `destroyTodo`.',
+  create: 'An action that creates one record.',
+  'create-name': "The action's name. Call it as `createTodo(input, context)`.",
+  input: 'What the caller must send, one line per field. Nothing else gets in.',
+  title: 'Takes `title` exactly as declared above: a string, at least one character.',
+  list: 'The relationship declared by `belongs-to` above. The caller sends the id of a `List`; Mesh stores it in `listId`.',
+  update: 'An action that changes one existing record.',
+  'rename-name': "The action's name. Call it as `renameTodo({ id, title }, context)`.",
+  read: 'A query with a name.',
+  'pending-name': "The action's name. Call it as `pendingTodo(input, context)`; it returns the matching records.",
+  filter: 'Which records come back. Mesh turns this into the SQL `WHERE`.',
+  done: 'Reads `done` on each record.',
+  sort: 'The order of the results.',
+  insertedAt: 'Oldest first.',
+  policies: 'Who may do what. An action no policy covers is forbidden: Mesh fails closed.',
+  policy: 'One rule.',
+  'owner-name': "The rule's name. It shows in the breakdown when a call is refused.",
+  types: 'The action types this rule applies to.',
+  'types-create': 'Actions with type `create`: here, `createTodo`.',
+  'types-read': 'Actions with type `read`: here, `readTodo` and `pendingTodo`.',
+  'types-update': 'Actions with type `update`: here, `renameTodo`.',
+  'types-destroy': 'Actions with type `destroy`: here, `destroyTodo`.',
+  authorize: 'Allowed when this returns true. For a read it becomes part of the query, so a caller only ever sees their own lists.',
+  actor: 'Whoever is calling. Your app passes it on every call; Mesh never guesses.',
+  'list-owner': 'Follows the `list` relationship to its `ownerId`. Mesh writes the join.',
+};
 
-test('all 22 commissioned explanations match verbatim and are used in the home', () => {
-  expect(Object.values(HOME_HINTS)).toEqual(wording);
-  const keys = source.split('\n').flatMap(homeHintTokens).map((t) => t.key);
-  expect([...new Set(keys)].sort()).toEqual(Object.keys(HOME_HINTS).sort());
+const tokens = source.split('\n').flatMap(homeHintTokens);
+test('every token has one of 12 families and every context is the commissioned wording', () => {
+  expect(HOME_CONTEXTS).toEqual(contexts);
+  expect(Object.keys(HOME_FAMILIES)).toEqual(Object.keys(families));
+  const usedContexts = new Set();
+  for (const token of tokens) {
+    expect(token.family in families).toBe(true);
+    expect(HOME_HINTS[token.key].family).toBe(token.family);
+    if (HOME_HINTS[token.key].context) usedContexts.add(token.key);
+  }
+  expect([...usedContexts].sort()).toEqual(Object.keys(contexts).sort());
+  expect(new Set(tokens.map((t) => t.family)).size).toBe(12);
 });
 
-test('every home construct is a separate focusable token; no whitespace has a hint', () => {
+test('each box starts with the identical family sentence, then its context or nothing', () => {
+  const html = renderMxFlow(source, 'home.md');
+  for (const [key, hint] of Object.entries(HOME_HINTS)) {
+    const start = html.indexOf(`id="mh-hint-${key}"`);
+    expect(start).toBeGreaterThan(-1);
+    const familyHtml = renderHintText(HOME_FAMILIES[hint.family]);
+    expect(textOf(familyHtml)).toBe(families[hint.family]);
+    const contextHtml = hint.context ? `<span class="mh-hint-context">${renderHintText(contexts[key], key)}</span>` : '';
+    expect(html.slice(start)).toStartWith(`id="mh-hint-${key}"><span class="mh-hint-family">${familyHtml}</span>${contextHtml}</span>`);
+  }
+});
+
+test('all fragments are highlighted at build time, with exact text and no backticks', () => {
+  for (const [key, text] of [...Object.entries(HOME_FAMILIES), ...Object.entries(contexts)]) {
+    const html = renderHintText(text, key);
+    expect(textOf(html)).toBe(text.replaceAll('`', ''));
+    expect(html).not.toContain('`');
+    const code = [...html.matchAll(/<code class="mx-hl">([\s\S]*?)<\/code>/g)];
+    expect(code.length).toBe([...text.matchAll(/`([^`]+)`/g)].length);
+    for (const [, fragment] of code) expect(fragment).toMatch(/<span class="ts-[\w-]+">/);
+  }
+  expect(highlightHintFragment('&list')).toBe('<span class="ts-member">&amp;list</span>');
+  expect(highlightHintFragment(':value')).toContain('class="ts-atom"');
+  expect(highlightHintFragment(':name')).toContain('class="ts-name"');
+  expect(highlightHintFragment('createTodo')).toContain('class="ts-function"');
+  const file = 'import { List } from "./list.mesh.mx"';
+  expect(highlightHintFragment('List')).toBe(mxHighlighter(file)(9, 13));
+  expect(highlightHintFragment('kind :name options')).toBe(mxHighlighter('kind :name options')(0, 18));
+  expect(renderHintText(contexts.timestamp, 'timestamp')).toContain(highlightHintFragment('Date', true));
+});
+
+test('every construct is independently targetable, with one tab stop per nonblank line', () => {
   const html = renderMxFlow(source, 'home.md');
   const code = /<code class="language-mx">([\s\S]*?)<\/code><\/pre>/.exec(html)[1];
   const lines = source.split('\n');
@@ -53,27 +137,51 @@ test('every home construct is a separate focusable token; no whitespace has a hi
       expect(line.slice(token.start, token.end).trim()).not.toBe('');
     }
     const rendered = renderHintLine(line, 0, (a, b) => line.slice(a, b));
-    expect(rendered.match(/tabindex="0"/g)?.length ?? 0).toBe(tokens.length);
+    expect(rendered.match(/tabindex="0"/g)?.length ?? 0).toBe(tokens.length ? 1 : 0);
+    expect(rendered.match(/tabindex="-1"/g)?.length ?? 0).toBe(Math.max(0, tokens.length - 1));
     expect(rendered.match(/role="button"/g)?.length ?? 0).toBe(tokens.length);
   }
   for (const blank of ['', '  ', '\t']) expect(homeHintTokens(blank)).toEqual([]);
-  // Line wrappers are block elements: the renderer adds no copy-visible text.
   expect(textOf(code)).toBe(lines.join(''));
   expect(html).not.toContain(' title=');
-  expect(code).not.toContain('Takes the related');
+  expect(code).not.toContain('relationship declared');
 });
 
-test('declarations, imported entities and member references are independent targets', () => {
-  const get = (line) => homeHintTokens(line).map((t) => [line.slice(t.start, t.end), t.key]);
-  expect(get('    string :title min=1')).toContainEqual([':title', 'string']);
-  expect(get('        &title')).toEqual([['&title', 'title']]);
-  expect(get('    belongs-to :list entity=List')).toContainEqual(['List', 'relationship']);
-  expect(get('      input')).toEqual([['input', 'input']]);
-  expect(get('entity :Todo table="todos"')).toContainEqual(['"todos"', 'table']);
+test('families distinguish declarations, option names, imported entities, values and functions', () => {
+  const get = (line) => homeHintTokens(line).map((t) => [t.text, t.family, t.key]);
+  expect(get('    string :title min=1')).toEqual([
+    ['string', 'kind', 'string'], [':title', 'declaration', 'title-name'], ['min=', 'option', 'min'], ['1', 'literal', 'family-literal'],
+  ]);
+  expect(get('        &title')).toEqual([['&title', 'member', 'title']]);
+  expect(get('    belongs-to :list entity=List')).toContainEqual(['List', 'imported-entity', 'entity-list']);
+  expect(get('entity :Todo table="todos"')).toContainEqual(['"todos"', 'string', 'family-string']);
+  expect(get('timestamp :insertedAt on=:create')).toContainEqual([':create', 'value-atom', 'on-create']);
+  expect(get('create :create')).toContainEqual([':create', 'declaration', 'create-name']);
+  const fn = get('authorize-if=({ actor }) => &list.ownerId === actor.id');
+  expect(fn).toContainEqual(['actor', 'function', 'actor']);
+  expect(fn).toContainEqual(['&list', 'member', 'list-owner']);
+  expect(fn).toContainEqual(['=>', 'function', 'family-function']);
 });
 
-test('client is serializable as a standalone script, without imports or a library', () => {
+test('all 15 reference occurrences connect to existing unique targets from the brief', () => {
+  const connections = tokens.filter((t) => t.to).map((t) => [t.key, t.to]);
+  expect(connections).toEqual([
+    ['import-list', 'entity-option'], ['on-create', 'action-create'], ['entity-list', 'import'],
+    ['auto-read', 'actions'], ['auto-destroy', 'actions'], ['title', 'attribute-title'], ['list', 'relationship'],
+    ['title', 'attribute-title'], ['done', 'attribute-done'], ['insertedAt', 'attribute-insertedAt'],
+    ['types-create', 'action-create'], ['types-read', 'actions'], ['types-update', 'action-update'], ['types-destroy', 'actions'],
+    ['list-owner', 'relationship'],
+  ]);
+  const html = renderMxFlow(source, 'home.md');
+  for (const [, to] of connections) expect(html.split(`data-hint-anchor="${to}"`).length - 1).toBe(1);
+  expect(html).toContain('data-hint-anchor="entity-option"><span class="mh-hint"');
+  expect(html).toContain('data-hint-anchor="relationship"');
+});
+
+test('client is serializable without imports or a runtime highlighter', () => {
   const js = homeHintScript.replace(/^<script>|<\/script>$/g, '');
   expect(() => new Function(js)).not.toThrow();
   expect(js).not.toContain('import ');
+  expect(js).not.toContain('mxHighlighter');
+  expect(js).not.toContain('highlightHintFragment');
 });

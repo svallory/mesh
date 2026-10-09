@@ -5,10 +5,11 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFile, stat, mkdir } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
+import { tmpdir } from 'node:os';
 
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const root = resolve(process.env.SITE_DIR || 'apps/docs/site');
-const shots = resolve(process.env.SHOTS_DIR || 'home-hints-shots');
+const shots = resolve(process.env.SHOTS_DIR || resolve(tmpdir(), 'mesh-home-hints-shots'));
 await mkdir(shots, { recursive: true });
 const mime = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.json': 'application/json', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.png': 'image/png' };
 const server = createServer(async (req, res) => {
@@ -33,11 +34,39 @@ async function opened(page, key) {
   await page.waitForFunction((key) => document.querySelector(`.mh-hint[data-hint="${key}"][aria-expanded="true"]`), key);
   same(await panel(page).count(), 1, 'exactly one visible hint box');
   same(await page.locator('.mh-hint[aria-expanded="true"]').count(), 1, 'exactly one active token');
-  same(await panel(page).innerText(), await page.locator(`#mh-hint-${key}`).innerText(), 'box matches the static description');
+  same(await panel(page).textContent(), await page.locator(`#mh-hint-${key}`).textContent(), 'box matches the static description');
+  same(await panel(page).locator(':scope > :first-child').getAttribute('class'), 'mh-hint-family', 'family sentence first');
+  const context = panel(page).locator('.mh-hint-context');
+  if (await context.count()) same(await panel(page).locator(':scope > :last-child').getAttribute('class'), 'mh-hint-context', 'context sentence second');
+  check(!(await panel(page).textContent()).includes('`'), 'no raw backticks in box');
 }
 async function closed(page) {
   await page.waitForFunction(() => !document.querySelector('.mh-hint-panel:not([hidden])'));
   same(await page.locator('.mh-hint[aria-expanded="true"]').count(), 0, 'no stale expanded token');
+  same(await page.locator('.mh-hint-connector,.mh-hint-destination').count(), 0, 'connector and outline cleaned up');
+  same(await page.evaluate(() => window.hintObserversActive), 0, 'no home-hint mutation observer while closed');
+}
+async function connected(page, key, anchor) {
+  await opened(page, key);
+  const svg = page.locator('.mh-hint-connector');
+  same(await svg.count(), 1, 'one SVG overlay');
+  check((await svg.locator('path').getAttribute('d')).startsWith('M '), 'connector has a path');
+  same(await svg.evaluate((n) => getComputedStyle(n).pointerEvents), 'none', 'overlay cannot intercept hover/tap');
+  check((await svg.evaluate((n) => getComputedStyle(n).strokeDasharray)) !== 'none', 'connector is dashed');
+  same(await page.locator('.mh-hint-destination').getAttribute('data-hint-anchor'), anchor, 'correct outlined destination');
+  same(await page.locator('.mh-hint-destination').evaluate((n) => getComputedStyle(n).outlineStyle), 'dashed', 'destination outline is dashed');
+  same(await page.evaluate(() => window.hintObserversActive), 1, 'one mutation observer while open');
+}
+// Instrument only this controller's observer, not docmd's own SPA observers.
+// Counts distinguish a dormant observer instance from a document-wide watch.
+function observerProbe() {
+  window.hintObserversActive = 0;
+  const Original = window.MutationObserver;
+  window.MutationObserver = class extends Original {
+    constructor(callback) { super(callback); this.hint = callback.toString().includes('open.isConnected'); this.active = false; }
+    observe(...args) { super.observe(...args); if (this.hint && !this.active) { window.hintObserversActive++; this.active = true; } }
+    disconnect() { super.disconnect(); if (this.hint && this.active) { window.hintObserversActive--; this.active = false; } }
+  };
 }
 async function bounded(page) {
   const r = await panel(page).boundingBox();
@@ -54,6 +83,7 @@ async function stage(page) {
 }
 try {
   const desktop = await browser.newContext({ viewport: { width: 1280, height: 1000 } });
+  await desktop.addInitScript(observerProbe);
   const page = await desktop.newPage();
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(base);
@@ -68,7 +98,11 @@ try {
     await token.focus();
     await opened(page, key);
   }
-  console.log(`Keyboard coverage: ${count} independent tokens, 22 descriptions`);
+  const descriptions = await page.locator('.mh-hint-notes > span').count();
+  const rows = await page.locator('.mh-l:has(.mh-hint)').count();
+  same(await page.locator('.mh-hint[tabindex="0"]').count(), rows, 'one tab stop per nonblank row');
+  for (const row of await page.locator('.mh-l:has(.mh-hint)').all()) same(await row.locator('.mh-hint[tabindex="0"]').count(), 1, 'each row has exactly one tab stop');
+  console.log(`Keyboard coverage: ${count} independent tokens, ${descriptions} descriptions, ${rows} tab stops`);
   await page.keyboard.press('Escape');
   await closed(page);
   await page.evaluate(() => document.activeElement.blur());
@@ -76,9 +110,16 @@ try {
   await hint(page, 'title').hover();
   await opened(page, 'title');
   await bounded(page);
-  await page.screenshot({ path: `${shots}/home-1280-light.png` });
+  await connected(page, 'title', 'attribute-title');
+  await page.screenshot({ path: `${shots}/home-title-1280-light.png` });
+  await hint(page, 'list').hover();
+  await connected(page, 'list', 'relationship');
+  await bounded(page);
+  await page.screenshot({ path: `${shots}/home-list-1280-light.png` });
   await theme(page, 'dark');
-  await page.screenshot({ path: `${shots}/home-1280-dark.png` });
+  await page.screenshot({ path: `${shots}/home-list-1280-dark.png` });
+  await hint(page, 'types-create').hover();
+  await connected(page, 'types-create', 'action-create');
   for (const value of ['light', 'dark']) {
     await theme(page, value);
     const colours = await page.evaluate(() => ['.ts-member', '.ts-name', '.ts-atom'].map((selector) => {
@@ -86,6 +127,10 @@ try {
       return node && getComputedStyle(node).color;
     }));
     check(colours.every(Boolean) && new Set(colours).size === 3, `members/names/atoms distinct in ${value}`);
+    await hint(page, 'list').hover();
+    same(await panel(page).locator('.mh-hint-family .ts-member').evaluate((n) => getComputedStyle(n).color), colours[0], `box members use file palette in ${value}`);
+    await hint(page, 'types-create').hover();
+    same(await panel(page).locator('.mh-hint-family .ts-atom').evaluate((n) => getComputedStyle(n).color), colours[2], `box atoms use file palette in ${value}`);
   }
   // Hover disappears when leaving both the token and its box.
   await page.mouse.move(1250, 950);
@@ -109,6 +154,24 @@ try {
   await opened(page, 'list');
   await page.keyboard.press('Enter');
   await closed(page);
+  // Roving within one row: arrows wrap; Home/End jump; Tab goes to next row.
+  await page.keyboard.press('Home');
+  await hint(page, 'entity').focus();
+  await opened(page, 'entity');
+  await page.keyboard.press('ArrowRight');
+  await opened(page, 'entity-name');
+  await page.keyboard.press('End');
+  await opened(page, 'family-string');
+  await page.keyboard.press('ArrowRight');
+  await opened(page, 'entity');
+  await page.keyboard.press('ArrowLeft');
+  await opened(page, 'family-string');
+  await page.keyboard.press('Home');
+  await opened(page, 'entity');
+  await page.keyboard.press('Tab');
+  await opened(page, 'attributes');
+  await page.keyboard.press('Escape');
+  await closed(page);
   // Existing card tinting still reaches source sections.
   await page.locator('.mh-box[data-box="types"]').hover();
   const tint = await page.locator('.mh-sec[data-section="attributes"]').evaluate((n) => getComputedStyle(n).backgroundColor);
@@ -121,6 +184,8 @@ try {
   await page.locator('.mh-file-code').evaluate((pre) => {
     const fresh = pre.cloneNode(true);
     fresh.querySelectorAll('[aria-expanded]').forEach((node) => node.setAttribute('aria-expanded', 'false'));
+    // A server-rendered replacement has no transient controller outline.
+    fresh.querySelectorAll('.mh-hint-destination').forEach((node) => node.classList.remove('mh-hint-destination'));
     pre.replaceWith(fresh);
   });
   await closed(page);
@@ -128,6 +193,31 @@ try {
   await opened(page, 'title');
   await page.keyboard.press('Escape');
   await closed(page);
+  // Replacing the entire body must not leave the singleton panel detached.
+  await hint(page, 'list').click();
+  await connected(page, 'list', 'relationship');
+  await page.mouse.move(1250, 950);
+  await page.evaluate(() => {
+    const body = document.body.cloneNode(true);
+    body.querySelectorAll('.mh-hint-panel,.mh-hint-connector').forEach((n) => n.remove());
+    body.querySelectorAll('.mh-hint-destination').forEach((n) => n.classList.remove('mh-hint-destination'));
+    body.querySelectorAll('.mh-hint').forEach((n) => n.setAttribute('aria-expanded', 'false'));
+    document.body.replaceWith(body);
+  });
+  await closed(page);
+  await hint(page, 'list').hover();
+  await connected(page, 'list', 'relationship');
+  same(await page.locator('.mh-hint-panel').count(), 1, 'panel recreated exactly once after body replacement');
+  // Resize and scroll recalculate coordinates while a pinned box stays open.
+  await hint(page, 'list').click();
+  await page.setViewportSize({ width: 1250, height: 980 });
+  await connected(page, 'list', 'relationship');
+  await bounded(page);
+  await page.evaluate(() => window.scrollBy(0, 12));
+  await connected(page, 'list', 'relationship');
+  await page.keyboard.press('Escape');
+  await closed(page);
+  await page.setViewportSize({ width: 1280, height: 1000 });
   await page.goto(base + '/docs/entities/');
   const entityCode = page.locator('pre.mx-hl').filter({ hasText: 'entity :Todo' }).first();
   check(await entityCode.locator('.ts-member').count() > 0, 'ordinary Entities mx fence colours members');
@@ -139,17 +229,18 @@ try {
   await desktop.close();
 
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 1 });
+  await phone.addInitScript(observerProbe);
   const mobile = await phone.newPage();
   mobile.on('pageerror', (error) => errors.push(error.message));
   await mobile.goto(base);
   await stage(mobile);
-  await hint(mobile, 'title').tap();
-  await opened(mobile, 'title');
+  await hint(mobile, 'types-create').tap();
+  await connected(mobile, 'types-create', 'action-create');
   await bounded(mobile);
-  await mobile.screenshot({ path: `${shots}/home-390-light.png` });
+  await mobile.screenshot({ path: `${shots}/home-create-390-light.png` });
   await theme(mobile, 'dark');
-  await mobile.screenshot({ path: `${shots}/home-390-dark.png` });
-  await hint(mobile, 'title').tap();
+  await mobile.screenshot({ path: `${shots}/home-create-390-dark.png` });
+  await hint(mobile, 'types-create').tap();
   await closed(mobile);
   await hint(mobile, 'list').tap();
   await opened(mobile, 'list');
@@ -157,20 +248,30 @@ try {
   await mobile.touchscreen.tap(380, 820);
   await closed(mobile);
   // A long explanation near a viewport edge, and the bottom-most expression.
-  for (const key of ['import', 'relationship', 'authorize']) {
+  for (const key of ['family-import', 'relationship', 'authorize']) {
     await hint(mobile, key).tap();
     await opened(mobile, key);
     await bounded(mobile);
     await mobile.keyboard.press('Escape');
     await closed(mobile);
   }
+  // A small scrollable file models a short viewport: keep the reference in
+  // view but its declaration outside the clipping area. Only outline it.
+  await mobile.locator('.mh-file-code').evaluate((pre) => { pre.style.maxHeight = '120px'; pre.style.overflowY = 'auto'; });
+  await hint(mobile, 'types-create').tap();
+  await opened(mobile, 'types-create');
+  same(await mobile.locator('.mh-hint-destination').getAttribute('data-hint-anchor'), 'action-create', 'offscreen target still outlined');
+  same(await mobile.locator('.mh-hint-connector').count(), 0, 'no connector to clipped target');
+  await mobile.keyboard.press('Escape');
+  await closed(mobile);
+  await mobile.locator('.mh-file-code').evaluate((pre) => { pre.style.maxHeight = ''; pre.style.overflowY = ''; pre.scrollTop = 0; });
   same(await mobile.locator('.mh-file-code').evaluate((pre) => getComputedStyle(pre.closest('.grid-item')).position), 'sticky', 'phone stage stays sticky');
   same(await mobile.locator('.mh-box').first().evaluate((n) => getComputedStyle(n).position), 'sticky', 'phone cards stay sticky');
   const width = await mobile.evaluate(() => document.documentElement.scrollWidth);
   check(width <= 390, 'no horizontal page overflow');
   await phone.close();
   same(errors, [], 'no page errors');
-  console.log(`PASS: ${checks} browser assertions; five screenshots in ${shots}`);
+  console.log(`PASS: ${checks} browser assertions; six screenshots in ${shots}`);
 } finally {
   await browser.close();
   await new Promise((done) => server.close(done));
