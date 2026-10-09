@@ -8,7 +8,7 @@ import {
 } from "./paths.ts";
 export { projectPath } from "./paths.ts";
 import { parseData } from "@mxlang/data";
-import type { DataAttr, DataDocument, DataTag } from "@mxlang/data/tree";
+import type { DataAttr, DataDocument, DataImport, DataTag } from "@mxlang/data/tree";
 import {
   findNonJsonValue,
   isActionKind,
@@ -36,7 +36,6 @@ import contracts from "./contracts.ts";
 import { MESH_SYNTAX } from "./syntax.ts";
 import { nearestName } from "./nearest-name.ts";
 import { literalFits } from "./literal-types.ts";
-import { readImports, type ParsedImport } from "./imports.ts";
 import {
   resolveRollups,
   unknownMember,
@@ -109,6 +108,60 @@ export function error(
 ): Diagnostic {
   return { severity: "error", code, message, position, fix };
 }
+/** An entity import as MX parsed it (`DataImport.from`/`names`); never re-parsed. */
+interface ParsedImport {
+  names: string[];
+  bindings: { local: string; imported: string; offset: number }[];
+  from: string;
+  offset: number;
+}
+interface ImportProblem {
+  code: "MESH_UNKNOWN_IMPORT" | "MESH_IMPORT_FORM";
+  message: string;
+  offset: number;
+}
+/** Entity files import other entities by name only: `import { List } from "./list.mesh.mx"`. */
+function readImports(imports: readonly DataImport[]): {
+  imports: ParsedImport[];
+  problems: ImportProblem[];
+} {
+  const result: ParsedImport[] = [];
+  const problems: ImportProblem[] = [];
+  for (const entry of imports) {
+    const offset = entry.span.sourceStart;
+    if (
+      !entry.names.length ||
+      entry.typeOnly ||
+      entry.names.some((name) => name.kind !== "named" || name.typeOnly)
+    ) {
+      problems.push({
+        code: "MESH_IMPORT_FORM",
+        message: entry.typeOnly || entry.names.some((name) => name.typeOnly)
+          ? "import the entity by name, not as a type: `import { List } from …`"
+          : "import the entity by name: `import { List } from …`",
+        offset,
+      });
+      continue;
+    }
+    if (!entry.from.startsWith("./") && !entry.from.startsWith("../")) {
+      problems.push({
+        code: "MESH_UNKNOWN_IMPORT",
+        message: "The import path must be relative (start with ./ or ../)",
+        offset,
+      });
+      continue;
+    }
+    result.push({
+      names: entry.names.map((name) => name.local),
+      // DataImportName carries no span in @mxlang/data 0.1.0-alpha.13, so a
+      // binding is positioned at its import statement until MX adds one.
+      bindings: entry.names.map((name) => ({ local: name.local, imported: name.imported, offset })),
+      from: entry.from,
+      offset,
+    });
+  }
+  return { imports: result, problems };
+}
 const snakeCase = (name: string) =>
   name
     .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
@@ -158,10 +211,10 @@ function buildEntity(
   }
   const imports = readImports(tree.imports ?? []);
   for (const problem of imports.problems)
-    fail(problem.code, problem.message, at(problem.span.sourceStart));
+    fail(problem.code, problem.message, at(problem.offset));
   entity.imports = imports.imports.map(
     (i): Import => {
-      const value = { identifiers: i.names, from: i.from, position: at(i.span.sourceStart) };
+      const value = { identifiers: i.names, from: i.from, position: at(i.offset) };
       importDetails.set(value, i);
       return value;
     },
@@ -770,7 +823,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
         for (const binding of importDetails.get(imported)?.bindings ?? []) {
           if (binding.imported !== targetEntity.name) {
             const source = project.files.find((input) => resolveEntityFile(rootPath, input.file)?.file === entity.file)!.source;
-            diagnostics.push(error("MESH_UNKNOWN_IMPORT", `\`${binding.imported}\` is not what ${imported.from} declares; it declares \`${targetEntity.name}\``, positionAt(source, entity.file, binding.span.sourceStart)));
+            diagnostics.push(error("MESH_UNKNOWN_IMPORT", `\`${binding.imported}\` is not what ${imported.from} declares; it declares \`${targetEntity.name}\``, positionAt(source, entity.file, binding.offset)));
           }
         }
       }

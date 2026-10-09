@@ -10,7 +10,9 @@ test("fix2: imported name must be exported by the target entity", () => {
   const result = buildModel(project(fixture("fix1/import-name-mismatch.mesh.mx").source));
   expect(result.document).toBeNull();
   expect(result.diagnostics).toHaveLength(1);
-  expect(result.diagnostics[0]).toMatchObject({ code: "MESH_UNKNOWN_IMPORT", message: "`Usr` is not what ./list.mesh.mx declares; it declares `List`", position: { line: 1, column: 9 } });
+  // At the import statement: DataImportName has no span on @mxlang/data
+  // 0.1.0-alpha.13. When MX adds one, this moves to the name (1:9).
+  expect(result.diagnostics[0]).toMatchObject({ code: "MESH_UNKNOWN_IMPORT", message: "`Usr` is not what ./list.mesh.mx declares; it declares `List`", position: { line: 1, column: 0 } });
   const alias = fixture("fix1/import-name-mismatch.mesh.mx").source.replace("{ Usr }", "{ List as Usr }");
   expect(buildModel(project(alias)).diagnostics).toEqual([]);
 });
@@ -50,6 +52,12 @@ test("fix10: import diagnostics distinguish duplicates, forms and relative paths
   for (const declaration of ['import List from "./list.mesh.mx"', 'import * as List from "./list.mesh.mx"', 'import "./list.mesh.mx"']) {
     expect(buildModel(project(declaration + '\n' + keyed)).diagnostics).toEqual([expect.objectContaining({ code: "MESH_IMPORT_FORM", message: "import the entity by name: `import { List } from …`" })]);
   }
+  for (const declaration of ['import type { List } from "./list.mesh.mx"', 'import { type List } from "./list.mesh.mx"']) {
+    expect(buildModel(project(declaration + '\n' + keyed)).diagnostics).toEqual([expect.objectContaining({ code: "MESH_IMPORT_FORM", message: "import the entity by name, not as a type: `import { List } from …`", position: expect.objectContaining({ line: 1, column: 0 }) })]);
+  }
+  expect(buildModel(project('import List, { List as L } from "./list.mesh.mx"\n' + keyed)).diagnostics).toEqual([expect.objectContaining({ code: "MESH_IMPORT_FORM", position: expect.objectContaining({ line: 1, column: 0 }) })]);
+  // MX itself refuses an import that is not one ES import declaration (decision 193).
+  expect(buildModel(project('import x = require("./list.mesh.mx")\n' + keyed)).diagnostics).toEqual([expect.objectContaining({ code: "MESH_SYNTAX", position: expect.objectContaining({ line: 1, column: 0 }) })]);
   const nonrelative = build('import { List } from "lists"\n' + keyed);
   expect(nonrelative.diagnostics).toEqual([expect.objectContaining({ code: "MESH_UNKNOWN_IMPORT", message: "The import path must be relative (start with ./ or ../)" })]);
 });
