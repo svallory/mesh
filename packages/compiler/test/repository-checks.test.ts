@@ -4,7 +4,7 @@ import { join, sep } from "node:path";
 import { ACTION_TYPES, ATTRIBUTE_TYPES } from "@meshfw/model";
 import { buildModel, loadConfig, loadProject } from "../src/index.ts";
 import { parse } from "./helpers.ts";
-import { checkDocsSamples, checkDrizzleImports, checkMxImports, checkRuntime } from "./repository-checks.ts";
+import { checkDocsSamples, checkDrizzleImports, checkGeneratedImports, checkMxImports, checkRuntime } from "./repository-checks.ts";
 
 const root = new URL("../../../", import.meta.url).pathname;
 function temporary(run: (dir: string) => void) {
@@ -222,6 +222,40 @@ test("M2 test 4: a schema.ts is exempt only at .mesh/schema.ts with the generate
     const errors = checkDrizzleImports(dir);
     expect(errors).toEqual([...paths.map((path) => `${path}:3:`), "examples/demo/.mesh/schema.ts:1:"].sort()
       .map((prefix) => `${prefix} Drizzle is allowed only in data adapters and the emitted schema (ADR-0014); remove drizzle-orm from this file`));
+  });
+});
+
+test("M2 test 4: no generated file imports the model, the compiler, Drizzle (outside schema.ts) or model.json", () => {
+  expect(checkGeneratedImports(root)).toEqual([]);
+});
+
+test.each(["@meshfw/model", "@meshfw/compiler", "model.json", "drizzle-orm", "drizzle-kit"])(
+  "M2 test 4: a planted %s in a generated file fails, comments included", (name) => {
+    workspace((dir, put) => {
+      const paths = ["examples/blog/.mesh/index.ts", "examples/blog/.mesh/blog/post.actions.ts", "apps/demo/.mesh/x/y.validators.js"];
+      for (const path of paths) put(path, `// Do not edit\n// ${name}`);
+      expect(checkGeneratedImports(dir)).toEqual(paths.sort().map((path) =>
+        `${path}:2: Generated code must not import ${name} (roadmap M2, acceptance 4); it imports only @meshfw/runtime, zod and its sibling files`));
+    });
+  },
+);
+
+test("M2 test 4: the emitted schema may import Drizzle but not the build half; model.json is not scanned; elsewhere is not generated", () => {
+  workspace((dir, put) => {
+    put("examples/blog/.mesh/schema.ts", 'import { sqliteTable } from "drizzle-orm/sqlite-core";\nimport "@meshfw/compiler";');
+    put("examples/blog/.mesh/model.json", '{"note": "drizzle-orm @meshfw/model"}');
+    put("examples/blog/src/main.ts", 'import "@meshfw/model";');
+    put("examples/blog/node_modules/x/.mesh/index.ts", 'import "@meshfw/model";');
+    expect(checkGeneratedImports(dir)).toEqual([
+      "examples/blog/.mesh/schema.ts:2: Generated code must not import @meshfw/compiler (roadmap M2, acceptance 4); it imports only @meshfw/runtime, zod and its sibling files",
+    ]);
+  });
+});
+
+test("M2 test 4: finding no generated files is an error, never a vacuous pass", () => {
+  workspace((dir, put) => {
+    put("examples/blog/src/main.ts", "export {};");
+    expect(checkGeneratedImports(dir)).toEqual(["examples: No generated .mesh/ files scanned"]);
   });
 });
 
