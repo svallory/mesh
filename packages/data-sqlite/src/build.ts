@@ -4,6 +4,7 @@
  */
 import { resolve } from "node:path";
 import type { AdapterBuild, Generator } from "@meshfw/compiler";
+import { pushCommand } from "./push-command.ts";
 import { schemaPath, schemaView, type SchemaView } from "./schema-view.ts";
 
 export { SQLITE_COLUMNS, camelCase, schemaView, type ColumnView, type SchemaView, type TableView } from "./schema-view.ts";
@@ -19,5 +20,5 @@ export const schemaGenerator: Generator<SchemaView> = {
   },
 };
 
-const build: AdapterBuild = { generators: [schemaGenerator] };
+const build: AdapterBuild = { generators: [schemaGenerator], commands: { "db push": pushCommand } };
 export default build;

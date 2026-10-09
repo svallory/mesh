@@ -9,7 +9,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "validate": "mesh build --check"
+    "validate": "mesh build --check",
+    "db:push": "mesh db push"
   },
   "devDependencies": {
     "drizzle-kit": "0.31.11",

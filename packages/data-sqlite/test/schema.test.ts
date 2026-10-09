@@ -159,7 +159,7 @@ describe("MESH_SCHEMA_* build errors", () => {
 describe("the schema generator", () => {
   test("is the build half's one generator, with its template beside the package", async () => {
     expect(build.generators).toEqual([schemaGenerator]);
-    expect(build.commands).toBeUndefined();
+    expect(Object.keys(build.commands!)).toEqual(["db push"]);
     expect(schemaGenerator).toMatchObject({ name: "sqlite-schema", template: "schema.ts.jig", requires: ["drizzle-orm"] });
     expect(await Bun.file(`${schemaGenerator.templateDir}/schema.ts.jig`).exists()).toBe(true);
   });

@@ -48,7 +48,14 @@ export async function planSchemaPush(
   catch (cause) { throw new FrameworkError(MISSING_DRIZZLE_KIT, { cause }); }
   // SAFETY: Kit declares LibSQLDatabase, but its push path uses operations also provided
   // by Bun's wrapper. The create/insert/select regression test guards this bridge.
-  const plan = await kit.pushSQLiteSchema({ ...tables }, db as unknown as Parameters<typeof kit.pushSQLiteSchema>[1]);
+  // The pinned API draws a "Pulling schema from database..." spinner on standard output
+  // and has no option to turn it off; mute it for this call only, so `mesh db push` and a
+  // test runner print only what Mesh reports.
+  const write = process.stdout.write;
+  process.stdout.write = (() => true) as typeof process.stdout.write;
+  let plan: Awaited<ReturnType<typeof kit.pushSQLiteSchema>>;
+  try { plan = await kit.pushSQLiteSchema({ ...tables }, db as unknown as Parameters<typeof kit.pushSQLiteSchema>[1]); }
+  finally { process.stdout.write = write; }
   return {
     statements: [...plan.statementsToExecute],
     warnings: [...plan.warnings],
