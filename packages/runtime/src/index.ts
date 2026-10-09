@@ -1,5 +1,12 @@
 /** Projects declare the flat context for each action call by merging this interface. */
 export interface ActionContext {}
+/**
+ * The second parameter of every generated action, spread as a rest tuple:
+ * `createPost(input, ...[context]: ContextArgument)`. Optional while every key the
+ * project merged into `ActionContext` is optional (or none is declared), required
+ * once one key is required (ADR-0059).
+ */
+export type ContextArgument = {} extends ActionContext ? [context?: ActionContext] : [context: ActionContext];
 
 export { MeshError, InvalidInputError, NotFoundError, ForbiddenError, FrameworkError } from "./errors.ts";
 export type { Issue, IssueSource, PolicyCheck } from "./errors.ts";
