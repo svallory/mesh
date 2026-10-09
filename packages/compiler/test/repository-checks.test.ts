@@ -349,6 +349,8 @@ for (const body of [
   "  actions\n    create :create\n      input\n        &id\n",
   "  actions\n    read :custom\n      sort\n        asc &id\n",
   "  actions on:load=&custom\n    read :custom\n",
+  "  actions\n    always actions=[&custom]\n    read :custom\n",
+  "  actions\n    read :custom\n  policies\n    policy :owner actions=[&custom]\n      authorize-if=() => true\n",
   "  computed\n    integer :n() { return 1 }\n  actions\n    update :custom\n      do\n        load=[&n]\n",
 ]) test(`normalised references fail production contracts: ${body}`, () => {
   const source = "entity :Todo\n  attributes\n    uuid :id primary-key\n" + body;
