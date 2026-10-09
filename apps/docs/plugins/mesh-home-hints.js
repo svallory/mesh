@@ -332,7 +332,11 @@ export function installHomeHints(d, w) {
     const token = target(e.target);
     if (token) { rove(token); if (Date.now() - pointerAt > 600) show(token, false); }
   });
-  d.addEventListener('focusout', (e) => { if (e.target === open && !pinned) close(); });
+  d.addEventListener('focusout', (e) => {
+    // Pinning prevents hover from stealing a note, not keyboard dismissal.
+    // Allow focus into/within the panel, but close when it leaves that panel too.
+    if ((e.target === open || panel?.contains(e.target)) && !panel?.contains(e.relatedTarget)) close();
+  });
   function toggle(token) { if (open === token && pinned) close(); else show(token, true); }
   d.addEventListener('click', (e) => {
     const token = target(e.target);
