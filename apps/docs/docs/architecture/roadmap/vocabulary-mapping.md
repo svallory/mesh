@@ -66,213 +66,174 @@ Grouped by why. Row numbers refer to section 3.
 
 ## 3. Contract coverage
 
-This table follows [entity file syntax v4](../decisions/0067-members-imports-input-static-files.md) and [Entities](../../docs/entities.md). Each contract cell names a CustomTag or one of its options in `packages/compiler/src/contracts.ts`. The compiler test reads this section and requires exactly one row for every tag and option. Options shared by type tags are subject to the context and type rules in [Entities](../../docs/entities.md#options-on-an-attribute-line): an argument has no primary-key, unique or on; a computed function takes its name and body.
+Each example is a complete tag, tested in a minimal entity with its declared ancestors, stored fields, and an imported Line entity. The test parses **and builds** every cell, with executable todos only for MX's unsupported member positions. The rows equal the production contracts: options unavailable for a particular type have no row. Tagless input/assignment lines use inline wildcard contracts; `member` is not an authored tag.
 
-“On main” records contract and model coverage, not runtime execution. Authored `&` after a kind and inside expressions still wait for MX’s `lang-ext-syntax-table`; executable todo tests record those parser gaps. The production compiler never rewrites source. Tagless input and assignment lines use inline wildcard contracts; `member` is internal lowering output, not an authorable tag.
+“On main” records the delivered compiler/model coverage, not runtime execution. Authored `&` after a kind and inside expressions still wait for MX's lowering; the production compiler never rewrites source.
 
 | Construct | Example | Contract | Status |
 |---|---|---|---|
 | `actions` | `actions auto=[:read]` | `actions` | on main |
-| `actions.auto` | `auto=[:read, :destroy]` | `actions.auto` | on main |
-| `actions.on:load` | `on:load=&visible` | `actions.on:load` | on main |
+| `actions.auto` | `actions auto=[:read]` | `actions.auto` | on main |
+| `actions.on:load` | `actions on:load=&custom` | `actions.on:load` | on main |
 | `always` | `always types=[:update]` | `always` | on main |
-| `always.types` | `types=[:create, :update]` | `always.types` | on main |
-| `always.actions` | `actions=[&pay]` | `always.actions` | on main |
+| `always.types` | `always types=[:update]` | `always.types` | on main |
+| `always.actions` | `always actions=[&custom]` | `always.actions` | on main |
 | `asc` | `asc &title` | `asc` | on main |
-| `asc.member` | `&dueOn` | `asc.member` | on main |
+| `asc.member` | `asc &title` | `asc.member` | on main |
 | `attributes` | `attributes` | `attributes` | on main |
 | `authorize-if` | `authorize-if=() => true` | `authorize-if` | on main |
-| `authorize-if.value` | `() => true` | `authorize-if.value` | on main |
+| `authorize-if.value` | `authorize-if=() => true` | `authorize-if.value` | on main |
 | `avg` | `avg :total of="lines.amount"` | `avg` | on main |
-| `avg.name` | `:name` | `avg.name` | on main |
-| `avg.of` | `of="lines.amount"` | `avg.of` | on main |
-| `belongs-to` | `belongs-to :related entity=List` | `belongs-to` | on main |
-| `belongs-to.name` | `:name` | `belongs-to.name` | on main |
-| `belongs-to.entity` | `entity=List` | `belongs-to.entity` | on main |
-| `belongs-to.nullable` | `nullable` | `belongs-to.nullable` | on main |
+| `avg.name` | `avg :total of="lines.amount"` | `avg.name` | on main |
+| `avg.of` | `avg :total of="lines.amount"` | `avg.of` | on main |
+| `belongs-to` | `belongs-to :related entity=Line` | `belongs-to` | on main |
+| `belongs-to.name` | `belongs-to :related entity=Line` | `belongs-to.name` | on main |
+| `belongs-to.entity` | `belongs-to :related entity=Line` | `belongs-to.entity` | on main |
+| `belongs-to.nullable` | `belongs-to :related entity=Line nullable` | `belongs-to.nullable` | on main |
 | `boolean` | `boolean :field` | `boolean` | on main |
-| `boolean.name` | `:name` | `boolean.name` | on main |
-| `boolean.nullable` | `nullable` | `boolean.nullable` | on main |
-| `boolean.default` | `default=false` | `boolean.default` | on main |
-| `boolean.values` | `values=[:draft, :sent]` | `boolean.values` | on main |
-| `boolean.min` | `min=0` | `boolean.min` | on main |
-| `boolean.max` | `max=100` | `boolean.max` | on main |
-| `boolean.match` | `match=/^INV-\d+$/` | `boolean.match` | on main |
-| `boolean.primary-key` | `primary-key` | `boolean.primary-key` | on main |
-| `boolean.unique` | `unique` | `boolean.unique` | on main |
-| `boolean.on` | `on=:create` | `boolean.on` | on main |
-| `boolean.value` | `() => true` | `boolean.value` | on main |
-| `check` | `check :valid that=() => true code="invalid" message="invalid"` | `check` | on main |
-| `check.name` | `:name` | `check.name` | on main |
-| `check.that` | `that=() => true` | `check.that` | on main |
-| `check.code` | `code="invalid_state"` | `check.code` | on main |
-| `check.message` | `message="cannot do that"` | `check.message` | on main |
-| `check.when` | `when=() => true` | `check.when` | on main |
+| `boolean.name` | `boolean :field` | `boolean.name` | on main |
+| `boolean.nullable` | `boolean :field nullable` | `boolean.nullable` | on main |
+| `boolean.default` | `boolean :field default=false` | `boolean.default` | on main |
+| `boolean.primary-key` | `boolean :field primary-key` | `boolean.primary-key` | on main |
+| `boolean.unique` | `boolean :field unique` | `boolean.unique` | on main |
+| `boolean.value` | `boolean :field() { return false }` | `boolean.value` | on main |
+| `check` | `check :valid that=() => true code="invalid" message="Invalid input"` | `check` | on main |
+| `check.name` | `check :valid that=() => true code="invalid" message="Invalid input"` | `check.name` | on main |
+| `check.that` | `check :valid that=() => true code="invalid" message="Invalid input"` | `check.that` | on main |
+| `check.code` | `check :valid that=() => true code="invalid" message="Invalid input"` | `check.code` | on main |
+| `check.message` | `check :valid that=() => true code="invalid" message="Invalid input"` | `check.message` | on main |
+| `check.when` | `check :valid that=() => true code="invalid" message="Invalid input" when=() => true` | `check.when` | on main |
 | `computed` | `computed` | `computed` | on main |
-| `count` | `count :total of="lines.amount"` | `count` | on main |
-| `count.name` | `:name` | `count.name` | on main |
-| `count.of` | `of="lines.amount"` | `count.of` | on main |
-| `create` | `create :custom` | `create` | on main |
-| `create.name` | `:name` | `create.name` | on main |
+| `count` | `count :total of="lines"` | `count` | on main |
+| `count.name` | `count :total of="lines"` | `count.name` | on main |
+| `count.of` | `count :total of="lines"` | `count.of` | on main |
+| `create` | `create :work` | `create` | on main |
+| `create.name` | `create :work` | `create.name` | on main |
 | `date` | `date :field` | `date` | on main |
-| `date.name` | `:name` | `date.name` | on main |
-| `date.nullable` | `nullable` | `date.nullable` | on main |
-| `date.default` | `default=false` | `date.default` | on main |
-| `date.values` | `values=[:draft, :sent]` | `date.values` | on main |
-| `date.min` | `min=0` | `date.min` | on main |
-| `date.max` | `max=100` | `date.max` | on main |
-| `date.match` | `match=/^INV-\d+$/` | `date.match` | on main |
-| `date.primary-key` | `primary-key` | `date.primary-key` | on main |
-| `date.unique` | `unique` | `date.unique` | on main |
-| `date.on` | `on=:create` | `date.on` | on main |
-| `date.value` | `() => true` | `date.value` | on main |
+| `date.name` | `date :field` | `date.name` | on main |
+| `date.nullable` | `date :field nullable` | `date.nullable` | on main |
+| `date.default` | `date :field default="2026-10-09"` | `date.default` | on main |
+| `date.primary-key` | `date :field primary-key` | `date.primary-key` | on main |
+| `date.unique` | `date :field unique` | `date.unique` | on main |
+| `date.value` | `date :field() { return new Date() }` | `date.value` | on main |
 | `datetime` | `datetime :field` | `datetime` | on main |
-| `datetime.name` | `:name` | `datetime.name` | on main |
-| `datetime.nullable` | `nullable` | `datetime.nullable` | on main |
-| `datetime.default` | `default=false` | `datetime.default` | on main |
-| `datetime.values` | `values=[:draft, :sent]` | `datetime.values` | on main |
-| `datetime.min` | `min=0` | `datetime.min` | on main |
-| `datetime.max` | `max=100` | `datetime.max` | on main |
-| `datetime.match` | `match=/^INV-\d+$/` | `datetime.match` | on main |
-| `datetime.primary-key` | `primary-key` | `datetime.primary-key` | on main |
-| `datetime.unique` | `unique` | `datetime.unique` | on main |
-| `datetime.on` | `on=:create` | `datetime.on` | on main |
-| `datetime.value` | `() => true` | `datetime.value` | on main |
+| `datetime.name` | `datetime :field` | `datetime.name` | on main |
+| `datetime.nullable` | `datetime :field nullable` | `datetime.nullable` | on main |
+| `datetime.default` | `datetime :field default="2026-10-09T12:00:00Z"` | `datetime.default` | on main |
+| `datetime.primary-key` | `datetime :field primary-key` | `datetime.primary-key` | on main |
+| `datetime.unique` | `datetime :field unique` | `datetime.unique` | on main |
+| `datetime.value` | `datetime :field() { return new Date() }` | `datetime.value` | on main |
 | `decimal` | `decimal :field` | `decimal` | on main |
-| `decimal.name` | `:name` | `decimal.name` | on main |
-| `decimal.nullable` | `nullable` | `decimal.nullable` | on main |
-| `decimal.default` | `default=false` | `decimal.default` | on main |
-| `decimal.values` | `values=[:draft, :sent]` | `decimal.values` | on main |
-| `decimal.min` | `min=0` | `decimal.min` | on main |
-| `decimal.max` | `max=100` | `decimal.max` | on main |
-| `decimal.match` | `match=/^INV-\d+$/` | `decimal.match` | on main |
-| `decimal.primary-key` | `primary-key` | `decimal.primary-key` | on main |
-| `decimal.unique` | `unique` | `decimal.unique` | on main |
-| `decimal.on` | `on=:create` | `decimal.on` | on main |
-| `decimal.value` | `() => true` | `decimal.value` | on main |
+| `decimal.name` | `decimal :field` | `decimal.name` | on main |
+| `decimal.nullable` | `decimal :field nullable` | `decimal.nullable` | on main |
+| `decimal.default` | `decimal :field default=1.5` | `decimal.default` | on main |
+| `decimal.min` | `decimal :field min=0` | `decimal.min` | on main |
+| `decimal.max` | `decimal :field max=100` | `decimal.max` | on main |
+| `decimal.primary-key` | `decimal :field primary-key` | `decimal.primary-key` | on main |
+| `decimal.unique` | `decimal :field unique` | `decimal.unique` | on main |
+| `decimal.value` | `decimal :field() { return 1.5 }` | `decimal.value` | on main |
 | `desc` | `desc &title` | `desc` | on main |
-| `desc.member` | `&dueOn` | `desc.member` | on main |
-| `destroy` | `destroy :custom` | `destroy` | on main |
-| `destroy.name` | `:name` | `destroy.name` | on main |
+| `desc.member` | `desc &title` | `desc.member` | on main |
+| `destroy` | `destroy :work` | `destroy` | on main |
+| `destroy.name` | `destroy :work` | `destroy.name` | on main |
 | `do` | `do` | `do` | on main |
-| `entity` | `entity :Todo table="todos"` | `entity` | on main |
-| `entity.name` | `:name` | `entity.name` | on main |
-| `entity.table` | `table="todos"` | `entity.table` | on main |
+| `entity` | `entity :Sample table="samples"` | `entity` | on main |
+| `entity.name` | `entity :Sample table="samples"` | `entity.name` | on main |
+| `entity.table` | `entity :Sample table="samples"` | `entity.table` | on main |
 | `enum` | `enum :field values=[:draft, :sent]` | `enum` | on main |
-| `enum.name` | `:name` | `enum.name` | on main |
-| `enum.nullable` | `nullable` | `enum.nullable` | on main |
-| `enum.default` | `default=false` | `enum.default` | on main |
-| `enum.values` | `values=[:draft, :sent]` | `enum.values` | on main |
-| `enum.min` | `min=0` | `enum.min` | on main |
-| `enum.max` | `max=100` | `enum.max` | on main |
-| `enum.match` | `match=/^INV-\d+$/` | `enum.match` | on main |
-| `enum.primary-key` | `primary-key` | `enum.primary-key` | on main |
-| `enum.unique` | `unique` | `enum.unique` | on main |
-| `enum.on` | `on=:create` | `enum.on` | on main |
-| `enum.value` | `() => true` | `enum.value` | on main |
+| `enum.name` | `enum :field values=[:draft, :sent]` | `enum.name` | on main |
+| `enum.nullable` | `enum :field values=[:draft, :sent] nullable` | `enum.nullable` | on main |
+| `enum.default` | `enum :field values=[:draft, :sent] default=:draft` | `enum.default` | on main |
+| `enum.values` | `enum :field values=[:draft, :sent]` | `enum.values` | on main |
+| `enum.primary-key` | `enum :field values=[:draft, :sent] primary-key` | `enum.primary-key` | on main |
+| `enum.unique` | `enum :field values=[:draft, :sent] unique` | `enum.unique` | on main |
+| `enum.value` | `enum :field() { return :draft }` | `enum.value` | on main |
 | `filter` | `filter=() => true` | `filter` | on main |
-| `filter.value` | `() => true` | `filter.value` | on main |
+| `filter.value` | `filter=() => true` | `filter.value` | on main |
 | `float` | `float :field` | `float` | on main |
-| `float.name` | `:name` | `float.name` | on main |
-| `float.nullable` | `nullable` | `float.nullable` | on main |
-| `float.default` | `default=false` | `float.default` | on main |
-| `float.values` | `values=[:draft, :sent]` | `float.values` | on main |
-| `float.min` | `min=0` | `float.min` | on main |
-| `float.max` | `max=100` | `float.max` | on main |
-| `float.match` | `match=/^INV-\d+$/` | `float.match` | on main |
-| `float.primary-key` | `primary-key` | `float.primary-key` | on main |
-| `float.unique` | `unique` | `float.unique` | on main |
-| `float.on` | `on=:create` | `float.on` | on main |
-| `float.value` | `() => true` | `float.value` | on main |
+| `float.name` | `float :field` | `float.name` | on main |
+| `float.nullable` | `float :field nullable` | `float.nullable` | on main |
+| `float.default` | `float :field default=0.5` | `float.default` | on main |
+| `float.min` | `float :field min=0` | `float.min` | on main |
+| `float.max` | `float :field max=100` | `float.max` | on main |
+| `float.primary-key` | `float :field primary-key` | `float.primary-key` | on main |
+| `float.unique` | `float :field unique` | `float.unique` | on main |
+| `float.value` | `float :field() { return 0.5 }` | `float.value` | on main |
 | `forbid-if` | `forbid-if=() => false` | `forbid-if` | on main |
-| `forbid-if.value` | `() => true` | `forbid-if.value` | on main |
-| `has-many` | `has-many :related entity=List` | `has-many` | on main |
-| `has-many.name` | `:name` | `has-many.name` | on main |
-| `has-many.entity` | `entity=List` | `has-many.entity` | on main |
-| `has-one` | `has-one :related entity=List` | `has-one` | on main |
-| `has-one.name` | `:name` | `has-one.name` | on main |
-| `has-one.entity` | `entity=List` | `has-one.entity` | on main |
+| `forbid-if.value` | `forbid-if=() => false` | `forbid-if.value` | on main |
+| `has-many` | `has-many :related entity=Line` | `has-many` | on main |
+| `has-many.name` | `has-many :related entity=Line` | `has-many.name` | on main |
+| `has-many.entity` | `has-many :related entity=Line` | `has-many.entity` | on main |
+| `has-one` | `has-one :related entity=Line` | `has-one` | on main |
+| `has-one.name` | `has-one :related entity=Line` | `has-one.name` | on main |
+| `has-one.entity` | `has-one :related entity=Line` | `has-one.entity` | on main |
 | `input` | `input` | `input` | on main |
 | `integer` | `integer :field` | `integer` | on main |
-| `integer.name` | `:name` | `integer.name` | on main |
-| `integer.nullable` | `nullable` | `integer.nullable` | on main |
-| `integer.default` | `default=false` | `integer.default` | on main |
-| `integer.values` | `values=[:draft, :sent]` | `integer.values` | on main |
-| `integer.min` | `min=0` | `integer.min` | on main |
-| `integer.max` | `max=100` | `integer.max` | on main |
-| `integer.match` | `match=/^INV-\d+$/` | `integer.match` | on main |
-| `integer.primary-key` | `primary-key` | `integer.primary-key` | on main |
-| `integer.unique` | `unique` | `integer.unique` | on main |
-| `integer.on` | `on=:create` | `integer.on` | on main |
-| `integer.value` | `() => true` | `integer.value` | on main |
-| `load` | `load=[&list]` | `load` | on main |
-| `load.value` | `() => true` | `load.value` | on main |
-| `max` | `max :total of="lines.amount"` | `max` | on main |
-| `max.name` | `:name` | `max.name` | on main |
-| `max.of` | `of="lines.amount"` | `max.of` | on main |
+| `integer.name` | `integer :field` | `integer.name` | on main |
+| `integer.nullable` | `integer :field nullable` | `integer.nullable` | on main |
+| `integer.default` | `integer :field default=0` | `integer.default` | on main |
+| `integer.min` | `integer :field min=0` | `integer.min` | on main |
+| `integer.max` | `integer :field max=100` | `integer.max` | on main |
+| `integer.primary-key` | `integer :field primary-key` | `integer.primary-key` | on main |
+| `integer.unique` | `integer :field unique` | `integer.unique` | on main |
+| `integer.value` | `integer :field() { return 0 }` | `integer.value` | on main |
+| `load` | `load=[&lines]` | `load` | on main |
+| `load.value` | `load=[&lines]` | `load.value` | on main |
+| `max` | `max :total of="lines.dueOn"` | `max` | on main |
+| `max.name` | `max :total of="lines.dueOn"` | `max.name` | on main |
+| `max.of` | `max :total of="lines.dueOn"` | `max.of` | on main |
 | `min` | `min :total of="lines.amount"` | `min` | on main |
-| `min.name` | `:name` | `min.name` | on main |
-| `min.of` | `of="lines.amount"` | `min.of` | on main |
+| `min.name` | `min :total of="lines.amount"` | `min.name` | on main |
+| `min.of` | `min :total of="lines.amount"` | `min.of` | on main |
 | `policies` | `policies` | `policies` | on main |
-| `policy` | `policy :owner types=[:read]` | `policy` | on main |
-| `policy.name` | `:name` | `policy.name` | on main |
-| `policy.types` | `types=[:create, :update]` | `policy.types` | on main |
-| `policy.actions` | `actions=[&pay]` | `policy.actions` | on main |
-| `policy.when` | `when=() => true` | `policy.when` | on main |
-| `policy.authorize-if` | `authorize-if=() => true` | `policy.authorize-if` | on main |
-| `policy.forbid-if` | `forbid-if=() => false` | `policy.forbid-if` | on main |
-| `read` | `read :custom` | `read` | on main |
-| `read.name` | `:name` | `read.name` | on main |
-| `read.filter` | `filter=() => true` | `read.filter` | on main |
+| `policy` | `policy :rule types=[:read]` | `policy` | on main |
+| `policy.name` | `policy :rule types=[:read]` | `policy.name` | on main |
+| `policy.types` | `policy :rule types=[:read]` | `policy.types` | on main |
+| `policy.actions` | `policy :rule actions=[&custom]` | `policy.actions` | on main |
+| `policy.when` | `policy :rule when=() => true` | `policy.when` | on main |
+| `policy.authorize-if` | `policy :rule authorize-if=() => true` | `policy.authorize-if` | on main |
+| `policy.forbid-if` | `policy :rule forbid-if=() => true` | `policy.forbid-if` | on main |
+| `read` | `read :work` | `read` | on main |
+| `read.name` | `read :work` | `read.name` | on main |
+| `read.filter` | `read :work filter=() => true` | `read.filter` | on main |
 | `relationships` | `relationships` | `relationships` | on main |
 | `run` | `run({ self }) { audit(self) }` | `run` | on main |
-| `run.value` | `() => true` | `run.value` | on main |
+| `run.value` | `run({ self }) { audit(self) }` | `run.value` | on main |
 | `set` | `set` | `set` | on main |
 | `sort` | `sort` | `sort` | on main |
 | `string` | `string :field` | `string` | on main |
-| `string.name` | `:name` | `string.name` | on main |
-| `string.nullable` | `nullable` | `string.nullable` | on main |
-| `string.default` | `default=false` | `string.default` | on main |
-| `string.values` | `values=[:draft, :sent]` | `string.values` | on main |
-| `string.min` | `min=0` | `string.min` | on main |
-| `string.max` | `max=100` | `string.max` | on main |
-| `string.match` | `match=/^INV-\d+$/` | `string.match` | on main |
-| `string.primary-key` | `primary-key` | `string.primary-key` | on main |
-| `string.unique` | `unique` | `string.unique` | on main |
-| `string.on` | `on=:create` | `string.on` | on main |
-| `string.value` | `() => true` | `string.value` | on main |
+| `string.name` | `string :field` | `string.name` | on main |
+| `string.nullable` | `string :field nullable` | `string.nullable` | on main |
+| `string.default` | `string :field default="hello"` | `string.default` | on main |
+| `string.min` | `string :field min=0` | `string.min` | on main |
+| `string.max` | `string :field max=100` | `string.max` | on main |
+| `string.match` | `string :field match=/^hello$/` | `string.match` | on main |
+| `string.primary-key` | `string :field primary-key` | `string.primary-key` | on main |
+| `string.unique` | `string :field unique` | `string.unique` | on main |
+| `string.value` | `string :field() { return "hello" }` | `string.value` | on main |
 | `sum` | `sum :total of="lines.amount"` | `sum` | on main |
-| `sum.name` | `:name` | `sum.name` | on main |
-| `sum.of` | `of="lines.amount"` | `sum.of` | on main |
+| `sum.name` | `sum :total of="lines.amount"` | `sum.name` | on main |
+| `sum.of` | `sum :total of="lines.amount"` | `sum.of` | on main |
 | `timestamp` | `timestamp :field` | `timestamp` | on main |
-| `timestamp.name` | `:name` | `timestamp.name` | on main |
-| `timestamp.nullable` | `nullable` | `timestamp.nullable` | on main |
-| `timestamp.default` | `default=false` | `timestamp.default` | on main |
-| `timestamp.values` | `values=[:draft, :sent]` | `timestamp.values` | on main |
-| `timestamp.min` | `min=0` | `timestamp.min` | on main |
-| `timestamp.max` | `max=100` | `timestamp.max` | on main |
-| `timestamp.match` | `match=/^INV-\d+$/` | `timestamp.match` | on main |
-| `timestamp.primary-key` | `primary-key` | `timestamp.primary-key` | on main |
-| `timestamp.unique` | `unique` | `timestamp.unique` | on main |
-| `timestamp.on` | `on=:create` | `timestamp.on` | on main |
-| `timestamp.value` | `() => true` | `timestamp.value` | on main |
-| `update` | `update :custom` | `update` | on main |
-| `update.name` | `:name` | `update.name` | on main |
+| `timestamp.name` | `timestamp :field` | `timestamp.name` | on main |
+| `timestamp.nullable` | `timestamp :field nullable` | `timestamp.nullable` | on main |
+| `timestamp.default` | `timestamp :field default="2026-10-09T12:00:00Z"` | `timestamp.default` | on main |
+| `timestamp.primary-key` | `timestamp :field primary-key` | `timestamp.primary-key` | on main |
+| `timestamp.unique` | `timestamp :field unique` | `timestamp.unique` | on main |
+| `timestamp.on` | `timestamp :field on=:create` | `timestamp.on` | on main |
+| `timestamp.value` | `timestamp :field() { return new Date() }` | `timestamp.value` | on main |
+| `update` | `update :work` | `update` | on main |
+| `update.name` | `update :work` | `update.name` | on main |
 | `uuid` | `uuid :field` | `uuid` | on main |
-| `uuid.name` | `:name` | `uuid.name` | on main |
-| `uuid.nullable` | `nullable` | `uuid.nullable` | on main |
-| `uuid.default` | `default=false` | `uuid.default` | on main |
-| `uuid.values` | `values=[:draft, :sent]` | `uuid.values` | on main |
-| `uuid.min` | `min=0` | `uuid.min` | on main |
-| `uuid.max` | `max=100` | `uuid.max` | on main |
-| `uuid.match` | `match=/^INV-\d+$/` | `uuid.match` | on main |
-| `uuid.primary-key` | `primary-key` | `uuid.primary-key` | on main |
-| `uuid.unique` | `unique` | `uuid.unique` | on main |
-| `uuid.on` | `on=:create` | `uuid.on` | on main |
-| `uuid.value` | `() => true` | `uuid.value` | on main |
+| `uuid.name` | `uuid :field` | `uuid.name` | on main |
+| `uuid.nullable` | `uuid :field nullable` | `uuid.nullable` | on main |
+| `uuid.default` | `uuid :field default="00000000-0000-4000-8000-000000000001"` | `uuid.default` | on main |
+| `uuid.primary-key` | `uuid :field primary-key` | `uuid.primary-key` | on main |
+| `uuid.unique` | `uuid :field unique` | `uuid.unique` | on main |
+| `uuid.value` | `uuid :field() { return "00000000-0000-4000-8000-000000000001" }` | `uuid.value` | on main |
 | `validate` | `validate` | `validate` | on main |
 | `when` | `when=() => true` | `when` | on main |
-| `when.value` | `() => true` | `when.value` | on main |
+| `when.value` | `when=() => true` | `when.value` | on main |
 
 ## 4. Deviations
 

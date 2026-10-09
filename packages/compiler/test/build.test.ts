@@ -129,8 +129,8 @@ test.each([
     "MESH_UNKNOWN_ENTITY",
   ],
   [keyed + "    integer :n default=1.5\n", "MESH_DEFAULT"],
-  [keyed + "    boolean :ok min=0\n", "MESH_ATTRIBUTE_RULE"],
-  [keyed + "    string :title on=:create\n", "MESH_ATTRIBUTE_RULE"],
+  [keyed + "    boolean :ok min=0\n", "MESH_SYNTAX"],
+  [keyed + "    string :title on=:create\n", "MESH_SYNTAX"],
   [keyed + "  actions auto=[:read]\n    read :read\n", "MESH_DUPLICATE_MEMBER"],
 ])("rejects invalid model %s", (source, code) => {
   const result = build(source);

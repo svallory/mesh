@@ -96,13 +96,12 @@ const scope = () => ({
   types: { type: "atom", values: [...ACTION_TYPES] } as CustomTagAttribute,
   actions: members(),
 });
-const options = () => ({
+const options = (type: string) => ({
   nullable: flag(),
   default: { literalOnly: true },
-  values: atom(),
-  min: number(),
-  max: number(),
-  match: { type: "expression" as const },
+  ...(type === "enum" ? { values: atom() } : {}),
+  ...(["string", "integer", "float", "decimal"].includes(type) ? { min: number(), max: number() } : {}),
+  ...(type === "string" ? { match: { type: "expression" as const } } : {}),
 });
 const steps = children("set", "when", "load", "run");
 const body = { validate: {}, do: {} };
@@ -213,10 +212,10 @@ for (const type of ATTRIBUTE_TYPES)
     parents: ["attributes", "input", "computed"],
     attributes: {
       ...named(),
-      ...options(),
+      ...options(type),
       "primary-key": flag(),
       unique: flag(),
-      on: { type: "atom", values: ["create", "update"] },
+      ...(type === "timestamp" ? { on: { type: "atom" as const, values: ["create", "update"] } } : {}),
       value: fn(),
     },
     analyze(calls, ctx) {

@@ -3,6 +3,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { createTargetLookup, getCustomTags } from "@mxlang/core";
 import descriptor from "@mxlang/data/descriptor";
 import contracts, { ATTRIBUTE_TYPES, ROLLUPS } from "../src/contracts.ts";
+import { buildModel } from "../src/build.ts";
+import { coverageProject } from "./coverage-examples.ts";
 import { fixture, fixtureDir, parse, parseFixture } from "./helpers.ts";
 import { build, keyed, todo } from "./v4.ts";
 const TAG_NAMES = [
@@ -269,6 +271,19 @@ describe("vocabulary-mapping section 3 Contract coverage", () => {
         .map((cell) => cell.trim())
         .slice(1, -1),
     );
+  for (const row of rows) {
+    const cell = row[2]!.replaceAll("`", "");
+    const [tag, option] = cell.split(".");
+    const example = row[1]!.replace(/^`|`$/g, "");
+    const pending = /(?:asc|desc) &|=\[&|=&/.test(example);
+    const check = () => {
+      const project = coverageProject(tag!, option, example);
+      for (const file of project.files) expect(parse(file.source).diagnostics).toEqual([]);
+      expect(buildModel(project).diagnostics).toEqual([]);
+    };
+    if (pending) test.todo(`${cell} example — MX lang-ext-syntax-table: & after a kind / in expressions`, check);
+    else test(`${cell} example parses and builds`, check);
+  }
   test("one row per tag and option, no untested or stale contract cells", () => {
     const expected = Object.entries(contracts)
       .flatMap(([tag, contract]) => [
