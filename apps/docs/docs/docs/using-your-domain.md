@@ -1,9 +1,9 @@
 ---
-title: "Calling actions"
+title: "Using your domain"
 description: "The generated functions, the action context, filters, sort, paging, load, the error classes and can."
 ---
 
-# Calling actions
+# Using your domain
 
 ::: callout warning "Not released"
 Mesh is not released yet. These pages describe Mesh 1.0.
@@ -340,8 +340,83 @@ false
 
 **What `can` means for a read.** A read's policies usually read the stored row, and that makes them part of the query rather than a per-row decision, so there is no row for `can` to rule on: `canPendingTodo({}, { actor: bob })` answers whether the read is allowed at all, which for the tutorial's todo it is. What Bob does not get is Alice's rows — `pendingTodo({}, { actor: bob })` returns an empty array, not an error. The denials worth asking about are the ones on an action that writes, or a read policy that cannot be folded into the query; use `can` there, and assert on the empty result for a read.
 
+## From a command line
+
+An [oclif command](https://oclif.io/docs/args) can call the same action. This excerpt assumes the tutorial's domain and demo Alice; in a real tool, obtain the actor from your trusted sign-in flow, not a user-supplied id. oclif owns argument parsing and command registration, not Mesh.
+
+```ts "src/commands/list/create.ts (excerpt)"
+import { Args, Command } from "@oclif/core";
+import { connect, createList, disconnect } from "#mesh";
+import { alice } from "../../context";
+
+export default class CreateList extends Command {
+  static args = { name: Args.string({ required: true }) };
+
+  async run() {
+    const { args } = await this.parse(CreateList);
+    await connect();
+    try {
+      this.log(JSON.stringify(await createList({ name: args.name }, { actor: alice })));
+    } finally {
+      await disconnect();
+    }
+  }
+}
+```
+
+## Over HTTP
+
+An [Elysia handler](https://elysiajs.com/essential/handler) calls an action and maps its errors to HTTP responses. This excerpt uses your own `requireActor(request)` helper to authenticate the request; it must not trust an actor sent in the body. Connect once when the server starts and disconnect when it shuts down, not after each request.
+
+```ts "src/http.ts (excerpt)"
+import { Elysia, t } from "elysia";
+import { InvalidInputError, ForbiddenError } from "@meshfw/runtime";
+import { connect, createList } from "#mesh";
+import { requireActor } from "./auth";
+
+await connect();
+const app = new Elysia().post("/lists", async ({ body, request, status }) => {
+  const actor = await requireActor(request);
+  try {
+    return await createList(body, { actor });
+  } catch (error) {
+    if (error instanceof InvalidInputError) return status(400, { code: error.code });
+    if (error instanceof ForbiddenError) return status(403, { code: error.code });
+    throw error;
+  }
+}, { body: t.Object({ name: t.String() }) });
+// Your server entry point starts app and closes the connection on shutdown.
+```
+
+The [error classes](#errors) stay the same: `invalid_input` is a bad request, `forbidden` is a denied call. A route that names an existing row should map `NotFoundError` to 404, whether the row is missing or invisible. Keep policy breakdowns and source positions in server-side diagnostics rather than exposing them to strangers; unexpected errors belong in your server's error handler.
+
+## In a web app
+
+[SolidStart server functions](https://docs.solidjs.com/solid-start/reference/server/use-server) make the server boundary explicit, which is why this example uses SolidStart; any framework works, because your domain is a module of functions.
+
+```ts "src/domain-actions.ts (excerpt)"
+export async function addList(name: string) {
+  "use server";
+  const { createList } = await import("#mesh");
+  const { InvalidInputError, ForbiddenError } = await import("@meshfw/runtime");
+  const { requireActor } = await import("./auth");
+  const actor = await requireActor();
+  try {
+    return { data: await createList({ name }, { actor }) };
+  } catch (error) {
+    if (error instanceof InvalidInputError) return { error: { code: error.code } };
+    if (error instanceof ForbiddenError) return { error: { code: error.code } };
+    throw error;
+  }
+}
+```
+
+The function returns only an error code for invalid input or a denied call, keeping policy breakdowns and source positions out of the browser response; unexpected errors belong in your server's error handler.
+
+Your server start-up connects once, and your `requireActor()` helper reads the authenticated server session. Keep both the database access and actor lookup on the server: the browser sends input, never a trusted context. These excerpts show calls, not ready-made Mesh integrations; framework setup, authentication and response handling belong to your application.
+
 ## Next
 
 - [Testing](./testing.md) — binding a database in memory.
 - [Entities](./entities.md) — the declarations behind these functions, and [what `self` holds](./entities.md#what-self-holds).
-- [Configuration and the command line](./configuration.md) — `mesh explain Todo complete`, which prints the plan a call follows.
+- [Command line](./command-line.md) — `mesh explain Todo complete`, which prints the plan a call follows.

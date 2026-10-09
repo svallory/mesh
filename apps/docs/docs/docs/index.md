@@ -79,9 +79,11 @@ entity :Todo table="todos"
 
 ## What you call
 
-An action becomes an ordinary TypeScript function with an ordinary signature:
+An action becomes an ordinary TypeScript function. Its name is the action name followed by the entity name: `create` on `entity :Todo` becomes `createTodo`, and `read :pending` becomes `pendingTodo`.
 
 ```ts "src/main.ts (excerpt)"
+import { createTodo } from "#mesh";
+
 const todo = await createTodo({ title: "Buy milk", list: list.id }, { actor });
 ```
 
@@ -101,11 +103,14 @@ You are writing TypeScript on Bun and some of your program's data has rules atta
 
 ## Where to go next
 
-- [Quick start](./quick-start.md) — a working project from nothing: install Bun, four small files, one build.
-- [Tutorial: a todo list](./tutorial.md) — two entities and everything you can do with them.
-- [Entities](./entities.md) — every declaration an entity file may use.
-- [Calling actions](./calling-actions.md) — the functions Mesh generates.
-- [Project structure](./project-structure.md) — where files live and which ones you commit.
-- [Configuration and the command line](./configuration.md) — `mesh.config.ts` and every `mesh` command.
-- [Testing](./testing.md) — a test that runs against a real database in memory.
+- [Quick start](./quick-start.md) — requirements, installation and a first action call.
 - [Working with AI agents](./ai-agents.md) — what an agent gets from Mesh.
+- [Tutorial: a todo list](./tutorial.md) — two entities and everything you can do with them.
+- **Your first project**
+  - [Project structure](./project-structure.md) — where files live and which ones you commit.
+  - [Entities](./entities.md) — every declaration an entity file may use.
+  - [Using your domain](./using-your-domain.md) — the functions Mesh generates.
+  - [Testing](./testing.md) — a test that runs against a real database in memory.
+  - [Configuration](./configuration.md) — the project, its context and its adapters.
+- [Command line](./command-line.md) — every `mesh` command.
+- [Customising generated code](./customising-generated-code.md) — overriding the templates Mesh builds from.

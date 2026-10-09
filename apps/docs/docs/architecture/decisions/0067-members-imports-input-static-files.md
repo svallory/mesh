@@ -70,7 +70,7 @@ These choices come from the worked reference and remain overrulable by the opera
 - A function that reads only members takes no parameters: `() => &status === :sent`. Destructure `actor` and `input` when used, and `self` only to pass the whole record.
 - A computed method reading only members has empty parameters: `boolean :isOverdue() { … }`.
 - `on:load=&visible` is a member reference like any other.
-- The create input type has `customer: Customer["id"]`; the record type keeps `customerId: string` and a customer property when loaded. [Calling actions](../../docs/calling-actions.md#relationship-input-and-record-fields) explains the distinction once.
+- The create input type has `customer: Customer["id"]`; the record type keeps `customerId: string` and a customer property when loaded. [Using your domain](../../docs/using-your-domain.md#relationship-input-and-record-fields) explains the distinction once.
 
 ## Options considered
 

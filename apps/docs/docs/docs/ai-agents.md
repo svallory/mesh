@@ -52,13 +52,13 @@ The file is an addition to whatever guidance you already give your agent, not a 
 **`mesh inspect`** prints the model as JSON, with the source position of every declaration. An agent that is unsure whether a `filter` or a `check` landed on the right action, or what a policy actually says, gets an answer instead of a guess:
 
 ```bash
-bunx mesh inspect Todo
+mesh inspect Todo
 ```
 
 **`mesh explain`** prints the plan a call will follow, and which rules fold into the statement:
 
 ```bash
-bunx mesh explain Todo complete
+mesh explain Todo complete
 ```
 
 ```text
@@ -82,4 +82,4 @@ The honest version of the claim is this: an agent's edit is one declarative file
 ## Next
 
 - [Entities](./entities.md) — the vocabulary the rules file describes.
-- [Configuration and the command line](./configuration.md) — `inspect` and `explain` in full.
+- [Command line](./command-line.md) — `inspect` and `explain` in full.

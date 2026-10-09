@@ -11,12 +11,14 @@ Mesh is not released yet. These pages describe Mesh 1.0.
 
 You will build a small program: lists of todos, where a list belongs to somebody and only that person may read or change its todos. Along the way you will use the main ideas Mesh has: relationships, validations, steps, policies and computed fields. Then you will run it, and write a test for it.
 
-Start from the project in the [quick start](./quick-start.md), or from a new one:
+Start from the project in the [Quick start](./quick-start.md), or create a new one and choose **SQLite**:
 
 ```bash
-bun create meshfw todo-app
+bun create mesh todo-app
 cd todo-app
 ```
+
+The starter leaves one `List` entity in `src/domain/todo/list.mesh.mx`, `mesh.config.ts` pointing to `todo.db`, `src/context.ts` exporting Alice, and `src/demo.ts`, run by `bun run demo`. Keep the configuration. Below, replace the List file, add Todo, replace the context with Alice and Bob, and write `src/main.ts` for the tutorial's program. The starter's demo remains a separate script.
 
 ## What the program does
 
@@ -29,7 +31,7 @@ Two entities, because a todo needs a list and a list needs todos. A relationship
 
 ## The list
 
-`src/domain/todo/list.mesh.mx`:
+Replace the starter's `src/domain/todo/list.mesh.mx` with this version. It adds the Todo relationship, an update timestamp and a count of the list's todos:
 
 ```mx "src/domain/todo/list.mesh.mx"
 import { Todo } from "./todo.mesh.mx"
@@ -72,7 +74,7 @@ Four things worth noticing:
 
 ## The todo
 
-`src/domain/todo/todo.mesh.mx`, the same file the [quick start](./quick-start.md) wrote:
+Add `src/domain/todo/todo.mesh.mx`, the file shown in the [Introduction](./index.md):
 
 ```mx "src/domain/todo/todo.mesh.mx"
 import { List } from "./list.mesh.mx"
@@ -218,12 +220,12 @@ Four things to notice:
 ## Build and run
 
 ```bash
-bunx mesh build
-bunx mesh db push
+mesh build
+mesh db push
 bun run src/main.ts
 ```
 
-Run it twice and the second run reuses `todo.db`, the SQLite file from `mesh.config.ts`. Delete it to start over, or keep the schema through migrations instead of pushing it ([the command line](./configuration.md#migrations)).
+Run it twice and the second run reuses `todo.db`, the SQLite file from `mesh.config.ts`. Delete it to start over, or keep the schema through migrations instead of pushing it ([the command line](./command-line.md#migrations)).
 
 ## A test
 
@@ -285,6 +287,6 @@ bun test
 
 ## What to build next
 
-- Add a `title` filter to the pending read and sort it by title. [Calling actions](./calling-actions.md) has the filter form.
-- Load `todo.list` and `list.todoCount` in one call. [Loading](./calling-actions.md#loading-relationships-and-computed-fields) has the rules.
+- Add a `title` filter to the pending read and sort it by title. [Using your domain](./using-your-domain.md) has the filter form.
+- Load `todo.list` and `list.todoCount` in one call. [Loading](./using-your-domain.md#loading-relationships-and-computed-fields) has the rules.
 - Add a `dueOn` date to the todo, and a `sum` of what the list's todos cost. [Computed fields](./entities.md#computed) has both.

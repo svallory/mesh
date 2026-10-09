@@ -88,7 +88,7 @@ declare module "@meshfw/data-postgres" {
   export function postgres(options: { url: string | undefined }): PostgresDataLayer;
 }
 
-declare module "@meshfw/cli" {
+declare module "meshfw" {
   import type { PostgresDataLayer } from "@meshfw/data-postgres";
   import type { SqliteDataLayer } from "@meshfw/data-sqlite";
 

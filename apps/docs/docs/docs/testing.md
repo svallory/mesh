@@ -110,7 +110,7 @@ test("a todo must have a title, and must not be completed twice", async () => {
 
 Await the assertion. A promise you do not await can settle after the test is over, and the database can be closed while the call is still running.
 
-If you care which rule failed, catch the error and read `issues`. Each entry names the `check` that declared it, the code that check declared, its message, and the line of the `.mesh.mx` file it is on. See [Errors](./calling-actions.md#errors).
+If you care which rule failed, catch the error and read `issues`. Each entry names the `check` that declared it, the code that check declared, its message, and the line of the `.mesh.mx` file it is on. See [Errors](./using-your-domain.md#errors).
 
 A rule written on an attribute line, such as `string :title min=1`, fails the same way: the error's code is `invalid_input` and the issue points at that line. There is no label for it, because only a `check` carries a label; the issue's `path` names the field..
 
@@ -170,12 +170,12 @@ test("another actor may not complete a todo", async () => {
 Generated code is ordinary TypeScript, so `tsc --noEmit` reads it, and a change to an entity file that you did not rebuild is a type error somewhere else. Add the guard to the same script as the tests, so a stale `.mesh/` fails before a single test runs:
 
 ```json
-"scripts": { "test": "bunx mesh build --check && bun test" }
+"scripts": { "test": "mesh build --check && bun test" }
 ```
 
 Then `bun run test` is the whole check: the generated tree is what the entity files say it should be, and every test runs against a real database.
 
 ## Next
 
-- [Calling actions](./calling-actions.md) — `can`, `load` and the error classes in full.
-- [Configuration and the command line](./configuration.md) — the guard and the commands.
+- [Using your domain](./using-your-domain.md) — `can`, `load` and the error classes in full.
+- [Command line](./command-line.md) — the guard and the commands.

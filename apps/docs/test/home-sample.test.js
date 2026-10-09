@@ -1,5 +1,5 @@
 // Home is a deliberate excerpt of the full flagship (lead correction, 2026-10-09).
-// All shared lines must agree; Intro/Quick start/Tutorial are byte-identical.
+// All shared lines must agree; Introduction/Tutorial/Entities are byte-identical.
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -23,7 +23,7 @@ test('the home excerpt uses v4 and every nonblank line occurs in order in the fu
   expect(fences[0]).toContain('belongs-to :list entity=List');
   expect(fences[0]).toContain('create :create\n      input\n        &title\n        &list');
   let at = -1;
-  const full = todo('quick-start.md').split('\n');
+  const full = todo('tutorial.md').split('\n');
   for (const line of fences[0].split('\n').filter((line) => line.trim())) {
     const next = full.findIndex((candidate, index) => index > at && candidate === line);
     expect(next).toBeGreaterThan(at);
@@ -32,7 +32,7 @@ test('the home excerpt uses v4 and every nonblank line occurs in order in the fu
 });
 
 test('the three full flagship files are byte-identical, including blank lines', () => {
-  const files = [intro, todo('quick-start.md'), todo('tutorial.md'), todo('entities.md')];
+  const files = [intro, todo('tutorial.md'), todo('entities.md')];
   expect(new Set(files).size).toBe(1);
   console.log('Flagship SHA-256:', createHash('sha256').update(files[0]).digest('hex'));
 });
@@ -71,11 +71,11 @@ test('cards name real sections and the same groups; the headline keeps its two b
   expect(page).toContain('<h1 id="mh-title" class="mh-title"><span>Describe your domain once.</span> <span>Mesh builds the rest.</span></h1>');
 });
 
-test('rules box quotes the rules sample and diagnostics quote Configuration', () => {
+test('rules box quotes the rules sample and diagnostics quote Command line', () => {
   const rules = /## The rules file[\s\S]*?```text\n([\s\S]*?)```/.exec(docsPage('ai-agents.md'))[1];
   const box = /data-box="rules"[\s\S]*?<div class="mh-snip"><code>([\s\S]*?)<\/code><\/div>/.exec(page)[1].replace(/&amp;/g, '&');
   for (const line of box.split('\n')) expect(rules).toContain(line.trim());
   const message = 'error &titel is not a member of :Todo. Did you mean &title?';
-  expect(docsPage('configuration.md')).toContain(message);
+  expect(docsPage('command-line.md')).toContain(message);
   expect(page.replace(/&amp;/g, '&').replace(/\n/g, ' ')).toContain(message);
 });

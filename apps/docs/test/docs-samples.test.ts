@@ -52,7 +52,7 @@ const tsconfig = {
       "@meshfw/runtime": ["../../samples/mesh-api.d.ts"],
       "@meshfw/data-sqlite": ["../../samples/mesh-api.d.ts"],
       "@meshfw/data-postgres": ["../../samples/mesh-api.d.ts"],
-      "@meshfw/cli": ["../../samples/mesh-api.d.ts"],
+      "meshfw": ["../../samples/mesh-api.d.ts"],
     },
   },
   files: [] as string[],
@@ -93,11 +93,15 @@ test("every TypeScript sample on the Docs pages type-checks against the proposed
   expect(found.length).toBeGreaterThan(15);
   const dir = mkdtempSync(join(app, ".samples-"));
   const failures: string[] = [];
+  let excerpts = 0;
   try {
-for (const [index, sample] of found.entries()) {
-// A fence titled "…(excerpt)" is a signature shown in prose, not a file; the
-      // checker cannot compile a fragment that never declared its own imports.
-      if (sample.title.endsWith("(excerpt)")) continue;
+    for (const [index, sample] of found.entries()) {
+      // Excerpts are fragments or framework integrations, not standalone samples.
+      // Count them rather than claiming they compiled against Mesh's declarations.
+      if (sample.title.endsWith("(excerpt)")) {
+        excerpts++;
+        continue;
+      }
       const caseDir = join(dir, String(index));
       mkdirSync(caseDir);
       const samplePath = /^[a-z0-9._-]+\/[a-z0-9._-]+\.ts$/.test(sample.title) ? sample.title : "sample.ts";
@@ -124,6 +128,6 @@ for (const [index, sample] of found.entries()) {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
-  console.log(`Docs TypeScript samples: ${found.length - failures.length - 1}/${found.length} compile (1 excerpt skipped)`);
+  console.log(`Docs TypeScript samples: ${found.length - failures.length - excerpts}/${found.length} compile (${excerpts} excerpts skipped)`);
   expect(failures).toEqual([]);
 }, 300_000);

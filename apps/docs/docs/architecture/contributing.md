@@ -73,7 +73,7 @@ This section is for contributors. Nothing under [Docs](../docs/index.md) says an
 - **`packages/model`** holds the plain-data entity model: fields, actions, relationships, the type registries and the diagnostic type. It imports nothing.
 - **`packages/runtime`** holds the run-time library generated code will import: the second argument's type (still `Scope` in code), the error classes and the data-layer contract, with conformance checks under its `testing` entry.
 - **`packages/cli`** holds the Bun-only `mesh` developer command, still a thin compiler shell. It re-exports `defineConfig`.
-- **`examples/blog`** is the fixture project. `bunx mesh build` there writes its generated tree, which is committed.
+- **`examples/blog`** is the fixture project. `mesh build` there writes its generated tree, which is committed.
 - **`apps/docs`** is this site.
 
 From the repository root:
@@ -93,7 +93,7 @@ To try the example:
 
 ```bash
 cd examples/blog
-bunx mesh build
+mesh build
 ```
 
 With `@mesh/cli` installed, the command runs from the project root containing `mesh.config.ts`, with no upward search. For another project in this checkout, invoke it as `bun /absolute/path/to/packages/cli/src/bin.ts` from that project. `mesh build` never deletes files; move stray output yourself. Exit codes: `0` success, `1` build, configuration or guard errors, `2` usage errors.
