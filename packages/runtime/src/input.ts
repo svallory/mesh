@@ -13,7 +13,13 @@ export async function parseInput<T>(schema: StandardSchemaV1<unknown, T>, input:
     }
     throw new InvalidInputError(result.issues.map((issue: StandardSchemaV1.Issue) => ({
       message: issue.message,
-      path: issue.path?.map((segment) => String(typeof segment === "object" ? segment.key : segment)) ?? [],
+      path: issue.path?.map((segment) => {
+        const key = typeof segment === "object" ? segment.key : segment;
+        return typeof key === "number" ? key : String(key);
+      }) ?? [],
+      label: null,
+      code: null,
+      source: null,
     })));
   }
   if (!("value" in result)) {

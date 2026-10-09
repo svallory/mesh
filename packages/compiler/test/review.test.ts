@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, mkdir, writeFile, rm, symlink } from "node:fs/promises";
 import { resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { isProjectRelativePath } from "@mesh/model";
+import { isProjectRelativePath } from "@meshfw/model";
 import { buildModel, loadConfig, loadProject } from "../src/index.ts";
 import { keyed } from "./v4.ts";
 const roots: string[] = [];
@@ -11,7 +11,7 @@ afterEach(async () => {
     await rm(root, { recursive: true, force: true });
 });
 async function project(
-  resources: string | string[] = ["domain/todo.mesh.mx"],
+  domain: string | string[] = ["domain/todo.mesh.mx"],
   output = "generated",
 ) {
   const root = await mkdtemp(resolve(tmpdir(), "mesh-review-"));
@@ -20,7 +20,7 @@ async function project(
   await writeFile(resolve(root, "domain/todo.mesh.mx"), keyed);
   await writeFile(
     resolve(root, "mesh.config.ts"),
-    `export default {resources:${JSON.stringify(resources)},output:${JSON.stringify(output)}}`,
+    `export default {domain:${JSON.stringify(domain)},output:${JSON.stringify(output)},data:{kind:"data-adapter",name:"sqlite",options:{file:":memory:"}}}`,
   );
   return root;
 }
@@ -56,7 +56,7 @@ test("config normalizes portable separators", async () => {
   );
   const loaded = await loadConfig(root);
   expect(loaded.diagnostics).toEqual([]);
-  expect(loaded.config!.resourceFiles).toEqual([
+  expect(loaded.config!.entityFiles).toEqual([
     resolve(root, "domain/todo.mesh.mx"),
   ]);
   expect(loaded.config!.output).toBe(resolve(root, "generated/nested"));

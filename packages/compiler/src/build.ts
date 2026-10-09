@@ -1,10 +1,10 @@
-import { basename, dirname, resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 import { realpathSync, statSync } from "node:fs";
 import {
   foreignAbsolute,
   inside,
   normalizePath,
-  resolveResource,
+  resolveEntityFile,
 } from "./paths.ts";
 export { projectPath } from "./paths.ts";
 import { parseData } from "@mxlang/data";
@@ -31,9 +31,10 @@ import {
   type Rollup,
   type SourcePosition,
   type Step,
-} from "@mesh/model";
+} from "@meshfw/model";
 import contracts from "./contracts.ts";
 import { nearestName } from "./nearest-name.ts";
+import { literalFits } from "./literal-types.ts";
 import { readImports, type ParsedImport } from "./imports.ts";
 import {
   resolveRollups,
@@ -76,6 +77,8 @@ export interface EntityFile {
 }
 export interface ProjectDescription {
   root: string;
+  /** Defaults to the project root for callers building virtual files. */
+  domainRoot?: string;
   files: readonly EntityFile[];
 }
 export interface BuildResult {
@@ -118,6 +121,7 @@ function buildEntity(
   diagnostics: Diagnostic[],
   rollups: PendingRollup[],
   importDetails: Map<Import, ParsedImport>,
+  module: string,
 ): Entity {
   const at = (offset: number) => positionAt(source, file, offset);
   const pos = (tag: DataTag) => at(tag.nameSpan.sourceStart);
@@ -133,7 +137,7 @@ function buildEntity(
     name: declaredName(root),
     table: String(opt(root, "table") ?? snakeCase(declaredName(root))),
     file,
-    module: basename(dirname(file)),
+    module,
     imports: [],
     attributes: [],
     relationships: [],
@@ -144,6 +148,12 @@ function buildEntity(
     policies: [],
     position: pos(root),
   };
+  if (!/^[A-Z][A-Za-z0-9]*$/.test(entity.name))
+    fail("MESH_ENTITY_NAME", `Entity :${entity.name} must have a PascalCase name, such as :Todo`, root);
+  for (const segment of module ? module.split("/") : []) {
+    if (!/^[A-Za-z0-9_-]+$/.test(segment))
+      fail("MESH_MODULE_NAME", `Module segment ${JSON.stringify(segment)} must contain only letters, digits, - or _`, root);
+  }
   const imports = readImports(tree.imports ?? []);
   for (const problem of imports.problems)
     fail(problem.code, problem.message, at(problem.span.sourceStart));
@@ -227,7 +237,6 @@ function buildEntity(
         "An enum requires non-empty, distinct values",
         field.position,
       );
-    const numeric = ["integer", "float", "decimal"].includes(field.type);
     if (
       field.min !== undefined &&
       field.max !== undefined &&
@@ -258,20 +267,7 @@ function buildEntity(
     }
     const def = field.default;
     if (def !== undefined) {
-      let valid =
-        def === null
-          ? field.nullable
-          : field.type === "enum"
-            ? typeof def === "object" &&
-              "value" in def &&
-              values?.includes(String(def.value))
-            : numeric
-              ? typeof def === "number" &&
-                Number.isFinite(def) &&
-                (field.type !== "integer" || Number.isInteger(def))
-              : field.type === "boolean"
-                ? typeof def === "boolean"
-                : typeof def === "string";
+      let valid = literalFits(def, field);
       if (
         valid &&
         (typeof def === "number" ||
@@ -390,18 +386,16 @@ function buildEntity(
             if (read.diagnostic) { diagnostics.push(read.diagnostic); return []; }
             const member = read.value;
             checkRef(member.ref, "set");
-            if (member.options || !member.value) {
-              fail(
-                "MESH_MEMBER_LINE_OPTIONS",
-                "A set member takes exactly one assignment and no options",
-                line,
-              );
-              return [];
-            }
             const value = readAt(line, at, () => {
               const n = nodeOf(member.value);
-              return n && ["ArrowFunctionExpression", "FunctionExpression"].includes(n.type)
-                ? expr(member.value) : valueOf(member.value);
+              if (n && ["ArrowFunctionExpression", "FunctionExpression"].includes(n.type)) return expr(member.value);
+              let literal: ReturnType<typeof valueOf>;
+              try { literal = valueOf(member.value); }
+              catch { throw new Error(`\`&${member.ref.name}=\` needs a literal value here`); }
+              const field = entity.attributes.find((attribute) => attribute.name === member.ref.name);
+              if (field && (!literalFits(literal, field) || n?.type === "ObjectExpression"))
+                fail("MESH_SET_VALUE", `\`&${member.ref.name}=\` needs a literal that fits ${field.type}${field.type === "enum" ? ` (${field.values?.map((atom) => `:${atom.value}`).join(", ")})` : ""}`, member.ref.position);
+              return literal;
             });
             if (value.diagnostic) { diagnostics.push(value.diagnostic); return []; }
             return [{ member: member.ref, value: value.value }];
@@ -550,11 +544,11 @@ function buildEntity(
     ...entity.relationships,
     ...entity.computed,
     ...entity.actions,
-    ...entity.policies,
     ...entity.auto.map((name) => ({
       name,
       position: actionSection ? pos(actionSection) : entity.position,
     })),
+    ...entity.policies,
   ];
   const names = new Set<string>();
   for (const member of members) {
@@ -646,11 +640,16 @@ export function buildModel(project: ProjectDescription): BuildResult {
       ],
     };
   const rootPath = resolve(normalizePath(project.root));
+  const domainRoot = resolve(rootPath, normalizePath(project.domainRoot ?? "."));
+  if (!inside(rootPath, domainRoot)) return {
+    document: null,
+    diagnostics: [error("MESH_PROJECT_PATH", "Domain root must stay inside the project", positionAt("", "mesh.config.ts", 0))],
+  };
   const virtualFiles = new Set(
-    project.files.map((f) => resolveResource(rootPath, f.file)?.absolute),
+    project.files.map((f) => resolveEntityFile(rootPath, f.file)?.absolute),
   );
   for (const input of project.files) {
-    const path = resolveResource(rootPath, input.file);
+    const path = resolveEntityFile(rootPath, input.file);
     if (!path) {
       diagnostics.push(
         error(
@@ -677,6 +676,10 @@ export function buildModel(project: ProjectDescription): BuildResult {
           other.message.startsWith(`\`<${denied}>\` is not a known tag:`));
       }).map((d): Diagnostic => {
         const coded = /\b(MESH_[A-Z_]+): (.*)/s.exec(d.message);
+        // @mxlang/data alpha.11 diagnostics carry no code or tag position, so a
+        // member line with bad options is recognised by MX's message wording
+        // ("`<&name>` (inline contract): missing required attribute `value`").
+        // test/fix2.test.ts pins that wording and fails if MX rewords it.
         const memberOptions =
           /`<&[A-Za-z_][A-Za-z0-9_]*>`.*(?:unknown attribute|missing required attribute)/.test(d.message);
         return {
@@ -711,6 +714,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
             diagnostics,
             rollups,
             importDetails,
+            normalizePath(relative(domainRoot, dirname(path.absolute))),
           ),
         );
       } catch (cause) {
@@ -724,25 +728,25 @@ export function buildModel(project: ProjectDescription): BuildResult {
       }
     }
   }
-  const identities = new Set<string>();
+  const identities = new Map<string, string>();
   for (const entity of document.entities) {
-    const identity = `${dirname(entity.file)}/${entity.name}`;
+    const identity = `${entity.module}/${entity.name}`;
     if (identities.has(identity))
       diagnostics.push(
         error(
           "MESH_DUPLICATE_ENTITY",
-          `Duplicate entity :${entity.name} in ${dirname(entity.file)}`,
+          `Duplicate entity :${entity.name} ${entity.module ? `in module ${JSON.stringify(entity.module)}` : "at the domain root"}; first declared in ${identities.get(identity)}`,
           entity.position,
         ),
       );
-    identities.add(identity);
+    else identities.set(identity, entity.file);
     for (const imported of entity.imports) {
       const target = resolve(rootPath, dirname(entity.file), imported.from);
       const targetEntity = document.entities.find((candidate) => resolve(rootPath, candidate.file) === target);
       if (imported.from.endsWith(".mesh.mx") && targetEntity) {
         for (const binding of importDetails.get(imported)?.bindings ?? []) {
           if (binding.imported !== targetEntity.name) {
-            const source = project.files.find((input) => resolveResource(rootPath, input.file)?.file === entity.file)!.source;
+            const source = project.files.find((input) => resolveEntityFile(rootPath, input.file)?.file === entity.file)!.source;
             diagnostics.push(error("MESH_UNKNOWN_IMPORT", `\`${binding.imported}\` is not what ${imported.from} declares; it declares \`${targetEntity.name}\``, positionAt(source, entity.file, binding.span.sourceStart)));
           }
         }

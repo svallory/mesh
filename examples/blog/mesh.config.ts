@@ -1,6 +1,8 @@
-import { defineConfig } from "@mesh/cli";
+import { defineConfig } from "meshfw";
+import { sqlite } from "@meshfw/data-sqlite";
 
 export default defineConfig({
-  resources: "resources",
-  output: "generated",
+  domain: "src/domain",
+  output: ".mesh",
+  data: sqlite({ file: "blog.db" }),
 });

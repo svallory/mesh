@@ -71,7 +71,7 @@ export function checkMxImports(root: string): string[] {
   });
 }
 
-const runtimeForbidden = ["@mesh/model", "@mesh/compiler", "drizzle-orm", "drizzle-kit"];
+const runtimeForbidden = ["@meshfw/model", "@meshfw/compiler", "drizzle-orm", "drizzle-kit"];
 
 /** M2's text rules reuse M1's directory walker, scanning every runtime source file. */
 export function checkRuntime(root: string, rule: "imports" | "web"): string[] {
@@ -447,6 +447,7 @@ export function checkDocsSamples(dir: string) {
     const root = block.find((text) => text.trim() !== "")?.trimStart() ?? "";
     // An entity file may open with its imports, so an `import` line heads a complete block too.
     if (!/^(entity\b|resource\b|import\s)/.test(root)) { skipped++; continue; }
+    if (/^resource\b/.test(root)) errors.push(`${where}: MX fence is not written in ${DOCS_SYNTAX}: use entity :Name, not resource`);
     const diagnostics = parseData(`${block.join("\n")}\n`, join(dir, name), { customTags: contracts, structural: "reject", unknownTags: "reject", imports: "pass" }).diagnostics;
     parsed++;
     for (const diagnostic of diagnostics) {

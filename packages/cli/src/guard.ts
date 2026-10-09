@@ -1,7 +1,7 @@
 import { lstat, readdir, readFile } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
-import type { GeneratedFile, ResolvedConfig } from "@mesh/compiler";
-import type { Diagnostic } from "@mesh/model";
+import type { GeneratedFile, ResolvedConfig } from "@meshfw/compiler";
+import type { Diagnostic } from "@meshfw/model";
 import { diagnostic, sortDiagnostics } from "./diagnostics.ts";
 
 export const projectPath = (root: string, path: string): string => relative(root, path).split(sep).join("/");

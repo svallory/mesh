@@ -41,7 +41,7 @@ function rowsEqual(actual: Row[], expected: Row[], message: string): void {
 }
 
 /** Return named, runner-independent asynchronous checks for contract v0.
- * Register each entry with your test runner. Each check owns and closes its fresh
+ * Add each entry to your test runner. Each check owns and closes its fresh
  * layers, including on failure; this module ships no adapter implementation.
  */
 export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>): Record<string, () => Promise<void>> {

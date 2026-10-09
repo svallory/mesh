@@ -71,7 +71,7 @@ describe("v4 contracts", () => {
     },
   );
   test.each([
-    'resource="Todo"',
+    'record="Todo"',
     'entity :Todo module="todo"',
     'entity "Todo"',
     'entity name="Todo"',
@@ -104,7 +104,8 @@ describe("v4 contracts", () => {
     const expected: Record<string, readonly [string, number, number]> = {
       "primary-keys": ["MESH_PRIMARY_KEY", 1, 0],
       let: ["MESH_SYNTAX", 1, 0],
-      "old-resource": ["MESH_SYNTAX", 1, 0],
+      "unknown-root": ["MESH_SYNTAX", 1, 0],
+      "primary-key-boolean": ["MESH_SYNTAX", 3, 16],
       "duplicate-member": ["MESH_DUPLICATE_MEMBER", 4, 4],
       "enum-values": ["MESH_ENUM_VALUES", 4, 4],
       "member-options": ["MESH_SYNTAX", 7, 12],

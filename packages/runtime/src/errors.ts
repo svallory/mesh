@@ -18,9 +18,19 @@ export interface IssueSource {
 
 /** One input or declared-rule validation failure. */
 export interface Issue {
-  path: string[];
+  label: string | null;
+  code: string | null;
+  path: (string | number)[];
   message: string;
-  source?: IssueSource;
+  source: IssueSource | null;
+}
+
+/** One evaluated policy check, as reported by a denial or a can-action query. */
+export interface PolicyCheck {
+  policy: string;
+  check: string;
+  result: boolean;
+  decisive: boolean;
 }
 
 /** A programming or configuration mistake, rather than invalid caller input. */
@@ -43,17 +53,33 @@ export class InvalidInputError extends MeshError {
   }
 }
 
-/** The requested resource row does not exist or is not visible to the caller. */
+/** A policy denied the action. */
+export class ForbiddenError extends MeshError {
+  readonly code = "forbidden";
+  readonly breakdown: readonly PolicyCheck[];
+
+  constructor(breakdown: readonly PolicyCheck[], options?: ErrorOptions) {
+    super("Action forbidden by policy", options);
+    this.breakdown = Object.freeze([...breakdown]);
+  }
+}
+
+function describeKey(key: unknown): string {
+  try { return JSON.stringify(key) ?? String(key); }
+  catch { return "[unserializable key]"; }
+}
+
+/** The requested entity row does not exist or is not visible to the caller. */
 export class NotFoundError extends MeshError {
   readonly code = "not_found";
 
   constructor(
-    /** Name of the resource whose row was requested. */
-    readonly resource: string,
-    /** Primary-key attribute names and values. */
-    readonly key: Readonly<Record<string, unknown>>,
+    /** Name of the entity whose row was requested. */
+    readonly entity: string,
+    /** The requested key, whether scalar or composite. */
+    readonly key: unknown,
     options?: ErrorOptions,
   ) {
-    super(`${resource} not found for ${JSON.stringify(key)}`, options);
+    super(`Entity ${entity} not found for ${describeKey(key)}`, options);
   }
 }

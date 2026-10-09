@@ -2,14 +2,14 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test
 import { chmod, link, mkdtemp, mkdir, readFile, readdir, readlink, rm, symlink, writeFile, rename, lstat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { stableJsonStringify } from "@mesh/compiler";
+import { stableJsonStringify } from "@meshfw/compiler";
 import { defineConfig } from "../src/index.ts";
 
 const repo = resolve(import.meta.dir, "../../..");
 const projects: string[] = [];
 let command: string;
 let buildDir: string;
-const sourcePath = "resources/todos/todo.mesh.mx";
+const sourcePath = "domain/todos/todo.mesh.mx";
 const source = `entity :Todo
   attributes
     uuid :id primary-key
@@ -36,21 +36,22 @@ afterEach(async () => {
 // Bun's isolated linker keeps workspace dependencies at each package, not at
 // the root. Link the packages explicitly for a real external project fixture.
 async function linkPackages(root: string): Promise<void> {
-  await mkdir(join(root, "node_modules/@mesh"), { recursive: true });
-  for (const name of ["cli", "compiler", "model"]) {
-    await symlink(join(repo, "packages", name), join(root, "node_modules/@mesh", name));
+  await mkdir(join(root, "node_modules/@meshfw"), { recursive: true });
+  await symlink(join(repo, "packages/cli"), join(root, "node_modules/meshfw"));
+  for (const name of ["compiler", "model"]) {
+    await symlink(join(repo, "packages", name), join(root, "node_modules/@meshfw", name));
   }
 }
 
 async function project(config = true): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "mesh-cli-project-"));
   projects.push(root);
-  await mkdir(join(root, "resources/todos"), { recursive: true });
+  await mkdir(join(root, "domain/todos"), { recursive: true });
   await linkPackages(root);
   await symlink(join(repo, "packages/compiler/node_modules/zod"), join(root, "node_modules/zod"));
   await writeFile(join(root, sourcePath), source);
-  if (config) await writeFile(join(root, "mesh.config.ts"), `import { defineConfig } from "@mesh/cli";
-export default defineConfig({ resources: "resources", output: "generated" });\n`);
+  if (config) await writeFile(join(root, "mesh.config.ts"), `import { defineConfig } from "meshfw";
+export default defineConfig({ domain: "domain", output: "generated", data: { kind: "data-adapter", name: "sqlite", options: { file: ":memory:" } } });\n`);
   return root;
 }
 function run(root: string, ...args: string[]) {
@@ -64,8 +65,8 @@ async function builtProject(): Promise<string> {
   return root;
 }
 
-test("defineConfig is re-exported from @mesh/cli", () => {
-  const config = { resources: "resources", output: "generated" };
+test("defineConfig is re-exported from meshfw", () => {
+  const config = { domain: "domain", output: "generated", data: { kind: "data-adapter" as const, name: "sqlite", options: { file: ":memory:" } } };
   expect(defineConfig(config)).toBe(config);
 });
 
@@ -116,7 +117,7 @@ describe("M1 test 3: guard differences", () => {
     expect(run(root, "build").code).toBe(1);
     expect((await lstat(join(root, path))).isSymbolicLink()).toBe(true);
   });
-  test("M1 test 3: a changed resource leaves a stale tree that fails the guard", async () => {
+  test("M1 test 3: a changed entity leaves a stale tree that fails the guard", async () => {
     const root = await builtProject();
     const before = await readFile(join(root, file));
     await writeFile(join(root, sourcePath), source.replace('string :title', 'integer :title'));
@@ -148,22 +149,24 @@ test.each([["titel", " Did you mean &title?"], ["unknown", ""]])("unknown member
 
 test("missing config is exit 1 with a diagnostic, with no upward search", async () => {
   const root = await project();
-  expect(run(join(root, "resources"), "build")).toEqual({ code: 1, stdout: "", stderr: "mesh.config.ts:1:1 error Cannot read mesh.config.ts (ENOENT) (fix: Create mesh.config.ts with resources and output)\n1 error, 0 warnings\n" });
+  expect(run(join(root, "domain"), "build")).toEqual({ code: 1, stdout: "", stderr: "mesh.config.ts:1:1 error Cannot read mesh.config.ts (ENOENT)\n  fix: Create mesh.config.ts with domain, output and data\n1 error, 0 warnings\n" });
 });
 
 test("invalid config is exit 1 with exact position", async () => {
   const root = await project();
-  await writeFile(join(root, "mesh.config.ts"), 'export default { resources: "resources", output: 3 };\n');
-  expect(run(root, "build")).toEqual({ code: 1, stdout: "", stderr: "mesh.config.ts:1:42 error Configuration field `output` must be a non-empty relative directory path (fix: Fix the output field in mesh.config.ts)\n1 error, 0 warnings\n" });
+  await writeFile(join(root, "mesh.config.ts"), 'export default { domain: "domain", output: 3, data: { kind: "data-adapter", name: "sqlite", options: {} } };\n');
+  expect(run(root, "build")).toEqual({ code: 1, stdout: "", stderr: "mesh.config.ts:1:36 error Configuration field `output` must be a non-empty relative directory path\n  fix: Fix the output field in mesh.config.ts\n1 error, 0 warnings\n" });
 });
 
-test("inspect prints precisely the built model bytes or the named resource with the same serialiser", async () => {
+test("inspect prints precisely the built model bytes or the named entity with the same serialiser", async () => {
   const root = await builtProject();
   const bytes = await readFile(join(root, "generated/model.json"), "utf8");
   const document = JSON.parse(bytes);
   expect(run(root, "inspect")).toEqual({ code: 0, stdout: bytes, stderr: "0 errors, 0 warnings\n" });
   expect(run(root, "inspect", "Todo")).toEqual({ code: 0, stdout: `${stableJsonStringify(document.entities[0])}\n`, stderr: "0 errors, 0 warnings\n" });
-  expect(run(root, "inspect", "absent")).toEqual({ code: 1, stdout: "", stderr: 'mesh.config.ts:1:1 error Unknown resource "absent"; known resources: Todo\n1 error, 0 warnings\n' });
+  expect(run(root, "inspect", "todo").code).toBe(1);
+  expect(document.data).toEqual({ name: "sqlite" });
+  expect(run(root, "inspect", "absent")).toEqual({ code: 1, stdout: "", stderr: 'mesh.config.ts:1:1 error Unknown entity "absent"; known entities: Todo\n1 error, 0 warnings\n' });
   await rm(join(root, "generated"), { recursive: true });
   expect(run(root, "inspect").stdout).toBe(bytes);
   expect(await Bun.file(join(root, "generated/model.json")).exists()).toBe(false);
@@ -177,6 +180,7 @@ test.each([[], ["unknown"], ["build", "--unknown"], ["build", "extra"], ["inspec
 });
 
 test.each([
+  { args: ["export", "generators"], milestone: "round 3" },
   { args: ["init"], milestone: "not scheduled" },
   { args: ["explain", "todo", "create"], milestone: "M5" },
   { args: ["db", "push"], milestone: "M2" },
@@ -188,23 +192,23 @@ test.each([
   expect(result.stderr).toContain(`not available yet (${milestone})`);
 });
 
-test("inspect orders multiple resources exactly like model.json and lists known names", async () => {
+test("inspect orders multiple entities exactly like model.json and lists known names", async () => {
   const root = await project();
-  await writeFile(join(root, "resources/z.mesh.mx"), source.replace('entity :Todo', 'entity :Alpha'));
+  await writeFile(join(root, "domain/z.mesh.mx"), source.replace('entity :Todo', 'entity :Alpha'));
   expect(run(root, "build").code).toBe(0);
   const bytes = await readFile(join(root, "generated/model.json"), "utf8");
   expect(run(root, "inspect").stdout).toBe(bytes);
   expect(JSON.parse(bytes).entities.map((entity: { name: string }) => entity.name)).toEqual(["Todo", "Alpha"]);
-  expect(run(root, "inspect", "missing").stderr).toBe('mesh.config.ts:1:1 error Unknown resource "missing"; known resources: Alpha, Todo\n1 error, 0 warnings\n');
+  expect(run(root, "inspect", "missing").stderr).toBe('mesh.config.ts:1:1 error Unknown entity "missing"; known entities: Alpha, Todo\n1 error, 0 warnings\n');
 });
 
 test("build errors are sorted across files and preserve an existing tree", async () => {
   const root = await builtProject();
   const before = await readFile(join(root, file));
   await writeFile(join(root, sourcePath), "");
-  await writeFile(join(root, "resources/a.mesh.mx"), "");
+  await writeFile(join(root, "domain/a.mesh.mx"), "");
   expect(run(root, "build")).toEqual({ code: 1, stdout: "", stderr:
-    `resources/a.mesh.mx:1:1 error An entity file must contain exactly one entity\n${sourcePath}:1:1 error An entity file must contain exactly one entity\n2 errors, 0 warnings\n` });
+    `domain/a.mesh.mx:1:1 error An entity file must contain exactly one entity\n${sourcePath}:1:1 error An entity file must contain exactly one entity\n2 errors, 0 warnings\n` });
   expect(await readFile(join(root, file))).toEqual(before);
 });
 
@@ -356,6 +360,6 @@ test("help lists only implemented commands and needs no config", async () => {
   expect(result.code).toBe(0);
   expect(result.stderr).toBe("");
   expect(result.stdout).toContain("build --check");
-  expect(result.stdout).toContain("inspect [resource]");
+  expect(result.stdout).toContain("inspect [entity]");
   for (const pending of ["init", "explain", "db push", "migrate"]) expect(result.stdout).not.toContain(pending);
 });

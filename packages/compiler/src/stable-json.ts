@@ -9,7 +9,7 @@
  * The caller adds the trailing newline; this function returns exactly the
  * document, so two serialisations of equal data are byte-identical.
  */
-import { findNonJsonValue } from "@mesh/model";
+import { findNonJsonValue } from "@meshfw/model";
 
 const INDENT = "  ";
 

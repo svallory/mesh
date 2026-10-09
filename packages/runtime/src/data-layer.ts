@@ -6,7 +6,7 @@ export type Row = Record<string, unknown>;
 /** Primary-key attribute names mapped to their values. */
 export type Key = Readonly<Record<string, unknown>>;
 
-/** Opaque handle to one resource's storage, exported by the emitted schema file
+/** Opaque handle to one entity's storage, exported by the emitted schema file
  * and understood only by the adapter.
  */
 export type TableHandle = object;
@@ -17,7 +17,7 @@ export interface DataOperations {
   insert(table: TableHandle, row: Row): Promise<Row>;
   /** Find one row by primary key, or undefined when absent. */
   selectByKey(table: TableHandle, key: Key): Promise<Row | undefined>;
-  /** Return every row in this resource's storage; order is unspecified. */
+  /** Return every row in this entity's storage; order is unspecified. */
   selectAll(table: TableHandle): Promise<Row[]>;
   /** Apply changes and return the stored row, or undefined when absent. */
   updateByKey(table: TableHandle, key: Key, changes: Row): Promise<Row | undefined>;
@@ -29,6 +29,6 @@ export interface DataOperations {
 export interface DataLayer {
   /** Runs run in one transaction: commits when it resolves, rolls back and rethrows when it rejects. */
   transaction<T>(run: (tx: DataOperations) => Promise<T>): Promise<T>;
-  /** Release the adapter's connection and other owned resources. */
+  /** Release the adapter's connection and other owned handles. */
   close(): Promise<void>;
 }

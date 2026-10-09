@@ -6,7 +6,7 @@ import type {
   MemberRef,
   ModelDocument,
   SourcePosition,
-} from "@mesh/model";
+} from "@meshfw/model";
 import { nearestName } from "./nearest-name.ts";
 
 export function unknownMember(
@@ -49,6 +49,10 @@ export function resolveRollups(
       const attribute = current.attributes.find((a) => a.name === ref.name);
       const last = index === segments.length - 1;
       if (!relation && !attribute) {
+        if (current.computed.some((field) => field.name === ref.name)) {
+          fail("MESH_ROLLUP_PATH", "rollups read attributes through relationships, not computed fields", ref.position);
+          break;
+        }
         diagnostics.push(
           unknownMember(
             current,

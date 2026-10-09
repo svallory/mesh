@@ -1,5 +1,5 @@
 import { relative, resolve } from "node:path";
-import { isProjectRelativePath, type ModelDocument, type Entity, type Spanned } from "@mesh/model";
+import { isProjectRelativePath, type ModelDocument, type Entity, type Spanned } from "@meshfw/model";
 import type { ResolvedConfig } from "../config.ts";
 import { emitError } from "../emit-error.ts";
 import { normalizePath } from "../paths.ts";

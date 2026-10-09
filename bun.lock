@@ -19,32 +19,34 @@
       },
     },
     "examples/blog": {
-      "name": "@mesh/example-blog",
+      "name": "blog-example",
       "version": "0.0.0",
       "dependencies": {
+        "@meshfw/data-sqlite": "workspace:*",
         "zod": "4.6.5",
       },
       "devDependencies": {
-        "@mesh/cli": "workspace:*",
+        "meshfw": "workspace:*",
       },
     },
     "packages/cli": {
-      "name": "@mesh/cli",
+      "name": "meshfw",
       "version": "0.0.0",
       "bin": {
         "mesh": "./src/bin.ts",
       },
       "dependencies": {
-        "@mesh/compiler": "workspace:*",
-        "@mesh/model": "workspace:*",
+        "@meshfw/compiler": "workspace:*",
+        "@meshfw/model": "workspace:*",
       },
     },
     "packages/compiler": {
-      "name": "@mesh/compiler",
+      "name": "@meshfw/compiler",
       "version": "0.0.0",
       "dependencies": {
         "@babel/parser": "^7.29.8",
-        "@mesh/model": "workspace:*",
+        "@meshfw/model": "workspace:*",
+        "@meshfw/runtime": "workspace:*",
         "@mxlang/core": "0.1.0-alpha.11",
         "@mxlang/data": "0.1.0-alpha.11",
         "prettier": "3.6.2",
@@ -60,12 +62,19 @@
         "create-mesh": "./src/bin.ts",
       },
     },
+    "packages/data-sqlite": {
+      "name": "@meshfw/data-sqlite",
+      "version": "0.0.0",
+      "dependencies": {
+        "@meshfw/runtime": "workspace:*",
+      },
+    },
     "packages/model": {
-      "name": "@mesh/model",
+      "name": "@meshfw/model",
       "version": "0.0.0",
     },
     "packages/runtime": {
-      "name": "@mesh/runtime",
+      "name": "@meshfw/runtime",
       "version": "0.0.0",
     },
   },
@@ -178,15 +187,13 @@
 
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.28.2", "", { "os": "win32", "cpu": "x64" }, "sha512-5ebpxr3nWMzrL/rnUI755Jkuee0bHL/Gq0WTF9lvcpv73wAp5eu8MfBUgWK9bhWvZjj7yX8etf/8tI8Ney695g=="],
 
-    "@mesh/cli": ["@mesh/cli@workspace:packages/cli"],
+    "@meshfw/compiler": ["@meshfw/compiler@workspace:packages/compiler"],
 
-    "@mesh/compiler": ["@mesh/compiler@workspace:packages/compiler"],
+    "@meshfw/data-sqlite": ["@meshfw/data-sqlite@workspace:packages/data-sqlite"],
 
-    "@mesh/example-blog": ["@mesh/example-blog@workspace:examples/blog"],
+    "@meshfw/model": ["@meshfw/model@workspace:packages/model"],
 
-    "@mesh/model": ["@mesh/model@workspace:packages/model"],
-
-    "@mesh/runtime": ["@mesh/runtime@workspace:packages/runtime"],
+    "@meshfw/runtime": ["@meshfw/runtime@workspace:packages/runtime"],
 
     "@mxlang/core": ["@mxlang/core@0.1.0-alpha.11", "https://npm.saulo.tech/@mxlang/core/-/core-0.1.0-alpha.11.tgz", { "dependencies": { "@babel/parser": "7.29.8" } }, "sha512-2zk5r+U7HsMPifcbkPyeoX2KcdfAt1MufVMRPFr24TM48z/k57GtswxAL1hsVUfHhTUx+aEiUZTXDgeqVECjlQ=="],
 
@@ -246,6 +253,8 @@
 
     "base64-js": ["base64-js@1.5.1", "", {}, "sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA=="],
 
+    "blog-example": ["blog-example@workspace:examples/blog"],
+
     "buffer": ["buffer@6.0.3", "", { "dependencies": { "base64-js": "^1.3.1", "ieee754": "^1.2.1" } }, "sha512-FTiCpNxtwiZZHEZbcbTIcZjERVICn9yq/pDFkTl95/AxzD1naBctN7YO68riM/gLSDY7sdrMby8hofADYuuqOA=="],
 
     "bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
@@ -303,6 +312,8 @@
     "mdurl": ["mdurl@2.1.0", "", {}, "sha512-1+HBaOx0zi/dQWht8rNv9MYf9qqpqL/kxI0hXImU6Y547zM6Sni8BQibt7ifgMcYtQg41ao3Ivd6cnSM86inpg=="],
 
     "mesh-docs": ["mesh-docs@workspace:apps/docs"],
+
+    "meshfw": ["meshfw@workspace:packages/cli"],
 
     "minisearch": ["minisearch@7.2.0", "", {}, "sha512-dqT2XBYUOZOiC5t2HRnwADjhNS2cecp9u+TJRiJ1Qp/f5qjkeT5APcGPjHw+bz89Ms8Jp+cG4AlE+QZ/QnDglg=="],
 

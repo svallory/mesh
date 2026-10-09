@@ -1,4 +1,4 @@
-import { formatDiagnostic, type Diagnostic } from "@mesh/model";
+import { formatDiagnostic, type Diagnostic } from "@meshfw/model";
 
 export const compareText = (a: string, b: string): number => a < b ? -1 : a > b ? 1 : 0;
 

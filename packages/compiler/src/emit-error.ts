@@ -1,4 +1,4 @@
-import type { Diagnostic } from "@mesh/model";
+import type { Diagnostic } from "@meshfw/model";
 
 /**
  * A build error raised while emitting, carrying the same positioned `Diagnostic`

@@ -13,7 +13,7 @@ async function project(): Promise<ResolvedConfig> {
   const root = await fs.mkdtemp(join(tmpdir(), "mesh-writer-"));
   roots.push(root);
   await fs.mkdir(join(root, "generated"));
-  return { root, output: join(root, "generated"), configFile: join(root, "mesh.config.ts"), resourceFiles: [] };
+  return { root, output: join(root, "generated"), configFile: join(root, "mesh.config.ts"), entityFiles: [], domainRoot: root, data: { kind: "data-adapter", name: "sqlite", options: { file: ":memory:" } } };
 }
 const files: GeneratedFile[] = [
   { path: "generated/a.txt", contents: "new A" },

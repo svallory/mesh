@@ -1,4 +1,4 @@
 {
   "extends": "../../../../tsconfig.base.json",
-  "include": ["scope.check.ts"]
+  "include": ["context.check.ts"]
 }

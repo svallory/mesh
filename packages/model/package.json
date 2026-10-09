@@ -1,5 +1,5 @@
 {
-  "name": "@mesh/model",
+  "name": "@meshfw/model",
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
@@ -7,7 +7,7 @@
   "exports": {
     ".": "./src/index.ts"
   },
-  "description": "Mesh resource model, vocabulary registries and build diagnostics (plain data, no I/O)",
+  "description": "Mesh entity model, vocabulary registries and build diagnostics (plain data, no I/O)",
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit"

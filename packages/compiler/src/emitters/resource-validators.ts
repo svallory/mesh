@@ -1,4 +1,4 @@
-import type { AttributeType } from "@mesh/model";
+import type { AttributeType } from "@meshfw/model";
 import type { Emitter } from "../emit.ts";
 import { formatTypescript } from "../format.ts";
 import { orderedEntities, outputPrefix } from "./order.ts";

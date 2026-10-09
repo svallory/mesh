@@ -1,33 +1,38 @@
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { readFile, stat, realpath, lstat } from "node:fs/promises";
-import type { Diagnostic } from "@mesh/model";
+import type { Diagnostic } from "@meshfw/model";
+import type { DataAdapter } from "@meshfw/runtime";
 import { buildModel, error, positionAt, type BuildResult } from "./build.ts";
-import { absolutePath, canonicalFuturePath, confinedGlob, foreignAbsolute, inside, normalizePath, projectPath, resolveResource, errorCode } from "./paths.ts";
+import { absolutePath, canonicalFuturePath, confinedGlob, foreignAbsolute, inside, normalizePath, projectPath, resolveEntityFile, errorCode } from "./paths.ts";
 
+/** Only the extension's identity is understood before M2. */
+export interface ExtensionDescriptor { readonly name: string }
 export interface MeshConfig {
   /** Entity folder (recursive .mesh.mx discovery), glob or file list. */
-  resources?: string | string[];
-  /** Transitional alias; round 2 removes `resources` and keeps `domain`. */
-  domain?: string | string[];
-  /** Output folder, relative to mesh.config.ts; no files are emitted here. */
+  domain: string | string[];
+  /** Output folder relative to mesh.config.ts, conventionally .mesh. */
   output: string;
-  /** Opaque until M2: accepted and preserved, not required or interpreted in M1. */
-  data?: unknown;
-  /** Array shape checked in M1; elements stay opaque until M6, never activated here. */
-  extensions?: readonly unknown[];
+  data: DataAdapter;
+  /** Kept opaque beyond identity; extensions are not activated here. */
+  extensions?: readonly ExtensionDescriptor[];
 }
 export interface ResolvedConfig {
   root: string;
   configFile: string;
-  resourceFiles: string[];
+  domainRoot: string;
+  entityFiles: string[];
   output: string;
-  data?: unknown;
-  extensions?: readonly unknown[];
+  data: DataAdapter;
+  extensions?: readonly ExtensionDescriptor[];
 }
 export interface ConfigResult { config: ResolvedConfig | null; diagnostics: Diagnostic[] }
 export function defineConfig(config: MeshConfig): MeshConfig { return config; }
 const nonEmpty = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
+const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
+function isDataAdapter(value: unknown): value is DataAdapter {
+  return record(value) && value.kind === "data-adapter" && nonEmpty(value.name) && record(value.options);
+}
 
 /** mesh.config.ts is trusted executable project code, not an entity declaration.
  * Path containment is nevertheless physical as well as lexical: entity
@@ -47,7 +52,7 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
   let source: string;
   try { source = await readFile(configFile, "utf8"); }
   catch (cause) {
-    return { config: null, diagnostics: [error("MESH_CONFIG_READ", `Cannot read mesh.config.ts (${errorCode(cause) ?? "UNKNOWN"})`, start, "Create mesh.config.ts with resources and output")] };
+    return { config: null, diagnostics: [error("MESH_CONFIG_READ", `Cannot read mesh.config.ts (${errorCode(cause) ?? "UNKNOWN"})`, start, "Create mesh.config.ts with domain, output and data")] };
   }
   // Best-effort key positions: executable config may compute fields dynamically.
   // Regex keys are escaped, never interpreted as user-supplied pattern syntax.
@@ -63,27 +68,29 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
     delete require.cache[resolve(canonicalRoot, "mesh.config.ts")];
     value = (await import(pathToFileURL(configFile).href)).default;
   } catch (cause) {
-    // Only paths Mesh produces from structured values are made relative. The
-    // name/message of an exception from executable config is external text:
-    // preserve it verbatim, including paths, rather than rewriting its meaning.
-    // Its diagnostic position remains the project-relative config filename.
+    // Preserve exception text from executable configuration verbatim.
     const detail = cause instanceof Error ? `${cause.name}: ${cause.message}` : `Thrown value: ${String(cause)}`;
     return { config: null, diagnostics: [error("MESH_CONFIG_LOAD", `Cannot load mesh.config.ts: ${detail}`, start, "Fix the config module and export default defineConfig({...})")] };
   }
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+  if (!record(value)) {
     fail("default", "mesh.config.ts must default-export a configuration object");
     return { config: null, diagnostics };
   }
-  const config = value as Record<string, unknown>;
-  const keys = new Set(["resources", "domain", "output", "data", "extensions"]);
-  for (const key of Object.keys(config)) if (!keys.has(key)) fail(key, `Unknown configuration field "${key}"`, "Remove the unknown field");
-  if (Object.hasOwn(config, "resources") && Object.hasOwn(config, "domain")) fail("domain", "Use domain or resources, not both");
-  // Round 2 removes the legacy key; the discovery implementation is shared now.
-  const resources = config.domain ?? config.resources;
-  if (!nonEmpty(resources) && !(Array.isArray(resources) && resources.length > 0 && resources.every(nonEmpty))) fail("resources", "Configuration field `resources` must be a non-empty relative folder, glob or list of relative file paths");
+  const config = value;
+  const keys = new Set(["domain", "output", "data", "extensions"]);
+  for (const key of Object.keys(config)) if (!keys.has(key)) fail(key, `Unknown configuration field "${key}"`, key === "resources" ? "`resources` was renamed `domain`" : "Remove the unknown field");
+  const domain = config.domain;
+  if (!nonEmpty(domain) && !(Array.isArray(domain) && domain.length > 0 && domain.every(nonEmpty))) fail("domain", "Configuration field `domain` must be a non-empty relative folder, glob or list of relative file paths");
   if (!nonEmpty(config.output)) fail("output", "Configuration field `output` must be a non-empty relative directory path");
+  const data = config.data;
+  if (!isDataAdapter(data)) fail("data", "Configuration field `data` must be a data adapter descriptor", 'Import `sqlite` from `@meshfw/data-sqlite` and set data: sqlite({ file: "app.db" })');
   const extensions = config.extensions;
-  if (Object.hasOwn(config, "extensions") && !Array.isArray(extensions)) fail("extensions", "Configuration field `extensions` must be an array");
+  if (Object.hasOwn(config, "extensions")) {
+    if (!Array.isArray(extensions)) fail("extensions", "Configuration field `extensions` must be an array");
+    else for (const [index, extension] of extensions.entries()) {
+      if (!record(extension) || !nonEmpty(extension.name)) fail("extensions", `Configuration field \`extensions[${index}]\` must be an object with a non-empty name string`);
+    }
+  }
   if (diagnostics.length) return { config: null, diagnostics };
 
   const outputInput = normalizePath(config.output as string);
@@ -96,8 +103,6 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
       try { outputIsLink = (await lstat(output)).isSymbolicLink(); }
       catch (cause) { if (errorCode(cause) !== "ENOENT") throw cause; }
       if (outputIsLink) {
-        // Do not resolve a link first: dangling, cyclic and external targets
-        // must receive the same path-specific diagnostic as an internal link.
         diagnostics.push(error("MESH_OUTPUT_SYMLINK",
           "Symlink in the output tree; delete or move it and rebuild using real files and directories",
           positionAt("", projectPath(root, output), 0)));
@@ -108,9 +113,10 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
     } catch (cause) { fail("output", `Cannot resolve generated directory (${errorCode(cause) ?? "UNKNOWN"})`); }
   }
   let files: string[] = [];
-  if (typeof resources === "string") {
-    const input = normalizePath(resources);
-    if (!confinedGlob(input)) fail("resources", "Configuration field `resources` must stay inside the project");
+  let domainRoot = root;
+  if (typeof domain === "string") {
+    const input = normalizePath(domain);
+    if (!confinedGlob(input)) fail("domain", "Configuration field `domain` must stay inside the project");
     else {
       try {
         const candidate = resolve(root, input);
@@ -122,21 +128,29 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
           if (errorCode(cause) !== "ENOENT" && errorCode(cause) !== "ENOTDIR") throw cause;
         }
         if (folder && !inside(canonicalRoot, await realpath(candidate))) {
-          fail("resources", `Entity file "${projectPath(root, candidate)}" resolves outside the project`);
+          fail("domain", `Entity file "${projectPath(root, candidate)}" resolves outside the project`);
         } else {
           const cwd = folder ? candidate : root;
           const glob = folder ? "**/*.mesh.mx" : input;
+          // A partial segment before a wildcard is not a static directory.
+          const wildcard = input.search(/[*?{\[]/);
+          const prefix = wildcard < 0 ? input : input.slice(0, wildcard);
+          domainRoot = folder ? candidate : resolve(root, prefix.slice(0, prefix.lastIndexOf("/") + 1) || ".");
           for await (const file of new Bun.Glob(glob).scan({ cwd, onlyFiles: true, followSymlinks: true, dot: true })) if (file.endsWith(".mesh.mx")) files.push(resolve(cwd, normalizePath(file)));
-          if (files.length === 0) fail("resources", "Configuration field `resources` matches no files");
+          if (files.length === 0) fail("domain", "Configuration field `domain` matches no files");
         }
-      } catch (cause) { fail("resources", `Cannot expand entity file glob (${errorCode(cause) ?? "UNKNOWN"})`); }
+      } catch (cause) { fail("domain", `Cannot expand entity file glob (${errorCode(cause) ?? "UNKNOWN"})`); }
     }
   } else {
-    for (const item of resources as string[]) {
-      const path = absolutePath(item) ? null : resolveResource(root, item);
-      if (!path) fail("resources", "Entity file path must resolve inside the project");
-      else if (!path.file.endsWith(".mesh.mx")) fail("resources", "Entity files must end in .mesh.mx");
+    for (const item of domain as string[]) {
+      const path = absolutePath(item) ? null : resolveEntityFile(root, item);
+      if (!path) fail("domain", "Entity file path must resolve inside the project");
+      else if (!path.file.endsWith(".mesh.mx")) fail("domain", "Entity files must end in .mesh.mx");
       else files.push(path.absolute);
+    }
+    if (files.length) {
+      domainRoot = dirname(files[0]!);
+      for (const file of files) while (!inside(domainRoot, file)) domainRoot = dirname(domainRoot);
     }
   }
   files = [...new Set(files)].sort();
@@ -144,18 +158,14 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
     const name = projectPath(root, file);
     try {
       const canonicalFile = await realpath(file);
-      if (!inside(canonicalRoot, canonicalFile)) { fail("resources", `Entity file "${name}" resolves outside the project`); continue; }
-      if (!(await stat(file)).isFile()) fail("resources", `Entity file "${name}" is not a file`);
-    } catch (cause) { fail("resources", `Cannot read entity file "${name}" (${errorCode(cause) ?? "UNKNOWN"})`); }
+      if (!inside(canonicalRoot, canonicalFile)) { fail("domain", `Entity file "${name}" resolves outside the project`); continue; }
+      if (!(await stat(file)).isFile()) fail("domain", `Entity file "${name}" is not a file`);
+    } catch (cause) { fail("domain", `Cannot read entity file "${name}" (${errorCode(cause) ?? "UNKNOWN"})`); }
   }
-  // Data and individual extension elements remain opaque. Preserve data presence
-  // (including explicit undefined) and valid extension-array references. The
-  // array assertion follows the outer-shape validation above, not a fallback.
-  const opaque = {
-    ...(Object.hasOwn(config, "data") ? { data: config.data } : {}),
-    ...(Object.hasOwn(config, "extensions") ? { extensions: extensions as readonly unknown[] } : {}),
-  };
-  return { config: diagnostics.length ? null : { root, configFile, resourceFiles: files, output, ...opaque }, diagnostics };
+  return { config: diagnostics.length ? null : {
+    root, configFile, domainRoot, entityFiles: files, output, data: data as DataAdapter,
+    ...(Object.hasOwn(config, "extensions") ? { extensions: extensions as readonly ExtensionDescriptor[] } : {}),
+  }, diagnostics };
 }
 
 export async function loadProject(config: ResolvedConfig): Promise<BuildResult> {
@@ -166,8 +176,8 @@ export async function loadProject(config: ResolvedConfig): Promise<BuildResult> 
   catch (cause) {
     return { document: null, diagnostics: [error("MESH_CONFIG_ROOT", `Cannot resolve project root (${errorCode(cause) ?? "UNKNOWN"})`, positionAt("", "mesh.config.ts", 0), "Use an existing project directory")] };
   }
-  for (const file of config.resourceFiles) {
-    const path = resolveResource(config.root, file);
+  for (const file of config.entityFiles) {
+    const path = resolveEntityFile(config.root, file);
     if (!path) {
       diagnostics.push(error("MESH_ENTITY_PATH", "Entity file path must resolve inside the project", positionAt("", "mesh.config.ts", 0), "Use an entity file path inside the project"));
       continue;
@@ -178,8 +188,9 @@ export async function loadProject(config: ResolvedConfig): Promise<BuildResult> 
         continue;
       }
       files.push({ file: path.absolute, source: await readFile(path.absolute, "utf8") });
-    } catch (cause) { diagnostics.push(error("MESH_ENTITY_READ", `Cannot read entity file "${path.file}" (${errorCode(cause) ?? "UNKNOWN"})`, positionAt("", path.file, 0), "Restore the entity file or fix the resources list")); }
+    } catch (cause) { diagnostics.push(error("MESH_ENTITY_READ", `Cannot read entity file "${path.file}" (${errorCode(cause) ?? "UNKNOWN"})`, positionAt("", path.file, 0), "Restore the entity file or fix the domain list")); }
   }
-  const result = buildModel({ root: config.root, files });
+  const result = buildModel({ root: config.root, domainRoot: config.domainRoot, files });
+  if (result.document) result.document.data = { name: config.data.name };
   return { document: diagnostics.length ? null : result.document, diagnostics: [...diagnostics, ...result.diagnostics] };
 }

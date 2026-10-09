@@ -2,7 +2,7 @@ import { lstat, mkdir, open, rename, unlink } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname, join, relative, resolve, sep } from "node:path";
-import { isProjectRelativePath, type Diagnostic, type ModelDocument } from "@mesh/model";
+import { isProjectRelativePath, type Diagnostic, type ModelDocument } from "@meshfw/model";
 import type { ResolvedConfig } from "./config.ts";
 import { errorCode, inside } from "./paths.ts";
 import { EmitError } from "./emit-error.ts";

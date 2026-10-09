@@ -1,17 +1,19 @@
 {
-  "name": "@mesh/example-blog",
+  "name": "blog-example",
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
   "type": "module",
+  "imports": { "#mesh": "./.mesh/index.ts" },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "validate": "mesh build --check"
   },
   "devDependencies": {
-    "@mesh/cli": "workspace:*"
+    "meshfw": "workspace:*"
   },
   "dependencies": {
+    "@meshfw/data-sqlite": "workspace:*",
     "zod": "4.6.5"
   }
 }

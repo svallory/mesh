@@ -5,7 +5,7 @@
  *
  * `file` is a path relative to the project root (the directory of the project's
  * config file), with `/` separators, never absolute. Positions are written to the
- * committed `generated/model.json`, so an absolute or machine-specific path would
+ * committed `.mesh/model.json`, so an absolute or machine-specific path would
  * make `mesh build --check` fail on every other checkout. The builder must convert
  * before it stores a position; `isProjectRelativePath` is the check.
  */

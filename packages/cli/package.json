@@ -1,5 +1,5 @@
 {
-  "name": "@mesh/cli",
+  "name": "meshfw",
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@mesh/compiler": "workspace:*",
-    "@mesh/model": "workspace:*"
+    "@meshfw/compiler": "workspace:*",
+    "@meshfw/model": "workspace:*"
   }
 }

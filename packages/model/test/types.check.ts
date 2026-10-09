@@ -69,7 +69,7 @@ const oldAction: Action = {
   position,
 };
 // @ts-expect-error root key is entities
-const oldDocument: ModelDocument = { resources: [] };
+const oldDocument: ModelDocument = { records: [] };
 // @ts-expect-error an entity table is resolved, not nullable
 const nullTable: Pick<Entity, "table"> = { table: null };
 export type Assertions = [
