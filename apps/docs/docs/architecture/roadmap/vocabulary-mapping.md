@@ -66,7 +66,7 @@ Grouped by why. Row numbers refer to section 3.
 
 ## 3. Contract coverage
 
-Each example is a complete tag, tested in a minimal entity with its declared ancestors, stored fields, and an imported Line entity. The test parses **and builds** every cell, with executable todos only for MX's unsupported member positions. The rows equal the production contracts: options unavailable for a particular type have no row. Tagless input/assignment lines use inline wildcard contracts; `member` is not an authored tag.
+Each example is a complete tag or tagless member line, tested in a minimal entity with its declared ancestors, stored fields, and an imported Line entity. The test parses **and builds** every cell, with executable todos only for MX's unsupported member positions. The rows equal the production contracts: options unavailable for a particular type have no row. Tagless input/assignment lines use inline wildcard contracts: `input.*` has no options, while `set.*.value` requires its assignment value. The coverage test enumerates these wildcard options as well as the named contracts; `member` is not an authored tag.
 
 “On main” records the delivered compiler/model coverage, not runtime execution. Authored `&` after a kind and inside expressions still wait for MX's lowering; the production compiler never rewrites source.
 
@@ -168,6 +168,7 @@ Each example is a complete tag, tested in a minimal entity with its declared anc
 | `has-one.name` | `has-one :related entity=Line` | `has-one.name` | on main |
 | `has-one.entity` | `has-one :related entity=Line` | `has-one.entity` | on main |
 | `input` | `input` | `input` | on main |
+| `input` member line | `&title` | `input.*` | on main |
 | `integer` | `integer :field` | `integer` | on main |
 | `integer.name` | `integer :field` | `integer.name` | on main |
 | `integer.nullable` | `integer :field nullable` | `integer.nullable` | on main |
@@ -200,6 +201,7 @@ Each example is a complete tag, tested in a minimal entity with its declared anc
 | `run` | `run({ self }) { audit(self) }` | `run` | on main |
 | `run.value` | `run({ self }) { audit(self) }` | `run.value` | on main |
 | `set` | `set` | `set` | on main |
+| `set` assignment line | `&title="new"` | `set.*.value` | on main |
 | `sort` | `sort` | `sort` | on main |
 | `string` | `string :field` | `string` | on main |
 | `string.name` | `string :field` | `string.name` | on main |

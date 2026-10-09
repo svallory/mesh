@@ -106,7 +106,7 @@ const options = (type: string) => ({
 const steps = children("set", "when", "load", "run");
 const body = { validate: {}, do: {} };
 // Inline wildcard contract, not an authorable `member` tag.
-const memberLine = { attributes: { value: {} }, attributeTags: {}, children: {} };
+const memberLine = { attributeTags: {}, children: {} };
 
 const contracts: ContractMap = {
   entity: closed({
@@ -151,7 +151,7 @@ const contracts: ContractMap = {
     parents: [...ACTION_TYPES],
     children: {
       ...children(...ATTRIBUTE_TYPES),
-      "*": { ...memberLine, pattern: "&[A-Za-z_][A-Za-z0-9_]*" },
+      "*": { ...memberLine, attributes: {}, pattern: "&[A-Za-z_][A-Za-z0-9_]*" },
     },
   }),
   validate: closed({
@@ -172,7 +172,7 @@ const contracts: ContractMap = {
   set: closed({
     parents: ["do", "when"],
     children: {
-      "*": { ...memberLine, pattern: "&[A-Za-z_][A-Za-z0-9_]*" },
+      "*": { ...memberLine, attributes: { value: { required: true } }, pattern: "&[A-Za-z_][A-Za-z0-9_]*" },
     },
   }),
   when: closed({

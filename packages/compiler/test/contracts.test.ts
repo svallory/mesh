@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
-import { createTargetLookup, getCustomTags } from "@mxlang/core";
+import { createTargetLookup, getCustomTags, type WildcardChildEntry } from "@mxlang/core";
 import descriptor from "@mxlang/data/descriptor";
 import contracts, { ATTRIBUTE_TYPES } from "../src/contracts.ts";
 import { buildModel } from "../src/build.ts";
@@ -107,11 +107,11 @@ describe("v4 contracts", () => {
       "old-resource": ["MESH_SYNTAX", 1, 0],
       "duplicate-member": ["MESH_DUPLICATE_MEMBER", 4, 4],
       "enum-values": ["MESH_ENUM_VALUES", 4, 4],
-      "member-options": ["MESH_MEMBER_LINE_OPTIONS", 7, 12],
+      "member-options": ["MESH_SYNTAX", 7, 12],
       "unknown-member": ["MESH_UNKNOWN_MEMBER", 7, 8],
       "old-arguments": ["MESH_SYNTAX", 6, 6],
       "unknown-option": ["MESH_SYNTAX", 1, 13],
-      "member-assignment": ["MESH_MEMBER_LINE_OPTIONS", 7, 8],
+      "member-assignment": ["MESH_SYNTAX", 7, 11],
       "check-that": ["MESH_SYNTAX", 7, 8],
       "atom-sort": ["MESH_SYNTAX", 7, 12],
       "has-many-nullable": ["MESH_SYNTAX", 5, 32],
@@ -252,12 +252,15 @@ describe("vocabulary-mapping section 3 Contract coverage", () => {
   }
   test("one row per tag and option, no untested or stale contract cells", () => {
     const expected = Object.entries(contracts)
-      .flatMap(([tag, contract]) => [
-        tag,
-        ...Object.keys(contract.attributes ?? {}).map(
-          (option) => `${tag}.${option}`,
-        ),
-      ])
+      .flatMap(([tag, contract]) => {
+        const wildcard = contract.children?.["*"] as WildcardChildEntry | undefined;
+        const options = Object.keys(wildcard?.attributes ?? {});
+        // A tagless form has no named-tag row: list its options, or its bare line.
+        const inline = !wildcard ? [] : options.length
+          ? options.map((option) => `${tag}.*.${option}`)
+          : [`${tag}.*`];
+        return [tag, ...Object.keys(contract.attributes ?? {}).map((option) => `${tag}.${option}`), ...inline];
+      })
       .sort();
     expect(rows.map((r) => r[2]!.replaceAll("`", "")).sort()).toEqual(expected);
     for (const row of rows) {

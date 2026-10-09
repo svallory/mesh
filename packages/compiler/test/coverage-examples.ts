@@ -10,7 +10,7 @@ export function coverageProject(tag: string, option: string | undefined, example
   const relationships = node("relationships", [node("has-many :lines entity=Line")]);
   const actions = node("actions", [node("read :custom")]);
   const root = node("entity :Sample", [attributes, relationships, actions]);
-  const chain = [tag];
+  const chain = option === "*" ? [tag, "*"] : [tag];
   let parent = ATTRIBUTE_TYPES.includes(tag as typeof ATTRIBUTE_TYPES[number]) && option === "value" ? "computed" : contracts[tag]!.parents![0]!;
   while (parent !== "#root") {
     chain.unshift(parent);

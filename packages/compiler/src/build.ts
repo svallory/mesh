@@ -500,12 +500,6 @@ function buildEntity(
           line.name.startsWith("&")
         ) {
           const member = readMemberLine(line, at);
-          if (member.value || member.options)
-            fail(
-              "MESH_MEMBER_LINE_OPTIONS",
-              "An input member takes no options or assignment",
-              line,
-            );
           if (kind === "read")
             fail(
               "MESH_READ_INPUT_MEMBER",
@@ -700,7 +694,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
       ...parsed.diagnostics.map((d): Diagnostic => {
         const coded = /\b(MESH_[A-Z_]+): (.*)/s.exec(d.message);
         const memberOptions =
-          /(?:as `member`|`<member>`|`<&[A-Za-z_][A-Za-z0-9_]*>`).*unknown attribute/.test(d.message);
+          /`<&[A-Za-z_][A-Za-z0-9_]*>`.*(?:unknown attribute|missing required attribute)/.test(d.message);
         return {
           severity: d.severity,
           code:

@@ -114,11 +114,11 @@ test.each([
   [
     keyed +
       "  actions\n    create :create\n      input\n        &id nullable\n",
-    "MESH_MEMBER_LINE_OPTIONS",
+    "MESH_SYNTAX",
   ],
   [
     keyed + "  actions\n    create :create\n      input\n        &id=true\n",
-    "MESH_MEMBER_LINE_OPTIONS",
+    "MESH_SYNTAX",
   ],
   [
     keyed + "  actions\n    read :read\n      input\n        &id\n",

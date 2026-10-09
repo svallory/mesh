@@ -374,8 +374,9 @@ export function normaliseV4(source: string): string {
 export function relaxedDocsContracts(production: ContractMap): ContractMap {
   const result: ContractMap = { ...production };
   for (const name of ["input", "set"]) result[name] = { ...production[name], defaultTag: "member", children: { ...production[name]!.children, member: { repeatable: true } } };
-  const memberLine = production.input!.children!["*"] as WildcardChildEntry;
-  result.member = { ...memberLine, parents: ["input", "set"], attributes: { ...memberLine.attributes, name: { type: "atom", required: true } } };
+  const memberLine = production.set!.children!["*"] as WildcardChildEntry;
+  // One normalized test-only tag serves both bare input and assigned set lines.
+  result.member = { ...memberLine, parents: ["input", "set"], attributes: { ...memberLine.attributes, value: { ...memberLine.attributes!.value, required: false }, name: { type: "atom", required: true } } };
   const slots: Record<string, string[]> = { actions: ["on:load"], always: ["actions"], policy: ["actions"], load: ["value"], asc: ["member"], desc: ["member"] };
   for (const [name, skipped] of Object.entries(slots)) {
     const original = production[name]!;
