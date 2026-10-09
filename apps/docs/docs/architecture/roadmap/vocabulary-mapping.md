@@ -376,7 +376,7 @@ The compiler fixtures and the blog now use [entity file syntax v4](../../docs/en
 
 Mesh reads `&name` through its syntax module (`packages/compiler/src/syntax.ts`), which MX lowers before the compiler reads the tree; production never rewrites source or executes expressions.
 
-The blog's domain root is `src/domain/`; its `blog` folder supplies the module name. `mesh build` writes the committed `.mesh/blog/*.types.ts`, `.validators.ts` and `.mesh/model.json`. The guard compares those bytes with a fresh in-memory build. The `#mesh` entry point and action-function emitters arrive in round 3.
+The blog's domain root is `src/domain/`; its `blog` folder supplies the module name. `mesh build` writes the committed `.mesh/blog/*.types.ts`, `.validators.ts` and `.mesh/model.json`. The guard compares those bytes with a fresh in-memory build. The `#mesh` entry point and the action-function generators are not built yet; they come with M2.
 
 ---
 

@@ -8,7 +8,7 @@ description: "The data-layer contract, declared capabilities, the conformance su
 Status: contract v0 is implemented in the run-time library (M2, [PR #20](https://github.com/svallory/mesh/pull/20)). The SQLite adapter is written and held in [PR #22](https://github.com/svallory/mesh/pull/22) until the docs are approved ([ADR-0063](../decisions/0063-user-docs-first-and-the-hold.md)). M3 replaces contract v0 with the full contract below; capabilities are first used in M5 and M7, and Postgres and migrations arrive in M9 ([roadmap](../roadmap/roadmap.md)).
 
 ::: callout info "What the code does today"
-The package on `main` is `@meshfw/runtime` and its testing entry `@meshfw/runtime/testing` ([ADR-0060](../decisions/0060-meshfw-package-scope.md)). It holds the data-layer contract v0 and the `DataAdapter` descriptors; `@meshfw/data-sqlite` returns a frozen descriptor only, with no connection until M2.
+The package on `main` is `@meshfw/runtime` and its testing entry `@meshfw/runtime/testing` ([ADR-0060](../decisions/0060-meshfw-package-scope.md)). It holds the data-layer contract v0 and the `DataAdapter` descriptors; `@meshfw/data-sqlite` returns a frozen descriptor only and opens no connection.
 :::
 
 The data layer stores and fetches records. Related: [overview](../overview/architecture.md), [three rings](./three-rings.md), [expressions](./expressions.md), [action lifecycle](./action-lifecycle.md), [generated code and the guard](./generated-code-and-guard.md).
