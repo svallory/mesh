@@ -52,6 +52,13 @@
         "zod": "4.6.5",
       },
     },
+    "packages/create-mesh": {
+      "name": "create-mesh",
+      "version": "0.0.1",
+      "bin": {
+        "create-mesh": "./src/bin.ts",
+      },
+    },
     "packages/model": {
       "name": "@mesh/model",
       "version": "0.0.0",
@@ -249,6 +256,8 @@
     "color-name": ["color-name@1.1.4", "", {}, "sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA=="],
 
     "commander": ["commander@15.0.0", "", {}, "sha512-z67u4ZhzCL/Tydu1lJARtEZYWbWaN7oYLHbsuzocr6y4N6WZAagG3RQ4FW61V1/0+jImpj293XfrcYnd1qxtPg=="],
+
+    "create-mesh": ["create-mesh@workspace:packages/create-mesh"],
 
     "docmd-assistant": ["docmd-assistant@0.1.18", "", { "dependencies": { "aiplug": "^0.1.2" } }, "sha512-gkCuCeeB6DswUXjDafwKEteyOfNXTIfAMng+Hu+WxHP0l7KNqkanyU2ktTBpOutXCUSoVL/ojnaiBprFagdObw=="],
 

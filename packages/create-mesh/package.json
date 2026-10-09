@@ -1,0 +1,17 @@
+{
+  "name": "create-mesh",
+  "version": "0.0.1",
+  "license": "MIT",
+  "type": "module",
+  "description": "Starter for Mesh projects (bun create mesh). Mesh is coming soon.",
+  "homepage": "https://mesh.hyperlab.sh",
+  "repository": { "type": "git", "url": "https://github.com/svallory/mesh.git", "directory": "packages/create-mesh" },
+  "keywords": ["mesh", "create-mesh", "bun", "starter"],
+  "engines": { "bun": ">=1.3" },
+  "bin": { "create-mesh": "./src/bin.ts" },
+  "files": ["src", "README.md"],
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  }
+}
