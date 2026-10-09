@@ -5,6 +5,7 @@ import type { SourceSpan } from "@mxlang/core";
 
 export interface ParsedImport {
   names: string[];
+  bindings: { local: string; imported: string; span: SourceSpan }[];
   from: string;
   span: SourceSpan;
 }
@@ -32,6 +33,10 @@ export function readImports(imports: readonly DataImport[]): {
         throw new Error("An import must name a relative file");
       result.push({
         names: statement.specifiers.map((specifier) => specifier.local.name),
+        bindings: statement.specifiers.map((specifier) => {
+          const imported = specifier.type === "ImportSpecifier" ? specifier.imported : specifier.local;
+          return { local: specifier.local.name, imported: imported.type === "Identifier" ? imported.name : imported.value, span: { sourceStart: entry.span.sourceStart + (imported.start ?? 0), sourceEnd: entry.span.sourceStart + (imported.end ?? 0) } };
+        }),
         from,
         span: entry.span,
       });

@@ -34,7 +34,7 @@ import {
 } from "@mesh/model";
 import contracts from "./contracts.ts";
 import { nearestName } from "./nearest-name.ts";
-import { readImports } from "./imports.ts";
+import { readImports, type ParsedImport } from "./imports.ts";
 import {
   resolveRollups,
   unknownMember,
@@ -117,6 +117,7 @@ function buildEntity(
   file: string,
   diagnostics: Diagnostic[],
   rollups: PendingRollup[],
+  importDetails: Map<Import, ParsedImport>,
 ): Entity {
   const at = (offset: number) => positionAt(source, file, offset);
   const pos = (tag: DataTag) => at(tag.nameSpan.sourceStart);
@@ -147,11 +148,11 @@ function buildEntity(
   for (const problem of imports.problems)
     fail("MESH_UNKNOWN_IMPORT", problem.message, at(problem.span.sourceStart));
   entity.imports = imports.imports.map(
-    (i): Import => ({
-      identifiers: i.names,
-      from: i.from,
-      position: at(i.span.sourceStart),
-    }),
+    (i): Import => {
+      const value = { identifiers: i.names, from: i.from, position: at(i.span.sourceStart) };
+      importDetails.set(value, i);
+      return value;
+    },
   );
   const importNames = new Map<string, Import>();
   for (const entry of entity.imports)
@@ -658,6 +659,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
   const diagnostics: Diagnostic[] = [];
   const document: ModelDocument = { entities: [] };
   const rollups: PendingRollup[] = [];
+  const importDetails = new Map<Import, ParsedImport>();
   if (foreignAbsolute(project.root))
     return {
       document: null,
@@ -728,6 +730,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
             file,
             diagnostics,
             rollups,
+            importDetails,
           ),
         );
       } catch (cause) {
@@ -755,6 +758,15 @@ export function buildModel(project: ProjectDescription): BuildResult {
     identities.add(identity);
     for (const imported of entity.imports) {
       const target = resolve(rootPath, dirname(entity.file), imported.from);
+      const targetEntity = document.entities.find((candidate) => resolve(rootPath, candidate.file) === target);
+      if (imported.from.endsWith(".mesh.mx") && targetEntity) {
+        for (const binding of importDetails.get(imported)?.bindings ?? []) {
+          if (binding.imported !== targetEntity.name) {
+            const source = project.files.find((input) => resolveResource(rootPath, input.file)?.file === entity.file)!.source;
+            diagnostics.push(error("MESH_UNKNOWN_IMPORT", `\`${binding.imported}\` is not what ${imported.from} declares; it declares \`${targetEntity.name}\``, positionAt(source, entity.file, binding.span.sourceStart)));
+          }
+        }
+      }
       const candidates = imported.from.endsWith(".mesh.mx")
         ? [target]
         : [target, `${target}.ts`, `${target}.tsx`, `${target}.js`];
