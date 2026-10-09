@@ -333,6 +333,16 @@ test("Docs MX samples: fragments are skipped, other languages ignored, longer fe
   });
 });
 
+test.each(['resource="Todo"', 'resource :Todo'])("Docs MX samples: obsolete root %s fails v4 rather than being skipped", (source) => {
+  temporary((dir) => {
+    writeFileSync(join(dir, "old.md"), `\`\`\`mx\n${source}\n\`\`\`\n`);
+    const checked = checkDocsSamples(dir);
+    expect(checked.parsed).toBe(1);
+    expect(checked.skipped).toBe(0);
+    expect(checked.errors).toContain("old.md:1: MX fence is not written in syntax v4: use entity :Name, not resource");
+  });
+});
+
 test("Docs MX samples: removed vocabulary is an error, never deferred", () => {
   temporary((dir) => {
     writeFileSync(join(dir, "old.md"), '```mx\nentity :Todo module="todo"\n```\n');
