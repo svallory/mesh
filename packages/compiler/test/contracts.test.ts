@@ -112,7 +112,8 @@ describe("v4 contracts", () => {
       "unknown-member": ["MESH_UNKNOWN_MEMBER", 7, 8],
       "old-arguments": ["MESH_SYNTAX", 6, 6],
       "unknown-option": ["MESH_SYNTAX", 1, 13],
-      "member-assignment": ["MESH_SYNTAX", 7, 11],
+      "member-assignment": ["MESH_SYNTAX", 7, 8],
+      "member-assign-expression": ["MESH_MEMBER_ASSIGN", 6, 33],
       "check-that": ["MESH_SYNTAX", 7, 8],
       "atom-sort": ["MESH_SYNTAX", 7, 12],
       "has-many-nullable": ["MESH_SYNTAX", 5, 32],
@@ -255,11 +256,12 @@ describe("vocabulary-mapping section 3 Contract coverage", () => {
     const expected = Object.entries(contracts)
       .flatMap(([tag, contract]) => {
         const wildcard = contract.children?.["*"] as WildcardChildEntry | undefined;
-        const options = Object.keys(wildcard?.attributes ?? {});
-        // A tagless form has no named-tag row: list its options, or its bare line.
+        // The lowered `member` line has no named-tag row: list its options
+        // beyond the lowered `name`, or the bare line.
+        const options = Object.keys(wildcard?.attributes ?? {}).filter((option) => option !== "name");
         const inline = !wildcard ? [] : options.length
-          ? options.map((option) => `${tag}.*.${option}`)
-          : [`${tag}.*`];
+          ? options.map((option) => `${tag}.${wildcard.pattern}.${option}`)
+          : [`${tag}.${wildcard.pattern}`];
         return [tag, ...Object.keys(contract.attributes ?? {}).map((option) => `${tag}.${option}`), ...inline];
       })
       .sort();

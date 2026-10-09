@@ -39,17 +39,28 @@ test("deduplication preserves distinct failures at the same position", () => {
   expect(result.diagnostics[0]!.position).toEqual(result.diagnostics[1]!.position);
 });
 
+// MX's member-line errors (an input assignment, options after the line) are
+// MESH_SYNTAX at MX's position; a `set` line without a value is the builder's
+// MESH_MEMBER_LINE_OPTIONS at the line.
 test.each([
-  ['      input\n        &title="new"\n', "MESH_SYNTAX"],
-  ["      do\n        set\n          &title\n", "MESH_MEMBER_LINE_OPTIONS"],
-])("wildcard contracts reject invalid member-line shape: %s", (body, code) => {
+  ['      input\n        &title="new"\n', "MESH_SYNTAX", 8, 8, 1],
+  ["      do\n        set\n          &title=1 min=2\n", "MESH_SYNTAX", 9, 19, 1],
+  ["      do\n        set\n          &title\n", "MESH_MEMBER_LINE_OPTIONS", 9, 10, 0],
+] as const)("invalid member-line shape: %s", (body, code, line, column, mxErrors) => {
   const source = title + "  actions\n    update :change\n" + body;
-  expect(parse(source).diagnostics).toHaveLength(1);
+  expect(parse(source).diagnostics).toHaveLength(mxErrors);
   const result = build(source);
   expect(result.document).toBeNull();
   expect(result.diagnostics).toEqual([
-    expect.objectContaining({ code }),
+    expect.objectContaining({ code, position: expect.objectContaining({ line, column }) }),
   ]);
+});
+
+test.each([
+  "&title=\"new\"",
+  "&title=() => \"new\"",
+])("a set member line with a value builds: %s", (line) => {
+  expect(build(title + `  actions\n    update :change\n      do\n        set\n          ${line}\n`).diagnostics).toEqual([]);
 });
 
 test.each([
@@ -66,14 +77,14 @@ test.each([
   ]);
 });
 
-// build.ts picks MESH_MEMBER_LINE_OPTIONS by matching MX's message text because
-// alpha.11 diagnostics expose no code. Fail here, naming the cause, if MX rewords it.
 test.each([
-  ["      do\n        set\n          &title\n", "`<&title>` (inline contract): missing required attribute `value`"],
-  ["      do\n        set\n          &title=1 min=2\n", "unknown attribute"],
-])("MX message wording that build.ts matches for member-line options: %s", (body, wording) => {
-  const messages = parse(title + "  actions\n    update :change\n" + body).diagnostics.map((d) => d.message);
-  expect(messages).toHaveLength(1);
-  expect(messages[0]).toContain(wording);
-  expect(messages[0]).toMatch(/`<&[A-Za-z_][A-Za-z0-9_]*>`.*(?:unknown attribute|missing required attribute)/);
+  ["(() => { &done = true; return true })", [["MESH_MEMBER_ASSIGN", 6, 33]]],
+  ["(() => { &done++; return true })", [["MESH_MEMBER_ASSIGN", 6, 33]]],
+  ["(() => &done === true)", []],
+  ["(() => { const done = &done; return done })", []],
+] as const)("MESH_MEMBER_ASSIGN is positioned on the assignment: %s", (filter, expected) => {
+  const source = keyed + `    boolean :done\n  actions\n    read :custom filter=${filter}\n`;
+  const result = build(source);
+  expect(result.diagnostics.map((d) => [d.code, d.position.line, d.position.column])).toEqual(expected.map((e) => [...e]));
+  if (expected.length) expect(result.diagnostics[0]!.message).toBe("`&done` cannot be assigned inside an expression; use a `set` line");
 });
