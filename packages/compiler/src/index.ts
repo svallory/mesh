@@ -5,3 +5,5 @@ export { EmitError } from "./emit-error.ts";
 export { EMITTERS, generatedImportDiagnostics, generateFiles, writeGeneratedFiles, type Emitter, type EmitInput, type GeneratedFile } from "./emit.ts";
 export { FORMATTER_OPTIONS, formatTypescript } from "./format.ts";
 export { stableJsonStringify } from "./stable-json.ts";
+export { typesView, type TypesView, type TypeImport, type RecordDeclaration, type TypeDeclaration, type TypeMember } from "./views/types.ts";
+export { validatorsView, type ValidatorsView, type InputSchema, type SchemaField } from "./views/validators.ts";
