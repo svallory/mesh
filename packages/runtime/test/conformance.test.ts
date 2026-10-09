@@ -1,15 +1,18 @@
 import { expect, test } from "bun:test";
-import type { DataLayer, DataOperations, Key, Row } from "@meshfw/runtime";
+import { FrameworkError, type DataLayer, type DataOperations, type Key, type Row } from "@meshfw/runtime";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { dataLayerConformance } from "@meshfw/runtime/testing";
 import type { DataLayerFixture } from "@meshfw/runtime/testing";
 
 // Only a test double for the suite: never shipped as an adapter.
-function fake(mode: "correct" | "no rollback" | "wrong error" | "no commit" | "bad update" | "ignores keys" | "ignores select key" | "ignores update key" | "ignores delete key" = "correct"): DataLayerFixture & { closed: () => boolean } {
+function fake(mode: "correct" | "no rollback" | "wrong error" | "no commit" | "bad update" | "ignores keys" | "ignores select key" | "ignores update key" | "ignores delete key" | "interleaves" | "closes while busy" | "allows nesting" | "poisoned queue" = "correct"): DataLayerFixture & { closed: () => boolean } {
   let rows = new Map<unknown, Row>();
   let closed = false;
   const table = {};
-  const layer: DataLayer = {
-    async transaction(run) {
+  const context = new AsyncLocalStorage<{ active: boolean }>();
+  let tail: Promise<void> = Promise.resolve();
+  let pendingCount = 0;
+  const execute = async <T>(run: (tx: DataOperations) => Promise<T>): Promise<T> => {
       if (closed) throw new Error("closed");
       const pending = structuredClone(rows);
       const lookupKey = (key: Key, operation: "select" | "update" | "delete") =>
@@ -37,8 +40,31 @@ function fake(mode: "correct" | "no rollback" | "wrong error" | "no commit" | "b
         if (mode === "wrong error") throw new Error("wrapped", { cause: error });
         throw error;
       }
+  };
+  const layer: DataLayer = {
+    transaction(run) {
+      if (context.getStore()?.active) {
+        if (mode === "allows nesting") return execute(run);
+        throw new FrameworkError("nested transactions are not supported");
+      }
+      pendingCount++;
+      const start = async () => {
+        const token = { active: true };
+        try { return await context.run(token, () => execute(run)); }
+        finally { token.active = false; pendingCount--; }
+      };
+      if (mode === "interleaves") return start();
+      const result = tail.then(start, (error) => { pendingCount--; throw error; });
+      tail = mode === "poisoned queue" ? result.then(() => undefined) : result.then(() => undefined, () => undefined);
+      // Observe, but do not repair, the deliberately poisoned tail. Successors
+      // reject promptly and release their count: this broken fake never hangs.
+      if (mode === "poisoned queue") void tail.catch(() => undefined);
+      return result;
     },
-    async close() { closed = true; },
+    async close() {
+      if (pendingCount && mode !== "closes while busy") throw new FrameworkError("transactions pending");
+      closed = true;
+    },
   };
   return {
     layer, table, closed: () => closed,
@@ -55,6 +81,9 @@ for (const [name, check] of Object.entries(dataLayerConformance(async () => fake
 }
 
 test.each([
+  ["interleaves", "concurrent transactions never interleave statements", "transactions must not interleave statements"],
+  ["closes while busy", "close with a transaction in flight rejects and leaves the layer open", "close with an in-flight transaction must reject with FrameworkError"],
+  ["allows nesting", "nested transaction is rejected", "nested transaction must reject with FrameworkError"],
   ["no rollback", "rejected run rolls back every write and rethrows the same error", "rejected insert must roll back"],
   ["wrong error", "rejected run rolls back every write and rethrows the same error", "transaction must rethrow the same error"],
   ["no commit", "resolved run commits and returns its result", "resolved run must commit"],
@@ -63,6 +92,18 @@ test.each([
   const fixture = fake(mode);
   const checks = dataLayerConformance(async () => fixture);
   await expect(checks[name]!()).rejects.toThrow(message);
+  expect(fixture.closed()).toBe(true);
+});
+
+test.each([
+  ["throw after a write leaves no row", "no rollback", "throw after write must leave no row"],
+  ["throw after a write leaves no row", "wrong error", "throw after write must rethrow the same error"],
+  ["rejected promise after a write leaves no row", "no rollback", "rejected promise must leave no row"],
+  ["rejected promise after a write leaves no row", "wrong error", "rejected promise must rethrow the same error"],
+  ["queue continues after a failed transaction", "poisoned queue", "failed transaction must not poison the queue"],
+] as const)("conformance negative proof: %s rejects %s", async (name, mode, message) => {
+  const fixture = fake(mode);
+  await expect(dataLayerConformance(async () => fixture)[name]!()).rejects.toThrow(`Data-layer conformance: ${message}`);
   expect(fixture.closed()).toBe(true);
 });
 

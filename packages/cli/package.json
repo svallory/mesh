@@ -5,14 +5,19 @@
   "license": "MIT",
   "type": "module",
   "description": "Mesh build-time developer command",
-  "exports": { ".": "./src/index.ts" },
-  "bin": { "mesh": "./src/bin.ts" },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "mesh": "./src/bin.ts"
+  },
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@meshfw/compiler": "workspace:*",
-    "@meshfw/model": "workspace:*"
+    "@meshfw/model": "workspace:*",
+    "@meshfw/runtime": "workspace:*"
   }
 }

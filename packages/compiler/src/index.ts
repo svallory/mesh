@@ -1,6 +1,6 @@
 export { default, default as contracts } from "./contracts.ts";
 export { buildModel, type BuildResult, type ProjectDescription, type EntityFile } from "./build.ts";
-export { defineConfig, loadConfig, loadProject, type MeshConfig, type ResolvedConfig, type ConfigResult } from "./config.ts";
+export { defineConfig, loadConfig, loadProject, type MeshConfig, type ExtensionDescriptor, type ResolvedConfig, type ConfigResult } from "./config.ts";
 export { EmitError } from "./emit-error.ts";
 export { EMITTERS, GENERATORS, generatedImportDiagnostics, generateFiles, renderGenerator, writeGeneratedFiles, type Emitter, type EmitInput, type GeneratedFile, type GeneratedView, type Generator } from "./emit.ts";
 export { MESH_TEMPLATES_DIR, PROJECT_TEMPLATES_DIR, loadTemplates, type Templates } from "./templates.ts";

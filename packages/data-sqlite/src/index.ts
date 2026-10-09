@@ -8,6 +8,7 @@ export function sqlite(options: { file: string }): DataAdapter {
   return Object.freeze({
     kind: "data-adapter",
     name: "sqlite",
+    build: "@meshfw/data-sqlite/build",
     options: Object.freeze({ file: options.file }),
   });
 }

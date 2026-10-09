@@ -1,7 +1,7 @@
 import { defineConfig, type MeshConfig, type ResolvedConfig } from "../src/index.ts";
 import type { DataAdapter } from "@meshfw/runtime";
 
-const data: DataAdapter = { kind: "data-adapter", name: "sqlite", options: { file: ":memory:" } };
+const data: DataAdapter = { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", options: { file: ":memory:" } };
 const extensions = [{ name: "audit", future: true }] as const;
 const config: MeshConfig = { domain: "src/domain", output: ".mesh", data, extensions };
 defineConfig(config);

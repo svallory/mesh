@@ -38,6 +38,7 @@
       "dependencies": {
         "@meshfw/compiler": "workspace:*",
         "@meshfw/model": "workspace:*",
+        "@meshfw/runtime": "workspace:*",
       },
     },
     "packages/compiler": {

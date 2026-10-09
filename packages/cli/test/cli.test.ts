@@ -51,7 +51,7 @@ async function project(config = true): Promise<string> {
   await symlink(join(repo, "packages/compiler/node_modules/zod"), join(root, "node_modules/zod"));
   await writeFile(join(root, sourcePath), source);
   if (config) await writeFile(join(root, "mesh.config.ts"), `import { defineConfig } from "meshfw";
-export default defineConfig({ domain: "domain", output: "generated", data: { kind: "data-adapter", name: "sqlite", options: { file: ":memory:" } } });\n`);
+export default defineConfig({ domain: "domain", output: "generated", data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", options: { file: ":memory:" } } });\n`);
   return root;
 }
 function run(root: string, ...args: string[]) {
@@ -66,7 +66,7 @@ async function builtProject(): Promise<string> {
 }
 
 test("defineConfig is re-exported from meshfw", () => {
-  const config = { domain: "domain", output: "generated", data: { kind: "data-adapter" as const, name: "sqlite", options: { file: ":memory:" } } };
+  const config = { domain: "domain", output: "generated", data: { kind: "data-adapter" as const, name: "sqlite", build: "@meshfw/data-sqlite/build", options: { file: ":memory:" } } };
   expect(defineConfig(config)).toBe(config);
 });
 
@@ -154,7 +154,7 @@ test("missing config is exit 1 with a diagnostic, with no upward search", async 
 
 test("invalid config is exit 1 with exact position", async () => {
   const root = await project();
-  await writeFile(join(root, "mesh.config.ts"), 'export default { domain: "domain", output: 3, data: { kind: "data-adapter", name: "sqlite", options: {} } };\n');
+  await writeFile(join(root, "mesh.config.ts"), 'export default { domain: "domain", output: 3, data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", options: {} } };\n');
   expect(run(root, "build")).toEqual({ code: 1, stdout: "", stderr: "mesh.config.ts:1:36 error Configuration field `output` must be a non-empty relative directory path\n  fix: Fix the output field in mesh.config.ts\n1 error, 0 warnings\n" });
 });
 
@@ -485,4 +485,19 @@ describe("mesh export generators (roadmap Jig port, acceptance 3)", () => {
   test("--help lists the command", async () => {
     expect(run(await project(false), "--help").stdout).toContain("export generators   Copy Mesh's generator templates into .mesh-generators/");
   });
+});
+
+test("importing meshfw loads the runtime's defineConfig and no compiler code (ADR-0033)", () => {
+  // A fresh process: this test file itself has already loaded the compiler.
+  const probe = `
+    const { defineConfig } = await import("meshfw");
+    const runtime = await import("@meshfw/runtime");
+    if (defineConfig !== runtime.defineConfig) throw new Error("meshfw's defineConfig is not the runtime's");
+    const loaded = Object.keys(require.cache);
+    console.log(JSON.stringify(loaded.filter((path) => path.includes("/packages/compiler/") || path.includes("@meshfw/compiler"))));
+    console.log(JSON.stringify(loaded.some((path) => path.includes("/packages/runtime/"))));
+  `;
+  const result = Bun.spawnSync([process.execPath, "--eval", probe], { cwd: join(import.meta.dir, ".."), stdout: "pipe", stderr: "pipe" });
+  expect(result.stderr.toString()).toBe("");
+  expect(result.stdout.toString()).toBe("[]\ntrue\n");
 });
