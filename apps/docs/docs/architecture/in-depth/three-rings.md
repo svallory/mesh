@@ -7,7 +7,7 @@ description: "Core, adapters and extensions: the test for each ring and where ev
 
 Status: the ring split is applied from M0 and fully exercised by M6 (extension host). `model`, `compiler` and `cli` exist since M1; `runtime` since M2 (the action context's type, errors, input validation and [data-layer contract v0](./data-layer.md)). The remaining package roles below are the design ([roadmap](../roadmap/roadmap.md), section 3).
 
-::: callout info "The code still uses the old names"
+::: callout info "What the code does today"
 The workspace packages on `main` are `meshfw` (the `mesh` command and `defineConfig`), `@meshfw/compiler`, `@meshfw/model`, `@meshfw/runtime` (with its `testing` entry) and the private `@meshfw/data-sqlite`, which returns a descriptor only ([ADR-0060](../decisions/0060-meshfw-package-scope.md)). This page shortens them to the part after the scope.
 :::
 

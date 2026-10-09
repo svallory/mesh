@@ -5,9 +5,9 @@ description: "What Mesh is, its three rings, the build-time and run-time workflo
 
 # Architecture overview
 
-Status: design. M0 (the workspace) and M1 (the build skeleton) are done; part of M2 is merged. All development is on hold until the operator approves the user docs ([ADR-0063](../decisions/0063-user-docs-first-and-the-hold.md)); after that come the realignment task, the Jig port and the rest of M2 ([roadmap](../roadmap/roadmap.md)).
+Status: design. M0 (the workspace), M1 (the build skeleton) and the realignment task (PR #47, PR #48) are done; part of M2 is merged. The operator approved the user docs and lifted the hold on 2026-10-09 ([ADR-0063](../decisions/0063-user-docs-first-and-the-hold.md)); next come round 3, the Jig port and the rest of M2 ([roadmap](../roadmap/roadmap.md)).
 
-::: callout info "The code still uses the old names"
+::: callout info "What the code does today"
 The code on `main` implements the names of the rulings of 2026-10-04 evening and 2026-10-05: `entity` in syntax v4, `.mesh/` output, `ActionContext`, `meshfw` and `@meshfw/*` (PR #47, PR #48, 2026-10-09). Pending: the action functions and the remaining emitters (round 3), the Jig port, and the MX lowering that lets the compiler read the authored `&` member positions after a kind and inside expressions ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)).
 :::
 

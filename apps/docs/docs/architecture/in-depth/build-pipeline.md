@@ -7,7 +7,7 @@ description: "The eight build stages that turn entity files into committed, guar
 
 Status: stages 1 to 3, the checks step, stage 7 and stage 8 are built (M1: [PR #12](https://github.com/svallory/mesh/pull/12), #15, #16, #17); M2 added input validators and the generated-import preflight to stage 7 ([PR #21](https://github.com/svallory/mesh/pull/21)). Expression conversion (part of stage 3) and stage 6 arrive in M4, stages 4 and 5 in M6. The Jig port splits stage 7's emitters into views and templates before M2 resumes ([ADR-0061](../decisions/0061-generators-are-jig-templates.md)).
 
-::: callout info "The code still uses the old names"
+::: callout info "What the code does today"
 The code on `main` implements stages 1 to 3 and 7 to 8 in their simplest form for entity syntax v4 (PR #47, PR #48): the configuration key is `domain`, output goes to `.mesh/`, and the emitters (`types` and `validators` per entity, plus `model.json`) are TypeScript functions, not Jig templates. Authored `&` member positions after a kind and inside expressions wait for MX's lowering, so the compiler tests carry `test.todo`s for them and the docs samples are normalised in a test-only step; the production compiler never rewrites source. The stages below describe the design; where it is not built yet (the Jig port and round 3, which adds the action functions, `index.ts` and the other emitters), the paragraph says so ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)).
 :::
 

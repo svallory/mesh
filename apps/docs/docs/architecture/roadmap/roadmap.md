@@ -39,12 +39,12 @@ Terms:
 ## 1. Summary
 
 1. **v1 is ten milestones, M0 to M9**: workspace, build skeleton, run skeleton, data-layer contract, expressions, action lifecycle, extension host, relationships and computed fields, policies, and migrations with Postgres ([ADR-0019](../decisions/0019-v1-scope.md)).
-2. **Two tasks come before M2 resumes**: the realignment task (the code takes the names and syntax of 2026-10-04 evening and 2026-10-05) and the Jig port (the existing emitters become Jig templates) ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)).
+2. **Two tasks come before M2 resumes**: the realignment task (the code takes the names and syntax of 2026-10-04 evening and 2026-10-05; done, PR #47 and PR #48, 2026-10-09) and the Jig port (the existing emitters become Jig templates) ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)).
 3. **The walking skeleton is M0 to M2 and ends in a function call**: an entity file is parsed, turned into a model, emitted as committed TypeScript, and a test and a short script call the generated functions against SQLite. No command line, no server ([ADR-0005](../decisions/0005-core-interface-is-a-function-call.md)).
 4. **After v1**, in no fixed order yet: bulk actions, identities and upserts; reusable steps and the planned steps; the agent and test surface; a command-line adapter for agents; outbox, jobs and workflows; HTTP; a single binary (section 6).
 5. **Bun only** ([ADR-0025](../decisions/0025-bun-only.md)), **established tools first** ([ADR-0030](../decisions/0030-established-tools-first.md)), **`verify` runs on every pull request** ([ADR-0031](../decisions/0031-no-ci-until-mx-is-published.md)).
 6. **User docs first.** Behaviour is written on a Docs page, in the voice of a released 1.0, before it is built; code follows the page or changes it in the same pull request ([ADR-0063](../decisions/0063-user-docs-first-and-the-hold.md)).
-7. **The vocabulary is Mesh's own**, informed by Ash, always in MX concise syntax ([ADR-0049](../decisions/0049-vocabulary-is-meshs-own.md), [ADR-0041](../decisions/0041-mx-concise-syntax.md)). The M1 contracts copied Ash's DSL; the realignment task replaces them. The [Ash-to-Mesh mapping](./vocabulary-mapping.md) says where each Ash concept went.
+7. **The vocabulary is Mesh's own**, informed by Ash, always in MX concise syntax ([ADR-0049](../decisions/0049-vocabulary-is-meshs-own.md), [ADR-0041](../decisions/0041-mx-concise-syntax.md)). The M1 contracts copied Ash's DSL; the realignment task replaced them (PR #47). The [Ash-to-Mesh mapping](./vocabulary-mapping.md) says where each Ash concept went.
 8. **Mesh is open source under the MIT licence** and its docs are public ([ADR-0042](../decisions/0042-open-source-mit.md)).
 
 ## 2. Principles every milestone is checked against

@@ -31,7 +31,7 @@ The reason is that writing the page is a test of the design. A page that has to 
 
 ## The hold, and who decides
 
-All development is on hold until the operator approves the user docs; only documentation work proceeds, and open feature pull requests wait ([ADR-0063](./decisions/0063-user-docs-first-and-the-hold.md)). After approval the order is the realignment task, the Jig port, then M2 ([ADR-0064](./decisions/0064-order-of-work-after-approval.md); [roadmap](./roadmap/roadmap.md)).
+The hold on development ([ADR-0063](./decisions/0063-user-docs-first-and-the-hold.md)) was lifted on 2026-10-09, when the operator approved the user docs. The realignment task is done (PR #47, PR #48); the Jig port and M2 follow ([ADR-0064](./decisions/0064-order-of-work-after-approval.md); [roadmap](./roadmap/roadmap.md)).
 
 - The **operator** (the project owner) rules on design. On 2026-10-05 he delegated every open decision to the **lead**.
 - The **lead** decides what is delegated and records it. Contributors never ask the operator; questions go to the lead.
