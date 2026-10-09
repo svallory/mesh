@@ -123,7 +123,7 @@ test("collects read and parse errors without throwing", async () => {
   const built = await loadProject(loaded.config!);
   expect(built.document).toBeNull();
   expect(built.diagnostics.map((d) => d.code)).toEqual([
-    "MESH_RESOURCE_READ",
+    "MESH_ENTITY_READ",
     "MESH_SYNTAX",
   ]);
 });

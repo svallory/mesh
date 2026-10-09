@@ -29,8 +29,8 @@ export interface ConfigResult { config: ResolvedConfig | null; diagnostics: Diag
 export function defineConfig(config: MeshConfig): MeshConfig { return config; }
 const nonEmpty = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
 
-/** mesh.config.ts is trusted executable project code, not a resource declaration.
- * Path containment is nevertheless physical as well as lexical: resource
+/** mesh.config.ts is trusted executable project code, not an entity declaration.
+ * Path containment is nevertheless physical as well as lexical: entity
  * symlinks and output ancestors must resolve inside the canonical project root.
  * The output directory itself must not be a symlink. */
 export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
@@ -122,14 +122,14 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
           if (errorCode(cause) !== "ENOENT" && errorCode(cause) !== "ENOTDIR") throw cause;
         }
         if (folder && !inside(canonicalRoot, await realpath(candidate))) {
-          fail("resources", `Resource path "${projectPath(root, candidate)}" resolves outside the project`);
+          fail("resources", `Entity file "${projectPath(root, candidate)}" resolves outside the project`);
         } else {
           const cwd = folder ? candidate : root;
           const glob = folder ? "**/*.mesh.mx" : input;
           for await (const file of new Bun.Glob(glob).scan({ cwd, onlyFiles: true, followSymlinks: true, dot: true })) if (file.endsWith(".mesh.mx")) files.push(resolve(cwd, normalizePath(file)));
           if (files.length === 0) fail("resources", "Configuration field `resources` matches no files");
         }
-      } catch (cause) { fail("resources", `Cannot expand resource glob (${errorCode(cause) ?? "UNKNOWN"})`); }
+      } catch (cause) { fail("resources", `Cannot expand entity file glob (${errorCode(cause) ?? "UNKNOWN"})`); }
     }
   } else {
     for (const item of resources as string[]) {
@@ -144,9 +144,9 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
     const name = projectPath(root, file);
     try {
       const canonicalFile = await realpath(file);
-      if (!inside(canonicalRoot, canonicalFile)) { fail("resources", `Resource path "${name}" resolves outside the project`); continue; }
-      if (!(await stat(file)).isFile()) fail("resources", `Resource path "${name}" is not a file`);
-    } catch (cause) { fail("resources", `Cannot read resource file "${name}" (${errorCode(cause) ?? "UNKNOWN"})`); }
+      if (!inside(canonicalRoot, canonicalFile)) { fail("resources", `Entity file "${name}" resolves outside the project`); continue; }
+      if (!(await stat(file)).isFile()) fail("resources", `Entity file "${name}" is not a file`);
+    } catch (cause) { fail("resources", `Cannot read entity file "${name}" (${errorCode(cause) ?? "UNKNOWN"})`); }
   }
   // Data and individual extension elements remain opaque. Preserve data presence
   // (including explicit undefined) and valid extension-array references. The
@@ -169,16 +169,16 @@ export async function loadProject(config: ResolvedConfig): Promise<BuildResult> 
   for (const file of config.resourceFiles) {
     const path = resolveResource(config.root, file);
     if (!path) {
-      diagnostics.push(error("MESH_RESOURCE_PATH", "Resource file path must resolve inside the project", positionAt("", "mesh.config.ts", 0), "Use a resource path inside the project"));
+      diagnostics.push(error("MESH_ENTITY_PATH", "Entity file path must resolve inside the project", positionAt("", "mesh.config.ts", 0), "Use an entity file path inside the project"));
       continue;
     }
     try {
       if (!inside(canonicalRoot, await realpath(path.absolute))) {
-        diagnostics.push(error("MESH_RESOURCE_PATH", `Resource path "${path.file}" resolves outside the project`, positionAt("", path.file, 0), "Use a resource path inside the project"));
+        diagnostics.push(error("MESH_ENTITY_PATH", `Entity file "${path.file}" resolves outside the project`, positionAt("", path.file, 0), "Use an entity file path inside the project"));
         continue;
       }
       files.push({ file: path.absolute, source: await readFile(path.absolute, "utf8") });
-    } catch (cause) { diagnostics.push(error("MESH_RESOURCE_READ", `Cannot read resource file "${path.file}" (${errorCode(cause) ?? "UNKNOWN"})`, positionAt("", path.file, 0), "Restore the resource file or fix the resources list")); }
+    } catch (cause) { diagnostics.push(error("MESH_ENTITY_READ", `Cannot read entity file "${path.file}" (${errorCode(cause) ?? "UNKNOWN"})`, positionAt("", path.file, 0), "Restore the entity file or fix the resources list")); }
   }
   const result = buildModel({ root: config.root, files });
   return { document: diagnostics.length ? null : result.document, diagnostics: [...diagnostics, ...result.diagnostics] };

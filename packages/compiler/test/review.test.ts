@@ -128,7 +128,7 @@ test("missing root and removed entity file are diagnosed", async () => {
   const loaded = await loadConfig(root);
   await rm(resolve(root, "domain/todo.mesh.mx"));
   expect((await loadProject(loaded.config!)).diagnostics[0]?.code).toBe(
-    "MESH_RESOURCE_READ",
+    "MESH_ENTITY_READ",
   );
   expect(
     (await loadConfig(resolve(root, "missing"))).diagnostics[0]?.code,
