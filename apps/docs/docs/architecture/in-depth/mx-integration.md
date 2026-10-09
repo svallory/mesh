@@ -5,10 +5,10 @@ description: "How Mesh reads static entity files through MX, the syntax-v4 parse
 
 # How Mesh uses MX
 
-Status: the M1 loader and contracts are built, and `verify` checks the MX import boundary and complete MX samples in the Docs pages. The realignment task rewrites the contracts for entity file syntax v4 ([ADR-0067](../decisions/0067-members-imports-input-static-files.md)); the composed contracts module is built in M6; the `mesh` MX host package follows MX decision 148 ([ADR-0051](../decisions/0051-mesh-mx-files-and-the-mesh-host.md)).
+Status: the loader and the closed v4 contracts are built (PR #47, MX pinned at `0.1.0-alpha.11`), and `verify` checks the MX import boundary and complete MX samples in the Docs pages. The authored `&` member positions after a kind and inside expressions wait for MX's lowering; the composed contracts module is built in M6; the `mesh` MX host package follows MX decision 148 ([ADR-0051](../decisions/0051-mesh-mx-files-and-the-mesh-host.md)).
 
-::: callout info "The code still uses the old names"
-`packages/compiler/src/contracts.ts` on `main` declares the 26 contracts of the M1 vocabulary, copied from Ash (`resource`, `attribute`, `defaults`, `change`, `calculations`, `aggregates`, policy check calls). Syntax v4 replaces them in the realignment task ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)). The mechanisms below (the call, the tree, `analyze`, the import boundary) are unchanged.
+::: callout info "What the code does today"
+`packages/compiler/src/contracts.ts` on `main` declares the closed contracts of entity file syntax v4 ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)). The `&` member positions are pending MX's lowering: `test.todo`s (21) mark them, and the Docs samples are normalised in a test-only step that production never calls. The mechanisms below (the call, the tree, `analyze`, the import boundary) are as built.
 :::
 
 ## What MX is, and why it is core

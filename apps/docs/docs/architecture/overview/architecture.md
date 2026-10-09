@@ -8,7 +8,7 @@ description: "What Mesh is, its three rings, the build-time and run-time workflo
 Status: design. M0 (the workspace) and M1 (the build skeleton) are done; part of M2 is merged. All development is on hold until the operator approves the user docs ([ADR-0063](../decisions/0063-user-docs-first-and-the-hold.md)); after that come the realignment task, the Jig port and the rest of M2 ([roadmap](../roadmap/roadmap.md)).
 
 ::: callout info "The code still uses the old names"
-The code on `main` was built before the rulings of 2026-10-04 evening and 2026-10-05. It still says `resource` (not `entity`), reads Ash-style tags (`attribute="title" type="string"`), writes `generated/` (not `.mesh/`), passes a `scope` (not an `ActionContext`) and names packages `@mesh/*` (not `@meshfw/*`). This page describes the design; the realignment task brings the code to it ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)).
+The code on `main` implements the names of the rulings of 2026-10-04 evening and 2026-10-05: `entity` in syntax v4, `.mesh/` output, `ActionContext`, `meshfw` and `@meshfw/*` (PR #47, PR #48, 2026-10-09). Pending: the action functions and the remaining emitters (round 3), the Jig port, and the MX lowering that lets the compiler read the authored `&` member positions after a kind and inside expressions ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)).
 :::
 
 ## What Mesh is

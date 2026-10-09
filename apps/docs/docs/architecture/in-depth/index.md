@@ -7,7 +7,7 @@ description: "Full descriptions of single subsystems and mechanisms."
 
 This area holds one page per subsystem or mechanism, described in full: the build-time pipeline, the run-time action lifecycle, extension points and similar topics that span several files.
 
-Each page says what the thing is, how it works, and which code implements it. Link the [decision records](../decisions/index.md) that explain why. Where a page describes code on `main` that still uses names from before the rulings of 2026-10-04 evening and 2026-10-05, it says so once, in a callout at the top.
+Each page says what the thing is, how it works, and which code implements it. Link the [decision records](../decisions/index.md) that explain why. Where a page describes design that the code on `main` does not implement yet (round 3, the Jig port, the MX lowering), it says so once, in a callout at the top.
 
 <!-- pages:start -->
 

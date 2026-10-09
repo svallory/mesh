@@ -8,7 +8,7 @@ description: "What Mesh generates and commits, why the behaviour lives there, an
 Status: the M1 model, types, `mesh build`, `mesh build --check` and `mesh inspect` are built; the blog example's committed tree is guarded and type-checked by `verify`; M2 added input validators and the generated-import preflight ([PR #21](https://github.com/svallory/mesh/pull/21)). Action functions and the Drizzle schema come in the rest of M2, expression forms in M4, the contracts module in M6.
 
 ::: callout info "The code still uses the old names"
-On `main` the emitters are TypeScript functions, the example writes `generated/`, the generated names follow `resource` and the M1 vocabulary, and handlers will take a `scope`. The design is: output in `.mesh/`, imported as `#mesh` ([ADR-0058](../decisions/0058-generated-code-in-mesh-imported-as-hash-mesh.md)); emitters as a view plus a Jig template ([ADR-0061](../decisions/0061-generators-are-jig-templates.md)); the action context as the second argument ([ADR-0059](../decisions/0059-action-context.md)). The realignment task and the Jig port bring the code there ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)).
+On `main` the example writes `.mesh/` and the emitters write `types` and `validators` per entity plus `model.json`, as TypeScript functions ([ADR-0058](../decisions/0058-generated-code-in-mesh-imported-as-hash-mesh.md)). `#mesh` maps to `.mesh/index.ts`, which is not written yet, so nothing imports it. The action functions, `schema.ts`, `index.ts`, `mx-contracts.js` and `rules.md` arrive in round 3, and the emitters become a view plus a Jig template with the Jig port ([ADR-0061](../decisions/0061-generators-are-jig-templates.md), [ADR-0064](../decisions/0064-order-of-work-after-approval.md)). Handlers take the action context as the second argument ([ADR-0059](../decisions/0059-action-context.md)).
 :::
 
 ## The rule
@@ -39,7 +39,7 @@ The generated tree lives in `.mesh/` at the project root (the configuration's `o
 
 ### The tree emitted in M1
 
-Built in M1 (task `m1-emit`). `<output>` is the configuration's `output` key, `.mesh` by convention. M1 code places files by the M1 `domain=` attribute; after the realignment task the module folder takes its place.
+Built in M1 (task `m1-emit`) and realigned in PR #47 and PR #48. `<output>` is the configuration's `output` key, `.mesh` by convention. Files are placed by the module folder under the `domain` root.
 
 - **`<output>/model.json`.** The whole model document, one entry per entity, written by Mesh's own stable serialiser: keys in lexicographic order, two-space indentation, one trailing newline. A formatter is not involved, and nothing that varies per run may reach the file.
 - **One types file per entity**, at `<output>/<module>/<entity>.types.ts`. The file opens with a do-not-edit header naming the entity file it came from, with any line terminator in that name spelled out, and imports nothing: not `model`, not `compiler`, not `model.json` ([ADR-0033](../decisions/0033-core-split-build-time-run-time.md)). It holds the record type (one member per attribute, with the TypeScript type its registry entry names, `T | null` when the attribute is `nullable`, and a union of string literals for an `enum` with `values`) and one input type per action that has one.
