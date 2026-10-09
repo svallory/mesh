@@ -261,13 +261,14 @@ describe("the generated file", () => {
     await writeGeneratedFiles(files, config);
     // A schema stub in place of the data adapter's: each handle carries the rows the memory layer reads.
     await writeFile(resolve(root, "generated/schema.ts"),
-      "export const tables = { article: { rows: new Map() }, author: { rows: new Map() } };\n");
+      "export const articleTable = { rows: new Map() };\nexport const authorTable = { rows: new Map() };\nexport const tables = { article: articleTable, author: authorTable };\n");
+    await writeFile(resolve(root, "mesh.config.ts"), "export default { data: { kind: \"data-adapter\", name: \"memory\", build: \"./none\", options: {} } };\n");
     return { root, files };
   }
 
   test("typechecks with strict unused-name and exact-optional flags", async () => {
     const { root, files } = await generated();
-    expect(checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts")).map((f) => f.path), "generated/schema.ts"]))
+    expect(checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts")).map((f) => f.path), "generated/schema.ts", "mesh.config.ts"]))
       .toEqual({ code: 0, output: "" });
   });
 

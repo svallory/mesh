@@ -2,7 +2,7 @@ import type { SourcePosition } from "@meshfw/model";
 import type { EmitInput, Generator } from "../emit.ts";
 import { emitError } from "../emit-error.ts";
 import { effectiveActions, entityPath } from "../views/inputs.ts";
-import { actionsView, type ActionsView } from "../views/actions.ts";
+import { actionsView, tableKey, type ActionsView } from "../views/actions.ts";
 import { orderedEntities, outputPrefix } from "./order.ts";
 
 /**
@@ -35,7 +35,8 @@ const at = ({ file, line, column }: SourcePosition) => `${file}:${line}:${column
 
 /**
  * Every top-level value `.mesh/index.ts` will hold is unique: each action function
- * (`publishPost`), each `bind<Entity>`, and the index's own names. A clash is
+ * (`publishPost`), each `bind<Entity>`, each table handle it re-exports from the
+ * schema (`postTable`), and the index's own names. A clash is
  * `MESH_EMIT_NAME` at the second declaration, naming the first one's position.
  */
 function checkNames({ document }: EmitInput, views: readonly ActionsView[]): void {
@@ -52,6 +53,7 @@ function checkNames({ document }: EmitInput, views: readonly ActionsView[]): voi
   views.forEach((view, index) => {
     const entity = entities[index]!;
     claim(view.bindName, `Entity :${entity.name}'s binding`, entity.position);
+    claim(`${tableKey(entity)}Table`, `Entity :${entity.name}'s table handle`, entity.position);
     view.methods.forEach((method, position) => {
       const action = effectiveActions(entity)[position]!;
       claim(method.functionName, `Action :${action.name} of :${entity.name}`, action.position);
