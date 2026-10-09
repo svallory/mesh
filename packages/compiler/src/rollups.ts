@@ -98,6 +98,10 @@ export function resolveRollups(
           );
           break;
         }
+        if (index === 0) {
+          fail("MESH_ROLLUP_PATH", `\`${ref.name}\` is an attribute of :${entity.name}, not a relationship; \`of\` is a path through relationships`, ref.position);
+          break;
+        }
         const fn = computed.rollup.fn;
         const numeric =
           attribute.type === "integer" || attribute.type === "decimal";

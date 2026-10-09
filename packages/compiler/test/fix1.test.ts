@@ -12,6 +12,12 @@ test("fix2: imported name must be exported by the target entity", () => {
   expect(buildModel(project(alias)).diagnostics).toEqual([]);
 });
 
+test.each(["sum", "avg", "min", "max"])("fix3: %s must cross a relationship", (fn) => {
+  const result = build(keyed.replace(":Todo", ":Invoice") + `    integer :n\n  computed\n    ${fn} :x of="n"\n`);
+  expect(result.document).toBeNull();
+  expect(result.diagnostics[0]).toMatchObject({ code: "MESH_ROLLUP_PATH", message: "`n` is an attribute of :Invoice, not a relationship; `of` is a path through relationships", position: { line: 6, column: 12 + fn.length } });
+});
+
 for (const [name, codes] of [
   ["computed-missing-body", [["MESH_MODEL_SHAPE", 6, 4]]],
   ["set-missing-value", [["MESH_MEMBER_LINE_OPTIONS", 9, 10]]],
