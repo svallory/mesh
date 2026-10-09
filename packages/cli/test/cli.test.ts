@@ -117,7 +117,7 @@ describe("M1 test 3: guard differences", () => {
     expect(run(root, "build").code).toBe(1);
     expect((await lstat(join(root, path))).isSymbolicLink()).toBe(true);
   });
-  test("M1 test 3: a changed resource leaves a stale tree that fails the guard", async () => {
+  test("M1 test 3: a changed entity leaves a stale tree that fails the guard", async () => {
     const root = await builtProject();
     const before = await readFile(join(root, file));
     await writeFile(join(root, sourcePath), source.replace('string :title', 'integer :title'));
@@ -149,22 +149,24 @@ test.each([["titel", " Did you mean &title?"], ["unknown", ""]])("unknown member
 
 test("missing config is exit 1 with a diagnostic, with no upward search", async () => {
   const root = await project();
-  expect(run(join(root, "domain"), "build")).toEqual({ code: 1, stdout: "", stderr: "mesh.config.ts:1:1 error Cannot read mesh.config.ts (ENOENT) (fix: Create mesh.config.ts with domain, output and data)\n1 error, 0 warnings\n" });
+  expect(run(join(root, "domain"), "build")).toEqual({ code: 1, stdout: "", stderr: "mesh.config.ts:1:1 error Cannot read mesh.config.ts (ENOENT)\n  fix: Create mesh.config.ts with domain, output and data\n1 error, 0 warnings\n" });
 });
 
 test("invalid config is exit 1 with exact position", async () => {
   const root = await project();
   await writeFile(join(root, "mesh.config.ts"), 'export default { domain: "domain", output: 3, data: { kind: "data-adapter", name: "sqlite", options: {} } };\n');
-  expect(run(root, "build")).toEqual({ code: 1, stdout: "", stderr: "mesh.config.ts:1:36 error Configuration field `output` must be a non-empty relative directory path (fix: Fix the output field in mesh.config.ts)\n1 error, 0 warnings\n" });
+  expect(run(root, "build")).toEqual({ code: 1, stdout: "", stderr: "mesh.config.ts:1:36 error Configuration field `output` must be a non-empty relative directory path\n  fix: Fix the output field in mesh.config.ts\n1 error, 0 warnings\n" });
 });
 
-test("inspect prints precisely the built model bytes or the named resource with the same serialiser", async () => {
+test("inspect prints precisely the built model bytes or the named entity with the same serialiser", async () => {
   const root = await builtProject();
   const bytes = await readFile(join(root, "generated/model.json"), "utf8");
   const document = JSON.parse(bytes);
   expect(run(root, "inspect")).toEqual({ code: 0, stdout: bytes, stderr: "0 errors, 0 warnings\n" });
   expect(run(root, "inspect", "Todo")).toEqual({ code: 0, stdout: `${stableJsonStringify(document.entities[0])}\n`, stderr: "0 errors, 0 warnings\n" });
-  expect(run(root, "inspect", "absent")).toEqual({ code: 1, stdout: "", stderr: 'mesh.config.ts:1:1 error Unknown resource "absent"; known resources: Todo\n1 error, 0 warnings\n' });
+  expect(run(root, "inspect", "todo").code).toBe(1);
+  expect(document.data).toEqual({ name: "sqlite" });
+  expect(run(root, "inspect", "absent")).toEqual({ code: 1, stdout: "", stderr: 'mesh.config.ts:1:1 error Unknown entity "absent"; known entities: Todo\n1 error, 0 warnings\n' });
   await rm(join(root, "generated"), { recursive: true });
   expect(run(root, "inspect").stdout).toBe(bytes);
   expect(await Bun.file(join(root, "generated/model.json")).exists()).toBe(false);
@@ -178,6 +180,7 @@ test.each([[], ["unknown"], ["build", "--unknown"], ["build", "extra"], ["inspec
 });
 
 test.each([
+  { args: ["export", "generators"], milestone: "round 3" },
   { args: ["init"], milestone: "not scheduled" },
   { args: ["explain", "todo", "create"], milestone: "M5" },
   { args: ["db", "push"], milestone: "M2" },
@@ -189,14 +192,14 @@ test.each([
   expect(result.stderr).toContain(`not available yet (${milestone})`);
 });
 
-test("inspect orders multiple resources exactly like model.json and lists known names", async () => {
+test("inspect orders multiple entities exactly like model.json and lists known names", async () => {
   const root = await project();
   await writeFile(join(root, "domain/z.mesh.mx"), source.replace('entity :Todo', 'entity :Alpha'));
   expect(run(root, "build").code).toBe(0);
   const bytes = await readFile(join(root, "generated/model.json"), "utf8");
   expect(run(root, "inspect").stdout).toBe(bytes);
   expect(JSON.parse(bytes).entities.map((entity: { name: string }) => entity.name)).toEqual(["Todo", "Alpha"]);
-  expect(run(root, "inspect", "missing").stderr).toBe('mesh.config.ts:1:1 error Unknown resource "missing"; known resources: Alpha, Todo\n1 error, 0 warnings\n');
+  expect(run(root, "inspect", "missing").stderr).toBe('mesh.config.ts:1:1 error Unknown entity "missing"; known entities: Alpha, Todo\n1 error, 0 warnings\n');
 });
 
 test("build errors are sorted across files and preserve an existing tree", async () => {
@@ -357,6 +360,6 @@ test("help lists only implemented commands and needs no config", async () => {
   expect(result.code).toBe(0);
   expect(result.stderr).toBe("");
   expect(result.stdout).toContain("build --check");
-  expect(result.stdout).toContain("inspect [resource]");
+  expect(result.stdout).toContain("inspect [entity]");
   for (const pending of ["init", "explain", "db push", "migrate"]) expect(result.stdout).not.toContain(pending);
 });
