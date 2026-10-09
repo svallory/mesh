@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { HOME_FAMILIES, HOME_CONTEXTS, HOME_HINTS, homeHintTokens, renderHintLine, renderHintText, highlightHintFragment, homeHintScript } from '../plugins/mesh-home-hints.js';
+import { HOME_FAMILIES, HOME_CONTEXTS, HOME_HINTS, HOME_FRAGMENT_WRAPPERS, homeHintTokens, renderHintLine, renderHintText, renderHintNotes, highlightHintFragment, homeHintScript } from '../plugins/mesh-home-hints.js';
 import { renderMxFlow } from '../plugins/mesh-home.js';
 import { mxHighlighter } from '../plugins/mx-highlight.js';
 
@@ -98,7 +98,7 @@ test('each box starts with the identical family sentence, then its context or no
   for (const [key, hint] of Object.entries(HOME_HINTS)) {
     const start = html.indexOf(`id="mh-hint-${key}"`);
     expect(start).toBeGreaterThan(-1);
-    const familyHtml = renderHintText(HOME_FAMILIES[hint.family]);
+    const familyHtml = renderHintText(HOME_FAMILIES[hint.family], `family-${hint.family}`);
     expect(textOf(familyHtml)).toBe(families[hint.family]);
     const contextHtml = hint.context ? `<span class="mh-hint-context">${renderHintText(contexts[key], key)}</span>` : '';
     expect(html.slice(start)).toStartWith(`id="mh-hint-${key}"><span class="mh-hint-family">${familyHtml}</span>${contextHtml}</span>`);
@@ -106,7 +106,7 @@ test('each box starts with the identical family sentence, then its context or no
 });
 
 test('all fragments are highlighted at build time, with exact text and no backticks', () => {
-  for (const [key, text] of [...Object.entries(HOME_FAMILIES), ...Object.entries(contexts)]) {
+  for (const [key, text] of [...Object.entries(HOME_FAMILIES).map(([key, text]) => [`family-${key}`, text]), ...Object.entries(contexts)]) {
     const html = renderHintText(text, key);
     expect(textOf(html)).toBe(text.replaceAll('`', ''));
     expect(html).not.toContain('`');
@@ -114,14 +114,70 @@ test('all fragments are highlighted at build time, with exact text and no backti
     expect(code.length).toBe([...text.matchAll(/`([^`]+)`/g)].length);
     for (const [, fragment] of code) expect(fragment).toMatch(/<span class="ts-[\w-]+">/);
   }
-  expect(highlightHintFragment('&list')).toBe('<span class="ts-member">&amp;list</span>');
-  expect(highlightHintFragment(':value')).toContain('class="ts-atom"');
-  expect(highlightHintFragment(':name')).toContain('class="ts-name"');
-  expect(highlightHintFragment('createTodo')).toContain('class="ts-function"');
+  expect(highlightHintFragment('&list', 'option-value')).toBe('<span class="ts-member">&amp;list</span>');
+  expect(highlightHintFragment(':value', 'option-value')).toContain('class="ts-atom"');
+  expect(highlightHintFragment(':name', 'declaration')).toContain('class="ts-name"');
+  expect(highlightHintFragment('createTodo', 'call')).toContain('class="ts-function"');
   const file = 'import { List } from "./list.mesh.mx"';
-  expect(highlightHintFragment('List')).toBe(mxHighlighter(file)(9, 13));
-  expect(highlightHintFragment('kind :name options')).toBe(mxHighlighter('kind :name options')(0, 18));
-  expect(renderHintText(contexts.timestamp, 'timestamp')).toContain(highlightHintFragment('Date', true));
+  expect(highlightHintFragment('List', 'import')).toBe(mxHighlighter(file)(9, 13));
+  expect(highlightHintFragment('kind :name options', 'line')).toBe(mxHighlighter('kind :name options')(0, 18));
+  expect(renderHintText(contexts.timestamp, 'timestamp')).toContain(highlightHintFragment('Date', 'type'));
+});
+
+test('declared wrappers cover exactly the authored fragments and contextual occurrence counts', () => {
+  const texts = { ...HOME_CONTEXTS, ...Object.fromEntries(Object.entries(HOME_FAMILIES).map(([key, text]) => [`family-${key}`, text])) };
+  const fragments = new Set(Object.values(texts).flatMap((text) => [...text.matchAll(/`([^`]+)`/g)].map((match) => match[1])));
+  expect(Object.keys(HOME_FRAGMENT_WRAPPERS).sort()).toEqual([...fragments].sort());
+  for (const [fragment, annotation] of Object.entries(HOME_FRAGMENT_WRAPPERS)) {
+    expect(() => highlightHintFragment(fragment, annotation.default)).not.toThrow();
+    for (const [key, wrappers] of Object.entries(annotation.byContext || {})) {
+      expect(Object.hasOwn(texts, key)).toBe(true);
+      const count = [...texts[key].matchAll(/`([^`]+)`/g)].filter((match) => match[1] === fragment).length;
+      expect(count).toBeGreaterThan(0);
+      expect(wrappers).toHaveLength(count);
+      for (const wrapper of wrappers) expect(() => highlightHintFragment(fragment, wrapper, key)).not.toThrow();
+    }
+  }
+});
+
+test('unknown fragments fail note rendering with the fragment and context key', () => {
+  for (const fragment of ['newTodo', 'newCall()', 'constructor']) {
+    expect(() => renderHintText(`New fragment: \`${fragment}\``, 'new-context'))
+      .toThrow(`Unmapped home hint fragment "${fragment}" in context "new-context"`);
+  }
+  for (const [texts, key, contextKey] of [[HOME_HINTS.entity, 'context', 'entity'], [HOME_FAMILIES, 'kind', 'family-kind']]) {
+    const original = texts[key];
+    try {
+      texts[key] += ' `unmapped`';
+      expect(() => renderHintNotes()).toThrow(`Unmapped home hint fragment "unmapped" in context "${contextKey}"`);
+    } finally { texts[key] = original; }
+  }
+});
+
+test('contextual annotations reject missing or excess occurrences rather than guessing', () => {
+  for (const [text, count] of [['No code.', 0], ['`string`', 1], ['`string` `string` `string`', 3]]) {
+    expect(() => renderHintText(text, 'string'))
+      .toThrow(`Home hint fragment "string" in context "string" has ${count} occurrences; expected 2`);
+  }
+  // The occurrence is per fragment, not its position among other fragments.
+  expect(renderHintText('`Todo` `string` `Todo` `string`', 'string'))
+    .toContain('<code class="mx-hl"><span class="ts-type-builtin">string</span></code>');
+  expect(() => highlightHintFragment('Todo', 'missing-wrapper', 'entity-name'))
+    .toThrow('Unknown home hint wrapper "missing-wrapper" for fragment "Todo" in context "entity-name"');
+});
+
+// Capture every occurrence before replacing wrapper inference, including the
+// different MX/TypeScript roles of repeated `string` and `boolean` fragments.
+test('every authored fragment retains its pre-refactor highlighted HTML', () => {
+  const rendered = {};
+  for (const [group, texts] of [['family', HOME_FAMILIES], ['context', HOME_CONTEXTS]]) {
+    for (const [key, text] of Object.entries(texts)) {
+      const fragments = [...text.matchAll(/`([^`]+)`/g)].map((match) => match[1]);
+      const html = [...renderHintText(text, group === 'family' ? `family-${key}` : key).matchAll(/<code class="mx-hl">([\s\S]*?)<\/code>/g)];
+      if (fragments.length) rendered[`${group}:${key}`] = fragments.map((fragment, i) => ({ fragment, html: html[i][1] }));
+    }
+  }
+  expect(rendered).toMatchSnapshot();
 });
 
 test('every construct is independently targetable, with one tab stop per nonblank line', () => {

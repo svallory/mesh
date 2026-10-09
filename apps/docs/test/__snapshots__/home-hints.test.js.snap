@@ -1,0 +1,280 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`every authored fragment retains its pre-refactor highlighted HTML 1`] = `
+{
+  "context:actions": [
+    {
+      "fragment": "Todo",
+      "html": "<span class="ts-type">Todo</span>",
+    },
+  ],
+  "context:attributes": [
+    {
+      "fragment": "Todo",
+      "html": "<span class="ts-type">Todo</span>",
+    },
+  ],
+  "context:auto": [
+    {
+      "fragment": "readTodo",
+      "html": "<span class="ts-function">readTodo</span>",
+    },
+    {
+      "fragment": "destroyTodo",
+      "html": "<span class="ts-function">destroyTodo</span>",
+    },
+  ],
+  "context:auto-destroy": [
+    {
+      "fragment": "destroyTodo",
+      "html": "<span class="ts-function">destroyTodo</span>",
+    },
+  ],
+  "context:auto-read": [
+    {
+      "fragment": "readTodo",
+      "html": "<span class="ts-function">readTodo</span>",
+    },
+  ],
+  "context:boolean": [
+    {
+      "fragment": "boolean",
+      "html": "<span class="ts-tag">boolean</span>",
+    },
+    {
+      "fragment": "boolean",
+      "html": "<span class="ts-type-builtin">boolean</span>",
+    },
+  ],
+  "context:create-name": [
+    {
+      "fragment": "createTodo(input, context)",
+      "html": "<span class="ts-function">createTodo</span><span class="ts-punctuation-bracket">(</span><span class="ts-variable">input</span><span class="ts-punctuation-delimiter">,</span> <span class="ts-variable">context</span><span class="ts-punctuation-bracket">)</span>",
+    },
+  ],
+  "context:done": [
+    {
+      "fragment": "done",
+      "html": "<span class="ts-variable">done</span>",
+    },
+  ],
+  "context:entity-name": [
+    {
+      "fragment": "Todo",
+      "html": "<span class="ts-type">Todo</span>",
+    },
+    {
+      "fragment": "createTodo",
+      "html": "<span class="ts-function">createTodo</span>",
+    },
+  ],
+  "context:filter": [
+    {
+      "fragment": "WHERE",
+      "html": "<span class="ts-tag">WHERE</span>",
+    },
+  ],
+  "context:import-list": [
+    {
+      "fragment": "list.mesh.mx",
+      "html": "<span class="ts-string">list.mesh.mx</span>",
+    },
+  ],
+  "context:list": [
+    {
+      "fragment": "belongs-to",
+      "html": "<span class="ts-tag">belongs-to</span>",
+    },
+    {
+      "fragment": "List",
+      "html": "<span class="ts-type">List</span>",
+    },
+    {
+      "fragment": "listId",
+      "html": "<span class="ts-variable">listId</span>",
+    },
+  ],
+  "context:list-name": [
+    {
+      "fragment": "todo.list",
+      "html": "<span class="ts-variable">todo</span><span class="ts-punctuation-delimiter">.</span><span class="ts-property">list</span>",
+    },
+    {
+      "fragment": "&list",
+      "html": "<span class="ts-member">&amp;list</span>",
+    },
+  ],
+  "context:list-owner": [
+    {
+      "fragment": "list",
+      "html": "<span class="ts-variable">list</span>",
+    },
+    {
+      "fragment": "ownerId",
+      "html": "<span class="ts-variable">ownerId</span>",
+    },
+  ],
+  "context:on-create": [
+    {
+      "fragment": "create",
+      "html": "<span class="ts-tag">create</span>",
+    },
+  ],
+  "context:pending-name": [
+    {
+      "fragment": "pendingTodo(input, context)",
+      "html": "<span class="ts-function">pendingTodo</span><span class="ts-punctuation-bracket">(</span><span class="ts-variable">input</span><span class="ts-punctuation-delimiter">,</span> <span class="ts-variable">context</span><span class="ts-punctuation-bracket">)</span>",
+    },
+  ],
+  "context:relationship": [
+    {
+      "fragment": "Todo",
+      "html": "<span class="ts-type">Todo</span>",
+    },
+    {
+      "fragment": "List",
+      "html": "<span class="ts-type">List</span>",
+    },
+    {
+      "fragment": "listId",
+      "html": "<span class="ts-variable">listId</span>",
+    },
+    {
+      "fragment": "todos",
+      "html": "<span class="ts-string">todos</span>",
+    },
+  ],
+  "context:relationships": [
+    {
+      "fragment": "Todo",
+      "html": "<span class="ts-type">Todo</span>",
+    },
+  ],
+  "context:rename-name": [
+    {
+      "fragment": "renameTodo({ id, title }, context)",
+      "html": "<span class="ts-function">renameTodo</span><span class="ts-punctuation-bracket">({</span> id<span class="ts-punctuation-delimiter">,</span> title <span class="ts-punctuation-bracket">}</span><span class="ts-punctuation-delimiter">,</span> <span class="ts-variable">context</span><span class="ts-punctuation-bracket">)</span>",
+    },
+  ],
+  "context:string": [
+    {
+      "fragment": "string",
+      "html": "<span class="ts-tag">string</span>",
+    },
+    {
+      "fragment": "string",
+      "html": "<span class="ts-type-builtin">string</span>",
+    },
+  ],
+  "context:timestamp": [
+    {
+      "fragment": "timestamp",
+      "html": "<span class="ts-tag">timestamp</span>",
+    },
+    {
+      "fragment": "Date",
+      "html": "<span class="ts-type">Date</span>",
+    },
+  ],
+  "context:title": [
+    {
+      "fragment": "title",
+      "html": "<span class="ts-variable">title</span>",
+    },
+  ],
+  "context:types-create": [
+    {
+      "fragment": "create",
+      "html": "<span class="ts-tag">create</span>",
+    },
+    {
+      "fragment": "createTodo",
+      "html": "<span class="ts-function">createTodo</span>",
+    },
+  ],
+  "context:types-destroy": [
+    {
+      "fragment": "destroy",
+      "html": "<span class="ts-tag">destroy</span>",
+    },
+    {
+      "fragment": "destroyTodo",
+      "html": "<span class="ts-function">destroyTodo</span>",
+    },
+  ],
+  "context:types-read": [
+    {
+      "fragment": "read",
+      "html": "<span class="ts-tag">read</span>",
+    },
+    {
+      "fragment": "readTodo",
+      "html": "<span class="ts-function">readTodo</span>",
+    },
+    {
+      "fragment": "pendingTodo",
+      "html": "<span class="ts-function">pendingTodo</span>",
+    },
+  ],
+  "context:types-update": [
+    {
+      "fragment": "update",
+      "html": "<span class="ts-tag">update</span>",
+    },
+    {
+      "fragment": "renameTodo",
+      "html": "<span class="ts-function">renameTodo</span>",
+    },
+  ],
+  "context:uuid": [
+    {
+      "fragment": "uuid",
+      "html": "<span class="ts-tag">uuid</span>",
+    },
+    {
+      "fragment": "string",
+      "html": "<span class="ts-type-builtin">string</span>",
+    },
+  ],
+  "family:declaration": [
+    {
+      "fragment": ":name",
+      "html": "<span class="ts-name">:name</span>",
+    },
+  ],
+  "family:direction": [
+    {
+      "fragment": "asc",
+      "html": "<span class="ts-tag">asc</span>",
+    },
+    {
+      "fragment": "desc",
+      "html": "<span class="ts-tag">desc</span>",
+    },
+  ],
+  "family:imported-entity": [
+    {
+      "fragment": "List",
+      "html": "<span class="ts-type">List</span>",
+    },
+  ],
+  "family:kind": [
+    {
+      "fragment": "kind :name options",
+      "html": "<span class="ts-tag">kind</span> <span class="ts-name">:name</span> <span class="ts-attribute">options</span>",
+    },
+  ],
+  "family:member": [
+    {
+      "fragment": "&name",
+      "html": "<span class="ts-member">&amp;name</span>",
+    },
+  ],
+  "family:value-atom": [
+    {
+      "fragment": ":value",
+      "html": "<span class="ts-atom">:value</span>",
+    },
+  ],
+}
+`;
