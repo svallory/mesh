@@ -156,6 +156,36 @@ try {
   await opened(page, 'title');
   await hint(page, 'title').click();
   await closed(page);
+  // Tab dismisses a pinned token; the next token opens its own unpinned note.
+  await hint(page, 'title').click();
+  await page.keyboard.press('Tab');
+  same(await hint(page, 'title').getAttribute('aria-expanded'), 'false', 'Tab closes the pinned source');
+  await opened(page, 'list');
+  await page.keyboard.press('Escape');
+  await closed(page);
+  // Leaving the file also dismisses a keyboard-pinned note.
+  await tokens.last().focus();
+  await page.keyboard.press('Enter');
+  await opened(page, 'family-function');
+  await page.keyboard.press('Tab');
+  await closed(page);
+  check(await page.evaluate(() => !document.activeElement.closest('.mh-file-code')), 'Tab leaves the file');
+  // The sole exception is focus inside the box (no focusable content today).
+  await hint(page, 'title').focus();
+  await page.keyboard.press('Enter');
+  await panel(page).evaluate((box) => {
+    const button = document.createElement('button');
+    button.textContent = 'Focus fixture';
+    box.append(button);
+    button.focus();
+  });
+  same(await hint(page, 'title').getAttribute('aria-expanded'), 'true', 'focus inside the box retains the pinned note');
+  same(await panel(page).count(), 1, 'box stays visible while it contains focus');
+  await page.keyboard.press('Tab');
+  await closed(page);
+  await hint(page, 'title').click();
+  await page.mouse.click(1250, 950);
+  await closed(page);
   await hint(page, 'title').click();
   await page.keyboard.press('Escape');
   await closed(page);

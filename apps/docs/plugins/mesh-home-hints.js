@@ -73,6 +73,48 @@ export const HOME_CONTEXTS = {
   'list-owner': 'Follows the `list` relationship to its `ownerId`. Mesh writes the join.',
 };
 
+// Every backticked fragment declares its syntactic wrapper, never guessed from
+// its spelling. Occurrence arrays count this fragment (not all code) in a named
+// context; they distinguish an MX kind from its generated TypeScript type.
+export const HOME_FRAGMENT_WRAPPERS = {
+  'kind :name options': { default: 'line' },
+  ':name': { default: 'declaration' },
+  ':value': { default: 'option-value' },
+  '&name': { default: 'option-value' },
+  List: { default: 'import' },
+  asc: { default: 'sort' },
+  desc: { default: 'sort' },
+  Todo: { default: 'type' },
+  createTodo: { default: 'call' },
+  uuid: { default: 'line' },
+  string: { default: 'line', byContext: { uuid: ['type'], string: ['line', 'type'] } },
+  boolean: { default: 'line', byContext: { boolean: ['line', 'type'] } },
+  timestamp: { default: 'line' },
+  Date: { default: 'type' },
+  create: { default: 'line' },
+  listId: { default: 'expression' },
+  todos: { default: 'table' },
+  'todo.list': { default: 'expression' },
+  '&list': { default: 'option-value' },
+  'list.mesh.mx': { default: 'path' },
+  readTodo: { default: 'call' },
+  destroyTodo: { default: 'call' },
+  'createTodo(input, context)': { default: 'expression' },
+  title: { default: 'expression' },
+  'belongs-to': { default: 'line' },
+  'renameTodo({ id, title }, context)': { default: 'expression' },
+  'pendingTodo(input, context)': { default: 'expression' },
+  WHERE: { default: 'line' },
+  done: { default: 'expression' },
+  read: { default: 'line' },
+  pendingTodo: { default: 'call' },
+  update: { default: 'line' },
+  renameTodo: { default: 'call' },
+  destroy: { default: 'line' },
+  list: { default: 'expression' },
+  ownerId: { default: 'expression' },
+};
+
 // Explicit token/family/context/target tuples keep declarations distinct from
 // atoms in values. Array punctuation belongs to the option; function punctuation
 // and ordinary body tokens belong to the function (lead-confirmed).
@@ -160,41 +202,61 @@ export function renderHintLine(line, offset, render) {
 // TypeScript fragments use MX's *same TypeScript injection highlighter*, with
 // a type, call or expression wrapper. Only the authored fragment is emitted.
 // This is not a new grammar/colour pass and never relaxes parse failures.
-const TS_NAMES = new Set(['Todo', 'createTodo', 'renameTodo', 'pendingTodo', 'readTodo', 'destroyTodo', 'listId', 'title', 'list', 'done', 'insertedAt', 'ownerId', 'false']);
-export function highlightHintFragment(fragment, typescript = false) {
-  let prefix = '', suffix = '';
-  if (typescript || TS_NAMES.has(fragment) || fragment.includes('(') || fragment === 'todo.list') {
-    if (['string', 'boolean', 'Date', 'Todo'].includes(fragment)) {
-      prefix = 'hint value=({ x }: { x: '; suffix = ' }) => x';
-    } else if (/Todo$/.test(fragment)) {
-      prefix = 'hint value=() => '; suffix = '()';
-    } else { prefix = 'hint value=() => '; }
-  } else if (fragment === ':name') { prefix = 'kind '; }
-  else if (fragment.startsWith(':') || fragment.startsWith('&')) { prefix = 'hint value='; }
-  else if (fragment === 'List' || fragment === 'Name') { prefix = 'import { '; suffix = ' } from "./entity.mesh.mx"'; }
-  else if (fragment === 'list.mesh.mx') { prefix = 'import { List } from "'; suffix = '"'; }
-  else if (fragment === 'todos') { prefix = 'entity :Todo table="'; suffix = '"'; }
-  else if (fragment === 'asc' || fragment === 'desc') { suffix = ' &field'; }
+const FRAGMENT_SURROUNDINGS = {
+  line: ['', ''],
+  type: ['hint value=({ x }: { x: ', ' }) => x'],
+  call: ['hint value=() => ', '()'],
+  expression: ['hint value=() => ', ''],
+  declaration: ['kind ', ''],
+  'option-value': ['hint value=', ''],
+  import: ['import { ', ' } from "./entity.mesh.mx"'],
+  path: ['import { List } from "', '"'],
+  table: ['entity :Todo table="', '"'],
+  sort: ['', ' &field'],
+};
+export function highlightHintFragment(fragment, wrapper, contextKey = '<anonymous>') {
+  if (!Object.hasOwn(FRAGMENT_SURROUNDINGS, wrapper)) {
+    throw new Error(`Unknown home hint wrapper "${wrapper}" for fragment "${fragment}" in context "${contextKey}"`);
+  }
+  const [prefix, suffix] = FRAGMENT_SURROUNDINGS[wrapper];
   const source = prefix + fragment + suffix;
   return mxHighlighter(source, '<home hint fragment>')(prefix.length, prefix.length + fragment.length);
 }
 
-export function renderHintText(text, contextKey = '') {
-  let html = '', at = 0, index = 0;
-  for (const match of text.matchAll(/`([^`]+)`/g)) {
+export function renderHintText(text, contextKey = '<anonymous>') {
+  const matches = [...text.matchAll(/`([^`]+)`/g)];
+  const counts = new Map();
+  for (const [, fragment] of matches) {
+    if (!Object.hasOwn(HOME_FRAGMENT_WRAPPERS, fragment)) {
+      throw new Error(`Unmapped home hint fragment "${fragment}" in context "${contextKey}"`);
+    }
+    counts.set(fragment, (counts.get(fragment) || 0) + 1);
+  }
+  // Check even zero occurrences, so deleting a fragment cannot leave a stale
+  // context annotation that silently falls back to its default wrapper.
+  for (const [fragment, annotation] of Object.entries(HOME_FRAGMENT_WRAPPERS)) {
+    const wrappers = annotation.byContext?.[contextKey];
+    if (wrappers && wrappers.length !== (counts.get(fragment) || 0)) {
+      throw new Error(`Home hint fragment "${fragment}" in context "${contextKey}" has ${counts.get(fragment) || 0} occurrences; expected ${wrappers.length}`);
+    }
+  }
+  let html = '', at = 0;
+  const occurrences = new Map();
+  for (const match of matches) {
+    const fragment = match[1], occurrence = occurrences.get(fragment) || 0;
+    const annotation = HOME_FRAGMENT_WRAPPERS[fragment];
+    const wrapper = annotation.byContext?.[contextKey]?.[occurrence] ?? annotation.default;
     html += escapeHtml(text.slice(at, match.index));
-    // Attribute wording names MX's kind first, then its generated TS type.
-    const ts = ['uuid', 'string', 'boolean', 'timestamp'].includes(contextKey) && index === 1;
-    html += `<code class="mx-hl">${highlightHintFragment(match[1], ts)}</code>`;
+    html += `<code class="mx-hl">${highlightHintFragment(fragment, wrapper, contextKey)}</code>`;
     at = match.index + match[0].length;
-    index++;
+    occurrences.set(fragment, occurrence + 1);
   }
   return html + escapeHtml(text.slice(at));
 }
 
 export function renderHintNotes() {
   return '<div class="mh-hint-notes" hidden>' + Object.entries(HOME_HINTS).map(([key, { family, context }]) =>
-    `<span id="${noteId(key)}"><span class="mh-hint-family">${renderHintText(HOME_FAMILIES[family])}</span>` +
+    `<span id="${noteId(key)}"><span class="mh-hint-family">${renderHintText(HOME_FAMILIES[family], `family-${family}`)}</span>` +
     (context ? `<span class="mh-hint-context">${renderHintText(context, key)}</span>` : '') + '</span>').join('') + '</div>';
 }
 
@@ -332,7 +394,11 @@ export function installHomeHints(d, w) {
     const token = target(e.target);
     if (token) { rove(token); if (Date.now() - pointerAt > 600) show(token, false); }
   });
-  d.addEventListener('focusout', (e) => { if (e.target === open && !pinned) close(); });
+  d.addEventListener('focusout', (e) => {
+    // Pinning prevents hover from stealing a note, not keyboard dismissal.
+    // Allow focus into/within the panel, but close when it leaves that panel too.
+    if ((e.target === open || panel?.contains(e.target)) && !panel?.contains(e.relatedTarget)) close();
+  });
   function toggle(token) { if (open === token && pinned) close(); else show(token, true); }
   d.addEventListener('click', (e) => {
     const token = target(e.target);
