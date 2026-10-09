@@ -190,28 +190,6 @@ test("argument defaults and nullable fields are optional, update member fields a
   ]);
 });
 
-test("key and managed timestamps are record fields, never caller payload", () => {
-  const document = documentOf();
-  const entity = todo(document);
-  entity.auto = [];
-  entity.actions = [
-    {
-      kind: "create",
-      name: "create",
-      input: entity.attributes
-        .filter((a) => a.primaryKey || a.on)
-        .map((a) => ({
-          kind: "member",
-          ref: { name: a.name, position: a.position },
-        })),
-      validate: [],
-      do: [],
-      position: entity.position,
-    },
-  ];
-  expect(entityInputs(entity, document)[0]!.fields).toEqual([]);
-});
-
 test("empty inputs reject extra properties and primitives; records without actions need no Zod imports", async () => {
   const document = documentOf();
   const entity = todo(document);

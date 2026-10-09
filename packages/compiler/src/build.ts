@@ -609,6 +609,9 @@ function buildEntity(
       root,
     );
   for (const { ref, scope } of pending) {
+    const inputAttribute = scope === "input" ? entity.attributes.find((field) => field.name === ref.name) : undefined;
+    if (inputAttribute && (inputAttribute.primaryKey || inputAttribute.on))
+      fail("MESH_INPUT_MANAGED", `&${ref.name} is set by Mesh and cannot be an input`, ref.position);
     const allowed =
       scope === "actions"
         ? [...entity.actions, ...entity.auto.map((name) => ({ name }))]

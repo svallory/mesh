@@ -110,8 +110,6 @@ export function entityInputs(
           (a) => a.name === input.ref.name,
         );
         if (attribute) {
-          // The key and managed timestamps are system-filled, not caller input.
-          if (attribute.primaryKey || attribute.on) continue;
           field = attribute;
         } else {
           const relation = entity.relationships.find(

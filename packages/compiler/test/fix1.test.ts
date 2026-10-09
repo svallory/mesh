@@ -27,6 +27,12 @@ test("fix4: duplicate policy and check names use member diagnostics", () => {
   expect(build(prefix + check + "    update :other\n      validate\n" + check).diagnostics).toEqual([]);
 });
 
+test.each(["id", "insertedAt", "updatedAt"])("fix5: managed &%s is rejected by the builder", (name) => {
+  const result = build(keyed + `    timestamp :insertedAt on=:create\n    timestamp :updatedAt on=:update\n  actions\n    create :create\n      input\n        &${name}\n`);
+  expect(result.document).toBeNull();
+  expect(result.diagnostics).toEqual([expect.objectContaining({ code: "MESH_INPUT_MANAGED", message: `&${name} is set by Mesh and cannot be an input`, position: expect.objectContaining({ line: 9, column: 8 }) })]);
+});
+
 for (const [name, codes] of [
   ["computed-missing-body", [["MESH_MODEL_SHAPE", 6, 4]]],
   ["set-missing-value", [["MESH_MEMBER_LINE_OPTIONS", 9, 10]]],
