@@ -74,9 +74,9 @@ export async function runCli(args: string[], root = process.cwd(), io = {
             if (!modelFile) throw new Error("The compiler did not produce model.json; report this emitter bug");
             json = modelFile.contents;
           } else {
-            const resource = built.document.resources.find((r) => r.name.value === command.resource);
+            const resource = built.document.entities.find((entity) => entity.name === command.resource);
             if (resource) json = `${stableJsonStringify(resource)}\n`;
-            else diagnostics.push(diagnostic("mesh.config.ts", `Unknown resource "${command.resource}"; known resources: ${built.document.resources.map((r) => r.name.value).sort(compareText).join(", ")}`));
+            else diagnostics.push(diagnostic("mesh.config.ts", `Unknown resource "${command.resource}"; known resources: ${built.document.entities.map((entity) => entity.name).sort(compareText).join(", ")}`));
           }
         } else {
           errorFile = projectPath(root, config.output);

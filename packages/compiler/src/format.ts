@@ -33,7 +33,7 @@ export const FORMATTER_OPTIONS: Options = Object.freeze({
 
 /**
  * Format one generated TypeScript file. A parse failure is never swallowed: the
- * caller turns this into a positioned build error naming the resource file.
+ * caller turns this into a positioned build error naming the entity file.
  */
 export function formatTypescript(source: string): Promise<string> {
   return format(source, FORMATTER_OPTIONS);

@@ -1,233 +1,358 @@
-import type { ModelDocument, Spanned } from "../src/index.ts";
+import { readFileSync } from "node:fs";
+import type {
+  Action,
+  Attribute,
+  AttributeType,
+  Check,
+  Expression,
+  MemberRef,
+  ModelDocument,
+  Step,
+} from "../src/index.ts";
 import { positionOf } from "./source.ts";
-
-export const postFile = "resources/post.mx";
-
-/** The reduced `post.mx` of M1 (concise syntax): every type, the four action kinds. */
-export const postSource = `resource="post" table="posts" domain="blog"
-  attributes
-    uuid-primary-key="id"
-    attribute="title" type="string" allow-nil=false public
-    attribute="body" type="string" public
-    attribute="views" type="integer" default=0
-    attribute="rating" type="float"
-    attribute="featured" type="boolean" default=false
-    attribute="token" type="uuid"
-    attribute="publishedAt" type="datetime"
-    attribute="state" type="atom" constraints={ one_of: ["draft", "published"] } default="draft"
-    create-timestamp="insertedAt"
-    update-timestamp="updatedAt"
-
-  actions defaults=["read", "destroy"]
-    create="create" accept=["title", "body"]
-    update="publish" accept=["state"]
-    destroy="archive" accept=[]
-    read="published"
-`;
-
-const at = (needle: string, nth = 0) => positionOf(postSource, postFile, needle, nth);
-
-/** A name or value as `Spanned` expects: positioned at its own first character. */
-const sp = <T>(value: T, needle: string, nth = 0): Spanned<T> => ({
-  value,
+export const postFile = "src/domain/billing/invoice.mesh.mx";
+export const postSource = readFileSync(
+  new URL("./invoice.mesh.mx", import.meta.url),
+  "utf8",
+);
+const at = (needle: string, nth = 0) =>
+  positionOf(postSource, postFile, needle, nth);
+const ref = (name: string, needle = `&${name}`, nth = 0): MemberRef => ({
+  name,
   position: at(needle, nth),
 });
-
-/** Same, for a value inside a longer text, such as `default="draft"`: `"draft"` inside it. */
-const within = <T>(value: T, whole: string, inner: string): Spanned<T> => {
-  const p = at(whole);
-  const d = whole.indexOf(inner);
-  return { value, position: { ...p, column: p.column + d, offset: p.offset + d } };
-};
-
-/** What a correct builder produces for `postSource`. */
+const expr = (source: string, params: string[] = [], nth = 0): Expression => ({
+  source,
+  params,
+  position: at(source, nth),
+});
+const field = (
+  name: string,
+  type: AttributeType,
+  extra: Partial<Attribute> = {},
+): Attribute => ({
+  name,
+  type,
+  nullable: false,
+  primaryKey: false,
+  unique: false,
+  ...extra,
+  position: at(`${type} :${name}`),
+});
+const check = (
+  label: string,
+  that: string,
+  message: string,
+  nth = 0,
+): Check => ({
+  label,
+  that: expr(that, [], nth),
+  code: "invalid_state",
+  message,
+  position: at(`check :${label}`, nth),
+});
+const action = (
+  kind: Action["kind"],
+  name: string,
+  extra: Partial<Action> = {},
+): Action => ({
+  kind,
+  name,
+  input: [],
+  validate: [],
+  do: [],
+  ...extra,
+  position: at(`${kind} :${name}`),
+});
+const assignment = (
+  name: string,
+  value: Step extends never ? never : boolean | { value: string } | Expression,
+  needle: string,
+) => ({ member: ref(name, needle), value });
+/** Hand-built oracle for the syntax-v4 Invoice reference; never calls the compiler. */
 export const postDocument: ModelDocument = {
-  resources: [
+  entities: [
     {
-      name: sp("post", '"post"'),
-      table: sp("posts", '"posts"'),
-      domain: sp("blog", '"blog"'),
-      position: at('resource="post"'),
+      name: "Invoice",
+      table: "invoices",
+      file: postFile,
+      module: "billing",
+      position: at("entity :Invoice"),
+      imports: [
+        {
+          identifiers: ["Customer"],
+          from: "./customer.mesh.mx",
+          position: at("import { Customer }"),
+        },
+        {
+          identifiers: ["InvoiceLine"],
+          from: "./invoice-line.mesh.mx",
+          position: at("import { InvoiceLine }"),
+        },
+        {
+          identifiers: ["Payment"],
+          from: "./payment.mesh.mx",
+          position: at("import { Payment }"),
+        },
+        {
+          identifiers: ["formatMoney", "isStaff"],
+          from: "./invoice.helpers",
+          position: at("import { formatMoney"),
+        },
+      ],
       attributes: [
+        field("id", "uuid", { primaryKey: true }),
+        field("number", "string", {
+          unique: true,
+          match: { pattern: "^INV-\\d+$", flags: "" },
+        }),
+        field("status", "enum", {
+          values: ["draft", "sent", "paid", "cancelled"].map((value) => ({
+            value,
+          })),
+          default: { value: "draft" },
+        }),
+        field("amount", "decimal", { min: 0 }),
+        field("issuedOn", "date"),
+        field("dueOn", "date"),
+        field("paidAt", "datetime", { nullable: true }),
+        field("notes", "string", { nullable: true, max: 2000 }),
+        field("needsReview", "boolean", { default: false }),
+        field("paidById", "uuid", { nullable: true }),
+        field("insertedAt", "timestamp", { on: "create" }),
+        field("updatedAt", "timestamp", { on: "update" }),
+      ],
+      relationships: [
         {
-          name: sp("id", '"id"'),
-          source: "uuid-primary-key",
-          type: "uuid",
-          allowNil: false,
-          public: true,
-          writable: false,
-          primaryKey: true,
-          default: null,
-          constraints: null,
-          position: at("uuid-primary-key"),
+          kind: "belongs-to",
+          name: "customer",
+          entity: { identifier: "Customer", from: "./customer.mesh.mx" },
+          nullable: false,
+          keyColumn: "customerId",
+          position: at("belongs-to"),
         },
         {
-          name: sp("title", '"title"'),
-          source: "attribute",
-          type: "string",
-          allowNil: false,
-          public: true,
-          writable: true,
-          primaryKey: false,
-          default: null,
-          constraints: null,
-          position: at('attribute="title"'),
+          kind: "has-many",
+          name: "lines",
+          entity: { identifier: "InvoiceLine", from: "./invoice-line.mesh.mx" },
+          nullable: false,
+          position: at("has-many"),
         },
         {
-          name: sp("body", '"body"'),
-          source: "attribute",
-          type: "string",
-          allowNil: true,
-          public: true,
-          writable: true,
-          primaryKey: false,
-          default: null,
-          constraints: null,
-          position: at('attribute="body"'),
+          kind: "has-one",
+          name: "payment",
+          entity: { identifier: "Payment", from: "./payment.mesh.mx" },
+          nullable: false,
+          position: at("has-one"),
         },
+      ],
+      computed: [
         {
-          name: sp("views", '"views"'),
-          source: "attribute",
-          type: "integer",
-          allowNil: true,
-          public: false,
-          writable: true,
-          primaryKey: false,
-          default: within(0, "default=0", "0"),
-          constraints: null,
-          position: at('attribute="views"'),
-        },
-        {
-          name: sp("rating", '"rating"'),
-          source: "attribute",
-          type: "float",
-          allowNil: true,
-          public: false,
-          writable: true,
-          primaryKey: false,
-          default: null,
-          constraints: null,
-          position: at('attribute="rating"'),
-        },
-        {
-          name: sp("featured", '"featured"'),
-          source: "attribute",
+          name: "isOverdue",
           type: "boolean",
-          allowNil: true,
-          public: false,
-          writable: true,
-          primaryKey: false,
-          default: within(false, "default=false", "false"),
-          constraints: null,
-          position: at('attribute="featured"'),
+          body: expr(
+            "() {\n      return &status === :sent && &dueOn < today()\n    }",
+          ),
+          position: at("boolean :isOverdue"),
         },
         {
-          name: sp("token", '"token"'),
-          source: "attribute",
-          type: "uuid",
-          allowNil: true,
-          public: false,
-          writable: true,
-          primaryKey: false,
-          default: null,
-          constraints: null,
-          position: at('attribute="token"'),
+          name: "label",
+          type: "string",
+          body: expr(
+            '() {\n      return &number + " · " + formatMoney(&total)\n    }',
+          ),
+          position: at("string :label"),
         },
         {
-          name: sp("publishedAt", '"publishedAt"'),
-          source: "attribute",
-          type: "datetime",
-          allowNil: true,
-          public: false,
-          writable: true,
-          primaryKey: false,
-          default: null,
-          constraints: null,
-          position: at('attribute="publishedAt"'),
+          name: "lineCount",
+          type: "integer",
+          nullable: false,
+          rollup: { fn: "count", of: "lines" },
+          position: at("count :lineCount"),
         },
         {
-          name: sp("state", '"state"'),
-          source: "attribute",
-          type: "atom",
-          allowNil: true,
-          public: false,
-          writable: true,
-          primaryKey: false,
-          default: within("draft", 'default="draft"', '"draft"'),
-          constraints: {
-            oneOf: [
-              sp("draft", '"draft"'),
-              sp("published", '"published"'),
-            ],
-          },
-          position: at('attribute="state"'),
-        },
-        {
-          name: sp("insertedAt", '"insertedAt"'),
-          source: "create-timestamp",
-          type: "datetime",
-          allowNil: false,
-          public: false,
-          writable: false,
-          primaryKey: false,
-          default: null,
-          constraints: null,
-          position: at("create-timestamp"),
-        },
-        {
-          name: sp("updatedAt", '"updatedAt"'),
-          source: "update-timestamp",
-          type: "datetime",
-          allowNil: false,
-          public: false,
-          writable: false,
-          primaryKey: false,
-          default: null,
-          constraints: null,
-          position: at("update-timestamp"),
+          name: "total",
+          type: "decimal",
+          nullable: true,
+          rollup: { fn: "sum", of: "lines.amount" },
+          position: at("sum :total"),
         },
       ],
-      defaults: {
-        kinds: [
-          sp("read", '"read"'),
-          sp("destroy", '"destroy"'),
-        ],
-        position: at("defaults="),
-      },
-      actions: [
+      auto: ["read", "destroy"],
+      onLoad: ref("visible"),
+      always: [
         {
-          kind: "create",
-          name: sp("create", '"create"'),
-          accept: [
-            sp("title", '"title"', 1),
-            sp("body", '"body"', 1),
+          types: ["create", "update"],
+          validate: [
+            {
+              label: "dueAfterIssue",
+              that: expr("() => &dueOn >= &issuedOn"),
+              code: "invalid_dates",
+              message: "the due date cannot be before the issue date",
+              position: at("check :dueAfterIssue"),
+            },
           ],
-          position: at('create="create"'),
+          do: [],
+          position: at("always types"),
+        },
+      ],
+      actions: [
+        action("create", "create", {
+          input: [
+            "number",
+            "customer",
+            "amount",
+            "issuedOn",
+            "dueOn",
+            "notes",
+          ].map((name) => ({ kind: "member", ref: ref(name, `&${name}\n`) })),
+        }),
+        action("update", "send", {
+          validate: [
+            check(
+              "invoiceHasLines",
+              "() => &lineCount > 0",
+              "an invoice needs at least one line",
+            ),
+          ],
+          do: [
+            {
+              kind: "set",
+              assignments: [
+                assignment("status", { value: "sent" }, "&status=:sent"),
+              ],
+              position: at("set\n"),
+            },
+          ],
+        }),
+        action("update", "pay", {
+          input: [{ kind: "member", ref: ref("paidAt") }],
+          validate: [
+            check(
+              "invoiceIsSent",
+              "() => &status === :sent",
+              "only a sent invoice can be paid",
+            ),
+            check(
+              "invoiceHasLines",
+              "() => &lineCount > 0",
+              "an invoice needs at least one line",
+              1,
+            ),
+          ],
+          do: [
+            {
+              kind: "set",
+              assignments: [
+                assignment("status", { value: "paid" }, "&status=:paid"),
+                assignment(
+                  "paidById",
+                  expr("({ actor }) => actor.id", ["actor"]),
+                  "&paidById=",
+                ),
+              ],
+              position: at("set\n", 1),
+            },
+            {
+              kind: "when",
+              condition: expr("() => &amount > 10000"),
+              steps: [
+                {
+                  kind: "set",
+                  assignments: [
+                    assignment("needsReview", true, "&needsReview=true"),
+                  ],
+                  position: at("set\n", 2),
+                },
+              ],
+              position: at("when="),
+            },
+            {
+              kind: "load",
+              members: [ref("customer", "&customer]", 0)],
+              position: at("load=["),
+            },
+          ],
+        }),
+        action("update", "applyDiscount", {
+          input: [
+            {
+              kind: "argument",
+              name: "percent",
+              type: "decimal",
+              nullable: false,
+              min: 0,
+              max: 100,
+              position: at("decimal :percent"),
+            },
+          ],
+          do: [
+            {
+              kind: "set",
+              assignments: [
+                assignment(
+                  "amount",
+                  expr("({ input }) => &amount * (1 - input.percent / 100)", [
+                    "input",
+                  ]),
+                  "&amount=",
+                ),
+              ],
+              position: at("set\n", 3),
+            },
+          ],
+        }),
+        action("read", "visible", {
+          filter: expr("() => &status !== :cancelled"),
+        }),
+        action("read", "overdue", {
+          filter: expr("() => &isOverdue"),
+          sort: [{ direction: "asc", member: ref("dueOn", "&dueOn\n", 1) }],
+        }),
+        action("read", "forCustomer", {
+          input: [
+            {
+              kind: "argument",
+              name: "customerId",
+              type: "uuid",
+              nullable: false,
+              position: at("uuid :customerId"),
+            },
+          ],
+          filter: expr("({ input }) => &customer.id === input.customerId", [
+            "input",
+          ]),
+        }),
+      ],
+      policies: [
+        {
+          name: "staffOrOwnerReads",
+          types: ["read"],
+          authorizeIf: [
+            expr(
+              "({ actor }) => isStaff(actor) || &customer.userId === actor.id",
+              ["actor"],
+            ),
+          ],
+          forbidIf: [],
+          position: at("policy :staffOrOwnerReads"),
         },
         {
-          kind: "update",
-          name: sp("publish", '"publish"'),
-          accept: [sp("state", '"state"', 1)],
-          position: at('update="publish"'),
+          name: "staffWrites",
+          types: ["create", "update", "destroy"],
+          authorizeIf: [expr("({ actor }) => isStaff(actor)", ["actor"], 1)],
+          forbidIf: [],
+          position: at("policy :staffWrites"),
         },
-        { kind: "destroy", name: sp("archive", '"archive"'), accept: [], position: at('destroy="archive"') },
-        { kind: "read", name: sp("published", '"published"', 1), position: at('read="published"') },
+        {
+          name: "neverDestroyPaid",
+          types: ["destroy"],
+          authorizeIf: [],
+          forbidIf: [expr("() => &status === :paid")],
+          position: at("policy :neverDestroyPaid"),
+        },
       ],
     },
   ],
 };
-
-/** A resource with every optional value absent. */
-export const bareDocument: ModelDocument = {
-  resources: [
-    {
-      name: { value: "tag", position: { file: "resources/tag.mx", line: 1, column: 10, offset: 10 } },
-      table: null,
-      domain: null,
-      position: { file: "resources/tag.mx", line: 1, column: 0, offset: 0 },
-      attributes: [],
-      actions: [],
-      defaults: null,
-    },
-  ],
-};
+export const bareDocument: ModelDocument = { entities: [] };

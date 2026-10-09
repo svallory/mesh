@@ -1,3 +1,0 @@
-resource="post"
-  attributes
-    attribute="title" type="string" constraints={ one_of: ["a", "b"] }

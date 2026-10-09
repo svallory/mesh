@@ -1,495 +1,605 @@
 {
-  "resources": [
+  "entities": [
     {
-      "actions": [
-        {
-          "accept": [
-            {
-              "position": {
-                "column": 28,
-                "file": "resources/post.mx",
-                "line": 16,
-                "offset": 631
-              },
-              "value": "title"
-            },
-            {
-              "position": {
-                "column": 37,
-                "file": "resources/post.mx",
-                "line": 16,
-                "offset": 640
-              },
-              "value": "body"
-            }
-          ],
-          "kind": "create",
-          "name": {
-            "position": {
-              "column": 11,
-              "file": "resources/post.mx",
-              "line": 16,
-              "offset": 614
-            },
-            "value": "create"
-          },
-          "position": {
-            "column": 4,
-            "file": "resources/post.mx",
-            "line": 16,
-            "offset": 607
-          }
-        },
-        {
-          "accept": [
-            {
-              "position": {
-                "column": 29,
-                "file": "resources/post.mx",
-                "line": 17,
-                "offset": 677
-              },
-              "value": "state"
-            }
-          ],
-          "kind": "update",
-          "name": {
-            "position": {
-              "column": 11,
-              "file": "resources/post.mx",
-              "line": 17,
-              "offset": 659
-            },
-            "value": "publish"
-          },
-          "position": {
-            "column": 4,
-            "file": "resources/post.mx",
-            "line": 17,
-            "offset": 652
-          }
-        },
-        {
-          "accept": [],
-          "kind": "destroy",
-          "name": {
-            "position": {
-              "column": 12,
-              "file": "resources/post.mx",
-              "line": 18,
-              "offset": 698
-            },
-            "value": "archive"
-          },
-          "position": {
-            "column": 4,
-            "file": "resources/post.mx",
-            "line": 18,
-            "offset": 690
-          }
-        },
-        {
-          "kind": "read",
-          "name": {
-            "position": {
-              "column": 9,
-              "file": "resources/post.mx",
-              "line": 19,
-              "offset": 727
-            },
-            "value": "published"
-          },
-          "position": {
-            "column": 4,
-            "file": "resources/post.mx",
-            "line": 19,
-            "offset": 722
-          }
-        }
-      ],
+      "actions": [],
+      "always": [],
       "attributes": [
         {
-          "allowNil": false,
-          "constraints": null,
-          "default": null,
-          "name": {
-            "position": {
-              "column": 21,
-              "file": "resources/post.mx",
-              "line": 3,
-              "offset": 78
-            },
-            "value": "id"
-          },
+          "name": "id",
+          "nullable": false,
           "position": {
             "column": 4,
-            "file": "resources/post.mx",
+            "file": "resources/blog/comment.mesh.mx",
             "line": 3,
-            "offset": 61
+            "offset": 50
           },
           "primaryKey": true,
-          "public": true,
-          "source": "uuid-primary-key",
           "type": "uuid",
-          "writable": false
+          "unique": false
         },
         {
-          "allowNil": false,
-          "constraints": null,
-          "default": null,
-          "name": {
-            "position": {
-              "column": 14,
-              "file": "resources/post.mx",
-              "line": 4,
-              "offset": 97
-            },
-            "value": "title"
-          },
+          "name": "body",
+          "nullable": false,
           "position": {
             "column": 4,
-            "file": "resources/post.mx",
+            "file": "resources/blog/comment.mesh.mx",
             "line": 4,
-            "offset": 87
+            "offset": 75
           },
           "primaryKey": false,
-          "public": true,
-          "source": "attribute",
           "type": "string",
-          "writable": true
-        },
-        {
-          "allowNil": true,
-          "constraints": null,
-          "default": null,
-          "name": {
-            "position": {
-              "column": 14,
-              "file": "resources/post.mx",
-              "line": 5,
-              "offset": 156
-            },
-            "value": "body"
-          },
-          "position": {
-            "column": 4,
-            "file": "resources/post.mx",
-            "line": 5,
-            "offset": 146
-          },
-          "primaryKey": false,
-          "public": true,
-          "source": "attribute",
-          "type": "string",
-          "writable": true
-        },
-        {
-          "allowNil": true,
-          "constraints": null,
-          "default": {
-            "position": {
-              "column": 45,
-              "file": "resources/post.mx",
-              "line": 6,
-              "offset": 229
-            },
-            "value": 0
-          },
-          "name": {
-            "position": {
-              "column": 14,
-              "file": "resources/post.mx",
-              "line": 6,
-              "offset": 198
-            },
-            "value": "views"
-          },
-          "position": {
-            "column": 4,
-            "file": "resources/post.mx",
-            "line": 6,
-            "offset": 188
-          },
-          "primaryKey": false,
-          "public": false,
-          "source": "attribute",
-          "type": "integer",
-          "writable": true
-        },
-        {
-          "allowNil": true,
-          "constraints": null,
-          "default": null,
-          "name": {
-            "position": {
-              "column": 14,
-              "file": "resources/post.mx",
-              "line": 7,
-              "offset": 245
-            },
-            "value": "rating"
-          },
-          "position": {
-            "column": 4,
-            "file": "resources/post.mx",
-            "line": 7,
-            "offset": 235
-          },
-          "primaryKey": false,
-          "public": false,
-          "source": "attribute",
-          "type": "float",
-          "writable": true
-        },
-        {
-          "allowNil": true,
-          "constraints": null,
-          "default": {
-            "position": {
-              "column": 48,
-              "file": "resources/post.mx",
-              "line": 8,
-              "offset": 315
-            },
-            "value": false
-          },
-          "name": {
-            "position": {
-              "column": 14,
-              "file": "resources/post.mx",
-              "line": 8,
-              "offset": 281
-            },
-            "value": "featured"
-          },
-          "position": {
-            "column": 4,
-            "file": "resources/post.mx",
-            "line": 8,
-            "offset": 271
-          },
-          "primaryKey": false,
-          "public": false,
-          "source": "attribute",
-          "type": "boolean",
-          "writable": true
-        },
-        {
-          "allowNil": true,
-          "constraints": null,
-          "default": null,
-          "name": {
-            "position": {
-              "column": 14,
-              "file": "resources/post.mx",
-              "line": 9,
-              "offset": 335
-            },
-            "value": "token"
-          },
-          "position": {
-            "column": 4,
-            "file": "resources/post.mx",
-            "line": 9,
-            "offset": 325
-          },
-          "primaryKey": false,
-          "public": false,
-          "source": "attribute",
-          "type": "uuid",
-          "writable": true
-        },
-        {
-          "allowNil": true,
-          "constraints": null,
-          "default": null,
-          "name": {
-            "position": {
-              "column": 14,
-              "file": "resources/post.mx",
-              "line": 10,
-              "offset": 369
-            },
-            "value": "publishedAt"
-          },
-          "position": {
-            "column": 4,
-            "file": "resources/post.mx",
-            "line": 10,
-            "offset": 359
-          },
-          "primaryKey": false,
-          "public": false,
-          "source": "attribute",
-          "type": "datetime",
-          "writable": true
-        },
-        {
-          "allowNil": true,
-          "constraints": {
-            "oneOf": [
-              {
-                "position": {
-                  "column": 57,
-                  "file": "resources/post.mx",
-                  "line": 11,
-                  "offset": 456
-                },
-                "value": "draft"
-              },
-              {
-                "position": {
-                  "column": 66,
-                  "file": "resources/post.mx",
-                  "line": 11,
-                  "offset": 465
-                },
-                "value": "published"
-              }
-            ]
-          },
-          "default": {
-            "position": {
-              "column": 89,
-              "file": "resources/post.mx",
-              "line": 11,
-              "offset": 488
-            },
-            "value": "draft"
-          },
-          "name": {
-            "position": {
-              "column": 14,
-              "file": "resources/post.mx",
-              "line": 11,
-              "offset": 413
-            },
-            "value": "state"
-          },
-          "position": {
-            "column": 4,
-            "file": "resources/post.mx",
-            "line": 11,
-            "offset": 403
-          },
-          "primaryKey": false,
-          "public": false,
-          "source": "attribute",
-          "type": "atom",
-          "writable": true
-        },
-        {
-          "allowNil": false,
-          "constraints": null,
-          "default": null,
-          "name": {
-            "position": {
-              "column": 21,
-              "file": "resources/post.mx",
-              "line": 12,
-              "offset": 517
-            },
-            "value": "insertedAt"
-          },
-          "position": {
-            "column": 4,
-            "file": "resources/post.mx",
-            "line": 12,
-            "offset": 500
-          },
-          "primaryKey": false,
-          "public": false,
-          "source": "create-timestamp",
-          "type": "datetime",
-          "writable": false
-        },
-        {
-          "allowNil": false,
-          "constraints": null,
-          "default": null,
-          "name": {
-            "position": {
-              "column": 21,
-              "file": "resources/post.mx",
-              "line": 13,
-              "offset": 551
-            },
-            "value": "updatedAt"
-          },
-          "position": {
-            "column": 4,
-            "file": "resources/post.mx",
-            "line": 13,
-            "offset": 534
-          },
-          "primaryKey": false,
-          "public": false,
-          "source": "update-timestamp",
-          "type": "datetime",
-          "writable": false
+          "unique": false
         }
       ],
-      "defaults": {
-        "kinds": [
-          {
-            "position": {
-              "column": 20,
-              "file": "resources/post.mx",
-              "line": 15,
-              "offset": 584
-            },
-            "value": "read"
-          },
-          {
-            "position": {
-              "column": 28,
-              "file": "resources/post.mx",
-              "line": 15,
-              "offset": 592
-            },
-            "value": "destroy"
-          }
-        ],
-        "position": {
-          "column": 10,
-          "file": "resources/post.mx",
-          "line": 15,
-          "offset": 574
-        }
-      },
-      "domain": {
-        "position": {
-          "column": 37,
-          "file": "resources/post.mx",
-          "line": 1,
-          "offset": 37
-        },
-        "value": "blog"
-      },
-      "name": {
-        "position": {
-          "column": 9,
-          "file": "resources/post.mx",
-          "line": 1,
-          "offset": 9
-        },
-        "value": "post"
-      },
+      "auto": [
+        "read"
+      ],
+      "computed": [],
+      "file": "resources/blog/comment.mesh.mx",
+      "imports": [],
+      "module": "blog",
+      "name": "Comment",
+      "policies": [],
       "position": {
         "column": 0,
-        "file": "resources/post.mx",
+        "file": "resources/blog/comment.mesh.mx",
         "line": 1,
         "offset": 0
       },
-      "table": {
-        "position": {
-          "column": 22,
-          "file": "resources/post.mx",
-          "line": 1,
-          "offset": 22
+      "relationships": [],
+      "table": "comments"
+    },
+    {
+      "actions": [
+        {
+          "do": [],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "title",
+                "position": {
+                  "column": 8,
+                  "file": "resources/blog/post.mesh.mx",
+                  "line": 31,
+                  "offset": 903
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "body",
+                "position": {
+                  "column": 8,
+                  "file": "resources/blog/post.mesh.mx",
+                  "line": 32,
+                  "offset": 918
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "author",
+                "position": {
+                  "column": 8,
+                  "file": "resources/blog/post.mesh.mx",
+                  "line": 33,
+                  "offset": 932
+                }
+              }
+            }
+          ],
+          "kind": "create",
+          "name": "create",
+          "position": {
+            "column": 4,
+            "file": "resources/blog/post.mesh.mx",
+            "line": 29,
+            "offset": 868
+          },
+          "validate": []
         },
-        "value": "posts"
-      }
+        {
+          "do": [
+            {
+              "assignments": [
+                {
+                  "member": {
+                    "name": "state",
+                    "position": {
+                      "column": 10,
+                      "file": "resources/blog/post.mesh.mx",
+                      "line": 39,
+                      "offset": 1125
+                    }
+                  },
+                  "value": {
+                    "value": "published"
+                  }
+                }
+              ],
+              "kind": "set",
+              "position": {
+                "column": 8,
+                "file": "resources/blog/post.mesh.mx",
+                "line": 38,
+                "offset": 1111
+              }
+            }
+          ],
+          "input": [],
+          "kind": "update",
+          "name": "publish",
+          "position": {
+            "column": 4,
+            "file": "resources/blog/post.mesh.mx",
+            "line": 34,
+            "offset": 944
+          },
+          "validate": [
+            {
+              "code": "title_required",
+              "label": "titlePresent",
+              "message": "Title is required",
+              "position": {
+                "column": 8,
+                "file": "resources/blog/post.mesh.mx",
+                "line": 36,
+                "offset": 983
+              },
+              "that": {
+                "params": [
+                  "self"
+                ],
+                "position": {
+                  "column": 33,
+                  "file": "resources/blog/post.mesh.mx",
+                  "line": 36,
+                  "offset": 1008
+                },
+                "source": "({ self }) => self.title.length > 0"
+              }
+            }
+          ]
+        },
+        {
+          "do": [],
+          "input": [],
+          "kind": "destroy",
+          "name": "archive",
+          "position": {
+            "column": 4,
+            "file": "resources/blog/post.mesh.mx",
+            "line": 40,
+            "offset": 1147
+          },
+          "validate": []
+        },
+        {
+          "do": [],
+          "filter": {
+            "params": [
+              "self"
+            ],
+            "position": {
+              "column": 13,
+              "file": "resources/blog/post.mesh.mx",
+              "line": 42,
+              "offset": 1197
+            },
+            "source": "({ self }) => self.state === :published"
+          },
+          "input": [],
+          "kind": "read",
+          "name": "published",
+          "position": {
+            "column": 4,
+            "file": "resources/blog/post.mesh.mx",
+            "line": 41,
+            "offset": 1168
+          },
+          "validate": []
+        }
+      ],
+      "always": [],
+      "attributes": [
+        {
+          "name": "id",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "resources/blog/post.mesh.mx",
+            "line": 7,
+            "offset": 209
+          },
+          "primaryKey": true,
+          "type": "uuid",
+          "unique": false
+        },
+        {
+          "max": 200,
+          "min": 1,
+          "name": "title",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "resources/blog/post.mesh.mx",
+            "line": 8,
+            "offset": 234
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "name": "body",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "resources/blog/post.mesh.mx",
+            "line": 9,
+            "offset": 266
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "default": 0,
+          "min": 0,
+          "name": "views",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "resources/blog/post.mesh.mx",
+            "line": 10,
+            "offset": 292
+          },
+          "primaryKey": false,
+          "type": "integer",
+          "unique": false
+        },
+        {
+          "name": "rating",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "resources/blog/post.mesh.mx",
+            "line": 11,
+            "offset": 327
+          },
+          "primaryKey": false,
+          "type": "float",
+          "unique": false
+        },
+        {
+          "default": 0,
+          "name": "price",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "resources/blog/post.mesh.mx",
+            "line": 12,
+            "offset": 354
+          },
+          "primaryKey": false,
+          "type": "decimal",
+          "unique": false
+        },
+        {
+          "default": false,
+          "name": "featured",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "resources/blog/post.mesh.mx",
+            "line": 13,
+            "offset": 383
+          },
+          "primaryKey": false,
+          "type": "boolean",
+          "unique": false
+        },
+        {
+          "name": "publicationDate",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "resources/blog/post.mesh.mx",
+            "line": 14,
+            "offset": 419
+          },
+          "primaryKey": false,
+          "type": "date",
+          "unique": false
+        },
+        {
+          "name": "publishedAt",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "resources/blog/post.mesh.mx",
+            "line": 15,
+            "offset": 454
+          },
+          "primaryKey": false,
+          "type": "datetime",
+          "unique": false
+        },
+        {
+          "default": {
+            "value": "draft"
+          },
+          "name": "state",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "resources/blog/post.mesh.mx",
+            "line": 16,
+            "offset": 489
+          },
+          "primaryKey": false,
+          "type": "enum",
+          "unique": false,
+          "values": [
+            {
+              "value": "draft"
+            },
+            {
+              "value": "published"
+            }
+          ]
+        },
+        {
+          "name": "insertedAt",
+          "nullable": false,
+          "on": "create",
+          "position": {
+            "column": 4,
+            "file": "resources/blog/post.mesh.mx",
+            "line": 17,
+            "offset": 548
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        },
+        {
+          "name": "updatedAt",
+          "nullable": false,
+          "on": "update",
+          "position": {
+            "column": 4,
+            "file": "resources/blog/post.mesh.mx",
+            "line": 18,
+            "offset": 585
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        }
+      ],
+      "auto": [
+        "read",
+        "destroy"
+      ],
+      "computed": [
+        {
+          "body": {
+            "params": [
+              "self"
+            ],
+            "position": {
+              "column": 19,
+              "file": "resources/blog/post.mesh.mx",
+              "line": 25,
+              "offset": 738
+            },
+            "source": "({ self }) { return (self.body ?? \"\").slice(0, 200) }"
+          },
+          "name": "excerpt",
+          "position": {
+            "column": 4,
+            "file": "resources/blog/post.mesh.mx",
+            "line": 25,
+            "offset": 723
+          },
+          "type": "string"
+        },
+        {
+          "name": "commentCount",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "resources/blog/post.mesh.mx",
+            "line": 26,
+            "offset": 796
+          },
+          "rollup": {
+            "fn": "count",
+            "of": "comments"
+          },
+          "type": "integer"
+        }
+      ],
+      "file": "resources/blog/post.mesh.mx",
+      "imports": [
+        {
+          "from": "./user.mesh.mx",
+          "identifiers": [
+            "User"
+          ],
+          "position": {
+            "column": 0,
+            "file": "resources/blog/post.mesh.mx",
+            "line": 1,
+            "offset": 0
+          }
+        },
+        {
+          "from": "./comment.mesh.mx",
+          "identifiers": [
+            "Comment"
+          ],
+          "position": {
+            "column": 0,
+            "file": "resources/blog/post.mesh.mx",
+            "line": 2,
+            "offset": 38
+          }
+        }
+      ],
+      "module": "blog",
+      "name": "Post",
+      "policies": [
+        {
+          "authorizeIf": [
+            {
+              "params": [
+                "self"
+              ],
+              "position": {
+                "column": 19,
+                "file": "resources/blog/post.mesh.mx",
+                "line": 46,
+                "offset": 1301
+              },
+              "source": "({ self }) => self.state === :published"
+            }
+          ],
+          "forbidIf": [],
+          "name": "public",
+          "position": {
+            "column": 4,
+            "file": "resources/blog/post.mesh.mx",
+            "line": 45,
+            "offset": 1253
+          },
+          "types": [
+            "read"
+          ]
+        },
+        {
+          "authorizeIf": [
+            {
+              "params": [
+                "self",
+                "actor"
+              ],
+              "position": {
+                "column": 19,
+                "file": "resources/blog/post.mesh.mx",
+                "line": 48,
+                "offset": 1404
+              },
+              "source": "({ self, actor }) => self.author.id === actor.id"
+            }
+          ],
+          "forbidIf": [],
+          "name": "owner",
+          "position": {
+            "column": 4,
+            "file": "resources/blog/post.mesh.mx",
+            "line": 47,
+            "offset": 1345
+          },
+          "types": [
+            "update",
+            "destroy"
+          ]
+        }
+      ],
+      "position": {
+        "column": 0,
+        "file": "resources/blog/post.mesh.mx",
+        "line": 5,
+        "offset": 165
+      },
+      "relationships": [
+        {
+          "entity": {
+            "from": "./user.mesh.mx",
+            "identifier": "User"
+          },
+          "keyColumn": "authorId",
+          "kind": "belongs-to",
+          "name": "author",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "resources/blog/post.mesh.mx",
+            "line": 21,
+            "offset": 638
+          }
+        },
+        {
+          "entity": {
+            "from": "./comment.mesh.mx",
+            "identifier": "Comment"
+          },
+          "kind": "has-many",
+          "name": "comments",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "resources/blog/post.mesh.mx",
+            "line": 22,
+            "offset": 673
+          }
+        }
+      ],
+      "table": "posts"
+    },
+    {
+      "actions": [],
+      "always": [],
+      "attributes": [
+        {
+          "name": "id",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "resources/blog/user.mesh.mx",
+            "line": 3,
+            "offset": 44
+          },
+          "primaryKey": true,
+          "type": "uuid",
+          "unique": false
+        },
+        {
+          "name": "name",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "resources/blog/user.mesh.mx",
+            "line": 4,
+            "offset": 69
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        }
+      ],
+      "auto": [
+        "read"
+      ],
+      "computed": [],
+      "file": "resources/blog/user.mesh.mx",
+      "imports": [],
+      "module": "blog",
+      "name": "User",
+      "policies": [],
+      "position": {
+        "column": 0,
+        "file": "resources/blog/user.mesh.mx",
+        "line": 1,
+        "offset": 0
+      },
+      "relationships": [],
+      "table": "users"
     }
   ]
 }

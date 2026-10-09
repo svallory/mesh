@@ -1,5 +1,5 @@
 /**
- * Path (`$.resources[0].attributes[2].default`) of the first value in `value` that
+ * Path (`$.entities[0].attributes[2].default`) of the first value in `value` that
  * would not survive `JSON.stringify`/`JSON.parse` unchanged, or null when there is
  * none. Offenders: `undefined` (also as an object value), functions, symbols, bigint,
  * non-finite numbers (`Infinity` becomes `null` in JSON), and anything that is not a

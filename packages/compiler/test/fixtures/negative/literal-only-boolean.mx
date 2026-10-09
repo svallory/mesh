@@ -1,3 +1,0 @@
-resource="post"
-  attributes
-    attribute="t" type="string" allow-nil=flag

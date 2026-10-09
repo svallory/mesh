@@ -1,4 +1,0 @@
-resource="post"
-  attributes
-    uuid-primary-key="id"
-    -- hi ${name}

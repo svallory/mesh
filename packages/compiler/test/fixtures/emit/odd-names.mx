@@ -1,8 +1,0 @@
-resource="blog-post" table="blog_posts" domain="blog"
-  attributes
-    uuid-primary-key="id"
-    attribute="my-attr" type="string" allow-nil=false
-    attribute="class" type="string"
-  actions
-    create="create" accept=["my-attr"]
-    update="edit" accept=["class", "my-attr"]

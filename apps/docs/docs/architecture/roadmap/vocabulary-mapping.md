@@ -64,172 +64,218 @@ Grouped by why. Row numbers refer to section 3.
 - **Not scheduled**: the resource options of row 6, preparations (9, 70, 72), pipelines (11, 76), temporal resources (13), `uuid_v7` and integer keys (16, 17), `update_default` (24), `description`, `sensitive`, `source` (26), selection and filterability options (28, 29), arrays (34), relationship options (42 to 46), action options (50, 58, 64, 65, 77), field policies (98), access types (99), `authorize_unless` and `forbid_unless` (94), calculation options and arguments (83, 84), aggregate options (88), `^ref` (108).
 - **Replaced by something different**: `public?` (22, open in [ADR-0035](../decisions/0035-meaning-of-public.md)), `require_atomic?` (59, inferred), `code_interface` (7, generated functions), `data_layer` and `authorizers` (3, 5, configuration or core).
 
-## 3. The mapping
+## 3. Contract coverage
 
-This section preserves the M1 fixture's syntax and the then-proposed v2 spelling as historical, machine-checked columns. It is not a current entity-file reference; use [Entities](../../docs/entities.md) and [ADR-0067](../decisions/0067-members-imports-input-static-files.md). The fixture fence and all table columns stay unchanged until realignment.
+This table follows [entity file syntax v4](../decisions/0067-members-imports-input-static-files.md) and [Entities](../../docs/entities.md). Each contract cell names a CustomTag or one of its options in `packages/compiler/src/contracts.ts`. The compiler test reads this section and requires exactly one row for every tag and option. Options shared by type tags are subject to the context and type rules in [Entities](../../docs/entities.md#options-on-an-attribute-line): an argument has no primary-key, unique or on; a computed function takes its name and body.
 
-**The "Contract check" column** describes the M1 contracts on `main`, not syntax v2. It is machine-readable and is what the acceptance test reads (`contracts.test.ts`, describe "roadmap M1 acceptance test 7"). Every row whose status says "on main" carries one or more specs separated by `;`, or an explicit `n/a (reason)` when the row is not about a tag or attribute (today only row 110, recorded deviation D37: an expression's contents are not vocabulary); any other row carries `-`. The test pins the list of `n/a` rows, so a row cannot leave the check by being relabelled. The realignment task moves it and the test to the v4 spelling together ([roadmap](./roadmap.md), Realignment). A spec is `tag: tokens`: a plain token is an attribute the contract declares and a clean fixture uses; `>name` is a child tag the contract declares and a clean fixture nests in that tag; `attr=v1,v2` is an attribute that a clean fixture sets to each of those values. For policies, `@action` and `@action_type` require clean fixtures for a single string argument, a one-item list and a two-item list. A row marked "on main" whose cell does not parse fails the test, and so does a tag, attribute, child or value no clean fixture uses.
+“On main” records contract and model coverage, not runtime execution. Authored `&` after a kind and inside expressions still wait for MX’s `lang-ext-syntax-table`; executable todo tests record those parser gaps. The production compiler never rewrites source. The internal `member` contract describes MX’s line-trigger output for tagless input and assignment lines.
 
-The "M1 spelling" column is what the contracts on `main` declare after the M1 alignment ("on main (aligned)" in the status column means it has a positive and a negative test). The "Mesh spelling (syntax v2)" column records the spelling proposed at the time ([ADR-0050](../decisions/0050-entity-file-syntax.md)); it replaced a column that recorded the contracts before the M1 alignment (`a3b52f4`), which is in this page's Git history. "none yet" means Mesh has no equivalent; section 2 lists them.
-
-### 3.1 Resource level
-
-| # | Ash section / entity / option (default, type) | Source | M1 spelling (code on `main`) | Mesh spelling (syntax v2) | Status | Contract check |
-|---|---|---|---|---|---|---|
-| 1 | `use Ash.Resource, domain:` (an option of the resource, a module) | [Ash features](../research/ash-features.md) §1.1 after the table | `resource domain="blog"` | none: the folder under `src/domain/` is the module ([ADR-0057](../decisions/0057-one-domain-modules-as-folders.md)) | on main; aligned (the value is a name, not a module) | `resource: value domain` |
-| 2 | `Ash.Domain` DSL: sections `domain`, `resources`, `execution`, `authorization` | [Ash features](../research/ash-features.md) §1.3 | none | none: one domain per app, `src/domain/` | not in roadmap | - |
-| 3 | `data_layer` option (default `Ash.DataLayer.Simple`) | [Ash features](../research/ash-features.md) §1.1 | none in the resource file; the project configuration names the adapter ([roadmap](./roadmap.md) M1, "Project configuration") | none in the file: `data:` in `mesh.config.ts` | not planned as a tag | - |
-| 4 | `table`, which Ash puts in the data layer's own section, for example `postgres do table "users" end` | [Ash DSL and extensions](../research/ash-dsl-and-extensions.md) §3.3 (line 666), §4 (line 750) | `resource table="posts"` | `entity #Post table="posts"` | on main; exception X1 | `resource: table` |
-| 5 | `authorizers`, `extensions`, `notifiers` options of `use Ash.Resource` (the policy authorizer is opt-in per resource) | [Ash features](../research/ash-features.md) §1.1, §6.8 | project configuration, not a tag | `extensions:` in `mesh.config.ts`; no authorizer option, policies are core | M6, M8; exception X2 | - |
-| 6 | `resource` section options: `description`, `base_filter`, `default_context`, `trace_name`, `short_name`, `plural_name`, `require_primary_key?`, others (defaults: not in the research) | [Ash features](../research/ash-features.md) §1.1 row 5 | the Ash names in kebab-case | none yet | not in roadmap | - |
-| 7 | `code_interface` (generates callable functions) | [Ash features](../research/ash-features.md) §1.1 row 4 | none; generated action functions replace it (my reading of [roadmap](./roadmap.md) M2) | none: the generated action functions | not planned as a tag | - |
-| 8 | `changes` section (a change applied to every create/update/destroy) | [Ash features](../research/ash-features.md) §1.1 row 7 and note | `changes` | `always` under `actions`, with a `do` block ([ADR-0053](../decisions/0053-validate-then-do.md)) | not in roadmap (M6 named reusable changes are the nearest) | - |
-| 9 | `preparations` section (applies to every read) | [Ash features](../research/ash-features.md) §1.1 row 8 | `preparations` | none yet | not in roadmap | - |
-| 10 | `validations` section (`on:` default `[:create, :update]`) | [Ash features](../research/ash-features.md) §1.1 row 9, §9 | `validations` | `always` under `actions`, with a `validate` block | not in roadmap | - |
-| 11 | `pipelines` (named bundle, `pipe_through`) | [Ash features](../research/ash-features.md) §1.1 row 10 | `pipelines`, `pipe-through` | none yet | not in roadmap | - |
-| 12 | `multitenancy` | [Ash features](../research/ash-features.md) §1.1 row 13 | `multitenancy` | none in the file: an `ActionContext` key an extension declares ([ADR-0059](../decisions/0059-action-context.md)) | after v1 ([roadmap](./roadmap.md) section 6; placement settled by [ADR-0059](../decisions/0059-action-context.md)) | - |
-| 13 | `temporal` | [Ash features](../research/ash-features.md) §1.1 row 14 | `temporal` | none yet | not in roadmap | - |
-
-### 3.2 Attributes
-
-| # | Ash section / entity / option (default, type) | Source | M1 spelling (code on `main`) | Mesh spelling (syntax v2) | Status | Contract check |
-|---|---|---|---|---|---|---|
-| 14 | section `attributes` | [Ash features](../research/ash-features.md) §1.1 row 1 | `attributes` | `attributes` | on main | `attributes: >attribute` |
-| 15 | `uuid_primary_key name` (sets `writable? false`, `public? true`, `primary_key? true`, `type :uuid`, `default &Ash.UUID.generate/0`; `allow_nil?` is false and is not accepted as an option; no `generated?`; checked, Ash 3.34.0, checked 2026-10-04, https://hexdocs.pm/ash/dsl-ash-resource.html) | [Ash features](../research/ash-features.md) §2.3 | `uuid-primary-key="id"` | `uuid #id primary-key` | on main (aligned) | `uuid-primary-key: value` |
-| 16 | `uuid_v7_primary_key` | [Ash features](../research/ash-features.md) §2.3 | `uuid-v7-primary-key` | none yet | not in roadmap | - |
-| 17 | `integer_primary_key` (type integer, `generated? true`) | [Ash features](../research/ash-features.md) §2.3 | `integer-primary-key` | none yet | not in roadmap | - |
-| 18 | `create_timestamp name` (`writable? false`, `match_other_defaults? true`, `allow_nil? false`, `default &DateTime.utc_now/0`, type `Ash.Type.UTCDatetimeUsec`; `public?` is not overridden, so it stays `false`; `primary_key?` false; checked, Ash 3.34.0, checked 2026-10-04, https://hexdocs.pm/ash/dsl-ash-resource.html), used as `create_timestamp :inserted_at` | [Ash features](../research/ash-features.md) §2.3, §12.1 | `create-timestamp="insertedAt"` | `timestamp #insertedAt on="create"` | on main (aligned): `create-timestamp` | `create-timestamp: value` |
-| 19 | `update_timestamp name` (same options as `create_timestamp`, plus `update_default &DateTime.utc_now/0`; `public?` false, `allow_nil?` false, `writable?` false; checked, Ash 3.34.0, checked 2026-10-04), used as `update_timestamp :updated_at` | [Ash features](../research/ash-features.md) §2.3, §12.1 | `update-timestamp="updatedAt"` | `timestamp #updatedAt on="update"` | on main (aligned): `update-timestamp` | `update-timestamp: value` |
-| 20 | `attribute name, type` | [Ash features](../research/ash-features.md) §2.2, §12 | `attribute="subject" type="string"` | the type is the tag: `string #title` | on main | `attribute: value type` |
-| 21 | option `allow_nil?` (default `true`) | [Ash features](../research/ash-features.md) §2.2 | `allow-nil=false` | required by default; `nullable` marks the exception | on main (aligned): `allow-nil=false` | `attribute: allow-nil` |
-| 22 | option `public?` (default `false`) | [Ash features](../research/ash-features.md) §2.2 | `public` | none ([ADR-0035](../decisions/0035-meaning-of-public.md), open) | on main; recorded in the model as Ash records it, nothing in v1 reads it ([roadmap](./roadmap.md) M1; [ADR-0035](../decisions/0035-meaning-of-public.md)) | `attribute: public` |
-| 23 | option `default` (no default; "Value set on create") | [Ash features](../research/ash-features.md) §2.2 | `default` | `default=` | on main Checked (G5, Ash 3.34.0, checked 2026-10-04, https://hexdocs.pm/ash/dsl-ash-resource.html): `default`'s type is `(-> any) \| mfa \| any`: a zero-arity function, an MFA tuple or a literal. The contract keeps literals only (R14); a function default is for the milestone that evaluates defaults. | `attribute: default` |
-| 24 | option `update_default` | [Ash features](../research/ash-features.md) §2.2 | `update-default` | none yet | not in roadmap Checked (G5): `update_default` has the same type `(-> any) \| mfa \| any`. | - |
-| 25 | option `constraints` (type-specific, for example `one_of`, `max_length`) | [Ash features](../research/ash-features.md) §2.2, §2.4 | `constraints` | shape rules on the line (`min`, `max`, `match`); `values` on `enum` | on main (aligned): `constraints` with `one_of` on atoms; other constraints not in roadmap | `attribute: constraints` |
-| 26 | options `description`, `sensitive?` (false), `source` | [Ash features](../research/ash-features.md) §2.2 | `description`, `sensitive`, `source` | none yet | not in roadmap | - |
-| 27 | options `primary_key?` (false), `writable?` (true), `generated?` (false) | [Ash features](../research/ash-features.md) §2.2 | `primary-key`, `writable`, `generated` | `primary-key`; the others none yet | not in roadmap | - |
-| 28 | options `select_by_default?` (true), `always_select?` (false) | [Ash features](../research/ash-features.md) §2.2 | `select-by-default`, `always-select` | none yet | not in roadmap | - |
-| 29 | options `filterable?` (true, or `:simple_equality`), `sortable?` (true), `match_other_defaults?` (false) | [Ash features](../research/ash-features.md) §2.2 | `filterable`, `sortable`, `match-other-defaults` | none yet | not in roadmap | - |
-| 30 | types `string`, `boolean`, `uuid`, `datetime` (short names in the registry) | [Ash features](../research/ash-features.md) §2.1 | `type="string"` etc. | tags `string`, `boolean`, `uuid`, `datetime` | on main | `attribute: type=string,boolean,uuid,datetime` |
-| 31 | types `integer`, `float` | [Ash features](../research/ash-features.md) §2.1 | `type="integer"`, `type="float"` | tags from the type registry (`integer`, `float`, `decimal`, ...) | on main (aligned): `integer`, `float` | `attribute: type=integer,float` |
-| 32 | enumerated values: `:atom` with `constraints [one_of: [...]]` ([Ash features](../research/ash-features.md) §12, get-started 236-261), or a module using `Ash.Type.Enum` (declares `values/0`, [Ash features](../research/ash-features.md) §2.1) | [Ash features](../research/ash-features.md) §2.1, §12 | `type="atom" constraints={ one_of: ["draft", "published"] }` | `enum #state values=["draft", "published"]` | on main (aligned): `type="atom"` with `constraints={ one_of: [...] }` | `attribute: constraints type=atom` |
-| 33 | the other built-in types (`decimal`, `date`, `map`, `utc_datetime`, `ci_string`, and so on; 31 short names) | [Ash features](../research/ash-features.md) §2.1 | the Ash names in kebab-case | tags `decimal`, `date`, `timestamp`; the others none yet | not in roadmap | - |
-| 34 | `{:array, type}` composite | [Ash features](../research/ash-features.md) §2.1 | none | none yet | not in roadmap | - |
-| 35 | `NewType`, embedded resources | [Ash features](../research/ash-features.md) §2.1, §2.4 | none | none (not planned) | not planned ([roadmap](./roadmap.md) section 6) | - |
-
-### 3.3 Relationships
-
-| # | Ash section / entity / option (default, type) | Source | M1 spelling (code on `main`) | Mesh spelling (syntax v2) | Status | Contract check |
-|---|---|---|---|---|---|---|
-| 36 | section `relationships` | [Ash features](../research/ash-features.md) §1.1 row 2 | `relationships` | `relationships` | on main | `relationships: >belongs-to >has-many` |
-| 37 | `belongs_to name, destination` (the destination is a module) | [Ash features](../research/ash-features.md) §3, §12 | `belongs-to="author" destination="user"` | `belongs-to=User #author` | on main aligned: `resource=` became `destination=` (G9) | `belongs-to: value destination` |
-| 38 | `has_many name, destination` | [Ash features](../research/ash-features.md) §3, §12.1 | `has-many="comments" destination="comment"` | `has-many=Comment #comments` | on main aligned: `resource=` became `destination=` (G9) | `has-many: value destination` |
-| 39 | `has_one name, destination` | [Ash features](../research/ash-features.md) §3 | `has-one` | `has-one=Payment #payment` | M7 | - |
-| 40 | `many_to_many` with a join resource (`through`, `join_relationship`, ...) | [Ash features](../research/ash-features.md) §3.1, §3.3 | `many-to-many` | none (not planned) | not planned ([roadmap](./roadmap.md) M7 out of scope) | - |
-| 41 | `belongs_to` creates `<name>_id` automatically (example: `representative_id`) | [Ash features](../research/ash-features.md) §12 (get-started 561-567) | implied foreign-key attribute, an author-level name (a value, Section 0); Ash generates `representative_id` for `belongs_to :representative` | `belongs-to=User #author` adds `authorId` | M7 ([roadmap](./roadmap.md) M7: "adds its foreign-key attribute") Checked (G4, Ash 3.34.0, checked 2026-10-04): the default `source_attribute` of `belongs_to` is `<name>_id`; its `destination_attribute` defaults to `id`. | - |
-| 42 | `belongs_to` option `allow_nil?` (on the generated attribute; default not in the research) | [Ash features](../research/ash-features.md) §3.1 | `allow-nil` | none yet | not in roadmap Checked (G4): `allow_nil?` on `belongs_to` defaults to `true`; it also exists on `has_one` (default `true`) and does not exist on `has_many`. | - |
-| 43 | `belongs_to` options `define_attribute?`, `attribute_type`, `attribute_writable?`, `attribute_public?`, `attribute_always_select?`, `primary_key?` | [Ash features](../research/ash-features.md) §3.1 | the Ash names in kebab-case | none yet | not in roadmap | - |
-| 44 | shared options `source_attribute`, `destination_attribute` (guessed by a transformer when absent) | [Ash features](../research/ash-features.md) §3.1; [Ash DSL and extensions](../research/ash-dsl-and-extensions.md) §2.7 rows 7-8 | the Ash names in kebab-case | none yet | not in roadmap (M7 needs the derivation rule) Checked (G4): `has_one`/`has_many` `source_attribute` defaults to `id`; their `destination_attribute` has no default value in the option table and is guessed by a transformer from the last segment of the source resource's module name, underscored, plus `_id` (`MyApp.Blog.Post` gives `post_id`; source `src/lib/ash/resource/transformers/has_destination_field.ex`, https://github.com/ash-project/ash). Other defaults on all three: `public?` false, `writable?` true, `filterable?` true, `sortable?` true. | - |
-| 45 | shared options `public?`, `description`, `sort`, `default_sort`, `filterable?`, `sortable?`, `writable?`, `read_action`, `domain`, and a nested `filter` entity; `has_many` option `limit` | [Ash features](../research/ash-features.md) §3.1 | the Ash names in kebab-case | none yet | not in roadmap | - |
-| 46 | `manual`, `no_attributes?`, `through` (traversal), `from_many?`, `offset`, `could_be_related_at_creation?` | [Ash features](../research/ash-features.md) §3.1-3.2 | the Ash names in kebab-case | none yet | not in roadmap | - |
-| 47 | `manage_relationship` change | [Ash features](../research/ash-features.md) §3.4 | none | the `relate=` step, planned ([ADR-0053](../decisions/0053-validate-then-do.md)) | not in roadmap ([roadmap](./roadmap.md) M7 out of scope: "managing related records in a write") | - |
-
-### 3.4 Actions
-
-| # | Ash section / entity / option (default, type) | Source | M1 spelling (code on `main`) | Mesh spelling (syntax v2) | Status | Contract check |
-|---|---|---|---|---|---|---|
-| 48 | section `actions` | [Ash features](../research/ash-features.md) §1.1 row 3 | `actions` | `actions` | on main | `actions: >create >update >destroy >read` |
-| 49 | section option `defaults` (list of action types; "creates a simple action of each specified type, with the same name as the type") | [Ash features](../research/ash-features.md) §1.2 | attribute of `actions`: `actions defaults=["read", "destroy"]` | `actions auto=["read", "destroy"]` ([ADR-0052](../decisions/0052-actions-auto-and-on-load.md)) | on main (aligned): attribute of `actions` | `actions: defaults` |
-| 50 | section option `default_accept` (Ash 3 default: no attributes accepted) | [Ash features](../research/ash-features.md) §1.2 | `default-accept` on `actions` | none yet | not in roadmap | - |
-| 51 | `create name` | [Ash features](../research/ash-features.md) §4.1 | `create="open"` | `create #open` | on main | `create: value` |
-| 52 | `update name` | [Ash features](../research/ash-features.md) §4.1 | `update="close"` | `update #close` | on main | `update: value` |
-| 53 | `destroy name` | [Ash features](../research/ash-features.md) §4.1 | `destroy="archive"` | `destroy #archive` | on main | `destroy: value` |
-| 54 | `read name` | [Ash features](../research/ash-features.md) §4.1 | `read="published"` | `read #published` | on main | `read: value` |
-| 55 | generic `action` (`returns`, `run`, `constraints`) | [Ash features](../research/ash-features.md) §4.1 | none | none (not planned) | not planned ([roadmap](./roadmap.md) section 6) | - |
-| 56 | option `accept` (create, update, destroy only; `:*` = all public attributes; `accept []` is valid) | [Ash features](../research/ash-features.md) §4.1, §12 (get-started 317-335) | `accept=["title", "body"]` | `accept=[...]` | on main (aligned): `accept` on create, update and destroy | `create: accept; update: accept; destroy: accept` |
-| 57 | option `primary?` (`defaults` are primary unless one exists) | [Ash features](../research/ash-features.md) §1.2, §4.1 | `primary` | auto actions are primary; `on:load=` names the read Mesh uses | not in roadmap | - |
-| 58 | options `description`, `public?`, `skip_unknown_inputs`, `touches_resources`, `transaction?` (reads default false, writes true) | [Ash features](../research/ash-features.md) §4.1 | the Ash names in kebab-case | none yet | not in roadmap | - |
-| 59 | option `require_atomic?` (update and destroy, default `true`; `require_atomic? false` appears in [Ash features](../research/ash-features.md) §12.1) | [Ash features](../research/ash-features.md) §4.9, §12.1 | none (`require-atomic` was M5 vocabulary, never on `main`) | none: the build infers the strategy ([ADR-0054](../decisions/0054-write-strategy-is-inferred.md)) | M5; nothing in the vocabulary, the build infers ([ADR-0054](../decisions/0054-write-strategy-is-inferred.md)) | - |
-| 60 | options `atomic_upgrade?` (false), `atomic_upgrade_with` | [Ash features](../research/ash-features.md) §4.9 | the Ash names in kebab-case | none | not in roadmap | - |
-| 61 | `manual`, `manual?` | [Ash features](../research/ash-features.md) §4.10 | the Ash names in kebab-case | none (not planned) | not planned ([roadmap](./roadmap.md) section 6) | - |
-| 62 | create options `upsert?`, `upsert_identity`, `upsert_fields`, `upsert_condition`, `return_skipped_upsert?` | [Ash features](../research/ash-features.md) §4.7 | the Ash names in kebab-case | none yet (after v1) | after v1 ([roadmap](./roadmap.md) section 6) | - |
-| 63 | bulk actions (`Ash.bulk_create/update/destroy`) | [Ash features](../research/ash-features.md) §4.8 | none (a run-time call, not a tag) | none yet (after v1) | after v1 ([roadmap](./roadmap.md) section 6) | - |
-| 64 | destroy option `soft?` | [Ash features](../research/ash-features.md) §4.13 | `soft` | none yet | not in roadmap | - |
-| 65 | options `error_handler`, `notifiers`, `action_select`, `require_attributes`, `allow_nil_input`, `delay_global_validations?`, `skip_global_validations?`, `multitenancy` | [Ash features](../research/ash-features.md) §4.1 | the Ash names in kebab-case | none yet | not in roadmap (notifiers: outbox, after v1) | - |
-| 66 | nested `change` entity (24 built-ins such as `set_attribute`, `relate_actor`; a module; `change {Module, opts}`) | [Ash features](../research/ash-features.md) §4.3, §2.5, §12 | `change=` taking a call or an arrow function | steps in a `do` block: `set`, `when`, `load`, `run` ([ADR-0053](../decisions/0053-validate-then-do.md)) | on main; the expression form is deviation D16 | `change: value` |
-| 67 | nested `validate` entity (24 built-ins; `message` inside the block); allowed in create, update, destroy, read and generic | [Ash features](../research/ash-features.md) §4.4, §1.2, §12 | `validate=` with `message=` | a `validate` block: `require=[...]`, `check :label [ that code message ]` | on main (aligned): in create, update, destroy and read | `validate: value; create: >validate; update: >validate; destroy: >validate; read: >validate` |
-| 68 | validation options: resource-level `validate` has `where`, `on`, `only_when_valid?`, `message`, `description`, `before_action?`, `always_atomic?`; the action-level options are not in the research | [Ash features](../research/ash-features.md) §9 | `where`, `on`, `only-when-valid`, `message`, `description`, `before-action`, `always-atomic` | `when` nests checks; `code` and `message` on `check`; the others none | `message` on main; `always_atomic?` relates to the M5 protocol; the rest not in roadmap; G7 Checked (G7, Ash 3.34.0, checked 2026-10-04, https://hexdocs.pm/ash/dsl-ash-resource.html): the action-level `validate` options are `where` (default `[]`), `only_when_valid?` (false), `message`, `description`, `before_action?` (false; not with atomic actions) and `always_atomic?` (false); there is no `on`. The action-level `change` options are `where`, `only_when_valid?`, `description`, `always_atomic?`; no `message`, no `on`. `on` exists only on the resource-level `validate` and `change` (default `[:create, :update]`), because an action already fixes its type. None of these is added to the contracts now. | `validate: message` |
-| 69 | nested `argument name, type`; options `description`, `constraints`, `allow_nil?`, `public?`, `sensitive?`, `default` (defaults of these: not in the research) | [Ash features](../research/ash-features.md) §4.2, §1.2 | `argument="title" type="string"` | an `arguments` section: `datetime #paidAt` | M5 | - |
-| 70 | nested `prepare` on read (built-ins: `set_context`, `build`, `before_action`, `after_action`; "preparations take no action-input arguments, they rewrite a query") | [Ash features](../research/ash-features.md) §4.5, §1.2 | `prepare=` | none yet | M5 | - |
-| 71 | hooks written as built-in changes: `before_action(fn changeset, context)`, `after_action(fn changeset, record, context)`, `before_transaction`, `after_transaction` (and `around_*` on the changeset API) | [Ash features](../research/ash-features.md) §4.6 | `change=before_action(...)`, `change=after_action(...)`, `change=before_transaction(...)`, `change=after_transaction(...)` (call names are JavaScript identifiers) | the `run` step inside the transaction; `after-commit` planned | M5 for hooks inside the transaction and after commit ([roadmap](./roadmap.md) M5); which Ash hook maps to which roadmap phase is G6; `before_transaction` not in roadmap Checked (G6, Ash 3.34.0, checked 2026-10-04, https://hexdocs.pm/ash/Ash.Changeset.html): inside the transaction run `before_action` (after validations and changes, before the data layer action) and `after_action` (after the data layer action, success only), and `around_action`; outside run `before_transaction` (before it starts) and `after_transaction` (after it ends, whether it committed or rolled back; it receives `{:ok, record}` or `{:error, reason}`). So `after_transaction` is not "after commit". Signatures: `change before_action(fn changeset, context)`, `change after_action(fn changeset, record, context)`, `change before_transaction(fn changeset, context)`, `change after_transaction(fn changeset, result, context)`. Mapping these to the roadmap's phases is M5 work. | - |
-| 72 | read-side hooks written as built-in preparations: `prepare before_action(fn query, context)`, `prepare after_action(fn query, records, context)` | [Ash features](../research/ash-features.md) §4.5, §4.6 | `prepare=before_action(...)`, `prepare=after_action(...)` (call names are JavaScript identifiers) | none yet | not in roadmap (M5 names preparations, not their hooks) | - |
-| 73 | nested `pagination` on read: `keyset?` (false), `offset?` (false), `via_data_layer?`, `default_limit`, `countable` (true), `max_page_size` (250), `stable_sort` (primary key), `required?`, `paginate_by_default?` | [Ash features](../research/ash-features.md) §4.11, §1.2 | `pagination` child of `read` with `offset`, `keyset`, `default-limit`, `max-page-size`, `countable`, `stable-sort`, `required` | none yet (M3 adds pagination) | M3 (offset and keyset; the other options not in roadmap) | - |
-| 74 | nested `filter` on read | [Ash features](../research/ash-features.md) §1.2 | `filter=` | `filter=({ self }) => ...` | on main; expression form D16 | `filter: value` |
-| 75 | sorting a read: Ash's read action has no `sort` entity; relationships have `sort`/`default_sort` options; the `build` preparation exists, its options are not in the research | [Ash features](../research/ash-features.md) §1.2, §3.1, §4.5 | `sort=["-insertedAt"]` until G1 is answered | `sort=["-insertedAt"]` | on main; G1 Checked (G1, Ash 3.34.0, checked 2026-10-04, https://hexdocs.pm/ash/Ash.Query.html): `build` passes its keyword list to `Ash.Query.build/2`, whose options include `filter`, `filter_input`, `sort`, `sort_input`, `default_sort`, `distinct_sort`, `limit`, `offset`, `load`, `strict_load`, `select`, `ensure_selected`, `aggregate`, `calculate`, `distinct`, `context`; example `prepare build(sort: [song_rank: :desc], limit: 10)`. Sort strings: no prefix or `+` is ascending, `++` ascending nulls first, `-` descending, `--` descending nulls last; comma separated or a list. So the way to sort a read in Ash is a `prepare build(sort: ...)` call, not a `sort` entity; Mesh's `sort=["-insertedAt"]` uses the `-` prefix as Ash does. Whether `sort` stays a tag or becomes `prepare=build(...)` is decided in M3/M5 (D17); the contracts keep `sort`. | `sort: value` |
-| 76 | nested `pipe_through`, `metadata` | [Ash features](../research/ash-features.md) §1.2 | `pipe-through`, `metadata` | none yet | not in roadmap | - |
-| 77 | read options `get?`, `get_by`, `modify_query`, `timeout`, `manual` | [Ash features](../research/ash-features.md) §4.1 | the Ash names in kebab-case | none yet | not in roadmap | - |
-
-### 3.5 Identities
-
-| # | Ash section / entity / option (default, type) | Source | M1 spelling (code on `main`) | Mesh spelling (syntax v2) | Status | Contract check |
-|---|---|---|---|---|---|---|
-| 78 | section `identities`; `identity name, keys` (example `identity :email, [:email]`) | [Ash features](../research/ash-features.md) §9, §12.1 | `identities`; `identity="email" keys=["email"]` | `unique` on an attribute line; declared identities after v1 | after v1 ([rulings of 2026-10-04](../decisions/rulings-2026-10-04.md), "After v1") | - |
-| 79 | identity options `where`, `nils_distinct?` (true), `eager_check?`, `eager_check_with`, `pre_check?`, `pre_check_with`, `description`, `field_names`, `message`, `all_tenants?` | [Ash features](../research/ash-features.md) §9 | the Ash names in kebab-case | none yet (after v1) | after v1 | - |
-
-### 3.6 Calculations
-
-| # | Ash section / entity / option (default, type) | Source | M1 spelling (code on `main`) | Mesh spelling (syntax v2) | Status | Contract check |
-|---|---|---|---|---|---|---|
-| 80 | section `calculations` | [Ash features](../research/ash-features.md) §1.1 row 12 | `calculations` | `computed` | on main | `calculations: >calculate` |
-| 81 | `calculate name, type, expression`, for example `calculate :full_name, :string, expr(...)` (the third positional's name is not in the research) | [Ash features](../research/ash-features.md) §5.1 | `calculate="excerpt" type="string"` plus the expression | a typed field with a body in `computed`: `string #excerpt({ self }) { ... }` | on main; G2 Checked (G2, Ash 3.34.0, checked 2026-10-04, https://hexdocs.pm/ash/dsl-ash-resource.html): the signature is `calculate name, type, calculation \\ nil`; the third positional is named `calculation`, is optional (a `do` block or option can carry it instead), and takes `expr(...)`, a module, `{module, opts}` or a function `(records, context) -> results`. A multi-line form is a `do` block holding options, not a multi-line expression. The contract keeps the child tag `value` for the body until the milestone that implements calculations designs it (D27, M7); this task does not restructure `calculate`. | `calculate: value type >value` |
-| 82 | module-based calculation (`calculate :duration, :string, Module`) | [Ash features](../research/ash-features.md) §5.1, §12.1 | a named, reusable calculation | a helper imported into the entity file | M6 ([roadmap](./roadmap.md) M6) | - |
-| 83 | options `async?`, `constraints`, `description`, `public?`, `sensitive?`, `load`, `allow_nil?`, `filterable?`, `sortable?`, `field?`, `multitenancy` | [Ash features](../research/ash-features.md) §5.1 | the Ash names in kebab-case | none yet | not in roadmap | - |
-| 84 | nested `argument` | [Ash features](../research/ash-features.md) §5.1 | `argument` | none yet | not in roadmap | - |
-
-### 3.7 Aggregates
-
-| # | Ash section / entity / option (default, type) | Source | M1 spelling (code on `main`) | Mesh spelling (syntax v2) | Status | Contract check |
-|---|---|---|---|---|---|---|
-| 85 | section `aggregates` | [Ash features](../research/ash-features.md) §1.1 row 11 | `aggregates` | `computed` | on main | `aggregates: >count` |
-| 86 | `count name, relationship_path` (`count :assigned_ticket_count, :reported_tickets`; `relationship_path` is Ash's name for the second positional, G9, Ash 3.34.0, checked 2026-10-04) | [Ash features](../research/ash-features.md) §5.2 | `count="comment_count" relationship-path="comments"` | `count #commentCount of="comments"` | on main (aligned): `relationship-path` | `count: value relationship-path` |
-| 87 | kinds `exists`, `first`, `sum`, `list`, `max`, `min`, `avg`, `custom` (example `sum :duration_seconds, :tracks, :duration_seconds`) | [Ash features](../research/ash-features.md) §5.2, §12.1 | the Ash names (kebab-case), with `field` | `sum`, `avg`, `min`, `max`, e.g. `sum #total of="lines.amount"` | M7 ("`count` and the other aggregates"; which ones is not stated) | - |
-| 88 | shared options `relationship_path`, `read_action`, `filter`, `description`, `default`, `public?`, `filterable?`, `sortable?`, `sensitive?`, `authorize?`, `multitenancy`; kind options `field` (all but `exists`), `uniq?`, `include_nil?`, `sort`, `join_filter` | [Ash features](../research/ash-features.md) §5.2 | the Ash names in kebab-case | none yet | not in roadmap | - |
-
-### 3.8 Policies (Ash.Policy.Authorizer, a separate extension)
-
-| # | Ash section / entity / option (default, type) | Source | M1 spelling (code on `main`) | Mesh spelling (syntax v2) | Status | Contract check |
-|---|---|---|---|---|---|---|
-| 89 | section `policies`; option `default_access_type` (`:filter`) | [Ash features](../research/ash-features.md) §1.4, §6.1-6.2 | `policies` | `policies`, part of core ([ADR-0055](../decisions/0055-policies-are-core.md)) | on main; stays in core ([ADR-0055](../decisions/0055-policies-are-core.md)) | `policies: >policy` |
-| 90 | `policy condition do ... end` (options `description`, `access_type`, `condition`, `error_message`; a list of condition checks means all must match) | [Ash features](../research/ash-features.md) §6.1 | `policy=action_type("read")`; all: `policy=[action_type("update"), action("publish")]` | `policy #name types=[...] actions=[...]`; neither means every action | on main (aligned): a check call or a non-empty list of checks, D22 Checked (G8, Ash 3.34.0, checked 2026-10-04): Ash's condition is optional; Mesh keeps it required until M8 (D24). | `policy: value >authorize-if @action @action_type` |
-| 91 | built-in checks, including `action(atom or list of atoms)` and `action_type(type or list of types)`; a list argument matches any listed name | [Ash 3.34.0 source](https://github.com/ash-project/ash/blob/v3.34.0/lib/ash/policy/check/built_in_checks.ex#L40-L85), checked 2026-10-04 | `action("publish")`, `action(["publish", "archive"])`, `action_type("read")`, `action_type(["read", "destroy"])` (JavaScript call names) | `actions=[...]` and `types=[...]` on `policy` | `action` and `action_type` on main; other checks not in roadmap | `policy: value @action @action_type` |
-| 92 | `authorize_if check` | [Ash features](../research/ash-features.md) §1.4, §6.1 | `authorize-if=` | `authorize-if=` | on main | `authorize-if: value` |
-| 93 | `forbid_if check` | [Ash features](../research/ash-features.md) §1.4, §6.1 | `forbid-if=` | `forbid-if=` | M8 | - |
-| 94 | `authorize_unless`, `forbid_unless` | [Ash features](../research/ash-features.md) §1.4, §6.1 | the Ash names in kebab-case | none yet | not in roadmap | - |
-| 95 | decision rule: checks run top to bottom, the first decisive one decides; no applicable policy means forbidden | [Ash features](../research/ash-features.md) §6.1, §6.8 | same rule | every policy covering an action must pass; none covering means forbidden | M8 ([ADR-0055](../decisions/0055-policies-are-core.md)) | - |
-| 96 | the authorizer is opt-in per resource (`authorizers: [Ash.Policy.Authorizer]`) | [Ash features](../research/ash-features.md) §6.8 | see row 5 | none: no `policies` section forbids every action | M8; exception X2 | - |
-| 97 | `bypass`, `policy_group` | [Ash features](../research/ash-features.md) §1.4, §6.1 | the Ash names in kebab-case | none (`bypass` rejected) | out of M8 ([roadmap](./roadmap.md) M8) | - |
-| 98 | `field_policies` (`field_policy`, `field_policy_bypass`) | [Ash features](../research/ash-features.md) §1.4, §6.1 | the Ash names in kebab-case | none yet | out of M8 | - |
-| 99 | policy `access_type` (`:strict`, `:filter`, `:runtime`) | [Ash features](../research/ash-features.md) §6.2 | `access-type` | none yet | out of M8 | - |
-| 100 | `Ash.can?` and related | [Ash features](../research/ash-features.md) §6.7 | a generated `can` function per action | a generated `can` function per action | M8 ([roadmap](./roadmap.md) M8) | - |
-
-### 3.9 Expressions, and the references inside them
-
-Ash writes a translatable expression as `expr(...)` and refers to the caller and the call with templates ([Ash features](../research/ash-features.md) section 5.5). Inside a resource file an expression is JavaScript, parsed by Babel (MX project notes, getting-started section 1), so it must be valid JavaScript and the naming rule of Section 0 does not apply to it. Mesh's roadmap starts from an arrow function's parsed form ([roadmap](./roadmap.md) M4): a translatable expression may use only its declared parameters and registered functions, and a free variable is a build error. The registry of functions and operators is Mesh's own and starts small ([roadmap](./roadmap.md) M4: attribute and parameter references, literals, comparison and boolean operators, string length, assignment to an attribute). The exact expression form is designed in M4; this table records what Ash has and which Mesh element corresponds.
-
-| # | Ash section / entity / option (default, type) | Source | M1 spelling (code on `main`) | Mesh spelling (syntax v2) | Status | Contract check |
-|---|---|---|---|---|---|---|
-| 101 | `expr(...)` wrapper, for example `calculate :full_name, :string, expr(first_name <> " ")` and `authorize_if expr(public == true)` | [Ash features](../research/ash-features.md) §5.1, §6.1 | the arrow function's body; whether an `expr(...)` call wraps it is designed in M4 | a body that is one expression is translated; anything else is plain code ([ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md)) | M4 (conversion from MX's parsed form); D16 | - |
-| 102 | operators: 15 plus `is_nil`; registered `IsNil, Eq, NotEq, In, LessThan, GreaterThan, LessThanOrEqual, GreaterThanOrEqual`, and `+ * - / <> \|\|` and `&&`; `and`/`or` are boolean expressions; aliases `equals`, `not_equals`, `gt`, `lt`, `gte`, `lte` | [Ash features](../research/ash-features.md) §5.3 | JavaScript's operators (valid JavaScript is required); the registry entry for each is designed in M4 | JavaScript operators in the supported subset | M4 registry: comparison and boolean operators, numeric `+` and `-` ([roadmap](./roadmap.md) M4); the rest not in roadmap | - |
-| 103 | functions: 39 registered, by module name (`Length`, `StringLength`, `Contains`, `Now`, `Ago`, `If`, `Round`, ...); the names used inside `expr(...)` are not in the research | [Ash features](../research/ash-features.md) §5.4 | one call per registry entry, named with an Ash name as a JavaScript identifier (snake_case) | registry functions, named in M4 | M4 registry: string length only; G3 Checked (G3, Ash 3.34.0, checked 2026-10-04, `src/lib/ash/filter/filter.ex` and each `use Ash.Query.Function, name: :...`): the 39 are module names; the call names inside `expr(...)` are: ago, at, composite_type, contains, count_nils, date_add, datetime_add, fragment, from_now, get_path, has, is_distinct_from, is_nil, is_not_distinct_from, if, intersects, lazy, length, `-` (module `Minus`), now, range_adjacent, range_contains, range_lower, range_overlaps, range_upper, error, rem, round, today, type, start_of_day, string_downcase, string_ends_with, string_join, string_length, string_position, string_split, string_starts_with, string_trim; `custom_expressions` application config can add more. Built-in changes, validations and checks are not functions inside `expr(...)`: they are DSL calls (`change set_attribute(...)`, `validate present(...)`, `authorize_if action_type(:read)`). That the validation and check builtins are plain JavaScript-style identifiers in Mesh is not verified (open, G3). | - |
-| 104 | special forms `exists/2`, `path.exists/2`, `parent/1`, `lazy/1`, error expressions, inline aggregates | [Ash features](../research/ash-features.md) §5.4 (guide references) | calls with Ash's names as JavaScript identifiers | traversal `self.customer.userId` (M7); the others none yet | M7 for relationship traversal (`exists`); the others not in roadmap | - |
-| 105 | template `^actor(:key)` and `^actor([:key1, :key2])` | [Ash features](../research/ash-features.md) §5.5 | the arrow function's declared parameter `actor`: `({ post, actor }) => ... actor.id` | the `actor` parameter | M4 (the actor is bound from the scope, [roadmap](./roadmap.md) M4); exact form designed in M4; D37 | - |
-| 106 | template `^arg(:name)` | [Ash features](../research/ash-features.md) §5.5 | a declared parameter carrying the action's arguments; exact form designed in M4 | the `input` parameter | M5 (arguments) | - |
-| 107 | template `^context(:key)` | [Ash features](../research/ash-features.md) §5.5 | the declared parameter `context`, from the scope ([ADR-0007](../decisions/0007-scope-is-a-plain-argument.md)); exact form designed in M4 | the `context` parameter | M4 | - |
-| 108 | template `^ref(:key)`, `^ref([:path], :key)` | [Ash features](../research/ash-features.md) §5.5 | none | none | not in roadmap | - |
-| 109 | template `^tenant()` | [Ash features](../research/ash-features.md) §5.5 | none | a declared key: `context.tenantId` | after v1 (multitenancy) | - |
-| 110 | a reference to an attribute inside `expr(...)` is a bare name (`public == true`) | [Ash features](../research/ash-features.md) §6.1 | a property of a declared parameter: `post.state` | `self.state` | on main; recorded deviation D37 | `n/a (the contracts do not look inside an expression; the form is designed in M4)` |
-
-That is 110 rows.
+| Construct | Example | Contract | Status |
+|---|---|---|---|
+| `actions` | `actions auto=[:read]` | `actions` | on main |
+| `actions.auto` | `auto=[:read, :destroy]` | `actions.auto` | on main |
+| `actions.on:load` | `on:load=&visible` | `actions.on:load` | on main |
+| `always` | `always types=[:update]` | `always` | on main |
+| `always.types` | `types=[:create, :update]` | `always.types` | on main |
+| `always.actions` | `actions=[&pay]` | `always.actions` | on main |
+| `asc` | `asc &title` | `asc` | on main |
+| `asc.member` | `&dueOn` | `asc.member` | on main |
+| `attributes` | `attributes` | `attributes` | on main |
+| `authorize-if` | `authorize-if=() => true` | `authorize-if` | on main |
+| `authorize-if.value` | `() => true` | `authorize-if.value` | on main |
+| `avg` | `avg :total of="lines.amount"` | `avg` | on main |
+| `avg.name` | `:name` | `avg.name` | on main |
+| `avg.of` | `of="lines.amount"` | `avg.of` | on main |
+| `belongs-to` | `belongs-to :related entity=List` | `belongs-to` | on main |
+| `belongs-to.name` | `:name` | `belongs-to.name` | on main |
+| `belongs-to.entity` | `entity=List` | `belongs-to.entity` | on main |
+| `belongs-to.nullable` | `nullable` | `belongs-to.nullable` | on main |
+| `boolean` | `boolean :field` | `boolean` | on main |
+| `boolean.name` | `:name` | `boolean.name` | on main |
+| `boolean.nullable` | `nullable` | `boolean.nullable` | on main |
+| `boolean.default` | `default=false` | `boolean.default` | on main |
+| `boolean.values` | `values=[:draft, :sent]` | `boolean.values` | on main |
+| `boolean.min` | `min=0` | `boolean.min` | on main |
+| `boolean.max` | `max=100` | `boolean.max` | on main |
+| `boolean.match` | `match=/^INV-\d+$/` | `boolean.match` | on main |
+| `boolean.primary-key` | `primary-key` | `boolean.primary-key` | on main |
+| `boolean.unique` | `unique` | `boolean.unique` | on main |
+| `boolean.on` | `on=:create` | `boolean.on` | on main |
+| `boolean.value` | `() => true` | `boolean.value` | on main |
+| `check` | `check :valid that=() => true code="invalid" message="invalid"` | `check` | on main |
+| `check.name` | `:name` | `check.name` | on main |
+| `check.that` | `that=() => true` | `check.that` | on main |
+| `check.code` | `code="invalid_state"` | `check.code` | on main |
+| `check.message` | `message="cannot do that"` | `check.message` | on main |
+| `check.when` | `when=() => true` | `check.when` | on main |
+| `computed` | `computed` | `computed` | on main |
+| `count` | `count :total of="lines.amount"` | `count` | on main |
+| `count.name` | `:name` | `count.name` | on main |
+| `count.of` | `of="lines.amount"` | `count.of` | on main |
+| `create` | `create :custom` | `create` | on main |
+| `create.name` | `:name` | `create.name` | on main |
+| `date` | `date :field` | `date` | on main |
+| `date.name` | `:name` | `date.name` | on main |
+| `date.nullable` | `nullable` | `date.nullable` | on main |
+| `date.default` | `default=false` | `date.default` | on main |
+| `date.values` | `values=[:draft, :sent]` | `date.values` | on main |
+| `date.min` | `min=0` | `date.min` | on main |
+| `date.max` | `max=100` | `date.max` | on main |
+| `date.match` | `match=/^INV-\d+$/` | `date.match` | on main |
+| `date.primary-key` | `primary-key` | `date.primary-key` | on main |
+| `date.unique` | `unique` | `date.unique` | on main |
+| `date.on` | `on=:create` | `date.on` | on main |
+| `date.value` | `() => true` | `date.value` | on main |
+| `datetime` | `datetime :field` | `datetime` | on main |
+| `datetime.name` | `:name` | `datetime.name` | on main |
+| `datetime.nullable` | `nullable` | `datetime.nullable` | on main |
+| `datetime.default` | `default=false` | `datetime.default` | on main |
+| `datetime.values` | `values=[:draft, :sent]` | `datetime.values` | on main |
+| `datetime.min` | `min=0` | `datetime.min` | on main |
+| `datetime.max` | `max=100` | `datetime.max` | on main |
+| `datetime.match` | `match=/^INV-\d+$/` | `datetime.match` | on main |
+| `datetime.primary-key` | `primary-key` | `datetime.primary-key` | on main |
+| `datetime.unique` | `unique` | `datetime.unique` | on main |
+| `datetime.on` | `on=:create` | `datetime.on` | on main |
+| `datetime.value` | `() => true` | `datetime.value` | on main |
+| `decimal` | `decimal :field` | `decimal` | on main |
+| `decimal.name` | `:name` | `decimal.name` | on main |
+| `decimal.nullable` | `nullable` | `decimal.nullable` | on main |
+| `decimal.default` | `default=false` | `decimal.default` | on main |
+| `decimal.values` | `values=[:draft, :sent]` | `decimal.values` | on main |
+| `decimal.min` | `min=0` | `decimal.min` | on main |
+| `decimal.max` | `max=100` | `decimal.max` | on main |
+| `decimal.match` | `match=/^INV-\d+$/` | `decimal.match` | on main |
+| `decimal.primary-key` | `primary-key` | `decimal.primary-key` | on main |
+| `decimal.unique` | `unique` | `decimal.unique` | on main |
+| `decimal.on` | `on=:create` | `decimal.on` | on main |
+| `decimal.value` | `() => true` | `decimal.value` | on main |
+| `desc` | `desc &title` | `desc` | on main |
+| `desc.member` | `&dueOn` | `desc.member` | on main |
+| `destroy` | `destroy :custom` | `destroy` | on main |
+| `destroy.name` | `:name` | `destroy.name` | on main |
+| `do` | `do` | `do` | on main |
+| `entity` | `entity :Todo table="todos"` | `entity` | on main |
+| `entity.name` | `:name` | `entity.name` | on main |
+| `entity.table` | `table="todos"` | `entity.table` | on main |
+| `enum` | `enum :field values=[:draft, :sent]` | `enum` | on main |
+| `enum.name` | `:name` | `enum.name` | on main |
+| `enum.nullable` | `nullable` | `enum.nullable` | on main |
+| `enum.default` | `default=false` | `enum.default` | on main |
+| `enum.values` | `values=[:draft, :sent]` | `enum.values` | on main |
+| `enum.min` | `min=0` | `enum.min` | on main |
+| `enum.max` | `max=100` | `enum.max` | on main |
+| `enum.match` | `match=/^INV-\d+$/` | `enum.match` | on main |
+| `enum.primary-key` | `primary-key` | `enum.primary-key` | on main |
+| `enum.unique` | `unique` | `enum.unique` | on main |
+| `enum.on` | `on=:create` | `enum.on` | on main |
+| `enum.value` | `() => true` | `enum.value` | on main |
+| `filter` | `filter=() => true` | `filter` | on main |
+| `filter.value` | `() => true` | `filter.value` | on main |
+| `float` | `float :field` | `float` | on main |
+| `float.name` | `:name` | `float.name` | on main |
+| `float.nullable` | `nullable` | `float.nullable` | on main |
+| `float.default` | `default=false` | `float.default` | on main |
+| `float.values` | `values=[:draft, :sent]` | `float.values` | on main |
+| `float.min` | `min=0` | `float.min` | on main |
+| `float.max` | `max=100` | `float.max` | on main |
+| `float.match` | `match=/^INV-\d+$/` | `float.match` | on main |
+| `float.primary-key` | `primary-key` | `float.primary-key` | on main |
+| `float.unique` | `unique` | `float.unique` | on main |
+| `float.on` | `on=:create` | `float.on` | on main |
+| `float.value` | `() => true` | `float.value` | on main |
+| `forbid-if` | `forbid-if=() => false` | `forbid-if` | on main |
+| `forbid-if.value` | `() => true` | `forbid-if.value` | on main |
+| `has-many` | `has-many :related entity=List` | `has-many` | on main |
+| `has-many.name` | `:name` | `has-many.name` | on main |
+| `has-many.entity` | `entity=List` | `has-many.entity` | on main |
+| `has-one` | `has-one :related entity=List` | `has-one` | on main |
+| `has-one.name` | `:name` | `has-one.name` | on main |
+| `has-one.entity` | `entity=List` | `has-one.entity` | on main |
+| `input` | `input` | `input` | on main |
+| `integer` | `integer :field` | `integer` | on main |
+| `integer.name` | `:name` | `integer.name` | on main |
+| `integer.nullable` | `nullable` | `integer.nullable` | on main |
+| `integer.default` | `default=false` | `integer.default` | on main |
+| `integer.values` | `values=[:draft, :sent]` | `integer.values` | on main |
+| `integer.min` | `min=0` | `integer.min` | on main |
+| `integer.max` | `max=100` | `integer.max` | on main |
+| `integer.match` | `match=/^INV-\d+$/` | `integer.match` | on main |
+| `integer.primary-key` | `primary-key` | `integer.primary-key` | on main |
+| `integer.unique` | `unique` | `integer.unique` | on main |
+| `integer.on` | `on=:create` | `integer.on` | on main |
+| `integer.value` | `() => true` | `integer.value` | on main |
+| `load` | `load=[&list]` | `load` | on main |
+| `load.value` | `() => true` | `load.value` | on main |
+| `max` | `max :total of="lines.amount"` | `max` | on main |
+| `max.name` | `:name` | `max.name` | on main |
+| `max.of` | `of="lines.amount"` | `max.of` | on main |
+| `member` | `&title` | `member` | on main |
+| `member.name` | `&title` | `member.name` | on main |
+| `member.value` | `() => true` | `member.value` | on main |
+| `min` | `min :total of="lines.amount"` | `min` | on main |
+| `min.name` | `:name` | `min.name` | on main |
+| `min.of` | `of="lines.amount"` | `min.of` | on main |
+| `policies` | `policies` | `policies` | on main |
+| `policy` | `policy :owner types=[:read]` | `policy` | on main |
+| `policy.name` | `:name` | `policy.name` | on main |
+| `policy.types` | `types=[:create, :update]` | `policy.types` | on main |
+| `policy.actions` | `actions=[&pay]` | `policy.actions` | on main |
+| `policy.when` | `when=() => true` | `policy.when` | on main |
+| `policy.authorize-if` | `authorize-if=() => true` | `policy.authorize-if` | on main |
+| `policy.forbid-if` | `forbid-if=() => false` | `policy.forbid-if` | on main |
+| `read` | `read :custom` | `read` | on main |
+| `read.name` | `:name` | `read.name` | on main |
+| `read.filter` | `filter=() => true` | `read.filter` | on main |
+| `relationships` | `relationships` | `relationships` | on main |
+| `run` | `run({ self }) { audit(self) }` | `run` | on main |
+| `run.value` | `() => true` | `run.value` | on main |
+| `set` | `set` | `set` | on main |
+| `sort` | `sort` | `sort` | on main |
+| `string` | `string :field` | `string` | on main |
+| `string.name` | `:name` | `string.name` | on main |
+| `string.nullable` | `nullable` | `string.nullable` | on main |
+| `string.default` | `default=false` | `string.default` | on main |
+| `string.values` | `values=[:draft, :sent]` | `string.values` | on main |
+| `string.min` | `min=0` | `string.min` | on main |
+| `string.max` | `max=100` | `string.max` | on main |
+| `string.match` | `match=/^INV-\d+$/` | `string.match` | on main |
+| `string.primary-key` | `primary-key` | `string.primary-key` | on main |
+| `string.unique` | `unique` | `string.unique` | on main |
+| `string.on` | `on=:create` | `string.on` | on main |
+| `string.value` | `() => true` | `string.value` | on main |
+| `sum` | `sum :total of="lines.amount"` | `sum` | on main |
+| `sum.name` | `:name` | `sum.name` | on main |
+| `sum.of` | `of="lines.amount"` | `sum.of` | on main |
+| `timestamp` | `timestamp :field` | `timestamp` | on main |
+| `timestamp.name` | `:name` | `timestamp.name` | on main |
+| `timestamp.nullable` | `nullable` | `timestamp.nullable` | on main |
+| `timestamp.default` | `default=false` | `timestamp.default` | on main |
+| `timestamp.values` | `values=[:draft, :sent]` | `timestamp.values` | on main |
+| `timestamp.min` | `min=0` | `timestamp.min` | on main |
+| `timestamp.max` | `max=100` | `timestamp.max` | on main |
+| `timestamp.match` | `match=/^INV-\d+$/` | `timestamp.match` | on main |
+| `timestamp.primary-key` | `primary-key` | `timestamp.primary-key` | on main |
+| `timestamp.unique` | `unique` | `timestamp.unique` | on main |
+| `timestamp.on` | `on=:create` | `timestamp.on` | on main |
+| `timestamp.value` | `() => true` | `timestamp.value` | on main |
+| `update` | `update :custom` | `update` | on main |
+| `update.name` | `:name` | `update.name` | on main |
+| `uuid` | `uuid :field` | `uuid` | on main |
+| `uuid.name` | `:name` | `uuid.name` | on main |
+| `uuid.nullable` | `nullable` | `uuid.nullable` | on main |
+| `uuid.default` | `default=false` | `uuid.default` | on main |
+| `uuid.values` | `values=[:draft, :sent]` | `uuid.values` | on main |
+| `uuid.min` | `min=0` | `uuid.min` | on main |
+| `uuid.max` | `max=100` | `uuid.max` | on main |
+| `uuid.match` | `match=/^INV-\d+$/` | `uuid.match` | on main |
+| `uuid.primary-key` | `primary-key` | `uuid.primary-key` | on main |
+| `uuid.unique` | `unique` | `uuid.unique` | on main |
+| `uuid.on` | `on=:create` | `uuid.on` | on main |
+| `uuid.value` | `() => true` | `uuid.value` | on main |
+| `validate` | `validate` | `validate` | on main |
+| `when` | `when=() => true` | `when` | on main |
+| `when.value` | `() => true` | `when.value` | on main |
 
 ## 4. Deviations
 

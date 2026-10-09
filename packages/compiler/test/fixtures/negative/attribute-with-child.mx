@@ -1,4 +1,0 @@
-resource="post"
-  attributes
-    attribute="t" type="string"
-      create-timestamp="insertedAt"

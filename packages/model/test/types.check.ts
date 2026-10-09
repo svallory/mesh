@@ -1,102 +1,87 @@
-// Compile-time test: checked by `tsc --noEmit` (`bun run typecheck`), not run by `bun test`.
-// Each `@ts-expect-error` fails the type check if the line below it ever compiles.
 import type {
-  Action,
-  ActionKind,
   Attribute,
-  Diagnostic,
+  Action,
+  Computed,
+  Entity,
+  Expression,
+  InputField,
   ModelDocument,
-  Resource,
   SourcePosition,
 } from "../src/index.ts";
-
-const position: SourcePosition = { file: "a.mx", line: 1, column: 0, offset: 0 };
-
+const position: SourcePosition = {
+  file: "todo/todo.mesh.mx",
+  line: 1,
+  column: 0,
+  offset: 0,
+};
 const attribute: Attribute = {
-  name: { value: "title", position },
-  source: "attribute",
+  name: "title",
   type: "string",
-  allowNil: false,
-  public: true,
-  writable: true,
+  nullable: false,
   primaryKey: false,
-  default: null,
-  constraints: null,
+  unique: false,
   position,
 };
-
-// a function is not a default value
-// @ts-expect-error
-const fnDefault: Attribute = { ...attribute, default: { value: () => 1, position } };
-
-// undefined is not "absent"; absent is null
-// @ts-expect-error
-const undefinedDefault: Attribute = { ...attribute, default: undefined };
-
-// @ts-expect-error
-const undefinedValue: Attribute = { ...attribute, default: { value: undefined, position } };
-
-// an unregistered type name
-// @ts-expect-error
-const oldType: Attribute = { ...attribute, type: "number" };
-
-// only atom admits constraints
-// @ts-expect-error
-const constrainedString: Attribute = { ...attribute, constraints: { oneOf: [] } };
-
-// "no constraints" has one spelling: null
-// @ts-expect-error
-const innerNull: Attribute = { ...attribute, type: "atom", constraints: { oneOf: null } };
-
-// a name the author wrote carries its position
-// @ts-expect-error
-const bareAccept: Action = { kind: "create", name: { value: "c", position }, accept: ["title"], position };
-
-// a name the author wrote carries its position too
-// @ts-expect-error
-const bareName: Attribute = { ...attribute, name: "title" };
-
-// read has no accept
-// @ts-expect-error
-const readAccept: Action = { kind: "read", name: { value: "r", position }, accept: [], position };
-
-// a required field cannot be omitted
-// @ts-expect-error
-const noPosition: Attribute = { ...attribute, position: undefined };
-
-// @ts-expect-error
-const undefinedTable: Pick<Resource, "table"> = { table: undefined };
-
-// @ts-expect-error
-const bareTable: Pick<Resource, "table"> = { table: "posts" };
-
-// @ts-expect-error
-const badKind: ActionKind = "upsert";
-
-// @ts-expect-error
-const fnPosition: SourcePosition = { ...position, line: () => 1 };
-
-// @ts-expect-error
-const badSeverity: Diagnostic = { severity: "info", code: "X", message: "m", position, fix: null };
-
-// @ts-expect-error
-const missingResources: ModelDocument = {};
-
-export type Unused = [
-  typeof fnDefault,
-  typeof undefinedDefault,
-  typeof undefinedValue,
-  typeof oldType,
-  typeof constrainedString,
-  typeof innerNull,
-  typeof bareAccept,
-  typeof bareName,
-  typeof readAccept,
-  typeof noPosition,
-  typeof undefinedTable,
-  typeof bareTable,
-  typeof badKind,
-  typeof fnPosition,
-  typeof badSeverity,
-  typeof missingResources,
+const expression: Expression = { source: "() => true", params: [], position };
+// @ts-expect-error functions cannot enter the JSON model as defaults
+const fn: Attribute = { ...attribute, default: () => 1 };
+// @ts-expect-error optional fields are omitted, never explicit undefined
+const missing: Attribute = { ...attribute, default: undefined };
+// @ts-expect-error atom is not an attribute type
+const atom: Attribute = { ...attribute, type: "atom" };
+// @ts-expect-error computed needs exactly one definition
+const neither: Computed = { name: "label", type: "string", position };
+const bothDefinitions = {
+  name: "label",
+  type: "string" as const,
+  position,
+  body: expression,
+  rollup: { fn: "count" as const, of: "lines" },
+  nullable: false,
+};
+// @ts-expect-error computed cannot carry two definitions
+const both: Computed = bothDefinitions;
+const options: InputField = {
+  kind: "member",
+  ref: { name: "title", position },
+  // @ts-expect-error member input has no options
+  nullable: true,
+};
+// @ts-expect-error member references must carry their source position
+const unpositioned: InputField = { kind: "member", ref: { name: "title" } };
+const key: InputField = {
+  kind: "argument",
+  name: "id",
+  type: "uuid",
+  nullable: false,
+  position,
+  // @ts-expect-error arguments cannot be primary keys
+  primaryKey: true,
+};
+const oldAction: Action = {
+  kind: "create",
+  name: "create",
+  input: [],
+  validate: [],
+  do: [],
+  // @ts-expect-error accept is gone
+  accept: [],
+  position,
+};
+// @ts-expect-error root key is entities
+const oldDocument: ModelDocument = { resources: [] };
+// @ts-expect-error an entity table is resolved, not nullable
+const nullTable: Pick<Entity, "table"> = { table: null };
+export type Assertions = [
+  typeof fn,
+  typeof missing,
+  typeof atom,
+  typeof neither,
+  typeof both,
+  typeof options,
+  typeof unpositioned,
+  typeof key,
+  typeof oldAction,
+  typeof oldDocument,
+  typeof nullTable,
 ];

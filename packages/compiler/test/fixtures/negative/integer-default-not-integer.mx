@@ -1,3 +1,0 @@
-resource="post"
-  attributes
-    attribute="n" type="integer" default="1"

@@ -1,3 +1,0 @@
-resource="post"
-  relationships
-    belongs-to="author" resource="user"

@@ -6,8 +6,10 @@ import { buildModel, error, positionAt, type BuildResult } from "./build.ts";
 import { absolutePath, canonicalFuturePath, confinedGlob, foreignAbsolute, inside, normalizePath, projectPath, resolveResource, errorCode } from "./paths.ts";
 
 export interface MeshConfig {
-  /** Resource folder (recursive .mx discovery), glob or file list, relative to mesh.config.ts. */
-  resources: string | string[];
+  /** Entity folder (recursive .mesh.mx discovery), glob or file list. */
+  resources?: string | string[];
+  /** Transitional alias; round 2 removes `resources` and keeps `domain`. */
+  domain?: string | string[];
   /** Output folder, relative to mesh.config.ts; no files are emitted here. */
   output: string;
   /** Opaque until M2: accepted and preserved, not required or interpreted in M1. */
@@ -73,9 +75,11 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
     return { config: null, diagnostics };
   }
   const config = value as Record<string, unknown>;
-  const keys = new Set(["resources", "output", "data", "extensions"]);
+  const keys = new Set(["resources", "domain", "output", "data", "extensions"]);
   for (const key of Object.keys(config)) if (!keys.has(key)) fail(key, `Unknown configuration field "${key}"`, "Remove the unknown field");
-  const resources = config.resources;
+  if (Object.hasOwn(config, "resources") && Object.hasOwn(config, "domain")) fail("domain", "Use domain or resources, not both");
+  // Round 2 removes the legacy key; the discovery implementation is shared now.
+  const resources = config.domain ?? config.resources;
   if (!nonEmpty(resources) && !(Array.isArray(resources) && resources.length > 0 && resources.every(nonEmpty))) fail("resources", "Configuration field `resources` must be a non-empty relative folder, glob or list of relative file paths");
   if (!nonEmpty(config.output)) fail("output", "Configuration field `output` must be a non-empty relative directory path");
   const extensions = config.extensions;
@@ -121,8 +125,8 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
           fail("resources", `Resource path "${projectPath(root, candidate)}" resolves outside the project`);
         } else {
           const cwd = folder ? candidate : root;
-          const glob = folder ? "**/*.mx" : input;
-          for await (const file of new Bun.Glob(glob).scan({ cwd, onlyFiles: true, followSymlinks: true, dot: true })) files.push(resolve(cwd, normalizePath(file)));
+          const glob = folder ? "**/*.mesh.mx" : input;
+          for await (const file of new Bun.Glob(glob).scan({ cwd, onlyFiles: true, followSymlinks: true, dot: true })) if (file.endsWith(".mesh.mx")) files.push(resolve(cwd, normalizePath(file)));
           if (files.length === 0) fail("resources", "Configuration field `resources` matches no files");
         }
       } catch (cause) { fail("resources", `Cannot expand resource glob (${errorCode(cause) ?? "UNKNOWN"})`); }
@@ -130,7 +134,8 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
   } else {
     for (const item of resources as string[]) {
       const path = absolutePath(item) ? null : resolveResource(root, item);
-      if (!path) fail("resources", "Resource file path must resolve inside the project");
+      if (!path) fail("resources", "Entity file path must resolve inside the project");
+      else if (!path.file.endsWith(".mesh.mx")) fail("resources", "Entity files must end in .mesh.mx");
       else files.push(path.absolute);
     }
   }

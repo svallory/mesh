@@ -3,7 +3,7 @@ import type { Emitter, EmitInput, GeneratedFile } from "../emit.ts";
 import { orderedDocument, outputPrefix } from "./order.ts";
 
 /**
- * `generated/model.json`: the whole model document, one entry per resource, written
+ * `generated/model.json`: the whole model document, one entry per entity, written
  * as plain data with Mesh's own stable serialiser (lexicographic keys, two spaces,
  * one trailing newline). It is committed and guarded, so nothing that varies per
  * machine, per run or per insertion order may reach it: not a timestamp, not an
