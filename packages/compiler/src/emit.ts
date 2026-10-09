@@ -13,6 +13,7 @@ import { compareText, outputPrefix } from "./emitters/order.ts";
 import { formatTypescript } from "./format.ts";
 import { renderTemplate, type Template } from "./render.ts";
 import { loadTemplates, type Templates } from "./templates.ts";
+import type { AdapterBuild } from "./adapter.ts";
 
 export { EmitError } from "./emit-error.ts";
 
@@ -66,8 +67,14 @@ export interface GeneratedView<View extends object> {
 export interface Generator<View extends object = object> {
   /** Stable name, used in errors: two generators writing one path, a template that fails to render. */
   readonly name: string;
-  /** The template's file name, in Mesh's `templates/` folder and in a project's `.mesh-generators/`. */
+  /** The template's file name, in `templateDir` and in a project's `.mesh-generators/`. */
   readonly template: string;
+  /**
+   * Absolute folder holding `template`; Mesh's own `templates/` when omitted. A data
+   * adapter's generators set it to a folder of their package. The project override is
+   * still `.mesh-generators/<template>`, so template names are unique across generators.
+   */
+  readonly templateDir?: string;
   /** Bare packages imported by generated code, resolved from the consumer root. */
   readonly requires?: readonly string[];
   /** One view per generated file; pure and synchronous, throwing `EmitError` for a model it cannot render. */
@@ -128,17 +135,24 @@ export function generatedImportDiagnostics(projectRoot: string, emitters: readon
   return diagnostics;
 }
 
+/** The core emitters, then the data adapter's generators, in run order. */
+export function buildEmitters(adapter?: AdapterBuild | null): readonly (Emitter | Generator)[] {
+  return adapter ? [...EMITTERS, ...adapter.generators] : EMITTERS;
+}
+
 /**
- * Run every emitter and return the whole generated tree as text, sorted by path.
- * Nothing is written: this is what `mesh build --check` and `mesh inspect` compare
- * against the committed files. Two emitters writing one path is a build error, not
- * a last-one-wins merge. Templates are looked up once per call.
+ * Run every emitter, then the data adapter's generators when `adapter` is given,
+ * and return the whole generated tree as text, sorted by path. Nothing is written:
+ * this is what `mesh build --check` and `mesh inspect` compare against the committed
+ * files. Two emitters writing one path is a build error, not a last-one-wins merge,
+ * whichever of them comes from the adapter. Templates are looked up once per call.
  */
-export async function generateFiles(input: EmitInput): Promise<GeneratedFile[]> {
+export async function generateFiles(input: EmitInput, adapter?: AdapterBuild | null): Promise<GeneratedFile[]> {
   const files: GeneratedFile[] = [];
   const owners = new Map<string, string>();
-  const templates = await loadTemplates(GENERATORS, input.config.root);
-  for (const emitter of EMITTERS) {
+  const emitters = buildEmitters(adapter);
+  const templates = await loadTemplates(emitters.filter(isGenerator), input.config.root);
+  for (const emitter of emitters) {
     const produced = isGenerator(emitter) ? await renderGenerator(emitter, input, templates) : await emitter.emit(input);
     for (const file of produced) {
       if (!isProjectRelativePath(file.path)) {

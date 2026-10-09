@@ -17,10 +17,11 @@ export type Templates = ReadonlyMap<string, Template>;
 
 /**
  * Choose and read the template of every generator, once per build: the project's
- * `.mesh-generators/<template>` when it is a regular file, Mesh's own copy when
- * nothing is there. Like the writer, the lookup never follows a symlink: a
- * symlinked `.mesh-generators/` or template is refused, and so is anything at the
- * template's path that is not a regular file or cannot be read
+ * `.mesh-generators/<template>` when it is a regular file, the generator's own copy
+ * (in its `templateDir`, Mesh's `templates/` by default) when nothing is there.
+ * Like the writer, the lookup never follows a symlink: a symlinked
+ * `.mesh-generators/` or template is refused, and so is anything at the template's
+ * path that is not a regular file or cannot be read
  * (`MESH_TEMPLATE_READ`, naming the project-relative path). The chosen path is the
  * one render errors name: project-relative for an override, absolute for Mesh's.
  */
@@ -29,11 +30,11 @@ export async function loadTemplates(generators: readonly Generator[], projectRoo
   const folder = await entry(join(projectRoot, PROJECT_TEMPLATES_DIR), PROJECT_TEMPLATES_DIR);
   if (folder?.isSymbolicLink()) throw readError(PROJECT_TEMPLATES_DIR, `"${PROJECT_TEMPLATES_DIR}" is a symlink; make it a real directory`);
   if (folder && !folder.isDirectory()) throw readError(PROJECT_TEMPLATES_DIR, `"${PROJECT_TEMPLATES_DIR}" is not a directory; delete or move it`);
-  for (const { template } of generators) {
+  for (const { template, templateDir = MESH_TEMPLATES_DIR } of generators) {
     const path = `${PROJECT_TEMPLATES_DIR}/${template}`;
     const contents = folder ? await readOverride(join(projectRoot, path), path) : null;
     if (contents === null) {
-      const mesh = join(MESH_TEMPLATES_DIR, template);
+      const mesh = join(templateDir, template);
       templates.set(template, { path: mesh, contents: await readFile(mesh, "utf8") });
     } else templates.set(template, { path, contents });
   }
