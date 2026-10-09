@@ -71,6 +71,7 @@ describe("index view", () => {
 const memoryConfig = `const rows = new Map();
 export const closes = { count: 0 };
 export const events = [];
+export const failClose = { next: false };
 const ops = {
   async insert(_table, row) { rows.set(row.id, { ...row }); return { ...row }; },
   async selectByKey(_table, key) { return rows.get(key.id); },
@@ -85,7 +86,10 @@ const ops = {
 };
 export default { data: { kind: "data-adapter", name: "memory", build: "./none", options: {},
   transaction: async (run) => { const result = await run(ops); events.push("commit"); return result; },
-  close: async () => { closes.count++; events.push("close"); } } };
+  close: async () => {
+    if (failClose.next) { failClose.next = false; throw new Error("close failed"); }
+    closes.count++; events.push("close");
+  } } };
 `;
 const descriptorConfig = `export default { data: { kind: "data-adapter", name: "remote", build: "./none", options: {} } };\n`;
 
@@ -148,6 +152,34 @@ describe("the generated index", () => {
     expect(events).toEqual(["commit", "close", "close"]);
   });
 
+  test("a disconnect whose close() rejects leaves the program connected, and can be retried", async () => {
+    const { root } = await generated();
+    const mesh = await import(resolve(root, ".mesh/index.ts"));
+    const { closes, failClose } = await import(resolve(root, "mesh.config.ts"));
+    await mesh.connect();
+    failClose.next = true;
+    await expect(mesh.disconnect()).rejects.toThrow("close failed");
+    expect(await mesh.readNote({})).toEqual([]);
+    await expect(mesh.connect()).rejects.toThrow("connect() was called while connected; call disconnect() first");
+    await mesh.disconnect();
+    expect(closes.count).toBe(1);
+    await expect(mesh.readNote({})).rejects.toBeInstanceOf(FrameworkError);
+  });
+
+  test("an index for a domain without actions type-checks strictly", async () => {
+    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-index-empty-"));
+    roots.push(root);
+    const config = configOf(root, ".mesh");
+    const files = await generateFiles({ document: documentOf({ "tag.mesh.mx": tag }), config });
+    await writeGeneratedFiles(files, config);
+    await writeFile(resolve(root, ".mesh/schema.ts"), "export const tagTable = {};\nexport const tables = { tag: tagTable };\n");
+    await writeFile(resolve(root, "mesh.config.ts"), descriptorConfig);
+    expect(checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts")).map((f) => f.path), ".mesh/schema.ts", "mesh.config.ts"]))
+      .toEqual({ code: 0, output: "" });
+    const mesh = await import(resolve(root, ".mesh/index.ts"));
+    expect(Object.keys(mesh.bind({ transaction: async () => undefined, close: async () => {} }))).toEqual([]);
+  });
+
   test("bind returns frozen functions over a caller's layer and disconnect never closes it", async () => {
     const { root } = await generated();
     const mesh = await import(resolve(root, ".mesh/index.ts"));
@@ -178,9 +210,12 @@ describe("the generated index", () => {
 
 describe("entity names never break the generated files", () => {
   // Reserved words, `bind`'s parameter, and the names of Mesh's own imports.
-  const names = ["Class", "Default", "Function", "Layer", "DataLayer", "ContextArgument", "FrameworkError", "NotFoundError", "Tables"];
+  const names = ["Class", "Default", "Function", "Layer", "DataLayer", "ContextArgument", "FrameworkError", "NotFoundError", "Tables", "Flight", "Binding"];
+  // And action functions spelling the index's internal names: `:in` on Flight is `inFlight`,
+  // `:default` on Binding is `defaultBinding`.
+  const extra: Record<string, string> = { Flight: "    read :in\n", Binding: "    read :default\n" };
   const files = Object.fromEntries(names.map((name) => [`${name.toLowerCase()}.mesh.mx`,
-    `entity :${name}\n  attributes\n    uuid :id primary-key\n    string :label\n  actions auto=[:read, :destroy]\n    create :create\n      input\n        &label\n    update :edit\n      input\n        &label\n`]));
+    `entity :${name}\n  attributes\n    uuid :id primary-key\n    string :label\n  actions auto=[:read, :destroy]\n    create :create\n      input\n        &label\n    update :edit\n      input\n        &label\n${extra[name] ?? ""}`]));
   const key = (name: string) => name[0]!.toLowerCase() + name.slice(1);
 
   test("they build, type-check strictly and run", async () => {
@@ -199,6 +234,8 @@ describe("entity names never break the generated files", () => {
     const rows: object[] = [];
     const bound = mesh.bind({ transaction: (run: (tx: object) => Promise<unknown>) => run({ insert: async (_t: object, row: object) => { rows.push(row); return row; } }), close: async () => {} });
     for (const name of names) expect((await bound[`create${name}`]({ label: name })).label).toBe(name);
+    expect(typeof mesh.inFlight).toBe("function");
+    expect(typeof mesh.defaultBinding).toBe("function");
     expect(rows).toHaveLength(names.length);
   });
 
