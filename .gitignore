@@ -2,3 +2,4 @@ node_modules/
 *.tsbuildinfo
 apps/docs/site/
 .docmd/
+packages/data-sqlite/test/.emitted-*/

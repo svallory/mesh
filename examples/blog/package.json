@@ -4,16 +4,20 @@
   "private": true,
   "license": "MIT",
   "type": "module",
-  "imports": { "#mesh": "./.mesh/index.ts" },
+  "imports": {
+    "#mesh": "./.mesh/index.ts"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "validate": "mesh build --check"
   },
   "devDependencies": {
+    "drizzle-kit": "0.31.11",
     "meshfw": "workspace:*"
   },
   "dependencies": {
     "@meshfw/data-sqlite": "workspace:*",
+    "drizzle-orm": "0.45.3",
     "zod": "4.6.5"
   }
 }

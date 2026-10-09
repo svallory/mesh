@@ -1,7 +1,7 @@
 import { lstat, mkdir, open as openFile, readFile } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import { join } from "node:path";
-import { GENERATORS, MESH_TEMPLATES_DIR, PROJECT_TEMPLATES_DIR } from "@meshfw/compiler";
+import { GENERATORS, MESH_TEMPLATES_DIR, PROJECT_TEMPLATES_DIR, type Generator } from "@meshfw/compiler";
 import type { Diagnostic } from "@meshfw/model";
 import { diagnostic } from "./diagnostics.ts";
 
@@ -21,15 +21,15 @@ async function entry(absolute: string): Promise<Stats | null> {
 }
 
 /**
- * `mesh export generators`: copy every template Mesh ships into
- * `<root>/.mesh-generators/`. Everything is compared before anything is written:
+ * `mesh export generators`: copy every template Mesh ships, then the data adapter's
+ * (`adapterGenerators`, each read from its `templateDir`), into `<root>/.mesh-generators/`. Everything is compared before anything is written:
  * a target that exists and differs from Mesh's template stops the whole export,
  * so a project's edited template is never overwritten. Byte-identical targets are
  * left alone; absent ones are created. Symlinks are refused, never followed.
  * If creating a later file fails, the files already written are kept and named in
  * the error. `open` is replaceable only so that tests can make a creation fail.
  */
-export async function exportGenerators(root: string, open: typeof openFile = openFile): Promise<ExportResult> {
+export async function exportGenerators(root: string, adapterGenerators: readonly Generator[] = [], open: typeof openFile = openFile): Promise<ExportResult> {
   const diagnostics: Diagnostic[] = [];
   const folder = join(root, PROJECT_TEMPLATES_DIR);
   const folderInfo = await entry(folder);
@@ -38,9 +38,9 @@ export async function exportGenerators(root: string, open: typeof openFile = ope
   if (diagnostics.length) return { written: [], diagnostics };
 
   const pending: { path: string; contents: string }[] = [];
-  for (const { template } of GENERATORS) {
+  for (const { template, templateDir = MESH_TEMPLATES_DIR } of [...GENERATORS, ...adapterGenerators]) {
     const path = `${PROJECT_TEMPLATES_DIR}/${template}`;
-    const contents = await readFile(join(MESH_TEMPLATES_DIR, template), "utf8");
+    const contents = await readFile(join(templateDir, template), "utf8");
     const info = folderInfo ? await entry(join(root, path)) : null;
     if (info === null) pending.push({ path, contents });
     else if (info.isSymbolicLink()) diagnostics.push(diagnostic(path, "Is a symlink; export never writes through one. Delete or move it, then export again"));

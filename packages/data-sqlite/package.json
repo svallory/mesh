@@ -4,16 +4,43 @@
   "private": true,
   "license": "MIT",
   "type": "module",
-  "files": ["src"],
+  "files": [
+    "src",
+    "templates"
+  ],
   "description": "Mesh SQLite data adapter on bun:sqlite and Drizzle",
-  "exports": { ".": "./src/index.ts" },
-  "scripts": { "test": "bun test", "typecheck": "tsc --noEmit" },
+  "exports": {
+    ".": "./src/index.ts",
+    "./build": "./src/build.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "@meshfw/data-drizzle": "workspace:*",
     "@meshfw/runtime": "workspace:*",
     "drizzle-orm": "0.45.3"
   },
-  "peerDependencies": { "drizzle-kit": "0.31.11" },
-  "peerDependenciesMeta": { "drizzle-kit": { "optional": true } },
-  "devDependencies": { "drizzle-kit": "0.31.11" }
+  "peerDependencies": {
+    "@meshfw/compiler": "workspace:*",
+    "@meshfw/model": "workspace:*",
+    "drizzle-kit": "0.31.11"
+  },
+  "peerDependenciesMeta": {
+    "@meshfw/compiler": {
+      "optional": true
+    },
+    "@meshfw/model": {
+      "optional": true
+    },
+    "drizzle-kit": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@meshfw/compiler": "workspace:*",
+    "@meshfw/model": "workspace:*",
+    "drizzle-kit": "0.31.11"
+  }
 }

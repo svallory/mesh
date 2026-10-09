@@ -1,6 +1,6 @@
 import { parseArgs } from "node:util";
 import { join } from "node:path";
-import { EmitError, generatedImportDiagnostics, generateFiles, loadConfig, loadProject, stableJsonStringify, writeGeneratedFiles } from "@meshfw/compiler";
+import { EmitError, buildEmitters, generatedImportDiagnostics, generateFiles, loadAdapterBuild, loadConfig, loadProject, stableJsonStringify, writeGeneratedFiles } from "@meshfw/compiler";
 import type { Diagnostic } from "@meshfw/model";
 import { compareText, diagnostic, printDiagnostics } from "./diagnostics.ts";
 import { exportGenerators } from "./export.ts";
@@ -61,17 +61,19 @@ export async function runCli(args: string[], root = process.cwd(), io = {
     diagnostics.push(...loaded.diagnostics);
     if (loaded.config && !diagnostics.some((d) => d.severity === "error")) {
       const config = loaded.config;
+      const adapter = await loadAdapterBuild(config);
+      diagnostics.push(...adapter.diagnostics);
       const built = await loadProject(config);
       diagnostics.push(...built.diagnostics);
-      if (built.document && !diagnostics.some((d) => d.severity === "error")) {
+      if (adapter.build && built.document && !diagnostics.some((d) => d.severity === "error")) {
         if (command.kind === "build" && !command.check) {
-          diagnostics.push(...generatedImportDiagnostics(config.root));
+          diagnostics.push(...generatedImportDiagnostics(config.root, buildEmitters(adapter.build)));
           if (diagnostics.some((d) => d.severity === "error")) {
             printDiagnostics(diagnostics, io.stderr);
             return 1;
           }
         }
-        const files = await generateFiles({ config, document: built.document });
+        const files = await generateFiles({ config, document: built.document }, adapter.build);
         if (command.kind === "inspect") {
           if (command.entity === undefined) {
             const modelPath = projectPath(root, join(config.output, "model.json"));
@@ -115,9 +117,13 @@ async function runExport(root: string, io: { stdout: (text: string) => void; std
     const loaded = await loadConfig(root);
     diagnostics.push(...loaded.diagnostics);
     if (loaded.config && !diagnostics.some((d) => d.severity === "error")) {
-      const result = await exportGenerators(loaded.config.root);
-      diagnostics.push(...result.diagnostics);
-      written = result.written;
+      const adapter = await loadAdapterBuild(loaded.config);
+      diagnostics.push(...adapter.diagnostics);
+      if (adapter.build) {
+        const result = await exportGenerators(loaded.config.root, adapter.build.generators);
+        diagnostics.push(...result.diagnostics);
+        written = result.written;
+      }
     }
   } catch (cause) {
     const code = typeof cause === "object" && cause !== null && "code" in cause ? String(cause.code) : null;
