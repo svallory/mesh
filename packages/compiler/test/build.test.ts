@@ -60,8 +60,8 @@ test("all currently parseable v4 constructs are represented", () => {
 });
 test("reference fixture is the hand-built model's authored file", () =>
   expect(fixture("post.mesh.mx").source).toBe(postSource));
-test.todo(
-  "full reference builds to hand-built model — MX lang-ext-syntax-table: & after a kind / in expressions",
+test(
+  "full reference builds to hand-built model",
   () => {
     const dependencies = ["customer", "invoice-line", "payment"].map(
       (name) => ({
@@ -71,6 +71,7 @@ test.todo(
     );
     const result = buildModel({
       root: fixtureDir,
+      domainRoot: "src/domain",
       files: [{ file: postFile, source: postSource }, ...dependencies],
     });
     expect(result.diagnostics).toEqual([]);

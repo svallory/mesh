@@ -24,13 +24,21 @@ test("real v4 blog loads by path with every registered type", async () => {
   expect(new Set([...entity.actions.map((action) => action.kind), ...entity.auto])).toEqual(new Set(ACTION_TYPES));
 });
 
-test.todo("full blog parses — MX lang-ext-syntax-table: & after a kind / in expressions", () => {
-  const file = "examples/blog/src/domain/blog/post.pending.mesh.mx.txt";
-  const source = readFileSync(join(root, file), "utf8");
-  expect(parse(source, join(root, file)).diagnostics).toEqual([]);
-  const built = buildModel({ root, files: [{ file, source }] });
+test("full blog post, members included, parses and builds", () => {
+  const files = ["post", "user", "comment"].map((name) => {
+    const file = `examples/blog/src/domain/blog/${name}.mesh.mx`;
+    return { file, source: readFileSync(join(root, file), "utf8") };
+  });
+  const [post] = files;
+  expect(parse(post!.source, join(root, post!.file)).diagnostics).toEqual([]);
+  const built = buildModel({ root, files });
   expect(built.diagnostics).toEqual([]);
   expect(built.document?.entities[0]?.name).toBe("Post");
+  const entity = built.document!.entities[0]!;
+  expect(entity.onLoad?.name).toBe("published");
+  expect(entity.actions.find((action) => action.kind === "read")?.sort).toEqual([
+    expect.objectContaining({ direction: "desc", member: expect.objectContaining({ name: "insertedAt" }) }),
+  ]);
 });
 
 test("M1 test 8: only tag-contract packages import MX across the workspace", () => {
@@ -352,7 +360,7 @@ test("Docs MX samples: removed vocabulary is an error, never deferred", () => {
   });
 });
 
-// MX lang-ext-syntax-table: & after a kind / in expressions. Tripwires ensure
+// Docs-sample member normalisation (deleted in the next commit). Tripwires ensure
 // docs normalisation never silently broadens production reference contracts.
 for (const body of [
   "  actions\n    create :create\n      input\n        &id\n",

@@ -364,7 +364,7 @@ export function normaliseV4(source: string): string {
 }
 
 /**
- * MX lang-ext-syntax-table: & after a kind / in expressions.
+ * Docs-sample member normalisation (deleted in the next commit).
  * Test-only, derived from production contracts, never a second vocabulary:
  * - normalised tagless :name lines use defaultTag=member with an atom name;
  * - sort's normalised :name occupies name rather than the future member slot;
