@@ -1,15 +1,19 @@
 ---
 title: "0022. Policies start as a simple tier, in a first-party extension"
-description: "Decision record 0022: Policies start as a simple tier, in a first-party extension. Status: Amended by ADR-0055."
+description: "Decision record 0022: Policies start as a simple tier, in a first-party extension. Status: Accepted, amended by ADR-0055, ADR-0072, ADR-0074."
 ---
 
 # 0022. Policies start as a simple tier, in a first-party extension
 
 > **Amended** by [ADR-0055](./0055-policies-are-core.md) on 2026-10-05: read the successor for what changed. The body below is kept as history.
+>
+> **Amended** by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) and [ADR-0074](./0074-write-policies-may-read-through-tx.md) on 2026-10-10: Until the SQL translator exists a read policy that reads the record is a loud error, and a write policy may read other entities through `tx`. The body below is kept as history.
 
 ## Status
 
 Accepted, amended by [ADR-0055](./0055-policies-are-core.md)
+
+Amended by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) and [ADR-0074](./0074-write-policies-may-read-through-tx.md) (2026-10-10): Until the SQL translator exists a read policy that reads the record is a loud error, and a write policy may read other entities through `tx`.
 
 ## Date
 

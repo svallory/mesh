@@ -53,6 +53,7 @@ export default defineConfig({
 | `output` | yes | The folder generated code is written to, relative to the project root |
 | `data` | yes | The data adapter for this project. Exactly one |
 | `extensions` | no | The enabled extensions, each one a call that returns an extension |
+| `seams` | no | Code your application runs before a transaction, after each write and after a commit; see [Seams](#seams) |
 
 `domain` may also be a glob or a list of relative paths, when a project has entity files outside the main folder. A folder is read recursively and every `.mesh.mx` file beneath it is an entity file.
 
@@ -74,7 +75,7 @@ declare module "@meshfw/runtime" {
 export const alice = { id: "00000000-0000-4000-8000-000000000001" };
 ```
 
-The starter exports Alice for its demo. Your program supplies its own caller; [Using your domain](./using-your-domain.md#the-action-context) explains optional keys, tenants and the `actor` key Mesh reads.
+Two keys are reserved: `actor`, which policies read, and `system`, an optional boolean the application sets on a call it makes on its own behalf (see [internal writes](./using-your-domain.md#internal-writes)). The starter exports Alice for its demo. Your program supplies its own caller; [Using your domain](./using-your-domain.md#the-action-context) explains optional keys, tenants and the `actor` key Mesh reads.
 
 ## Choosing the database
 
@@ -104,6 +105,20 @@ Nothing in Mesh creates a Postgres server or a database for you. Create the data
 SQLite in its in-memory mode is what tests use. See [Testing](./testing.md).
 
 If your entity file uses something your adapter cannot do, the build fails and names the declaration. It never falls back to doing it in memory.
+
+## Seams
+
+A seam is a place in every generated action where your application may run code: `beforeTransaction` (before the transaction opens; throw to refuse the call), `afterWrite` (inside the transaction, right after each row is written; a throw rolls back the call) and `afterCommit` (once, after the transaction commits; not called on rollback). List them under `seams`; `connect()` reads them from this file, so the build, your application and your tests configure them in one place. In a test, pass the same object to `bind(dataLayer, { seams })`.
+
+```ts "mesh.config.ts (excerpt)"
+seams: {
+  afterCommit({ changes }) {
+    for (const change of changes) console.log("committed", change.entity, change.action);
+  },
+},
+```
+
+[Using your domain](./using-your-domain.md#seams) lists what each seam receives.
 
 ## Enabling extensions
 

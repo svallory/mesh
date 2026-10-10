@@ -1,7 +1,7 @@
 // ADR-0067: every Docs fence is a complete syntax-v4 entity. Only the compiler
 // test helper may call the MX parser (ADR-0043); fences parse as authored.
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -13,7 +13,14 @@ const docs = new URL("../docs/docs/", import.meta.url).pathname;
 test("every Docs and ADR-0050 MX sample is a syntax v4 entity file that parses", () => {
   const checked = checkDocsSyntaxV4(docs);
   expect(checked.errors).toEqual([]);
-  expect(checked.checked).toBe(15);
+  // An independent count of the opening fences, so that the walker cannot lose a sample unnoticed
+  // and a new sample needs no edit here.
+  const pages = [...readdirSync(docs).filter((name) => name.endsWith(".md")).map((name) => join(docs, name)),
+    join(docs, "../architecture/decisions/0050-entity-file-syntax.md")];
+  const opened = pages.reduce((total, page) =>
+    total + readFileSync(page, "utf8").split(/\r?\n/).filter((line) => /^ {0,3}(`{3,}|~{3,})(mx|mx-figure)(\s|$)/.test(line)).length, 0);
+  expect(checked.checked).toBe(opened);
+  expect(opened).toBeGreaterThan(10);
   expect(checked).not.toHaveProperty("deferred");
 });
 

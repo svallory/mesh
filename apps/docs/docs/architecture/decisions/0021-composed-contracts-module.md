@@ -1,13 +1,17 @@
 ---
 title: "0021. One composed contracts module, generated from core plus enabled extensions"
-description: "Decision record 0021: One composed contracts module, generated from core plus enabled extensions. Status: Accepted."
+description: "Decision record 0021: One composed contracts module, generated from core plus enabled extensions. Status: Accepted, amended by ADR-0072."
 ---
 
 # 0021. One composed contracts module, generated from core plus enabled extensions
 
+> **Amended** by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) on 2026-10-10: The composed contracts module comes with the extension host, after Mesh 1.0. The body below is kept as history.
+
 ## Status
 
 Accepted
+
+Amended by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) (2026-10-10): The composed contracts module comes with the extension host, after Mesh 1.0.
 
 ## Date
 

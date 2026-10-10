@@ -1,15 +1,19 @@
 ---
 title: "0053. An action body is `validate`, then `do`; steps are `set`, `when`, `load` and `run`"
-description: "Decision record 0053: validations, the steps of an action, the shared `always` body and reusable steps. Status: Accepted."
+description: "Decision record 0053: validations, the steps of an action, the shared `always` body and reusable steps. Status: Accepted, amended by ADR-0067, ADR-0068."
 ---
 
 # 0053. An action body is `validate`, then `do`; steps are `set`, `when`, `load` and `run`
+
+> **Amended** by [ADR-0068](./0068-actions-compose-through-actions-and-tx.md) on 2026-10-10: A `run` body and a function-valued check, `when` or `set` value also receive bound `actions` and `tx`, and a `run` step may be `after=:write`. The body below is kept as history.
 
 ## Status
 
 Accepted. Amends [ADR-0017](./0017-atomic-by-default-and-classification.md) (what a validation sees, and the end of `change`).
 
 Amended by [ADR-0067](./0067-members-imports-input-static-files.md): unified action input removes `require`; member references, including assignments under `set`, use `&name`.
+
+Amended by [ADR-0068](./0068-actions-compose-through-actions-and-tx.md) (2026-10-10): A `run` body and a function-valued check, `when` or `set` value also receive bound `actions` and `tx`, and a `run` step may be `after=:write`.
 
 ## Date
 

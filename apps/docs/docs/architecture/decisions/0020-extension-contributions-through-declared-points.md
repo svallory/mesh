@@ -1,13 +1,17 @@
 ---
 title: "0020. Extensions contribute to each other only through declared points"
-description: "Decision record 0020: Extensions contribute to each other only through declared points. Status: Accepted."
+description: "Decision record 0020: Extensions contribute to each other only through declared points. Status: Accepted, amended by ADR-0072, ADR-0075."
 ---
 
 # 0020. Extensions contribute to each other only through declared points
 
+> **Amended** by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) and [ADR-0075](./0075-seams-use-the-extension-hosts-names.md) on 2026-10-10: The extension host comes after Mesh 1.0; the lifecycle seams that an extension would use are built first, for the application. The body below is kept as history.
+
 ## Status
 
 Accepted
+
+Amended by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) and [ADR-0075](./0075-seams-use-the-extension-hosts-names.md) (2026-10-10): The extension host comes after Mesh 1.0; the lifecycle seams that an extension would use are built first, for the application.
 
 ## Date
 

@@ -1,15 +1,19 @@
 ---
 title: "0019. Where version 1 ends"
-description: "Decision record 0019: Where version 1 ends. Status: Accepted."
+description: "Decision record 0019: Where version 1 ends. Status: Accepted, superseded in part by ADR-0072."
 ---
 
 # 0019. Where version 1 ends
 
 > **Note** (2026-10-05): the scope below (M0 to M9) stands. Its rationale cites [ADR-0007](./0007-scope-is-a-plain-argument.md), [ADR-0034](./0034-vocabulary-copies-ash-dsl.md) and [ADR-0036](./0036-deny-by-default-arrives-with-policies.md), since superseded by [ADR-0059](./0059-action-context.md), [ADR-0049](./0049-vocabulary-is-meshs-own.md) and [ADR-0055](./0055-policies-are-core.md); two tasks now precede M2 ([ADR-0064](./0064-order-of-work-after-approval.md)).
+>
+> **Superseded in part** by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) on 2026-10-10: The v1 line is now the Hyper port gate. The extension host, migrations and Postgres, and the SQL half of expressions are after Mesh 1.0. The body below is kept as history.
 
 ## Status
 
 Accepted
+
+Superseded in part by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) (2026-10-10): The v1 line is now the Hyper port gate. The extension host, migrations and Postgres, and the SQL half of expressions are after Mesh 1.0.
 
 ## Date
 

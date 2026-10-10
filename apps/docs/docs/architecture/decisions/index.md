@@ -18,7 +18,7 @@ One page per decision, in ADR (architecture decision record) format. A record ca
 Every record has the same sections: status, date, deciders, context, decision, options considered, trade-off analysis, consequences, action items ([ADR-0032](./0032-docs-site-and-decision-records.md)).
 
 - **Accepted**: decided. The record quotes the ruling and says who made it.
-- **Accepted, amended**: decided, but a later record changed part of it. Read the successor first.
+- **Accepted, amended**: decided, but a later record changed part of it. Read the successor first. **Superseded in part** is the same, when the later record replaced a part of the decision.
 - **Proposed**: open. The record gives the options and a recommendation, and says who must rule and what the decision blocks.
 - **Superseded**: replaced by a later record. Kept so that nobody proposes it again without knowing it was tried and why it was dropped.
 
@@ -40,6 +40,10 @@ The code on `main` uses these records' names since the realignment task (PR #47,
 
 [ADR-0067](./0067-members-imports-input-static-files.md) amends the entity syntax: `:name` declares, `&name` refers to a member, another entity is imported by path, an action takes one `input` section, and files remain static. The [Entities reference](../../docs/entities.md) and ADR-0050's Invoice use that spelling. Earlier decision quotations remain historical.
 
+## What changed on 2026-10-10
+
+The operator accepted [roadmap revision 5](../roadmap/roadmap.md), which ends Mesh 1.0 at the point where the Hyper engine can be ported to Mesh. Records 0068 to 0075 hold it: the gate and the cut it makes ([0072](./0072-mesh-1-0-is-the-port-gate.md), which merges six decisions of the draft: the contract, SQLite, the gate's scope, SQL translation, the extension host, and tracing with `on:load`), actions that call actions ([0068](./0068-actions-compose-through-actions-and-tx.md)), the `json` type ([0069](./0069-json-attribute-type.md)), `via=` ([0070](./0070-has-many-via.md)), the `system` context key ([0071](./0071-system-key-on-the-action-context.md)), plugins ([0073](./0073-plugins-follow-the-specs-single-hook.md)), write policies that read ([0074](./0074-write-policies-may-read-through-tx.md)) and the lifecycle seams ([0075](./0075-seams-use-the-extension-hosts-names.md)). Fourteen earlier records carry a note at the top and a new status: 0010, 0017, 0019, 0020, 0021, 0022, 0029, 0052, 0053, 0054, 0055, 0059, 0062 and 0063. The evidence is the [Hyper gap analysis](../research/hyper-port-gap-analysis.md).
+
 ## Current records
 
 | ADR | Decision | Status | Deciders |
@@ -49,22 +53,22 @@ The code on `main` uses these records' names since the realignment task (PR #47,
 | [0003](./0003-generated-code-carries-behaviour.md) | Generated code carries the behaviour; the run-time library stays thin | Accepted | operator |
 | [0004](./0004-no-measurement-gate.md) | Mesh is built regardless; measuring the agent benefit is not a gate | Accepted | operator |
 | [0005](./0005-core-interface-is-a-function-call.md) | The core's interface is a function call; transports are optional adapters, none in v1 | Accepted | operator |
-| [0010](./0010-one-expression-tree-two-evaluators.md) | One expression tree, evaluated in memory and in SQL | Accepted, amended by 0056 | operator; roadmap author |
+| [0010](./0010-one-expression-tree-two-evaluators.md) | One expression tree, evaluated in memory and in SQL | Accepted, amended by 0056, 0072 | operator; roadmap author |
 | [0012](./0012-expression-semantics.md) | Expression semantics where SQL and JavaScript differ | Proposed (blocks M4) | operator or lead |
 | [0013](./0013-data-layer-contract-and-capabilities.md) | Data-layer contract: a mandatory set plus declared capabilities | Accepted | operator |
 | [0014](./0014-sql-adapters-on-drizzle.md) | SQL adapters are built on Drizzle and drizzle-kit | Accepted | operator's position, lead's choice of tool |
 | [0016](./0016-in-memory-data-via-sqlite.md) | In-memory data for tests is SQLite's in-memory mode | Accepted | roadmap author |
-| [0017](./0017-atomic-by-default-and-classification.md) | Updates are atomic by default; a step never runs twice | Accepted, amended by 0053, 0054 | operator, lead, roadmap author |
+| [0017](./0017-atomic-by-default-and-classification.md) | Updates are atomic by default; a step never runs twice | Accepted, amended by 0053, 0054, 0072 | operator, lead, roadmap author |
 | [0018](./0018-not-implemented-is-a-build-error.md) | A valid but unimplemented tag is a build error | Accepted | roadmap author |
-| [0019](./0019-v1-scope.md) | v1 is milestones M0 to M9; what comes after (its rationale cites records since superseded) | Accepted | operator |
-| [0020](./0020-extension-contributions-through-declared-points.md) | Extensions contribute to each other only through declared points | Accepted | operator |
-| [0021](./0021-composed-contracts-module.md) | Mesh generates one self-contained MX contracts module | Accepted | lead |
-| [0022](./0022-policies-simple-tier-as-extension.md) | Policies: a simple tier, solver-ready | Accepted, amended by 0055 | operator |
+| [0019](./0019-v1-scope.md) | v1 is milestones M0 to M9; what comes after (its rationale cites records since superseded) | Accepted, superseded in part by 0072 | operator |
+| [0020](./0020-extension-contributions-through-declared-points.md) | Extensions contribute to each other only through declared points | Accepted, amended by 0072, 0075 | operator |
+| [0021](./0021-composed-contracts-module.md) | Mesh generates one self-contained MX contracts module | Accepted, amended by 0072 | lead |
+| [0022](./0022-policies-simple-tier-as-extension.md) | Policies: a simple tier, solver-ready | Accepted, amended by 0055, 0072, 0074 | operator |
 | [0023](./0023-workflows-and-jobs-deferred.md) | Workflows and jobs come after v1; the adapter interface stays a design document | Accepted | operator |
 | [0025](./0025-bun-only.md) | Mesh runs on Bun only | Accepted | operator |
 | [0027](./0027-no-mcp-agent-surface.md) | No MCP server; the agent surface is a rules file, later a generated CLI | Accepted | operator |
 | [0028](./0028-validation-zod-behind-standard-schema.md) | Input validation is Zod behind Standard Schema (confirmed by 0062) | Accepted | lead |
-| [0029](./0029-tracing-opentelemetry-api.md) | Tracing calls the OpenTelemetry API directly | Accepted | lead |
+| [0029](./0029-tracing-opentelemetry-api.md) | Tracing calls the OpenTelemetry API directly | Accepted, amended by 0072 | lead |
 | [0030](./0030-established-tools-first.md) | Established tools first, behind Mesh contracts | Accepted | operator |
 | [0031](./0031-no-ci-until-mx-is-published.md) | No CI until the MX packages are published | Accepted | operator |
 | [0032](./0032-docs-site-and-decision-records.md) | Docs site in the repo; decisions as ADRs; the repo is the source of truth | Accepted | operator |
@@ -84,22 +88,30 @@ The code on `main` uses these records' names since the realignment task (PR #47,
 | [0049](./0049-vocabulary-is-meshs-own.md) | The vocabulary is Mesh's own; `resource` becomes `entity` | Accepted | operator |
 | [0050](./0050-entity-file-syntax.md) | Entity file syntax: `kind #name options`, with the reference file | Accepted | operator |
 | [0051](./0051-mesh-mx-files-and-the-mesh-host.md) | Entity files end in `.mesh.mx`; Mesh ships an MX host named `mesh` | Accepted | operator; lead, delegated |
-| [0052](./0052-actions-auto-and-on-load.md) | Actions are always named; `auto`; `on:load`; `arguments` | Accepted | operator |
-| [0053](./0053-validate-then-do.md) | `validate`, then `do`; steps `set`, `when`, `load`, `run`; `always`; reusable steps planned | Accepted | operator; lead, delegated |
-| [0054](./0054-write-strategy-is-inferred.md) | Mesh infers the write strategy; no `require-atomic` | Accepted | lead, delegated |
-| [0055](./0055-policies-are-core.md) | Policies are core; every covering policy must pass; no policies means forbidden | Accepted | operator; lead, delegated |
+| [0052](./0052-actions-auto-and-on-load.md) | Actions are always named; `auto`; `on:load`; `arguments` | Accepted, amended by 0067, 0072 | operator |
+| [0053](./0053-validate-then-do.md) | `validate`, then `do`; steps `set`, `when`, `load`, `run`; `always`; reusable steps planned | Accepted, amended by 0067, 0068 | operator; lead, delegated |
+| [0054](./0054-write-strategy-is-inferred.md) | Mesh infers the write strategy; no `require-atomic` | Accepted, amended by 0072 | lead, delegated |
+| [0055](./0055-policies-are-core.md) | Policies are core; every covering policy must pass; no policies means forbidden | Accepted, amended by 0071, 0072, 0074 | operator; lead, delegated |
 | [0056](./0056-translated-expressions-are-one-expression-arrows.md) | A function whose body is one expression is translated; Mesh builds its own translator | Accepted | operator; lead, delegated |
 | [0057](./0057-one-domain-modules-as-folders.md) | One domain at `src/domain/`; its folders are modules | Accepted | operator |
 | [0058](./0058-generated-code-in-mesh-imported-as-hash-mesh.md) | Generated code in `.mesh/`, committed, imported as `#mesh` | Accepted | operator; lead, delegated |
-| [0059](./0059-action-context.md) | The second argument is the flat `ActionContext`; tenancy is a user key | Accepted | operator |
+| [0059](./0059-action-context.md) | The second argument is the flat `ActionContext`; tenancy is a user key | Accepted, amended by 0071 | operator |
 | [0060](./0060-meshfw-package-scope.md) | Packages are `@meshfw/*`; the command is `mesh` | Accepted | operator |
 | [0061](./0061-generators-are-jig-templates.md) | Generators are Jig templates; export and per-template override | Accepted | operator |
-| [0062](./0062-direct-dependencies-zod-drizzle-opentelemetry.md) | Zod 4 stays; direct dependencies on Zod, Drizzle, OpenTelemetry | Accepted | operator; lead, delegated |
-| [0063](./0063-user-docs-first-and-the-hold.md) | User docs first, in the 1.0 voice; development on hold until approved | Accepted | operator |
+| [0062](./0062-direct-dependencies-zod-drizzle-opentelemetry.md) | Zod 4 stays; direct dependencies on Zod, Drizzle, OpenTelemetry | Accepted, amended by 0072 | operator; lead, delegated |
+| [0063](./0063-user-docs-first-and-the-hold.md) | User docs first, in the 1.0 voice; development on hold until approved | Accepted, amended by 0072 | operator |
 | [0064](./0064-order-of-work-after-approval.md) | After approval: realignment, Jig port, then M2 | Accepted | lead, delegated |
 | [0065](./0065-mx-highlighting-on-the-docs-site.md) | The docs site highlights `mx` code with MX's tree-sitter highlighter | Accepted | lead, delegated, with the MX lead |
 | [0066](./0066-names-and-references-are-atoms.md) | Names and references are atoms: `kind :name options` | Accepted, amended by 0067 | operator (three points by the lead) |
 | [0067](./0067-members-imports-input-static-files.md) | Members are `&name`, entities are imports, one `input` section, static files | Accepted | operator; marked choices by the lead |
+| [0068](./0068-actions-compose-through-actions-and-tx.md) | Steps and checks receive bound `actions` and `tx`; a `run` step may run `after=:write` | Accepted | operator |
+| [0069](./0069-json-attribute-type.md) | `json` is an attribute type | Accepted | operator |
+| [0070](./0070-has-many-via.md) | A `has-many` names the inverse it follows with `via=` | Accepted | operator |
+| [0071](./0071-system-key-on-the-action-context.md) | `system` is a reserved key of the `ActionContext`; policies decide what it admits | Accepted | operator |
+| [0072](./0072-mesh-1-0-is-the-port-gate.md) | Mesh 1.0 is the Hyper port gate: the spec's v0 on SQLite, the 126-case suite; what leaves the 1.0 line | Accepted | operator |
+| [0073](./0073-plugins-follow-the-specs-single-hook.md) | Plugins follow the spec: one `task.claim` hook, before the transaction | Accepted | operator |
+| [0074](./0074-write-policies-may-read-through-tx.md) | A write policy may read other entities through `tx` | Accepted | operator |
+| [0075](./0075-seams-use-the-extension-hosts-names.md) | Three lifecycle seams, named and shaped as the extension host's run-time points | Accepted | operator |
 
 ## Superseded records
 

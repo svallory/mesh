@@ -1,15 +1,19 @@
 ---
 title: "0063. User docs are written first, in the voice of a released 1.0; development is on hold until they are approved"
-description: "Decision record 0063: the docs-first practice, the 1.0 voice, where contributor material goes, and the hold on development. Status: Accepted."
+description: "Decision record 0063: the docs-first practice, the 1.0 voice, where contributor material goes, and the hold on development. Status: Accepted, amended by ADR-0072."
 ---
 
 # 0063. User docs are written first, in the voice of a released 1.0; development is on hold until they are approved
+
+> **Amended** by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) on 2026-10-10: The user docs describe the target Mesh, not a fixed version, and the roadmap gives the timing. A construct that is documented but not built fails with the not-implemented error, which names its milestone ([ADR-0018](./0018-not-implemented-is-a-build-error.md)). Nothing is removed from the docs because it ships later. The body below is kept as history.
 
 ## Status
 
 Accepted
 
 Amended 2026-10-09: the operator approved the user docs and lifted the hold; development resumed.
+
+Amended by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) (2026-10-10): The user docs describe the target Mesh, not a fixed version, and the roadmap gives the timing. A construct that is documented but not built fails with the not-implemented error, which names its milestone ([ADR-0018](./0018-not-implemented-is-a-build-error.md)). Nothing is removed from the docs because it ships later.
 
 ## Date
 

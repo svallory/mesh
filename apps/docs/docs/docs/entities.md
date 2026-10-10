@@ -182,6 +182,9 @@ entity :Post
 | `date` | `Date` | A calendar date, with no time of day |
 | `datetime` | `Date` | A date and time with no time zone, in the server's local time |
 | `timestamp` | `Date` | A moment, always with its time zone |
+| `json` | `unknown` | Any JSON value: an object, an array, a string, a number, a boolean or null |
+
+`json` holds data whose shape you do not model, such as a list of ids or a map of results. Mesh validates that the value is JSON and stores it as JSON, and does not look inside; the caller narrows `unknown` to the shape they expect. It takes `nullable` and `default=` (a JSON literal) but not `unique`, `min`, `max` or `match`, and it cannot be a rollup operand or appear in a `filter`. To query by a part of the value, declare that part as its own attribute.
 
 `integer`, `float` and `decimal` are all `number` in TypeScript, but a whole number, a money amount and a measurement are different things to store. An atom may be compared with, or assigned to, an `enum` field only: `&status === :sent` is an error if `status` is a `string`.
 
@@ -228,6 +231,16 @@ entity :Todo
 | `has-one` | At most one attachment, through that entity's own `belongs-to`; its foreign key is unique |
 
 Add `nullable` to a `belongs-to` when a related row is optional. A caller sets the relationship through `&list` in `input`, sending the list's id. The entity file names the relationship, never its generated key column; [Using your domain](./using-your-domain.md#relationship-input-and-record-fields) explains the TypeScript surface.
+
+### Choosing the key a has-many follows
+
+A `has-many` follows the key the other entity holds back to this one. When the other entity has more than one `belongs-to` to this entity, say which one with `via=`, an atom naming the other entity's `belongs-to`:
+
+```text "src/domain/team/collaborator.mesh.mx (excerpt)"
+has-many :memberships entity=Membership via=:collaborator
+```
+
+Here `membership.mesh.mx` declares `belongs-to :collaborator entity=Collaborator` and `belongs-to :grantedBy entity=Collaborator`, and `via=:collaborator` picks the first. `via` is an atom and not `&collaborator`, because `&name` refers to a member of this entity and `collaborator` is a member of `Membership`. With one `belongs-to` back, leave `via` out. With several and no `via`, the build lists the candidates; a `via` that names no `belongs-to` from that entity to this one is a build error with a suggestion. A relationship from an entity to its own type needs no special spelling: `belongs-to :parent entity=Task`, with `Task` imported by its own file, and `has-many :children entity=Task via=:parent`.
 
 Two entity files may import each other: `todo.mesh.mx` imports `List` while `list.mesh.mx` imports `Todo`. The other side is not automatic. The list knows nothing about its todos until `list.mesh.mx` imports `Todo` and declares `has-many :todos entity=Todo`.
 
@@ -343,8 +356,40 @@ The atom after `check` names the rule and is the label the caller sees. Name wha
 | `code=` | The caller-facing code, a string or number, on the issue rather than the error |
 | `message=` | The sentence the caller sees |
 | `when=` | Apply this check only when the condition holds |
+| `details=` | A function returning data the caller receives on the issue, such as the reasons a task is not ready |
 
-A failed check throws `InvalidInputError`, whose own code is always `invalid_input`. Each failure has its own entry in `error.issues`, with the label, code, message and source position of the check. Several checks may fail in one call.
+A failed check throws `InvalidInputError`, whose own code is always `invalid_input`. Each failure has its own entry in `error.issues`, with the label, code, message, `details` (when the check declares them) and source position of the check. Several checks may fail in one call.
+
+```text "src/domain/work/claim.mesh.mx (excerpt)"
+check :taskReady [
+  that=({ tx }) => taskIsReady(&task, tx)
+  code="claim.task-ready"
+  message="the task is not ready"
+  details=({ tx }) => taskReasons(&task, tx)
+]
+```
+
+#### A check that compares with the stored record
+
+In `validate`, `&name` is the record with the member inputs applied, so a check that compares the new value with the old one cannot read the old one from `self`. `before` is the stored record, beside `self`; on a create there is none and `before` is `null`:
+
+```mx "src/domain/team/membership.mesh.mx"
+entity :Membership
+  attributes
+    uuid :id primary-key
+    enum :role values=[:owner, :member, :guest]
+
+  actions
+    update :changeRole
+      input
+        &role
+      validate
+        check :roleChanged [
+          that=({ before }) => &role !== before.role
+          code="membership.unchanged"
+          message="the role is already set"
+        ]
+```
 
 #### A check that reads a related record
 
@@ -410,10 +455,10 @@ Steps run top to bottom after validation. Each sees the record as earlier steps 
 
 | Step | What it does |
 |:--|:--|
-| `set` | Assigns fields with `&field=value` lines; a value is a literal or a one-expression arrow |
+| `set` | Assigns fields with `&field=value` lines; a value is a literal or a one-expression arrow. A line may name a relationship, `&creator=({ actor }) => actor.id`, and stores its key |
 | `when=cond` | Runs the nested steps only when the condition holds |
 | `load=[&customer]` | Loads relationships or computed fields onto the returned record; writes nothing |
-| `run(…) { }` | Plain code inside the transaction; forces a read before the write |
+| `run(…) { }` | Plain code inside the transaction; forces a read before the write; it can call other actions |
 
 The larger example below shows `set`, `when` and `load`. For the work a field assignment cannot express, use `run`:
 
@@ -433,6 +478,46 @@ entity :Invoice
 ```
 
 A `run` body may call anything, including logging or messaging code. The pure-helper rule applies to translated expressions, not `run`. Reach for it only when the work is not a field assignment. A `run`, or an untranslatable check, `when` or `set` expression, makes the action read first and write second. [Using your domain](./using-your-domain.md#update) explains one statement versus two.
+
+### Calling other actions
+
+A `run` step, and a function-valued `check`, `when` or `set` value, receive two more things beside `self`, `input`, `actor` and `context`:
+
+| Name | What it is |
+|:--|:--|
+| `actions` | Every action function of the project, bound to the running transaction: `actions.recordReceipt({ invoice: self.id })` |
+| `tx` | The reads of the running transaction, one function per read action, with the same `filter`, `sort`, `limit` and `load` as a caller's: `tx.readClaim({ filter: { taskId: { eq: self.id } } })` |
+
+```mx "src/domain/billing/invoice.mesh.mx"
+entity :Invoice
+  attributes
+    uuid :id primary-key
+    enum :status values=[:sent, :paid] default=:sent
+    decimal :amount min=0
+
+  actions
+    update :pay
+      do
+        set
+          &status=:paid
+        run({ self, actions }) {
+          await actions.recordReceipt({ invoiceId: self.id, amount: self.amount });
+        }
+```
+
+A call through `actions` is an ordinary call with three differences. It joins the running transaction, so a throw anywhere rolls back the payment and the receipt together. It carries your `context` unless you pass another as its second argument. And it is checked like any other call: the action it names runs its own validation, policies and steps, so a cascade can never do what its target forbids. A reason to keep `recordReceipt` for internal use is a policy that says so; see [internal writes](./using-your-domain.md#internal-writes).
+
+`tx` reads the stored rows as they are inside the transaction. It does not run read policies: it is the rule's own view of the data, available only to code you wrote in the entity file.
+
+Steps run in written order, before the action's own row is written. A `run` step with `after=:write` runs after that row is written, still inside the transaction, and sees the stored record as `self`. Use it when what you call must see the result, or when the records it writes must follow the action's own:
+
+```text "src/domain/billing/invoice.mesh.mx (excerpt)"
+run [after=:write] ({ self, actions }) {
+  await actions.recordReceipt({ invoiceId: self.id, amount: self.amount });
+}
+```
+
+An application may open the same kind of transaction itself; see [several actions in one transaction](./using-your-domain.md#several-actions-in-one-transaction).
 
 ### Reads: filter and sort
 
@@ -485,6 +570,25 @@ A policy passes when none of its `forbid-if` checks holds and, if it has any `au
 
 An exemption belongs in the condition: `forbid-if=({ actor }) => &status === :paid && !isStaff(actor)` forbids destroying a paid invoice except for staff.
 
+A policy on a write may also read other entities through `tx`, the reads of the running transaction. It runs inside the transaction, on the locked row, so a value it reads, such as the actor's current role, cannot go stale between the check and the write:
+
+```mx "src/domain/work/task.mesh.mx"
+import { isActiveOwner } from "./task.helpers"
+
+entity :Task
+  attributes
+    uuid :id primary-key
+    string :title min=1
+
+  actions auto=[:read, :update]
+
+  policies
+    policy :ownersWrite types=[:update]
+      authorize-if=({ actor, tx }) => isActiveOwner(actor, tx)
+```
+
+A read policy has no `tx`: it is a filter on the query.
+
 When a check reads the stored row, Mesh folds it into the statement's filter. A row the caller cannot see is reported as not found rather than forbidden; `can<Action>` asks for the reason instead. A create policy sees the proposed record, and a related-row read there is a query inside the transaction before the insert.
 
 ## Building one
@@ -507,7 +611,7 @@ Run `mesh inspect Todo` to see the declarations with source positions, and `mesh
 
 | Where | The record is |
 |:--|:--|
-| a check in `validate` | The record with member inputs applied: caller values for supplied fields, stored values for omitted ones, defaults on create; nothing from `do` yet. Related records (`&owner.todoCount`) are read on demand |
+| a check in `validate` | The record with member inputs applied: caller values for supplied fields, stored values for omitted ones, defaults on create; nothing from `do` yet. `before` is the stored record (`null` on a create). Related records (`&owner.todoCount`) are read on demand |
 | a step in `do` | The record as earlier steps left it |
 | a filter on a read | Each row the query considers |
 | a policy on a read | The row |

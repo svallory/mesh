@@ -1,13 +1,17 @@
 ---
 title: "0059. An action's second argument is the flat `ActionContext`"
-description: "Decision record 0059: the action context replaces the scope; `actor` is the one key Mesh reads; this also settles where a tenant lives. Status: Accepted."
+description: "Decision record 0059: the action context replaces the scope; `actor` is the one key Mesh reads; this also settles where a tenant lives. Status: Accepted, amended by ADR-0071."
 ---
 
 # 0059. An action's second argument is the flat `ActionContext`
 
+> **Amended** by [ADR-0071](./0071-system-key-on-the-action-context.md) on 2026-10-10: `system` is a second reserved key of the `ActionContext`. The body below is kept as history.
+
 ## Status
 
 Accepted. Supersedes [ADR-0007](./0007-scope-is-a-plain-argument.md) and [ADR-0009](./0009-tenancy-placement.md). Amends [ADR-0047](./0047-actions-are-bound-to-a-data-layer.md).
+
+Amended by [ADR-0071](./0071-system-key-on-the-action-context.md) (2026-10-10): `system` is a second reserved key of the `ActionContext`.
 
 ## Date
 

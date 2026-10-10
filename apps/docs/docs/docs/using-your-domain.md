@@ -70,7 +70,7 @@ declare module "@meshfw/runtime" {
 export const alice = { id: "00000000-0000-4000-8000-000000000001", role: "member" as const };
 ```
 
-There is one key Mesh itself reads: **`actor`**, which is what the `authorize-if` checks in your policies are given. Every other key is yours. A tenant, a locale, a request id: name them, and both your TypeScript and your entity files can use them:
+Two keys are reserved. **`actor`** is what the `authorize-if` checks in your policies are given. **`system`** marks a call the application makes on its own behalf, and is covered under [internal writes](#internal-writes). Every other key is yours. A tenant, a locale, a request id: name them, and both your TypeScript and your entity files can use them:
 
 ```ts "src/main.ts"
 import { connect, disconnect, createList } from "#mesh";
@@ -270,7 +270,7 @@ Every action throws on failure. All four classes come from `@meshfw/runtime`, ex
 | `ForbiddenError` | `forbidden` | A policy denied the call. Carries a `breakdown` of every check |
 | `FrameworkError` | `framework` | A mistake in the program: an action called before `connect`, a load that cannot be served |
 
-`InvalidInputError.issues` holds every failure it collected, one entry each. An entry has a `label` (the label you gave the `check`), the `code` and `message` you wrote, a `path` into the input, and, when the failure came from a rule you declared, the file, line and column of the declaration that carried it. The code you declared is on the issue rather than on the error because several checks can fail in one call, and one code on the error could only name one of them.
+`InvalidInputError.issues` holds every failure it collected, one entry each. An entry has a `label` (the label you gave the `check`), the `code` and `message` you wrote, the `details` the check returned (or `null`), a `path` into the input, and, when the failure came from a rule you declared, the file, line and column of the declaration that carried it. The code you declared is on the issue rather than on the error because several checks can fail in one call, and one code on the error could only name one of them.
 
 ```ts "src/main.ts"
 import { InvalidInputError } from "@meshfw/runtime";
@@ -303,6 +303,109 @@ src/domain/todo/todo.mesh.mx 27 9
 That first line is one entry of `error.issues`: the check's label, the code the check declared, and its message. The second is the position of the `check` that produced it, in the file you wrote. `error.code` is `invalid_input`.
 
 A caught error has type `unknown` in strict TypeScript, so narrow it before reading `issues`.
+
+## Several actions in one transaction
+
+Actions that call other actions do it inside the entity file, through `actions` ([Entities: calling other actions](./entities.md#calling-other-actions)). Your application can do the same when a method must answer with more than a record. `transaction` opens a transaction, or joins the one that is running, and hands you the same `actions` and `tx`:
+
+```ts "src/main.ts"
+import { connect, createList, disconnect, transaction } from "#mesh";
+import { alice } from "./context";
+
+await connect();
+
+const list = await createList({ name: "Groceries" }, { actor: alice });
+
+const todo = await transaction(async ({ actions, tx }) => {
+  const open = await tx.readTodo({ filter: { and: [{ listId: { eq: list.id } }, { done: { eq: false } }] } });
+  if (open.length >= 20) throw new Error("this list already has 20 open todos");
+  return actions.createTodo({ title: "Buy milk", list: list.id });
+}, { actor: alice });
+
+console.log(todo.id);
+
+await disconnect();
+```
+
+`actions` are the functions you import from `#mesh`, bound to this transaction and carrying the context you passed; each still validates its input and runs its own policies. `tx` reads inside the transaction and does not run read policies. A throw rolls back every call. An action that calls `transaction` while another is running joins it rather than opening a second one.
+
+## Internal writes
+
+Some writes are not a person's: a timer that expires leases, the bootstrap that creates the first user, an action another action calls. The context has a reserved key for them, **`system`**. Your application sets it, never a caller's input:
+
+```ts "src/sweeper.ts"
+import { connect, disconnect, readTodo, renameTodo } from "#mesh";
+import { alice } from "./context";
+
+await connect();
+
+// A timer acts for the system. The actor is still the person whose record this is.
+const open = await readTodo({ filter: { done: { eq: false } } }, { actor: alice, system: true });
+for (const todo of open) {
+  await renameTodo({ id: todo.id, title: `${todo.title} (stale)` }, { actor: alice, system: true });
+}
+
+await disconnect();
+```
+
+Mesh does nothing with `system` by itself: no policy is skipped. A policy admits an internal write by testing the key, in a helper you write:
+
+```text "src/domain/work/work.helpers.ts (excerpt)"
+export function isSystem(context: { system?: boolean }): boolean {
+  return context.system === true;
+}
+```
+
+```text "src/domain/work/completion.mesh.mx (excerpt)"
+policy :recordedByCascade types=[:create]
+  authorize-if=({ actor, context }) => hasRole(actor, ["owner"]) || isSystem(context)
+```
+
+An action that only another action should call carries a policy like this one. A call made through `actions` keeps the caller's context, `system` included, and keeps the person as the `actor`, so a record written by a cascade still names who caused it. Treat `system` as you treat any flag in your own context: it is as trustworthy as the code that builds the context.
+
+## Seams
+
+A **seam** is a place in every generated action where your application may run code. There are three, and each takes plain data:
+
+| Seam | Runs | Receives | May |
+|:--|:--|:--|:--|
+| `beforeTransaction` | Before the transaction opens | `{ entity, action, input, context }` | Throw to refuse the call |
+| `afterWrite` | Inside the transaction, right after each row is written | `db` and `{ entity, action, before, after, input, context }` | Write through `db`; a throw rolls back the whole call |
+| `afterCommit` | Once, after the outermost transaction commits | `{ changes }`, every row written, in order | Publish; it is not called when the call rolls back |
+
+Register them under `seams` in `mesh.config.ts`, and pass the same object to `bind` in a test:
+
+```ts "mesh.config.ts"
+import { defineConfig } from "@meshfw/runtime";
+import { sqlite } from "@meshfw/data-sqlite";
+
+export default defineConfig({
+  domain: "src/domain",
+  output: ".mesh",
+  data: sqlite({ file: "todo.db" }),
+  seams: {
+    beforeTransaction({ entity, action }) {
+      console.log("about to run", entity, action);
+    },
+    afterWrite(_db, { entity, action, before, after }) {
+      console.log("wrote", entity, action, before, after);
+    },
+    afterCommit({ changes }) {
+      for (const change of changes) console.log("committed", change.entity, change.action);
+    },
+  },
+});
+```
+
+In `afterWrite`, `db` is the transaction's data operations (`insert`, `selectByKey`, `updateByKey`, `deleteByKey`, with the tables exported as `tables` from `#mesh`), so a seam can write a row of its own, such as an event, without calling an action. A write through it does not run seams. `before` is the row as it was, or `null` for a create; `after` is the row as written, or `null` for a destroy.
+
+```ts "src/events.ts (excerpt)"
+async afterWrite(db, { entity, action, after }) {
+  await db.insert(tables.event, { type: `${entity}.${action}`, payload: after });
+},
+```
+
+A call that another action makes through `actions` runs the seams for its own writes, with the caller's `context`, so a `commandId` or `caller` you put in the context reaches every event.
 
 ## Asking instead of calling: `can`
 

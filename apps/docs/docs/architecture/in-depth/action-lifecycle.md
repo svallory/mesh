@@ -62,7 +62,7 @@ enter -> cast -> plan -> pre-check ->
 
 ## The plan: chosen at build time
 
-The plan is chosen when the project is built, once, and printed by `mesh explain <entity> <action>` ([roadmap](../roadmap/roadmap.md), M5). `explain` output for the example is committed and guarded. At run time phase 3 does not choose anything; it runs the steps in the order the plan fixed, and it still gets its own tracing span.
+The plan is chosen when the project is built, once, and printed by `mesh explain <entity> <action>` ([roadmap](../roadmap/roadmap.md), M5). `explain` output for the example is committed and guarded. At run time phase 3 does not choose anything; it runs the steps in the order the plan fixed, and it still gets its own tracing span once tracing returns. Until atomic updates return after Mesh 1.0, every update or destroy is read-then-write and `explain` says so ([ADR-0072](../decisions/0072-mesh-1-0-is-the-port-gate.md)).
 
 This is the answer to Ash's bug #2969, fixed the day it was reported. In Ash a single-record update runs `change/3` when the changeset is built, then builds a second changeset and runs `atomic/3`. The second keeps attribute values but drops hooks and filters, so a `change filter(...)` stopped working on the atomic path and a non-matching row was written ([Ash runtime internals](../research/ash-runtime-internals.md), section 1.2 and 12.B item 21; [research synthesis](../research/synthesis.md), section 2.2). Mesh picks one strategy before anything runs, and a step never runs twice ([ADR-0017](../decisions/0017-atomic-by-default-and-classification.md)).
 
@@ -105,6 +105,8 @@ Typed lines in `input` declare arguments not stored as sent, for example `decima
 How a failed rule reports its `.mesh.mx` position is open: [ADR-0039](../decisions/0039-run-time-error-positions.md) is Proposed. The working assumption is that the position is carried as data in the generated code, not through source maps, partly because Bun's `findSourceMap` returns `undefined` ([research synthesis](../research/synthesis.md), section 12, risk 3).
 
 ## Tracing
+
+Tracing comes after Mesh 1.0 ([ADR-0072](../decisions/0072-mesh-1-0-is-the-port-gate.md)): until then generated code opens no spans and imports no OpenTelemetry package. The design below stands for when it returns.
 
 Each phase gets one span through the OpenTelemetry API, which does nothing unless the application installs an SDK ([ADR-0029](../decisions/0029-tracing-opentelemetry-api.md); [roadmap](../roadmap/roadmap.md), M5). Ash telemetry cost 15 to 23% of a create, so M5 measures the cost with no SDK ([research synthesis](../research/synthesis.md), section 6, item 7).
 

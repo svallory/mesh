@@ -393,6 +393,38 @@
             {
               "title": "0067. Members, imports, input and static files",
               "path": "/architecture/decisions/0067-members-imports-input-static-files/"
+            },
+            {
+              "title": "0068. Steps and checks receive bound `actions` and `tx`",
+              "path": "/architecture/decisions/0068-actions-compose-through-actions-and-tx/"
+            },
+            {
+              "title": "0069. `json` is an attribute type",
+              "path": "/architecture/decisions/0069-json-attribute-type/"
+            },
+            {
+              "title": "0070. A `has-many` names its inverse with `via=`",
+              "path": "/architecture/decisions/0070-has-many-via/"
+            },
+            {
+              "title": "0071. `system` is a reserved key of the `ActionContext`",
+              "path": "/architecture/decisions/0071-system-key-on-the-action-context/"
+            },
+            {
+              "title": "0072. Mesh 1.0 is the Hyper port gate",
+              "path": "/architecture/decisions/0072-mesh-1-0-is-the-port-gate/"
+            },
+            {
+              "title": "0073. Plugins follow the spec: one `task.claim` hook",
+              "path": "/architecture/decisions/0073-plugins-follow-the-specs-single-hook/"
+            },
+            {
+              "title": "0074. A write policy may read through `tx`",
+              "path": "/architecture/decisions/0074-write-policies-may-read-through-tx/"
+            },
+            {
+              "title": "0075. Three lifecycle seams, named as the extension host's points",
+              "path": "/architecture/decisions/0075-seams-use-the-extension-hosts-names/"
             }
           ]
         },
@@ -500,6 +532,10 @@
             {
               "title": "Validation library",
               "path": "/architecture/research/validation-library/"
+            },
+            {
+              "title": "Hyper on Mesh: gap analysis",
+              "path": "/architecture/research/hyper-port-gap-analysis/"
             },
             {
               "title": "Reviews",

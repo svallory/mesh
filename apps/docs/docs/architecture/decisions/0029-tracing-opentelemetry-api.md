@@ -1,13 +1,17 @@
 ---
 title: "0029. Generated handlers call the OpenTelemetry API directly"
-description: "Decision record 0029: Generated handlers call the OpenTelemetry API directly. Status: Accepted."
+description: "Decision record 0029: Generated handlers call the OpenTelemetry API directly. Status: Accepted, amended by ADR-0072."
 ---
 
 # 0029. Generated handlers call the OpenTelemetry API directly
 
+> **Amended** by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) on 2026-10-10: Tracing comes after Mesh 1.0; generated code imports no `@opentelemetry/api` until then. The body below is kept as history.
+
 ## Status
 
 Accepted
+
+Amended by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) (2026-10-10): Tracing comes after Mesh 1.0; generated code imports no `@opentelemetry/api` until then.
 
 ## Date
 
