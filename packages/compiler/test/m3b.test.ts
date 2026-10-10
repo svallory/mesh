@@ -31,13 +31,13 @@ describe("json in an entity file (ADR-0069)", () => {
     ["json :data default=false", false],
     ["json :data nullable default=null", null],
     ["json :data default={ value: \"looks like an atom\" }", { value: "looks like an atom" }],
-  ] as const)("%s builds", (line, expected) => {
+  ] as [string, unknown][])("%s builds", (line, expected) => {
     const result = build(withJson(line));
     expect(result.diagnostics).toEqual([]);
     const attribute = result.document!.entities[0]!.attributes.find((a) => a.name === "data")!;
     expect(attribute.type).toBe("json");
     if (expected === undefined) expect(attribute.default).toBeUndefined();
-    else expect(attribute.default).toEqual(expected);
+    else expect(attribute.default).toEqual(expected as never);
   });
 
   test.each([

@@ -100,7 +100,7 @@ test("generated paths follow the stripped module", async () => {
 
 // --- ignore -----------------------------------------------------------------
 
-const adapter = JSON.stringify({ kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", options: { file: "app.db" } });
+const adapter = JSON.stringify({ kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: [] }, options: { file: "app.db" } });
 const roots: string[] = [];
 afterEach(async () => {
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
