@@ -24,7 +24,7 @@ const config: ResolvedConfig = {
   configFile: "/project/mesh.config.ts",
   entityFiles: [],
   domainRoot: "/project",
-  data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", options: { file: ":memory:" } },
+  data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: [] }, options: { file: ":memory:" } },
   output: "/project/generated",
 };
 const inputOf = (document: ModelDocument): EmitInput => ({ document, config });
@@ -70,6 +70,7 @@ describe("typesView", () => {
         ],
       },
       inputs: [],
+      query: null,
     });
   });
 
@@ -97,6 +98,7 @@ describe("typesView", () => {
       "paidAt: Date | null",
       "insertedAt: Date",
       "updatedAt: Date",
+      "metadata: unknown",
       "listId: string",
     ]);
     entityOf(document, "Todo").relationships.find((r) => r.name === "list")!.nullable = true;
@@ -109,7 +111,7 @@ describe("typesView", () => {
       ["CreateTodoInput", false],
       ["CompleteTodoInput", false],
       ["PendingTodoInput", false],
-      ["ReadTodoInput", true],
+      ["ReadTodoInput", false],
       ["DestroyTodoInput", false],
     ]);
     expect(view.inputs[0]!.members).toEqual([
@@ -120,9 +122,19 @@ describe("typesView", () => {
     ]);
   });
 
-  test("inputs: an input with no members is empty and has no members", () => {
+  test("inputs: a read takes the caller's filter, sort, limit and offset, all optional", () => {
     const read = types(documentOf(), "Todo").inputs.find((input) => input.name === "ReadTodoInput")!;
-    expect(read).toEqual({ name: "ReadTodoInput", empty: true, members: [] });
+    expect(read).toEqual({ name: "ReadTodoInput", empty: false, members: [
+      { name: "filter", optional: true, key: "filter", type: "TodoFilter | undefined" },
+      { name: "sort", optional: true, key: "sort", type: "TodoSort | undefined" },
+      { name: "limit", optional: true, key: "limit", type: "number | undefined" },
+      { name: "offset", optional: true, key: "offset", type: "number | undefined" },
+    ] });
+  });
+
+  test("inputs: an action that is not a read has no empty input either; destroy holds its key", () => {
+    const destroy = types(documentOf(), "Todo").inputs.find((input) => input.name === "DestroyTodoInput")!;
+    expect(destroy.members.map((member) => member.name)).toEqual(["id"]);
   });
 
   test("inputs: update members are optional patches after the required row selector", () => {
@@ -174,6 +186,7 @@ describe("validatorsView", () => {
       hasInputs: false,
       typesFromLiteral: '"./list.types"',
       schemas: [],
+      query: null,
     });
   });
 
@@ -194,8 +207,13 @@ describe("validatorsView", () => {
     );
   });
 
-  test("a schema with no fields has an empty field list", () => {
-    expect(validators(documentOf(), "Todo").schemas.find((s) => s.typeName === "ReadTodoInput")!.fields).toEqual([]);
+  test("a read's schema holds the four query fields, each optional", () => {
+    expect(validators(documentOf(), "Todo").schemas.find((s) => s.typeName === "ReadTodoInput")!.fields).toEqual([
+      { name: "filter", key: "filter", schema: "todoFilter.optional()" },
+      { name: "sort", key: "sort", schema: "todoSort.optional()" },
+      { name: "limit", key: "limit", schema: "z.int().min(0).optional()" },
+      { name: "offset", key: "offset", schema: "z.int().min(0).optional()" },
+    ]);
   });
 
   test("field schemas: bounds, pattern, enum values, nullability and optionality", () => {

@@ -2,7 +2,7 @@ import { relative } from "node:path";
 import type { EmitInput } from "../emit.ts";
 import { orderedEntities } from "../emitters/order.ts";
 import { actionsView } from "./actions.ts";
-import { camelCase, entityInputs, entityPath, typeName } from "./inputs.ts";
+import { camelCase, entityInputs, entityPath, filterTypeName, hasRead, sortTypeName, typeName } from "./inputs.ts";
 
 /**
  * What `index.ts.jig` renders: `.mesh/index.ts`, the one entry point a project imports
@@ -68,7 +68,11 @@ export function indexView(input: EmitInput): IndexView {
     const actions = actionsView(input, entity);
     const key = camelCase(entity.name);
     const local = `${key}Actions`;
-    const entityTypes = [typeName(entity.name, entity.position), ...entityInputs(entity, document).map((i) => i.name)];
+    const entityTypes = [
+      typeName(entity.name, entity.position),
+      ...entityInputs(entity, document).map((i) => i.name),
+      ...(hasRead(entity) ? [filterTypeName(entity), sortTypeName(entity)] : []),
+    ];
     types.push(...entityTypes);
     handles.push(`${key}Table`);
     entities.push({

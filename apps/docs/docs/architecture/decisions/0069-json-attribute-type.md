@@ -34,6 +34,12 @@ Entity file syntax has ten attribute types ([ADR-0050](./0050-entity-file-syntax
 - **Where it cannot go.** A `json` attribute is not a rollup operand and cannot be compared in a `filter`; a caller who needs to query inside it models the field as columns.
 - **Count.** The registry has eleven attribute types.
 
+## Amendment (2026-10-10, lead ruling, pending operator review)
+
+This ruling is the lead's (decisions log, 2026-10-10 12:25, "[lead, for operator review]") and the operator has not reviewed it yet.
+
+A `json` attribute that is not `nullable` rejects `null`; only a `nullable` one accepts it, and stores it as SQL NULL. The Decision above said the validator accepts `null`. The reason: the Drizzle column (`text` in `json` mode) writes a JavaScript `null` as SQL NULL, so a NOT NULL column refuses it, and in TypeScript the JSON value `null` and "no value" are the same `null`. Storing the text `"null"` would need a custom column type and no caller could tell the difference. None of Hyper's six `json` attributes needs a JSON `null` in a required column. The user docs say so in [Entities](../../docs/entities.md#the-types).
+
 ## Options considered
 
 1. **A core `json` type (chosen).**

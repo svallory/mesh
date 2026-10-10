@@ -1,0 +1,15 @@
+entity :Workspace table="workspaces"
+  attributes
+    uuid :id primary-key
+    string :name nullable
+    enum :location values=[:local, :shared] default=:local
+    enum :state values=[:active, :moved] default=:active
+    integer :version default=1
+  actions auto=[:read]
+    create :create
+      input
+        &name
+        &location
+    update :rename
+      input
+        &name

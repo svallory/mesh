@@ -20,7 +20,7 @@ async function project(
   await writeFile(resolve(root, "domain/todo.mesh.mx"), keyed);
   await writeFile(
     resolve(root, "mesh.config.ts"),
-    `export default {domain:${JSON.stringify(domain)},output:${JSON.stringify(output)},data:{kind:"data-adapter",name:"sqlite",build: "@meshfw/data-sqlite/build", options:{file:":memory:"}}}`,
+    `export default {domain:${JSON.stringify(domain)},output:${JSON.stringify(output)},data:{kind:"data-adapter",name:"sqlite",build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: [] }, options:{file:":memory:"}}}`,
   );
   return root;
 }

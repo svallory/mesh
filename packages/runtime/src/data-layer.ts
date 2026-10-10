@@ -21,16 +21,17 @@ export type Scalar = string | number | boolean | Date | null;
  *
  * `eq: null` and `ne: null` mean "is null" and "is not null" (as `nil` does), never SQL
  * `= NULL`. `lt`, `lte`, `gt` and `gte` reject `null`. `in` takes a list of non-null
- * values; an empty list matches nothing.
+ * values; an empty list matches nothing. The type argument narrows the values to one
+ * attribute's type: the generated filter of an entity uses it.
  */
-export interface Comparison {
-  readonly eq?: Scalar;
-  readonly ne?: Scalar;
-  readonly lt?: Exclude<Scalar, null>;
-  readonly lte?: Exclude<Scalar, null>;
-  readonly gt?: Exclude<Scalar, null>;
-  readonly gte?: Exclude<Scalar, null>;
-  readonly in?: readonly Exclude<Scalar, null>[];
+export interface Comparison<T extends Exclude<Scalar, null> = Exclude<Scalar, null>> {
+  readonly eq?: T | null;
+  readonly ne?: T | null;
+  readonly lt?: T;
+  readonly lte?: T;
+  readonly gt?: T;
+  readonly gte?: T;
+  readonly in?: readonly T[];
   /** `true` matches null, `false` matches not null. */
   readonly nil?: boolean;
 }
@@ -52,14 +53,16 @@ export type Sort = readonly string[];
 
 /**
  * A read. Rows that tie on every `sort` field come back in primary-key order, so a page
- * is the same page every time. `offset` without `limit` skips rows and returns the rest.
+ * is the same page every time. `offset` without `limit` skips rows and returns the rest. A
+ * field that is `undefined` is the same as one that is left out, so a caller can pass an
+ * optional input through; a filter's operators do not have this leniency.
  * `limit` and `offset` are non-negative integers; an offset past the end returns no rows.
  */
 export interface Query {
-  readonly filter?: Filter;
-  readonly sort?: Sort;
-  readonly limit?: number;
-  readonly offset?: number;
+  readonly filter?: Filter | undefined;
+  readonly sort?: Sort | undefined;
+  readonly limit?: number | undefined;
+  readonly offset?: number | undefined;
 }
 
 /**
@@ -88,11 +91,6 @@ export interface DataOperations {
   selectByKeyForUpdate(table: TableHandle, key: Key): Promise<Row | undefined>;
   /** Rows matching a plain-data query. No query means every row, in primary-key order. */
   select(table: TableHandle, query?: Query): Promise<Row[]>;
-  /**
-   * Return every row in this entity's storage; order is unspecified.
-   * @deprecated Use `select`. Kept so M2 generated code keeps working; M3b removes it.
-   */
-  selectAll(table: TableHandle): Promise<Row[]>;
   /** Apply changes and return the stored row, or undefined when absent. */
   updateByKey(table: TableHandle, key: Key, changes: Row): Promise<Row | undefined>;
   /** Delete one row, returning false when absent. */

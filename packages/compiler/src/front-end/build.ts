@@ -9,6 +9,7 @@ import {
 export { projectPath } from "../paths.ts";
 import { lowerSource, type IrDiagnostic } from "@mxlang/core";
 import {
+  attributeTypeInfo,
   findNonJsonValue,
   isActionKind,
   type ActionType,
@@ -47,6 +48,7 @@ import {
   atomOf,
   attr,
   attrOffset,
+  containsAtom,
   declaredName,
   expression,
   isMemberLine,
@@ -227,7 +229,7 @@ function buildEntity(
     }
   const pending: {
     ref: MemberRef;
-    scope: "input" | "sort" | "load" | "set" | "actions" | "expression";
+    scope: "input" | "sort" | "load" | "set" | "actions" | "expression" | "filter";
   }[] = [];
   const checkRef = (
     ref: MemberRef,
@@ -236,12 +238,12 @@ function buildEntity(
     pending.push({ ref, scope });
     return ref;
   };
-  const expr = (a: Attr | undefined): Expression =>
+  const expr = (a: Attr | undefined, scope: "expression" | "filter" = "expression"): Expression =>
     expression(
       a,
       source,
       at,
-      (ref) => checkRef(ref, "expression"),
+      (ref) => checkRef(ref, scope),
       ({ ref, position }) =>
         fail(
           "MESH_MEMBER_ASSIGN",
@@ -261,7 +263,11 @@ function buildEntity(
       "nullable" | "default" | "values" | "min" | "max" | "match"
     > = { nullable: opt(tag, "nullable") === true };
     const def = attr(tag, "default");
-    if (def) result.default = valueOf(def);
+    if (def) {
+      result.default = valueOf(def);
+      if (tag.name === "json" && containsAtom(def))
+        fail("MESH_DEFAULT", "A json default is a JSON literal, and an atom is not JSON: write a string", tag);
+    }
     const values = attr(tag, "values");
     if (values) result.values = atomList(values).map((value) => ({ value }));
     for (const key of ["min", "max"] as const) {
@@ -469,7 +475,9 @@ function buildEntity(
               try { literal = valueOf(member.value); }
               catch { throw new Error(`\`&${member.ref.name}=\` needs a literal value here`); }
               const field = entity.attributes.find((attribute) => attribute.name === member.ref.name);
-              if (field && (!literalFits(literal, field) || n?.type === "ObjectExpression"))
+              if (field?.type === "json" && containsAtom(member.value))
+                fail("MESH_SET_VALUE", `\`&${member.ref.name}=\` is json, and an atom is not JSON: write a string`, member.ref.position);
+              if (field && (!literalFits(literal, field) || (n?.type === "ObjectExpression" && field.type !== "json")))
                 fail("MESH_SET_VALUE", `\`&${member.ref.name}=\` needs a literal that fits ${field.type}${field.type === "enum" ? ` (${field.values?.map((atom) => `:${atom.value}`).join(", ")})` : ""}`, member.ref.position);
               return literal;
             });
@@ -587,7 +595,7 @@ function buildEntity(
         name: declaredName(tag),
         input,
         ...body(tag),
-        ...(filter ? { filter: expr(filter) } : {}),
+        ...(filter ? { filter: expr(filter, "filter") } : {}),
         ...(sort
           ? {
               sort: tags(sort.children).map((t) => ({
@@ -677,6 +685,12 @@ function buildEntity(
     const candidates = new Set(allowed.map((m) => m.name));
     if (!candidates.has(ref.name))
       diagnostics.push(unknownMember(entity, ref, candidates));
+    else if (scope === "sort" || scope === "filter") {
+      const used = [...entity.attributes, ...entity.computed].find((m) => m.name === ref.name);
+      if (used && !attributeTypeInfo(used.type).queryable)
+        fail(scope === "sort" ? "MESH_SORT_TYPE" : "MESH_FILTER_TYPE",
+          `&${ref.name} is :${used.type}, which a ${scope} cannot use: the database does not look inside it`, ref.position);
+    }
   }
   if (
     entity.onLoad &&

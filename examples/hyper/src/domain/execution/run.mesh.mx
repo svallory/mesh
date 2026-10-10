@@ -1,0 +1,29 @@
+import { Task } from "../work/task.mesh.mx"
+import { Collaborator } from "../identity/collaborator.mesh.mx"
+import { Run } from "./run.mesh.mx"
+import { Attempt } from "./attempt.mesh.mx"
+
+entity :Run table="runs"
+  attributes
+    uuid :id primary-key
+    json :inputs default={}
+    json :outcome nullable
+    enum :state values=[:running, :succeeded, :failed, :canceled] default=:running
+    string :cancelReason nullable
+    timestamp :endedAt nullable
+    integer :version default=1
+    timestamp :startedAt on=:create
+  relationships
+    belongs-to :task entity=Task
+    belongs-to :responsible entity=Collaborator
+    belongs-to :startedBy entity=Collaborator
+    belongs-to :parentRun entity=Run nullable
+    has-many :attempts entity=Attempt
+  actions auto=[:read]
+    create :start
+      input
+        &inputs
+        &task
+        &responsible
+        &startedBy
+        &parentRun

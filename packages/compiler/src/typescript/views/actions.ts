@@ -96,6 +96,8 @@ function isAtom(value: Literal | Atom): value is Atom {
 
 /** A literal or atom as a TypeScript value of the attribute's type: an atom is its name as a string. */
 function printValue(value: Literal | Atom, type: Attribute["type"]): string {
+  // A json value is data as written; an object with a lone string `value` is not an atom there.
+  if (type === "json") return JSON.stringify(value);
   const plain = isAtom(value) ? value.value : value;
   const json = JSON.stringify(plain);
   const dated = type === "date" || type === "datetime" || type === "timestamp";
@@ -212,8 +214,9 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
           return { ...base, returnType: `${recordName}[]`, usesParsed: false, unsupported: JSON.stringify(
             `${base.functionName} cannot run in this version: its ${parts} ${action.filter && action.sort ? "are" : "is"} evaluated from M4`), statements: [] };
         }
-        return { ...base, returnType: `${recordName}[]`, unsupported: null, usesParsed: false,
-          statements: [`return (await tx.selectAll(${table})) as ${recordName}[];`] };
+        const query = ["filter", "sort", "limit", "offset"].map((name) => `${name}: ${read("parsed", name)}`).join(", ");
+        return { ...base, returnType: `${recordName}[]`, unsupported: null, usesParsed: true,
+          statements: [`return (await tx.select(${table}, { ${query} })) as ${recordName}[];`] };
       }
       case "destroy": {
         const accepted = action.input[0];
@@ -258,10 +261,12 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         const lines: string[] = [];
         let usesNow = false;
         const fill = (column: string, position: SourcePosition, rules: {
-          uuidKey: boolean; stamped: boolean; fallback: string | undefined; nullable: boolean }) => {
+          key: boolean; stamped: boolean; fallback: string | undefined; nullable: boolean }) => {
+          // The primary key is not written here: the data layer fills a key the row lacks (a UUIDv7
+          // for a text key, the next integer for an integer key) inside the write transaction.
+          if (rules.key && !constants.has(column)) return;
           let fallback: string | undefined;
           if (constants.has(column)) fallback = constants.get(column);
-          else if (rules.uuidKey) fallback = "crypto.randomUUID()";
           else if (rules.stamped) { fallback = "now"; usesNow = true; }
           else if (rules.fallback !== undefined) fallback = rules.fallback;
           else if (rules.nullable) fallback = "null";
@@ -278,14 +283,14 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         };
         for (const attribute of entity.attributes)
           fill(attribute.name, attribute.position, {
-            uuidKey: attribute.primaryKey && attribute.type === "uuid",
+            key: attribute.primaryKey,
             stamped: attribute.on !== undefined,
             fallback: attribute.default === undefined ? undefined : printValue(attribute.default, attribute.type),
             nullable: attribute.nullable,
           });
         for (const relation of entity.relationships)
           if (relation.keyColumn)
-            fill(relation.keyColumn, relation.position, { uuidKey: false, stamped: false, fallback: undefined, nullable: relation.nullable });
+            fill(relation.keyColumn, relation.position, { key: false, stamped: false, fallback: undefined, nullable: relation.nullable });
         const statements = [
           ...(usesNow ? ["const now = new Date();"] : []),
           `const row = await tx.insert(${table}, {`, ...lines.map((line) => `  ${line}`), "});",

@@ -68,7 +68,7 @@ async function emitted(text = source) {
     configFile: resolve(root, "mesh.config.ts"),
     entityFiles: [],
     domainRoot: root,
-    data: { kind: "data-adapter" as const, name: "sqlite", build: "@meshfw/data-sqlite/build", options: { file: ":memory:" } },
+    data: { kind: "data-adapter" as const, name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: [] }, options: { file: ":memory:" } },
   };
   const files = await generateFiles({ document: built.document!, config });
   await writeGeneratedFiles(files, config);

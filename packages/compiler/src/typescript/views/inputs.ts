@@ -1,6 +1,7 @@
 import { dirname, resolve } from "node:path";
 import {
   attributeTypeInfo,
+  type AttributeType,
   type Action,
   type Argument,
   type Attribute,
@@ -54,23 +55,55 @@ export type FieldShape = Pick<
   | "match"
   | "position"
 >;
+/** The names a read's input reserves beside its own arguments. */
+export const QUERY_FIELDS = ["filter", "sort", "limit", "offset"] as const;
+export type QueryField = (typeof QUERY_FIELDS)[number];
 export interface PlannedField {
   attribute: FieldShape;
   optional: boolean;
   reference?: Entity;
+  /** Set on the four fields every read takes from its caller; their type and schema are not an attribute's. */
+  query?: QueryField;
 }
+/** A stored column a caller may filter and sort by. */
+export interface QueryColumn {
+  name: string;
+  type: AttributeType;
+  nullable: boolean;
+  values?: Attribute["values"];
+}
+/**
+ * The columns of an entity that a caller's filter and sort can name: its attributes of a
+ * queryable type (not `json`) and the key column of each `belongs-to`. A relationship itself
+ * and a computed field are not columns.
+ */
+export function queryColumns(entity: Entity): QueryColumn[] {
+  const columns: QueryColumn[] = entity.attributes
+    .filter((attribute) => attributeTypeInfo(attribute.type).queryable)
+    .map(({ name, type, nullable, values }) => ({ name, type, nullable, ...(values ? { values } : {}) }));
+  for (const relation of entity.relationships)
+    if (relation.keyColumn) columns.push({ name: relation.keyColumn, type: "string", nullable: relation.nullable });
+  return columns;
+}
+export const filterTypeName = (entity: Entity) => `${typeName(entity.name, entity.position)}Filter`;
+export const sortTypeName = (entity: Entity) => `${typeName(entity.name, entity.position)}Sort`;
+export const hasRead = (entity: Entity) => effectiveActions(entity).some((action) => action.kind === "read");
 export interface PlannedInput {
   name: string;
   position: SourcePosition;
   fields: PlannedField[];
 }
-export function valueType(field: FieldShape): string {
-  const base =
-    field.type === "enum"
-      ? (field.values ?? []).map((a) => JSON.stringify(a.value)).join(" | ") ||
+/** The TypeScript type of an attribute's values, without `null`: an enum's union, or its type's own. */
+export function baseType(field: Pick<FieldShape, "type" | "values">): string {
+  return field.type === "enum"
+    ? (field.values ?? []).map((a) => JSON.stringify(a.value)).join(" | ") ||
         "never"
-      : attributeTypeInfo(field.type).tsType;
-  return base + (field.nullable ? " | null" : "");
+    : attributeTypeInfo(field.type).tsType;
+}
+export function valueType(field: FieldShape): string {
+  const base = baseType(field);
+  // `unknown` already holds null.
+  return base + (field.nullable && base !== "unknown" ? " | null" : "");
 }
 export function effectiveActions(entity: Entity): Action[] {
   return [
@@ -159,6 +192,13 @@ export function entityInputs(
           `Input ${field.name} conflicts with the row selector`,
           field.position,
         );
+      if (action.kind === "read" && (QUERY_FIELDS as readonly string[]).includes(field.name))
+        throw emitError(
+          "MESH_DUPLICATE_INPUT",
+          `Input ${field.name} conflicts with the ${QUERY_FIELDS.join(", ")} that a read takes from its caller`,
+          field.position,
+          `Rename the argument of read :${action.name}`,
+        );
       const optional =
         (input.kind === "member" && action.kind !== "create") ||
         field.nullable ||
@@ -169,6 +209,13 @@ export function entityInputs(
         ...(reference ? { reference } : {}),
       });
     }
+    if (action.kind === "read")
+      for (const name of QUERY_FIELDS)
+        fields.push({
+          attribute: { name, type: name === "filter" || name === "sort" ? "json" : "integer", nullable: false, position: action.position },
+          optional: true,
+          query: name,
+        });
     return {
       name: `${typeName(action.name, action.position)}${typeName(entity.name, entity.position)}Input`,
       position: action.position,

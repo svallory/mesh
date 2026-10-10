@@ -30,7 +30,7 @@ export interface TableView {
   readonly columns: readonly ColumnView[];
 }
 
-/** `<key>: <builder>(<nameLiteral>[, <options>])[.notNull()][.primaryKey()],` */
+/** `<key>: <builder>(<nameLiteral>[, <options>])[.notNull()][.primaryKey()][.unique()],` */
 export interface ColumnView {
   /** The property key as printed: the attribute name, JSON-quoted when it is not an identifier. */
   readonly key: string;
@@ -44,12 +44,14 @@ export interface ColumnView {
   readonly notNull: boolean;
   /** True for the entity's primary key; the template prints `.primaryKey()`. */
   readonly primaryKey: boolean;
+  /** True for an attribute declared `unique`; the template prints `.unique()`. */
+  readonly unique: boolean;
 }
 
 /**
  * How each attribute type is stored. The TypeScript type Drizzle infers for each
  * column equals the record type the `types` generator writes for the attribute
- * (`string`, `number`, `boolean`, `Date`, or the union of an enum's values); a
+ * (`string`, `number`, `boolean`, `Date`, `unknown` for `json`, or the union of an enum's values); a
  * type-level test checks every entry. No defaults: the generated actions write
  * every default, generated id and timestamp themselves (ADR-0003).
  */
@@ -64,6 +66,7 @@ export const SQLITE_COLUMNS = Object.freeze({
   date: { builder: "integer", options: '{ mode: "timestamp_ms" }' },
   datetime: { builder: "integer", options: '{ mode: "timestamp_ms" }' },
   timestamp: { builder: "integer", options: '{ mode: "timestamp_ms" }' },
+  json: { builder: "text", options: '{ mode: "json" }' },
 } as const satisfies Record<AttributeType, { builder: string; options: string | null }>);
 
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
@@ -82,7 +85,7 @@ export function camelCase(name: string): string {
     (index === 0 ? word[0]!.toLowerCase() : word[0]!.toUpperCase()) + word.slice(1)).join("");
 }
 
-function column(name: string, type: AttributeType, nullable: boolean, primaryKey: boolean, values: readonly string[]): ColumnView {
+function column(name: string, type: AttributeType, nullable: boolean, primaryKey: boolean, values: readonly string[], unique = false): ColumnView {
   const { builder, options } = SQLITE_COLUMNS[type];
   return {
     key: propertyKey(name),
@@ -91,6 +94,7 @@ function column(name: string, type: AttributeType, nullable: boolean, primaryKey
     options: options === "enum" ? `{ enum: ${JSON.stringify(values)} }` : options,
     notNull: !nullable,
     primaryKey,
+    unique,
   };
 }
 
@@ -116,7 +120,7 @@ function tableView(entity: Entity): TableView {
   };
   for (const attribute of entity.attributes) {
     add(attribute.name, attribute.position, column(attribute.name, attribute.type, attribute.nullable, attribute.primaryKey,
-      (attribute.values ?? []).map((atom) => atom.value)));
+      (attribute.values ?? []).map((atom) => atom.value), attribute.unique));
   }
   for (const relation of entity.relationships) {
     if (relation.keyColumn) add(relation.keyColumn, relation.position, column(relation.keyColumn, "string", relation.nullable, false, []));

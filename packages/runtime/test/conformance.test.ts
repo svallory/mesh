@@ -21,7 +21,6 @@ function fake(mode: "correct" | "no rollback" | "wrong error" | "no commit" | "b
       const tx: DataOperations = {
         async insert(_table, row) { pending.set(row.id, structuredClone(row)); return structuredClone(row); },
         async selectByKey(_table, key) { return structuredClone(pending.get(lookupKey(key, "select"))); },
-        async selectAll() { return structuredClone([...pending.values()]); },
         async updateByKey(_table, key, changes) {
           const id = lookupKey(key, "update");
           const old = pending.get(id);

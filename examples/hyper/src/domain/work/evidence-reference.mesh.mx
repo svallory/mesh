@@ -1,0 +1,20 @@
+import { Collaborator } from "../identity/collaborator.mesh.mx"
+
+entity :EvidenceReference table="evidence_references"
+  attributes
+    uuid :id primary-key
+    string :kind
+    string :locator
+    string :contentHash nullable
+    string :description nullable
+    timestamp :recordedAt on=:create
+  relationships
+    belongs-to :recordedBy entity=Collaborator
+  actions auto=[:read]
+    create :record
+      input
+        &kind
+        &locator
+        &contentHash
+        &description
+        &recordedBy

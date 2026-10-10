@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { defineConfig, loadConfig, loadProject } from "../src/index.ts";
 import { keyed } from "./v4.ts";
-const data = { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", options: { file: "app.db" } } as const;
+const data = { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: [] }, options: { file: "app.db" } } as const;
 const adapter = JSON.stringify(data);
 const roots: string[] = [];
 afterEach(async () => {

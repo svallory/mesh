@@ -1,0 +1,23 @@
+import { Collaborator } from "../identity/collaborator.mesh.mx"
+import { Attempt } from "./attempt.mesh.mx"
+
+entity :Machine table="machines"
+  attributes
+    uuid :id primary-key
+    string :name unique
+    string :platform nullable
+    enum :state values=[:active, :retired] default=:active
+    integer :version default=1
+    timestamp :registeredAt on=:create
+  relationships
+    belongs-to :firstReportedBy entity=Collaborator nullable
+    has-many :attempts entity=Attempt
+  actions auto=[:read]
+    create :register
+      input
+        &name
+        &platform
+        &firstReportedBy
+    update :update
+      input
+        &platform

@@ -2,18 +2,21 @@
 export interface AttributeTypeInfo {
   readonly name: string;
   readonly tsType: string;
+  /** False when a filter, a sort and a rollup cannot use the type (a `json` value is opaque to the query). */
+  readonly queryable: boolean;
 }
 export const ATTRIBUTE_TYPES = Object.freeze([
-  { name: "uuid", tsType: "string" },
-  { name: "string", tsType: "string" },
-  { name: "integer", tsType: "number" },
-  { name: "float", tsType: "number" },
-  { name: "decimal", tsType: "number" },
-  { name: "boolean", tsType: "boolean" },
-  { name: "enum", tsType: "string" },
-  { name: "date", tsType: "Date" },
-  { name: "datetime", tsType: "Date" },
-  { name: "timestamp", tsType: "Date" },
+  { name: "uuid", tsType: "string", queryable: true },
+  { name: "string", tsType: "string", queryable: true },
+  { name: "integer", tsType: "number", queryable: true },
+  { name: "float", tsType: "number", queryable: true },
+  { name: "decimal", tsType: "number", queryable: true },
+  { name: "boolean", tsType: "boolean", queryable: true },
+  { name: "enum", tsType: "string", queryable: true },
+  { name: "date", tsType: "Date", queryable: true },
+  { name: "datetime", tsType: "Date", queryable: true },
+  { name: "timestamp", tsType: "Date", queryable: true },
+  { name: "json", tsType: "unknown", queryable: false },
 ] as const);
 export type AttributeType = (typeof ATTRIBUTE_TYPES)[number]["name"];
 export type AttributeTypeName = AttributeType;

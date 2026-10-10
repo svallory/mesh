@@ -10,7 +10,7 @@ export const configOf = (
   configFile: resolve(root, "mesh.config.ts"),
   entityFiles: [],
   domainRoot: root,
-  data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", options: { file: ":memory:" } },
+  data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: [] }, options: { file: ":memory:" } },
   output: resolve(root, output),
 });
 

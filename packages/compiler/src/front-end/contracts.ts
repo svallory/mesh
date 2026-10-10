@@ -22,6 +22,11 @@ const atom = (required = false): CustomTagAttribute => ({
   required,
   pattern: "^[A-Za-z_][A-Za-z0-9_]*$",
 });
+/** An enum value is a fixed-set atom, written into string literals only, so it may contain hyphens (`:review-accepted`). */
+const valueAtom = (): CustomTagAttribute => ({
+  type: "atom",
+  pattern: "^[A-Za-z_][A-Za-z0-9_-]*$",
+});
 const text = (required = false): CustomTagAttribute => ({
   type: "string",
   literalOnly: true,
@@ -86,7 +91,7 @@ const scope = () => ({
 const options = (type: string) => ({
   nullable: flag(),
   default: { literalOnly: true },
-  ...(type === "enum" ? { values: atom() } : {}),
+  ...(type === "enum" ? { values: valueAtom() } : {}),
   ...(["string", "integer", "float", "decimal"].includes(type) ? { min: number(), max: number() } : {}),
   ...(type === "string" ? { match: { type: "expression" as const } } : {}),
 });
@@ -209,7 +214,8 @@ for (const type of ATTRIBUTE_TYPES)
       ...named(),
       ...options(type),
       ...(["uuid", "integer", "string"].includes(type) ? { "primary-key": flag() } : {}),
-      unique: flag(),
+      // A json value is opaque to the database, so it cannot be unique (ADR-0069).
+      ...(type === "json" ? {} : { unique: flag() }),
       ...(type === "timestamp" ? { on: { type: "atom" as const, values: ["create", "update"] } } : {}),
       value: fn(),
     },

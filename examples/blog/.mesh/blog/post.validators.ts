@@ -10,6 +10,7 @@ import type {
   PublishedPostInput,
   ReadPostInput,
   DestroyPostInput,
+  PostFilter,
 } from "./post.types";
 
 type Keys<T> = T extends Record<string, never> ? never : keyof T;
@@ -26,9 +27,88 @@ type SameShape<A, B> = [Keys<A>] extends [Keys<B>]
 
 type Assert<T extends true> = T;
 
+const comparison = <T extends z.ZodType>(value: T) =>
+  z
+    .strictObject({
+      eq: value.nullable().exactOptional(),
+      ne: value.nullable().exactOptional(),
+      lt: value.exactOptional(),
+      lte: value.exactOptional(),
+      gt: value.exactOptional(),
+      gte: value.exactOptional(),
+      in: z.array(value).readonly().exactOptional(),
+      nil: z.boolean().exactOptional(),
+    })
+    .refine((operators) => Object.keys(operators).length > 0, {
+      message: "a comparison needs an operator",
+    });
+
+export const postFilter: z.ZodType<PostFilter> = z.lazy(
+  () =>
+    z.union([
+      z.strictObject({ and: z.array(postFilter).readonly() }),
+      z.strictObject({ or: z.array(postFilter).readonly() }),
+      z.strictObject({
+        id: comparison(z.uuid()).exactOptional(),
+        title: comparison(z.string()).exactOptional(),
+        body: comparison(z.string()).exactOptional(),
+        views: comparison(z.int()).exactOptional(),
+        rating: comparison(z.number()).exactOptional(),
+        price: comparison(z.number()).exactOptional(),
+        featured: comparison(z.boolean()).exactOptional(),
+        publicationDate: comparison(z.date()).exactOptional(),
+        publishedAt: comparison(z.date()).exactOptional(),
+        state: comparison(z.enum(["draft", "published"])).exactOptional(),
+        insertedAt: comparison(z.date()).exactOptional(),
+        updatedAt: comparison(z.date()).exactOptional(),
+        authorId: comparison(z.string()).exactOptional(),
+      }),
+    ]) as unknown as z.ZodType<PostFilter>,
+);
+
+export const postSort = z
+  .array(
+    z.enum([
+      "id",
+      "-id",
+      "title",
+      "-title",
+      "body",
+      "-body",
+      "views",
+      "-views",
+      "rating",
+      "-rating",
+      "price",
+      "-price",
+      "featured",
+      "-featured",
+      "publicationDate",
+      "-publicationDate",
+      "publishedAt",
+      "-publishedAt",
+      "state",
+      "-state",
+      "insertedAt",
+      "-insertedAt",
+      "updatedAt",
+      "-updatedAt",
+      "authorId",
+      "-authorId",
+    ]),
+  )
+  .readonly();
+
 export const createPostInput = z.strictObject({
   title: z.string().min(1).max(200),
   body: z.string().nullable().optional(),
+  metadata: (
+    z
+      .json()
+      .refine((value) => value !== null, {
+        message: "null is only allowed on a nullable attribute",
+      }) as z.ZodType<unknown>
+  ).optional(),
   author: z.uuid(),
 }) satisfies z.ZodType<CreatePostInput>;
 
@@ -52,13 +132,23 @@ export type ArchivePostInputShape = Assert<
   SameShape<z.output<typeof archivePostInput>, ArchivePostInput>
 >;
 
-export const publishedPostInput = z.strictObject({}) satisfies z.ZodType<PublishedPostInput>;
+export const publishedPostInput = z.strictObject({
+  filter: postFilter.optional(),
+  sort: postSort.optional(),
+  limit: z.int().min(0).optional(),
+  offset: z.int().min(0).optional(),
+}) satisfies z.ZodType<PublishedPostInput>;
 
 export type PublishedPostInputShape = Assert<
   SameShape<z.output<typeof publishedPostInput>, PublishedPostInput>
 >;
 
-export const readPostInput = z.strictObject({}) satisfies z.ZodType<ReadPostInput>;
+export const readPostInput = z.strictObject({
+  filter: postFilter.optional(),
+  sort: postSort.optional(),
+  limit: z.int().min(0).optional(),
+  offset: z.int().min(0).optional(),
+}) satisfies z.ZodType<ReadPostInput>;
 
 export type ReadPostInputShape = Assert<SameShape<z.output<typeof readPostInput>, ReadPostInput>>;
 

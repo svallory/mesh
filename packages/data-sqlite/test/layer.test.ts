@@ -96,9 +96,9 @@ test("close releases the connection and a later transaction reopens the same fil
     await layer.close();
     // Another layer can take the write lock once the first is closed.
     const other = sqlite({ file: join(dir, "reopen.db") });
-    await other.transaction(async (tx) => expect(await tx.selectAll(table)).toEqual([sampleRow]));
+    await other.transaction(async (tx) => expect(await tx.select(table)).toEqual([sampleRow]));
     await other.close();
-    await layer.transaction(async (tx) => expect(await tx.selectAll(table)).toEqual([sampleRow]));
+    await layer.transaction(async (tx) => expect(await tx.select(table)).toEqual([sampleRow]));
     await layer.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
@@ -110,7 +110,7 @@ test("a :memory: layer reopens empty after close", async () => {
     await layer.transaction(async (tx) => { await tx.insert(table, sampleRow); });
     await layer.close();
     await createSchema(layer, { table });
-    await layer.transaction(async (tx) => expect(await tx.selectAll(table)).toEqual([]));
+    await layer.transaction(async (tx) => expect(await tx.select(table)).toEqual([]));
   } finally { await layer.close(); }
 });
 
@@ -126,7 +126,7 @@ test("createSchema refuses data-losing statements and preserves existing rows", 
   await withLayer(async (layer) => {
     await layer.transaction(async (tx) => { await tx.insert(table, sampleRow); });
     await expect(createSchema(layer, {})).rejects.toThrow("DROP TABLE");
-    await layer.transaction(async (tx) => expect(await tx.selectAll(table)).toEqual([sampleRow]));
+    await layer.transaction(async (tx) => expect(await tx.select(table)).toEqual([sampleRow]));
   });
 });
 
@@ -136,7 +136,7 @@ test("createSchema rejects a foreign layer and invalid table handles", async () 
     const postgres = pgTable("wrong", { id: pgText("id") });
     for (const invalid of [{}, postgres]) {
       await expect(createSchema(layer, { invalid })).rejects.toThrow("Drizzle SQLite table");
-      await expect(layer.transaction((tx) => tx.selectAll(invalid))).rejects.toThrow("Drizzle SQLite table");
+      await expect(layer.transaction((tx) => tx.select(invalid))).rejects.toThrow("Drizzle SQLite table");
     }
   });
 });
@@ -204,7 +204,7 @@ test("synchronous throw rolls back and preserves the error object", async () => 
   await withLayer(async (layer) => {
     const cause = new Error("sync callback");
     await expect(layer.transaction(() => { throw cause; })).rejects.toBe(cause);
-    await layer.transaction(async (tx) => expect(await tx.selectAll(table)).toEqual([]));
+    await layer.transaction(async (tx) => expect(await tx.select(table)).toEqual([]));
   });
 });
 
@@ -216,7 +216,7 @@ test("operations are revoked after success and failure", async () => {
       const pending = layer.transaction(async (tx) => { held = tx; if (fail) throw cause; });
       if (fail) await expect(pending).rejects.toBe(cause); else await pending;
       if (!held) throw new Error("callback not run");
-      for (const call of [() => held!.insert(table, sampleRow), () => held!.selectAll(table), () => held!.selectByKey(table, { id: sampleRow.id }),
+      for (const call of [() => held!.insert(table, sampleRow), () => held!.select(table), () => held!.selectByKey(table, { id: sampleRow.id }),
         () => held!.updateByKey(table, { id: sampleRow.id }, {}), () => held!.deleteByKey(table, { id: sampleRow.id })]) {
         await expect(call()).rejects.toThrow("no longer active");
       }
@@ -229,7 +229,7 @@ test("constraint errors are FrameworkError with the original driver error as cau
     await layer.transaction(async (tx) => { await tx.insert(table, sampleRow); });
     try { await layer.transaction((tx) => tx.insert(table, sampleRow)); throw new Error("did not reject"); }
     catch (error) { expect(error).toBeInstanceOf(FrameworkError); expect((error as Error).cause).toBeInstanceOf(Error); }
-    await layer.transaction(async (tx) => expect(await tx.selectAll(table)).toEqual([sampleRow]));
+    await layer.transaction(async (tx) => expect(await tx.select(table)).toEqual([sampleRow]));
   });
 });
 
@@ -248,7 +248,7 @@ test("COMMIT failure rolls back the write and rethrows unchanged", async () => {
     try { await expect(layer.transaction((tx) => tx.insert(table, sampleRow))).rejects.toBe(cause); }
     finally { spy.mockRestore(); }
     expect(statements).toEqual(["BEGIN IMMEDIATE", "COMMIT", "ROLLBACK"]);
-    await layer.transaction(async (tx) => expect(await tx.selectAll(table)).toEqual([]));
+    await layer.transaction(async (tx) => expect(await tx.select(table)).toEqual([]));
   });
 });
 
@@ -295,7 +295,7 @@ test.each(["memory", "file"])("ROLLBACK failure fails closed for queued and late
     // lock, wait for it to be finalised (see the next test).
     Bun.gc(true);
     if (kind === "memory") await createSchema(layer, { table });
-    await layer.transaction(async (tx) => expect(await tx.selectAll(table)).toEqual([]));
+    await layer.transaction(async (tx) => expect(await tx.select(table)).toEqual([]));
   } finally { await layer.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -332,7 +332,7 @@ test("closing a fatally failed layer releases the write lock for a new layer on 
     try { probe.run("BEGIN IMMEDIATE"); probe.run("ROLLBACK"); }
     finally { probe.close(); }
     const next = sqlite({ file });
-    try { await next.transaction(async (tx) => expect(await tx.selectAll(table)).toEqual([])); }
+    try { await next.transaction(async (tx) => expect(await tx.select(table)).toEqual([])); }
     finally { await next.close(); }
   } finally { await layer.close(); rmSync(dir, { recursive: true, force: true }); }
 });
@@ -418,7 +418,7 @@ test("BEGIN busy failure explains the per-layer lock boundary and the queue reco
     expect(calls).toBe(0);
     release();
     await pending;
-    await second.transaction(async (tx) => expect(await tx.selectAll(table)).toEqual([sampleRow]));
+    await second.transaction(async (tx) => expect(await tx.select(table)).toEqual([sampleRow]));
   } finally { release(); await pending; await first.close(); await second.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -458,6 +458,6 @@ test("a call made from a settled transaction's leftover continuation queues as a
       leaked = new Promise((resolve) => setTimeout(resolve, 10)).then(() => layer.transaction(async (tx) => { await tx.insert(table, { ...sampleRow, id: "late" }); }));
     });
     await leaked;
-    await layer.transaction(async (tx) => expect((await tx.selectAll(table)).map((row) => row.id)).toEqual(["late"]));
+    await layer.transaction(async (tx) => expect((await tx.select(table)).map((row) => row.id)).toEqual(["late"]));
   });
 });

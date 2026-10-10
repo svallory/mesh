@@ -17,7 +17,6 @@ export function bindUser(layer: $DataLayer) {
       const parsed = await parseInput(createUserInput, input);
       return layer.transaction(async (tx) => {
         const row = await tx.insert(tables.user, {
-          id: crypto.randomUUID(),
           name: parsed.name,
         });
         return row as User;
@@ -25,9 +24,14 @@ export function bindUser(layer: $DataLayer) {
     },
 
     async read(input: ReadUserInput, ...[_context]: $ContextArgument): Promise<User[]> {
-      await parseInput(readUserInput, input);
+      const parsed = await parseInput(readUserInput, input);
       return layer.transaction(async (tx) => {
-        return (await tx.selectAll(tables.user)) as User[];
+        return (await tx.select(tables.user, {
+          filter: parsed.filter,
+          sort: parsed.sort,
+          limit: parsed.limit,
+          offset: parsed.offset,
+        })) as User[];
       });
     },
   });

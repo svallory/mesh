@@ -1,0 +1,40 @@
+import { Task } from "./task.mesh.mx"
+import { Collaborator } from "../identity/collaborator.mesh.mx"
+import { Assignment } from "./assignment.mesh.mx"
+import { Claim } from "./claim.mesh.mx"
+import { Submission } from "./submission.mesh.mx"
+import { Completion } from "./completion.mesh.mx"
+import { Event } from "../audit/event.mesh.mx"
+
+entity :Task table="tasks"
+  attributes
+    uuid :id primary-key
+    string :title
+    string :intent nullable
+    integer :priority nullable
+    enum :state values=[:open, :done, :canceled] default=:open
+    integer :version default=1
+    timestamp :createdAt on=:create
+  relationships
+    belongs-to :parent entity=Task nullable
+    belongs-to :creator entity=Collaborator
+    has-many :children entity=Task
+    has-many :assignments entity=Assignment
+    has-many :claims entity=Claim
+    has-many :submissions entity=Submission
+    has-many :completions entity=Completion
+    has-many :events entity=Event
+  actions auto=[:read]
+    create :create
+      input
+        &title
+        &intent
+        &parent
+        &priority
+        &creator
+    update :setPriority
+      input
+        &priority
+    update :move
+      input
+        &parent

@@ -18,7 +18,7 @@ async function project(file: unknown): Promise<ResolvedConfig> {
   dirs.push(root);
   const config: ResolvedConfig = {
     root, configFile: join(root, "mesh.config.ts"), entityFiles: [], domainRoot: join(root, "src/domain"), output: join(root, ".mesh"),
-    data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", options: { file } },
+    data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: [] }, options: { file } },
   };
   const built = buildModel({ root, domainRoot: join(root, "src/domain"), files: [{ file: "src/domain/note.mesh.mx",
     source: 'entity :Note table="notes"\n  attributes\n    uuid :id primary-key\n    string :text\n' }] });

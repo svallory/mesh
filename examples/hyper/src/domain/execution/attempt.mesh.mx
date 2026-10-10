@@ -1,0 +1,38 @@
+import { Run } from "./run.mesh.mx"
+import { Task } from "../work/task.mesh.mx"
+import { Collaborator } from "../identity/collaborator.mesh.mx"
+import { Machine } from "./machine.mesh.mx"
+import { SessionReference } from "./session-reference.mesh.mx"
+
+entity :Attempt table="attempts"
+  attributes
+    uuid :id primary-key
+    string :step default="main"
+    integer :number
+    integer :claimFence nullable
+    string :runtime nullable
+    json :outcome nullable
+    enum :state values=[:running, :succeeded, :failed, :stopped, :abandoned] default=:running
+    timestamp :endedAt nullable
+    integer :version default=1
+    timestamp :startedAt on=:create
+  relationships
+    belongs-to :run entity=Run
+    belongs-to :task entity=Task
+    belongs-to :performer entity=Collaborator
+    belongs-to :delegator entity=Collaborator
+    belongs-to :machine entity=Machine nullable
+    belongs-to :session entity=SessionReference nullable
+  actions auto=[:read]
+    create :start
+      input
+        &step
+        &number
+        &claimFence
+        &runtime
+        &run
+        &task
+        &performer
+        &delegator
+        &machine
+        &session

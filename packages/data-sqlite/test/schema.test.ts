@@ -5,7 +5,7 @@ import build, { SQLITE_COLUMNS, camelCase, schemaGenerator, schemaView } from ".
 
 const config: ResolvedConfig = {
   root: "/project", configFile: "/project/mesh.config.ts", entityFiles: [], domainRoot: "/project/src/domain",
-  data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", options: { file: ":memory:" } },
+  data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: [] }, options: { file: ":memory:" } },
   output: "/project/.mesh",
 };
 
@@ -51,18 +51,23 @@ describe("schemaView", () => {
       ["User", "userTable", "user", '"users"'],
     ]);
     expect(view.tables[0]!.columns).toEqual([
-      { key: "id", builder: "text", nameLiteral: '"id"', options: null, notNull: true, primaryKey: true },
-      { key: "title", builder: "text", nameLiteral: '"title"', options: null, notNull: true, primaryKey: false },
+      { key: "id", builder: "text", nameLiteral: '"id"', options: null, notNull: true, primaryKey: true, unique: false },
+      { key: "title", builder: "text", nameLiteral: '"title"', options: null, notNull: true, primaryKey: false, unique: false },
       // @if(column.notNull) false branch: a nullable attribute.
-      { key: "body", builder: "text", nameLiteral: '"body"', options: null, notNull: false, primaryKey: false },
+      { key: "body", builder: "text", nameLiteral: '"body"', options: null, notNull: false, primaryKey: false, unique: false },
       // @if(column.options) true branch.
-      { key: "featured", builder: "integer", nameLiteral: '"featured"', options: '{ mode: "boolean" }', notNull: true, primaryKey: false },
-      { key: "state", builder: "text", nameLiteral: '"state"', options: '{ enum: ["draft","published"] }', notNull: true, primaryKey: false },
-      { key: "publishedAt", builder: "integer", nameLiteral: '"publishedAt"', options: '{ mode: "timestamp_ms" }', notNull: false, primaryKey: false },
+      { key: "featured", builder: "integer", nameLiteral: '"featured"', options: '{ mode: "boolean" }', notNull: true, primaryKey: false, unique: false },
+      { key: "state", builder: "text", nameLiteral: '"state"', options: '{ enum: ["draft","published"] }', notNull: true, primaryKey: false, unique: false },
+      { key: "publishedAt", builder: "integer", nameLiteral: '"publishedAt"', options: '{ mode: "timestamp_ms" }', notNull: false, primaryKey: false, unique: false },
       // Relationship key columns follow the attributes; computed members have no column.
-      { key: "authorId", builder: "text", nameLiteral: '"authorId"', options: null, notNull: true, primaryKey: false },
-      { key: "editorId", builder: "text", nameLiteral: '"editorId"', options: null, notNull: false, primaryKey: false },
+      { key: "authorId", builder: "text", nameLiteral: '"authorId"', options: null, notNull: true, primaryKey: false, unique: false },
+      { key: "editorId", builder: "text", nameLiteral: '"editorId"', options: null, notNull: false, primaryKey: false, unique: false },
     ]);
+  });
+
+  test("a unique attribute prints unique, and only that one", () => {
+    const view = schemaView(input({ "t.mesh.mx": "entity :T table=\"ts\"\n  attributes\n    uuid :id primary-key\n    string :slug unique\n    string :other\n    string :maybe unique nullable\n" }));
+    expect(view.tables[0]!.columns.map((column) => [column.key, column.unique])).toEqual([["id", false], ["slug", true], ["other", false], ["maybe", true]]);
   });
 
   test("only the builders the tables use are imported", () => {

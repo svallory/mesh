@@ -1,0 +1,24 @@
+import { Task } from "./task.mesh.mx"
+import { Collaborator } from "../identity/collaborator.mesh.mx"
+
+entity :Submission table="submissions"
+  attributes
+    uuid :id primary-key
+    string :summary min=1 nullable
+    json :evidence default=[]
+    integer :fence nullable
+    integer :taskVersion
+    enum :state values=[:pending, :accepted, :returned, :withdrawn] default=:pending
+    timestamp :submittedAt on=:create
+  relationships
+    belongs-to :task entity=Task
+    belongs-to :submitter entity=Collaborator
+  actions auto=[:read]
+    create :submit
+      input
+        &summary
+        &evidence
+        &fence
+        &taskVersion
+        &task
+        &submitter

@@ -28,7 +28,7 @@ Three spellings tell you what a name means: **`:name` declares**, **`&name` refe
 | A path through relationships | a string | `of="lines.amount"`, `of="lines"` |
 | A pattern, a number, a boolean | as in TypeScript | `match=/^INV-\d+$/`, `min=0`, `default=false` |
 
-An **atom** is a name that stands for itself, not a string. It names a declaration or a value from a fixed set. At run time it is its name as a string: `values=[:draft, :sent]` gives TypeScript the union `"draft" | "sent"`, and your program compares with `invoice.status === "sent"`.
+An **atom** is a name that stands for itself, not a string. It names a declaration or a value from a fixed set. The name of an entity, attribute, relationship, action, check or policy is an atom made of letters, digits and underscores, because it becomes a TypeScript identifier. An enum value may also contain hyphens: `values=[:review-accepted, :review-waived]` gives the union `"review-accepted" | "review-waived"`, and `default=:review-accepted` and `&rule=:review-waived` refer to them. At run time an atom is its name as a string: `values=[:draft, :sent]` gives TypeScript the union `"draft" | "sent"`, and your program compares with `invoice.status === "sent"`.
 
 A **member reference** points at something declared in this entity: an attribute, relationship, computed field, action, check or policy. Inside a function, `&status` reads the record's status. A name that is not a member is a build error at that position, with a suggestion: `&titel` suggests `&title`. Strings cannot stand in for member references, and an atom cannot stand in for text: `message=:oops` is an error.
 
@@ -182,9 +182,9 @@ entity :Post
 | `date` | `Date` | A calendar date, with no time of day |
 | `datetime` | `Date` | A date and time with no time zone, in the server's local time |
 | `timestamp` | `Date` | A moment, always with its time zone |
-| `json` | `unknown` | Any JSON value: an object, an array, a string, a number, a boolean or null |
+| `json` | `unknown` | Any JSON value: an object, an array, a string, a number or a boolean |
 
-`json` holds data whose shape you do not model, such as a list of ids or a map of results. Mesh validates that the value is JSON and stores it as JSON, and does not look inside; the caller narrows `unknown` to the shape they expect. It takes `nullable` and `default=` (a JSON literal) but not `unique`, `min`, `max` or `match`, and it cannot be a rollup operand or appear in a `filter`. To query by a part of the value, declare that part as its own attribute.
+`json` holds data whose shape you do not model, such as a list of ids or a map of results. Mesh validates that the value is JSON and stores it as JSON, and does not look inside; the caller narrows `unknown` to the shape they expect. It takes `nullable` (a nullable `json` also holds `null`) and `default=` (a JSON literal) but not `unique`, `min`, `max` or `match`, and it cannot be a rollup operand or appear in a `filter`. To query by a part of the value, declare that part as its own attribute.
 
 `integer`, `float` and `decimal` are all `number` in TypeScript, but a whole number, a money amount and a measurement are different things to store. An atom may be compared with, or assigned to, an `enum` field only: `&status === :sent` is an error if `status` is a `string`.
 
@@ -192,7 +192,7 @@ entity :Post
 
 | Option | Meaning |
 |:--|:--|
-| `primary-key` | The entity's one primary key, filled by Mesh on create |
+| `primary-key` | The entity's one primary key, filled by Mesh on create: a time-ordered UUID for a `uuid` or `string` key, and the next whole number, counting from 1 with no gaps, for an `integer` key. A caller cannot send it, and an `integer` key needs a data adapter that fills it |
 | `nullable` | The field may be absent or null; every other attribute is required |
 | `default=` | A literal that fits the type |
 | `values=` | An enum's allowed atoms; an empty list, blank or repeat is a build error |

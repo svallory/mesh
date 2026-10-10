@@ -162,8 +162,11 @@ test("empty inputs reject extra properties and primitives; records without actio
   const entity = todo(document);
   document.entities = [entity];
   entity.actions = [];
-  entity.auto = ["read"];
+  // A create that accepts nothing has an empty input; the key alone leaves nothing else to fill.
+  entity.auto = ["create"];
+  entity.attributes = entity.attributes.filter((attribute) => attribute.primaryKey);
   entity.relationships = [];
+  entity.computed = [];
   let files = await generateFiles({ document, config: configOf("/project") });
   expect(files.find((f) => f.path.endsWith("types.ts"))!.contents).toContain(
     "[key: string]: never",

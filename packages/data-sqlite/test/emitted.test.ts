@@ -8,6 +8,7 @@ import { ATTRIBUTE_TYPES } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
 import type { TableHandle } from "@meshfw/runtime";
 import build from "../src/build.ts";
+import { FrameworkError } from "@meshfw/runtime";
 import { createSchema, sqlite } from "../src/index.ts";
 
 // One attribute of every registered type, nullable and not, plus a relationship key column.
@@ -16,11 +17,13 @@ entity :Sample table="samples"
   attributes
     uuid :id primary-key
     string :name
+    string :slug unique
     integer :count
     float :ratio
     decimal :amount
     boolean :active
     enum :state values=[:draft, :live]
+    enum :rule values=[:review-accepted, :performer-is-reviewer]
     date :dueOn
     datetime :seenAt
     timestamp :insertedAt on=:create
@@ -29,6 +32,8 @@ entity :Sample table="samples"
     boolean :maybeActive nullable
     enum :maybeState values=[:on, :off] nullable
     timestamp :maybeAt nullable
+    json :payload
+    json :extra nullable
   relationships
     belongs-to :owner entity=Owner
     belongs-to :reviewer entity=Owner nullable
@@ -44,7 +49,7 @@ beforeAll(async () => {
   dir = await mkdtemp(join(import.meta.dir, ".emitted-"));
   const config: ResolvedConfig = {
     root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"),
-    data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", options: { file: ":memory:" } },
+    data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: [] }, options: { file: ":memory:" } },
   };
   const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: [
     { file: "src/domain/sample.mesh.mx", source: sample }, { file: "src/domain/owner.mesh.mx", source: owner }] });
@@ -81,10 +86,10 @@ test("the emitted schema is usable as-is: createSchema, then every type round-tr
   try {
     await createSchema(db, tables);
     const row = {
-      id: "00000000-0000-4000-8000-000000000001", name: "first", count: 3, ratio: 0.5, amount: 12.25, active: true,
-      state: "live", dueOn: new Date("2026-10-09T00:00:00.000Z"), seenAt: new Date("2026-10-09T10:11:12.345Z"),
+      id: "00000000-0000-4000-8000-000000000001", name: "first", slug: "one", count: 3, ratio: 0.5, amount: 12.25, active: true,
+      state: "live", rule: "performer-is-reviewer", dueOn: new Date("2026-10-09T00:00:00.000Z"), seenAt: new Date("2026-10-09T10:11:12.345Z"),
       insertedAt: new Date("2026-10-09T10:11:12.346Z"), note: null, maybeCount: null, maybeActive: false, maybeState: null,
-      maybeAt: null, ownerId: "00000000-0000-4000-8000-0000000000aa", reviewerId: null,
+      maybeAt: null, payload: { list: [1, "two", { three: null }], flag: true }, extra: null, ownerId: "00000000-0000-4000-8000-0000000000aa", reviewerId: null,
     };
     await db.transaction(async (tx) => {
       await tx.insert(ownerTable!, { id: row.ownerId });
@@ -96,6 +101,45 @@ test("the emitted schema is usable as-is: createSchema, then every type round-tr
       expect(stored!.dueOn).toBeInstanceOf(Date);
       expect(stored!.active).toBe(true);
       expect(stored!.maybeActive).toBe(false);
+      // An enum value with hyphens is stored as written and filtered by the same text.
+      expect(stored!.rule).toBe("performer-is-reviewer");
+      expect(await tx.select(sampleTable!, { filter: { rule: { eq: "performer-is-reviewer" } } })).toHaveLength(1);
+      expect(await tx.select(sampleTable!, { filter: { rule: { eq: "review-accepted" } } })).toEqual([]);
+      // A json column returns the value, not its text: an object here, an array and a scalar below.
+      expect(stored!.payload).toEqual({ list: [1, "two", { three: null }], flag: true });
+      expect(stored!.extra).toBeNull();
+    });
+    await db.transaction(async (tx) => {
+      const other = { ...row, id: "00000000-0000-4000-8000-000000000002", slug: "two", payload: [1, [2, 3], { a: "b" }], extra: "text" };
+      expect(await tx.insert(sampleTable!, other)).toEqual(other);
+      const third = { ...row, id: "00000000-0000-4000-8000-000000000003", slug: "three", payload: 0, extra: false };
+      expect(await tx.insert(sampleTable!, third)).toEqual(third);
+      expect((await tx.selectByKey(sampleTable!, { id: other.id }))!.payload).toEqual([1, [2, 3], { a: "b" }]);
+      expect((await tx.selectByKey(sampleTable!, { id: third.id }))!.extra).toBe(false);
+    });
+  } finally { await db.close(); }
+});
+
+test("an attribute declared unique is a UNIQUE column: a second row with the value is refused, and the first is untouched", async () => {
+  const schema = await Bun.file(join(dir, ".mesh/schema.ts")).text();
+  expect(schema).toMatch(/slug: text\("slug"\)\s*\.notNull\(\)\s*\.unique\(\)/);
+  expect(schema.match(/\.unique\(\)/g)).toHaveLength(1);
+  const { tables, sampleTable, ownerTable } = await import(join(dir, ".mesh/schema.ts")) as Record<string, TableHandle> & { tables: Record<string, TableHandle> };
+  const db = sqlite({ file: ":memory:" });
+  try {
+    await createSchema(db, tables);
+    const row = {
+      id: "00000000-0000-4000-8000-000000000001", name: "n", slug: "same", count: 1, ratio: 0.5, amount: 1, active: true, state: "live", rule: "performer-is-reviewer",
+      dueOn: new Date(0), seenAt: new Date(0), insertedAt: new Date(0), note: null, maybeCount: null, maybeActive: null, maybeState: null,
+      maybeAt: null, payload: {}, extra: null, ownerId: "o", reviewerId: null,
+    };
+    await db.transaction(async (tx) => { await tx.insert(ownerTable!, { id: "o" }); await tx.insert(sampleTable!, row); });
+    const error = await db.transaction((tx) => tx.insert(sampleTable!, { ...row, id: "00000000-0000-4000-8000-000000000002" })).then(() => undefined, (caught: unknown) => caught);
+    expect(error).toBeInstanceOf(FrameworkError);
+    expect(String((error as FrameworkError).cause)).toContain("UNIQUE constraint failed: samples.slug");
+    await db.transaction(async (tx) => {
+      expect(await tx.select(sampleTable!)).toHaveLength(1);
+      expect(await tx.insert(sampleTable!, { ...row, id: "00000000-0000-4000-8000-000000000002", slug: "different" })).toMatchObject({ slug: "different" });
     });
   } finally { await db.close(); }
 });

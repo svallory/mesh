@@ -24,6 +24,7 @@ export function literalFits(value: Literal | Atom, field: LiteralField): boolean
     case "decimal": return typeof value === "number" && Number.isFinite(value);
     case "boolean": return typeof value === "boolean";
     case "string": return typeof value === "string";
+    case "json": return true;
     case "uuid": return typeof value === "string" && uuid.test(value);
     case "date": return typeof value === "string" && date(value);
     case "datetime":

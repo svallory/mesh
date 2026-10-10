@@ -18,7 +18,7 @@ async function project(build: string, install = true): Promise<ResolvedConfig> {
   await mkdir(resolve(root, "domain"));
   await writeFile(resolve(root, "domain/todo.mesh.mx"), keyed);
   await writeFile(resolve(root, "mesh.config.ts"),
-    `export default { domain: "domain", output: ".mesh", data: { kind: "data-adapter", name: "fake", build: ${JSON.stringify(build)}, options: {} } };\n`);
+    `export default { domain: "domain", output: ".mesh", data: { kind: "data-adapter", name: "fake", build: ${JSON.stringify(build)}, capabilities: { adapter: "fake", capabilities: [] }, options: {} } };\n`);
   if (install) {
     await mkdir(resolve(root, "node_modules"));
     await symlink(fakeAdapter, resolve(root, "node_modules/fake-mesh-adapter"), "dir");

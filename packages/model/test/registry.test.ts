@@ -4,7 +4,7 @@ import {
   attributeTypeInfo,
   isAttributeTypeName,
 } from "../src/index.ts";
-test("registry defines exactly the ten v4 tags", () => {
+test("registry defines exactly the eleven v4 tags", () => {
   expect(ATTRIBUTE_TYPES.map((t) => t.name)).toEqual([
     "uuid",
     "string",
@@ -16,8 +16,9 @@ test("registry defines exactly the ten v4 tags", () => {
     "date",
     "datetime",
     "timestamp",
+    "json",
   ]);
-  expect(new Set(ATTRIBUTE_TYPES.map((t) => t.name)).size).toBe(10);
+  expect(new Set(ATTRIBUTE_TYPES.map((t) => t.name)).size).toBe(11);
   expect(Object.isFrozen(ATTRIBUTE_TYPES)).toBe(true);
   for (const entry of ATTRIBUTE_TYPES) {
     expect(isAttributeTypeName(entry.name)).toBe(true);
@@ -57,6 +58,7 @@ test("registry type mappings", () => {
     date: "Date",
     datetime: "Date",
     timestamp: "Date",
+    json: "unknown",
   });
   expect(() => attributeTypeInfo("atom" as never)).toThrow(
     "not a registered attribute type",

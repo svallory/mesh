@@ -16,7 +16,7 @@ const config: ResolvedConfig = {
   configFile: "/project/mesh.config.ts",
   entityFiles: [],
   domainRoot: "/project",
-  data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", options: { file: ":memory:" } },
+  data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: [] }, options: { file: ":memory:" } },
   output: "/project/generated",
 };
 function inputOf(): EmitInput {

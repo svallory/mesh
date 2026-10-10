@@ -1,0 +1,15 @@
+entity :Collaborator table="collaborators"
+  attributes
+    uuid :id primary-key
+    enum :kind values=[:human, :agent]
+    string :name
+    enum :state values=[:active, :retired] default=:active
+    integer :version default=1
+  actions auto=[:read]
+    create :register
+      input
+        &kind
+        &name
+    update :update
+      input
+        &name
