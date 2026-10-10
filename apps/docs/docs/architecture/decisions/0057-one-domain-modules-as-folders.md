@@ -5,9 +5,11 @@ description: "Decision record 0057: where entity files live, what a module is, a
 
 # 0057. One domain per app at `src/domain/`; its folders are modules
 
+> **Amendment, 2026-10-10 (operator ruling).** Folders are modules, with two additions. A folder whose name starts with `_` only organises files: a file's module is its folder path with every `_` segment removed, so `src/domain/tasks/_services/x.mesh.mx` belongs to module `tasks`. A plain nested folder is a real submodule, so `tasks/services/` is module `tasks/services`. `_name/` is the only folder marker; files are excluded with `ignore` globs in `mesh.config.ts`. See [Project structure](../../docs/project-structure.md#the-domain). The original text below is unchanged.
+
 ## Status
 
-Accepted
+Amended
 
 ## Date
 

@@ -144,6 +144,19 @@ const snakeCase = (name: string) =>
     .replace(/([A-Z])([A-Z][a-z])/g, "$1_$2")
     .toLowerCase();
 
+/**
+ * A file's module is its folder path, relative to the domain root, with every
+ * group segment (`_name`) removed. A bare `_` is not a group; it is reported.
+ * An empty result is the domain root.
+ */
+export function moduleOfFolder(folder: string): { module: string; bareUnderscore: boolean } {
+  const segments = folder.split("/").filter((segment) => segment !== "" && segment !== ".");
+  return {
+    module: segments.filter((segment) => !segment.startsWith("_")).join("/"),
+    bareUnderscore: segments.includes("_"),
+  };
+}
+
 function buildEntity(
   root: Tag,
   irImports: readonly IrImport[],
@@ -152,7 +165,7 @@ function buildEntity(
   diagnostics: Diagnostic[],
   rollups: PendingRollup[],
   importDetails: Map<Import, ParsedImport>,
-  module: string,
+  folder: string,
 ): Entity {
   const at = (offset: number) => positionAt(source, file, offset);
   const pos = (tag: Tag) => at(tag.nameSpan.sourceStart);
@@ -168,7 +181,7 @@ function buildEntity(
     name: declaredName(root),
     table: String(opt(root, "table") ?? snakeCase(declaredName(root))),
     file,
-    module,
+    module: "",
     imports: [],
     attributes: [],
     relationships: [],
@@ -181,6 +194,10 @@ function buildEntity(
   };
   if (!/^[A-Z][A-Za-z0-9]*$/.test(entity.name))
     fail("MESH_ENTITY_NAME", `Entity :${entity.name} must have a PascalCase name, such as :Todo`, root);
+  const { module, bareUnderscore } = moduleOfFolder(folder);
+  entity.module = module;
+  if (bareUnderscore)
+    fail("MESH_GROUP_NAME", `Group folder "_" has no name; write "_" followed by a name, such as "_services"`, root);
   for (const segment of module ? module.split("/") : []) {
     if (!/^[A-Za-z0-9_-]+$/.test(segment))
       fail("MESH_MODULE_NAME", `Module segment ${JSON.stringify(segment)} must contain only letters, digits, - or _`, root);

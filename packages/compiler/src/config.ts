@@ -68,11 +68,17 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
     return { config: null, diagnostics };
   }
   const config = value;
-  const keys = new Set(["domain", "output", "data", "extensions"]);
+  const keys = new Set(["domain", "output", "data", "extensions", "ignore"]);
   for (const key of Object.keys(config)) if (!keys.has(key)) fail(key, `Unknown configuration field "${key}"`, key === "resources" ? "`resources` was renamed `domain`" : "Remove the unknown field");
   const domain = config.domain;
   if (!nonEmpty(domain) && !(Array.isArray(domain) && domain.length > 0 && domain.every(nonEmpty))) fail("domain", "Configuration field `domain` must be a non-empty relative folder, glob or list of relative file paths");
   if (!nonEmpty(config.output)) fail("output", "Configuration field `output` must be a non-empty relative directory path");
+  const ignoreInput = config.ignore;
+  const ignore: string[] = ignoreInput === undefined ? [] : Array.isArray(ignoreInput) ? ignoreInput as string[] : [ignoreInput as string];
+  if (ignoreInput !== undefined) {
+    if (!ignore.every(nonEmpty)) fail("ignore", "Configuration field `ignore` must be a glob or a list of globs, relative to the project root");
+    else if (!ignore.every((glob) => confinedGlob(normalizePath(glob)))) fail("ignore", "Configuration field `ignore` must stay inside the project");
+  }
   const data = config.data;
   if (!isDataAdapter(data)) fail("data", "Configuration field `data` must be a data adapter descriptor", 'Import `sqlite` from `@meshfw/data-sqlite` and set data: sqlite({ file: "app.db" })');
   const extensions = config.extensions;
@@ -145,6 +151,12 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
     }
   }
   files = [...new Set(files)].sort();
+  if (ignore.length && !diagnostics.length) {
+    const matchers = ignore.map((glob) => new Bun.Glob(normalizePath(glob).replace(/^\.\//, "")));
+    const before = files.length;
+    files = files.filter((file) => { const name = projectPath(root, file); return !matchers.some((m) => m.match(name)); });
+    if (before > 0 && files.length === 0) fail("ignore", "Configuration field `ignore` excludes every entity file");
+  }
   for (const file of files) {
     const name = projectPath(root, file);
     try {
