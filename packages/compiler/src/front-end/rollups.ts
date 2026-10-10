@@ -41,6 +41,7 @@ export function resolveRollups(
     diagnostics.push({ severity: "error", code, message, position, fix: null });
   for (const { entity, computed, segments } of pending) {
     if (!computed.rollup) continue;
+    const before = diagnostics.length;
     let current = entity;
     let nullable = false;
     for (let index = 0; index < segments.length; index++) {
@@ -123,5 +124,20 @@ export function resolveRollups(
         computed.nullable = nullable || attribute.nullable;
       }
     }
+    // What the path means is checked; whether the loader can serve it is known now too, so say so at the build (ADR-0018).
+    if (diagnostics.length !== before) continue;
+    const { fn } = computed.rollup;
+    if (fn !== "count" && fn !== "max") {
+      fail("MESH_NOT_IMPLEMENTED", `${fn} rollups are not implemented yet: only count and max run before Mesh 1.0; sum, avg and min come after it`, computed.position);
+      continue;
+    }
+    const first = entity.relationships.find((r) => r.name === segments[0]!.name);
+    if (!first) continue;
+    if (first.kind === "belongs-to" || segments.length > 2 || (fn === "count" && segments.length > 1)) {
+      fail("MESH_NOT_IMPLEMENTED", `${fn} :${computed.name} goes through ${first.kind === "belongs-to" ? "a belongs-to" : "more than one relationship"}, which needs a join; joins arrive with the SQL evaluator (M10). Only a ${fn} over one has-many or has-one runs before then`, computed.position);
+      continue;
+    }
+    if (first.via === undefined)
+      fail("MESH_NO_INVERSE", `${fn} :${computed.name} reads ${first.kind} :${first.name}, which cannot be loaded: :${first.entity.identifier} has no belongs-to back to :${entity.name}`, computed.position);
   }
 }

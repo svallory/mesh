@@ -36,6 +36,8 @@ export type ComputedPlan =
       kind: "body";
       /** Dotted paths of relationships and computed fields to load before the body runs. */
       needs: readonly string[];
+      /** The body runs as authored TypeScript, so what it reads is not known; it gets a guarded record (see `guarded`). */
+      plain?: boolean;
       /** The compiled body: a function of the expression scope. */
       evaluate: (scope: never) => unknown;
     }
@@ -84,7 +86,9 @@ export async function loadRows(
       throw new FrameworkError(unknownName(plan, entity, name));
   // Work on copies: the caller's rows are never changed, and a field a path loads only to evaluate a body stays off them.
   const work: Work[] = rows.map((row) => ({ ...row }));
-  for (const name of names) await ensureField(plan, entity, tx, work, name, options, 0);
+  // Rollups last: one over a has-many that the same call loaded is worked out from those rows (below), with no query of its own.
+  const isRollup = (name: string) => entityPlan.computed[name]?.kind === "rollup" && !Object.hasOwn(entityPlan.relations, name);
+  for (const name of [...names.filter((n) => !isRollup(n)), ...names.filter(isRollup)]) await ensureField(plan, entity, tx, work, name, options, 0);
   return rows.map((row, index) => {
     const loaded: Row = { ...row };
     for (const name of names) loaded[name] = work[index]![name];
@@ -124,9 +128,34 @@ async function ensureField(
   }
   for (const path of computed.needs) await ensurePath(plan, entity, tx, todo, path.split("."), options, depth + 1);
   for (const row of todo) {
-    const value = computed.evaluate(scope({ self: row, input: undefined, actor: options.actor, context: options.context ?? {}, before: null, tx }, options.clock ? { clock: options.clock } : {}) as never);
-    row[name] = value === undefined ? null : value;
+    const self = computed.plain ? guarded(plan, entity, row) : row;
+    const value = computed.evaluate(scope({ self, input: undefined, actor: options.actor, context: options.context ?? {}, before: null, tx }, options.clock ? { clock: options.clock } : {}) as never);
+    // A translated body gives unknown as null; a plain body's result is what it returned.
+    row[name] = value === undefined && !computed.plain ? null : value;
   }
+}
+
+/**
+ * A record handed to a body that runs as plain code. Mesh cannot see everything such a body reads (a read through a
+ * variable, a deeper chain than the text shows), so a read of a relationship or computed field that is not loaded
+ * throws instead of coming back as `undefined`, which the body would turn into a wrong answer. Related rows are guarded the same way.
+ */
+function guarded(plan: LoadPlan, entity: string, row: Work): Work {
+  const entityPlan = planOf(plan, entity);
+  return new Proxy(row, {
+    get(target, key, receiver) {
+      if (typeof key !== "string") return Reflect.get(target, key, receiver);
+      if (!(key in target)) {
+        if (Object.hasOwn(entityPlan.relations, key) || Object.hasOwn(entityPlan.computed, key))
+          throw new FrameworkError(`A plain computed body read ${entity}.${key}, which was not loaded: Mesh could not tell from the body that it reads it. Write the body as one expression (an arrow with comparisons, ?., ?? and the list methods) so Mesh loads what it reads`);
+        return undefined;
+      }
+      const value = target[key];
+      const relation = Object.hasOwn(entityPlan.relations, key) ? entityPlan.relations[key] : undefined;
+      if (!relation || value === null || typeof value !== "object") return value;
+      return Array.isArray(value) ? value.map((item) => guarded(plan, relation.target, item as Work)) : guarded(plan, relation.target, value as Work);
+    },
+  });
 }
 
 /** Load the first segment on `rows`, then the rest of the path on the rows it brought in. */
@@ -211,8 +240,17 @@ async function rollup(
   if (relation.column === null)
     throw new FrameworkError(`${label} cannot be loaded: :${relation.target} has no belongs-to back to :${entity}`);
   const target = planOf(plan, relation.target);
-  const filter: Filter = { [relation.column]: { eq: row[entityPlan.key] as never } };
   const column = attribute ?? target.key;
+  // The rows are already here: the same answer the data layer gives (nulls are skipped; none is null, a count is 0), with no query.
+  if (path in row) {
+    const loaded = row[path];
+    const related = (Array.isArray(loaded) ? loaded : loaded === null || loaded === undefined ? [] : [loaded]) as Row[];
+    const values = related.map((r) => r[column]).filter((value) => value !== null && value !== undefined);
+    if (computed.fn === "count") return values.length;
+    const rank = (value: unknown) => (value instanceof Date ? value.getTime() : (value as number | string));
+    return values.reduce<unknown>((best, value) => (best === undefined || rank(value) > rank(best) ? value : best), undefined) ?? null;
+  }
+  const filter: Filter = { [relation.column]: { eq: row[entityPlan.key] as never } };
   return computed.fn === "count" ? tx.count(target.table, column, filter) : tx.max(target.table, column, filter);
 }
 

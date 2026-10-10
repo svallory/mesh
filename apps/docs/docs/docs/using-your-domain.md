@@ -253,6 +253,8 @@ await disconnect();
 ```
 
 `load` takes relationship names (`load: ["list"]`) and computed names (`load: ["label"]` on a todo, `load: ["todoCount"]` on a list). Reading one that was not loaded is a **type error**, not `undefined`, and a load that cannot be served at run time is an error, never silently skipped.
+A loaded `has-many` comes back in primary-key order, which is creation order for the keys Mesh generates (UUIDv7 and integers).
+
 Three things meet in `load`, and they are not one thing:
 
 - A **relationship** runs in the query, as a join or a second query.

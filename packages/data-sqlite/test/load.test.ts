@@ -27,8 +27,6 @@ entity :Author table="authors"
     count :postCount of="posts"
     max :lastPostedAt of="posts.postedAt"
     max :topScore of="posts.score"
-    sum :scoreSum of="posts.score"
-    count :commentCount of="posts.comments"
     boolean :prolific() { return &postCount > 1 }
   actions auto=[:read]
 `;
@@ -54,6 +52,10 @@ entity :Post table="posts"
     boolean :reviewedBySelf() { return &reviewer?.name === &author.name }
     boolean :isOld() { return &postedAt < now() }
     boolean :lonely() { return &replyTo === null && &replies.length === 0 }
+    string :replyToAnswered() { return JSON.stringify(&replyTo?.answered) }
+    string :grandReplyToAnswered() { return JSON.stringify(&replyTo?.replyTo?.answered) }
+    string :viaVariable() { const parent = &replyTo; return JSON.stringify(parent?.answered) }
+    string :plainTitle() { return JSON.stringify(&title) }
   actions auto=[:read]
 `;
 const comment = `import { Post } from "./post.mesh.mx"
@@ -397,6 +399,23 @@ describe("rollups", () => {
     } finally { await db.close(); }
   });
 
+  test("a rollup over a has-many the same call loads is worked out from those rows, with no query, and gives the data layer's answer", async () => {
+    const db = await fresh();
+    try {
+      await run(db, async (tx) => {
+        await seed(tx);
+        await tx.insert(app.tables.post, { id: id(14), title: "p4", score: null, postedAt: at(500), authorId: id(2), reviewerId: null, replyToId: null });
+        const authors = await rowsOf(tx, "author");
+        const viaLayer = await app.loadAuthorFields(tx, authors, ["postCount", "lastPostedAt", "topScore"]);
+        const { tx: counting, calls } = counted(tx);
+        const fromRows = await app.loadAuthorFields(counting, authors, ["postCount", "lastPostedAt", "topScore", "posts"]);
+        expect(calls).toEqual(["select"]);
+        expect(fromRows.map((a) => [a.postCount, a.lastPostedAt, a.topScore])).toEqual(viaLayer.map((a) => [a.postCount, a.lastPostedAt, a.topScore]));
+        expect(fromRows[2]).toMatchObject({ postCount: 0, lastPostedAt: null, topScore: null });
+      });
+    } finally { await db.close(); }
+  });
+
   test("a computed body reads a rollup of its own row", async () => {
     const db = await fresh();
     try {
@@ -404,20 +423,6 @@ describe("rollups", () => {
         await seed(tx);
         const loaded = await app.loadAuthorFields(tx, await rowsOf(tx, "author"), ["prolific"]);
         expect(loaded.map((a) => a.prolific)).toEqual([true, false, false]);
-      });
-    } finally { await db.close(); }
-  });
-
-  test("sum, and a rollup that needs a join, fail when loaded and say when they arrive", async () => {
-    const db = await fresh();
-    try {
-      await run(db, async (tx) => {
-        await seed(tx);
-        const authors = await rowsOf(tx, "author");
-        await expect(app.loadAuthorFields(tx, authors, ["scoreSum"])).rejects.toThrow(
-          'sum :scoreSum of="posts.score" on :Author cannot be loaded: only count and max rollups run before Mesh 1.0; sum, avg and min come after it');
-        await expect(app.loadAuthorFields(tx, authors, ["commentCount"])).rejects.toThrow(
-          'count :commentCount of="posts.comments" on :Author cannot be loaded yet: a rollup over more than one relationship needs a join, which arrives with the SQL evaluator (M10)');
       });
     } finally { await db.close(); }
   });
@@ -514,6 +519,62 @@ describe("computed fields with a body", () => {
         const loaded = await app.loadPostFields(tx, await rowsOf(tx, "post"), ["lonely"]);
         // p1 has no parent and has replies; p2 and p3 have a parent; unknown (null === null is not used) stays false.
         expect(loaded.map((p) => p.lonely)).toEqual([false, false, false]);
+      });
+    } finally { await db.close(); }
+  });
+});
+
+describe("a computed body that runs as plain code", () => {
+  async function chain(tx: DataOperations) {
+    await tx.insert(app.tables.author, { id: id(1), name: "Ada", retired: false });
+    const post = (n: number, replyToId: string | null) => tx.insert(app.tables.post, { id: id(n), title: `p${n}`, score: null, postedAt: at(n), authorId: id(1), reviewerId: null, replyToId });
+    await post(11, null); await post(12, id(11)); await post(13, id(12)); await post(14, id(13));
+    // p11 has a reply, so it is answered; p14 has none. The chain p14 -> p13 -> p12 -> p11.
+  }
+  test("a read one relationship deep (&replyTo?.answered) loads the related row's computed field", async () => {
+    const db = await fresh();
+    try {
+      await run(db, async (tx) => {
+        await chain(tx);
+        const loaded = await app.loadPostFields(tx, await rowsOf(tx, "post"), ["replyToAnswered"]);
+        // p11 has no parent: undefined, which JSON.stringify gives as undefined (not a loaded value); p12..p14 have an answered parent.
+        expect(loaded.map((p) => p.replyToAnswered)).toEqual([undefined, "true", "true", "true"]);
+      });
+    } finally { await db.close(); }
+  });
+  test("two relationships deep (&replyTo?.replyTo?.answered) loads both", async () => {
+    const db = await fresh();
+    try {
+      await run(db, async (tx) => {
+        await chain(tx);
+        const loaded = await app.loadPostFields(tx, await rowsOf(tx, "post"), ["grandReplyToAnswered"]);
+        expect(loaded.map((p) => p.grandReplyToAnswered)).toEqual([undefined, undefined, "true", "true"]);
+      });
+    } finally { await db.close(); }
+  });
+  test("the needs include every link of the chain", async () => {
+    const model = JSON.parse(await Bun.file(join(dir, ".mesh/model.json")).text()) as { entities: { name: string; computed: { name: string; needs?: string[] }[] }[] };
+    const needs = (name: string) => model.entities.find((e) => e.name === "Post")!.computed.find((c) => c.name === name)!.needs;
+    expect(needs("replyToAnswered")).toEqual(["replyTo", "replyTo.answered"]);
+    expect(needs("grandReplyToAnswered")).toEqual(["replyTo", "replyTo.replyTo", "replyTo.replyTo.answered"]);
+  });
+  test("a read the text does not show (through a variable) is an error, never a silent null", async () => {
+    const db = await fresh();
+    try {
+      await run(db, async (tx) => {
+        await chain(tx);
+        await expect(app.loadPostFields(tx, await rowsOf(tx, "post"), ["viaVariable"])).rejects.toThrow(
+          "A plain computed body read Post.answered, which was not loaded");
+        await expect(app.loadPostFields(tx, await rowsOf(tx, "post"), ["viaVariable"])).rejects.toBeInstanceOf(FrameworkError);
+      });
+    } finally { await db.close(); }
+  });
+  test("an attribute a plain body reads is just there", async () => {
+    const db = await fresh();
+    try {
+      await run(db, async (tx) => {
+        await chain(tx);
+        expect((await app.loadPostFields(tx, await rowsOf(tx, "post"), ["plainTitle"])).map((p) => p.plainTitle)).toEqual(['"p11"', '"p12"', '"p13"', '"p14"']);
       });
     } finally { await db.close(); }
   });

@@ -10,13 +10,16 @@ import { error } from "./diagnostics.ts";
  * the parameter of a quantifier over a list reached from `self`) names a path, and every
  * relationship or computed field on that path is a need. A plain body has no tree, so the
  * only names known are the `&name` it reads on `self` (the edits that turn `&name` into
- * `self.name`); a deeper read in plain code is found missing at run time, not here.
+ * `self.name`) and the chain of `.name` / `?.name` written right after it. A read the text does not
+ * show (through a variable) cannot be known here; `loadRows` guards a plain body at run time, so
+ * it throws instead of reading an unloaded value as null.
  */
 export function computeNeeds(document: ModelDocument, diagnostics: Diagnostic[]): void {
   const byFile = new Map(document.entities.map((entity) => [resolve(entity.file), entity]));
   const targetOf = (from: Entity, relation: Entity["relationships"][number]) =>
     byFile.get(resolve(dirname(from.file), relation.entity.from));
 
+  const noInverse = new Set<object>();
   for (const entity of document.entities) {
     for (const computed of entity.computed) {
       if (!computed.body) continue;
@@ -28,6 +31,12 @@ export function computeNeeds(document: ModelDocument, diagnostics: Diagnostic[])
           if (!owner) return;
           const relation = owner.relationships.find((r) => r.name === segment);
           if (relation) {
+            if (relation.kind !== "belongs-to" && relation.via === undefined && !noInverse.has(relation)) {
+              noInverse.add(relation);
+              diagnostics.push(error("MESH_NO_INVERSE",
+                `&${computed.name} reads ${relation.kind} :${relation.name}, which cannot be loaded: :${targetOf(owner, relation)?.name ?? relation.entity.identifier} has no belongs-to back to :${owner.name}`,
+                computed.position, `Declare a belongs-to to :${owner.name} in the other entity's file, and name it with via=:name if there are several`));
+            }
             prefix.push(segment);
             needs.add(prefix.join("."));
             owner = targetOf(owner, relation);
@@ -63,7 +72,13 @@ export function computeNeeds(document: ModelDocument, diagnostics: Diagnostic[])
       else if (computed.body.plain)
         for (const edit of computed.body.plain.edits) {
           const name = /^self\.(.+)$/.exec(edit.text)?.[1];
-          if (name) record([name]);
+          if (!name) continue;
+          // Follow the chain written right after `&name`: `&parent?.parent?.leaf` reads parent, parent.parent and parent.parent.leaf.
+          // A read through a variable (`const p = &parent; p.leaf`) cannot be followed here; the loader guards plain bodies at run time.
+          const path = [name];
+          const rest = computed.body.source.slice(edit.to);
+          for (const link of rest.matchAll(/\s*\??\.\s*([A-Za-z_$][\w$]*)/gy)) path.push(link[1]!);
+          record(path);
         }
       computed.needs = [...needs].sort();
     }

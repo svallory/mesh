@@ -338,14 +338,14 @@ describe("the cost of Claim :acquire's reads (the M7 risk: a computed field that
           return counting;
         });
         results.push([calls.filter((c) => c === "select").length, calls.filter((c) => c === "max").length, calls.filter((c) => c === "count").length]);
-        // claims, submissions, assignments, dependencies, and the prerequisites of those dependencies (not asked when there are none); one max for maxFence.
-        expect(calls.sort()).toEqual(perTask === 0 ? ["max", "select", "select", "select", "select"] : ["max", "select", "select", "select", "select", "select"]);
+        // claims, submissions, assignments, dependencies, and the prerequisites of those dependencies (not asked when there are none); maxFence is worked out from the claims the same call loaded, so it costs no call.
+        expect(calls.sort()).toEqual(perTask === 0 ? ["select", "select", "select", "select"] : ["select", "select", "select", "select", "select"]);
       } finally { await db.close(); }
     }
-    expect(results).toEqual([[4, 1, 0], [5, 1, 0], [5, 1, 0]]);
+    expect(results).toEqual([[4, 0, 0], [5, 0, 0], [5, 0, 0]]);
   });
 
-  test("N tasks: the relationships cost the same five queries, the rollup costs one call per task", async () => {
+  test("N tasks: the same five queries, and no call per task, because the rollup reads the claims already loaded", async () => {
     const { db, hyper } = await fresh();
     try {
       const tasks = await world(hyper, 50, 2);
@@ -356,9 +356,80 @@ describe("the cost of Claim :acquire's reads (the M7 risk: a computed field that
       });
       expect(rows).toHaveLength(50);
       expect(calls.filter((c) => c === "select")).toHaveLength(5);
-      expect(calls.filter((c) => c === "max")).toHaveLength(50);
+      expect(calls.filter((c) => c === "max")).toHaveLength(0);
       // The lease ran out, an assignment is open, a submission is pending and a prerequisite is open.
       expect(rows[0]).toMatchObject({ inReview: true, claimed: false, assigned: true, lapsedClaim: true, blocked: true, maxFence: 2, derivedState: "in-review" });
+    } finally { await db.close(); }
+  });
+});
+
+describe("derivedState with several rows of each kind", () => {
+  // Several claims, submissions and prerequisites per task, so a body that looked at the first row only (or the last) would fail.
+  type ClaimState = "active" | "released" | "revoked" | "expired";
+  type SubmissionState = "pending" | "accepted" | "returned" | "withdrawn";
+  interface Case { name: string; claims?: [ClaimState, "future" | "past"][]; submissions?: SubmissionState[]; prerequisites?: ("open" | "done" | "canceled")[] }
+  const cases: Case[] = [
+    { name: "an active claim after a released one", claims: [["released", "future"], ["active", "future"]] },
+    { name: "an active claim before a released one", claims: [["active", "future"], ["released", "future"]] },
+    { name: "an active claim among expired and revoked", claims: [["expired", "past"], ["active", "future"], ["revoked", "past"]] },
+    { name: "only expired, revoked and released claims", claims: [["expired", "past"], ["revoked", "future"], ["released", "future"]] },
+    { name: "an active claim whose lease ran out, and an active one that did not", claims: [["active", "past"], ["active", "future"]] },
+    { name: "only lapsed active claims", claims: [["active", "past"], ["active", "past"]] },
+    { name: "a pending submission after an accepted one", submissions: ["accepted", "pending"] },
+    { name: "a pending submission before a returned one", submissions: ["pending", "returned"] },
+    { name: "returned and withdrawn submissions only", submissions: ["returned", "withdrawn", "accepted"] },
+    { name: "a pending submission and an active claim", submissions: ["accepted", "pending"], claims: [["released", "future"], ["active", "future"]] },
+    { name: "prerequisites done then canceled", prerequisites: ["done", "canceled"] },
+    { name: "prerequisites canceled then done", prerequisites: ["canceled", "done"] },
+    { name: "three prerequisites, the open one last", prerequisites: ["done", "done", "open"] },
+    { name: "three prerequisites, the open one first", prerequisites: ["open", "done", "done"] },
+    { name: "every prerequisite done", prerequisites: ["done", "done", "done"] },
+    { name: "an active claim and an open prerequisite", claims: [["active", "future"]], prerequisites: ["done", "open"] },
+    { name: "a lapsed claim and an open prerequisite", claims: [["active", "past"], ["released", "future"]], prerequisites: ["open", "done"] },
+  ];
+
+  test("each case equals the specification's rule applied to the facts of its rows", async () => {
+    const { db, hyper } = await fresh();
+    try {
+      const { alice, bot } = await people(hyper);
+      const pre = {
+        open: await hyper.createTask({ title: "pre open", creator: alice.id }, context),
+        done: await hyper.createTask({ title: "pre done", creator: alice.id }, context),
+        canceled: await hyper.createTask({ title: "pre canceled", creator: alice.id }, context),
+      };
+      await load(db, async (tx) => {
+        await tx.updateByKey(tables.task, { id: pre.done.id }, { state: "done" });
+        await tx.updateByKey(tables.task, { id: pre.canceled.id }, { state: "canceled" });
+      });
+      const expected = new Map<string, { name: string; state: string }>();
+      let fence = 0;
+      for (const item of cases) {
+        const task = await hyper.createTask({ title: item.name, creator: alice.id }, context);
+        for (const [state, lease] of item.claims ?? []) {
+          const made = await hyper.acquireClaim({ fence: ++fence, acquiredAt: minutes(-30), expiresAt: lease === "past" ? minutes(-5) : minutes(30), task: task.id, holder: bot.id }, context);
+          if (state !== "active") await load(db, (tx) => tx.updateByKey(tables.claim, { id: made.id }, { state }));
+        }
+        for (const state of item.submissions ?? []) {
+          const made = await hyper.submitSubmission({ summary: "s", evidence: [], fence: null, taskVersion: 1, task: task.id, submitter: bot.id }, context);
+          if (state !== "pending") await load(db, (tx) => tx.updateByKey(tables.submission, { id: made.id }, { state }));
+        }
+        for (const prerequisite of item.prerequisites ?? [])
+          await hyper.addDependency({ dependent: task.id, prerequisite: (prerequisite === "open" ? pre.open : prerequisite === "done" ? pre.done : pre.canceled).id, createdBy: alice.id }, context);
+        expected.set(task.id, {
+          name: item.name,
+          state: specDerivedState({
+            stored: "open",
+            pendingSubmission: (item.submissions ?? []).includes("pending"),
+            activeClaim: (item.claims ?? []).some(([state, lease]) => state === "active" && lease === "future"),
+            prerequisites: item.prerequisites ?? [],
+          }),
+        });
+      }
+      const rows = await load(db, async (tx) => loadTaskFields(tx, await tx.select(tables.task) as Task[], ["derivedState"], { clock }));
+      const got = new Map(rows.filter((task) => expected.has(task.id)).map((task) => [task.id, task.derivedState]));
+      for (const [id, { name, state }] of expected) expect(got.get(id), name).toBe(state as never);
+      // The cases reach every value an open task can have.
+      expect(new Set([...expected.values()].map((entry) => entry.state))).toEqual(new Set(["ready", "blocked", "claimed", "in-review"]));
     } finally { await db.close(); }
   });
 });

@@ -9,7 +9,14 @@ import {
   type DataLayer as $DataLayer,
 } from "@meshfw/runtime";
 import { bindComment } from "./blog/comment.actions";
-import type { Comment, ReadCommentInput, CommentFilter, CommentSort } from "./blog/comment.types";
+import type {
+  Comment,
+  ReadCommentInput,
+  CommentFilter,
+  CommentSort,
+  CommentLoadable,
+  CommentWith,
+} from "./blog/comment.types";
 import { bindPost } from "./blog/post.actions";
 import type {
   Post,
@@ -32,6 +39,8 @@ export type {
   ReadCommentInput,
   CommentFilter,
   CommentSort,
+  CommentLoadable,
+  CommentWith,
   Post,
   CreatePostInput,
   PublishPostInput,
@@ -50,7 +59,7 @@ export type {
   UserSort,
 };
 export { tables, commentTable, postTable, userTable } from "./schema";
-export { loadPostFields } from "./load";
+export { loadCommentFields, loadPostFields } from "./load";
 
 /**
  * Every action function, bound to `layer`. Opens nothing and creates no table:

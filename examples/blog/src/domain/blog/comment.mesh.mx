@@ -1,5 +1,9 @@
+import { Post } from "./post.mesh.mx"
+
 entity :Comment table="comments"
   attributes
     uuid :id primary-key
     string :body
+  relationships
+    belongs-to :post entity=Post
   actions auto=[:read]

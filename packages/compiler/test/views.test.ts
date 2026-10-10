@@ -58,20 +58,25 @@ describe("views are plain data", () => {
 });
 
 describe("typesView", () => {
-  test("an entity with no references and no actions: no imports, no inputs, the record's members in order", () => {
+  test("an entity with no actions and one reference: its import, no inputs, the record's members in order", () => {
     expect(types(documentOf(), "List")).toEqual({
       entityFile: "todo/list.mesh.mx",
-      imports: [],
+      imports: [{ name: "Todo", fromLiteral: '"./todo.types"' }],
       record: {
         name: "List",
         members: [
           { name: "id", optional: false, key: "id", type: "string" },
           { name: "amount", optional: false, key: "amount", type: "number" },
+          { name: "ownerId", optional: false, key: "ownerId", type: "string | null" },
         ],
       },
       inputs: [],
       query: null,
-      loadable: null,
+      loadable: {
+        name: "ListLoadable",
+        withName: "ListWith",
+        members: [{ name: "owner", optional: false, key: "owner", type: "Todo | null" }],
+      },
     });
   });
 

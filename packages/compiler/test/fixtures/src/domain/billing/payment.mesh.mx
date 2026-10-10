@@ -1,4 +1,7 @@
+import { Invoice } from "./invoice.mesh.mx"
 entity :Payment
   attributes
     uuid :id primary-key
     decimal :amount
+  relationships
+    belongs-to :invoice entity=Invoice

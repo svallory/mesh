@@ -10,6 +10,7 @@ import {
 } from "@meshfw/runtime";
 import { tables } from "./schema";
 import { expressions as postExpressions } from "./blog/post.expressions";
+import type { Comment, CommentLoadable, CommentWith } from "./blog/comment.types";
 import type { Post, PostLoadable, PostWith } from "./blog/post.types";
 
 /** What `loadRows` follows: each entity's table and key, its relationships and its computed fields. */
@@ -17,7 +18,9 @@ export const loadPlan = {
   Comment: {
     table: tables.comment,
     key: "id",
-    relations: {},
+    relations: {
+      post: { kind: "belongs-to", target: "Post", column: "postId", nullable: false },
+    },
     computed: {},
   },
   Post: {
@@ -25,10 +28,15 @@ export const loadPlan = {
     key: "id",
     relations: {
       author: { kind: "belongs-to", target: "User", column: "authorId", nullable: false },
-      comments: { kind: "has-many", target: "Comment", column: null },
+      comments: { kind: "has-many", target: "Comment", column: "postId" },
     },
     computed: {
-      excerpt: { kind: "body", needs: [], evaluate: postExpressions["computed.excerpt"] },
+      excerpt: {
+        kind: "body",
+        needs: [],
+        plain: true,
+        evaluate: postExpressions["computed.excerpt"],
+      },
       commentCount: { kind: "rollup", fn: "count", of: ["comments"] },
     },
   },
@@ -39,6 +47,20 @@ export const loadPlan = {
     computed: {},
   },
 } as const satisfies $LoadPlan;
+
+/**
+ * Load relationships and computed fields onto Comment rows by name. A relationship is loaded by one more
+ * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
+ * the result is new rows of type CommentWith<"name" | ...>.
+ */
+export async function loadCommentFields<const N extends keyof CommentLoadable>(
+  tx: $DataOperations,
+  rows: readonly Comment[],
+  names: readonly N[],
+  options?: $LoadOptions,
+): Promise<CommentWith<N>[]> {
+  return (await $loadRows(loadPlan, "Comment", tx, rows, names, options)) as CommentWith<N>[];
+}
 
 /**
  * Load relationships and computed fields onto Post rows by name. A relationship is loaded by one more

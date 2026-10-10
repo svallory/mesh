@@ -13,8 +13,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/blog/comment.mesh.mx",
-            "line": 3,
-            "offset": 50
+            "line": 5,
+            "offset": 89
           },
           "primaryKey": true,
           "type": "uuid",
@@ -26,8 +26,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/blog/comment.mesh.mx",
-            "line": 4,
-            "offset": 75
+            "line": 6,
+            "offset": 114
           },
           "primaryKey": false,
           "type": "string",
@@ -39,17 +39,48 @@
       ],
       "computed": [],
       "file": "src/domain/blog/comment.mesh.mx",
-      "imports": [],
+      "imports": [
+        {
+          "from": "./post.mesh.mx",
+          "identifiers": [
+            "Post"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/blog/comment.mesh.mx",
+            "line": 1,
+            "offset": 0
+          }
+        }
+      ],
       "module": "blog",
       "name": "Comment",
       "policies": [],
       "position": {
         "column": 0,
         "file": "src/domain/blog/comment.mesh.mx",
-        "line": 1,
-        "offset": 0
+        "line": 3,
+        "offset": 39
       },
-      "relationships": [],
+      "relationships": [
+        {
+          "entity": {
+            "from": "./post.mesh.mx",
+            "identifier": "Post"
+          },
+          "keyColumn": "postId",
+          "keyType": "uuid",
+          "kind": "belongs-to",
+          "name": "post",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/blog/comment.mesh.mx",
+            "line": 8,
+            "offset": 147
+          }
+        }
+      ],
       "table": "comments"
     },
     {
@@ -862,7 +893,8 @@
             "file": "src/domain/blog/post.mesh.mx",
             "line": 21,
             "offset": 620
-          }
+          },
+          "via": "post"
         }
       ],
       "table": "posts"

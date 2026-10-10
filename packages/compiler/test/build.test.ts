@@ -45,9 +45,6 @@ test("all currently parseable v4 constructs are represented", () => {
   });
   expect(entity.computed.slice(1).map((c) => c.rollup?.fn)).toEqual([
     "count",
-    "sum",
-    "avg",
-    "min",
     "max",
   ]);
   expect(entity.actions[0]!.input.map((f) => f.kind)).toEqual([

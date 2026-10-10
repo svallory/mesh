@@ -43,11 +43,14 @@ export const commentFilter: z.ZodType<CommentFilter> = z.lazy(
       z.strictObject({
         id: comparison(z.uuid()).exactOptional(),
         body: comparison(z.string()).exactOptional(),
+        postId: comparison(z.uuid()).exactOptional(),
       }),
     ]) as unknown as z.ZodType<CommentFilter>,
 );
 
-export const commentSort = z.array(z.enum(["id", "-id", "body", "-body"])).readonly();
+export const commentSort = z
+  .array(z.enum(["id", "-id", "body", "-body", "postId", "-postId"]))
+  .readonly();
 
 export const readCommentInput = z.strictObject({
   filter: commentFilter.optional(),

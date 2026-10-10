@@ -333,6 +333,26 @@ boolean :untouched() { return &state === :done }`);
     expect(of("summary")).toEqual(["notes", "owner"]);
   });
 
+  test("a plain body's chain is followed to its end: one, two and three relationships deep", () => {
+    const { of } = needs(`string :one() { return JSON.stringify(&owner?.docCount) }
+string :two() { return JSON.stringify(&notes?.length) + JSON.stringify(&owner?.docs) }
+string :three() { return JSON.stringify(&notes?.at(0)?.doc?.owner?.docCount) }`);
+    expect(of("one")).toEqual(["owner", "owner.docCount"]);
+    expect(of("two")).toEqual(["notes", "owner", "owner.docs"]);
+    // `.at(0)` is a call, so the chain the text shows ends at notes; the loader's guard covers the rest at run time.
+    expect(of("three")).toEqual(["notes"]);
+  });
+
+  test("a body that reads a has-many nothing points back at cannot be loaded, and the build says so", () => {
+    const orphan = "entity :Orphan\n  attributes\n    uuid :id primary-key\n";
+    const owner = `import { Orphan } from "./orphan.mesh.mx"\nentity :Doc\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :orphans entity=Orphan\n  computed\n    boolean :hasOrphans() { return &orphans.length > 0 }\n`;
+    const result = build({ "doc.mesh.mx": owner, "orphan.mesh.mx": orphan });
+    expect(result.diagnostics).toEqual([expect.objectContaining({
+      code: "MESH_NO_INVERSE",
+      message: "&hasOrphans reads has-many :orphans, which cannot be loaded: :Orphan has no belongs-to back to :Doc",
+    })]);
+  });
+
   test("a computed field needs nothing of a related entity that the body only names in a local", () => {
     const { of } = needs("boolean :shadow() { return &notes.some((owner) => owner.pinned) }");
     expect(of("shadow")).toEqual(["notes"]);

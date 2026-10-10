@@ -94,7 +94,7 @@ export function loadView(input: EmitInput, generatedPath: string): LoadView {
         locals.set(entity.file, local);
         expressionImports.push({ local, fromLiteral: fromLiteral(generatedPath, `${posix.dirname(generatedPath)}/${entityPath(entity)}.expressions`) });
       }
-      return { key: propertyName(field.name), plan: `{ kind: "body", needs: ${needs}, evaluate: ${local}[${JSON.stringify(`computed.${field.name}`)}] }` };
+      return { key: propertyName(field.name), plan: `{ kind: "body", needs: ${needs},${field.body!.plain ? " plain: true," : ""} evaluate: ${local}[${JSON.stringify(`computed.${field.name}`)}] }` };
     });
     let loader: LoadFunction | null = null;
     if (hasLoader(entity)) {

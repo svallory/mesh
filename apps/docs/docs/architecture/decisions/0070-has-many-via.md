@@ -51,4 +51,5 @@ An atom is the only spelling in the file that names something without referring 
 
 ## Action items
 
-- [x] M7: the contract attribute, the cross-file check and the loader (`front-end/relationships.ts`, `runtime/src/load.ts`). A `has-one` that has several `belongs-to` back to its entity is a build error too, because it takes no `via`; a `has-many` or `has-one` with none back builds and fails when it is loaded.
+- [x] M7: the contract attribute, the cross-file check and the loader (`front-end/relationships.ts`, `runtime/src/load.ts`).
+- Lead ruling, pending operator review (decisions log 2026-10-10 14:50): anything the build knows will fail is a build error that names the milestone ([ADR-0018](./0018-not-implemented-is-a-build-error.md)). So a rollup or a computed field that goes through a `has-many` or `has-one` with no `belongs-to` back, a `sum`, `avg` or `min` rollup, and a rollup over a join are build errors. A relationship that nothing uses builds, and loading it is a run-time error. A `has-one` with several `belongs-to` back is a build error, because it takes no `via`.

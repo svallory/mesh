@@ -32,7 +32,7 @@ entity :Invoice table="invoices"
       return &number + " · " + formatMoney(&total)
     }
     count :lineCount of="lines"
-    sum :total of="lines.amount"
+    max :total of="lines.amount"
 
   actions auto=[:read, :destroy] on:load=&visible
     always types=[:create, :update]

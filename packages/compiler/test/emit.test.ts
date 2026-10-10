@@ -32,8 +32,8 @@ test("v4 record and input types preserve the legacy layout and action names", as
   expect(output).toContain("rating: number | null;");
   expect(output).toContain("listId: string;");
   // A computed field is not on the stored record; it is what `load` attaches (TodoLoadable).
-  expect(/export type Todo = \{[^}]*\};/.exec(output)![0]).not.toContain("total:");
-  expect(output).toContain("total: number | null;");
+  expect(/export type Todo = \{[^}]*\};/.exec(output)![0]).not.toContain("largest:");
+  expect(output).toContain("largest: number | null;");
   expect(output).toContain('list: List["id"]');
   const inputs = entityInputs(todo(document), document);
   expect(inputs.map((input) => input.name)).toEqual(
