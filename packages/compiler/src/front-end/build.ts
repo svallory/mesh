@@ -736,6 +736,9 @@ export function buildModel(project: ProjectDescription): BuildResult {
     document: null,
     diagnostics: [error("MESH_PROJECT_PATH", "Domain root must stay inside the project", positionAt("", "mesh.config.ts", 0))],
   };
+  const ignoredByPath = new Map(
+    (project.ignored ?? []).map((i) => [resolve(rootPath, i.file), i] as const),
+  );
   const virtualFiles = new Set(
     project.files.map((f) => resolveEntityFile(rootPath, f.file)?.absolute),
   );
@@ -852,7 +855,10 @@ export function buildModel(project: ProjectDescription): BuildResult {
           return false;
         }
       });
-      if (found && hasMeshExtension(imported.from) && !virtualFiles.has(target))
+      const ignoredHit = ignoredByPath.get(target);
+      if (ignoredHit)
+        diagnostics.push(error("MESH_IGNORED_IMPORT", `${entity.file} imports ${imported.from}, which \`ignore\` in mesh.config.ts excludes (pattern ${JSON.stringify(ignoredHit.pattern)}); import a file that is not ignored, or remove the pattern`, imported.position));
+      else if (found && hasMeshExtension(imported.from) && !virtualFiles.has(target))
         diagnostics.push(error("MESH_UNKNOWN_ENTITY", `${imported.from} exists but is not under the configured entity directories`, imported.position));
       if (!found)
         diagnostics.push(

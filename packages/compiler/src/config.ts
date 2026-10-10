@@ -14,6 +14,8 @@ export interface ResolvedConfig {
   configFile: string;
   domainRoot: string;
   entityFiles: string[];
+  /** Discovered entity files that `ignore` excluded, with the pattern that matched. */
+  ignoredFiles?: { file: string; pattern: string }[];
   output: string;
   data: DataAdapter;
   extensions?: readonly ExtensionDescriptor[];
@@ -145,17 +147,27 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
       else if (!hasMeshExtension(path.file)) fail("domain", `Entity files must end in ${meshExtensionsText}`);
       else files.push(path.absolute);
     }
-    if (files.length) {
-      domainRoot = dirname(files[0]!);
-      for (const file of files) while (!inside(domainRoot, file)) domainRoot = dirname(domainRoot);
-    }
   }
   files = [...new Set(files)].sort();
+  const ignoredFiles: { file: string; pattern: string }[] = [];
   if (ignore.length && !diagnostics.length) {
-    const matchers = ignore.map((glob) => new Bun.Glob(normalizePath(glob).replace(/^\.\//, "")));
+    const patterns = ignore.map((glob) => { const pattern = normalizePath(glob).replace(/^\.\//, ""); return { glob, matcher: new Bun.Glob(pattern) }; });
+    const used = new Set<string>();
     const before = files.length;
-    files = files.filter((file) => { const name = projectPath(root, file); return !matchers.some((m) => m.match(name)); });
+    files = files.filter((file) => {
+      const name = projectPath(root, file);
+      const hits = patterns.filter((p) => p.matcher.match(name));
+      for (const hit of hits) used.add(hit.glob);
+      if (hits[0]) ignoredFiles.push({ file, pattern: hits[0].glob });
+      return hits.length === 0;
+    });
+    for (const p of patterns) if (!used.has(p.glob))
+      diagnostics.push({ ...error("MESH_IGNORE_UNUSED", `\`ignore\` pattern ${JSON.stringify(p.glob)} matches no entity file; check it for a typo (patterns match files, such as "src/legacy/**")`, at("ignore"), "Fix or remove the pattern in mesh.config.ts"), severity: "warning" });
     if (before > 0 && files.length === 0) fail("ignore", "Configuration field `ignore` excludes every entity file");
+  }
+  if (Array.isArray(domain) && files.length) {
+    domainRoot = dirname(files[0]!);
+    for (const file of files) while (!inside(domainRoot, file)) domainRoot = dirname(domainRoot);
   }
   for (const file of files) {
     const name = projectPath(root, file);
@@ -165,8 +177,8 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
       if (!(await stat(file)).isFile()) fail("domain", `Entity file "${name}" is not a file`);
     } catch (cause) { fail("domain", `Cannot read entity file "${name}" (${errorCode(cause) ?? "UNKNOWN"})`); }
   }
-  return { config: diagnostics.length ? null : {
-    root, configFile, domainRoot, entityFiles: files, output, data: data as DataAdapter,
+  return { config: diagnostics.some((d) => d.severity === "error") ? null : {
+    root, configFile, domainRoot, entityFiles: files, ignoredFiles, output, data: data as DataAdapter,
     ...(Object.hasOwn(config, "extensions") ? { extensions: extensions as readonly ExtensionDescriptor[] } : {}),
   }, diagnostics };
 }
@@ -193,7 +205,10 @@ export async function loadProject(config: ResolvedConfig): Promise<BuildResult> 
       files.push({ file: path.absolute, source: await readFile(path.absolute, "utf8") });
     } catch (cause) { diagnostics.push(error("MESH_ENTITY_READ", `Cannot read entity file "${path.file}" (${errorCode(cause) ?? "UNKNOWN"})`, positionAt("", path.file, 0), "Restore the entity file or fix the domain list")); }
   }
-  const result = buildModel({ root: config.root, domainRoot: config.domainRoot, files });
+  const result = buildModel({
+    root: config.root, domainRoot: config.domainRoot, files,
+    ignored: (config.ignoredFiles ?? []).map(({ file, pattern }) => ({ file: projectPath(config.root, file), pattern })),
+  });
   if (result.document) result.document.data = { name: config.data.name };
   return { document: diagnostics.length ? null : result.document, diagnostics: [...diagnostics, ...result.diagnostics] };
 }

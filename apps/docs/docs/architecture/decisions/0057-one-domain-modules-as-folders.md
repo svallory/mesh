@@ -1,15 +1,15 @@
 ---
 title: "0057. One domain per app at `src/domain/`; its folders are modules"
-description: "Decision record 0057: where entity files live, what a module is, and the project layout. Status: Accepted."
+description: "Decision record 0057: where entity files live, what a module is, and the project layout. Status: Accepted, amended by operator ruling, 2026-10-10."
 ---
 
 # 0057. One domain per app at `src/domain/`; its folders are modules
 
-> **Amendment, 2026-10-10 (operator ruling).** Folders are modules, with two additions. A folder whose name starts with `_` only organises files: a file's module is its folder path with every `_` segment removed, so `src/domain/tasks/_services/x.mesh.mx` belongs to module `tasks`. A plain nested folder is a real submodule, so `tasks/services/` is module `tasks/services`. `_name/` is the only folder marker; files are excluded with `ignore` globs in `mesh.config.ts`. See [Project structure](../../docs/project-structure.md#the-domain). The original text below is unchanged.
+> **Amended** on 2026-10-10 by operator ruling, 2026-10-10 (recorded in the project's decision log, section "Operator: D3 and the `_name/` group marker are ruled"; this site carries it only as this note). Folders are modules, with two additions. A folder whose name starts with `_` only organises files: a file's module is its folder path with every segment that starts with `_` removed (a segment that is only `_` is an error), so `src/domain/tasks/_services/x.mesh.mx` belongs to module `tasks`. A plain nested folder is a real submodule, so `tasks/services/` is module `tasks/services`. `_name/` is the only folder marker; files are excluded with `ignore` globs in `mesh.config.ts`. See [Project structure](../../docs/project-structure.md#the-domain). The original text below is unchanged.
 
 ## Status
 
-Amended
+Accepted, amended by operator ruling, 2026-10-10
 
 ## Date
 

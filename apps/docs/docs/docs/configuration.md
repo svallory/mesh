@@ -70,7 +70,7 @@ export default defineConfig({
 });
 ```
 
-`ignore` applies to a `domain` folder, glob or list alike. A glob that reaches outside the project, or one that excludes every entity file, is a configuration error. A file that a kept file imports must not be ignored. To organise files without excluding them, use a `_name/` folder; see [Project structure](./project-structure.md#the-domain).
+Patterns match files, so write `src/legacy/**` rather than `src/legacy`. A pattern that matches no entity file produces a warning naming it, since it is usually a typo. `ignore` applies to a `domain` folder, glob or list alike. A glob that reaches outside the project, or one that excludes every entity file, is a configuration error. A file that a kept file imports must not be ignored. To organise files without excluding them, use a `_name/` folder; see [Project structure](./project-structure.md#the-domain).
 
 `connect()` reads this file, which is why the build, the commands and your application can never disagree about where the data is. There is nowhere else to configure a connection.
 

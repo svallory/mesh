@@ -151,11 +151,36 @@ test.each([
   expect(loaded.config).toBeNull();
   expect(loaded.diagnostics[0]!.message).toContain(message);
 });
-test("a file imported by a kept file but ignored is reported at the import, not silently dropped", async () => {
+test("a file imported by a kept file but ignored is reported with its own code, naming file, import and pattern", async () => {
   const root = await project({ ignore: "**/b.mesh.mx" }, {
     "src/domain/a.mesh.mx": `import { B } from "./b.mesh.mx"\nentity :A\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :b entity=B\n`,
     "src/domain/b.mesh.mx": entity("B"),
   });
   const built = await loadProject((await loadConfig(root)).config!);
-  expect(built.diagnostics.length).toBeGreaterThan(0);
+  const issue = built.diagnostics.find((d) => d.code === "MESH_IGNORED_IMPORT")!;
+  expect(issue).toBeDefined();
+  expect(issue.message).toContain("src/domain/a.mesh.mx");
+  expect(issue.message).toContain("./b.mesh.mx");
+  expect(issue.message).toContain('"**/b.mesh.mx"');
+  expect(built.diagnostics.some((d) => d.code === "MESH_UNKNOWN_ENTITY")).toBe(false);
+});
+test("list-form domain: an ignored file does not move the domain root of kept files", async () => {
+  const root = await project(
+    { domain: ["src/domain/tasks/t.mesh.mx", "src/legacy/l.mesh.mx"], ignore: "src/legacy/**" },
+    { "src/domain/tasks/t.mesh.mx": entity("T"), "src/legacy/l.mesh.mx": entity("L") },
+  );
+  const loaded = await loadConfig(root);
+  expect(loaded.diagnostics).toEqual([]);
+  expect(loaded.config!.domainRoot).toBe(resolve(root, "src/domain/tasks"));
+  const built = await loadProject(loaded.config!);
+  expect(built.document!.entities.map((e) => [e.name, e.module])).toEqual([["T", ""]]);
+});
+test("an ignore pattern that matches nothing is a warning naming the pattern, not an error", async () => {
+  const root = await project({ ignore: ["src/legacy", "**/b.mesh.mx"] }, { "src/domain/a.mesh.mx": entity("A"), "src/domain/b.mesh.mx": entity("B") });
+  const loaded = await loadConfig(root);
+  expect(loaded.config).not.toBeNull();
+  expect(loaded.diagnostics).toHaveLength(1);
+  expect(loaded.diagnostics[0]).toMatchObject({ severity: "warning", code: "MESH_IGNORE_UNUSED" });
+  expect(loaded.diagnostics[0]!.message).toContain('"src/legacy"');
+  expect(loaded.config!.entityFiles).toEqual([resolve(root, "src/domain/a.mesh.mx")]);
 });
