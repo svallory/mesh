@@ -11,7 +11,7 @@ Mesh is not released yet. These pages describe Mesh 1.0.
 
 Mesh's generators are [Jig](https://jig.saulo.engineer/docs/introduction) templates, the template engine for code generation. Out of the box they emit ordinary TypeScript: one handler per action, with the lifecycle written out, so the code you run is code you can read and a bug in your application is a stack trace in your own generated file.
 
-Sometimes that is not enough. You may want a different function signature, a house convention for error handling, a trace attribute, a comment at the top of every file. Rewriting generated files by hand does not work — the next `mesh build` overwrites them, and `mesh build --check` fails on your edit.
+Sometimes that is not enough. You may want a different function signature, a house convention for error handling, a log line, a comment at the top of every file. Rewriting generated files by hand does not work — the next `mesh build` overwrites them, and `mesh build --check` fails on your edit.
 
 This page is about the way out short of forking Mesh.
 
@@ -40,7 +40,7 @@ A template receives the entity's model — the same plain data `mesh inspect` pr
 
 This is the honest price of the copy, and it is the whole argument against it.
 
-**You own the output from then on.** When you upgrade Mesh, your generators do not improve. A fix to the action lifecycle — a bug in how a denied write is reported, a missing tracing span, a change in how validations fold into a statement — reaches every project except yours. Your copy is a fork with no merge path.
+**You own the output from then on.** When you upgrade Mesh, your generators do not improve. A fix to the action lifecycle — a bug in how a denied write is reported, a missing check, a change in how validations fold into a statement — reaches every project except yours. Your copy is a fork with no merge path.
 
 **The files are large.** An action template is one of the bigger pieces of the build. Reading a diff of it is work you would not otherwise do.
 

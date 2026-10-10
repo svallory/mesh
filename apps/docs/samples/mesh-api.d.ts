@@ -21,14 +21,45 @@ declare module "@meshfw/runtime" {
     output: string;
     data: SqliteDataLayer | PostgresDataLayer;
     extensions?: unknown[];
+    seams?: Seams;
+  };
+
+  /** Storage operations of one open transaction, by table handle (`tables` from `#mesh`). Writes through it run no seams. */
+  export type DataOperations = {
+    insert(table: object, row: Record<string, unknown>): Promise<Record<string, unknown>>;
+    selectByKey(table: object, key: Record<string, unknown>): Promise<Record<string, unknown> | undefined>;
+    updateByKey(table: object, key: Record<string, unknown>, changes: Record<string, unknown>): Promise<Record<string, unknown> | undefined>;
+    deleteByKey(table: object, key: Record<string, unknown>): Promise<boolean>;
+  };
+
+  /** One row written by a call: the row as it was (`null` on a create) and as written (`null` on a destroy). */
+  export type WriteChange = {
+    entity: string;
+    action: string;
+    before: Record<string, unknown> | null;
+    after: Record<string, unknown> | null;
+    input: unknown;
+    context: ActionContext;
+  };
+
+  /** Code the application runs at three points of every generated action. Payloads are plain data. */
+  export type Seams = {
+    /** Before the transaction opens; throw to refuse the call. */
+    beforeTransaction?(call: { entity: string; action: string; input: unknown; context: ActionContext }): void | Promise<void>;
+    /** Inside the transaction, right after each row is written; a throw rolls back the whole call. */
+    afterWrite?(tx: DataOperations, change: WriteChange): void | Promise<void>;
+    /** Once, after the outermost transaction commits; not called on rollback. */
+    afterCommit?(commit: { changes: WriteChange[] }): void | Promise<void>;
   };
 
   export function defineConfig(config: MeshConfig): MeshConfig;
 
   /**
-   * Empty in the runtime, as ruled: the project adds its keys, `actor` included,
-   * by declaration merging in `src/context.ts`. Declaring `actor` here would make
-   * the project's own declaration a duplicate-property error.
+   * The project adds its keys, `actor` included, by declaration merging in
+   * `src/context.ts`. Declaring `actor` here would make the project's own
+   * declaration a duplicate-property error. The reserved `system` key is
+   * declared in the augmentation at the end of this file, outside the part of
+   * the file that the runtime-reference test compares with the real runtime.
    */
   export interface ActionContext {}
 
@@ -99,6 +130,20 @@ declare module "@meshfw/data-postgres" {
   }
 
   export function postgres(options: { url: string | undefined }): PostgresDataLayer;
+}
+
+// Declared apart from the runtime section above, which `packages/compiler/test/runtime-reference.test.ts`
+// compares member for member with the real runtime: the runtime does not have these yet.
+declare module "@meshfw/runtime" {
+  interface ActionContext {
+    /** Reserved: the application marks a call it makes on its own behalf. Mesh skips no policy for it. */
+    system?: boolean;
+  }
+
+  interface Issue {
+    /** What the failing `check` returned from `details=`, or `null`. */
+    details: unknown;
+  }
 }
 
 declare module "meshfw" {
@@ -220,9 +265,30 @@ declare module "#mesh" {
 
   export type DataLayer = SqliteDataLayer | PostgresDataLayer;
 
+  /** The action functions as `actions` hands them to a step, a check or `transaction`: bound to the running transaction, context optional. */
+  export type Actions = {
+    createList(input: { name: string }, context?: ActionContext): Promise<List>;
+    createTodo(input: { title: string; list: List["id"] }, context?: ActionContext): Promise<Todo>;
+    completeTodo(input: { id: string }, context?: ActionContext): Promise<Todo>;
+    renameTodo(input: { id: string; title: string }, context?: ActionContext): Promise<Todo>;
+    destroyTodo(input: { id: string }, context?: ActionContext): Promise<void>;
+  };
+
+  /** The reads of the running transaction; no read policies run. */
+  export type Reads = {
+    readList(input: ReadTodoInput): Promise<List[]>;
+    readTodo(input: ReadTodoInput): Promise<Todo[]>;
+  };
+
+  /** Opens a transaction, or joins the running one, and hands `run` the bound `actions` and `tx`. */
+  export function transaction<T>(
+    run: (handle: { actions: Actions; tx: Reads }) => Promise<T>,
+    context: ActionContext,
+  ): Promise<T>;
+
   export function connect(): Promise<void>;
   export function disconnect(): Promise<void>;
-  export function bind(dataLayer: DataLayer): Bound;
+  export function bind(dataLayer: DataLayer, options?: { seams?: import("@meshfw/runtime").Seams }): Bound;
 
   /** The emitted schema's tables, for `createSchema(db, tables)`. */
   export const tables: { readonly list: object; readonly todo: object };
