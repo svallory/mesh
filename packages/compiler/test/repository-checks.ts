@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { extname, join, relative, sep } from "node:path";
-import type { DataDiagnostic } from "@mxlang/data";
-import { parseEntitySource } from "../src/build.ts";
+import type { IrDiagnostic } from "@mxlang/core";
+import { parseEntitySource } from "../src/front-end/build.ts";
 
 // ADR-0043: only packages declaring tag contracts may mention MX; extensions join in M6.
 export const MX_IMPORT_PACKAGES = ["packages/compiler"] as const;
@@ -375,7 +375,7 @@ function invalidMembersInV4(source: string): string | null {
 }
 
 /** A parser crash is a finding, not an exception. */
-export function parseV4(source: string, file: string): DataDiagnostic[] {
+export function parseV4(source: string, file: string): IrDiagnostic[] {
   try {
     return parseEntitySource(source, file).diagnostics;
   } catch (cause) {

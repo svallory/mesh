@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
-import { createTargetLookup, getCustomTags, type WildcardChildEntry } from "@mxlang/core";
-import descriptor from "@mxlang/data/descriptor";
-import contracts, { ATTRIBUTE_TYPES } from "../src/contracts.ts";
-import { buildModel } from "../src/build.ts";
+import { type WildcardChildEntry } from "@mxlang/core";
+import contracts, { ATTRIBUTE_TYPES } from "../src/front-end/contracts.ts";
+import { buildModel } from "../src/front-end/build.ts";
 import { coverageProject } from "./coverage-examples.ts";
 import { fixture, fixtureDir, parse, parseFixture } from "./helpers.ts";
 import { build, keyed, todo } from "./v4.ts";
@@ -18,18 +17,15 @@ describe("v4 contracts", () => {
       expect(contract.finalize).toBeUndefined();
     }
   });
-  test("manifest exposes the same contracts through the tree target", () => {
+  test("manifest exposes the same contracts through mx.contracts, and declares no target", async () => {
     const manifest = JSON.parse(
       readFileSync(new URL("../package.json", import.meta.url), "utf8"),
     );
     expect(manifest.mx).toEqual({
-      target: "tree",
-      contracts: "./src/contracts.ts",
+      contracts: "./src/front-end/contracts.ts",
     });
-    const loaded = getCustomTags(`${fixtureDir}post.mesh.mx`, {
-      targets: createTargetLookup([descriptor]),
-      host: null,
-    });
+    // No target is declared, so MX has nothing to scan with; the module the manifest names is the contracts.
+    const loaded = (await import(new URL(manifest.mx.contracts, new URL("../package.json", import.meta.url)).href)).default;
     expect(Object.keys(loaded).sort()).toEqual(Object.keys(contracts).sort());
   });
   test("full currently supported vocabulary parses with contracts", () =>
@@ -66,7 +62,7 @@ describe("v4 contracts", () => {
         define: "<define/foo>\n</define>",
       };
       const result = parse(sources[tag]!);
-      expect(result.tree).toBeUndefined();
+      expect(result.ir).toBeUndefined();
       expect(result.diagnostics.length).toBeGreaterThan(0);
     },
   );
@@ -122,7 +118,8 @@ describe("v4 contracts", () => {
       "unknown-entity": ["MESH_UNKNOWN_ENTITY", 5, 28],
       const: ["MESH_SYNTAX", 1, 0],
       "old-module": ["MESH_SYNTAX", 1, 13],
-      "old-relationship": ["MESH_SYNTAX", 5, 14],
+      // alpha.15: the dialect's name sugar ends the value, so MX reports the second atom (was the `=` at column 14).
+      "old-relationship": ["MESH_SYNTAX", 5, 21],
       "atom-input": ["MESH_SYNTAX", 7, 8],
       "read-input-member": ["MESH_READ_INPUT_MEMBER", 7, 8],
       "unknown-import": ["MESH_UNKNOWN_IMPORT", 1, 0],

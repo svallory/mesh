@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
-import { parseData } from "@mxlang/data";
-import type { DataNode, DataTag } from "@mxlang/data/tree";
-import { positionAt } from "../src/build.ts";
-import { MESH_SYNTAX } from "../src/syntax.ts";
+import { lowerSource } from "@mxlang/core";
+import type { Tag } from "../src/front-end/tree.ts";
+import type { SpannedIr } from "@mxlang/core";
+import { positionAt } from "../src/model/index.ts";
+import { MESH_DIALECT } from "../src/front-end/dialect.ts";
 import {
   attr,
   expression,
@@ -11,17 +12,17 @@ import {
   readMemberLine,
   readMembers,
   type MemberAssignment,
-} from "../src/tree.ts";
+} from "../src/front-end/tree.ts";
 
-// Real lowered trees from MESH_SYNTAX (no contracts): the readers take members
+// Real lowered trees from MESH_DIALECT (no contracts): the readers take members
 // from MX's shapes only, never from `code` or the text.
-const tagsOf = (nodes: readonly DataNode[]) =>
-  nodes.filter((n): n is DataTag => n.kind === "tag");
+const tagsOf = (nodes: SpannedIr["body"]): Tag[] =>
+  nodes.flatMap((n) => (n.kind === "DelegatedTag" ? [n.tag] : []));
 function lowered(source: string) {
-  const result = parseData(source, "todo.mesh.mx", { syntax: MESH_SYNTAX });
+  const result = lowerSource(source, "todo.mesh.mx", { dialect: MESH_DIALECT });
   expect(result.diagnostics).toEqual([]);
   const at = (offset: number) => positionAt(source, "todo.mesh.mx", offset);
-  return { root: tagsOf(result.tree!.children)[0]!, at };
+  return { root: tagsOf(result.ir!.body)[0]!, at };
 }
 
 test("after a kind: the { kind: \"member\" } attribute's value, positioned at the &", () => {
