@@ -24,6 +24,12 @@ entity :Task table="tasks"
     has-many :submissions entity=Submission
     has-many :completions entity=Completion
     has-many :events entity=Event
+  computed
+    boolean :childrenSettled() { return &children.every((c) => c.state !== :open) }
+    boolean :claimed() { return &claims.some((c) => c.state === :active && c.expiresAt > now()) }
+    boolean :lapsedClaim() { return &claims.some((c) => c.state === :active && c.expiresAt <= now()) }
+    boolean :inReview() { return &submissions.some((s) => s.state === :pending) }
+    boolean :assigned() { return &assignments.some((a) => a.endedAt === null) }
   actions auto=[:read]
     create :create
       input

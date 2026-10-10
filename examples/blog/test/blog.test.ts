@@ -89,7 +89,7 @@ test("a read with filter and sort throws the M4 FrameworkError instead of return
   const { db, blog } = await fresh();
   try {
     await expect(blog.publishedPost({}, context)).rejects.toThrow(
-      new FrameworkError("publishedPost cannot run in this version: its filter and sort are evaluated from M4"));
+      new FrameworkError("publishedPost cannot run in this version: its filter and sort are evaluated by the SQL evaluator, which arrives in M10"));
   } finally { await db.close(); }
 });
 

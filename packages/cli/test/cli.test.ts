@@ -520,7 +520,7 @@ describe("the data adapter's build half in mesh build", () => {
 
 describe("mesh export generators (roadmap Jig port, acceptance 3)", () => {
   const templates = join(repo, "packages/compiler/src/typescript/templates");
-  const names = ["types.ts.jig", "validators.ts.jig", "actions.ts.jig", "index.ts.jig"];
+  const names = ["types.ts.jig", "validators.ts.jig", "expressions.ts.jig", "actions.ts.jig", "index.ts.jig"];
   const summary = "0 errors, 0 warnings\n";
 
   test("writes every template Mesh ships, then a second run is a no-op", async () => {
@@ -556,7 +556,7 @@ describe("mesh export generators (roadmap Jig port, acceptance 3)", () => {
     const root = await project();
     await mkdir(join(root, ".mesh-generators"));
     await writeFile(join(root, ".mesh-generators/types.ts.jig"), await readFile(join(templates, "types.ts.jig")));
-    expect(run(root, "export", "generators")).toEqual({ code: 0, stderr: summary, stdout: "wrote .mesh-generators/validators.ts.jig\nwrote .mesh-generators/actions.ts.jig\nwrote .mesh-generators/index.ts.jig\n" });
+    expect(run(root, "export", "generators")).toEqual({ code: 0, stderr: summary, stdout: "wrote .mesh-generators/validators.ts.jig\nwrote .mesh-generators/expressions.ts.jig\nwrote .mesh-generators/actions.ts.jig\nwrote .mesh-generators/index.ts.jig\n" });
   });
 
   test("a differing template stops the export: nothing is written, the file is listed, exit 1", async () => {

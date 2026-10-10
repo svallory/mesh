@@ -153,10 +153,10 @@ describe("actions view", () => {
     expect(publish!.notRun).toBe("Not run in this version: validate fresh, titled; set views; when; load author; on:load load; policies everyone");
   });
 
-  test("a read selects every row; a read with filter or sort validates, then throws naming M4", () => {
+  test("a read selects every row; a read with filter or sort validates, then throws naming M10", () => {
     const methods = viewOf("Article").methods;
     const live = methods.find((m) => m.name === "live")!;
-    expect(live.unsupported).toBe('"liveArticle cannot run in this version: its filter is evaluated from M4"');
+    expect(live.unsupported).toBe('"liveArticle cannot run in this version: its filter is evaluated by the SQL evaluator, which arrives in M10"');
     expect(live.statements).toEqual([]);
     const read = methods.find((m) => m.name === "read")!;
     expect(read).toMatchObject({ unsupported: null, usesParsed: true, statements: [

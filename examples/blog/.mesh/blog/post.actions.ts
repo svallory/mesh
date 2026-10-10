@@ -82,7 +82,7 @@ export function bindPost(layer: $DataLayer) {
       // Not run in this version: on:load published; policies public
       await parseInput(publishedPostInput, input);
       throw new $FrameworkError(
-        "publishedPost cannot run in this version: its filter and sort are evaluated from M4",
+        "publishedPost cannot run in this version: its filter and sort are evaluated by the SQL evaluator, which arrives in M10",
       );
     },
 

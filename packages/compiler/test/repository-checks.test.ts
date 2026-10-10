@@ -12,6 +12,7 @@ function temporary(run: (dir: string) => void) {
   try { run(dir); } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 
+
 test("real v4 blog loads by path with every registered type", async () => {
   const loaded = await loadConfig(join(root, "examples/blog"));
   expect(loaded.diagnostics).toEqual([]);

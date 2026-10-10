@@ -35,6 +35,8 @@ import {
 import contracts from "./contracts.ts";
 import { MESH_DIALECT } from "./dialect.ts";
 import { hasMeshExtension } from "./extensions.ts";
+import { editsOf } from "./expression.ts";
+import { checkExpressions } from "../model/index.ts";
 import { error, positionAt, type BuildResult, type ProjectDescription } from "../model/index.ts";
 import { nearestName } from "./nearest-name.ts";
 import { literalFits } from "./literal-types.ts";
@@ -209,7 +211,7 @@ function buildEntity(
     fail(problem.code, problem.message, at(problem.offset));
   entity.imports = imports.imports.map(
     (i): Import => {
-      const value = { identifiers: i.names, from: i.from, position: at(i.offset) };
+      const value: Import = { identifiers: i.names, from: i.from, ...(hasMeshExtension(i.from) ? {} : { helper: true as const }), position: at(i.offset) };
       importDetails.set(value, i);
       return value;
     },
@@ -238,7 +240,10 @@ function buildEntity(
     pending.push({ ref, scope });
     return ref;
   };
-  const expr = (a: Attr | undefined, scope: "expression" | "filter" = "expression"): Expression =>
+  const helperImports = new Map<string, string>();
+  for (const entry of entity.imports)
+    if (!hasMeshExtension(entry.from)) for (const name of entry.identifiers) helperImports.set(name, entry.from);
+  const expr = (a: Attr | undefined, scope: "expression" | "filter" = "expression", runStep = false): Expression =>
     expression(
       a,
       source,
@@ -250,6 +255,14 @@ function buildEntity(
           `\`&${ref.name}\` cannot be assigned inside an expression; use a \`set\` line`,
           position,
         ),
+      {
+        helpers: helperImports,
+        imported: new Set(importNames.keys()),
+        report: (d) => {
+          if (!diagnostics.some((x) => x.code === d.code && x.position.file === d.position.file && x.position.offset === d.position.offset)) diagnostics.push(d);
+        },
+        ...(runStep ? { runStep } : {}),
+      },
     );
   const authoredMember = (line: Tag) =>
     fail(
@@ -502,7 +515,7 @@ function buildEntity(
           position,
         };
       if (tag.name === "run")
-        return { kind: "run", fn: expr(attr(tag, "value")), position };
+        return { kind: "run", fn: expr(attr(tag, "value"), "expression", true), position };
       throw new Error(`Unexpected step ${tag.name}`);
     });
   const body = (holder: Tag) => {
@@ -885,6 +898,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
     }
   }
   resolveRollups(document, rollups, diagnostics);
+  checkExpressions(document, diagnostics, { editsOf });
   const invalid = findNonJsonValue(document);
   if (invalid)
     diagnostics.push(

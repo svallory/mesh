@@ -212,7 +212,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
           runtime.add("FrameworkError");
           const parts = [action.filter ? "filter" : null, action.sort ? "sort" : null].filter(Boolean).join(" and ");
           return { ...base, returnType: `${recordName}[]`, usesParsed: false, unsupported: JSON.stringify(
-            `${base.functionName} cannot run in this version: its ${parts} ${action.filter && action.sort ? "are" : "is"} evaluated from M4`), statements: [] };
+            `${base.functionName} cannot run in this version: its ${parts} ${action.filter && action.sort ? "are" : "is"} evaluated by the SQL evaluator, which arrives in M10`), statements: [] };
         }
         const query = ["filter", "sort", "limit", "offset"].map((name) => `${name}: ${read("parsed", name)}`).join(", ");
         return { ...base, returnType: `${recordName}[]`, unsupported: null, usesParsed: true,

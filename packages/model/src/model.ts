@@ -1,5 +1,6 @@
 import type { ActionType } from "./action-types.ts";
 import type { AttributeType } from "./attribute-types.ts";
+import type { ExprNode, PlainReason } from "./expression.ts";
 import type { SourcePosition } from "./position.ts";
 
 /** JSON data only. Optional properties are omitted, never assigned undefined. */
@@ -30,6 +31,8 @@ export interface EntityRef {
 export interface Import {
   identifiers: string[];
   from: string;
+  /** Present (true) when the import is a helper module and not an entity file. */
+  helper?: true;
   position: SourcePosition;
 }
 /** Authored function text; no translation or evaluation during model building. */
@@ -37,6 +40,10 @@ export interface Expression {
   source: string;
   params: string[];
   position: SourcePosition;
+  /** Present when Mesh translated the function: the tree the evaluators run (M4). */
+  tree?: ExprNode;
+  /** Present when it did not: the function stays authored TypeScript with JavaScript semantics. Exactly one of `tree` and `plain`. */
+  plain?: PlainReason;
 }
 
 export interface Attribute {
@@ -71,7 +78,7 @@ export type Computed = {
   type: AttributeType;
   position: SourcePosition;
 } & (
-  | { body: Expression; rollup?: never }
+  | { body: Expression; rollup?: never; nullable?: boolean }
   | { body?: never; rollup: Rollup; nullable: boolean }
 );
 export type Argument = Omit<Attribute, "primaryKey" | "unique" | "on"> & {

@@ -36,7 +36,7 @@ test("an installed build half is loaded and its generator runs after the core on
   expect(diagnostics).toEqual([]);
   expect(build!.generators.map((generator) => generator.name)).toEqual(["fake-tables"]);
   expect(Object.keys(build!.commands ?? {})).toEqual(["db push"]);
-  expect(buildEmitters(build).map((emitter) => emitter.name)).toEqual(["model-json", "types", "validators", "actions", "index", "fake-tables"]);
+  expect(buildEmitters(build).map((emitter) => emitter.name)).toEqual(["model-json", "types", "validators", "expressions", "actions", "index", "fake-tables"]);
   const { document } = await loadProject(config);
   const files = await generateFiles({ config, document: document! }, build);
   expect(files.map((file) => file.path)).toEqual([".mesh/fake.ts", ".mesh/index.ts", ".mesh/model.json", ".mesh/todo.actions.ts", ".mesh/todo.types.ts", ".mesh/todo.validators.ts"]);

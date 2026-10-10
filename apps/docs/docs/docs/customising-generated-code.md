@@ -26,6 +26,7 @@ It copies the generator templates into your project:
 ```text
 .mesh-generators/
   actions.ts.jig
+  expressions.ts.jig
   index.ts.jig
   types.ts.jig
   validators.ts.jig

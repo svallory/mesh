@@ -13,6 +13,8 @@ entity :Claim table="claims"
   relationships
     belongs-to :task entity=Task
     belongs-to :holder entity=Collaborator
+  computed
+    boolean :lapsed() { return &state === :active && &expiresAt <= now() }
   actions auto=[:read]
     create :acquire
       input

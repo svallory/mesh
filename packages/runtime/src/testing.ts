@@ -373,3 +373,6 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
     }),
   };
 }
+
+export { EXPRESSION_TABLES, QUANTIFIER_TABLES } from "./expression-tables.ts";
+export type { TableCase, QuantifierCase } from "./expression-tables.ts";

@@ -16,6 +16,7 @@ Each page says what the thing is, how it works, and which code implements it. Li
 - [Action lifecycle](./action-lifecycle.md)
 - [The build-time pipeline](./build-pipeline.md)
 - [Data layer: contract and capabilities](./data-layer.md)
+- [Expression functions](./expression-functions.md)
 - [Expressions: one tree, two evaluators](./expressions.md)
 - [Extension host and composed contracts](./extension-host.md)
 - [Generated code and the guard](./generated-code-and-guard.md)

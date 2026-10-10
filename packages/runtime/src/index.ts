@@ -18,3 +18,5 @@ export type { Capability, CapabilityManifest } from "./capabilities.ts";
 export { uuidv7 } from "./uuid.ts";
 export type { DataAdapter } from "./data-adapter.ts";
 export { defineConfig, type MeshConfig, type ExtensionDescriptor } from "./config.ts";
+export { expr, scope, systemClock } from "./expr.ts";
+export type { Clock, Scope } from "./expr.ts";
