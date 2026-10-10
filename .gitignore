@@ -3,4 +3,4 @@ node_modules/
 apps/docs/site/
 .docmd/
 packages/data-sqlite/test/.emitted-*/
-dist/
+packages/cli/dist/

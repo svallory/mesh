@@ -24,7 +24,8 @@
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "build": "bun scripts/build-dialect.ts"
+    "build": "bun scripts/build-dialect.ts",
+    "prepare": "bun scripts/build-dialect.ts"
   },
   "dependencies": {
     "@meshfw/compiler": "workspace:*",

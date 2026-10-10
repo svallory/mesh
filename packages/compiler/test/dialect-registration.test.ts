@@ -32,7 +32,7 @@ beforeAll(() => {
   mkdirSync(base, { recursive: true });
   work = mkdtempSync(join(base, "registration-"));
 });
-afterAll(() => rmSync(work, { recursive: true, force: true }));
+afterAll(() => rmSync(base, { recursive: true, force: true }));
 
 test("a project that depends on meshfw routes .mesh.mx files to the mesh dialect, and only those", () => {
   const root = project("with-meshfw", { meshfw: "*" });
