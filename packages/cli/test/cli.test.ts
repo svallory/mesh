@@ -165,11 +165,11 @@ test("invalid config is exit 1 with exact position", async () => {
   expect(run(root, "build")).toEqual({ code: 1, stdout: "", stderr: "mesh.config.ts:1:36 error Configuration field `output` must be a non-empty relative directory path\n  fix: Fix the output field in mesh.config.ts\n1 error, 0 warnings\n" });
 });
 
-// Six `mesh` processes, each lowering entity files. The first `lowerSource` call in a process takes
-// about 430 ms on alpha.15 against about 200 ms for alpha.14's `parseData` (measured locally: core
-// loads its Marko front end lazily on that first call; the dialect and the build module cost under 20 ms),
-// so this test went from about 4.0 s to about 5.3 s on netcup and hit bun's 5 s default. The cost is MX's
-// per-process start-up, not something Mesh rebuilds per call (a second call takes about 2 ms).
+// Six `mesh` processes, each lowering entity files, so the cost is MX's per-process start-up (the
+// first `lowerSource` call; a second call takes about 2 ms), not something Mesh rebuilds per call.
+// Measured on alpha.16 (2026-10-10, 8 cores, load average about 6, five runs of this test alone):
+// 3.9, 3.9, 4.0, 4.4 and 4.7 s. Earlier: about 4.0 s on alpha.14's `parseData`, about 5.3 s on alpha.15
+// on netcup, which hit bun's 5 s default. The limit is twice the slowest local run.
 test("inspect prints precisely the built model bytes or the named entity with the same serialiser", async () => {
   const root = await builtProject();
   const bytes = await readFile(join(root, "generated/model.json"), "utf8");
@@ -182,7 +182,7 @@ test("inspect prints precisely the built model bytes or the named entity with th
   await rm(join(root, "generated"), { recursive: true });
   expect(run(root, "inspect").stdout).toBe(bytes);
   expect(await Bun.file(join(root, "generated/model.json")).exists()).toBe(false);
-}, 20_000);
+}, 10_000);
 
 test.each([[], ["unknown"], ["build", "--unknown"], ["build", "extra"], ["inspect", "a", "b"], ["inspect", "--check"], ["build", "--config", "x"]].map((args) => ({ args })))("usage error exits 2: $args", async ({ args }) => {
   const result = run(await project(false), ...args);

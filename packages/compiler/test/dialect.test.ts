@@ -24,3 +24,13 @@ test("the extensions are one list", () => {
   expect(hasMeshExtension("a/b.mx")).toBe(false);
   expect(meshGlob).toBe("**/*.mesh.mx");
 });
+
+// MX #495 (alpha.16): `:name` as a whole attribute value is a dialect row. The wrapper inherits it from
+// the reference dialect, and it names the dialect id, so `MESH_DIALECT.id` has to stay `mesh`.
+test("the dialect carries the value-position atom row and the Atom node type, under the id mesh", () => {
+  expect(MESH_DIALECT.id).toBe("mesh");
+  const rows = MESH_DIALECT.table.valueTriggers ?? [];
+  expect(rows.map((row) => row.id)).toEqual(["atom-value"]);
+  expect(rows[0]!.node).toEqual({ type: "Atom", dialect: MESH_DIALECT.id });
+  expect(Object.keys(MESH_DIALECT.nodeTypes ?? {})).toEqual(["Atom"]);
+});

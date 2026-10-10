@@ -14,10 +14,14 @@
  *
  * The rows, the hooks and the atom contract checks (`values`, `pattern`, `ref`,
  * `declares`) are MX's combined reference dialect, `@mxlang/core/syntax/mesh`
- * (alpha.15). MX ships it as built JavaScript only, so Mesh wraps it instead of
+ * (alpha.16). MX ships it as built JavaScript only, so Mesh wraps it instead of
  * copying the source: the wrapper gives it Mesh's identity and tag rules and
- * drops the `#id` and `.class` sugar rows, which Mesh writes nowhere. Nothing
- * in `package.json#mx` selects it: the compiler passes it to `lowerSource`.
+ * drops the `#id` and `.class` sugar rows, which Mesh writes nowhere. The spread
+ * keeps the reference's `atom-value` row (`valueTriggers`) and `Atom` node type
+ * (`nodeTypes`), which claim `:name` as a whole attribute value; the row names
+ * the dialect `mesh`, so the `id` below must stay `mesh`. The compiler passes
+ * the dialect to `lowerSource`; tools find it through `meshfw`'s `mx.dialect`
+ * registration, whose built module re-exports this value.
  *
  * `tagRules: "none"` makes `input`, `script` or `title` an ordinary Mesh tag
  * (`input` is a section of an action). The preset applies when the dialect is

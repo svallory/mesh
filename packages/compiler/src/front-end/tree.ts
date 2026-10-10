@@ -63,7 +63,21 @@ export const attr = (tag: Tag, name: string): Attr | undefined =>
  * `static` kind and tells them apart by `atom` and `member` (a dialect `node`, which Mesh does
  * not register, would be a third). These three read each shape; every other reader goes through them.
  */
-export const atomOf = (a: Attr | undefined) => (a?.kind === "static" ? a.atom : undefined);
+/**
+ * An atom in value position (`via=:owner`, `on=:create`) is claimed by Mesh's `Atom` node type (alpha.16,
+ * `mesh:Atom`), which lowers to the atom-marked literal the expression trigger builds, so the IR holds
+ * the same `atom` mark as before and `node` stays unset. Should MX keep the claimed node on the
+ * attribute instead (its `Attr.node`, for a node that lowers to a string), it is read here too, so
+ * both shapes reach the model as one atom.
+ */
+export const atomOf = (a: Attr | undefined): StaticAttr["atom"] => {
+  if (a?.kind !== "static") return undefined;
+  if (a.atom) return a.atom;
+  const node = a.node as ({ type: string; name?: unknown; span: unknown } & object) | undefined;
+  return node?.type === "mesh:Atom" && typeof node.name === "string"
+    ? ({ kind: "atom", name: node.name, span: node.span } as StaticAttr["atom"])
+    : undefined;
+};
 const memberOf = (a: Attr | undefined) => (a?.kind === "static" ? a.member : undefined);
 const plainString = (a: Attr | undefined): StaticAttr | undefined =>
   a?.kind === "static" && !a.atom && !a.member && !a.node ? a : undefined;
