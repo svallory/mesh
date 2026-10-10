@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "include": [
+    "mesh.config.ts",
+    ".mesh/**/*.ts",
+    "src/**/*.ts",
+    "test/**/*.ts"
+  ]
+}

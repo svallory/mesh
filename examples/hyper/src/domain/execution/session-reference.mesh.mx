@@ -1,0 +1,29 @@
+import { Machine } from "./machine.mesh.mx"
+import { Collaborator } from "../identity/collaborator.mesh.mx"
+
+entity :SessionReference table="session_references"
+  attributes
+    uuid :id primary-key
+    string :runtime
+    string :runtimeSessionId
+    enum :availability values=[:complete, :partial, :unavailable, :redacted]
+    string :location nullable
+    integer :version default=1
+    timestamp :recordedAt on=:create
+  relationships
+    belongs-to :machine entity=Machine
+    belongs-to :agentProfile entity=Collaborator
+    belongs-to :recordedBy entity=Collaborator
+  actions auto=[:read]
+    create :record
+      input
+        &runtime
+        &runtimeSessionId
+        &availability
+        &location
+        &machine
+        &agentProfile
+        &recordedBy
+    update :setAvailability
+      input
+        &availability

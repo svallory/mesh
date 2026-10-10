@@ -1,0 +1,22 @@
+import { Task } from "./task.mesh.mx"
+import { Collaborator } from "../identity/collaborator.mesh.mx"
+
+entity :Assignment table="assignments"
+  attributes
+    uuid :id primary-key
+    boolean :reviewWaived default=false
+    timestamp :startedAt
+    timestamp :endedAt nullable
+    enum :endReason values=[:reassigned, :unassigned] nullable
+  relationships
+    belongs-to :task entity=Task
+    belongs-to :assignee entity=Collaborator
+    belongs-to :delegator entity=Collaborator
+  actions auto=[:read]
+    create :start
+      input
+        &reviewWaived
+        &startedAt
+        &task
+        &assignee
+        &delegator

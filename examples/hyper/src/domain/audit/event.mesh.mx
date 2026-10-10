@@ -1,0 +1,28 @@
+import { Task } from "../work/task.mesh.mx"
+
+entity :Event table="events"
+  attributes
+    integer :seq primary-key
+    string :resource
+    string :action
+    uuid :recordId
+    integer :recordVersion nullable
+    uuid :actorId nullable
+    string :caller nullable
+    string :commandId nullable
+    json :changes default={}
+    timestamp :occurredAt on=:create
+  relationships
+    belongs-to :task entity=Task nullable
+  actions auto=[:read]
+    create :record
+      input
+        &resource
+        &action
+        &recordId
+        &recordVersion
+        &actorId
+        &caller
+        &commandId
+        &changes
+        &task

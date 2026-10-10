@@ -1,0 +1,58 @@
+import { Attempt } from "./attempt.mesh.mx"
+import { Task } from "../work/task.mesh.mx"
+import { SessionReference } from "./session-reference.mesh.mx"
+import { Invocation } from "./invocation.mesh.mx"
+import { Collaborator } from "../identity/collaborator.mesh.mx"
+
+entity :Invocation table="invocations"
+  attributes
+    uuid :id primary-key
+    string :requestedProvider nullable
+    string :requestedModel nullable
+    string :actualProvider nullable
+    string :actualModel nullable
+    integer :inputTokens nullable min=0
+    integer :outputTokens nullable min=0
+    integer :cacheReadTokens nullable min=0
+    integer :cacheWriteTokens nullable min=0
+    enum :usageSource values=[:runtime, :provider, :estimate]
+    decimal :estimatedCost nullable
+    string :pricingBasis nullable
+    timestamp :startedAt nullable
+    timestamp :endedAt nullable
+    string :reason nullable
+    timestamp :recordedAt on=:create
+  relationships
+    belongs-to :attempt entity=Attempt
+    belongs-to :task entity=Task
+    belongs-to :session entity=SessionReference nullable
+    belongs-to :corrects entity=Invocation nullable
+    belongs-to :recordedBy entity=Collaborator
+  actions auto=[:read]
+    create :record
+      input
+        &requestedProvider
+        &requestedModel
+        &actualProvider
+        &actualModel
+        &inputTokens
+        &outputTokens
+        &cacheReadTokens
+        &cacheWriteTokens
+        &usageSource
+        &estimatedCost
+        &pricingBasis
+        &startedAt
+        &endedAt
+        &attempt
+        &task
+        &session
+        &recordedBy
+    create :correct
+      input
+        &reason
+        &usageSource
+        &attempt
+        &task
+        &corrects
+        &recordedBy

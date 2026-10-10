@@ -1,0 +1,20 @@
+import { Task } from "./task.mesh.mx"
+import { Submission } from "./submission.mesh.mx"
+import { Collaborator } from "../identity/collaborator.mesh.mx"
+
+entity :Completion table="completions"
+  attributes
+    uuid :id primary-key
+    string :rule
+    timestamp :completedAt on=:create
+  relationships
+    belongs-to :task entity=Task
+    belongs-to :submission entity=Submission nullable
+    belongs-to :completedBy entity=Collaborator
+  actions auto=[:read]
+    create :record
+      input
+        &rule
+        &task
+        &submission
+        &completedBy

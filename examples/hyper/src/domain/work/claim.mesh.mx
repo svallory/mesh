@@ -1,0 +1,24 @@
+import { Task } from "./task.mesh.mx"
+import { Collaborator } from "../identity/collaborator.mesh.mx"
+
+entity :Claim table="claims"
+  attributes
+    uuid :id primary-key
+    integer :fence
+    timestamp :acquiredAt
+    timestamp :expiresAt
+    timestamp :endedAt nullable
+    string :endReason nullable
+    enum :state values=[:active, :released, :revoked, :expired] default=:active
+    integer :version default=1
+  relationships
+    belongs-to :task entity=Task
+    belongs-to :holder entity=Collaborator
+  actions auto=[:read]
+    create :acquire
+      input
+        &fence
+        &acquiredAt
+        &expiresAt
+        &task
+        &holder

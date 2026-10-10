@@ -1,0 +1,26 @@
+{
+  "name": "hyper-example",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "imports": {
+    "#mesh": "./.mesh/index.ts"
+  },
+  "scripts": {
+    "test": "mesh build --check && bun test",
+    "typecheck": "tsc --noEmit",
+    "validate": "mesh build --check",
+    "db:push": "mesh db push"
+  },
+  "devDependencies": {
+    "drizzle-kit": "0.31.11",
+    "meshfw": "workspace:*"
+  },
+  "dependencies": {
+    "@meshfw/data-sqlite": "workspace:*",
+    "@meshfw/runtime": "workspace:*",
+    "drizzle-orm": "0.45.3",
+    "zod": "4.6.5"
+  }
+}

@@ -1,0 +1,24 @@
+import { Collaborator } from "./collaborator.mesh.mx"
+
+entity :Membership table="memberships"
+  attributes
+    uuid :id primary-key
+    enum :role values=[:owner, :member, :guest]
+    enum :state values=[:active, :revoked] default=:active
+    timestamp :grantedAt
+    timestamp :revokedAt nullable
+    integer :version default=1
+  relationships
+    belongs-to :collaborator entity=Collaborator
+    belongs-to :grantedBy entity=Collaborator nullable
+    belongs-to :revokedBy entity=Collaborator nullable
+  actions auto=[:read]
+    create :grant
+      input
+        &role
+        &grantedAt
+        &collaborator
+        &grantedBy
+    update :changeRole
+      input
+        &role

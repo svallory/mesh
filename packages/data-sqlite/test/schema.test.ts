@@ -51,17 +51,17 @@ describe("schemaView", () => {
       ["User", "userTable", "user", '"users"'],
     ]);
     expect(view.tables[0]!.columns).toEqual([
-      { key: "id", builder: "text", nameLiteral: '"id"', options: null, notNull: true, primaryKey: true },
-      { key: "title", builder: "text", nameLiteral: '"title"', options: null, notNull: true, primaryKey: false },
+      { key: "id", builder: "text", nameLiteral: '"id"', options: null, notNull: true, primaryKey: true, unique: false },
+      { key: "title", builder: "text", nameLiteral: '"title"', options: null, notNull: true, primaryKey: false, unique: false },
       // @if(column.notNull) false branch: a nullable attribute.
-      { key: "body", builder: "text", nameLiteral: '"body"', options: null, notNull: false, primaryKey: false },
+      { key: "body", builder: "text", nameLiteral: '"body"', options: null, notNull: false, primaryKey: false, unique: false },
       // @if(column.options) true branch.
-      { key: "featured", builder: "integer", nameLiteral: '"featured"', options: '{ mode: "boolean" }', notNull: true, primaryKey: false },
-      { key: "state", builder: "text", nameLiteral: '"state"', options: '{ enum: ["draft","published"] }', notNull: true, primaryKey: false },
-      { key: "publishedAt", builder: "integer", nameLiteral: '"publishedAt"', options: '{ mode: "timestamp_ms" }', notNull: false, primaryKey: false },
+      { key: "featured", builder: "integer", nameLiteral: '"featured"', options: '{ mode: "boolean" }', notNull: true, primaryKey: false, unique: false },
+      { key: "state", builder: "text", nameLiteral: '"state"', options: '{ enum: ["draft","published"] }', notNull: true, primaryKey: false, unique: false },
+      { key: "publishedAt", builder: "integer", nameLiteral: '"publishedAt"', options: '{ mode: "timestamp_ms" }', notNull: false, primaryKey: false, unique: false },
       // Relationship key columns follow the attributes; computed members have no column.
-      { key: "authorId", builder: "text", nameLiteral: '"authorId"', options: null, notNull: true, primaryKey: false },
-      { key: "editorId", builder: "text", nameLiteral: '"editorId"', options: null, notNull: false, primaryKey: false },
+      { key: "authorId", builder: "text", nameLiteral: '"authorId"', options: null, notNull: true, primaryKey: false, unique: false },
+      { key: "editorId", builder: "text", nameLiteral: '"editorId"', options: null, notNull: false, primaryKey: false, unique: false },
     ]);
   });
 

@@ -1,0 +1,5435 @@
+{
+  "data": {
+    "name": "sqlite"
+  },
+  "entities": [
+    {
+      "actions": [
+        {
+          "do": [],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "resource",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/audit/event.mesh.mx",
+                  "line": 20,
+                  "offset": 483
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "action",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/audit/event.mesh.mx",
+                  "line": 21,
+                  "offset": 501
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "recordId",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/audit/event.mesh.mx",
+                  "line": 22,
+                  "offset": 517
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "recordVersion",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/audit/event.mesh.mx",
+                  "line": 23,
+                  "offset": 535
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "actorId",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/audit/event.mesh.mx",
+                  "line": 24,
+                  "offset": 558
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "caller",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/audit/event.mesh.mx",
+                  "line": 25,
+                  "offset": 575
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "commandId",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/audit/event.mesh.mx",
+                  "line": 26,
+                  "offset": 591
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "changes",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/audit/event.mesh.mx",
+                  "line": 27,
+                  "offset": 610
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "task",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/audit/event.mesh.mx",
+                  "line": 28,
+                  "offset": 627
+                }
+              }
+            }
+          ],
+          "kind": "create",
+          "name": "record",
+          "position": {
+            "column": 4,
+            "file": "src/domain/audit/event.mesh.mx",
+            "line": 18,
+            "offset": 448
+          },
+          "validate": []
+        }
+      ],
+      "always": [],
+      "attributes": [
+        {
+          "name": "seq",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/audit/event.mesh.mx",
+            "line": 5,
+            "offset": 91
+          },
+          "primaryKey": true,
+          "type": "integer",
+          "unique": false
+        },
+        {
+          "name": "resource",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/audit/event.mesh.mx",
+            "line": 6,
+            "offset": 120
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "name": "action",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/audit/event.mesh.mx",
+            "line": 7,
+            "offset": 141
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "name": "recordId",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/audit/event.mesh.mx",
+            "line": 8,
+            "offset": 160
+          },
+          "primaryKey": false,
+          "type": "uuid",
+          "unique": false
+        },
+        {
+          "name": "recordVersion",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/audit/event.mesh.mx",
+            "line": 9,
+            "offset": 179
+          },
+          "primaryKey": false,
+          "type": "integer",
+          "unique": false
+        },
+        {
+          "name": "actorId",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/audit/event.mesh.mx",
+            "line": 10,
+            "offset": 215
+          },
+          "primaryKey": false,
+          "type": "uuid",
+          "unique": false
+        },
+        {
+          "name": "caller",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/audit/event.mesh.mx",
+            "line": 11,
+            "offset": 242
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "name": "commandId",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/audit/event.mesh.mx",
+            "line": 12,
+            "offset": 270
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "default": {},
+          "name": "changes",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/audit/event.mesh.mx",
+            "line": 13,
+            "offset": 301
+          },
+          "primaryKey": false,
+          "type": "json",
+          "unique": false
+        },
+        {
+          "name": "occurredAt",
+          "nullable": false,
+          "on": "create",
+          "position": {
+            "column": 4,
+            "file": "src/domain/audit/event.mesh.mx",
+            "line": 14,
+            "offset": 330
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        }
+      ],
+      "auto": [
+        "read"
+      ],
+      "computed": [],
+      "file": "src/domain/audit/event.mesh.mx",
+      "imports": [
+        {
+          "from": "../work/task.mesh.mx",
+          "identifiers": [
+            "Task"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/audit/event.mesh.mx",
+            "line": 1,
+            "offset": 0
+          }
+        }
+      ],
+      "module": "audit",
+      "name": "Event",
+      "policies": [],
+      "position": {
+        "column": 0,
+        "file": "src/domain/audit/event.mesh.mx",
+        "line": 3,
+        "offset": 45
+      },
+      "relationships": [
+        {
+          "entity": {
+            "from": "../work/task.mesh.mx",
+            "identifier": "Task"
+          },
+          "keyColumn": "taskId",
+          "kind": "belongs-to",
+          "name": "task",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/audit/event.mesh.mx",
+            "line": 16,
+            "offset": 383
+          }
+        }
+      ],
+      "table": "events"
+    },
+    {
+      "actions": [
+        {
+          "do": [],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "step",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/attempt.mesh.mx",
+                  "line": 29,
+                  "offset": 995
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "number",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/attempt.mesh.mx",
+                  "line": 30,
+                  "offset": 1009
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "claimFence",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/attempt.mesh.mx",
+                  "line": 31,
+                  "offset": 1025
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "runtime",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/attempt.mesh.mx",
+                  "line": 32,
+                  "offset": 1045
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "run",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/attempt.mesh.mx",
+                  "line": 33,
+                  "offset": 1062
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "task",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/attempt.mesh.mx",
+                  "line": 34,
+                  "offset": 1075
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "performer",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/attempt.mesh.mx",
+                  "line": 35,
+                  "offset": 1089
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "delegator",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/attempt.mesh.mx",
+                  "line": 36,
+                  "offset": 1108
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "machine",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/attempt.mesh.mx",
+                  "line": 37,
+                  "offset": 1127
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "session",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/attempt.mesh.mx",
+                  "line": 38,
+                  "offset": 1144
+                }
+              }
+            }
+          ],
+          "kind": "create",
+          "name": "start",
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/attempt.mesh.mx",
+            "line": 27,
+            "offset": 961
+          },
+          "validate": []
+        }
+      ],
+      "always": [],
+      "attributes": [
+        {
+          "name": "id",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/attempt.mesh.mx",
+            "line": 9,
+            "offset": 302
+          },
+          "primaryKey": true,
+          "type": "uuid",
+          "unique": false
+        },
+        {
+          "default": "main",
+          "name": "step",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/attempt.mesh.mx",
+            "line": 10,
+            "offset": 327
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "name": "number",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/attempt.mesh.mx",
+            "line": 11,
+            "offset": 359
+          },
+          "primaryKey": false,
+          "type": "integer",
+          "unique": false
+        },
+        {
+          "name": "claimFence",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/attempt.mesh.mx",
+            "line": 12,
+            "offset": 379
+          },
+          "primaryKey": false,
+          "type": "integer",
+          "unique": false
+        },
+        {
+          "name": "runtime",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/attempt.mesh.mx",
+            "line": 13,
+            "offset": 412
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "name": "outcome",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/attempt.mesh.mx",
+            "line": 14,
+            "offset": 441
+          },
+          "primaryKey": false,
+          "type": "json",
+          "unique": false
+        },
+        {
+          "default": {
+            "value": "running"
+          },
+          "name": "state",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/attempt.mesh.mx",
+            "line": 15,
+            "offset": 468
+          },
+          "primaryKey": false,
+          "type": "enum",
+          "unique": false,
+          "values": [
+            {
+              "value": "running"
+            },
+            {
+              "value": "succeeded"
+            },
+            {
+              "value": "failed"
+            },
+            {
+              "value": "stopped"
+            },
+            {
+              "value": "abandoned"
+            }
+          ]
+        },
+        {
+          "name": "endedAt",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/attempt.mesh.mx",
+            "line": 16,
+            "offset": 562
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        },
+        {
+          "default": 1,
+          "name": "version",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/attempt.mesh.mx",
+            "line": 17,
+            "offset": 594
+          },
+          "primaryKey": false,
+          "type": "integer",
+          "unique": false
+        },
+        {
+          "name": "startedAt",
+          "nullable": false,
+          "on": "create",
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/attempt.mesh.mx",
+            "line": 18,
+            "offset": 625
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        }
+      ],
+      "auto": [
+        "read"
+      ],
+      "computed": [],
+      "file": "src/domain/execution/attempt.mesh.mx",
+      "imports": [
+        {
+          "from": "./run.mesh.mx",
+          "identifiers": [
+            "Run"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/execution/attempt.mesh.mx",
+            "line": 1,
+            "offset": 0
+          }
+        },
+        {
+          "from": "../work/task.mesh.mx",
+          "identifiers": [
+            "Task"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/execution/attempt.mesh.mx",
+            "line": 2,
+            "offset": 36
+          }
+        },
+        {
+          "from": "../identity/collaborator.mesh.mx",
+          "identifiers": [
+            "Collaborator"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/execution/attempt.mesh.mx",
+            "line": 3,
+            "offset": 80
+          }
+        },
+        {
+          "from": "./machine.mesh.mx",
+          "identifiers": [
+            "Machine"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/execution/attempt.mesh.mx",
+            "line": 4,
+            "offset": 144
+          }
+        },
+        {
+          "from": "./session-reference.mesh.mx",
+          "identifiers": [
+            "SessionReference"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/execution/attempt.mesh.mx",
+            "line": 5,
+            "offset": 188
+          }
+        }
+      ],
+      "module": "execution",
+      "name": "Attempt",
+      "policies": [],
+      "position": {
+        "column": 0,
+        "file": "src/domain/execution/attempt.mesh.mx",
+        "line": 7,
+        "offset": 252
+      },
+      "relationships": [
+        {
+          "entity": {
+            "from": "./run.mesh.mx",
+            "identifier": "Run"
+          },
+          "keyColumn": "runId",
+          "kind": "belongs-to",
+          "name": "run",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/attempt.mesh.mx",
+            "line": 20,
+            "offset": 677
+          }
+        },
+        {
+          "entity": {
+            "from": "../work/task.mesh.mx",
+            "identifier": "Task"
+          },
+          "keyColumn": "taskId",
+          "kind": "belongs-to",
+          "name": "task",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/attempt.mesh.mx",
+            "line": 21,
+            "offset": 708
+          }
+        },
+        {
+          "entity": {
+            "from": "../identity/collaborator.mesh.mx",
+            "identifier": "Collaborator"
+          },
+          "keyColumn": "performerId",
+          "kind": "belongs-to",
+          "name": "performer",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/attempt.mesh.mx",
+            "line": 22,
+            "offset": 741
+          }
+        },
+        {
+          "entity": {
+            "from": "../identity/collaborator.mesh.mx",
+            "identifier": "Collaborator"
+          },
+          "keyColumn": "delegatorId",
+          "kind": "belongs-to",
+          "name": "delegator",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/attempt.mesh.mx",
+            "line": 23,
+            "offset": 787
+          }
+        },
+        {
+          "entity": {
+            "from": "./machine.mesh.mx",
+            "identifier": "Machine"
+          },
+          "keyColumn": "machineId",
+          "kind": "belongs-to",
+          "name": "machine",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/attempt.mesh.mx",
+            "line": 24,
+            "offset": 833
+          }
+        },
+        {
+          "entity": {
+            "from": "./session-reference.mesh.mx",
+            "identifier": "SessionReference"
+          },
+          "keyColumn": "sessionId",
+          "kind": "belongs-to",
+          "name": "session",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/attempt.mesh.mx",
+            "line": 25,
+            "offset": 881
+          }
+        }
+      ],
+      "table": "attempts"
+    },
+    {
+      "actions": [
+        {
+          "do": [],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "requestedProvider",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/invocation.mesh.mx",
+                  "line": 34,
+                  "offset": 1226
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "requestedModel",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/invocation.mesh.mx",
+                  "line": 35,
+                  "offset": 1253
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "actualProvider",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/invocation.mesh.mx",
+                  "line": 36,
+                  "offset": 1277
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "actualModel",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/invocation.mesh.mx",
+                  "line": 37,
+                  "offset": 1301
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "inputTokens",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/invocation.mesh.mx",
+                  "line": 38,
+                  "offset": 1322
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "outputTokens",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/invocation.mesh.mx",
+                  "line": 39,
+                  "offset": 1343
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "cacheReadTokens",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/invocation.mesh.mx",
+                  "line": 40,
+                  "offset": 1365
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "cacheWriteTokens",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/invocation.mesh.mx",
+                  "line": 41,
+                  "offset": 1390
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "usageSource",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/invocation.mesh.mx",
+                  "line": 42,
+                  "offset": 1416
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "estimatedCost",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/invocation.mesh.mx",
+                  "line": 43,
+                  "offset": 1437
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "pricingBasis",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/invocation.mesh.mx",
+                  "line": 44,
+                  "offset": 1460
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "startedAt",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/invocation.mesh.mx",
+                  "line": 45,
+                  "offset": 1482
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "endedAt",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/invocation.mesh.mx",
+                  "line": 46,
+                  "offset": 1501
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "attempt",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/invocation.mesh.mx",
+                  "line": 47,
+                  "offset": 1518
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "task",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/invocation.mesh.mx",
+                  "line": 48,
+                  "offset": 1535
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "session",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/invocation.mesh.mx",
+                  "line": 49,
+                  "offset": 1549
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "recordedBy",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/invocation.mesh.mx",
+                  "line": 50,
+                  "offset": 1566
+                }
+              }
+            }
+          ],
+          "kind": "create",
+          "name": "record",
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 32,
+            "offset": 1191
+          },
+          "validate": []
+        },
+        {
+          "do": [],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "reason",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/invocation.mesh.mx",
+                  "line": 53,
+                  "offset": 1618
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "usageSource",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/invocation.mesh.mx",
+                  "line": 54,
+                  "offset": 1634
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "attempt",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/invocation.mesh.mx",
+                  "line": 55,
+                  "offset": 1655
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "task",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/invocation.mesh.mx",
+                  "line": 56,
+                  "offset": 1672
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "corrects",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/invocation.mesh.mx",
+                  "line": 57,
+                  "offset": 1686
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "recordedBy",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/invocation.mesh.mx",
+                  "line": 58,
+                  "offset": 1704
+                }
+              }
+            }
+          ],
+          "kind": "create",
+          "name": "correct",
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 51,
+            "offset": 1582
+          },
+          "validate": []
+        }
+      ],
+      "always": [],
+      "attributes": [
+        {
+          "name": "id",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 9,
+            "offset": 322
+          },
+          "primaryKey": true,
+          "type": "uuid",
+          "unique": false
+        },
+        {
+          "name": "requestedProvider",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 10,
+            "offset": 347
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "name": "requestedModel",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 11,
+            "offset": 386
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "name": "actualProvider",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 12,
+            "offset": 422
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "name": "actualModel",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 13,
+            "offset": 458
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "min": 0,
+          "name": "inputTokens",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 14,
+            "offset": 491
+          },
+          "primaryKey": false,
+          "type": "integer",
+          "unique": false
+        },
+        {
+          "min": 0,
+          "name": "outputTokens",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 15,
+            "offset": 531
+          },
+          "primaryKey": false,
+          "type": "integer",
+          "unique": false
+        },
+        {
+          "min": 0,
+          "name": "cacheReadTokens",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 16,
+            "offset": 572
+          },
+          "primaryKey": false,
+          "type": "integer",
+          "unique": false
+        },
+        {
+          "min": 0,
+          "name": "cacheWriteTokens",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 17,
+            "offset": 616
+          },
+          "primaryKey": false,
+          "type": "integer",
+          "unique": false
+        },
+        {
+          "name": "usageSource",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 18,
+            "offset": 661
+          },
+          "primaryKey": false,
+          "type": "enum",
+          "unique": false,
+          "values": [
+            {
+              "value": "runtime"
+            },
+            {
+              "value": "provider"
+            },
+            {
+              "value": "estimate"
+            }
+          ]
+        },
+        {
+          "name": "estimatedCost",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 19,
+            "offset": 723
+          },
+          "primaryKey": false,
+          "type": "decimal",
+          "unique": false
+        },
+        {
+          "name": "pricingBasis",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 20,
+            "offset": 759
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "name": "startedAt",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 21,
+            "offset": 793
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        },
+        {
+          "name": "endedAt",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 22,
+            "offset": 827
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        },
+        {
+          "name": "reason",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 23,
+            "offset": 859
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "name": "recordedAt",
+          "nullable": false,
+          "on": "create",
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 24,
+            "offset": 887
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        }
+      ],
+      "auto": [
+        "read"
+      ],
+      "computed": [],
+      "file": "src/domain/execution/invocation.mesh.mx",
+      "imports": [
+        {
+          "from": "./attempt.mesh.mx",
+          "identifiers": [
+            "Attempt"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 1,
+            "offset": 0
+          }
+        },
+        {
+          "from": "../work/task.mesh.mx",
+          "identifiers": [
+            "Task"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 2,
+            "offset": 44
+          }
+        },
+        {
+          "from": "./session-reference.mesh.mx",
+          "identifiers": [
+            "SessionReference"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 3,
+            "offset": 88
+          }
+        },
+        {
+          "from": "./invocation.mesh.mx",
+          "identifiers": [
+            "Invocation"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 4,
+            "offset": 151
+          }
+        },
+        {
+          "from": "../identity/collaborator.mesh.mx",
+          "identifiers": [
+            "Collaborator"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 5,
+            "offset": 201
+          }
+        }
+      ],
+      "module": "execution",
+      "name": "Invocation",
+      "policies": [],
+      "position": {
+        "column": 0,
+        "file": "src/domain/execution/invocation.mesh.mx",
+        "line": 7,
+        "offset": 266
+      },
+      "relationships": [
+        {
+          "entity": {
+            "from": "./attempt.mesh.mx",
+            "identifier": "Attempt"
+          },
+          "keyColumn": "attemptId",
+          "kind": "belongs-to",
+          "name": "attempt",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 26,
+            "offset": 940
+          }
+        },
+        {
+          "entity": {
+            "from": "../work/task.mesh.mx",
+            "identifier": "Task"
+          },
+          "keyColumn": "taskId",
+          "kind": "belongs-to",
+          "name": "task",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 27,
+            "offset": 979
+          }
+        },
+        {
+          "entity": {
+            "from": "./session-reference.mesh.mx",
+            "identifier": "SessionReference"
+          },
+          "keyColumn": "sessionId",
+          "kind": "belongs-to",
+          "name": "session",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 28,
+            "offset": 1012
+          }
+        },
+        {
+          "entity": {
+            "from": "./invocation.mesh.mx",
+            "identifier": "Invocation"
+          },
+          "keyColumn": "correctsId",
+          "kind": "belongs-to",
+          "name": "corrects",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 29,
+            "offset": 1069
+          }
+        },
+        {
+          "entity": {
+            "from": "../identity/collaborator.mesh.mx",
+            "identifier": "Collaborator"
+          },
+          "keyColumn": "recordedById",
+          "kind": "belongs-to",
+          "name": "recordedBy",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 30,
+            "offset": 1121
+          }
+        }
+      ],
+      "table": "invocations"
+    },
+    {
+      "actions": [
+        {
+          "do": [],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "name",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/machine.mesh.mx",
+                  "line": 18,
+                  "offset": 542
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "platform",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/machine.mesh.mx",
+                  "line": 19,
+                  "offset": 556
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "firstReportedBy",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/machine.mesh.mx",
+                  "line": 20,
+                  "offset": 574
+                }
+              }
+            }
+          ],
+          "kind": "create",
+          "name": "register",
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/machine.mesh.mx",
+            "line": 16,
+            "offset": 505
+          },
+          "validate": []
+        },
+        {
+          "do": [],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "platform",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/machine.mesh.mx",
+                  "line": 23,
+                  "offset": 630
+                }
+              }
+            }
+          ],
+          "kind": "update",
+          "name": "update",
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/machine.mesh.mx",
+            "line": 21,
+            "offset": 595
+          },
+          "validate": []
+        }
+      ],
+      "always": [],
+      "attributes": [
+        {
+          "name": "id",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/machine.mesh.mx",
+            "line": 6,
+            "offset": 159
+          },
+          "primaryKey": true,
+          "type": "uuid",
+          "unique": false
+        },
+        {
+          "name": "name",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/machine.mesh.mx",
+            "line": 7,
+            "offset": 184
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": true
+        },
+        {
+          "name": "platform",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/machine.mesh.mx",
+            "line": 8,
+            "offset": 208
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "default": {
+            "value": "active"
+          },
+          "name": "state",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/machine.mesh.mx",
+            "line": 9,
+            "offset": 238
+          },
+          "primaryKey": false,
+          "type": "enum",
+          "unique": false,
+          "values": [
+            {
+              "value": "active"
+            },
+            {
+              "value": "retired"
+            }
+          ]
+        },
+        {
+          "default": 1,
+          "name": "version",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/machine.mesh.mx",
+            "line": 10,
+            "offset": 297
+          },
+          "primaryKey": false,
+          "type": "integer",
+          "unique": false
+        },
+        {
+          "name": "registeredAt",
+          "nullable": false,
+          "on": "create",
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/machine.mesh.mx",
+            "line": 11,
+            "offset": 328
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        }
+      ],
+      "auto": [
+        "read"
+      ],
+      "computed": [],
+      "file": "src/domain/execution/machine.mesh.mx",
+      "imports": [
+        {
+          "from": "../identity/collaborator.mesh.mx",
+          "identifiers": [
+            "Collaborator"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/execution/machine.mesh.mx",
+            "line": 1,
+            "offset": 0
+          }
+        },
+        {
+          "from": "./attempt.mesh.mx",
+          "identifiers": [
+            "Attempt"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/execution/machine.mesh.mx",
+            "line": 2,
+            "offset": 64
+          }
+        }
+      ],
+      "module": "execution",
+      "name": "Machine",
+      "policies": [],
+      "position": {
+        "column": 0,
+        "file": "src/domain/execution/machine.mesh.mx",
+        "line": 4,
+        "offset": 109
+      },
+      "relationships": [
+        {
+          "entity": {
+            "from": "../identity/collaborator.mesh.mx",
+            "identifier": "Collaborator"
+          },
+          "keyColumn": "firstReportedById",
+          "kind": "belongs-to",
+          "name": "firstReportedBy",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/machine.mesh.mx",
+            "line": 13,
+            "offset": 383
+          }
+        },
+        {
+          "entity": {
+            "from": "./attempt.mesh.mx",
+            "identifier": "Attempt"
+          },
+          "kind": "has-many",
+          "name": "attempts",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/machine.mesh.mx",
+            "line": 14,
+            "offset": 444
+          }
+        }
+      ],
+      "table": "machines"
+    },
+    {
+      "actions": [
+        {
+          "do": [],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "inputs",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/run.mesh.mx",
+                  "line": 25,
+                  "offset": 811
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "task",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/run.mesh.mx",
+                  "line": 26,
+                  "offset": 827
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "responsible",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/run.mesh.mx",
+                  "line": 27,
+                  "offset": 841
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "startedBy",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/run.mesh.mx",
+                  "line": 28,
+                  "offset": 862
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "parentRun",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/run.mesh.mx",
+                  "line": 29,
+                  "offset": 881
+                }
+              }
+            }
+          ],
+          "kind": "create",
+          "name": "start",
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/run.mesh.mx",
+            "line": 23,
+            "offset": 777
+          },
+          "validate": []
+        }
+      ],
+      "always": [],
+      "attributes": [
+        {
+          "name": "id",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/run.mesh.mx",
+            "line": 8,
+            "offset": 231
+          },
+          "primaryKey": true,
+          "type": "uuid",
+          "unique": false
+        },
+        {
+          "default": {},
+          "name": "inputs",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/run.mesh.mx",
+            "line": 9,
+            "offset": 256
+          },
+          "primaryKey": false,
+          "type": "json",
+          "unique": false
+        },
+        {
+          "name": "outcome",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/run.mesh.mx",
+            "line": 10,
+            "offset": 284
+          },
+          "primaryKey": false,
+          "type": "json",
+          "unique": false
+        },
+        {
+          "default": {
+            "value": "running"
+          },
+          "name": "state",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/run.mesh.mx",
+            "line": 11,
+            "offset": 311
+          },
+          "primaryKey": false,
+          "type": "enum",
+          "unique": false,
+          "values": [
+            {
+              "value": "running"
+            },
+            {
+              "value": "succeeded"
+            },
+            {
+              "value": "failed"
+            },
+            {
+              "value": "canceled"
+            }
+          ]
+        },
+        {
+          "name": "cancelReason",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/run.mesh.mx",
+            "line": 12,
+            "offset": 394
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "name": "endedAt",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/run.mesh.mx",
+            "line": 13,
+            "offset": 428
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        },
+        {
+          "default": 1,
+          "name": "version",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/run.mesh.mx",
+            "line": 14,
+            "offset": 460
+          },
+          "primaryKey": false,
+          "type": "integer",
+          "unique": false
+        },
+        {
+          "name": "startedAt",
+          "nullable": false,
+          "on": "create",
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/run.mesh.mx",
+            "line": 15,
+            "offset": 491
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        }
+      ],
+      "auto": [
+        "read"
+      ],
+      "computed": [],
+      "file": "src/domain/execution/run.mesh.mx",
+      "imports": [
+        {
+          "from": "../work/task.mesh.mx",
+          "identifiers": [
+            "Task"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/execution/run.mesh.mx",
+            "line": 1,
+            "offset": 0
+          }
+        },
+        {
+          "from": "../identity/collaborator.mesh.mx",
+          "identifiers": [
+            "Collaborator"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/execution/run.mesh.mx",
+            "line": 2,
+            "offset": 44
+          }
+        },
+        {
+          "from": "./run.mesh.mx",
+          "identifiers": [
+            "Run"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/execution/run.mesh.mx",
+            "line": 3,
+            "offset": 108
+          }
+        },
+        {
+          "from": "./attempt.mesh.mx",
+          "identifiers": [
+            "Attempt"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/execution/run.mesh.mx",
+            "line": 4,
+            "offset": 144
+          }
+        }
+      ],
+      "module": "execution",
+      "name": "Run",
+      "policies": [],
+      "position": {
+        "column": 0,
+        "file": "src/domain/execution/run.mesh.mx",
+        "line": 6,
+        "offset": 189
+      },
+      "relationships": [
+        {
+          "entity": {
+            "from": "../work/task.mesh.mx",
+            "identifier": "Task"
+          },
+          "keyColumn": "taskId",
+          "kind": "belongs-to",
+          "name": "task",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/run.mesh.mx",
+            "line": 17,
+            "offset": 543
+          }
+        },
+        {
+          "entity": {
+            "from": "../identity/collaborator.mesh.mx",
+            "identifier": "Collaborator"
+          },
+          "keyColumn": "responsibleId",
+          "kind": "belongs-to",
+          "name": "responsible",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/run.mesh.mx",
+            "line": 18,
+            "offset": 576
+          }
+        },
+        {
+          "entity": {
+            "from": "../identity/collaborator.mesh.mx",
+            "identifier": "Collaborator"
+          },
+          "keyColumn": "startedById",
+          "kind": "belongs-to",
+          "name": "startedBy",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/run.mesh.mx",
+            "line": 19,
+            "offset": 624
+          }
+        },
+        {
+          "entity": {
+            "from": "./run.mesh.mx",
+            "identifier": "Run"
+          },
+          "keyColumn": "parentRunId",
+          "kind": "belongs-to",
+          "name": "parentRun",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/run.mesh.mx",
+            "line": 20,
+            "offset": 670
+          }
+        },
+        {
+          "entity": {
+            "from": "./attempt.mesh.mx",
+            "identifier": "Attempt"
+          },
+          "kind": "has-many",
+          "name": "attempts",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/run.mesh.mx",
+            "line": 21,
+            "offset": 716
+          }
+        }
+      ],
+      "table": "runs"
+    },
+    {
+      "actions": [
+        {
+          "do": [],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "runtime",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/session-reference.mesh.mx",
+                  "line": 20,
+                  "offset": 636
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "runtimeSessionId",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/session-reference.mesh.mx",
+                  "line": 21,
+                  "offset": 653
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "availability",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/session-reference.mesh.mx",
+                  "line": 22,
+                  "offset": 679
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "location",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/session-reference.mesh.mx",
+                  "line": 23,
+                  "offset": 701
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "machine",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/session-reference.mesh.mx",
+                  "line": 24,
+                  "offset": 719
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "agentProfile",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/session-reference.mesh.mx",
+                  "line": 25,
+                  "offset": 736
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "recordedBy",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/session-reference.mesh.mx",
+                  "line": 26,
+                  "offset": 758
+                }
+              }
+            }
+          ],
+          "kind": "create",
+          "name": "record",
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/session-reference.mesh.mx",
+            "line": 18,
+            "offset": 601
+          },
+          "validate": []
+        },
+        {
+          "do": [],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "availability",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/execution/session-reference.mesh.mx",
+                  "line": 29,
+                  "offset": 818
+                }
+              }
+            }
+          ],
+          "kind": "update",
+          "name": "setAvailability",
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/session-reference.mesh.mx",
+            "line": 27,
+            "offset": 774
+          },
+          "validate": []
+        }
+      ],
+      "always": [],
+      "attributes": [
+        {
+          "name": "id",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/session-reference.mesh.mx",
+            "line": 6,
+            "offset": 178
+          },
+          "primaryKey": true,
+          "type": "uuid",
+          "unique": false
+        },
+        {
+          "name": "runtime",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/session-reference.mesh.mx",
+            "line": 7,
+            "offset": 203
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "name": "runtimeSessionId",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/session-reference.mesh.mx",
+            "line": 8,
+            "offset": 223
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "name": "availability",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/session-reference.mesh.mx",
+            "line": 9,
+            "offset": 252
+          },
+          "primaryKey": false,
+          "type": "enum",
+          "unique": false,
+          "values": [
+            {
+              "value": "complete"
+            },
+            {
+              "value": "partial"
+            },
+            {
+              "value": "unavailable"
+            },
+            {
+              "value": "redacted"
+            }
+          ]
+        },
+        {
+          "name": "location",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/session-reference.mesh.mx",
+            "line": 10,
+            "offset": 329
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "default": 1,
+          "name": "version",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/session-reference.mesh.mx",
+            "line": 11,
+            "offset": 359
+          },
+          "primaryKey": false,
+          "type": "integer",
+          "unique": false
+        },
+        {
+          "name": "recordedAt",
+          "nullable": false,
+          "on": "create",
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/session-reference.mesh.mx",
+            "line": 12,
+            "offset": 390
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        }
+      ],
+      "auto": [
+        "read"
+      ],
+      "computed": [],
+      "file": "src/domain/execution/session-reference.mesh.mx",
+      "imports": [
+        {
+          "from": "./machine.mesh.mx",
+          "identifiers": [
+            "Machine"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/execution/session-reference.mesh.mx",
+            "line": 1,
+            "offset": 0
+          }
+        },
+        {
+          "from": "../identity/collaborator.mesh.mx",
+          "identifiers": [
+            "Collaborator"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/execution/session-reference.mesh.mx",
+            "line": 2,
+            "offset": 44
+          }
+        }
+      ],
+      "module": "execution",
+      "name": "SessionReference",
+      "policies": [],
+      "position": {
+        "column": 0,
+        "file": "src/domain/execution/session-reference.mesh.mx",
+        "line": 4,
+        "offset": 109
+      },
+      "relationships": [
+        {
+          "entity": {
+            "from": "./machine.mesh.mx",
+            "identifier": "Machine"
+          },
+          "keyColumn": "machineId",
+          "kind": "belongs-to",
+          "name": "machine",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/session-reference.mesh.mx",
+            "line": 14,
+            "offset": 443
+          }
+        },
+        {
+          "entity": {
+            "from": "../identity/collaborator.mesh.mx",
+            "identifier": "Collaborator"
+          },
+          "keyColumn": "agentProfileId",
+          "kind": "belongs-to",
+          "name": "agentProfile",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/session-reference.mesh.mx",
+            "line": 15,
+            "offset": 482
+          }
+        },
+        {
+          "entity": {
+            "from": "../identity/collaborator.mesh.mx",
+            "identifier": "Collaborator"
+          },
+          "keyColumn": "recordedById",
+          "kind": "belongs-to",
+          "name": "recordedBy",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/session-reference.mesh.mx",
+            "line": 16,
+            "offset": 531
+          }
+        }
+      ],
+      "table": "session_references"
+    },
+    {
+      "actions": [
+        {
+          "do": [],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "kind",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/identity/collaborator.mesh.mx",
+                  "line": 13,
+                  "offset": 361
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "name",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/identity/collaborator.mesh.mx",
+                  "line": 14,
+                  "offset": 375
+                }
+              }
+            }
+          ],
+          "kind": "create",
+          "name": "register",
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/collaborator.mesh.mx",
+            "line": 11,
+            "offset": 324
+          },
+          "validate": []
+        },
+        {
+          "do": [],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "name",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/identity/collaborator.mesh.mx",
+                  "line": 17,
+                  "offset": 420
+                }
+              }
+            }
+          ],
+          "kind": "update",
+          "name": "update",
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/collaborator.mesh.mx",
+            "line": 15,
+            "offset": 385
+          },
+          "validate": []
+        }
+      ],
+      "always": [],
+      "attributes": [
+        {
+          "name": "id",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/collaborator.mesh.mx",
+            "line": 3,
+            "offset": 60
+          },
+          "primaryKey": true,
+          "type": "uuid",
+          "unique": false
+        },
+        {
+          "name": "kind",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/collaborator.mesh.mx",
+            "line": 4,
+            "offset": 85
+          },
+          "primaryKey": false,
+          "type": "enum",
+          "unique": false,
+          "values": [
+            {
+              "value": "human"
+            },
+            {
+              "value": "agent"
+            }
+          ]
+        },
+        {
+          "name": "name",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/collaborator.mesh.mx",
+            "line": 5,
+            "offset": 124
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "default": {
+            "value": "active"
+          },
+          "name": "state",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/collaborator.mesh.mx",
+            "line": 6,
+            "offset": 141
+          },
+          "primaryKey": false,
+          "type": "enum",
+          "unique": false,
+          "values": [
+            {
+              "value": "active"
+            },
+            {
+              "value": "retired"
+            }
+          ]
+        },
+        {
+          "name": "retiredAt",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/collaborator.mesh.mx",
+            "line": 7,
+            "offset": 200
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        },
+        {
+          "default": 1,
+          "name": "version",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/collaborator.mesh.mx",
+            "line": 8,
+            "offset": 234
+          },
+          "primaryKey": false,
+          "type": "integer",
+          "unique": false
+        },
+        {
+          "name": "createdAt",
+          "nullable": false,
+          "on": "create",
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/collaborator.mesh.mx",
+            "line": 9,
+            "offset": 265
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        }
+      ],
+      "auto": [
+        "read"
+      ],
+      "computed": [],
+      "file": "src/domain/identity/collaborator.mesh.mx",
+      "imports": [],
+      "module": "identity",
+      "name": "Collaborator",
+      "policies": [],
+      "position": {
+        "column": 0,
+        "file": "src/domain/identity/collaborator.mesh.mx",
+        "line": 1,
+        "offset": 0
+      },
+      "relationships": [],
+      "table": "collaborators"
+    },
+    {
+      "actions": [
+        {
+          "do": [],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "role",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/identity/membership.mesh.mx",
+                  "line": 18,
+                  "offset": 565
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "grantedAt",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/identity/membership.mesh.mx",
+                  "line": 19,
+                  "offset": 579
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "collaborator",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/identity/membership.mesh.mx",
+                  "line": 20,
+                  "offset": 598
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "grantedBy",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/identity/membership.mesh.mx",
+                  "line": 21,
+                  "offset": 620
+                }
+              }
+            }
+          ],
+          "kind": "create",
+          "name": "grant",
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/membership.mesh.mx",
+            "line": 16,
+            "offset": 531
+          },
+          "validate": []
+        },
+        {
+          "do": [],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "role",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/identity/membership.mesh.mx",
+                  "line": 24,
+                  "offset": 674
+                }
+              }
+            }
+          ],
+          "kind": "update",
+          "name": "changeRole",
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/membership.mesh.mx",
+            "line": 22,
+            "offset": 635
+          },
+          "validate": []
+        }
+      ],
+      "always": [],
+      "attributes": [
+        {
+          "name": "id",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/membership.mesh.mx",
+            "line": 5,
+            "offset": 111
+          },
+          "primaryKey": true,
+          "type": "uuid",
+          "unique": false
+        },
+        {
+          "name": "role",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/membership.mesh.mx",
+            "line": 6,
+            "offset": 136
+          },
+          "primaryKey": false,
+          "type": "enum",
+          "unique": false,
+          "values": [
+            {
+              "value": "owner"
+            },
+            {
+              "value": "member"
+            },
+            {
+              "value": "guest"
+            }
+          ]
+        },
+        {
+          "default": {
+            "value": "active"
+          },
+          "name": "state",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/membership.mesh.mx",
+            "line": 7,
+            "offset": 184
+          },
+          "primaryKey": false,
+          "type": "enum",
+          "unique": false,
+          "values": [
+            {
+              "value": "active"
+            },
+            {
+              "value": "revoked"
+            }
+          ]
+        },
+        {
+          "name": "grantedAt",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/membership.mesh.mx",
+            "line": 8,
+            "offset": 243
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        },
+        {
+          "name": "revokedAt",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/membership.mesh.mx",
+            "line": 9,
+            "offset": 268
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        },
+        {
+          "default": 1,
+          "name": "version",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/membership.mesh.mx",
+            "line": 10,
+            "offset": 302
+          },
+          "primaryKey": false,
+          "type": "integer",
+          "unique": false
+        }
+      ],
+      "auto": [
+        "read"
+      ],
+      "computed": [],
+      "file": "src/domain/identity/membership.mesh.mx",
+      "imports": [
+        {
+          "from": "./collaborator.mesh.mx",
+          "identifiers": [
+            "Collaborator"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/identity/membership.mesh.mx",
+            "line": 1,
+            "offset": 0
+          }
+        }
+      ],
+      "module": "identity",
+      "name": "Membership",
+      "policies": [],
+      "position": {
+        "column": 0,
+        "file": "src/domain/identity/membership.mesh.mx",
+        "line": 3,
+        "offset": 55
+      },
+      "relationships": [
+        {
+          "entity": {
+            "from": "./collaborator.mesh.mx",
+            "identifier": "Collaborator"
+          },
+          "keyColumn": "collaboratorId",
+          "kind": "belongs-to",
+          "name": "collaborator",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/membership.mesh.mx",
+            "line": 12,
+            "offset": 349
+          }
+        },
+        {
+          "entity": {
+            "from": "./collaborator.mesh.mx",
+            "identifier": "Collaborator"
+          },
+          "keyColumn": "grantedById",
+          "kind": "belongs-to",
+          "name": "grantedBy",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/membership.mesh.mx",
+            "line": 13,
+            "offset": 398
+          }
+        },
+        {
+          "entity": {
+            "from": "./collaborator.mesh.mx",
+            "identifier": "Collaborator"
+          },
+          "keyColumn": "revokedById",
+          "kind": "belongs-to",
+          "name": "revokedBy",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/membership.mesh.mx",
+            "line": 14,
+            "offset": 453
+          }
+        }
+      ],
+      "table": "memberships"
+    },
+    {
+      "actions": [
+        {
+          "do": [],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "name",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/identity/workspace.mesh.mx",
+                  "line": 11,
+                  "offset": 302
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "location",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/identity/workspace.mesh.mx",
+                  "line": 12,
+                  "offset": 316
+                }
+              }
+            }
+          ],
+          "kind": "create",
+          "name": "create",
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/workspace.mesh.mx",
+            "line": 9,
+            "offset": 267
+          },
+          "validate": []
+        },
+        {
+          "do": [],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "name",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/identity/workspace.mesh.mx",
+                  "line": 15,
+                  "offset": 365
+                }
+              }
+            }
+          ],
+          "kind": "update",
+          "name": "rename",
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/workspace.mesh.mx",
+            "line": 13,
+            "offset": 330
+          },
+          "validate": []
+        }
+      ],
+      "always": [],
+      "attributes": [
+        {
+          "name": "id",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/workspace.mesh.mx",
+            "line": 3,
+            "offset": 54
+          },
+          "primaryKey": true,
+          "type": "uuid",
+          "unique": false
+        },
+        {
+          "name": "name",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/workspace.mesh.mx",
+            "line": 4,
+            "offset": 79
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "default": {
+            "value": "local"
+          },
+          "name": "location",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/workspace.mesh.mx",
+            "line": 5,
+            "offset": 105
+          },
+          "primaryKey": false,
+          "type": "enum",
+          "unique": false,
+          "values": [
+            {
+              "value": "local"
+            },
+            {
+              "value": "shared"
+            }
+          ]
+        },
+        {
+          "default": {
+            "value": "active"
+          },
+          "name": "state",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/workspace.mesh.mx",
+            "line": 6,
+            "offset": 164
+          },
+          "primaryKey": false,
+          "type": "enum",
+          "unique": false,
+          "values": [
+            {
+              "value": "active"
+            }
+          ]
+        },
+        {
+          "default": 1,
+          "name": "version",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/workspace.mesh.mx",
+            "line": 7,
+            "offset": 213
+          },
+          "primaryKey": false,
+          "type": "integer",
+          "unique": false
+        }
+      ],
+      "auto": [
+        "read"
+      ],
+      "computed": [],
+      "file": "src/domain/identity/workspace.mesh.mx",
+      "imports": [],
+      "module": "identity",
+      "name": "Workspace",
+      "policies": [],
+      "position": {
+        "column": 0,
+        "file": "src/domain/identity/workspace.mesh.mx",
+        "line": 1,
+        "offset": 0
+      },
+      "relationships": [],
+      "table": "workspaces"
+    },
+    {
+      "actions": [
+        {
+          "do": [],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "reviewWaived",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/assignment.mesh.mx",
+                  "line": 18,
+                  "offset": 541
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "startedAt",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/assignment.mesh.mx",
+                  "line": 19,
+                  "offset": 563
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "task",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/assignment.mesh.mx",
+                  "line": 20,
+                  "offset": 582
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "assignee",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/assignment.mesh.mx",
+                  "line": 21,
+                  "offset": 596
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "delegator",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/assignment.mesh.mx",
+                  "line": 22,
+                  "offset": 614
+                }
+              }
+            }
+          ],
+          "kind": "create",
+          "name": "start",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/assignment.mesh.mx",
+            "line": 16,
+            "offset": 507
+          },
+          "validate": []
+        }
+      ],
+      "always": [],
+      "attributes": [
+        {
+          "name": "id",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/assignment.mesh.mx",
+            "line": 6,
+            "offset": 159
+          },
+          "primaryKey": true,
+          "type": "uuid",
+          "unique": false
+        },
+        {
+          "default": false,
+          "name": "reviewWaived",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/assignment.mesh.mx",
+            "line": 7,
+            "offset": 184
+          },
+          "primaryKey": false,
+          "type": "boolean",
+          "unique": false
+        },
+        {
+          "name": "startedAt",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/assignment.mesh.mx",
+            "line": 8,
+            "offset": 224
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        },
+        {
+          "name": "endedAt",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/assignment.mesh.mx",
+            "line": 9,
+            "offset": 249
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        },
+        {
+          "name": "endReason",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/assignment.mesh.mx",
+            "line": 10,
+            "offset": 281
+          },
+          "primaryKey": false,
+          "type": "enum",
+          "unique": false,
+          "values": [
+            {
+              "value": "reassigned"
+            },
+            {
+              "value": "unassigned"
+            }
+          ]
+        }
+      ],
+      "auto": [
+        "read"
+      ],
+      "computed": [],
+      "file": "src/domain/work/assignment.mesh.mx",
+      "imports": [
+        {
+          "from": "./task.mesh.mx",
+          "identifiers": [
+            "Task"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/work/assignment.mesh.mx",
+            "line": 1,
+            "offset": 0
+          }
+        },
+        {
+          "from": "../identity/collaborator.mesh.mx",
+          "identifiers": [
+            "Collaborator"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/work/assignment.mesh.mx",
+            "line": 2,
+            "offset": 38
+          }
+        }
+      ],
+      "module": "work",
+      "name": "Assignment",
+      "policies": [],
+      "position": {
+        "column": 0,
+        "file": "src/domain/work/assignment.mesh.mx",
+        "line": 4,
+        "offset": 103
+      },
+      "relationships": [
+        {
+          "entity": {
+            "from": "./task.mesh.mx",
+            "identifier": "Task"
+          },
+          "keyColumn": "taskId",
+          "kind": "belongs-to",
+          "name": "task",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/assignment.mesh.mx",
+            "line": 12,
+            "offset": 360
+          }
+        },
+        {
+          "entity": {
+            "from": "../identity/collaborator.mesh.mx",
+            "identifier": "Collaborator"
+          },
+          "keyColumn": "assigneeId",
+          "kind": "belongs-to",
+          "name": "assignee",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/assignment.mesh.mx",
+            "line": 13,
+            "offset": 393
+          }
+        },
+        {
+          "entity": {
+            "from": "../identity/collaborator.mesh.mx",
+            "identifier": "Collaborator"
+          },
+          "keyColumn": "delegatorId",
+          "kind": "belongs-to",
+          "name": "delegator",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/assignment.mesh.mx",
+            "line": 14,
+            "offset": 438
+          }
+        }
+      ],
+      "table": "assignments"
+    },
+    {
+      "actions": [
+        {
+          "do": [],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "fence",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/claim.mesh.mx",
+                  "line": 20,
+                  "offset": 569
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "acquiredAt",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/claim.mesh.mx",
+                  "line": 21,
+                  "offset": 584
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "expiresAt",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/claim.mesh.mx",
+                  "line": 22,
+                  "offset": 604
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "task",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/claim.mesh.mx",
+                  "line": 23,
+                  "offset": 623
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "holder",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/claim.mesh.mx",
+                  "line": 24,
+                  "offset": 637
+                }
+              }
+            }
+          ],
+          "kind": "create",
+          "name": "acquire",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/claim.mesh.mx",
+            "line": 18,
+            "offset": 533
+          },
+          "validate": []
+        }
+      ],
+      "always": [],
+      "attributes": [
+        {
+          "name": "id",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/claim.mesh.mx",
+            "line": 6,
+            "offset": 149
+          },
+          "primaryKey": true,
+          "type": "uuid",
+          "unique": false
+        },
+        {
+          "name": "fence",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/claim.mesh.mx",
+            "line": 7,
+            "offset": 174
+          },
+          "primaryKey": false,
+          "type": "integer",
+          "unique": false
+        },
+        {
+          "name": "acquiredAt",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/claim.mesh.mx",
+            "line": 8,
+            "offset": 193
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        },
+        {
+          "name": "expiresAt",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/claim.mesh.mx",
+            "line": 9,
+            "offset": 219
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        },
+        {
+          "name": "endedAt",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/claim.mesh.mx",
+            "line": 10,
+            "offset": 244
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        },
+        {
+          "name": "endReason",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/claim.mesh.mx",
+            "line": 11,
+            "offset": 276
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "default": {
+            "value": "active"
+          },
+          "name": "state",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/claim.mesh.mx",
+            "line": 12,
+            "offset": 307
+          },
+          "primaryKey": false,
+          "type": "enum",
+          "unique": false,
+          "values": [
+            {
+              "value": "active"
+            },
+            {
+              "value": "released"
+            },
+            {
+              "value": "revoked"
+            },
+            {
+              "value": "expired"
+            }
+          ]
+        },
+        {
+          "default": 1,
+          "name": "version",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/claim.mesh.mx",
+            "line": 13,
+            "offset": 387
+          },
+          "primaryKey": false,
+          "type": "integer",
+          "unique": false
+        }
+      ],
+      "auto": [
+        "read"
+      ],
+      "computed": [],
+      "file": "src/domain/work/claim.mesh.mx",
+      "imports": [
+        {
+          "from": "./task.mesh.mx",
+          "identifiers": [
+            "Task"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/work/claim.mesh.mx",
+            "line": 1,
+            "offset": 0
+          }
+        },
+        {
+          "from": "../identity/collaborator.mesh.mx",
+          "identifiers": [
+            "Collaborator"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/work/claim.mesh.mx",
+            "line": 2,
+            "offset": 38
+          }
+        }
+      ],
+      "module": "work",
+      "name": "Claim",
+      "policies": [],
+      "position": {
+        "column": 0,
+        "file": "src/domain/work/claim.mesh.mx",
+        "line": 4,
+        "offset": 103
+      },
+      "relationships": [
+        {
+          "entity": {
+            "from": "./task.mesh.mx",
+            "identifier": "Task"
+          },
+          "keyColumn": "taskId",
+          "kind": "belongs-to",
+          "name": "task",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/claim.mesh.mx",
+            "line": 15,
+            "offset": 434
+          }
+        },
+        {
+          "entity": {
+            "from": "../identity/collaborator.mesh.mx",
+            "identifier": "Collaborator"
+          },
+          "keyColumn": "holderId",
+          "kind": "belongs-to",
+          "name": "holder",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/claim.mesh.mx",
+            "line": 16,
+            "offset": 467
+          }
+        }
+      ],
+      "table": "claims"
+    },
+    {
+      "actions": [
+        {
+          "do": [],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "rule",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/completion.mesh.mx",
+                  "line": 17,
+                  "offset": 498
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "task",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/completion.mesh.mx",
+                  "line": 18,
+                  "offset": 512
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "submission",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/completion.mesh.mx",
+                  "line": 19,
+                  "offset": 526
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "completedBy",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/completion.mesh.mx",
+                  "line": 20,
+                  "offset": 546
+                }
+              }
+            }
+          ],
+          "kind": "create",
+          "name": "record",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/completion.mesh.mx",
+            "line": 15,
+            "offset": 463
+          },
+          "validate": []
+        }
+      ],
+      "always": [],
+      "attributes": [
+        {
+          "name": "id",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/completion.mesh.mx",
+            "line": 7,
+            "offset": 209
+          },
+          "primaryKey": true,
+          "type": "uuid",
+          "unique": false
+        },
+        {
+          "name": "rule",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/completion.mesh.mx",
+            "line": 8,
+            "offset": 234
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "name": "completedAt",
+          "nullable": false,
+          "on": "create",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/completion.mesh.mx",
+            "line": 9,
+            "offset": 251
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        }
+      ],
+      "auto": [
+        "read"
+      ],
+      "computed": [],
+      "file": "src/domain/work/completion.mesh.mx",
+      "imports": [
+        {
+          "from": "./task.mesh.mx",
+          "identifiers": [
+            "Task"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/work/completion.mesh.mx",
+            "line": 1,
+            "offset": 0
+          }
+        },
+        {
+          "from": "./submission.mesh.mx",
+          "identifiers": [
+            "Submission"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/work/completion.mesh.mx",
+            "line": 2,
+            "offset": 38
+          }
+        },
+        {
+          "from": "../identity/collaborator.mesh.mx",
+          "identifiers": [
+            "Collaborator"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/work/completion.mesh.mx",
+            "line": 3,
+            "offset": 88
+          }
+        }
+      ],
+      "module": "work",
+      "name": "Completion",
+      "policies": [],
+      "position": {
+        "column": 0,
+        "file": "src/domain/work/completion.mesh.mx",
+        "line": 5,
+        "offset": 153
+      },
+      "relationships": [
+        {
+          "entity": {
+            "from": "./task.mesh.mx",
+            "identifier": "Task"
+          },
+          "keyColumn": "taskId",
+          "kind": "belongs-to",
+          "name": "task",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/completion.mesh.mx",
+            "line": 11,
+            "offset": 305
+          }
+        },
+        {
+          "entity": {
+            "from": "./submission.mesh.mx",
+            "identifier": "Submission"
+          },
+          "keyColumn": "submissionId",
+          "kind": "belongs-to",
+          "name": "submission",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/completion.mesh.mx",
+            "line": 12,
+            "offset": 338
+          }
+        },
+        {
+          "entity": {
+            "from": "../identity/collaborator.mesh.mx",
+            "identifier": "Collaborator"
+          },
+          "keyColumn": "completedById",
+          "kind": "belongs-to",
+          "name": "completedBy",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/completion.mesh.mx",
+            "line": 13,
+            "offset": 392
+          }
+        }
+      ],
+      "table": "completions"
+    },
+    {
+      "actions": [
+        {
+          "do": [],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "dependent",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/dependency.mesh.mx",
+                  "line": 15,
+                  "offset": 417
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "prerequisite",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/dependency.mesh.mx",
+                  "line": 16,
+                  "offset": 436
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "createdBy",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/dependency.mesh.mx",
+                  "line": 17,
+                  "offset": 458
+                }
+              }
+            }
+          ],
+          "kind": "create",
+          "name": "add",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/dependency.mesh.mx",
+            "line": 13,
+            "offset": 385
+          },
+          "validate": []
+        },
+        {
+          "do": [],
+          "input": [],
+          "kind": "destroy",
+          "name": "remove",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/dependency.mesh.mx",
+            "line": 18,
+            "offset": 473
+          },
+          "validate": []
+        }
+      ],
+      "always": [],
+      "attributes": [
+        {
+          "name": "id",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/dependency.mesh.mx",
+            "line": 6,
+            "offset": 160
+          },
+          "primaryKey": true,
+          "type": "uuid",
+          "unique": false
+        },
+        {
+          "name": "createdAt",
+          "nullable": false,
+          "on": "create",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/dependency.mesh.mx",
+            "line": 7,
+            "offset": 185
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        }
+      ],
+      "auto": [
+        "read"
+      ],
+      "computed": [],
+      "file": "src/domain/work/dependency.mesh.mx",
+      "imports": [
+        {
+          "from": "./task.mesh.mx",
+          "identifiers": [
+            "Task"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/work/dependency.mesh.mx",
+            "line": 1,
+            "offset": 0
+          }
+        },
+        {
+          "from": "../identity/collaborator.mesh.mx",
+          "identifiers": [
+            "Collaborator"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/work/dependency.mesh.mx",
+            "line": 2,
+            "offset": 38
+          }
+        }
+      ],
+      "module": "work",
+      "name": "Dependency",
+      "policies": [],
+      "position": {
+        "column": 0,
+        "file": "src/domain/work/dependency.mesh.mx",
+        "line": 4,
+        "offset": 103
+      },
+      "relationships": [
+        {
+          "entity": {
+            "from": "./task.mesh.mx",
+            "identifier": "Task"
+          },
+          "keyColumn": "dependentId",
+          "kind": "belongs-to",
+          "name": "dependent",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/dependency.mesh.mx",
+            "line": 9,
+            "offset": 237
+          }
+        },
+        {
+          "entity": {
+            "from": "./task.mesh.mx",
+            "identifier": "Task"
+          },
+          "keyColumn": "prerequisiteId",
+          "kind": "belongs-to",
+          "name": "prerequisite",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/dependency.mesh.mx",
+            "line": 10,
+            "offset": 275
+          }
+        },
+        {
+          "entity": {
+            "from": "../identity/collaborator.mesh.mx",
+            "identifier": "Collaborator"
+          },
+          "keyColumn": "createdById",
+          "kind": "belongs-to",
+          "name": "createdBy",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/dependency.mesh.mx",
+            "line": 11,
+            "offset": 316
+          }
+        }
+      ],
+      "table": "dependencies"
+    },
+    {
+      "actions": [
+        {
+          "do": [],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "kind",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/evidence-reference.mesh.mx",
+                  "line": 16,
+                  "offset": 422
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "locator",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/evidence-reference.mesh.mx",
+                  "line": 17,
+                  "offset": 436
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "contentHash",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/evidence-reference.mesh.mx",
+                  "line": 18,
+                  "offset": 453
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "description",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/evidence-reference.mesh.mx",
+                  "line": 19,
+                  "offset": 474
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "recordedBy",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/evidence-reference.mesh.mx",
+                  "line": 20,
+                  "offset": 495
+                }
+              }
+            }
+          ],
+          "kind": "create",
+          "name": "record",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/evidence-reference.mesh.mx",
+            "line": 14,
+            "offset": 387
+          },
+          "validate": []
+        }
+      ],
+      "always": [],
+      "attributes": [
+        {
+          "name": "id",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/evidence-reference.mesh.mx",
+            "line": 5,
+            "offset": 136
+          },
+          "primaryKey": true,
+          "type": "uuid",
+          "unique": false
+        },
+        {
+          "name": "kind",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/evidence-reference.mesh.mx",
+            "line": 6,
+            "offset": 161
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "name": "locator",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/evidence-reference.mesh.mx",
+            "line": 7,
+            "offset": 178
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "name": "contentHash",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/evidence-reference.mesh.mx",
+            "line": 8,
+            "offset": 198
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "name": "description",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/evidence-reference.mesh.mx",
+            "line": 9,
+            "offset": 231
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "name": "recordedAt",
+          "nullable": false,
+          "on": "create",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/evidence-reference.mesh.mx",
+            "line": 10,
+            "offset": 264
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        }
+      ],
+      "auto": [
+        "read"
+      ],
+      "computed": [],
+      "file": "src/domain/work/evidence-reference.mesh.mx",
+      "imports": [
+        {
+          "from": "../identity/collaborator.mesh.mx",
+          "identifiers": [
+            "Collaborator"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/work/evidence-reference.mesh.mx",
+            "line": 1,
+            "offset": 0
+          }
+        }
+      ],
+      "module": "work",
+      "name": "EvidenceReference",
+      "policies": [],
+      "position": {
+        "column": 0,
+        "file": "src/domain/work/evidence-reference.mesh.mx",
+        "line": 3,
+        "offset": 65
+      },
+      "relationships": [
+        {
+          "entity": {
+            "from": "../identity/collaborator.mesh.mx",
+            "identifier": "Collaborator"
+          },
+          "keyColumn": "recordedById",
+          "kind": "belongs-to",
+          "name": "recordedBy",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/evidence-reference.mesh.mx",
+            "line": 12,
+            "offset": 317
+          }
+        }
+      ],
+      "table": "evidence_references"
+    },
+    {
+      "actions": [
+        {
+          "do": [],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "fence",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/late-result.mesh.mx",
+                  "line": 17,
+                  "offset": 450
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "summary",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/late-result.mesh.mx",
+                  "line": 18,
+                  "offset": 465
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "evidence",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/late-result.mesh.mx",
+                  "line": 19,
+                  "offset": 482
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "task",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/late-result.mesh.mx",
+                  "line": 20,
+                  "offset": 500
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "holder",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/late-result.mesh.mx",
+                  "line": 21,
+                  "offset": 514
+                }
+              }
+            }
+          ],
+          "kind": "create",
+          "name": "record",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/late-result.mesh.mx",
+            "line": 15,
+            "offset": 415
+          },
+          "validate": []
+        }
+      ],
+      "always": [],
+      "attributes": [
+        {
+          "name": "id",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/late-result.mesh.mx",
+            "line": 6,
+            "offset": 160
+          },
+          "primaryKey": true,
+          "type": "uuid",
+          "unique": false
+        },
+        {
+          "name": "fence",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/late-result.mesh.mx",
+            "line": 7,
+            "offset": 185
+          },
+          "primaryKey": false,
+          "type": "integer",
+          "unique": false
+        },
+        {
+          "name": "summary",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/late-result.mesh.mx",
+            "line": 8,
+            "offset": 204
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "default": [],
+          "name": "evidence",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/late-result.mesh.mx",
+            "line": 9,
+            "offset": 233
+          },
+          "primaryKey": false,
+          "type": "json",
+          "unique": false
+        },
+        {
+          "name": "recordedAt",
+          "nullable": false,
+          "on": "create",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/late-result.mesh.mx",
+            "line": 10,
+            "offset": 263
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        }
+      ],
+      "auto": [
+        "read"
+      ],
+      "computed": [],
+      "file": "src/domain/work/late-result.mesh.mx",
+      "imports": [
+        {
+          "from": "./task.mesh.mx",
+          "identifiers": [
+            "Task"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/work/late-result.mesh.mx",
+            "line": 1,
+            "offset": 0
+          }
+        },
+        {
+          "from": "../identity/collaborator.mesh.mx",
+          "identifiers": [
+            "Collaborator"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/work/late-result.mesh.mx",
+            "line": 2,
+            "offset": 38
+          }
+        }
+      ],
+      "module": "work",
+      "name": "LateResult",
+      "policies": [],
+      "position": {
+        "column": 0,
+        "file": "src/domain/work/late-result.mesh.mx",
+        "line": 4,
+        "offset": 103
+      },
+      "relationships": [
+        {
+          "entity": {
+            "from": "./task.mesh.mx",
+            "identifier": "Task"
+          },
+          "keyColumn": "taskId",
+          "kind": "belongs-to",
+          "name": "task",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/late-result.mesh.mx",
+            "line": 12,
+            "offset": 316
+          }
+        },
+        {
+          "entity": {
+            "from": "../identity/collaborator.mesh.mx",
+            "identifier": "Collaborator"
+          },
+          "keyColumn": "holderId",
+          "kind": "belongs-to",
+          "name": "holder",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/late-result.mesh.mx",
+            "line": 13,
+            "offset": 349
+          }
+        }
+      ],
+      "table": "late_results"
+    },
+    {
+      "actions": [
+        {
+          "do": [
+            {
+              "assignments": [
+                {
+                  "member": {
+                    "name": "decision",
+                    "position": {
+                      "column": 10,
+                      "file": "src/domain/work/review.mesh.mx",
+                      "line": 20,
+                      "offset": 524
+                    }
+                  },
+                  "value": {
+                    "value": "accept"
+                  }
+                }
+              ],
+              "kind": "set",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/review.mesh.mx",
+                "line": 19,
+                "offset": 510
+              }
+            }
+          ],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "submission",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/review.mesh.mx",
+                  "line": 16,
+                  "offset": 463
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "reviewer",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/review.mesh.mx",
+                  "line": 17,
+                  "offset": 483
+                }
+              }
+            }
+          ],
+          "kind": "create",
+          "name": "accept",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/review.mesh.mx",
+            "line": 14,
+            "offset": 428
+          },
+          "validate": []
+        },
+        {
+          "do": [
+            {
+              "assignments": [
+                {
+                  "member": {
+                    "name": "decision",
+                    "position": {
+                      "column": 10,
+                      "file": "src/domain/work/review.mesh.mx",
+                      "line": 28,
+                      "offset": 659
+                    }
+                  },
+                  "value": {
+                    "value": "return"
+                  }
+                }
+              ],
+              "kind": "set",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/review.mesh.mx",
+                "line": 27,
+                "offset": 645
+              }
+            }
+          ],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "reasons",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/review.mesh.mx",
+                  "line": 23,
+                  "offset": 581
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "submission",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/review.mesh.mx",
+                  "line": 24,
+                  "offset": 598
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "reviewer",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/review.mesh.mx",
+                  "line": 25,
+                  "offset": 618
+                }
+              }
+            }
+          ],
+          "kind": "create",
+          "name": "return",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/review.mesh.mx",
+            "line": 21,
+            "offset": 546
+          },
+          "validate": []
+        }
+      ],
+      "always": [],
+      "attributes": [
+        {
+          "name": "id",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/review.mesh.mx",
+            "line": 6,
+            "offset": 163
+          },
+          "primaryKey": true,
+          "type": "uuid",
+          "unique": false
+        },
+        {
+          "name": "decision",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/review.mesh.mx",
+            "line": 7,
+            "offset": 188
+          },
+          "primaryKey": false,
+          "type": "enum",
+          "unique": false,
+          "values": [
+            {
+              "value": "accept"
+            },
+            {
+              "value": "return"
+            }
+          ]
+        },
+        {
+          "name": "reasons",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/review.mesh.mx",
+            "line": 8,
+            "offset": 233
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "name": "reviewedAt",
+          "nullable": false,
+          "on": "create",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/review.mesh.mx",
+            "line": 9,
+            "offset": 262
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        }
+      ],
+      "auto": [
+        "read"
+      ],
+      "computed": [],
+      "file": "src/domain/work/review.mesh.mx",
+      "imports": [
+        {
+          "from": "./submission.mesh.mx",
+          "identifiers": [
+            "Submission"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/work/review.mesh.mx",
+            "line": 1,
+            "offset": 0
+          }
+        },
+        {
+          "from": "../identity/collaborator.mesh.mx",
+          "identifiers": [
+            "Collaborator"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/work/review.mesh.mx",
+            "line": 2,
+            "offset": 50
+          }
+        }
+      ],
+      "module": "work",
+      "name": "Review",
+      "policies": [],
+      "position": {
+        "column": 0,
+        "file": "src/domain/work/review.mesh.mx",
+        "line": 4,
+        "offset": 115
+      },
+      "relationships": [
+        {
+          "entity": {
+            "from": "./submission.mesh.mx",
+            "identifier": "Submission"
+          },
+          "keyColumn": "submissionId",
+          "kind": "belongs-to",
+          "name": "submission",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/review.mesh.mx",
+            "line": 11,
+            "offset": 315
+          }
+        },
+        {
+          "entity": {
+            "from": "../identity/collaborator.mesh.mx",
+            "identifier": "Collaborator"
+          },
+          "keyColumn": "reviewerId",
+          "kind": "belongs-to",
+          "name": "reviewer",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/review.mesh.mx",
+            "line": 12,
+            "offset": 360
+          }
+        }
+      ],
+      "table": "reviews"
+    },
+    {
+      "actions": [
+        {
+          "do": [],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "summary",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/submission.mesh.mx",
+                  "line": 19,
+                  "offset": 560
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "evidence",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/submission.mesh.mx",
+                  "line": 20,
+                  "offset": 577
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "fence",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/submission.mesh.mx",
+                  "line": 21,
+                  "offset": 595
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "taskVersion",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/submission.mesh.mx",
+                  "line": 22,
+                  "offset": 610
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "task",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/submission.mesh.mx",
+                  "line": 23,
+                  "offset": 631
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "submitter",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/submission.mesh.mx",
+                  "line": 24,
+                  "offset": 645
+                }
+              }
+            }
+          ],
+          "kind": "create",
+          "name": "submit",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/submission.mesh.mx",
+            "line": 17,
+            "offset": 525
+          },
+          "validate": []
+        }
+      ],
+      "always": [],
+      "attributes": [
+        {
+          "name": "id",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/submission.mesh.mx",
+            "line": 6,
+            "offset": 159
+          },
+          "primaryKey": true,
+          "type": "uuid",
+          "unique": false
+        },
+        {
+          "min": 1,
+          "name": "summary",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/submission.mesh.mx",
+            "line": 7,
+            "offset": 184
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "default": [],
+          "name": "evidence",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/submission.mesh.mx",
+            "line": 8,
+            "offset": 210
+          },
+          "primaryKey": false,
+          "type": "json",
+          "unique": false
+        },
+        {
+          "name": "fence",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/submission.mesh.mx",
+            "line": 9,
+            "offset": 240
+          },
+          "primaryKey": false,
+          "type": "integer",
+          "unique": false
+        },
+        {
+          "name": "taskVersion",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/submission.mesh.mx",
+            "line": 10,
+            "offset": 259
+          },
+          "primaryKey": false,
+          "type": "integer",
+          "unique": false
+        },
+        {
+          "default": {
+            "value": "pending"
+          },
+          "name": "state",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/submission.mesh.mx",
+            "line": 11,
+            "offset": 284
+          },
+          "primaryKey": false,
+          "type": "enum",
+          "unique": false,
+          "values": [
+            {
+              "value": "pending"
+            },
+            {
+              "value": "accepted"
+            },
+            {
+              "value": "returned"
+            },
+            {
+              "value": "withdrawn"
+            }
+          ]
+        },
+        {
+          "name": "submittedAt",
+          "nullable": false,
+          "on": "create",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/submission.mesh.mx",
+            "line": 12,
+            "offset": 369
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        }
+      ],
+      "auto": [
+        "read"
+      ],
+      "computed": [],
+      "file": "src/domain/work/submission.mesh.mx",
+      "imports": [
+        {
+          "from": "./task.mesh.mx",
+          "identifiers": [
+            "Task"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/work/submission.mesh.mx",
+            "line": 1,
+            "offset": 0
+          }
+        },
+        {
+          "from": "../identity/collaborator.mesh.mx",
+          "identifiers": [
+            "Collaborator"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/work/submission.mesh.mx",
+            "line": 2,
+            "offset": 38
+          }
+        }
+      ],
+      "module": "work",
+      "name": "Submission",
+      "policies": [],
+      "position": {
+        "column": 0,
+        "file": "src/domain/work/submission.mesh.mx",
+        "line": 4,
+        "offset": 103
+      },
+      "relationships": [
+        {
+          "entity": {
+            "from": "./task.mesh.mx",
+            "identifier": "Task"
+          },
+          "keyColumn": "taskId",
+          "kind": "belongs-to",
+          "name": "task",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/submission.mesh.mx",
+            "line": 14,
+            "offset": 423
+          }
+        },
+        {
+          "entity": {
+            "from": "../identity/collaborator.mesh.mx",
+            "identifier": "Collaborator"
+          },
+          "keyColumn": "submitterId",
+          "kind": "belongs-to",
+          "name": "submitter",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/submission.mesh.mx",
+            "line": 15,
+            "offset": 456
+          }
+        }
+      ],
+      "table": "submissions"
+    },
+    {
+      "actions": [
+        {
+          "do": [],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "title",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 30,
+                  "offset": 1013
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "intent",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 31,
+                  "offset": 1028
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "parent",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 32,
+                  "offset": 1044
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "priority",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 33,
+                  "offset": 1060
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "creator",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 34,
+                  "offset": 1078
+                }
+              }
+            }
+          ],
+          "kind": "create",
+          "name": "create",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 28,
+            "offset": 978
+          },
+          "validate": []
+        },
+        {
+          "do": [],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "priority",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 37,
+                  "offset": 1131
+                }
+              }
+            }
+          ],
+          "kind": "update",
+          "name": "setPriority",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 35,
+            "offset": 1091
+          },
+          "validate": []
+        },
+        {
+          "do": [],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "parent",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 40,
+                  "offset": 1178
+                }
+              }
+            }
+          ],
+          "kind": "update",
+          "name": "move",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 38,
+            "offset": 1145
+          },
+          "validate": []
+        }
+      ],
+      "always": [],
+      "attributes": [
+        {
+          "name": "id",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 11,
+            "offset": 384
+          },
+          "primaryKey": true,
+          "type": "uuid",
+          "unique": false
+        },
+        {
+          "name": "title",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 12,
+            "offset": 409
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "name": "intent",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 13,
+            "offset": 427
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "name": "priority",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 14,
+            "offset": 455
+          },
+          "primaryKey": false,
+          "type": "integer",
+          "unique": false
+        },
+        {
+          "default": {
+            "value": "open"
+          },
+          "name": "state",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 15,
+            "offset": 486
+          },
+          "primaryKey": false,
+          "type": "enum",
+          "unique": false,
+          "values": [
+            {
+              "value": "open"
+            },
+            {
+              "value": "done"
+            },
+            {
+              "value": "canceled"
+            }
+          ]
+        },
+        {
+          "default": 1,
+          "name": "version",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 16,
+            "offset": 549
+          },
+          "primaryKey": false,
+          "type": "integer",
+          "unique": false
+        },
+        {
+          "name": "createdAt",
+          "nullable": false,
+          "on": "create",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 17,
+            "offset": 580
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        }
+      ],
+      "auto": [
+        "read"
+      ],
+      "computed": [],
+      "file": "src/domain/work/task.mesh.mx",
+      "imports": [
+        {
+          "from": "./task.mesh.mx",
+          "identifiers": [
+            "Task"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 1,
+            "offset": 0
+          }
+        },
+        {
+          "from": "../identity/collaborator.mesh.mx",
+          "identifiers": [
+            "Collaborator"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 2,
+            "offset": 38
+          }
+        },
+        {
+          "from": "./assignment.mesh.mx",
+          "identifiers": [
+            "Assignment"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 3,
+            "offset": 102
+          }
+        },
+        {
+          "from": "./claim.mesh.mx",
+          "identifiers": [
+            "Claim"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 4,
+            "offset": 152
+          }
+        },
+        {
+          "from": "./submission.mesh.mx",
+          "identifiers": [
+            "Submission"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 5,
+            "offset": 192
+          }
+        },
+        {
+          "from": "./completion.mesh.mx",
+          "identifiers": [
+            "Completion"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 6,
+            "offset": 242
+          }
+        },
+        {
+          "from": "../audit/event.mesh.mx",
+          "identifiers": [
+            "Event"
+          ],
+          "position": {
+            "column": 0,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 7,
+            "offset": 292
+          }
+        }
+      ],
+      "module": "work",
+      "name": "Task",
+      "policies": [],
+      "position": {
+        "column": 0,
+        "file": "src/domain/work/task.mesh.mx",
+        "line": 9,
+        "offset": 340
+      },
+      "relationships": [
+        {
+          "entity": {
+            "from": "./task.mesh.mx",
+            "identifier": "Task"
+          },
+          "keyColumn": "parentId",
+          "kind": "belongs-to",
+          "name": "parent",
+          "nullable": true,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 19,
+            "offset": 632
+          }
+        },
+        {
+          "entity": {
+            "from": "../identity/collaborator.mesh.mx",
+            "identifier": "Collaborator"
+          },
+          "keyColumn": "creatorId",
+          "kind": "belongs-to",
+          "name": "creator",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 20,
+            "offset": 676
+          }
+        },
+        {
+          "entity": {
+            "from": "./task.mesh.mx",
+            "identifier": "Task"
+          },
+          "kind": "has-many",
+          "name": "children",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 21,
+            "offset": 720
+          }
+        },
+        {
+          "entity": {
+            "from": "./assignment.mesh.mx",
+            "identifier": "Assignment"
+          },
+          "kind": "has-many",
+          "name": "assignments",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 22,
+            "offset": 755
+          }
+        },
+        {
+          "entity": {
+            "from": "./claim.mesh.mx",
+            "identifier": "Claim"
+          },
+          "kind": "has-many",
+          "name": "claims",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 23,
+            "offset": 799
+          }
+        },
+        {
+          "entity": {
+            "from": "./submission.mesh.mx",
+            "identifier": "Submission"
+          },
+          "kind": "has-many",
+          "name": "submissions",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 24,
+            "offset": 833
+          }
+        },
+        {
+          "entity": {
+            "from": "./completion.mesh.mx",
+            "identifier": "Completion"
+          },
+          "kind": "has-many",
+          "name": "completions",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 25,
+            "offset": 877
+          }
+        },
+        {
+          "entity": {
+            "from": "../audit/event.mesh.mx",
+            "identifier": "Event"
+          },
+          "kind": "has-many",
+          "name": "events",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 26,
+            "offset": 921
+          }
+        }
+      ],
+      "table": "tasks"
+    }
+  ]
+}

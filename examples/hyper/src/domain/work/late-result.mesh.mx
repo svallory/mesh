@@ -1,0 +1,21 @@
+import { Task } from "./task.mesh.mx"
+import { Collaborator } from "../identity/collaborator.mesh.mx"
+
+entity :LateResult table="late_results"
+  attributes
+    uuid :id primary-key
+    integer :fence
+    string :summary nullable
+    json :evidence default=[]
+    timestamp :recordedAt on=:create
+  relationships
+    belongs-to :task entity=Task
+    belongs-to :holder entity=Collaborator
+  actions auto=[:read]
+    create :record
+      input
+        &fence
+        &summary
+        &evidence
+        &task
+        &holder

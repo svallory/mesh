@@ -182,9 +182,9 @@ entity :Post
 | `date` | `Date` | A calendar date, with no time of day |
 | `datetime` | `Date` | A date and time with no time zone, in the server's local time |
 | `timestamp` | `Date` | A moment, always with its time zone |
-| `json` | `unknown` | Any JSON value: an object, an array, a string, a number, a boolean or null |
+| `json` | `unknown` | Any JSON value: an object, an array, a string, a number or a boolean |
 
-`json` holds data whose shape you do not model, such as a list of ids or a map of results. Mesh validates that the value is JSON and stores it as JSON, and does not look inside; the caller narrows `unknown` to the shape they expect. It takes `nullable` and `default=` (a JSON literal) but not `unique`, `min`, `max` or `match`, and it cannot be a rollup operand or appear in a `filter`. To query by a part of the value, declare that part as its own attribute.
+`json` holds data whose shape you do not model, such as a list of ids or a map of results. Mesh validates that the value is JSON and stores it as JSON, and does not look inside; the caller narrows `unknown` to the shape they expect. It takes `nullable` (a nullable `json` also holds `null`) and `default=` (a JSON literal) but not `unique`, `min`, `max` or `match`, and it cannot be a rollup operand or appear in a `filter`. To query by a part of the value, declare that part as its own attribute.
 
 `integer`, `float` and `decimal` are all `number` in TypeScript, but a whole number, a money amount and a measurement are different things to store. An atom may be compared with, or assigned to, an `enum` field only: `&status === :sent` is an error if `status` is a `string`.
 
@@ -192,7 +192,7 @@ entity :Post
 
 | Option | Meaning |
 |:--|:--|
-| `primary-key` | The entity's one primary key, filled by Mesh on create |
+| `primary-key` | The entity's one primary key, filled by Mesh on create: a time-ordered UUID for a `uuid` or `string` key, and the next whole number, counting from 1 with no gaps, for an `integer` key. A caller cannot send it, and an `integer` key needs a data adapter that fills it |
 | `nullable` | The field may be absent or null; every other attribute is required |
 | `default=` | A literal that fits the type |
 | `values=` | An enum's allowed atoms; an empty list, blank or repeat is a build error |

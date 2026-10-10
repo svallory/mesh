@@ -1,0 +1,18 @@
+import { Task } from "./task.mesh.mx"
+import { Collaborator } from "../identity/collaborator.mesh.mx"
+
+entity :Dependency table="dependencies"
+  attributes
+    uuid :id primary-key
+    timestamp :createdAt on=:create
+  relationships
+    belongs-to :dependent entity=Task
+    belongs-to :prerequisite entity=Task
+    belongs-to :createdBy entity=Collaborator
+  actions auto=[:read]
+    create :add
+      input
+        &dependent
+        &prerequisite
+        &createdBy
+    destroy :remove

@@ -1,0 +1,28 @@
+import { Submission } from "./submission.mesh.mx"
+import { Collaborator } from "../identity/collaborator.mesh.mx"
+
+entity :Review table="reviews"
+  attributes
+    uuid :id primary-key
+    enum :decision values=[:accept, :return]
+    string :reasons nullable
+    timestamp :reviewedAt on=:create
+  relationships
+    belongs-to :submission entity=Submission
+    belongs-to :reviewer entity=Collaborator
+  actions auto=[:read]
+    create :accept
+      input
+        &submission
+        &reviewer
+      do
+        set
+          &decision=:accept
+    create :return
+      input
+        &reasons
+        &submission
+        &reviewer
+      do
+        set
+          &decision=:return
