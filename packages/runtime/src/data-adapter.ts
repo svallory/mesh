@@ -15,8 +15,9 @@ export interface DataAdapter {
   readonly build: string;
   /**
    * What this adapter supports beyond the mandatory set: static data, read without
-   * starting the adapter (ADR-0013). Optional until M3b makes the build require it.
+   * starting the adapter (ADR-0013). The build refuses an adapter without one, and an
+   * entity that needs a capability the manifest does not list.
    */
-  readonly capabilities?: CapabilityManifest;
+  readonly capabilities: CapabilityManifest;
   readonly options: Readonly<Record<string, unknown>>;
 }

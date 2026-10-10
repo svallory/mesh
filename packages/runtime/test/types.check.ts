@@ -7,7 +7,7 @@ void context;
 const table: TableHandle = "posts";
 function contracts(layer: DataLayer, key: Key) {
   // @ts-expect-error operations exist only inside transactions
-  layer.selectAll({});
+  layer.select({});
   // @ts-expect-error keys are readonly
   key.id = "other";
   const result: Promise<number> = layer.transaction(async () => 1);

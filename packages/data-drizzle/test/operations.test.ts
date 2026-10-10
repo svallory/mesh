@@ -62,7 +62,7 @@ test("revoked operations reject every method before touching a driver", async ()
   commands.table = () => { accesses++; return table; };
   const cause = new FrameworkError("expired");
   const tx = drizzleOperations(commands, () => { throw cause; });
-  for (const call of [() => tx.insert(table, row), () => tx.selectAll(table), () => tx.selectByKey(table, { id: 1 }),
+  for (const call of [() => tx.insert(table, row), () => tx.select(table), () => tx.selectByKey(table, { id: 1 }),
     () => tx.updateByKey(table, { id: 1 }, {}), () => tx.deleteByKey(table, { id: 1 })]) {
     await expect(call()).rejects.toBe(cause);
   }
@@ -114,13 +114,13 @@ test("bun:sqlite: insert returns the stored row and every read finds it by key",
     await operations.insert(posts, { id: 2, tenant: "a", title: "two" });
     expect(await operations.selectByKey(posts, { id: 2 })).toEqual({ id: 2, tenant: "a", title: "two" });
     expect(await operations.selectByKey(posts, { id: 2, tenant: "b" })).toBeUndefined();
-    expect((await operations.selectAll(posts)).map((row) => row.id).sort()).toEqual([1, 2]);
+    expect((await operations.select(posts)).map((row) => row.id).sort()).toEqual([1, 2]);
     expect(await operations.updateByKey(posts, { id: 1 }, { title: "uno" })).toEqual({ id: 1, tenant: "a", title: "uno" });
     expect(await operations.updateByKey(posts, { id: 1 }, {})).toEqual({ id: 1, tenant: "a", title: "uno" });
     expect(await operations.updateByKey(posts, { id: 9 }, { title: "x" })).toBeUndefined();
     expect(await operations.deleteByKey(posts, { id: 1 })).toBe(true);
     expect(await operations.deleteByKey(posts, { id: 1 })).toBe(false);
-    expect(await operations.selectAll(posts)).toEqual([{ id: 2, tenant: "a", title: "two" }]);
+    expect(await operations.select(posts)).toEqual([{ id: 2, tenant: "a", title: "two" }]);
   } finally { database.close(); }
 });
 
@@ -146,7 +146,7 @@ test("bun:sqlite: a handle that is not a Drizzle SQLite table is refused before 
   try {
     const foreign = pgTable("posts", { id: pgText("id") });
     for (const handle of [{}, foreign, { _: posts }]) {
-      const error = await operations.selectAll(handle).then(() => undefined, (caught: unknown) => caught);
+      const error = await operations.select(handle).then(() => undefined, (caught: unknown) => caught);
       expect(error).toBeInstanceOf(FrameworkError);
       expect((error as Error).message).toBe("Expected a Drizzle SQLite table from the emitted schema");
     }

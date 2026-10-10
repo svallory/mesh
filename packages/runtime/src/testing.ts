@@ -74,7 +74,7 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
       assert(Object.keys(fixture.changes).every((name) => !Object.hasOwn(fixture.key, name)), "fixture changes must not change the primary key");
       assert(Object.keys(fixture.changes).some((name) => !equalValue(fixture.changes[name], fixture.sampleRow[name])), "fixture changes must change a value");
       await fixture.layer.transaction(async (tx) => {
-        assert((await tx.selectAll(fixture.table)).length === 0, "fixture table must start empty");
+        assert((await tx.select(fixture.table)).length === 0, "fixture table must start empty");
       });
       await run(fixture);
     } finally {
@@ -92,14 +92,14 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
         events.push("first write");
         started.release();
         await resume.promise;
-        await tx.selectAll(table);
+        await tx.select(table);
         events.push("first read");
       });
       await started.promise;
       const second = layer.transaction(async (tx) => {
         await tx.insert(table, secondRow);
         events.push("second write");
-        await tx.selectAll(table);
+        await tx.select(table);
         events.push("second read");
       });
       // Let an incorrectly concurrent callback advance before releasing the first:
@@ -108,7 +108,7 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
       resume.release();
       await Promise.all([first, second]);
       assert(events.join(",") === "first write,first read,second write,second read", "transactions must not interleave statements");
-      await layer.transaction(async (tx) => rowsEqual(await tx.selectAll(table), [sampleRow, secondRow], "both queued transactions must commit"));
+      await layer.transaction(async (tx) => rowsEqual(await tx.select(table), [sampleRow, secondRow], "both queued transactions must commit"));
     }),
     "throw after a write leaves no row": withLayer(async ({ layer, table, sampleRow }) => {
       const error = new Error("throw after write");
@@ -116,7 +116,7 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
       try { await layer.transaction(async (tx) => { await tx.insert(table, sampleRow); throw error; }); }
       catch (cause) { caught = cause; }
       assert(caught === error, "throw after write must rethrow the same error");
-      await layer.transaction(async (tx) => assert((await tx.selectAll(table)).length === 0, "throw after write must leave no row"));
+      await layer.transaction(async (tx) => assert((await tx.select(table)).length === 0, "throw after write must leave no row"));
     }),
     "rejected promise after a write leaves no row": withLayer(async ({ layer, table, sampleRow }) => {
       const error = new Error("rejection after write");
@@ -124,7 +124,7 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
       try { await layer.transaction(async (tx) => { await tx.insert(table, sampleRow); return Promise.reject(error); }); }
       catch (cause) { caught = cause; }
       assert(caught === error, "rejected promise must rethrow the same error");
-      await layer.transaction(async (tx) => assert((await tx.selectAll(table)).length === 0, "rejected promise must leave no row"));
+      await layer.transaction(async (tx) => assert((await tx.select(table)).length === 0, "rejected promise must leave no row"));
     }),
     "queue continues after a failed transaction": withLayer(async ({ layer, table, sampleRow, secondRow }) => {
       const error = new Error("queued failure");
@@ -133,7 +133,7 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
       const [failed, succeeded] = await Promise.allSettled([first, second]);
       assert(failed.status === "rejected" && failed.reason === error, "first queued transaction must fail unchanged");
       assert(succeeded.status === "fulfilled", "failed transaction must not poison the queue");
-      await layer.transaction(async (tx) => rowsEqual(await tx.selectAll(table), [secondRow], "only successful queued write must persist"));
+      await layer.transaction(async (tx) => rowsEqual(await tx.select(table), [secondRow], "only successful queued write must persist"));
     }),
     "close with a transaction in flight rejects and leaves the layer open": withLayer(async ({ layer, table, sampleRow }) => {
       const started = gate();
@@ -148,7 +148,7 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
       try { await layer.close(); } catch (cause) { caught = cause; }
       finally { resume.release(); await pending; }
       assert(caught instanceof FrameworkError, "close with an in-flight transaction must reject with FrameworkError");
-      await layer.transaction(async (tx) => rowsEqual(await tx.selectAll(table), [sampleRow], "rejected close must leave the layer open and transaction able to commit"));
+      await layer.transaction(async (tx) => rowsEqual(await tx.select(table), [sampleRow], "rejected close must leave the layer open and transaction able to commit"));
     }),
     "nested transaction joins the running one": withLayer(async ({ layer, table, sampleRow, secondRow, key, secondKey }) => {
       const value = await layer.transaction(async (outer) => {
@@ -162,7 +162,7 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
         return inner;
       });
       assert(value === "inner", "a joined call must return its own result");
-      await layer.transaction(async (tx) => rowsEqual(await tx.selectAll(table), [sampleRow, secondRow], "both writes must commit together"));
+      await layer.transaction(async (tx) => rowsEqual(await tx.select(table), [sampleRow, secondRow], "both writes must commit together"));
     }),
     "a throw after a joined call rolls back both": withLayer(async ({ layer, table, sampleRow, secondRow }) => {
       const failure = new Error("after the inner call");
@@ -175,7 +175,7 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
         });
       } catch (cause) { caught = cause; }
       assert(caught === failure, "the outer error must be rethrown unchanged");
-      await layer.transaction(async (tx) => assert((await tx.selectAll(table)).length === 0, "a throw after a joined call must roll back the outer and the inner write"));
+      await layer.transaction(async (tx) => assert((await tx.select(table)).length === 0, "a throw after a joined call must roll back the outer and the inner write"));
     }),
     "a throw inside a joined call reaches the outer call and rolls back": withLayer(async ({ layer, table, sampleRow, secondRow }) => {
       const failure = new Error("inside the inner call");
@@ -187,7 +187,7 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
         });
       } catch (cause) { caught = cause; }
       assert(caught === failure, "the inner error must reach the caller unchanged");
-      await layer.transaction(async (tx) => assert((await tx.selectAll(table)).length === 0, "a throw inside a joined call must roll back everything"));
+      await layer.transaction(async (tx) => assert((await tx.select(table)).length === 0, "a throw inside a joined call must roll back everything"));
     }),
     "joins nest more than one level and run in parallel": withLayer(async ({ layer, table, sampleRow, secondRow }) => {
       await layer.transaction(async () => {
@@ -196,10 +196,10 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
         });
         await Promise.all([
           layer.transaction(async (tx) => { await tx.insert(table, secondRow); }),
-          layer.transaction(async (tx) => { await tx.selectAll(table); }),
+          layer.transaction(async (tx) => { await tx.select(table); }),
         ]);
       });
-      await layer.transaction(async (tx) => rowsEqual(await tx.selectAll(table), [sampleRow, secondRow], "nested and parallel joined writes must commit"));
+      await layer.transaction(async (tx) => rowsEqual(await tx.select(table), [sampleRow, secondRow], "nested and parallel joined writes must commit"));
     }),
     "a call after the transaction ended starts a new one": withLayer(async ({ layer, table, sampleRow, secondRow }) => {
       let late: Promise<void> | undefined;
@@ -208,7 +208,7 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
         late = Promise.resolve().then(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); await layer.transaction(async (next) => { await next.insert(table, secondRow); }); });
       });
       await late;
-      await layer.transaction(async (tx) => rowsEqual(await tx.selectAll(table), [sampleRow, secondRow], "a late call must commit as its own transaction"));
+      await layer.transaction(async (tx) => rowsEqual(await tx.select(table), [sampleRow, secondRow], "a late call must commit as its own transaction"));
     }),
     "insert returns the stored row": withLayer(async ({ layer, table, sampleRow, key }) => {
       await layer.transaction(async (tx) => {
@@ -223,13 +223,13 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
         rowEquals(await tx.selectByKey(table, key), sampleRow, "selectByKey must find committed row");
       });
     }),
-    "selectAll returns stored rows": withLayer(async ({ layer, table, sampleRow, secondRow }) => {
+    "select without a query returns stored rows": withLayer(async ({ layer, table, sampleRow, secondRow }) => {
       await layer.transaction(async (tx) => {
         await tx.insert(table, sampleRow);
         await tx.insert(table, secondRow);
       });
       await layer.transaction(async (tx) => {
-        rowsEqual(await tx.selectAll(table), [sampleRow, secondRow], "selectAll must return both complete rows, in any order");
+        rowsEqual(await tx.select(table), [sampleRow, secondRow], "select without a query must return both complete rows");
       });
     }),
     "selectByKey selects only the named row": withLayer(async ({ layer, table, sampleRow, key, secondRow, secondKey }) => {
@@ -252,7 +252,7 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
         rowEquals(await tx.updateByKey(table, secondKey, changes), expected, "updateByKey must return the named second row");
       });
       await layer.transaction(async (tx) => {
-        rowsEqual(await tx.selectAll(table), [sampleRow, expected], "updateByKey must leave the unrelated row unchanged");
+        rowsEqual(await tx.select(table), [sampleRow, expected], "updateByKey must leave the unrelated row unchanged");
       });
     }),
     "deleteByKey deletes only the named row": withLayer(async ({ layer, table, sampleRow, secondRow, secondKey }) => {
@@ -264,7 +264,7 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
         assert(await tx.deleteByKey(table, secondKey) === true, "deleteByKey must delete the named second row");
       });
       await layer.transaction(async (tx) => {
-        rowsEqual(await tx.selectAll(table), [sampleRow], "deleteByKey must leave the unrelated row unchanged");
+        rowsEqual(await tx.select(table), [sampleRow], "deleteByKey must leave the unrelated row unchanged");
       });
     }),
     "missing key leaves unrelated rows unchanged": withLayer(async ({ layer, table, sampleRow, secondKey, changes }) => {
@@ -275,7 +275,7 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
         assert(await tx.deleteByKey(table, secondKey) === false, "missing delete must not delete an unrelated row");
       });
       await layer.transaction(async (tx) => {
-        rowsEqual(await tx.selectAll(table), [sampleRow], "missing key operations must preserve the unrelated row");
+        rowsEqual(await tx.select(table), [sampleRow], "missing key operations must preserve the unrelated row");
       });
     }),
     "updateByKey changes and returns the stored row": withLayer(async ({ layer, table, sampleRow, key, changes }) => {
@@ -293,7 +293,7 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
         assert(await tx.selectByKey(table, key) === undefined, "missing select must return undefined");
         assert(await tx.updateByKey(table, key, changes) === undefined, "missing update must return undefined");
         assert(await tx.deleteByKey(table, key) === false, "missing delete must return false");
-        assert((await tx.selectAll(table)).length === 0, "missing operations must not create rows");
+        assert((await tx.select(table)).length === 0, "missing operations must not create rows");
       });
     }),
     "deleteByKey removes an existing row": withLayer(async ({ layer, table, sampleRow, key }) => {
@@ -319,7 +319,7 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
       };
       await rejectWrite((tx) => tx.insert(table, sampleRow));
       await layer.transaction(async (tx) => {
-        assert((await tx.selectAll(table)).length === 0, "rejected insert must roll back");
+        assert((await tx.select(table)).length === 0, "rejected insert must roll back");
         await tx.insert(table, sampleRow);
       });
       await rejectWrite((tx) => tx.updateByKey(table, key, changes));
@@ -360,7 +360,7 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
       try {
         await first.layer.transaction(async (tx) => { await tx.insert(first.table, first.sampleRow); });
         await second.layer.transaction(async (tx) => {
-          assert((await tx.selectAll(second.table)).length === 0, "second layer must not see first's row");
+          assert((await tx.select(second.table)).length === 0, "second layer must not see first's row");
           await tx.insert(second.table, second.sampleRow);
         });
         await first.layer.transaction(async (tx) => { await tx.deleteByKey(first.table, first.key); });

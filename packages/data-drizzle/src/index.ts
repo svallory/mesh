@@ -110,10 +110,6 @@ export function drizzleOperations<T extends Table>(commands: DrizzleCommands<T>,
       const table = commands.table(handle);
       return commands.select(table, selectOptions(table, query));
     }),
-    selectAll: (handle: TableHandle) => execute(() => {
-      const table = commands.table(handle);
-      return commands.select(table, selectOptions(table, undefined));
-    }),
     selectByKey: (handle: TableHandle, key: Key) => execute(() => byKey(handle, key, false)),
     // Locks through the dialect's `selectForUpdate` when it has one; SQLite does not need it.
     selectByKeyForUpdate: (handle: TableHandle, key: Key) => execute(() => byKey(handle, key, true)),
