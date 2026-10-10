@@ -56,6 +56,14 @@ entity :Post table="posts"
     string :grandReplyToAnswered() { return JSON.stringify(&replyTo?.replyTo?.answered) }
     string :viaVariable() { const parent = &replyTo; return JSON.stringify(parent?.answered) }
     string :plainTitle() { return JSON.stringify(&title) }
+    string :parentKeys() { return JSON.stringify(Object.keys(&replyTo ?? {})) }
+    string :parentSpread() { return JSON.stringify({ ...(&replyTo ?? {}) }) }
+    string :parentEntries() { return JSON.stringify(Object.entries(&replyTo ?? {}).map(([key]) => key)) }
+    boolean :parentHasReplies() { return "replies" in (&replyTo ?? {}) }
+    boolean :parentHasTitle() { return "title" in (&replyTo ?? {}) }
+    string :parentOwnDescriptor() { return JSON.stringify(Object.getOwnPropertyDescriptors(&replyTo ?? {})["title"]?.value) }
+    boolean :keyOfSelf() { return "comments" in self }
+    integer :walk() { let total = 0; for (let i = 0; i < &comments.length; i++) total += &comments[i].body.length; return total }
   actions auto=[:read]
 `;
 const comment = `import { Post } from "./post.mesh.mx"
@@ -647,4 +655,80 @@ export type Keys = keyof PostLoadable;
       "--target", "es2022", "--module", "esnext", "--moduleResolution", "bundler", "--types", "bun", join(dir, "check.ts")], { cwd: dir });
     expect(result.stdout.toString() + result.stderr.toString()).toBe("");
   });
+});
+
+describe("the guarded record of a plain body", () => {
+  async function pair(tx: DataOperations) {
+    await tx.insert(app.tables.author, { id: id(1), name: "Ada", retired: false });
+    await tx.insert(app.tables.post, { id: id(11), title: "p11", score: null, postedAt: at(11), authorId: id(1), reviewerId: null, replyToId: null });
+    await tx.insert(app.tables.post, { id: id(12), title: "p12", score: null, postedAt: at(12), authorId: id(1), reviewerId: null, replyToId: id(11) });
+  }
+  const only = async (tx: DataOperations, name: string) => {
+    const rows = (await app.loadPostFields(tx, await rowsOf(tx, "post"), [name])).filter((p) => p.title === "p12");
+    return rows[0]![name];
+  };
+
+  test("Object.keys on a related record lists what is loaded: its stored columns", async () => {
+    const db = await fresh();
+    try {
+      await run(db, async (tx) => {
+        await pair(tx);
+        expect(JSON.parse(await only(tx, "parentKeys"))).toEqual(["id", "title", "score", "postedAt", "authorId", "reviewerId", "replyToId"]);
+      });
+    } finally { await db.close(); }
+  });
+
+  test("spreading a related record gives its stored columns, and Object.entries the same names", async () => {
+    const db = await fresh();
+    try {
+      await run(db, async (tx) => {
+        await pair(tx);
+        const spread = JSON.parse(await only(tx, "parentSpread"));
+        expect(spread.title).toBe("p11");
+        expect(Object.keys(spread)).toEqual(["id", "title", "score", "postedAt", "authorId", "reviewerId", "replyToId"]);
+        expect(JSON.parse(await only(tx, "parentEntries"))).toEqual(Object.keys(spread));
+        expect(JSON.parse(await only(tx, "parentOwnDescriptor"))).toBe("p11");
+      });
+    } finally { await db.close(); }
+  });
+
+  test("`in` is true for a stored column and throws for a relationship that was not loaded", async () => {
+    const db = await fresh();
+    try {
+      await run(db, async (tx) => {
+        await pair(tx);
+        expect(await only(tx, "parentHasTitle")).toBe(true);
+        await expect(app.loadPostFields(tx, await rowsOf(tx, "post"), ["parentHasReplies"])).rejects.toThrow(
+          "A plain computed body read Post.replies, which was not loaded");
+        await expect(app.loadPostFields(tx, await rowsOf(tx, "post"), ["keyOfSelf"])).rejects.toThrow(
+          "A plain computed body read Post.comments, which was not loaded");
+      });
+    } finally { await db.close(); }
+  });
+
+  test("a body that reads one loaded list in a loop costs one pass over it: 3,000 rows stay linear", async () => {
+    const db = await fresh();
+    try {
+      await run(db, async (tx) => {
+        await tx.insert(app.tables.author, { id: id(1), name: "Ada", retired: false });
+        const posts = [12].map((n) => ({ id: id(n), title: `p${n}`, score: null, postedAt: at(n), authorId: id(1), reviewerId: null, replyToId: null }));
+        for (const post of posts) await tx.insert(app.tables.post, post);
+        const comments = async (count: number, post: number) => {
+          for (let n = 0; n < count; n++) await tx.insert(app.tables.comment, { id: id(1000 + post * 10_000 + n), body: "ab", pinned: false, postId: id(post) });
+        };
+        await comments(3_000, 12);
+        const walk = async (post: number) => {
+          const rows = (await rowsOf(tx, "post")).filter((p) => p.id === id(post));
+          const loaded = await app.loadPostFields(tx, rows, ["comments"]);
+          const started = performance.now();
+          const [row] = await app.loadPostFields(tx, loaded.map(({ comments: _drop, ...rest }) => rest), ["walk"]);
+          return { ms: performance.now() - started, total: row!.walk as number };
+        };
+        const result = await walk(12);
+        expect(result.total).toBe(6_000);
+        // Quadratic work over 3,000 rows measured 1,180 ms; linear work takes about 5 ms. The bound sits 30x from both.
+        expect(result.ms).toBeLessThan(150);
+      });
+    } finally { await db.close(); }
+  }, 30_000);
 });

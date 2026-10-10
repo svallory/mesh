@@ -289,6 +289,8 @@ Paths are checked at build time. Inside the entity, checks, steps, filters and p
 
 A computed body that cannot be translated runs in memory after the rows load, at the cost of an extra pass. `label` above is one of those, and that is not a mistake. An error arises only where SQL is required: a filter, a sort key, a policy, a rollup's path or another translated expression. `mesh explain` says which computed fields translate.
 
+A body that runs in memory reads a record in which only what it names is loaded. Reading a relationship or computed field it did not load throws an error that names the field, and so does asking whether one is there (`"lines" in self`). Spreading a record or calling `Object.keys` on it lists the stored fields and whatever was loaded, never the rest, so write the names you need as `&name` and Mesh loads them.
+
 ## actions
 
 `actions auto=[:read, :destroy]` generates the plain actions of those types, named after the type. You may list `:create`, `:read`, `:update` or `:destroy`, with no repeats. Every action you write yourself is `type :name`.

@@ -139,23 +139,54 @@ async function ensureField(
  * A record handed to a body that runs as plain code. Mesh cannot see everything such a body reads (a read through a
  * variable, a deeper chain than the text shows), so a read of a relationship or computed field that is not loaded
  * throws instead of coming back as `undefined`, which the body would turn into a wrong answer. Related rows are guarded the same way.
+ *
+ * `in` on such a name throws too. `Object.keys`, spreading and `Object.entries` list what is loaded and nothing else (an
+ * unloaded name is not a property of the record), and what they hand back for a related row is guarded like the row itself.
+ *
+ * A guard is made once per row, and a loaded list is guarded once, so a body that reads the same list many times
+ * (`for (let i = 0; i < list.length; i++) list[i]`) costs one pass over it, not one per read.
  */
+const guards = new WeakMap<object, { plan: LoadPlan; guard: Work }>();
+const guardedLists = new WeakMap<object, { plan: LoadPlan; list: Work[] }>();
+
 function guarded(plan: LoadPlan, entity: string, row: Work): Work {
+  const known = guards.get(row);
+  if (known?.plan === plan) return known.guard;
   const entityPlan = planOf(plan, entity);
-  return new Proxy(row, {
+  const names = (key: string) => Object.hasOwn(entityPlan.relations, key) || Object.hasOwn(entityPlan.computed, key);
+  const unloaded = (key: string) =>
+    new FrameworkError(`A plain computed body read ${entity}.${key}, which was not loaded: Mesh could not tell from the body that it reads it. Write the body as one expression (an arrow with comparisons, ?., ?? and the list methods) so Mesh loads what it reads`);
+  const wrap = (key: string, value: unknown): unknown => {
+    const relation = Object.hasOwn(entityPlan.relations, key) ? entityPlan.relations[key] : undefined;
+    if (!relation || value === null || typeof value !== "object") return value;
+    if (!Array.isArray(value)) return guarded(plan, relation.target, value as Work);
+    const list = guardedLists.get(value);
+    if (list?.plan === plan) return list.list;
+    const made = value.map((item) => guarded(plan, relation.target, item as Work));
+    guardedLists.set(value, { plan, list: made });
+    return made;
+  };
+  const guard: Work = new Proxy(row, {
     get(target, key, receiver) {
       if (typeof key !== "string") return Reflect.get(target, key, receiver);
       if (!(key in target)) {
-        if (Object.hasOwn(entityPlan.relations, key) || Object.hasOwn(entityPlan.computed, key))
-          throw new FrameworkError(`A plain computed body read ${entity}.${key}, which was not loaded: Mesh could not tell from the body that it reads it. Write the body as one expression (an arrow with comparisons, ?., ?? and the list methods) so Mesh loads what it reads`);
+        if (names(key)) throw unloaded(key);
         return undefined;
       }
-      const value = target[key];
-      const relation = Object.hasOwn(entityPlan.relations, key) ? entityPlan.relations[key] : undefined;
-      if (!relation || value === null || typeof value !== "object") return value;
-      return Array.isArray(value) ? value.map((item) => guarded(plan, relation.target, item as Work)) : guarded(plan, relation.target, value as Work);
+      return wrap(key, target[key]);
+    },
+    has(target, key) {
+      if (typeof key === "string" && !(key in target) && names(key)) throw unloaded(key);
+      return Reflect.has(target, key);
+    },
+    getOwnPropertyDescriptor(target, key) {
+      const descriptor = Reflect.getOwnPropertyDescriptor(target, key);
+      if (descriptor && typeof key === "string" && "value" in descriptor) return { ...descriptor, value: wrap(key, descriptor.value) };
+      return descriptor;
     },
   });
+  guards.set(row, { plan, guard });
+  return guard;
 }
 
 /** Load the first segment on `rows`, then the rest of the path on the rows it brought in. */

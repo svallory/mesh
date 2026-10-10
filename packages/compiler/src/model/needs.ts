@@ -1,5 +1,6 @@
 import { dirname, resolve } from "node:path";
 import type { Diagnostic, Entity, ExprNode, ModelDocument } from "@meshfw/model";
+import { inverseProblem } from "./inverse.ts";
 import { error } from "./diagnostics.ts";
 
 /**
@@ -33,9 +34,10 @@ export function computeNeeds(document: ModelDocument, diagnostics: Diagnostic[])
           if (relation) {
             if (relation.kind !== "belongs-to" && relation.via === undefined && !noInverse.has(relation)) {
               noInverse.add(relation);
-              diagnostics.push(error("MESH_NO_INVERSE",
-                `&${computed.name} reads ${relation.kind} :${relation.name}, which cannot be loaded: :${targetOf(owner, relation)?.name ?? relation.entity.identifier} has no belongs-to back to :${owner.name}`,
-                computed.position, `Declare a belongs-to to :${owner.name} in the other entity's file, and name it with via=:name if there are several`));
+              const problem = inverseProblem(document, owner, relation);
+              diagnostics.push(error(problem.code,
+                `&${computed.name} reads ${relation.kind} :${relation.name}, which cannot be loaded: ${problem.because}`,
+                computed.position, problem.fix));
             }
             prefix.push(segment);
             needs.add(prefix.join("."));

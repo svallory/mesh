@@ -401,3 +401,32 @@ describe("a computed enum names its values", () => {
     expect(codes(build({ "doc.mesh.mx": source("enum :phase values=[:a, :a] value=() => :a") }))).toContain("MESH_ATOM_LIST");
   });
 });
+
+describe("a used has-many with several candidates and no via lists them", () => {
+  const withUse = (use: string) => collaborator().replace("    has-many :memberships entity=Membership\n", `    has-many :memberships entity=Membership\n  computed\n${use}\n`);
+
+  test("a body that reads it names the candidates, not a missing belongs-to", () => {
+    const result = build({ "collaborator.mesh.mx": withUse("    boolean :member() { return &memberships.length > 0 }"), "membership.mesh.mx": membership() });
+    const read = result.diagnostics.filter((d) => d.message.startsWith("&member "));
+    expect(read).toEqual([expect.objectContaining({
+      code: "MESH_VIA_REQUIRED",
+      message: "&member reads has-many :memberships, which cannot be loaded: :Membership has 3 belongs-to back to :Collaborator (:collaborator, :grantedBy, :revokedBy) and has-many :memberships does not say which it follows",
+      fix: "Choose one: `via=:collaborator`",
+    })]);
+    expect(result.diagnostics.some((d) => d.code === "MESH_NO_INVERSE")).toBe(false);
+  });
+
+  test("a rollup that reads it names them too", () => {
+    const result = build({ "collaborator.mesh.mx": withUse('    count :membershipCount of="memberships"'), "membership.mesh.mx": membership() });
+    expect(result.diagnostics.filter((d) => d.message.startsWith("count :membershipCount"))).toEqual([expect.objectContaining({
+      code: "MESH_VIA_REQUIRED",
+      message: expect.stringContaining("(:collaborator, :grantedBy, :revokedBy)"),
+    })]);
+    expect(result.diagnostics.some((d) => d.code === "MESH_NO_INVERSE")).toBe(false);
+  });
+
+  test("choosing one with via clears both", () => {
+    const result = build({ "collaborator.mesh.mx": withUse("    boolean :member() { return &memberships.length > 0 }").replace("entity=Membership", "entity=Membership via=:collaborator"), "membership.mesh.mx": membership() });
+    expect(result.diagnostics).toEqual([]);
+  });
+});
