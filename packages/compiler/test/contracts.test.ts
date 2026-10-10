@@ -93,6 +93,14 @@ describe("v4 contracts", () => {
   ])("rejects old options or invalid shapes %s", (suffix) =>
     expect(parse(keyed + suffix).diagnostics.length).toBeGreaterThan(0),
   );
+  // MX regression, reported 2026-10-10: on alpha.14 this said "`<belongs-to>`: unknown attribute `value`"
+  // at 5:14 (the `=`); alpha.15 reports the second atom instead. A later MX fix should change this test.
+  test("old-relationship: exact message and position on alpha.15", () => {
+    const result = parseFixture("negative/old-relationship.mesh.mx");
+    expect(result.diagnostics.map((d) => ["MESH_SYNTAX", d.message, d.line, d.column])).toEqual([
+      [ "MESH_SYNTAX", "Expected a single expression, but found `:` after it.", 5, 21],
+    ]);
+  });
   test("every negative fixture fails with a positioned diagnostic", () => {
     const files = readdirSync(`${fixtureDir}negative`).filter((f) =>
       f.endsWith(".mesh.mx"),
@@ -118,7 +126,7 @@ describe("v4 contracts", () => {
       "unknown-entity": ["MESH_UNKNOWN_ENTITY", 5, 28],
       const: ["MESH_SYNTAX", 1, 0],
       "old-module": ["MESH_SYNTAX", 1, 13],
-      // alpha.15: the dialect's name sugar ends the value, so MX reports the second atom (was the `=` at column 14).
+      // MX regression, reported 2026-10-10: also pinned exactly by its own test above.
       "old-relationship": ["MESH_SYNTAX", 5, 21],
       "atom-input": ["MESH_SYNTAX", 7, 8],
       "read-input-member": ["MESH_READ_INPUT_MEMBER", 7, 8],

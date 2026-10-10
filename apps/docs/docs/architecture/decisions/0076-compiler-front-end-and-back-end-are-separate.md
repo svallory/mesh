@@ -35,7 +35,8 @@ Inside `@meshfw/compiler`, with no new package and no plugin system:
 
 - A test (`test/architecture.test.ts`) scans the imports of each folder and fails on the forbidden ones, and on any spelling of an entity-file extension outside the one list.
 - The extensions are one exported list (`MESH_EXTENSIONS` in `src/front-end/extensions.ts`, `.mesh.mx` today) that the CLI, file discovery and the generators read. `.mesh` may be added later by adding an entry.
-- Expressions stay parsed nodes with source spans in the model's reach. Only the front end's expression reader knows the source language; a back end never sees TypeScript source of the front end's making ([ADR-0010](./0010-one-expression-tree-two-evaluators.md) already makes translatable expressions a Mesh expression tree). Opaque expressions are the only part bound to the source language, and a second back end decides their handling when it is planned.
+- Expressions today: the model stores an expression as its authored text, its parameter names and a position (`Expression.source`), and `model.json` emits that text, so a back end does see source-language text. The front end's expression reader is the only code that parses it.
+- Target: only the expression reader knows the source language, and back ends read expressions from the model ([ADR-0010](./0010-one-expression-tree-two-evaluators.md)'s Mesh expression tree), not source. Carrying authored text is today's form until the M4 expression tree. Opaque expressions (not convertible to the tree) stay bound to the source language, and a second back end decides their handling when it is planned.
 
 ## Options considered
 
