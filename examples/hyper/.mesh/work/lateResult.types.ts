@@ -14,7 +14,7 @@ export type LateResult = {
   evidence: unknown;
   recordedAt: Date;
   taskId: string;
-  holderId: string;
+  submitterId: string;
 };
 
 export type RecordLateResultInput = {
@@ -22,7 +22,7 @@ export type RecordLateResultInput = {
   summary?: string | null | undefined;
   evidence?: unknown | undefined;
   task: Task["id"];
-  holder: Collaborator["id"];
+  submitter: Collaborator["id"];
 };
 
 export type ReadLateResultInput = {
@@ -41,7 +41,7 @@ export type LateResultFilter =
       summary?: $Comparison<string>;
       recordedAt?: $Comparison<Date>;
       taskId?: $Comparison<string>;
-      holderId?: $Comparison<string>;
+      submitterId?: $Comparison<string>;
     };
 
 export type LateResultSort = readonly (
@@ -55,6 +55,6 @@ export type LateResultSort = readonly (
   | "-recordedAt"
   | "taskId"
   | "-taskId"
-  | "holderId"
-  | "-holderId"
+  | "submitterId"
+  | "-submitterId"
 )[];

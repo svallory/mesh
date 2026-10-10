@@ -33,7 +33,7 @@ export function bindMembership(layer: $DataLayer) {
           revokedAt: null,
           version: 1,
           collaboratorId: parsed.collaborator,
-          grantedById: parsed.grantedBy === undefined ? null : parsed.grantedBy,
+          grantedById: parsed.grantedBy,
           revokedById: null,
         });
         return row as Membership;

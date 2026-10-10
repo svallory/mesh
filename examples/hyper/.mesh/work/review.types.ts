@@ -11,18 +11,21 @@ export type Review = {
   id: string;
   decision: "accept" | "return";
   reasons: string | null;
-  reviewedAt: Date;
+  ruleApplied: string;
+  decidedAt: Date;
   submissionId: string;
   reviewerId: string;
 };
 
 export type AcceptReviewInput = {
+  ruleApplied: string;
   submission: Submission["id"];
   reviewer: Collaborator["id"];
 };
 
 export type ReturnReviewInput = {
   reasons?: string | null | undefined;
+  ruleApplied: string;
   submission: Submission["id"];
   reviewer: Collaborator["id"];
 };
@@ -41,7 +44,8 @@ export type ReviewFilter =
       id?: $Comparison<string>;
       decision?: $Comparison<"accept" | "return">;
       reasons?: $Comparison<string>;
-      reviewedAt?: $Comparison<Date>;
+      ruleApplied?: $Comparison<string>;
+      decidedAt?: $Comparison<Date>;
       submissionId?: $Comparison<string>;
       reviewerId?: $Comparison<string>;
     };
@@ -53,8 +57,10 @@ export type ReviewSort = readonly (
   | "-decision"
   | "reasons"
   | "-reasons"
-  | "reviewedAt"
-  | "-reviewedAt"
+  | "ruleApplied"
+  | "-ruleApplied"
+  | "decidedAt"
+  | "-decidedAt"
   | "submissionId"
   | "-submissionId"
   | "reviewerId"

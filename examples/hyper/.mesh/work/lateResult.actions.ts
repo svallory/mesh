@@ -26,7 +26,7 @@ export function bindLateResult(layer: $DataLayer) {
           evidence: parsed.evidence === undefined ? [] : parsed.evidence,
           recordedAt: now,
           taskId: parsed.task,
-          holderId: parsed.holder,
+          submitterId: parsed.submitter,
         });
         return row as LateResult;
       });

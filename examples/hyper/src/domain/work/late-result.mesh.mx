@@ -10,7 +10,7 @@ entity :LateResult table="late_results"
     timestamp :recordedAt on=:create
   relationships
     belongs-to :task entity=Task
-    belongs-to :holder entity=Collaborator
+    belongs-to :submitter entity=Collaborator
   actions auto=[:read]
     create :record
       input
@@ -18,4 +18,4 @@ entity :LateResult table="late_results"
         &summary
         &evidence
         &task
-        &holder
+        &submitter

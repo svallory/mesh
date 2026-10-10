@@ -20,42 +20,44 @@ type SameShape<A, B> = [Keys<A>] extends [Keys<B>]
 type Assert<T extends true> = T;
 
 const comparison = <T extends z.ZodType>(value: T) =>
-  z.strictObject({
-    eq: value.nullable().optional(),
-    ne: value.nullable().optional(),
-    lt: value.optional(),
-    lte: value.optional(),
-    gt: value.optional(),
-    gte: value.optional(),
-    in: z.array(value).readonly().optional(),
-    nil: z.boolean().optional(),
-  });
+  z
+    .strictObject({
+      eq: value.nullable().exactOptional(),
+      ne: value.nullable().exactOptional(),
+      lt: value.exactOptional(),
+      lte: value.exactOptional(),
+      gt: value.exactOptional(),
+      gte: value.exactOptional(),
+      in: z.array(value).readonly().exactOptional(),
+      nil: z.boolean().exactOptional(),
+    })
+    .refine((operators) => Object.keys(operators).length > 0, {
+      message: "a comparison needs an operator",
+    });
 
-// The cast is the schema's only gap: zod writes an absent key as `?: T | undefined`, which the
-// strictest `exactOptionalPropertyTypes` setting does not let the filter type accept.
 export const attemptFilter: z.ZodType<AttemptFilter> = z.lazy(
   () =>
     z.union([
       z.strictObject({ and: z.array(attemptFilter).readonly() }),
       z.strictObject({ or: z.array(attemptFilter).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).optional(),
-        step: comparison(z.string()).optional(),
-        number: comparison(z.int()).optional(),
-        claimFence: comparison(z.int()).optional(),
-        runtime: comparison(z.string()).optional(),
+        id: comparison(z.uuid()).exactOptional(),
+        step: comparison(z.string()).exactOptional(),
+        number: comparison(z.int()).exactOptional(),
+        claimFence: comparison(z.int()).exactOptional(),
+        runtime: comparison(z.string()).exactOptional(),
         state: comparison(
           z.enum(["running", "succeeded", "failed", "stopped", "abandoned"]),
-        ).optional(),
-        endedAt: comparison(z.date()).optional(),
-        version: comparison(z.int()).optional(),
-        startedAt: comparison(z.date()).optional(),
-        runId: comparison(z.string()).optional(),
-        taskId: comparison(z.string()).optional(),
-        performerId: comparison(z.string()).optional(),
-        delegatorId: comparison(z.string()).optional(),
-        machineId: comparison(z.string()).optional(),
-        sessionId: comparison(z.string()).optional(),
+        ).exactOptional(),
+        endedAt: comparison(z.date()).exactOptional(),
+        version: comparison(z.int()).exactOptional(),
+        startedAt: comparison(z.date()).exactOptional(),
+        runId: comparison(z.string()).exactOptional(),
+        taskId: comparison(z.string()).exactOptional(),
+        performerId: comparison(z.string()).exactOptional(),
+        delegatorId: comparison(z.string()).exactOptional(),
+        machineId: comparison(z.string()).exactOptional(),
+        sessionId: comparison(z.string()).exactOptional(),
       }),
     ]) as unknown as z.ZodType<AttemptFilter>,
 );

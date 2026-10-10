@@ -229,7 +229,7 @@ function buildEntity(
     }
   const pending: {
     ref: MemberRef;
-    scope: "input" | "sort" | "load" | "set" | "actions" | "expression";
+    scope: "input" | "sort" | "load" | "set" | "actions" | "expression" | "filter";
   }[] = [];
   const checkRef = (
     ref: MemberRef,
@@ -238,12 +238,12 @@ function buildEntity(
     pending.push({ ref, scope });
     return ref;
   };
-  const expr = (a: Attr | undefined): Expression =>
+  const expr = (a: Attr | undefined, scope: "expression" | "filter" = "expression"): Expression =>
     expression(
       a,
       source,
       at,
-      (ref) => checkRef(ref, "expression"),
+      (ref) => checkRef(ref, scope),
       ({ ref, position }) =>
         fail(
           "MESH_MEMBER_ASSIGN",
@@ -595,7 +595,7 @@ function buildEntity(
         name: declaredName(tag),
         input,
         ...body(tag),
-        ...(filter ? { filter: expr(filter) } : {}),
+        ...(filter ? { filter: expr(filter, "filter") } : {}),
         ...(sort
           ? {
               sort: tags(sort.children).map((t) => ({
@@ -685,10 +685,11 @@ function buildEntity(
     const candidates = new Set(allowed.map((m) => m.name));
     if (!candidates.has(ref.name))
       diagnostics.push(unknownMember(entity, ref, candidates));
-    else if (scope === "sort") {
-      const sorted = [...entity.attributes, ...entity.computed].find((m) => m.name === ref.name);
-      if (sorted && !attributeTypeInfo(sorted.type).queryable)
-        fail("MESH_SORT_TYPE", `&${ref.name} is :${sorted.type}, which a sort cannot use: the database does not look inside it`, ref.position);
+    else if (scope === "sort" || scope === "filter") {
+      const used = [...entity.attributes, ...entity.computed].find((m) => m.name === ref.name);
+      if (used && !attributeTypeInfo(used.type).queryable)
+        fail(scope === "sort" ? "MESH_SORT_TYPE" : "MESH_FILTER_TYPE",
+          `&${ref.name} is :${used.type}, which a ${scope} cannot use: the database does not look inside it`, ref.position);
     }
   }
   if (

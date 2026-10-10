@@ -3,7 +3,7 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import { Database } from "bun:sqlite";
 import { createSchema, sqlite } from "@meshfw/data-sqlite";
-import { InvalidInputError } from "@meshfw/runtime";
+import { FrameworkError, InvalidInputError } from "@meshfw/runtime";
 import { bind, tables } from "#mesh";
 
 const root = resolve(import.meta.dir, "..");
@@ -12,6 +12,17 @@ const ENTITIES = [
   "Assignment", "Attempt", "Claim", "Collaborator", "Completion", "Dependency", "Event", "EvidenceReference", "Invocation",
   "LateResult", "Machine", "Membership", "Review", "Run", "SessionReference", "Submission", "Task", "Workspace",
 ];
+
+/** An event in the spec's v0 shape (PROTOCOL.md, `Event`): typed, with a cause and a payload. */
+function eventOf(n: number, extra: Record<string, unknown> = {}) {
+  return {
+    type: "task.created", workspaceId: "00000000-0000-4000-8000-0000000000aa", recordType: "task",
+    recordId: "00000000-0000-4000-8000-000000000001", recordVersion: 1, actor: "engine", caller: "engine",
+    occurredAt: new Date("2026-10-10T10:00:00.000Z"),
+    cause: { kind: "command", commandId: `c-${n}`, method: "task.create" }, payload: { n },
+    ...extra,
+  } as never;
+}
 
 async function fresh() {
   const db = sqlite({ file: ":memory:" });
@@ -34,16 +45,16 @@ async function populate(hyper: Hyper) {
   const assignment = await hyper.startAssignment({ reviewWaived: false, startedAt: at, task: task.id, assignee: bot.id, delegator: alice.id }, context);
   const claim = await hyper.acquireClaim({ fence: 1, acquiredAt: at, expiresAt: later, task: task.id, holder: bot.id }, context);
   const submission = await hyper.submitSubmission({ summary: "done", evidence: [{ kind: "file", id: 1 }], fence: 1, taskVersion: 1, task: task.id, submitter: bot.id }, context);
-  const review = await hyper.acceptReview({ submission: submission.id, reviewer: alice.id }, context);
+  const review = await hyper.acceptReview({ ruleApplied: "task-creator", submission: submission.id, reviewer: alice.id }, context);
   const completion = await hyper.recordCompletion({ rule: "reviewer", task: task.id, submission: submission.id, completedBy: alice.id }, context);
-  const lateResult = await hyper.recordLateResult({ fence: 1, evidence: ["a", "b"], task: task.id, holder: bot.id }, context);
+  const lateResult = await hyper.recordLateResult({ fence: 1, evidence: ["a", "b"], task: task.id, submitter: bot.id }, context);
   const evidence = await hyper.recordEvidenceReference({ kind: "file", locator: "notes.md", recordedBy: bot.id }, context);
   const machine = await hyper.registerMachine({ name: "laptop", platform: "linux" }, context);
   const session = await hyper.recordSessionReference({ runtime: "claude", runtimeSessionId: "s-1", availability: "complete", machine: machine.id, agentProfile: bot.id, recordedBy: bot.id }, context);
   const run = await hyper.startRun({ inputs: { goal: "ship", steps: [1, 2] }, task: task.id, responsible: alice.id, startedBy: alice.id }, context);
   const attempt = await hyper.startAttempt({ number: 1, run: run.id, task: task.id, performer: bot.id, delegator: alice.id, machine: machine.id, session: session.id }, context);
   const invocation = await hyper.recordInvocation({ usageSource: "runtime", estimatedCost: 0.25, inputTokens: 10, attempt: attempt.id, task: task.id, recordedBy: bot.id }, context);
-  const event = await hyper.recordEvent({ resource: "Task", action: "create", recordId: task.id, changes: { title: ["", "Ship"] }, task: task.id }, context);
+  const event = await hyper.recordEvent(eventOf(1, { recordId: task.id, payload: { taskId: task.id, title: "Ship" }, task: task.id }), context);
   return { workspace, alice, bot, membership, task, child, dependency, assignment, claim, submission, review, completion, lateResult, evidence, machine, session, run, attempt, invocation, event };
 }
 
@@ -97,7 +108,7 @@ describe("one row of every entity round-trips through its generated functions", 
       expect(await reads.Collaborator!()).toEqual([rows.alice, rows.bot]);
       expect(await reads.Task!()).toEqual([rows.task, rows.child]);
       expect(rows.review).toMatchObject({ decision: "accept" });
-      expect((await hyper.returnReview({ reasons: "more tests", submission: rows.submission.id, reviewer: rows.alice.id }, context))).toMatchObject({ decision: "return", reasons: "more tests" });
+      expect((await hyper.returnReview({ reasons: "more tests", ruleApplied: "task-creator", submission: rows.submission.id, reviewer: rows.alice.id }, context))).toMatchObject({ decision: "return", reasons: "more tests" });
     } finally { await db.close(); }
   });
 
@@ -106,6 +117,8 @@ describe("one row of every entity round-trips through its generated functions", 
     try {
       const { task, event, alice } = await populate(hyper);
       expect(task).toMatchObject({ state: "open", version: 1, intent: null, parentId: null, creatorId: alice.id });
+      expect(event).toMatchObject({ schemaVersion: 1, actor: "engine", caller: "engine", cause: { kind: "command", commandId: "c-1", method: "task.create" } });
+      expect(event.recordedAt).toBeInstanceOf(Date);
       expect(task.createdAt).toBeInstanceOf(Date);
       expect(task.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
       expect(event.seq).toBe(1);
@@ -127,7 +140,9 @@ describe("one row of every entity round-trips through its generated functions", 
     const { db, hyper } = await fresh();
     try {
       const { dependency } = await populate(hyper);
-      await expect(hyper.registerMachine({ name: "laptop" }, context)).rejects.toThrow();
+      const refused = await hyper.registerMachine({ name: "laptop" }, context).then(() => undefined, (caught: unknown) => caught);
+      expect(refused).toBeInstanceOf(FrameworkError);
+      expect(String((refused as FrameworkError).cause)).toContain("UNIQUE constraint failed: machines.name");
       await hyper.removeDependency({ id: dependency.id }, context);
       expect(await hyper.readDependency({}, context)).toEqual([]);
     } finally { await db.close(); }
@@ -145,10 +160,10 @@ describe("json attributes", () => {
       expect(attempt.outcome).toBeNull();
       const second = await hyper.startRun({ task: task.id, responsible: bot.id, startedBy: bot.id }, context);
       expect(second.inputs).toEqual({});
-      const late = await hyper.recordLateResult({ fence: 2, task: task.id, holder: bot.id }, context);
+      const late = await hyper.recordLateResult({ fence: 2, task: task.id, submitter: bot.id }, context);
       expect(late.evidence).toEqual([]);
-      const event = await hyper.recordEvent({ resource: "Run", action: "start", recordId: run.id }, context);
-      expect(event.changes).toEqual({});
+      const event = await hyper.recordEvent(eventOf(2, { recordId: run.id, checks: undefined }), context);
+      expect(event.checks).toBeNull();
       expect((await hyper.readRun({ sort: ["startedAt", "id"] }, context)).map((r) => r.inputs)).toEqual([run.inputs, {}]);
     } finally { await db.close(); }
   });
@@ -168,7 +183,7 @@ describe("json attributes", () => {
 });
 
 describe("integer keys", () => {
-  const event = (n: number) => ({ resource: "Task", action: "create", recordId: "00000000-0000-4000-8000-000000000001", commandId: `c-${n}` });
+  const event = (n: number) => eventOf(n);
 
   test("1,000 creates with a rolled-back transaction every tenth leave keys 1 to 900 with no gap", async () => {
     const { db, hyper } = await fresh();
@@ -196,8 +211,7 @@ describe("integer keys", () => {
   test("a client cannot send the key, and a filter pages by it", async () => {
     const { db, hyper } = await fresh();
     try {
-      // @ts-expect-error seq is filled by the data layer, so it is not in the input
-      await expect(hyper.recordEvent({ ...event(0), seq: 5 }, context)).rejects.toBeInstanceOf(InvalidInputError);
+      await expect(hyper.recordEvent({ ...(event(0) as object), seq: 5 } as never, context)).rejects.toBeInstanceOf(InvalidInputError);
       for (let n = 1; n <= 10; n++) await hyper.recordEvent(event(n), context);
       const page = await hyper.readEvent({ filter: { seq: { gt: 5 } }, sort: ["seq"], limit: 3 }, context);
       expect(page.map((row) => row.seq)).toEqual([6, 7, 8]);
@@ -233,8 +247,8 @@ describe("reads of Hyper's list_tasks shape", () => {
 
 test("PORTING.md lists each omission as one line: entity, construct, milestone", () => {
   const lines = readFileSync(resolve(root, "PORTING.md"), "utf8").split("\n").filter((line) => line.startsWith("- "));
-  expect(lines.length).toBeGreaterThan(20);
-  for (const line of lines) expect(line, line).toMatch(/^- (?:[A-Z][A-Za-z]+(?:, [A-Z][A-Za-z]+)*|All entities): .+: (?:M\d+|after 1\.0|not scheduled)\.$/);
+  expect(lines.length).toBeGreaterThan(40);
+  for (const line of lines) expect(line, line).toMatch(/^- (?:[A-Z][A-Za-z]+(?:, [A-Z][A-Za-z]+)*|All entities): .+ \((?:[GD]\d+(?:, [GD]\d+)*|no gap code)\): (?:M\d+|after 1\.0|not scheduled|application code)\.$/);
 });
 
 afterAll(() => { if (existsSync(resolve(root, "hyper.db"))) rmSync(resolve(root, "hyper.db"), { force: true }); });

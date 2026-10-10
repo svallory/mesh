@@ -10,7 +10,7 @@ entity :Membership table="memberships"
     integer :version default=1
   relationships
     belongs-to :collaborator entity=Collaborator
-    belongs-to :grantedBy entity=Collaborator nullable
+    belongs-to :grantedBy entity=Collaborator
     belongs-to :revokedBy entity=Collaborator nullable
   actions auto=[:read]
     create :grant

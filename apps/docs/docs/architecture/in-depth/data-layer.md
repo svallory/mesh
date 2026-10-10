@@ -5,10 +5,10 @@ description: "The data-layer contract, declared capabilities, the conformance su
 
 # Data layer: contract and capabilities
 
-Status: contract v0 is implemented in the run-time library (M2, [PR #20](https://github.com/svallory/mesh/pull/20)). The SQLite adapter, its schema generator and `mesh db push` are merged (M2, task `m2-data`, PR #53), reimplemented from the held [PR #22](https://github.com/svallory/mesh/pull/22) under the documented names. M3 replaces contract v0 with the full contract below; capabilities are first used in M5 and M7, and Postgres and migrations arrive in M9 ([roadmap](../roadmap/roadmap.md)).
+Status: contract v1 is implemented in the run-time library (M3, with filters, sort, paging, re-entrant transactions, key fill and the capability manifest; contract v0 came in M2, [PR #20](https://github.com/svallory/mesh/pull/20)). The SQLite adapter, its schema generator and `mesh db push` are merged (M2, task `m2-data`, PR #53), reimplemented from the held [PR #22](https://github.com/svallory/mesh/pull/22) under the documented names. The build reads the capability manifest from M3; Postgres and migrations arrive in M9 ([roadmap](../roadmap/roadmap.md)).
 
 ::: callout info "What the code does today"
-`@meshfw/runtime` and its testing entry `@meshfw/runtime/testing` ([ADR-0060](../decisions/0060-meshfw-package-scope.md)) hold the data-layer contract v0, the `DataAdapter` descriptor type, `defineConfig` and the conformance suite. `@meshfw/data-drizzle` holds the operations shared by SQL adapters. `@meshfw/data-sqlite` has two entries: the main one, `sqlite({ file })` and `createSchema(db, tables)`, and `@meshfw/data-sqlite/build`, the schema generator and `mesh db push`. Generated action functions call the contract through `bind(layer)`, and `connect()` binds the layer `mesh.config.ts` configures ([PR #54](https://github.com/svallory/mesh/pull/54)); `close()` releases the connection and a later transaction reopens it, so `disconnect()` then `connect()` reuses that one layer.
+`@meshfw/runtime` and its testing entry `@meshfw/runtime/testing` ([ADR-0060](../decisions/0060-meshfw-package-scope.md)) hold the data-layer contract v1, the `DataAdapter` descriptor type, `defineConfig` and the conformance suite. `@meshfw/data-drizzle` holds the operations shared by SQL adapters. `@meshfw/data-sqlite` has two entries: the main one, `sqlite({ file })` and `createSchema(db, tables)`, and `@meshfw/data-sqlite/build`, the schema generator and `mesh db push`. Generated action functions call the contract through `bind(layer)`, and `connect()` binds the layer `mesh.config.ts` configures ([PR #54](https://github.com/svallory/mesh/pull/54)); `close()` releases the connection and a later transaction reopens it, so `disconnect()` then `connect()` reuses that one layer.
 :::
 
 The data layer stores and fetches records. Related: [overview](../overview/architecture.md), [three rings](./three-rings.md), [expressions](./expressions.md), [action lifecycle](./action-lifecycle.md), [generated code and the guard](./generated-code-and-guard.md).
@@ -19,9 +19,9 @@ A contract that covers Drizzle, Kysely, TypeORM and Prisma can cover select, ins
 
 The contract and its query and expression-tree types live in `runtime`, which a deployed program carries. `runtime` imports no Drizzle ([roadmap](../roadmap/roadmap.md), section 3 and M3, test 5; [ADR-0033](../decisions/0033-core-split-build-time-run-time.md)).
 
-## Contract v0 (M2)
+## Contract v1 (M3)
 
-The run-time library exports this deliberately small contract for generated action functions and adapters. Operations exist only inside `transaction`; a handler always opens one. M3 replaces this version with the full contract, including filters, sorting, pagination and capabilities ([roadmap](../roadmap/roadmap.md), M2 and M3).
+The run-time library exports this deliberately small contract for generated action functions and adapters. Operations exist only inside `transaction`; a handler always opens one.
 
 ```ts "packages/runtime/src/data-layer.ts"
 export type Row = Record<string, unknown>;
@@ -31,9 +31,12 @@ export type TableHandle = object;
 export interface DataOperations {
   insert(table: TableHandle, row: Row): Promise<Row>;
   selectByKey(table: TableHandle, key: Key): Promise<Row | undefined>;
-  selectAll(table: TableHandle): Promise<Row[]>;
+  selectByKeyForUpdate(table: TableHandle, key: Key): Promise<Row | undefined>;
+  select(table: TableHandle, query?: Query): Promise<Row[]>; // { filter, sort, limit, offset }
   updateByKey(table: TableHandle, key: Key, changes: Row): Promise<Row | undefined>;
   deleteByKey(table: TableHandle, key: Key): Promise<boolean>;
+  max(table: TableHandle, attribute: string, filter?: Filter): Promise<Scalar | null>;
+  count(table: TableHandle, attribute: string, filter?: Filter): Promise<number>;
 }
 
 export interface DataLayer {
@@ -42,13 +45,13 @@ export interface DataLayer {
 }
 ```
 
-Rows use attribute names and generated TypeScript values: `Date` for datetime, `boolean`, and `string` for UUID. The adapter converts these to and from storage. `Key` maps primary-key attribute names to values. `TableHandle` is opaque to handlers: the emitted schema exports it and only the adapter interprets it. No query-library type, SQL string or filter crosses this version of the contract.
+Rows use attribute names and generated TypeScript values: `Date` for datetime, `boolean`, and `string` for UUID. The adapter converts these to and from storage. `Key` maps primary-key attribute names to values. `TableHandle` is opaque to handlers: the emitted schema exports it and only the adapter interprets it. No query-library type or SQL string crosses the contract; a filter is plain data.
 
 Insert and update return the stored row. A missing select or update returns `undefined`; delete returns `false` when absent and `true` when removed. A transaction commits when its callback resolves, returning that result; it rolls back every write and rethrows the same error when the callback rejects. The caller closes the layer when finished.
 
 The separate `testing` entry of the run-time library exports `dataLayerConformance(makeLayer)`, a record of named async checks to register with an adapter's test runner. The factory supplies `{ layer, table, sampleRow, key, secondRow, secondKey, changes }`: a fresh isolated layer, an empty prepared table, two complete schema-valid rows with distinct primary keys, and non-key changes that change the sample row. `key` and `secondKey` name the same primary-key attributes and match their respective rows. Every call uses the same schema and values for both rows. Checks cover CRUD, selecting/updating/deleting only the named row among two rows, missing keys with unrelated data present, commit, rollback and isolation; each closes its layers even on failure. The runtime tests use a test-only double, excluded from the package archive by its source-only `files` whitelist. An archive test checks that neither the double nor any tests ship and that both public entries load from the archive.
 
-The suite also checks the queue rules every adapter shares: two concurrent transactions never interleave their statements; a throw or a rejected promise after a write leaves no row; the queue continues after a failed transaction; `close()` with a transaction in flight rejects and leaves the layer open; a nested `transaction` call is rejected. Each check has a negative proof against a deliberately broken double.
+The suite also checks the queue rules every adapter shares: two concurrent transactions never interleave their statements; a throw or a rejected promise after a write leaves no row; the queue continues after a failed transaction; `close()` with a transaction in flight rejects and leaves the layer open; a nested `transaction` call joins the running transaction, and a failure in it rolls the whole transaction back. Each check has a negative proof against a deliberately broken double.
 
 `verify` enforces the runtime half of M2 test 4 and test 7 with deliberately plain-text compiler repository checks. Every runtime source file and the **whole text** of its package manifest must contain none of the model package, the compiler package (`@meshfw/model` and `@meshfw/compiler`), `drizzle-orm` or `drizzle-kit`; this includes dependency alias targets and non-dependency metadata. Runtime source must contain neither `bun:` nor `node:` anywhere, nor the whole word `Bun` (`\bBun\b`). Comments and strings fail on purpose, so inter-token comments cannot hide a forbidden mention. Planted violations prove each rule. The Drizzle half of test 4 is a third text rule: no file in the checkout outside `packages/data-*`, a project's `.mesh/schema.ts` (with the generated header), manifests, lockfiles, the docs and the rule's own files mentions `drizzle-orm` or `drizzle-kit` ([ADR-0014](../decisions/0014-sql-adapters-on-drizzle.md)). The generated-action import check arrives with the action functions.
 
@@ -62,7 +65,7 @@ In M3 a filter is plain data (field, operator, literal), also the form a caller 
 
 ## The capability manifest
 
-Each adapter ships a manifest: static data, a closed union of capability names, readable by the build without starting the adapter ([roadmap](../roadmap/roadmap.md), M3). A manifest naming something outside the union fails the build (M3, test 2). The build then checks each entity: an entity that uses a capability the adapter lacks fails the build at the entity-file position (M5, test 4). The check is written in M3 and first used in M5.
+Each adapter ships a manifest: static data, a closed union of capability names, readable by the build without starting the adapter ([roadmap](../roadmap/roadmap.md), M3). A manifest naming something outside the union fails the build (M3, test 2). The build then checks each entity: an entity that uses a capability the adapter lacks fails the build at the entity-file position. M3 checks the one it needs, `integer-key-fill` for an integer primary key; the others are checked as the constructs that need them arrive.
 
 ## No silent in-memory fallback
 

@@ -26,34 +26,36 @@ type SameShape<A, B> = [Keys<A>] extends [Keys<B>]
 type Assert<T extends true> = T;
 
 const comparison = <T extends z.ZodType>(value: T) =>
-  z.strictObject({
-    eq: value.nullable().optional(),
-    ne: value.nullable().optional(),
-    lt: value.optional(),
-    lte: value.optional(),
-    gt: value.optional(),
-    gte: value.optional(),
-    in: z.array(value).readonly().optional(),
-    nil: z.boolean().optional(),
-  });
+  z
+    .strictObject({
+      eq: value.nullable().exactOptional(),
+      ne: value.nullable().exactOptional(),
+      lt: value.exactOptional(),
+      lte: value.exactOptional(),
+      gt: value.exactOptional(),
+      gte: value.exactOptional(),
+      in: z.array(value).readonly().exactOptional(),
+      nil: z.boolean().exactOptional(),
+    })
+    .refine((operators) => Object.keys(operators).length > 0, {
+      message: "a comparison needs an operator",
+    });
 
-// The cast is the schema's only gap: zod writes an absent key as `?: T | undefined`, which the
-// strictest `exactOptionalPropertyTypes` setting does not let the filter type accept.
 export const taskFilter: z.ZodType<TaskFilter> = z.lazy(
   () =>
     z.union([
       z.strictObject({ and: z.array(taskFilter).readonly() }),
       z.strictObject({ or: z.array(taskFilter).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).optional(),
-        title: comparison(z.string()).optional(),
-        intent: comparison(z.string()).optional(),
-        priority: comparison(z.int()).optional(),
-        state: comparison(z.enum(["open", "done", "canceled"])).optional(),
-        version: comparison(z.int()).optional(),
-        createdAt: comparison(z.date()).optional(),
-        parentId: comparison(z.string()).optional(),
-        creatorId: comparison(z.string()).optional(),
+        id: comparison(z.uuid()).exactOptional(),
+        title: comparison(z.string()).exactOptional(),
+        intent: comparison(z.string()).exactOptional(),
+        priority: comparison(z.int()).exactOptional(),
+        state: comparison(z.enum(["open", "done", "canceled"])).exactOptional(),
+        version: comparison(z.int()).exactOptional(),
+        createdAt: comparison(z.date()).exactOptional(),
+        parentId: comparison(z.string()).exactOptional(),
+        creatorId: comparison(z.string()).exactOptional(),
       }),
     ]) as unknown as z.ZodType<TaskFilter>,
 );

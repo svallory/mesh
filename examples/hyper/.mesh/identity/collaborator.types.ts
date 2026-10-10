@@ -8,9 +8,7 @@ export type Collaborator = {
   kind: "human" | "agent";
   name: string;
   state: "active" | "retired";
-  retiredAt: Date | null;
   version: number;
-  createdAt: Date;
 };
 
 export type RegisterCollaboratorInput = {
@@ -38,9 +36,7 @@ export type CollaboratorFilter =
       kind?: $Comparison<"human" | "agent">;
       name?: $Comparison<string>;
       state?: $Comparison<"active" | "retired">;
-      retiredAt?: $Comparison<Date>;
       version?: $Comparison<number>;
-      createdAt?: $Comparison<Date>;
     };
 
 export type CollaboratorSort = readonly (
@@ -52,10 +48,6 @@ export type CollaboratorSort = readonly (
   | "-name"
   | "state"
   | "-state"
-  | "retiredAt"
-  | "-retiredAt"
   | "version"
   | "-version"
-  | "createdAt"
-  | "-createdAt"
 )[];

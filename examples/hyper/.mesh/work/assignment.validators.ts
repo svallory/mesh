@@ -24,33 +24,35 @@ type SameShape<A, B> = [Keys<A>] extends [Keys<B>]
 type Assert<T extends true> = T;
 
 const comparison = <T extends z.ZodType>(value: T) =>
-  z.strictObject({
-    eq: value.nullable().optional(),
-    ne: value.nullable().optional(),
-    lt: value.optional(),
-    lte: value.optional(),
-    gt: value.optional(),
-    gte: value.optional(),
-    in: z.array(value).readonly().optional(),
-    nil: z.boolean().optional(),
-  });
+  z
+    .strictObject({
+      eq: value.nullable().exactOptional(),
+      ne: value.nullable().exactOptional(),
+      lt: value.exactOptional(),
+      lte: value.exactOptional(),
+      gt: value.exactOptional(),
+      gte: value.exactOptional(),
+      in: z.array(value).readonly().exactOptional(),
+      nil: z.boolean().exactOptional(),
+    })
+    .refine((operators) => Object.keys(operators).length > 0, {
+      message: "a comparison needs an operator",
+    });
 
-// The cast is the schema's only gap: zod writes an absent key as `?: T | undefined`, which the
-// strictest `exactOptionalPropertyTypes` setting does not let the filter type accept.
 export const assignmentFilter: z.ZodType<AssignmentFilter> = z.lazy(
   () =>
     z.union([
       z.strictObject({ and: z.array(assignmentFilter).readonly() }),
       z.strictObject({ or: z.array(assignmentFilter).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).optional(),
-        reviewWaived: comparison(z.boolean()).optional(),
-        startedAt: comparison(z.date()).optional(),
-        endedAt: comparison(z.date()).optional(),
-        endReason: comparison(z.enum(["reassigned", "unassigned"])).optional(),
-        taskId: comparison(z.string()).optional(),
-        assigneeId: comparison(z.string()).optional(),
-        delegatorId: comparison(z.string()).optional(),
+        id: comparison(z.uuid()).exactOptional(),
+        reviewWaived: comparison(z.boolean()).exactOptional(),
+        startedAt: comparison(z.date()).exactOptional(),
+        endedAt: comparison(z.date()).exactOptional(),
+        endReason: comparison(z.enum(["reassigned", "unassigned"])).exactOptional(),
+        taskId: comparison(z.string()).exactOptional(),
+        assigneeId: comparison(z.string()).exactOptional(),
+        delegatorId: comparison(z.string()).exactOptional(),
       }),
     ]) as unknown as z.ZodType<AssignmentFilter>,
 );

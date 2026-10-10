@@ -13,7 +13,7 @@ export type Membership = {
   revokedAt: Date | null;
   version: number;
   collaboratorId: string;
-  grantedById: string | null;
+  grantedById: string;
   revokedById: string | null;
 };
 
@@ -21,7 +21,7 @@ export type GrantMembershipInput = {
   role: "owner" | "member" | "guest";
   grantedAt: Date;
   collaborator: Collaborator["id"];
-  grantedBy?: Collaborator["id"] | null | undefined;
+  grantedBy: Collaborator["id"];
 };
 
 export type ChangeRoleMembershipInput = {

@@ -20,35 +20,39 @@ type SameShape<A, B> = [Keys<A>] extends [Keys<B>]
 type Assert<T extends true> = T;
 
 const comparison = <T extends z.ZodType>(value: T) =>
-  z.strictObject({
-    eq: value.nullable().optional(),
-    ne: value.nullable().optional(),
-    lt: value.optional(),
-    lte: value.optional(),
-    gt: value.optional(),
-    gte: value.optional(),
-    in: z.array(value).readonly().optional(),
-    nil: z.boolean().optional(),
-  });
+  z
+    .strictObject({
+      eq: value.nullable().exactOptional(),
+      ne: value.nullable().exactOptional(),
+      lt: value.exactOptional(),
+      lte: value.exactOptional(),
+      gt: value.exactOptional(),
+      gte: value.exactOptional(),
+      in: z.array(value).readonly().exactOptional(),
+      nil: z.boolean().exactOptional(),
+    })
+    .refine((operators) => Object.keys(operators).length > 0, {
+      message: "a comparison needs an operator",
+    });
 
-// The cast is the schema's only gap: zod writes an absent key as `?: T | undefined`, which the
-// strictest `exactOptionalPropertyTypes` setting does not let the filter type accept.
 export const eventFilter: z.ZodType<EventFilter> = z.lazy(
   () =>
     z.union([
       z.strictObject({ and: z.array(eventFilter).readonly() }),
       z.strictObject({ or: z.array(eventFilter).readonly() }),
       z.strictObject({
-        seq: comparison(z.int()).optional(),
-        resource: comparison(z.string()).optional(),
-        action: comparison(z.string()).optional(),
-        recordId: comparison(z.uuid()).optional(),
-        recordVersion: comparison(z.int()).optional(),
-        actorId: comparison(z.uuid()).optional(),
-        caller: comparison(z.string()).optional(),
-        commandId: comparison(z.string()).optional(),
-        occurredAt: comparison(z.date()).optional(),
-        taskId: comparison(z.string()).optional(),
+        seq: comparison(z.int()).exactOptional(),
+        type: comparison(z.string()).exactOptional(),
+        schemaVersion: comparison(z.int()).exactOptional(),
+        workspaceId: comparison(z.uuid()).exactOptional(),
+        recordType: comparison(z.string()).exactOptional(),
+        recordId: comparison(z.uuid()).exactOptional(),
+        recordVersion: comparison(z.int()).exactOptional(),
+        actor: comparison(z.string()).exactOptional(),
+        caller: comparison(z.string()).exactOptional(),
+        occurredAt: comparison(z.date()).exactOptional(),
+        recordedAt: comparison(z.date()).exactOptional(),
+        taskId: comparison(z.string()).exactOptional(),
       }),
     ]) as unknown as z.ZodType<EventFilter>,
 );
@@ -58,22 +62,26 @@ export const eventSort = z
     z.enum([
       "seq",
       "-seq",
-      "resource",
-      "-resource",
-      "action",
-      "-action",
+      "type",
+      "-type",
+      "schemaVersion",
+      "-schemaVersion",
+      "workspaceId",
+      "-workspaceId",
+      "recordType",
+      "-recordType",
       "recordId",
       "-recordId",
       "recordVersion",
       "-recordVersion",
-      "actorId",
-      "-actorId",
+      "actor",
+      "-actor",
       "caller",
       "-caller",
-      "commandId",
-      "-commandId",
       "occurredAt",
       "-occurredAt",
+      "recordedAt",
+      "-recordedAt",
       "taskId",
       "-taskId",
     ]),
@@ -81,20 +89,34 @@ export const eventSort = z
   .readonly();
 
 export const recordEventInput = z.strictObject({
-  resource: z.string(),
-  action: z.string(),
+  type: z.string(),
+  schemaVersion: z.int().min(1).optional(),
+  workspaceId: z.uuid(),
+  recordType: z.string(),
   recordId: z.uuid(),
-  recordVersion: z.int().nullable().optional(),
-  actorId: z.uuid().nullable().optional(),
-  caller: z.string().nullable().optional(),
-  commandId: z.string().nullable().optional(),
-  changes: (
+  recordVersion: z.int().min(1),
+  actor: z.string(),
+  caller: z.string(),
+  occurredAt: z.date(),
+  cause: z
+    .json()
+    .refine((value) => value !== null, {
+      message: "null is only allowed on a nullable attribute",
+    }) as z.ZodType<unknown>,
+  checks: (
     z
       .json()
       .refine((value) => value !== null, {
         message: "null is only allowed on a nullable attribute",
       }) as z.ZodType<unknown>
-  ).optional(),
+  )
+    .nullable()
+    .optional(),
+  payload: z
+    .json()
+    .refine((value) => value !== null, {
+      message: "null is only allowed on a nullable attribute",
+    }) as z.ZodType<unknown>,
   task: z.uuid().nullable().optional(),
 }) satisfies z.ZodType<RecordEventInput>;
 

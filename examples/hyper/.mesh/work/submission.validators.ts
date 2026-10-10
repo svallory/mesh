@@ -24,33 +24,35 @@ type SameShape<A, B> = [Keys<A>] extends [Keys<B>]
 type Assert<T extends true> = T;
 
 const comparison = <T extends z.ZodType>(value: T) =>
-  z.strictObject({
-    eq: value.nullable().optional(),
-    ne: value.nullable().optional(),
-    lt: value.optional(),
-    lte: value.optional(),
-    gt: value.optional(),
-    gte: value.optional(),
-    in: z.array(value).readonly().optional(),
-    nil: z.boolean().optional(),
-  });
+  z
+    .strictObject({
+      eq: value.nullable().exactOptional(),
+      ne: value.nullable().exactOptional(),
+      lt: value.exactOptional(),
+      lte: value.exactOptional(),
+      gt: value.exactOptional(),
+      gte: value.exactOptional(),
+      in: z.array(value).readonly().exactOptional(),
+      nil: z.boolean().exactOptional(),
+    })
+    .refine((operators) => Object.keys(operators).length > 0, {
+      message: "a comparison needs an operator",
+    });
 
-// The cast is the schema's only gap: zod writes an absent key as `?: T | undefined`, which the
-// strictest `exactOptionalPropertyTypes` setting does not let the filter type accept.
 export const submissionFilter: z.ZodType<SubmissionFilter> = z.lazy(
   () =>
     z.union([
       z.strictObject({ and: z.array(submissionFilter).readonly() }),
       z.strictObject({ or: z.array(submissionFilter).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).optional(),
-        summary: comparison(z.string()).optional(),
-        fence: comparison(z.int()).optional(),
-        taskVersion: comparison(z.int()).optional(),
-        state: comparison(z.enum(["pending", "accepted", "returned", "withdrawn"])).optional(),
-        submittedAt: comparison(z.date()).optional(),
-        taskId: comparison(z.string()).optional(),
-        submitterId: comparison(z.string()).optional(),
+        id: comparison(z.uuid()).exactOptional(),
+        summary: comparison(z.string()).exactOptional(),
+        fence: comparison(z.int()).exactOptional(),
+        taskVersion: comparison(z.int()).exactOptional(),
+        state: comparison(z.enum(["pending", "accepted", "returned", "withdrawn"])).exactOptional(),
+        submittedAt: comparison(z.date()).exactOptional(),
+        taskId: comparison(z.string()).exactOptional(),
+        submitterId: comparison(z.string()).exactOptional(),
       }),
     ]) as unknown as z.ZodType<SubmissionFilter>,
 );
@@ -79,7 +81,7 @@ export const submissionSort = z
   .readonly();
 
 export const submitSubmissionInput = z.strictObject({
-  summary: z.string().min(1),
+  summary: z.string().min(1).nullable().optional(),
   evidence: (
     z
       .json()
@@ -87,7 +89,7 @@ export const submitSubmissionInput = z.strictObject({
         message: "null is only allowed on a nullable attribute",
       }) as z.ZodType<unknown>
   ).optional(),
-  fence: z.int(),
+  fence: z.int().nullable().optional(),
   taskVersion: z.int(),
   task: z.uuid(),
   submitter: z.uuid(),

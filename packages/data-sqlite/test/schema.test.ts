@@ -65,6 +65,11 @@ describe("schemaView", () => {
     ]);
   });
 
+  test("a unique attribute prints unique, and only that one", () => {
+    const view = schemaView(input({ "t.mesh.mx": "entity :T table=\"ts\"\n  attributes\n    uuid :id primary-key\n    string :slug unique\n    string :other\n    string :maybe unique nullable\n" }));
+    expect(view.tables[0]!.columns.map((column) => [column.key, column.unique])).toEqual([["id", false], ["slug", true], ["other", false], ["maybe", true]]);
+  });
+
   test("only the builders the tables use are imported", () => {
     expect(schemaView(input({ "user.mesh.mx": "entity :User\n  attributes\n    uuid :id primary-key\n" })).builders).toEqual(["text"]);
   });

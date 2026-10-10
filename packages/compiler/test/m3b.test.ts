@@ -70,6 +70,15 @@ describe("json in an entity file (ADR-0069)", () => {
     expect(result.diagnostics).toEqual([expect.objectContaining({ code: "MESH_SORT_TYPE", message: expect.stringContaining("&data is :json") })]);
   });
 
+  test("a json attribute cannot be used in a declared filter, in either spelling", () => {
+    for (const filter of ["    read :byData filter=() => &data === 1\n", "    read :byData\n      filter=() => &data.size > 1\n"]) {
+      const result = build(withJson("json :data", "  actions\n" + filter));
+      expect(result.document).toBeNull();
+      expect(result.diagnostics).toEqual([expect.objectContaining({ code: "MESH_FILTER_TYPE", message: expect.stringContaining("&data is :json, which a filter cannot use") })]);
+    }
+    expect(build(withJson("json :data\n    string :name", "  actions\n    read :byName filter=() => &name === \"a\"\n")).diagnostics).toEqual([]);
+  });
+
   test("a json attribute is not a rollup operand", () => {
     const list = "entity :List\n  attributes\n    uuid :id primary-key\n    json :data\n";
     const source = `import { List } from "./list.mesh.mx"\nentity :Todo\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :lists entity=List\n  computed\n    max :biggest of="lists.data"\n`;
@@ -214,7 +223,7 @@ describe("a read's input", () => {
     expect(view.inputs.find((i) => i.name === "ReadItemInput")!.members.map((m) => m.key)).toEqual(["filter", "sort", "limit", "offset"]);
     const schema = validatorsView({ document, config: configOf("/p") }, document.entities[0]!);
     expect(schema.query!.filterFields.map((f) => f.key)).toEqual(["id", "name", "count"]);
-    expect(schema.query!.filterFields[0]!.schema).toBe("comparison(z.uuid()).optional()");
+    expect(schema.query!.filterFields[0]!.schema).toBe("comparison(z.uuid()).exactOptional()");
   });
 
   test.each(["filter", "sort", "limit", "offset"])("an argument called %s is refused: the read takes it from the caller", async (name) => {

@@ -3,7 +3,7 @@ entity :Workspace table="workspaces"
     uuid :id primary-key
     string :name nullable
     enum :location values=[:local, :shared] default=:local
-    enum :state values=[:active] default=:active
+    enum :state values=[:active, :moved] default=:active
     integer :version default=1
   actions auto=[:read]
     create :create

@@ -4,9 +4,7 @@ entity :Collaborator table="collaborators"
     enum :kind values=[:human, :agent]
     string :name
     enum :state values=[:active, :retired] default=:active
-    timestamp :retiredAt nullable
     integer :version default=1
-    timestamp :createdAt on=:create
   actions auto=[:read]
     create :register
       input

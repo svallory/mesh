@@ -23,7 +23,6 @@ export function bindClaim(layer: $DataLayer) {
           endedAt: null,
           endReason: null,
           state: "active",
-          version: 1,
           taskId: parsed.task,
           holderId: parsed.holder,
         });

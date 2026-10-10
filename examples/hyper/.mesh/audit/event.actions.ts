@@ -18,15 +18,19 @@ export function bindEvent(layer: $DataLayer) {
       return layer.transaction(async (tx) => {
         const now = new Date();
         const row = await tx.insert(tables.event, {
-          resource: parsed.resource,
-          action: parsed.action,
+          type: parsed.type,
+          schemaVersion: parsed.schemaVersion === undefined ? 1 : parsed.schemaVersion,
+          workspaceId: parsed.workspaceId,
+          recordType: parsed.recordType,
           recordId: parsed.recordId,
-          recordVersion: parsed.recordVersion === undefined ? null : parsed.recordVersion,
-          actorId: parsed.actorId === undefined ? null : parsed.actorId,
-          caller: parsed.caller === undefined ? null : parsed.caller,
-          commandId: parsed.commandId === undefined ? null : parsed.commandId,
-          changes: parsed.changes === undefined ? {} : parsed.changes,
-          occurredAt: now,
+          recordVersion: parsed.recordVersion,
+          actor: parsed.actor,
+          caller: parsed.caller,
+          occurredAt: parsed.occurredAt,
+          recordedAt: now,
+          cause: parsed.cause,
+          checks: parsed.checks === undefined ? null : parsed.checks,
+          payload: parsed.payload,
           taskId: parsed.task === undefined ? null : parsed.task,
         });
         return row as Event;

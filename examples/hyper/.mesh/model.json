@@ -11,24 +11,48 @@
             {
               "kind": "member",
               "ref": {
-                "name": "resource",
+                "name": "type",
                 "position": {
                   "column": 8,
                   "file": "src/domain/audit/event.mesh.mx",
-                  "line": 20,
-                  "offset": 483
+                  "line": 24,
+                  "offset": 553
                 }
               }
             },
             {
               "kind": "member",
               "ref": {
-                "name": "action",
+                "name": "schemaVersion",
                 "position": {
                   "column": 8,
                   "file": "src/domain/audit/event.mesh.mx",
-                  "line": 21,
-                  "offset": 501
+                  "line": 25,
+                  "offset": 567
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "workspaceId",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/audit/event.mesh.mx",
+                  "line": 26,
+                  "offset": 590
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "recordType",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/audit/event.mesh.mx",
+                  "line": 27,
+                  "offset": 611
                 }
               }
             },
@@ -39,8 +63,8 @@
                 "position": {
                   "column": 8,
                   "file": "src/domain/audit/event.mesh.mx",
-                  "line": 22,
-                  "offset": 517
+                  "line": 28,
+                  "offset": 631
                 }
               }
             },
@@ -51,20 +75,20 @@
                 "position": {
                   "column": 8,
                   "file": "src/domain/audit/event.mesh.mx",
-                  "line": 23,
-                  "offset": 535
+                  "line": 29,
+                  "offset": 649
                 }
               }
             },
             {
               "kind": "member",
               "ref": {
-                "name": "actorId",
+                "name": "actor",
                 "position": {
                   "column": 8,
                   "file": "src/domain/audit/event.mesh.mx",
-                  "line": 24,
-                  "offset": 558
+                  "line": 30,
+                  "offset": 672
                 }
               }
             },
@@ -75,32 +99,56 @@
                 "position": {
                   "column": 8,
                   "file": "src/domain/audit/event.mesh.mx",
-                  "line": 25,
-                  "offset": 575
+                  "line": 31,
+                  "offset": 687
                 }
               }
             },
             {
               "kind": "member",
               "ref": {
-                "name": "commandId",
+                "name": "occurredAt",
                 "position": {
                   "column": 8,
                   "file": "src/domain/audit/event.mesh.mx",
-                  "line": 26,
-                  "offset": 591
+                  "line": 32,
+                  "offset": 703
                 }
               }
             },
             {
               "kind": "member",
               "ref": {
-                "name": "changes",
+                "name": "cause",
                 "position": {
                   "column": 8,
                   "file": "src/domain/audit/event.mesh.mx",
-                  "line": 27,
-                  "offset": 610
+                  "line": 33,
+                  "offset": 723
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "checks",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/audit/event.mesh.mx",
+                  "line": 34,
+                  "offset": 738
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "payload",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/audit/event.mesh.mx",
+                  "line": 35,
+                  "offset": 754
                 }
               }
             },
@@ -111,8 +159,8 @@
                 "position": {
                   "column": 8,
                   "file": "src/domain/audit/event.mesh.mx",
-                  "line": 28,
-                  "offset": 627
+                  "line": 36,
+                  "offset": 771
                 }
               }
             }
@@ -122,8 +170,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/audit/event.mesh.mx",
-            "line": 18,
-            "offset": 448
+            "line": 22,
+            "offset": 518
           },
           "validate": []
         }
@@ -144,7 +192,7 @@
           "unique": false
         },
         {
-          "name": "resource",
+          "name": "type",
           "nullable": false,
           "position": {
             "column": 4,
@@ -157,13 +205,41 @@
           "unique": false
         },
         {
-          "name": "action",
+          "default": 1,
+          "min": 1,
+          "name": "schemaVersion",
           "nullable": false,
           "position": {
             "column": 4,
             "file": "src/domain/audit/event.mesh.mx",
             "line": 7,
-            "offset": 141
+            "offset": 137
+          },
+          "primaryKey": false,
+          "type": "integer",
+          "unique": false
+        },
+        {
+          "name": "workspaceId",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/audit/event.mesh.mx",
+            "line": 8,
+            "offset": 180
+          },
+          "primaryKey": false,
+          "type": "uuid",
+          "unique": false
+        },
+        {
+          "name": "recordType",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/audit/event.mesh.mx",
+            "line": 9,
+            "offset": 202
           },
           "primaryKey": false,
           "type": "string",
@@ -175,91 +251,117 @@
           "position": {
             "column": 4,
             "file": "src/domain/audit/event.mesh.mx",
-            "line": 8,
-            "offset": 160
+            "line": 10,
+            "offset": 225
           },
           "primaryKey": false,
           "type": "uuid",
           "unique": false
         },
         {
+          "min": 1,
           "name": "recordVersion",
-          "nullable": true,
+          "nullable": false,
           "position": {
             "column": 4,
             "file": "src/domain/audit/event.mesh.mx",
-            "line": 9,
-            "offset": 179
+            "line": 11,
+            "offset": 244
           },
           "primaryKey": false,
           "type": "integer",
           "unique": false
         },
         {
-          "name": "actorId",
-          "nullable": true,
-          "position": {
-            "column": 4,
-            "file": "src/domain/audit/event.mesh.mx",
-            "line": 10,
-            "offset": 215
-          },
-          "primaryKey": false,
-          "type": "uuid",
-          "unique": false
-        },
-        {
-          "name": "caller",
-          "nullable": true,
-          "position": {
-            "column": 4,
-            "file": "src/domain/audit/event.mesh.mx",
-            "line": 11,
-            "offset": 242
-          },
-          "primaryKey": false,
-          "type": "string",
-          "unique": false
-        },
-        {
-          "name": "commandId",
-          "nullable": true,
+          "name": "actor",
+          "nullable": false,
           "position": {
             "column": 4,
             "file": "src/domain/audit/event.mesh.mx",
             "line": 12,
-            "offset": 270
+            "offset": 277
           },
           "primaryKey": false,
           "type": "string",
           "unique": false
         },
         {
-          "default": {},
-          "name": "changes",
+          "name": "caller",
           "nullable": false,
           "position": {
             "column": 4,
             "file": "src/domain/audit/event.mesh.mx",
             "line": 13,
-            "offset": 301
+            "offset": 295
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "name": "occurredAt",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/audit/event.mesh.mx",
+            "line": 14,
+            "offset": 314
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        },
+        {
+          "name": "recordedAt",
+          "nullable": false,
+          "on": "create",
+          "position": {
+            "column": 4,
+            "file": "src/domain/audit/event.mesh.mx",
+            "line": 15,
+            "offset": 340
+          },
+          "primaryKey": false,
+          "type": "timestamp",
+          "unique": false
+        },
+        {
+          "name": "cause",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/audit/event.mesh.mx",
+            "line": 16,
+            "offset": 377
           },
           "primaryKey": false,
           "type": "json",
           "unique": false
         },
         {
-          "name": "occurredAt",
-          "nullable": false,
-          "on": "create",
+          "name": "checks",
+          "nullable": true,
           "position": {
             "column": 4,
             "file": "src/domain/audit/event.mesh.mx",
-            "line": 14,
-            "offset": 330
+            "line": 17,
+            "offset": 393
           },
           "primaryKey": false,
-          "type": "timestamp",
+          "type": "json",
+          "unique": false
+        },
+        {
+          "name": "payload",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/audit/event.mesh.mx",
+            "line": 18,
+            "offset": 419
+          },
+          "primaryKey": false,
+          "type": "json",
           "unique": false
         }
       ],
@@ -304,8 +406,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/audit/event.mesh.mx",
-            "line": 16,
-            "offset": 383
+            "line": 20,
+            "offset": 453
           }
         }
       ],
@@ -2414,8 +2516,8 @@
                 "position": {
                   "column": 8,
                   "file": "src/domain/identity/collaborator.mesh.mx",
-                  "line": 13,
-                  "offset": 361
+                  "line": 11,
+                  "offset": 291
                 }
               }
             },
@@ -2426,8 +2528,8 @@
                 "position": {
                   "column": 8,
                   "file": "src/domain/identity/collaborator.mesh.mx",
-                  "line": 14,
-                  "offset": 375
+                  "line": 12,
+                  "offset": 305
                 }
               }
             }
@@ -2437,8 +2539,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/identity/collaborator.mesh.mx",
-            "line": 11,
-            "offset": 324
+            "line": 9,
+            "offset": 254
           },
           "validate": []
         },
@@ -2452,8 +2554,8 @@
                 "position": {
                   "column": 8,
                   "file": "src/domain/identity/collaborator.mesh.mx",
-                  "line": 17,
-                  "offset": 420
+                  "line": 15,
+                  "offset": 350
                 }
               }
             }
@@ -2463,8 +2565,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/identity/collaborator.mesh.mx",
-            "line": 15,
-            "offset": 385
+            "line": 13,
+            "offset": 315
           },
           "validate": []
         }
@@ -2543,8 +2645,9 @@
           ]
         },
         {
-          "name": "retiredAt",
-          "nullable": true,
+          "default": 1,
+          "name": "version",
+          "nullable": false,
           "position": {
             "column": 4,
             "file": "src/domain/identity/collaborator.mesh.mx",
@@ -2552,35 +2655,7 @@
             "offset": 200
           },
           "primaryKey": false,
-          "type": "timestamp",
-          "unique": false
-        },
-        {
-          "default": 1,
-          "name": "version",
-          "nullable": false,
-          "position": {
-            "column": 4,
-            "file": "src/domain/identity/collaborator.mesh.mx",
-            "line": 8,
-            "offset": 234
-          },
-          "primaryKey": false,
           "type": "integer",
-          "unique": false
-        },
-        {
-          "name": "createdAt",
-          "nullable": false,
-          "on": "create",
-          "position": {
-            "column": 4,
-            "file": "src/domain/identity/collaborator.mesh.mx",
-            "line": 9,
-            "offset": 265
-          },
-          "primaryKey": false,
-          "type": "timestamp",
           "unique": false
         }
       ],
@@ -2615,7 +2690,7 @@
                   "column": 8,
                   "file": "src/domain/identity/membership.mesh.mx",
                   "line": 18,
-                  "offset": 565
+                  "offset": 556
                 }
               }
             },
@@ -2627,7 +2702,7 @@
                   "column": 8,
                   "file": "src/domain/identity/membership.mesh.mx",
                   "line": 19,
-                  "offset": 579
+                  "offset": 570
                 }
               }
             },
@@ -2639,7 +2714,7 @@
                   "column": 8,
                   "file": "src/domain/identity/membership.mesh.mx",
                   "line": 20,
-                  "offset": 598
+                  "offset": 589
                 }
               }
             },
@@ -2651,7 +2726,7 @@
                   "column": 8,
                   "file": "src/domain/identity/membership.mesh.mx",
                   "line": 21,
-                  "offset": 620
+                  "offset": 611
                 }
               }
             }
@@ -2662,7 +2737,7 @@
             "column": 4,
             "file": "src/domain/identity/membership.mesh.mx",
             "line": 16,
-            "offset": 531
+            "offset": 522
           },
           "validate": []
         },
@@ -2677,7 +2752,7 @@
                   "column": 8,
                   "file": "src/domain/identity/membership.mesh.mx",
                   "line": 24,
-                  "offset": 674
+                  "offset": 665
                 }
               }
             }
@@ -2688,7 +2763,7 @@
             "column": 4,
             "file": "src/domain/identity/membership.mesh.mx",
             "line": 22,
-            "offset": 635
+            "offset": 626
           },
           "validate": []
         }
@@ -2850,7 +2925,7 @@
           "keyColumn": "grantedById",
           "kind": "belongs-to",
           "name": "grantedBy",
-          "nullable": true,
+          "nullable": false,
           "position": {
             "column": 4,
             "file": "src/domain/identity/membership.mesh.mx",
@@ -2871,7 +2946,7 @@
             "column": 4,
             "file": "src/domain/identity/membership.mesh.mx",
             "line": 14,
-            "offset": 453
+            "offset": 444
           }
         }
       ],
@@ -2890,7 +2965,7 @@
                   "column": 8,
                   "file": "src/domain/identity/workspace.mesh.mx",
                   "line": 11,
-                  "offset": 302
+                  "offset": 310
                 }
               }
             },
@@ -2902,7 +2977,7 @@
                   "column": 8,
                   "file": "src/domain/identity/workspace.mesh.mx",
                   "line": 12,
-                  "offset": 316
+                  "offset": 324
                 }
               }
             }
@@ -2913,7 +2988,7 @@
             "column": 4,
             "file": "src/domain/identity/workspace.mesh.mx",
             "line": 9,
-            "offset": 267
+            "offset": 275
           },
           "validate": []
         },
@@ -2928,7 +3003,7 @@
                   "column": 8,
                   "file": "src/domain/identity/workspace.mesh.mx",
                   "line": 15,
-                  "offset": 365
+                  "offset": 373
                 }
               }
             }
@@ -2939,7 +3014,7 @@
             "column": 4,
             "file": "src/domain/identity/workspace.mesh.mx",
             "line": 13,
-            "offset": 330
+            "offset": 338
           },
           "validate": []
         }
@@ -3014,6 +3089,9 @@
           "values": [
             {
               "value": "active"
+            },
+            {
+              "value": "moved"
             }
           ]
         },
@@ -3025,7 +3103,7 @@
             "column": 4,
             "file": "src/domain/identity/workspace.mesh.mx",
             "line": 7,
-            "offset": 213
+            "offset": 221
           },
           "primaryKey": false,
           "type": "integer",
@@ -3308,8 +3386,8 @@
                 "position": {
                   "column": 8,
                   "file": "src/domain/work/claim.mesh.mx",
-                  "line": 20,
-                  "offset": 569
+                  "line": 19,
+                  "offset": 538
                 }
               }
             },
@@ -3320,8 +3398,8 @@
                 "position": {
                   "column": 8,
                   "file": "src/domain/work/claim.mesh.mx",
-                  "line": 21,
-                  "offset": 584
+                  "line": 20,
+                  "offset": 553
                 }
               }
             },
@@ -3332,8 +3410,8 @@
                 "position": {
                   "column": 8,
                   "file": "src/domain/work/claim.mesh.mx",
-                  "line": 22,
-                  "offset": 604
+                  "line": 21,
+                  "offset": 573
                 }
               }
             },
@@ -3344,8 +3422,8 @@
                 "position": {
                   "column": 8,
                   "file": "src/domain/work/claim.mesh.mx",
-                  "line": 23,
-                  "offset": 623
+                  "line": 22,
+                  "offset": 592
                 }
               }
             },
@@ -3356,8 +3434,8 @@
                 "position": {
                   "column": 8,
                   "file": "src/domain/work/claim.mesh.mx",
-                  "line": 24,
-                  "offset": 637
+                  "line": 23,
+                  "offset": 606
                 }
               }
             }
@@ -3367,8 +3445,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/work/claim.mesh.mx",
-            "line": 18,
-            "offset": 533
+            "line": 17,
+            "offset": 502
           },
           "validate": []
         }
@@ -3482,20 +3560,6 @@
               "value": "expired"
             }
           ]
-        },
-        {
-          "default": 1,
-          "name": "version",
-          "nullable": false,
-          "position": {
-            "column": 4,
-            "file": "src/domain/work/claim.mesh.mx",
-            "line": 13,
-            "offset": 387
-          },
-          "primaryKey": false,
-          "type": "integer",
-          "unique": false
         }
       ],
       "auto": [
@@ -3551,8 +3615,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/work/claim.mesh.mx",
-            "line": 15,
-            "offset": 434
+            "line": 14,
+            "offset": 403
           }
         },
         {
@@ -3567,8 +3631,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/work/claim.mesh.mx",
-            "line": 16,
-            "offset": 467
+            "line": 15,
+            "offset": 436
           }
         }
       ],
@@ -4194,7 +4258,7 @@
                   "column": 8,
                   "file": "src/domain/work/late-result.mesh.mx",
                   "line": 17,
-                  "offset": 450
+                  "offset": 453
                 }
               }
             },
@@ -4206,7 +4270,7 @@
                   "column": 8,
                   "file": "src/domain/work/late-result.mesh.mx",
                   "line": 18,
-                  "offset": 465
+                  "offset": 468
                 }
               }
             },
@@ -4218,7 +4282,7 @@
                   "column": 8,
                   "file": "src/domain/work/late-result.mesh.mx",
                   "line": 19,
-                  "offset": 482
+                  "offset": 485
                 }
               }
             },
@@ -4230,19 +4294,19 @@
                   "column": 8,
                   "file": "src/domain/work/late-result.mesh.mx",
                   "line": 20,
-                  "offset": 500
+                  "offset": 503
                 }
               }
             },
             {
               "kind": "member",
               "ref": {
-                "name": "holder",
+                "name": "submitter",
                 "position": {
                   "column": 8,
                   "file": "src/domain/work/late-result.mesh.mx",
                   "line": 21,
-                  "offset": 514
+                  "offset": 517
                 }
               }
             }
@@ -4253,7 +4317,7 @@
             "column": 4,
             "file": "src/domain/work/late-result.mesh.mx",
             "line": 15,
-            "offset": 415
+            "offset": 418
           },
           "validate": []
         }
@@ -4390,9 +4454,9 @@
             "from": "../identity/collaborator.mesh.mx",
             "identifier": "Collaborator"
           },
-          "keyColumn": "holderId",
+          "keyColumn": "submitterId",
           "kind": "belongs-to",
-          "name": "holder",
+          "name": "submitter",
           "nullable": false,
           "position": {
             "column": 4,
@@ -4416,8 +4480,8 @@
                     "position": {
                       "column": 10,
                       "file": "src/domain/work/review.mesh.mx",
-                      "line": 20,
-                      "offset": 524
+                      "line": 22,
+                      "offset": 568
                     }
                   },
                   "value": {
@@ -4429,8 +4493,8 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/work/review.mesh.mx",
-                "line": 19,
-                "offset": 510
+                "line": 21,
+                "offset": 554
               }
             }
           ],
@@ -4438,12 +4502,24 @@
             {
               "kind": "member",
               "ref": {
+                "name": "ruleApplied",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/review.mesh.mx",
+                  "line": 17,
+                  "offset": 486
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
                 "name": "submission",
                 "position": {
                   "column": 8,
                   "file": "src/domain/work/review.mesh.mx",
-                  "line": 16,
-                  "offset": 463
+                  "line": 18,
+                  "offset": 507
                 }
               }
             },
@@ -4454,8 +4530,8 @@
                 "position": {
                   "column": 8,
                   "file": "src/domain/work/review.mesh.mx",
-                  "line": 17,
-                  "offset": 483
+                  "line": 19,
+                  "offset": 527
                 }
               }
             }
@@ -4465,8 +4541,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/work/review.mesh.mx",
-            "line": 14,
-            "offset": 428
+            "line": 15,
+            "offset": 451
           },
           "validate": []
         },
@@ -4480,8 +4556,8 @@
                     "position": {
                       "column": 10,
                       "file": "src/domain/work/review.mesh.mx",
-                      "line": 28,
-                      "offset": 659
+                      "line": 31,
+                      "offset": 724
                     }
                   },
                   "value": {
@@ -4493,8 +4569,8 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/work/review.mesh.mx",
-                "line": 27,
-                "offset": 645
+                "line": 30,
+                "offset": 710
               }
             }
           ],
@@ -4506,8 +4582,20 @@
                 "position": {
                   "column": 8,
                   "file": "src/domain/work/review.mesh.mx",
-                  "line": 23,
-                  "offset": 581
+                  "line": 25,
+                  "offset": 625
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "ruleApplied",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/review.mesh.mx",
+                  "line": 26,
+                  "offset": 642
                 }
               }
             },
@@ -4518,8 +4606,8 @@
                 "position": {
                   "column": 8,
                   "file": "src/domain/work/review.mesh.mx",
-                  "line": 24,
-                  "offset": 598
+                  "line": 27,
+                  "offset": 663
                 }
               }
             },
@@ -4530,8 +4618,8 @@
                 "position": {
                   "column": 8,
                   "file": "src/domain/work/review.mesh.mx",
-                  "line": 25,
-                  "offset": 618
+                  "line": 28,
+                  "offset": 683
                 }
               }
             }
@@ -4541,8 +4629,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/work/review.mesh.mx",
-            "line": 21,
-            "offset": 546
+            "line": 23,
+            "offset": 590
           },
           "validate": []
         }
@@ -4597,14 +4685,27 @@
           "unique": false
         },
         {
-          "name": "reviewedAt",
+          "name": "ruleApplied",
           "nullable": false,
-          "on": "create",
           "position": {
             "column": 4,
             "file": "src/domain/work/review.mesh.mx",
             "line": 9,
             "offset": 262
+          },
+          "primaryKey": false,
+          "type": "string",
+          "unique": false
+        },
+        {
+          "name": "decidedAt",
+          "nullable": false,
+          "on": "create",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/review.mesh.mx",
+            "line": 10,
+            "offset": 286
           },
           "primaryKey": false,
           "type": "timestamp",
@@ -4664,8 +4765,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/work/review.mesh.mx",
-            "line": 11,
-            "offset": 315
+            "line": 12,
+            "offset": 338
           }
         },
         {
@@ -4680,8 +4781,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/work/review.mesh.mx",
-            "line": 12,
-            "offset": 360
+            "line": 13,
+            "offset": 383
           }
         }
       ],
@@ -4700,7 +4801,7 @@
                   "column": 8,
                   "file": "src/domain/work/submission.mesh.mx",
                   "line": 19,
-                  "offset": 560
+                  "offset": 578
                 }
               }
             },
@@ -4712,7 +4813,7 @@
                   "column": 8,
                   "file": "src/domain/work/submission.mesh.mx",
                   "line": 20,
-                  "offset": 577
+                  "offset": 595
                 }
               }
             },
@@ -4724,7 +4825,7 @@
                   "column": 8,
                   "file": "src/domain/work/submission.mesh.mx",
                   "line": 21,
-                  "offset": 595
+                  "offset": 613
                 }
               }
             },
@@ -4736,7 +4837,7 @@
                   "column": 8,
                   "file": "src/domain/work/submission.mesh.mx",
                   "line": 22,
-                  "offset": 610
+                  "offset": 628
                 }
               }
             },
@@ -4748,7 +4849,7 @@
                   "column": 8,
                   "file": "src/domain/work/submission.mesh.mx",
                   "line": 23,
-                  "offset": 631
+                  "offset": 649
                 }
               }
             },
@@ -4760,7 +4861,7 @@
                   "column": 8,
                   "file": "src/domain/work/submission.mesh.mx",
                   "line": 24,
-                  "offset": 645
+                  "offset": 663
                 }
               }
             }
@@ -4771,7 +4872,7 @@
             "column": 4,
             "file": "src/domain/work/submission.mesh.mx",
             "line": 17,
-            "offset": 525
+            "offset": 543
           },
           "validate": []
         }
@@ -4794,7 +4895,7 @@
         {
           "min": 1,
           "name": "summary",
-          "nullable": false,
+          "nullable": true,
           "position": {
             "column": 4,
             "file": "src/domain/work/submission.mesh.mx",
@@ -4813,7 +4914,7 @@
             "column": 4,
             "file": "src/domain/work/submission.mesh.mx",
             "line": 8,
-            "offset": 210
+            "offset": 219
           },
           "primaryKey": false,
           "type": "json",
@@ -4821,12 +4922,12 @@
         },
         {
           "name": "fence",
-          "nullable": false,
+          "nullable": true,
           "position": {
             "column": 4,
             "file": "src/domain/work/submission.mesh.mx",
             "line": 9,
-            "offset": 240
+            "offset": 249
           },
           "primaryKey": false,
           "type": "integer",
@@ -4839,7 +4940,7 @@
             "column": 4,
             "file": "src/domain/work/submission.mesh.mx",
             "line": 10,
-            "offset": 259
+            "offset": 277
           },
           "primaryKey": false,
           "type": "integer",
@@ -4855,7 +4956,7 @@
             "column": 4,
             "file": "src/domain/work/submission.mesh.mx",
             "line": 11,
-            "offset": 284
+            "offset": 302
           },
           "primaryKey": false,
           "type": "enum",
@@ -4883,7 +4984,7 @@
             "column": 4,
             "file": "src/domain/work/submission.mesh.mx",
             "line": 12,
-            "offset": 369
+            "offset": 387
           },
           "primaryKey": false,
           "type": "timestamp",
@@ -4944,7 +5045,7 @@
             "column": 4,
             "file": "src/domain/work/submission.mesh.mx",
             "line": 14,
-            "offset": 423
+            "offset": 441
           }
         },
         {
@@ -4960,7 +5061,7 @@
             "column": 4,
             "file": "src/domain/work/submission.mesh.mx",
             "line": 15,
-            "offset": 456
+            "offset": 474
           }
         }
       ],

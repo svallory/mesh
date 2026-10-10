@@ -20,27 +20,29 @@ type SameShape<A, B> = [Keys<A>] extends [Keys<B>]
 type Assert<T extends true> = T;
 
 const comparison = <T extends z.ZodType>(value: T) =>
-  z.strictObject({
-    eq: value.nullable().optional(),
-    ne: value.nullable().optional(),
-    lt: value.optional(),
-    lte: value.optional(),
-    gt: value.optional(),
-    gte: value.optional(),
-    in: z.array(value).readonly().optional(),
-    nil: z.boolean().optional(),
-  });
+  z
+    .strictObject({
+      eq: value.nullable().exactOptional(),
+      ne: value.nullable().exactOptional(),
+      lt: value.exactOptional(),
+      lte: value.exactOptional(),
+      gt: value.exactOptional(),
+      gte: value.exactOptional(),
+      in: z.array(value).readonly().exactOptional(),
+      nil: z.boolean().exactOptional(),
+    })
+    .refine((operators) => Object.keys(operators).length > 0, {
+      message: "a comparison needs an operator",
+    });
 
-// The cast is the schema's only gap: zod writes an absent key as `?: T | undefined`, which the
-// strictest `exactOptionalPropertyTypes` setting does not let the filter type accept.
 export const commentFilter: z.ZodType<CommentFilter> = z.lazy(
   () =>
     z.union([
       z.strictObject({ and: z.array(commentFilter).readonly() }),
       z.strictObject({ or: z.array(commentFilter).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).optional(),
-        body: comparison(z.string()).optional(),
+        id: comparison(z.uuid()).exactOptional(),
+        body: comparison(z.string()).exactOptional(),
       }),
     ]) as unknown as z.ZodType<CommentFilter>,
 );

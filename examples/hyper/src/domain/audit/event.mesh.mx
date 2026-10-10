@@ -3,26 +3,34 @@ import { Task } from "../work/task.mesh.mx"
 entity :Event table="events"
   attributes
     integer :seq primary-key
-    string :resource
-    string :action
+    string :type
+    integer :schemaVersion default=1 min=1
+    uuid :workspaceId
+    string :recordType
     uuid :recordId
-    integer :recordVersion nullable
-    uuid :actorId nullable
-    string :caller nullable
-    string :commandId nullable
-    json :changes default={}
-    timestamp :occurredAt on=:create
+    integer :recordVersion min=1
+    string :actor
+    string :caller
+    timestamp :occurredAt
+    timestamp :recordedAt on=:create
+    json :cause
+    json :checks nullable
+    json :payload
   relationships
     belongs-to :task entity=Task nullable
   actions auto=[:read]
     create :record
       input
-        &resource
-        &action
+        &type
+        &schemaVersion
+        &workspaceId
+        &recordType
         &recordId
         &recordVersion
-        &actorId
+        &actor
         &caller
-        &commandId
-        &changes
+        &occurredAt
+        &cause
+        &checks
+        &payload
         &task

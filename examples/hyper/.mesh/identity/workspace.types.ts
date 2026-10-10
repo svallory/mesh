@@ -7,7 +7,7 @@ export type Workspace = {
   id: string;
   name: string | null;
   location: "local" | "shared";
-  state: "active";
+  state: "active" | "moved";
   version: number;
 };
 
@@ -35,7 +35,7 @@ export type WorkspaceFilter =
       id?: $Comparison<string>;
       name?: $Comparison<string>;
       location?: $Comparison<"local" | "shared">;
-      state?: $Comparison<"active">;
+      state?: $Comparison<"active" | "moved">;
       version?: $Comparison<number>;
     };
 

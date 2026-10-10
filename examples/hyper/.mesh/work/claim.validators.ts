@@ -20,35 +20,36 @@ type SameShape<A, B> = [Keys<A>] extends [Keys<B>]
 type Assert<T extends true> = T;
 
 const comparison = <T extends z.ZodType>(value: T) =>
-  z.strictObject({
-    eq: value.nullable().optional(),
-    ne: value.nullable().optional(),
-    lt: value.optional(),
-    lte: value.optional(),
-    gt: value.optional(),
-    gte: value.optional(),
-    in: z.array(value).readonly().optional(),
-    nil: z.boolean().optional(),
-  });
+  z
+    .strictObject({
+      eq: value.nullable().exactOptional(),
+      ne: value.nullable().exactOptional(),
+      lt: value.exactOptional(),
+      lte: value.exactOptional(),
+      gt: value.exactOptional(),
+      gte: value.exactOptional(),
+      in: z.array(value).readonly().exactOptional(),
+      nil: z.boolean().exactOptional(),
+    })
+    .refine((operators) => Object.keys(operators).length > 0, {
+      message: "a comparison needs an operator",
+    });
 
-// The cast is the schema's only gap: zod writes an absent key as `?: T | undefined`, which the
-// strictest `exactOptionalPropertyTypes` setting does not let the filter type accept.
 export const claimFilter: z.ZodType<ClaimFilter> = z.lazy(
   () =>
     z.union([
       z.strictObject({ and: z.array(claimFilter).readonly() }),
       z.strictObject({ or: z.array(claimFilter).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).optional(),
-        fence: comparison(z.int()).optional(),
-        acquiredAt: comparison(z.date()).optional(),
-        expiresAt: comparison(z.date()).optional(),
-        endedAt: comparison(z.date()).optional(),
-        endReason: comparison(z.string()).optional(),
-        state: comparison(z.enum(["active", "released", "revoked", "expired"])).optional(),
-        version: comparison(z.int()).optional(),
-        taskId: comparison(z.string()).optional(),
-        holderId: comparison(z.string()).optional(),
+        id: comparison(z.uuid()).exactOptional(),
+        fence: comparison(z.int()).exactOptional(),
+        acquiredAt: comparison(z.date()).exactOptional(),
+        expiresAt: comparison(z.date()).exactOptional(),
+        endedAt: comparison(z.date()).exactOptional(),
+        endReason: comparison(z.string()).exactOptional(),
+        state: comparison(z.enum(["active", "released", "revoked", "expired"])).exactOptional(),
+        taskId: comparison(z.string()).exactOptional(),
+        holderId: comparison(z.string()).exactOptional(),
       }),
     ]) as unknown as z.ZodType<ClaimFilter>,
 );
@@ -70,8 +71,6 @@ export const claimSort = z
       "-endReason",
       "state",
       "-state",
-      "version",
-      "-version",
       "taskId",
       "-taskId",
       "holderId",

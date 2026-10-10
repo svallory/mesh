@@ -6,13 +6,15 @@ entity :Review table="reviews"
     uuid :id primary-key
     enum :decision values=[:accept, :return]
     string :reasons nullable
-    timestamp :reviewedAt on=:create
+    string :ruleApplied
+    timestamp :decidedAt on=:create
   relationships
     belongs-to :submission entity=Submission
     belongs-to :reviewer entity=Collaborator
   actions auto=[:read]
     create :accept
       input
+        &ruleApplied
         &submission
         &reviewer
       do
@@ -21,6 +23,7 @@ entity :Review table="reviews"
     create :return
       input
         &reasons
+        &ruleApplied
         &submission
         &reviewer
       do

@@ -21,9 +21,9 @@ export function bindSubmission(layer: $DataLayer) {
       return layer.transaction(async (tx) => {
         const now = new Date();
         const row = await tx.insert(tables.submission, {
-          summary: parsed.summary,
+          summary: parsed.summary === undefined ? null : parsed.summary,
           evidence: parsed.evidence === undefined ? [] : parsed.evidence,
-          fence: parsed.fence,
+          fence: parsed.fence === undefined ? null : parsed.fence,
           taskVersion: parsed.taskVersion,
           state: "pending",
           submittedAt: now,

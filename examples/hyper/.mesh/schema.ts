@@ -43,7 +43,6 @@ export const claimTable = _meshSqlite("claims", {
   endedAt: integer("endedAt", { mode: "timestamp_ms" }),
   endReason: text("endReason"),
   state: text("state", { enum: ["active", "released", "revoked", "expired"] }).notNull(),
-  version: integer("version").notNull(),
   taskId: text("taskId").notNull(),
   holderId: text("holderId").notNull(),
 });
@@ -53,9 +52,7 @@ export const collaboratorTable = _meshSqlite("collaborators", {
   kind: text("kind", { enum: ["human", "agent"] }).notNull(),
   name: text("name").notNull(),
   state: text("state", { enum: ["active", "retired"] }).notNull(),
-  retiredAt: integer("retiredAt", { mode: "timestamp_ms" }),
   version: integer("version").notNull(),
-  createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull(),
 });
 
 export const completionTable = _meshSqlite("completions", {
@@ -77,15 +74,19 @@ export const dependencyTable = _meshSqlite("dependencies", {
 
 export const eventTable = _meshSqlite("events", {
   seq: integer("seq").notNull().primaryKey(),
-  resource: text("resource").notNull(),
-  action: text("action").notNull(),
+  type: text("type").notNull(),
+  schemaVersion: integer("schemaVersion").notNull(),
+  workspaceId: text("workspaceId").notNull(),
+  recordType: text("recordType").notNull(),
   recordId: text("recordId").notNull(),
-  recordVersion: integer("recordVersion"),
-  actorId: text("actorId"),
-  caller: text("caller"),
-  commandId: text("commandId"),
-  changes: text("changes", { mode: "json" }).notNull(),
+  recordVersion: integer("recordVersion").notNull(),
+  actor: text("actor").notNull(),
+  caller: text("caller").notNull(),
   occurredAt: integer("occurredAt", { mode: "timestamp_ms" }).notNull(),
+  recordedAt: integer("recordedAt", { mode: "timestamp_ms" }).notNull(),
+  cause: text("cause", { mode: "json" }).notNull(),
+  checks: text("checks", { mode: "json" }),
+  payload: text("payload", { mode: "json" }).notNull(),
   taskId: text("taskId"),
 });
 
@@ -130,7 +131,7 @@ export const lateResultTable = _meshSqlite("late_results", {
   evidence: text("evidence", { mode: "json" }).notNull(),
   recordedAt: integer("recordedAt", { mode: "timestamp_ms" }).notNull(),
   taskId: text("taskId").notNull(),
-  holderId: text("holderId").notNull(),
+  submitterId: text("submitterId").notNull(),
 });
 
 export const machineTable = _meshSqlite("machines", {
@@ -151,7 +152,7 @@ export const membershipTable = _meshSqlite("memberships", {
   revokedAt: integer("revokedAt", { mode: "timestamp_ms" }),
   version: integer("version").notNull(),
   collaboratorId: text("collaboratorId").notNull(),
-  grantedById: text("grantedById"),
+  grantedById: text("grantedById").notNull(),
   revokedById: text("revokedById"),
 });
 
@@ -159,7 +160,8 @@ export const reviewTable = _meshSqlite("reviews", {
   id: text("id").notNull().primaryKey(),
   decision: text("decision", { enum: ["accept", "return"] }).notNull(),
   reasons: text("reasons"),
-  reviewedAt: integer("reviewedAt", { mode: "timestamp_ms" }).notNull(),
+  ruleApplied: text("ruleApplied").notNull(),
+  decidedAt: integer("decidedAt", { mode: "timestamp_ms" }).notNull(),
   submissionId: text("submissionId").notNull(),
   reviewerId: text("reviewerId").notNull(),
 });
@@ -196,9 +198,9 @@ export const sessionReferenceTable = _meshSqlite("session_references", {
 
 export const submissionTable = _meshSqlite("submissions", {
   id: text("id").notNull().primaryKey(),
-  summary: text("summary").notNull(),
+  summary: text("summary"),
   evidence: text("evidence", { mode: "json" }).notNull(),
-  fence: integer("fence").notNull(),
+  fence: integer("fence"),
   taskVersion: integer("taskVersion").notNull(),
   state: text("state", { enum: ["pending", "accepted", "returned", "withdrawn"] }).notNull(),
   submittedAt: integer("submittedAt", { mode: "timestamp_ms" }).notNull(),
@@ -222,7 +224,7 @@ export const workspaceTable = _meshSqlite("workspaces", {
   id: text("id").notNull().primaryKey(),
   name: text("name"),
   location: text("location", { enum: ["local", "shared"] }).notNull(),
-  state: text("state", { enum: ["active"] }).notNull(),
+  state: text("state", { enum: ["active", "moved"] }).notNull(),
   version: integer("version").notNull(),
 });
 

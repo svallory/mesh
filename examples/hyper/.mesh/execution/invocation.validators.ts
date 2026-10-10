@@ -25,46 +25,48 @@ type SameShape<A, B> = [Keys<A>] extends [Keys<B>]
 type Assert<T extends true> = T;
 
 const comparison = <T extends z.ZodType>(value: T) =>
-  z.strictObject({
-    eq: value.nullable().optional(),
-    ne: value.nullable().optional(),
-    lt: value.optional(),
-    lte: value.optional(),
-    gt: value.optional(),
-    gte: value.optional(),
-    in: z.array(value).readonly().optional(),
-    nil: z.boolean().optional(),
-  });
+  z
+    .strictObject({
+      eq: value.nullable().exactOptional(),
+      ne: value.nullable().exactOptional(),
+      lt: value.exactOptional(),
+      lte: value.exactOptional(),
+      gt: value.exactOptional(),
+      gte: value.exactOptional(),
+      in: z.array(value).readonly().exactOptional(),
+      nil: z.boolean().exactOptional(),
+    })
+    .refine((operators) => Object.keys(operators).length > 0, {
+      message: "a comparison needs an operator",
+    });
 
-// The cast is the schema's only gap: zod writes an absent key as `?: T | undefined`, which the
-// strictest `exactOptionalPropertyTypes` setting does not let the filter type accept.
 export const invocationFilter: z.ZodType<InvocationFilter> = z.lazy(
   () =>
     z.union([
       z.strictObject({ and: z.array(invocationFilter).readonly() }),
       z.strictObject({ or: z.array(invocationFilter).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).optional(),
-        requestedProvider: comparison(z.string()).optional(),
-        requestedModel: comparison(z.string()).optional(),
-        actualProvider: comparison(z.string()).optional(),
-        actualModel: comparison(z.string()).optional(),
-        inputTokens: comparison(z.int()).optional(),
-        outputTokens: comparison(z.int()).optional(),
-        cacheReadTokens: comparison(z.int()).optional(),
-        cacheWriteTokens: comparison(z.int()).optional(),
-        usageSource: comparison(z.enum(["runtime", "provider", "estimate"])).optional(),
-        estimatedCost: comparison(z.number()).optional(),
-        pricingBasis: comparison(z.string()).optional(),
-        startedAt: comparison(z.date()).optional(),
-        endedAt: comparison(z.date()).optional(),
-        reason: comparison(z.string()).optional(),
-        recordedAt: comparison(z.date()).optional(),
-        attemptId: comparison(z.string()).optional(),
-        taskId: comparison(z.string()).optional(),
-        sessionId: comparison(z.string()).optional(),
-        correctsId: comparison(z.string()).optional(),
-        recordedById: comparison(z.string()).optional(),
+        id: comparison(z.uuid()).exactOptional(),
+        requestedProvider: comparison(z.string()).exactOptional(),
+        requestedModel: comparison(z.string()).exactOptional(),
+        actualProvider: comparison(z.string()).exactOptional(),
+        actualModel: comparison(z.string()).exactOptional(),
+        inputTokens: comparison(z.int()).exactOptional(),
+        outputTokens: comparison(z.int()).exactOptional(),
+        cacheReadTokens: comparison(z.int()).exactOptional(),
+        cacheWriteTokens: comparison(z.int()).exactOptional(),
+        usageSource: comparison(z.enum(["runtime", "provider", "estimate"])).exactOptional(),
+        estimatedCost: comparison(z.number()).exactOptional(),
+        pricingBasis: comparison(z.string()).exactOptional(),
+        startedAt: comparison(z.date()).exactOptional(),
+        endedAt: comparison(z.date()).exactOptional(),
+        reason: comparison(z.string()).exactOptional(),
+        recordedAt: comparison(z.date()).exactOptional(),
+        attemptId: comparison(z.string()).exactOptional(),
+        taskId: comparison(z.string()).exactOptional(),
+        sessionId: comparison(z.string()).exactOptional(),
+        correctsId: comparison(z.string()).exactOptional(),
+        recordedById: comparison(z.string()).exactOptional(),
       }),
     ]) as unknown as z.ZodType<InvocationFilter>,
 );

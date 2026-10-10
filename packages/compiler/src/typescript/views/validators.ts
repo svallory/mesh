@@ -124,7 +124,7 @@ function queryView(entity: Entity): QuerySchema {
     filterConst: filterConst(entity),
     filterFields: columns
       .filter((column) => column.name !== "and" && column.name !== "or")
-      .map((column) => ({ name: column.name, key: propertyName(column.name), schema: `comparison(${comparedSchema(column)}).optional()` })),
+      .map((column) => ({ name: column.name, key: propertyName(column.name), schema: `comparison(${comparedSchema(column)}).exactOptional()` })),
     sortConst: sortConst(entity),
     sortKeys: columns.flatMap((column) => [JSON.stringify(column.name), JSON.stringify(`-${column.name}`)]),
   };

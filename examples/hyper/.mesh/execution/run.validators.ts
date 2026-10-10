@@ -20,35 +20,37 @@ type SameShape<A, B> = [Keys<A>] extends [Keys<B>]
 type Assert<T extends true> = T;
 
 const comparison = <T extends z.ZodType>(value: T) =>
-  z.strictObject({
-    eq: value.nullable().optional(),
-    ne: value.nullable().optional(),
-    lt: value.optional(),
-    lte: value.optional(),
-    gt: value.optional(),
-    gte: value.optional(),
-    in: z.array(value).readonly().optional(),
-    nil: z.boolean().optional(),
-  });
+  z
+    .strictObject({
+      eq: value.nullable().exactOptional(),
+      ne: value.nullable().exactOptional(),
+      lt: value.exactOptional(),
+      lte: value.exactOptional(),
+      gt: value.exactOptional(),
+      gte: value.exactOptional(),
+      in: z.array(value).readonly().exactOptional(),
+      nil: z.boolean().exactOptional(),
+    })
+    .refine((operators) => Object.keys(operators).length > 0, {
+      message: "a comparison needs an operator",
+    });
 
-// The cast is the schema's only gap: zod writes an absent key as `?: T | undefined`, which the
-// strictest `exactOptionalPropertyTypes` setting does not let the filter type accept.
 export const runFilter: z.ZodType<RunFilter> = z.lazy(
   () =>
     z.union([
       z.strictObject({ and: z.array(runFilter).readonly() }),
       z.strictObject({ or: z.array(runFilter).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).optional(),
-        state: comparison(z.enum(["running", "succeeded", "failed", "canceled"])).optional(),
-        cancelReason: comparison(z.string()).optional(),
-        endedAt: comparison(z.date()).optional(),
-        version: comparison(z.int()).optional(),
-        startedAt: comparison(z.date()).optional(),
-        taskId: comparison(z.string()).optional(),
-        responsibleId: comparison(z.string()).optional(),
-        startedById: comparison(z.string()).optional(),
-        parentRunId: comparison(z.string()).optional(),
+        id: comparison(z.uuid()).exactOptional(),
+        state: comparison(z.enum(["running", "succeeded", "failed", "canceled"])).exactOptional(),
+        cancelReason: comparison(z.string()).exactOptional(),
+        endedAt: comparison(z.date()).exactOptional(),
+        version: comparison(z.int()).exactOptional(),
+        startedAt: comparison(z.date()).exactOptional(),
+        taskId: comparison(z.string()).exactOptional(),
+        responsibleId: comparison(z.string()).exactOptional(),
+        startedById: comparison(z.string()).exactOptional(),
+        parentRunId: comparison(z.string()).exactOptional(),
       }),
     ]) as unknown as z.ZodType<RunFilter>,
 );

@@ -15,7 +15,6 @@ export type Claim = {
   endedAt: Date | null;
   endReason: string | null;
   state: "active" | "released" | "revoked" | "expired";
-  version: number;
   taskId: string;
   holderId: string;
 };
@@ -46,7 +45,6 @@ export type ClaimFilter =
       endedAt?: $Comparison<Date>;
       endReason?: $Comparison<string>;
       state?: $Comparison<"active" | "released" | "revoked" | "expired">;
-      version?: $Comparison<number>;
       taskId?: $Comparison<string>;
       holderId?: $Comparison<string>;
     };
@@ -66,8 +64,6 @@ export type ClaimSort = readonly (
   | "-endReason"
   | "state"
   | "-state"
-  | "version"
-  | "-version"
   | "taskId"
   | "-taskId"
   | "holderId"

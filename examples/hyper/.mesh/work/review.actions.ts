@@ -20,7 +20,8 @@ export function bindReview(layer: $DataLayer) {
         const row = await tx.insert(tables.review, {
           decision: "accept",
           reasons: null,
-          reviewedAt: now,
+          ruleApplied: parsed.ruleApplied,
+          decidedAt: now,
           submissionId: parsed.submission,
           reviewerId: parsed.reviewer,
         });
@@ -35,7 +36,8 @@ export function bindReview(layer: $DataLayer) {
         const row = await tx.insert(tables.review, {
           decision: "return",
           reasons: parsed.reasons === undefined ? null : parsed.reasons,
-          reviewedAt: now,
+          ruleApplied: parsed.ruleApplied,
+          decidedAt: now,
           submissionId: parsed.submission,
           reviewerId: parsed.reviewer,
         });

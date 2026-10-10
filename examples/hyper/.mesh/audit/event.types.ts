@@ -7,27 +7,35 @@ import type { Task } from "../work/task.types";
 
 export type Event = {
   seq: number;
-  resource: string;
-  action: string;
+  type: string;
+  schemaVersion: number;
+  workspaceId: string;
+  recordType: string;
   recordId: string;
-  recordVersion: number | null;
-  actorId: string | null;
-  caller: string | null;
-  commandId: string | null;
-  changes: unknown;
+  recordVersion: number;
+  actor: string;
+  caller: string;
   occurredAt: Date;
+  recordedAt: Date;
+  cause: unknown;
+  checks: unknown;
+  payload: unknown;
   taskId: string | null;
 };
 
 export type RecordEventInput = {
-  resource: string;
-  action: string;
+  type: string;
+  schemaVersion?: number | undefined;
+  workspaceId: string;
+  recordType: string;
   recordId: string;
-  recordVersion?: number | null | undefined;
-  actorId?: string | null | undefined;
-  caller?: string | null | undefined;
-  commandId?: string | null | undefined;
-  changes?: unknown | undefined;
+  recordVersion: number;
+  actor: string;
+  caller: string;
+  occurredAt: Date;
+  cause: unknown;
+  checks?: unknown | undefined;
+  payload: unknown;
   task?: Task["id"] | null | undefined;
 };
 
@@ -43,36 +51,42 @@ export type EventFilter =
   | { or: readonly EventFilter[] }
   | {
       seq?: $Comparison<number>;
-      resource?: $Comparison<string>;
-      action?: $Comparison<string>;
+      type?: $Comparison<string>;
+      schemaVersion?: $Comparison<number>;
+      workspaceId?: $Comparison<string>;
+      recordType?: $Comparison<string>;
       recordId?: $Comparison<string>;
       recordVersion?: $Comparison<number>;
-      actorId?: $Comparison<string>;
+      actor?: $Comparison<string>;
       caller?: $Comparison<string>;
-      commandId?: $Comparison<string>;
       occurredAt?: $Comparison<Date>;
+      recordedAt?: $Comparison<Date>;
       taskId?: $Comparison<string>;
     };
 
 export type EventSort = readonly (
   | "seq"
   | "-seq"
-  | "resource"
-  | "-resource"
-  | "action"
-  | "-action"
+  | "type"
+  | "-type"
+  | "schemaVersion"
+  | "-schemaVersion"
+  | "workspaceId"
+  | "-workspaceId"
+  | "recordType"
+  | "-recordType"
   | "recordId"
   | "-recordId"
   | "recordVersion"
   | "-recordVersion"
-  | "actorId"
-  | "-actorId"
+  | "actor"
+  | "-actor"
   | "caller"
   | "-caller"
-  | "commandId"
-  | "-commandId"
   | "occurredAt"
   | "-occurredAt"
+  | "recordedAt"
+  | "-recordedAt"
   | "taskId"
   | "-taskId"
 )[];

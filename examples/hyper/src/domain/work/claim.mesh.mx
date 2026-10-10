@@ -10,7 +10,6 @@ entity :Claim table="claims"
     timestamp :endedAt nullable
     string :endReason nullable
     enum :state values=[:active, :released, :revoked, :expired] default=:active
-    integer :version default=1
   relationships
     belongs-to :task entity=Task
     belongs-to :holder entity=Collaborator

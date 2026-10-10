@@ -4,9 +4,9 @@ import { Collaborator } from "../identity/collaborator.mesh.mx"
 entity :Submission table="submissions"
   attributes
     uuid :id primary-key
-    string :summary min=1
+    string :summary min=1 nullable
     json :evidence default=[]
-    integer :fence
+    integer :fence nullable
     integer :taskVersion
     enum :state values=[:pending, :accepted, :returned, :withdrawn] default=:pending
     timestamp :submittedAt on=:create

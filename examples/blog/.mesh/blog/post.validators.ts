@@ -28,38 +28,40 @@ type SameShape<A, B> = [Keys<A>] extends [Keys<B>]
 type Assert<T extends true> = T;
 
 const comparison = <T extends z.ZodType>(value: T) =>
-  z.strictObject({
-    eq: value.nullable().optional(),
-    ne: value.nullable().optional(),
-    lt: value.optional(),
-    lte: value.optional(),
-    gt: value.optional(),
-    gte: value.optional(),
-    in: z.array(value).readonly().optional(),
-    nil: z.boolean().optional(),
-  });
+  z
+    .strictObject({
+      eq: value.nullable().exactOptional(),
+      ne: value.nullable().exactOptional(),
+      lt: value.exactOptional(),
+      lte: value.exactOptional(),
+      gt: value.exactOptional(),
+      gte: value.exactOptional(),
+      in: z.array(value).readonly().exactOptional(),
+      nil: z.boolean().exactOptional(),
+    })
+    .refine((operators) => Object.keys(operators).length > 0, {
+      message: "a comparison needs an operator",
+    });
 
-// The cast is the schema's only gap: zod writes an absent key as `?: T | undefined`, which the
-// strictest `exactOptionalPropertyTypes` setting does not let the filter type accept.
 export const postFilter: z.ZodType<PostFilter> = z.lazy(
   () =>
     z.union([
       z.strictObject({ and: z.array(postFilter).readonly() }),
       z.strictObject({ or: z.array(postFilter).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).optional(),
-        title: comparison(z.string()).optional(),
-        body: comparison(z.string()).optional(),
-        views: comparison(z.int()).optional(),
-        rating: comparison(z.number()).optional(),
-        price: comparison(z.number()).optional(),
-        featured: comparison(z.boolean()).optional(),
-        publicationDate: comparison(z.date()).optional(),
-        publishedAt: comparison(z.date()).optional(),
-        state: comparison(z.enum(["draft", "published"])).optional(),
-        insertedAt: comparison(z.date()).optional(),
-        updatedAt: comparison(z.date()).optional(),
-        authorId: comparison(z.string()).optional(),
+        id: comparison(z.uuid()).exactOptional(),
+        title: comparison(z.string()).exactOptional(),
+        body: comparison(z.string()).exactOptional(),
+        views: comparison(z.int()).exactOptional(),
+        rating: comparison(z.number()).exactOptional(),
+        price: comparison(z.number()).exactOptional(),
+        featured: comparison(z.boolean()).exactOptional(),
+        publicationDate: comparison(z.date()).exactOptional(),
+        publishedAt: comparison(z.date()).exactOptional(),
+        state: comparison(z.enum(["draft", "published"])).exactOptional(),
+        insertedAt: comparison(z.date()).exactOptional(),
+        updatedAt: comparison(z.date()).exactOptional(),
+        authorId: comparison(z.string()).exactOptional(),
       }),
     ]) as unknown as z.ZodType<PostFilter>,
 );

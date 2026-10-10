@@ -9,9 +9,9 @@ import type { Collaborator } from "../identity/collaborator.types";
 
 export type Submission = {
   id: string;
-  summary: string;
+  summary: string | null;
   evidence: unknown;
-  fence: number;
+  fence: number | null;
   taskVersion: number;
   state: "pending" | "accepted" | "returned" | "withdrawn";
   submittedAt: Date;
@@ -20,9 +20,9 @@ export type Submission = {
 };
 
 export type SubmitSubmissionInput = {
-  summary: string;
+  summary?: string | null | undefined;
   evidence?: unknown | undefined;
-  fence: number;
+  fence?: number | null | undefined;
   taskVersion: number;
   task: Task["id"];
   submitter: Collaborator["id"];

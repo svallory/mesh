@@ -29,14 +29,11 @@ export function bindCollaborator(layer: $DataLayer) {
     ): Promise<Collaborator> {
       const parsed = await parseInput(registerCollaboratorInput, input);
       return layer.transaction(async (tx) => {
-        const now = new Date();
         const row = await tx.insert(tables.collaborator, {
           kind: parsed.kind,
           name: parsed.name,
           state: "active",
-          retiredAt: null,
           version: 1,
-          createdAt: now,
         });
         return row as Collaborator;
       });
