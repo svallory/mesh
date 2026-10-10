@@ -5,7 +5,7 @@ description: "How extensions add vocabulary and behaviour through one manifest, 
 
 # Extension host and composed contracts
 
-Status: design; built in milestone M6 ([roadmap](../roadmap/roadmap.md), M6). Nothing on this page exists as code yet. No first-party extension ships in v1: policies, the planned first one, became core ([ADR-0055](../decisions/0055-policies-are-core.md)), so M6 is exercised by test extensions and by project-local extensions in `src/extensions/`.
+Status: design; built after Mesh 1.0, as milestone M11 ([roadmap](../roadmap/roadmap.md), section 6; [ADR-0072](../decisions/0072-mesh-1-0-is-the-port-gate.md)). Before it, M6 builds three lifecycle seams for the application, with this host's names and payloads ([ADR-0075](../decisions/0075-seams-use-the-extension-hosts-names.md)). Nothing on this page exists as code yet. No first-party extension ships in v1: policies, the planned first one, became core ([ADR-0055](../decisions/0055-policies-are-core.md)), so M6 is exercised by test extensions and by project-local extensions in `src/extensions/`.
 
 Related: [overview](../overview/architecture.md), [three rings](./three-rings.md), [build pipeline](./build-pipeline.md), [how Mesh uses MX](./mx-integration.md), [expressions](./expressions.md), [data layer](./data-layer.md).
 

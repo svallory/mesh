@@ -128,7 +128,7 @@ caller --> generated function: enter > cast > plan > pre-check
                 '-- after commit --> typed record, or error with its .mesh.mx position
 ```
 
-One tracing span per phase goes through the OpenTelemetry API ([ADR-0029](../decisions/0029-tracing-opentelemetry-api.md)).
+After Mesh 1.0, one tracing span per phase will go through the OpenTelemetry API ([ADR-0029](../decisions/0029-tracing-opentelemetry-api.md), [ADR-0072](../decisions/0072-mesh-1-0-is-the-port-gate.md)).
 
 ## What is in v1 and what is not
 

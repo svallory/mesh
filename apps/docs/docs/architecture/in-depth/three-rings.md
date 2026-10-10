@@ -57,7 +57,7 @@ The research proposed "front end" and "expression parser" adapter slots ([resear
 | Slot | Why no package in v1 |
 |---|---|
 | Transport (command line, HTTP, server) | The core interface is a function call; a transport is built when something needs it ([ADR-0005](../decisions/0005-core-interface-is-a-function-call.md)). |
-| Tracer | Generated code calls the OpenTelemetry API directly ([ADR-0029](../decisions/0029-tracing-opentelemetry-api.md)). |
+| Tracer | After Mesh 1.0: generated code will call the OpenTelemetry API directly ([ADR-0029](../decisions/0029-tracing-opentelemetry-api.md), [ADR-0072](../decisions/0072-mesh-1-0-is-the-port-gate.md)). |
 | Runtime host | Bun only ([ADR-0025](../decisions/0025-bun-only.md)). |
 
 ([roadmap](../roadmap/roadmap.md), section 3.) There is no actor-resolver slot: the caller passes the action context as an argument ([ADR-0059](../decisions/0059-action-context.md)). A job runner is deferred past v1 ([ADR-0023](../decisions/0023-workflows-and-jobs-deferred.md)).
