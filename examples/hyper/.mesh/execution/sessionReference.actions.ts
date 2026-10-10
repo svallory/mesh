@@ -94,11 +94,9 @@ export function bindSessionReference(layer: $DataLayer, options: $BindOptions = 
             input: parsed,
             actor: $actor,
             context: $context,
-            before: $guarded(
-              $loadPlan,
-              "SessionReference",
-              $before,
-              "action function",
+            before: $readOnlyRecord(
+              $guarded($loadPlan, "SessionReference", $before, "action function"),
+              "SessionReference.setAvailability",
             ) as unknown as SessionReference,
             tx: undefined,
           },
@@ -171,11 +169,9 @@ export function bindSessionReference(layer: $DataLayer, options: $BindOptions = 
             input: parsed,
             actor: $actor,
             context: $context,
-            before: $guarded(
-              $loadPlan,
-              "SessionReference",
-              $before,
-              "action function",
+            before: $readOnlyRecord(
+              $guarded($loadPlan, "SessionReference", $before, "action function"),
+              "SessionReference.redact",
             ) as unknown as SessionReference,
             tx: undefined,
           },

@@ -37,6 +37,7 @@ entity :Task table="tasks"
     enum :state values=[:open, :doing, :done] default=:open
     timestamp :openedAt
     timestamp :doneAt nullable
+    json :meta nullable
     timestamp :createdAt on=:create
     timestamp :touchedAt on=:update
   relationships
@@ -45,6 +46,7 @@ entity :Task table="tasks"
     belongs-to :reviewer entity=Member
   computed
     boolean :urgent() { return &priority >= 7 }
+    boolean :bad({ self }) { if (self.title === "boom") throw new Error("bad computed"); return false }
   actions auto=[:read]
     always types=[:create, :update]
       validate
@@ -101,7 +103,7 @@ entity :Task table="tasks"
     update :annotate
       input
         string :note nullable
-        integer :priority nullable
+        &priority
       do
         set
           &note=({ input }) => input.note
@@ -162,6 +164,52 @@ entity :Task table="tasks"
         run() {
           throw new Error("boom");
         }
+    update :renameLoud
+      input
+        &title
+      do
+        load=[&bad]
+    update :wantOwner
+      input
+        boolean :want
+      do
+        when=({ input }) => input.want
+          load=[&owner]
+    create :openMutate
+      input
+        &title
+        &owner
+        &reviewer
+        &meta
+        &doneAt
+        string :what
+      do
+        set
+          &openedAt=() => now()
+        run({ self, input }) {
+          const target: any = self;
+          if (input.what === "json" && target.meta) target.meta.injected = true;
+          if (input.what === "array" && target.meta) target.meta.list.push(9);
+          if (input.what === "date" && target.doneAt) target.doneAt.setUTCFullYear(2000);
+        }
+    update :editMutate
+      input
+        &meta
+        &doneAt
+        string :what
+      validate
+        check :ownerNamed that=() => &owner.name !== "" code="task.owner" message="the owner needs a name"
+      do
+        run({ self, before, input }) {
+          const target: any = self;
+          const stored: any = before;
+          if (input.what === "json" && target.meta) target.meta.injected = true;
+          if (input.what === "array" && target.meta) target.meta.list.push(9);
+          if (input.what === "date" && target.doneAt) target.doneAt.setUTCFullYear(2000);
+          if (input.what === "related") target.owner.name = "hacked";
+          if (input.what === "before") stored.title = "hacked";
+          if (input.what === "beforeJson") stored.meta.injected = true;
+        }
     update :peek
       do
         run({ before, context }) {
@@ -170,7 +218,7 @@ entity :Task table="tasks"
     update :scribble
       do
         run({ self }) {
-          self.title = "changed by run";
+          (self as any).title = "changed by run";
         }
     destroy :remove
       input
@@ -217,6 +265,27 @@ describe("the generated files", () => {
     ], { cwd: dir });
     expect(relative(dir, dir) + (child.stdout.toString() + child.stderr.toString())).toBe("");
     expect(child.exitCode).toBe(0);
+  });
+
+  test("a load nested in when is typed as possibly absent; a top-level load as present", async () => {
+    await Bun.write(join(dir, "mesh.config.ts"), "export default { data: { name: 'sqlite', transaction: async () => undefined, close: async () => undefined } };\n");
+    await Bun.write(join(dir, "check-types.ts"), [
+      'import type { bind } from "./.mesh/index.ts";',
+      "type Mesh = ReturnType<typeof bind>;",
+      'declare const maybe: Awaited<ReturnType<Mesh["wantOwnerTask"]>>;',
+      'declare const always: Awaited<ReturnType<Mesh["showTask"]>>;',
+      "// @ts-expect-error owner may be absent, because its load is under a when",
+      "export const a: string = maybe.owner.name;",
+      "export const b: string | undefined = maybe.owner?.name;",
+      "export const c: string = always.owner.name;",
+      "",
+    ].join("\n"));
+    const files = (await readdir(join(dir, ".mesh"), { recursive: true })).filter((name) => name.endsWith(".ts")).map((name) => join(".mesh", name));
+    const child = Bun.spawnSync([
+      resolve(import.meta.dir, "../../../node_modules/.bin/tsc"), "--ignoreConfig", "--noEmit", "--strict", "--noUncheckedIndexedAccess",
+      "--module", "esnext", "--moduleResolution", "bundler", "--target", "es2022", "--skipLibCheck", "--allowImportingTsExtensions", "mesh.config.ts", "check-types.ts", ...files,
+    ], { cwd: dir });
+    expect(child.stdout.toString() + child.stderr.toString()).toBe("");
   });
 });
 
@@ -307,7 +376,7 @@ describe("create", () => {
       expect(error.code).toBe("invalid_input");
       expect(error.issues).toEqual([{
         label: "titleNotShouting", code: "task.shouting", path: [], message: "do not shout", details: null,
-        source: { file: "src/domain/task.mesh.mx", line: 23, column: 9 },
+        source: { file: "src/domain/task.mesh.mx", line: 25, column: 9 },
       }]);
       expect(error.message).toBe("titleNotShouting: do not shout");
     } finally { await world.db.close(); }
@@ -455,6 +524,26 @@ describe("update", () => {
     } finally { await world.db.close(); }
   });
 
+  test("a failure after the write (while the result is loaded) rolls the write back", async () => {
+    const world = await fresh();
+    try {
+      const row = await openTask(world, { title: "fine" });
+      const error = await failure(world.mesh.renameLoudTask({ id: row.id, title: "boom" }, world.ctx));
+      expect((error as Error).message).toContain("bad computed");
+      expect((await world.mesh.readTask({}, world.ctx))[0]).toMatchObject({ title: "fine" });
+      expect((await world.mesh.renameLoudTask({ id: row.id, title: "ok" }, world.ctx)).title).toBe("ok");
+    } finally { await world.db.close(); }
+  });
+
+  test("a load nested in when loads only when the condition holds", async () => {
+    const world = await fresh();
+    try {
+      const row = await openTask(world);
+      expect((await world.mesh.wantOwnerTask({ id: row.id, want: true }, world.ctx)).owner).toMatchObject({ name: "Ada" });
+      expect((await world.mesh.wantOwnerTask({ id: row.id, want: false }, world.ctx) as any).owner).toBeUndefined();
+    } finally { await world.db.close(); }
+  });
+
   test("a load step loads onto the returned record, and nothing else is written", async () => {
     const world = await fresh();
     try {
@@ -473,8 +562,7 @@ describe("update", () => {
       clockNow = new Date(NOW.getTime() + 5000);
       const touched = await world.mesh.showTask({ id: row.id }, world.ctx);
       expect(touched.touchedAt.getTime()).toBeGreaterThan(row.touchedAt.getTime());
-      clockNow = NOW;
-    } finally { await world.db.close(); }
+    } finally { clockNow = NOW; await world.db.close(); }
   });
 });
 
@@ -499,6 +587,51 @@ describe("a function cannot reach past what it was given", () => {
       expect((error as Error).message).toContain("Task.scribble");
       expect((error as Error).message).toContain("`set`");
       expect((await world.mesh.readTask({}, world.ctx))[0]).toMatchObject({ title: "keep" });
+    } finally { await world.db.close(); }
+  });
+});
+
+describe("a change made inside a run is never stored, and a guarded path throws", () => {
+  const DONE = new Date("2026-01-01T00:00:00.000Z");
+  const stored = async (world: World, id: string) => (await world.mesh.readTask({ filter: { id: { eq: id } } }, world.ctx))[0];
+
+  for (const what of ["json", "array", "date"]) {
+    test(`create: changing ${what} in place throws when the caller sent the field, and nothing is stored either way`, async () => {
+      const world = await fresh();
+      try {
+        const sent = { meta: { a: 1, list: [1] }, doneAt: DONE };
+        const error = await failure(world.mesh.openMutateTask({ title: "m", owner: world.member.id, reviewer: world.member.id, what, ...sent }, world.ctx));
+        expect(error).toBeInstanceOf(FrameworkError);
+        expect(await world.mesh.readTask({}, world.ctx)).toEqual([]);
+        const omitted = await world.mesh.openMutateTask({ title: "m", owner: world.member.id, reviewer: world.member.id, what }, world.ctx);
+        expect(omitted).toMatchObject({ meta: null, doneAt: null });
+      } finally { await world.db.close(); }
+    });
+
+    test(`update: changing ${what} in place throws when the caller sent the field and is a no-op when it did not; the stored value never changes`, async () => {
+      const world = await fresh();
+      try {
+        const row = await world.mesh.openMutateTask({ title: "m", owner: world.member.id, reviewer: world.member.id, what: "none", meta: { a: 1, list: [1] }, doneAt: DONE }, world.ctx);
+        const error = await failure(world.mesh.editMutateTask({ id: row.id, what, meta: { b: 2, list: [2] }, doneAt: DONE }, world.ctx));
+        expect(error).toBeInstanceOf(FrameworkError);
+        expect(await stored(world, row.id)).toMatchObject({ meta: { a: 1, list: [1] }, doneAt: DONE });
+        await world.mesh.editMutateTask({ id: row.id, what }, world.ctx).then(() => undefined, (e: unknown) => expect(e).toBeInstanceOf(FrameworkError));
+        expect(await stored(world, row.id)).toMatchObject({ meta: { a: 1, list: [1] }, doneAt: DONE });
+      } finally { await world.db.close(); }
+    });
+  }
+
+  test("a write to a loaded related record and to before throws, and the stored values stay", async () => {
+    const world = await fresh();
+    try {
+      const row = await world.mesh.openMutateTask({ title: "m", owner: world.member.id, reviewer: world.member.id, what: "none", meta: { a: 1, list: [1] } }, world.ctx);
+      for (const what of ["related", "before", "beforeJson"]) {
+        const error = await failure(world.mesh.editMutateTask({ id: row.id, what }, world.ctx));
+        expect(error, what).toBeInstanceOf(FrameworkError);
+        expect((error as Error).message, what).toContain("cannot change the record");
+      }
+      expect(await stored(world, row.id)).toMatchObject({ title: "m", meta: { a: 1, list: [1] } });
+      expect((await world.mesh.readMember({}, world.ctx)).map((m: { name: string }) => m.name).sort()).toEqual(["Ada", "Bo"]);
     } finally { await world.db.close(); }
   });
 });

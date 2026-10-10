@@ -78,11 +78,9 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}) {
             input: parsed,
             actor: $actor,
             context: $context,
-            before: $guarded(
-              $loadPlan,
-              "Machine",
-              $before,
-              "action function",
+            before: $readOnlyRecord(
+              $guarded($loadPlan, "Machine", $before, "action function"),
+              "Machine.update",
             ) as unknown as Machine,
             tx: undefined,
           },

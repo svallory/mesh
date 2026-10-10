@@ -104,7 +104,10 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}) {
             input: parsed,
             actor: $actor,
             context: $context,
-            before: $guarded($loadPlan, "Post", $before, "action function") as unknown as Post,
+            before: $readOnlyRecord(
+              $guarded($loadPlan, "Post", $before, "action function"),
+              "Post.publish",
+            ) as unknown as Post,
             tx: undefined,
           },
           options,

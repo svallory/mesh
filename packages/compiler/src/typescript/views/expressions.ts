@@ -120,7 +120,7 @@ export function expressionsView({ config }: EmitInput, entity: Entity, generated
     ...entity.relationships.map((r) => `${JSON.stringify(r.name)}: ${r.kind === "has-many" ? "any[]" : "any"}`),
     ...entity.computed.map((c) => `${JSON.stringify(c.name)}: any`),
   ];
-  const scopeType = `$Scope<{ self: ${recordName}${loaded.length ? ` & { ${loaded.join("; ")} }` : ""}; input: any; actor: any; context: any; before: ${recordName} | null; tx: any }>`;
+  const scopeType = `$Scope<{ self: $DeepReadonly<${recordName}${loaded.length ? ` & { ${loaded.join("; ")} }` : ""}>; input: any; actor: any; context: any; before: $DeepReadonly<${recordName}> | null; tx: any }>`;
   const found = collect(entity);
   // Helper imports: the entity file's non-entity imports, rewritten relative to the generated file.
   const helperFrom = new Map<string, string>();

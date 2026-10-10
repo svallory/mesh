@@ -130,8 +130,8 @@ export function alwaysFor(entity: Entity, action: Action): Always[] {
 
 /**
  * The steps a generated action runs. A destroy returns nothing and writes nothing, so a `set` or a `load` has nothing to
- * act on: the build rejects one written for a destroy (`checkLifecycleLimits`), and the only ones left here come from an
- * `always` block that covers every action, which a destroy skips. Shared with `mesh explain`, so the two agree.
+ * act on: the build rejects one written for a destroy, declared or auto (`checkLifecycleLimits`), and the only ones left here come from an
+ * `always` block with no scope, which covers every action and which a destroy skips. Shared with `mesh explain`, so the two agree.
  */
 export function stepsFor(action: Action, steps: readonly Step[]): Step[] {
   if (action.kind !== "destroy") return [...steps];
@@ -173,7 +173,9 @@ const PLAIN_IMPORTS: ReadonlySet<string> = new Set(["parseInput", "rejectCompute
 const runtimeImport = (name: string) => (PLAIN_IMPORTS.has(name) ? name : `${name} as $${name}`);
 
 /** `set &x=({ input }) => input.x`: the one form ADR-0012 exempts from the null-to-required error; when the caller omits `x`, the step is skipped. */
-function isPassthrough(name: string, value: Expression): boolean {
+function isPassthrough(action: Action, name: string, value: Expression, nullable: boolean): boolean {
+  // For a required column only the member input `&x` is "unchanged when omitted"; an argument that happens to share the name is not.
+  if (!nullable && action.input.some((field) => field.kind === "argument" && field.name === name)) return false;
   const tree = value.tree;
   return tree?.kind === "member" && tree.object.kind === "var" && tree.object.name === "input" && tree.name === name;
 }
@@ -258,9 +260,11 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     for (const step of steps)
       if (step.kind === "set")
         for (const { member } of step.assignments) setColumns.add(columnOf(entity, member.name, member.position).name);
-    const loadNames = [...new Set(steps.flatMap(function namesOf(step): string[] {
-      return step.kind === "load" ? step.members.map((member) => member.name) : step.kind === "when" ? step.steps.flatMap(namesOf) : [];
-    }))];
+    // A load at the top of the body always runs, so its member is present on the result; one under a `when` may not run,
+    // so its member is typed as possibly absent.
+    const loadNames = [...new Set(steps.flatMap((step) => (step.kind === "load" ? step.members.map((member) => member.name) : [])))];
+    const nestedLoads = (list: readonly Step[]): string[] => list.flatMap((step) => (step.kind === "load" ? step.members.map((member) => member.name) : step.kind === "when" ? nestedLoads(step.steps) : []));
+    const maybeLoadNames = [...new Set(steps.flatMap((step) => (step.kind === "when" ? nestedLoads(step.steps) : [])))].filter((name) => !loadNames.includes(name));
     const anyLoad = steps.some(function hasLoad(step): boolean { return step.kind === "load" || (step.kind === "when" && step.steps.some(hasLoad)); });
     const stamped = entity.attributes.filter((a) => a.on === "update");
     // Does any function of the action read a relationship or computed field? Only then is something ever loaded onto the record.
@@ -275,7 +279,6 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     const head: string[] = [];
     const body: string[] = [];
     const emit = (...lines: string[]) => body.push(...lines);
-    const SELF = loader ? "$self" : "$record";
     /** `$expressions["id"]($s)` */
     const call = (expression: Expression) => { used.scope = true; usesExpressions = true; return `${idOf(expression)}($s)`; };
     const loadFor = (paths: readonly string[]) => {
@@ -383,9 +386,15 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
             if (isExpression(value)) {
               loadFor(value.needs ?? []);
               const nullable = column.relation ? entity.relationships.find((r) => r.name === column.relation)!.nullable : entity.attributes.find((a) => a.name === column.name)!.nullable;
-              if (isPassthrough(member.name, value)) {
+              if (isPassthrough(action, member.name, value, nullable)) {
                 // `set &x=({ input }) => input.x`: the caller omitted x, so the stored value stays (ADR-0012).
-                emit(`{ const $value = await ${call(value)}; if ($value !== undefined) ${target(column.name)} = $value; }`);
+                // A null for a required column is the caller's mistake, so it is an invalid input and not a database error.
+                if (nullable || !writes) emit(`{ const $value = await ${call(value)}; if ($value !== undefined) ${target(column.name)} = $value; }`);
+                else {
+                  runtime.add("InvalidInputError");
+                  const issue = `{ label: null, code: "required", path: [${JSON.stringify(member.name)}], message: ${JSON.stringify(`${member.name} is required and cannot be null`)}, source: null, details: null }`;
+                  emit(`{ const $value = await ${call(value)}; if ($value === null${action.kind === "create" ? " || $value === undefined" : ""}) throw new $InvalidInputError([${issue}]); if ($value !== undefined) ${target(column.name)} = $value; }`);
+                }
               } else if (nullable || !writes) {
                 emit(`{ const $value = await ${call(value)}; ${target(column.name)} = $value === undefined ? null : $value; }`);
               } else {
@@ -440,9 +449,11 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         used.load = true;
         used.plan = true;
         emit("// still inside the transaction: the result, with what a load step named");
-        if (loadNames.length) {
+        if (loadNames.length || maybeLoadNames.length) {
           extraTypes.add(`${recordName}With`);
-          returnType = `${recordName}With<${loadNames.map((name) => JSON.stringify(name)).join(" | ")}>`;
+          if (maybeLoadNames.length) extraTypes.add(`${recordName}Loadable`);
+          const present = loadNames.length ? `${recordName}With<${loadNames.map((name) => JSON.stringify(name)).join(" | ")}>` : recordName;
+          returnType = maybeLoadNames.length ? `${present} & Partial<Pick<${recordName}Loadable, ${maybeLoadNames.map((name) => JSON.stringify(name)).join(" | ")}>>` : present;
         }
         emit(`return (await $loadRows($loadPlan, ${JSON.stringify(entity.name)}, tx, [$stored], [...$loads], $load))[0] as unknown as ${returnType};`);
       } else emit(`return $stored as ${recordName};`);
@@ -473,8 +484,8 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       } else afterHead.push(`const $self = $readOnlyRecord($record, ${where});`);
       // `before` holds the stored columns only: a relationship or computed field read on it throws instead of coming back undefined.
       const beforeView = action.kind === "create" ? "null"
-        : loader ? `$guarded($loadPlan, ${JSON.stringify(entity.name)}, $before, "action function") as unknown as ${recordName}`
-          : `$before as unknown as ${recordName}`;
+        : loader ? `$readOnlyRecord($guarded($loadPlan, ${JSON.stringify(entity.name)}, $before, "action function"), ${where}) as unknown as ${recordName}`
+          : `$readOnlyRecord($before, ${where}) as unknown as ${recordName}`;
       afterHead.push(`const $s = $scope({ self: $self, input: parsed, actor: $actor, context: $context, before: ${beforeView}, tx: undefined }, options) as unknown as ${scopeAlias};`);
     }
     if (used.plan) planUsed = true;

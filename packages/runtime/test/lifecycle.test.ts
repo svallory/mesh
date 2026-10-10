@@ -48,4 +48,22 @@ describe("readOnlyRecord", () => {
     expect(() => Object.defineProperty(row, "title", { value: "x" })).toThrow("`set`");
     expect(row.title).toBe("t");
   });
+
+  test("it is deep: nested objects, arrays, dates and related records throw too, and a Date is a copy that cannot reach the stored value", () => {
+    const stored = { when: new Date("2026-01-01T00:00:00.000Z"), meta: { list: [1, { n: 1 }] }, owner: { name: "Ada" } };
+    const row = readOnlyRecord(stored, "Task.go") as any;
+    expect(() => { row.meta.x = 1; }).toThrow(FrameworkError);
+    expect(() => row.meta.list.push(2)).toThrow(FrameworkError);
+    expect(() => { row.meta.list[1].n = 2; }).toThrow(FrameworkError);
+    expect(() => { row.owner.name = "x"; }).toThrow(FrameworkError);
+    expect(() => Object.freeze(row.meta)).toThrow(FrameworkError);
+    expect(() => row.when.setUTCFullYear(2000)).toThrow("Task.go");
+    expect(() => { row.when.foo = 1; }).toThrow(FrameworkError);
+    expect(row.when.getTime()).toBe(new Date("2026-01-01T00:00:00.000Z").getTime());
+    expect(row.when instanceof Date).toBe(true);
+    expect(JSON.stringify(row)).toBe(JSON.stringify(stored));
+    expect(stored.when.getUTCFullYear()).toBe(2026);
+    expect(stored.meta.list).toEqual([1, { n: 1 }]);
+    expect({ ...row }.owner.name).toBe("Ada");
+  });
 });

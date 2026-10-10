@@ -50,6 +50,8 @@ export interface PlainReason {
   method?: true;
   /** The authored code uses an operator whose null rule differs from Mesh's (comparison, `!`, `&&`, `||`, arithmetic), so the build warns. */
   operators?: true;
+  /** For an object literal (a check's `details`): the property values Mesh could translate, so the type pass can tell whether a comparison among them can differ. */
+  parts?: ExprNode[];
 }
 
 export type TypeClass = "number" | "string" | "boolean" | "date" | "enum" | "json" | "list" | "record" | "any";

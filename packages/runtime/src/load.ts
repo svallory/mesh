@@ -193,16 +193,58 @@ export function guarded(plan: LoadPlan, entity: string, row: Work, what = "compu
   return guard;
 }
 
+/** `T` with every property, element and nested object read-only; a `Date` loses its setters. `any` stays `any`. */
+export type DeepReadonly<T> = 0 extends 1 & T ? T
+  : T extends Date ? Readonly<Omit<Date, `set${string}`>>
+    : T extends (...args: never[]) => unknown ? T
+      : T extends readonly (infer U)[] ? readonly DeepReadonly<U>[]
+        : T extends object ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+          : T;
+
+const readOnlyViews = new WeakMap<object, { where: string; view: object }>();
+
 /**
- * A read-only view of the record a plain action function (`run`, `details`, an untranslated arrow) is handed as `self`.
- * The work of an action is its `set` steps, so an assignment, a delete or a defineProperty inside a function is a mistake
- * that would otherwise be dropped without a word.
+ * A read-only view of a record (or of a value reached through one) that a plain action function is handed as `self` or
+ * `before`. The work of an action is its `set` steps, so a change made inside a function is never persisted, and Mesh says
+ * so wherever JavaScript lets it: `set`, `deleteProperty`, `defineProperty`, `preventExtensions` and `setPrototypeOf` throw
+ * on the record and on every object, array and related record reached through it. A `Date` is handed out as a copy whose
+ * setters throw, so nothing written through a path a proxy cannot trap reaches the stored row.
  */
 export function readOnlyRecord(row: Work, where: string): Work {
   const refuse = (): never => {
     throw new FrameworkError(`${where}: a function cannot change the record. Use a \`set\` step (\`set &field=...\`) to change a field; \`run\` is for work outside the record`);
   };
-  return new Proxy(row, { set: refuse, defineProperty: refuse, deleteProperty: refuse });
+  const wrap = (value: unknown): unknown => {
+    if (value === null || typeof value !== "object") return value;
+    if (value instanceof Date) {
+      const copy = new Date(value.getTime());
+      return new Proxy(copy, {
+        get(target, key) {
+          const found = Reflect.get(target, key, target);
+          if (typeof found !== "function") return found;
+          return typeof key === "string" && key.startsWith("set") ? refuse : (found as (...args: unknown[]) => unknown).bind(target);
+        },
+        set: refuse, defineProperty: refuse, deleteProperty: refuse, preventExtensions: refuse, setPrototypeOf: refuse,
+      });
+    }
+    return readOnlyRecord(value as Work, where);
+  };
+  const known = readOnlyViews.get(row);
+  if (known?.where === where) return known.view as Work;
+  const view: Work = new Proxy(row, {
+    get(target, key, receiver) {
+      const value = Reflect.get(target, key, receiver);
+      return typeof key === "string" ? wrap(value) : value;
+    },
+    getOwnPropertyDescriptor(target, key) {
+      const descriptor = Reflect.getOwnPropertyDescriptor(target, key);
+      if (descriptor && typeof key === "string" && "value" in descriptor && descriptor.configurable) return { ...descriptor, value: wrap(descriptor.value) };
+      return descriptor;
+    },
+    set: refuse, defineProperty: refuse, deleteProperty: refuse, preventExtensions: refuse, setPrototypeOf: refuse,
+  });
+  readOnlyViews.set(row, { where, view });
+  return view;
 }
 
 /** Load the first segment on `rows`, then the rest of the path on the rows it brought in. */

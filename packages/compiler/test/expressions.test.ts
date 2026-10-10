@@ -251,7 +251,7 @@ describe("type rules", () => {
   test("always actions=[...] resolves the named actions' kinds for `before`", () => {
     const withAlways = (target: string) => entity("").replace("      validate\n", "").replace("  actions auto=[:read]\n", `  actions auto=[:read]\n    always actions=[&${target}]\n      validate\n        check :c that=({ before }) => before.n > 0 code="c" message="m"\n`) + "    create :make\n      input\n        &n\n";
     expect(codes(withAlways("go"))).toEqual([]);
-    expect(codes(withAlways("make"))).toContain("error:MESH_EXPR_NULLABLE_ACCESS");
+    expect(codes(withAlways("make"))).toContain("error:MESH_BEFORE_IN_CREATE");
   });
   test("a plain expression without operators does not warn; tx is plain, and a function that reads it is not available before action composition", () => {
     expect(codes(entity(check("({ tx }) => tx.ok(&n)")))).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
@@ -384,5 +384,28 @@ describe("review fixes (PR #63, round 1)", () => {
     expect(codes(destroy("        run({ self }) { console.log(self.n) }\n"))).not.toContain("error:MESH_DESTROY_STEP");
     const always = base.replace("  actions auto=[:read]\n", "  actions auto=[:read]\n    always types=[:destroy]\n      do\n        set\n          &n=1\n") + "    destroy :drop\n";
     expect(codes(always)).toContain("error:MESH_DESTROY_STEP");
+  });
+  test("an always block that names the auto destroy refuses set and load too", () => {
+    const base = entity("").replace("      validate\n", "").replace("auto=[:read]", "auto=[:read, :destroy]");
+    for (const step of ["        set\n          &n=1\n", "        load=[&parent]\n"]) {
+      const source = base.replace("  actions auto=[:read, :destroy]\n", `  actions auto=[:read, :destroy]\n    always actions=[&destroy]\n      do\n${step}`);
+      expect(codes(source)).toContain("error:MESH_DESTROY_STEP");
+    }
+  });
+  test("before in a create is a build error at the node: in that, in details, in a run parameter, and in an always for creates", () => {
+    const create = (extra: string) => entity("").replace("      validate\n", "").replace("  actions auto=[:read]\n", `  actions auto=[:read]\n    create :make\n      input\n        &n\n${extra}`);
+    expect(codes(create("      validate\n        check :c that=({ before }) => before.n > 0 code=\"c\" message=\"m\"\n"))).toContain("error:MESH_BEFORE_IN_CREATE");
+    expect(codes(create("      validate\n        check :c [\n          that=() => &n > 0\n          code=\"c\"\n          message=\"m\"\n          details=({ before }) => ({ v: before.n })\n        ]\n"))).toContain("error:MESH_BEFORE_IN_CREATE");
+    expect(codes(create("      do\n        run({ before }) { console.log(before) }\n"))).toContain("error:MESH_BEFORE_IN_CREATE");
+    expect(codes(entity(check("({ before }) => before.n > 0")))).not.toContain("error:MESH_BEFORE_IN_CREATE");
+  });
+  test("details: a comparison of non-null operands does not warn; one that can see a null does", () => {
+    const withDetails = (details: string) => entity(check("() => &n > 0").replace("          message=", `          details=${details}\n          message=`)).replace("      validate", "      input\n        integer :fence\n      validate");
+    expect(codes(withDetails("({ input, before }) => ({ stale: input.fence < before.n })"))).not.toContain("warning:MESH_EXPR_PLAIN");
+    expect(codes(withDetails("({ before }) => ({ long: &title?.length > 3, n: before.n })"))).toContain("warning:MESH_EXPR_PLAIN");
+  });
+  test("a typed argument that shares a member's name is not the member passthrough: a nullable one set onto a required column is a build error", () => {
+    const source = entity("").replace("      validate\n", "      input\n        integer :n nullable\n") + "      do\n        set\n          &n=({ input }) => input.n\n";
+    expect(codes(source)).toContain("error:MESH_EXPR_NULL_TO_REQUIRED");
   });
 });

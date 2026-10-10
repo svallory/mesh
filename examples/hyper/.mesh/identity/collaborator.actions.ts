@@ -85,11 +85,9 @@ export function bindCollaborator(layer: $DataLayer, options: $BindOptions = {}) 
             input: parsed,
             actor: $actor,
             context: $context,
-            before: $guarded(
-              $loadPlan,
-              "Collaborator",
-              $before,
-              "action function",
+            before: $readOnlyRecord(
+              $guarded($loadPlan, "Collaborator", $before, "action function"),
+              "Collaborator.update",
             ) as unknown as Collaborator,
             tx: undefined,
           },

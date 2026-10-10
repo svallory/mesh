@@ -17,6 +17,14 @@ export function checkLifecycleLimits(document: ModelDocument, diagnostics: Diagn
           `${what} reads \`${reads}\`, which belongs to action composition: \`actions\` and \`tx\` arrive in the second half of M5`,
           expression.position, "Remove it for now; an action can do its single-entity work with `check`, `set`, `when`, `load` and `run`"));
     }
+    // A plain function (a `run`, or a body that is not one expression) is not type-checked by the expression pass, so a create's
+    // `before` parameter is caught here: a create has no stored record.
+    for (const { expression, what, owner } of actionExpressions(entity)) {
+      if (!expression.plain || !expression.params.includes("before") || !("action" in owner) || owner.action.kind !== "create") continue;
+      diagnostics.push(error("MESH_BEFORE_IN_CREATE",
+        `${what} reads \`before\`, the stored record, and a create has none, so it is always null`, expression.position,
+        "Remove it. Compare with `self` or `input`, or move the rule to an update"));
+    }
     for (const action of entity.actions) {
       if (action.kind !== "read") continue;
       if (action.validate.length || action.do.length)
@@ -36,7 +44,7 @@ export function checkLifecycleLimits(document: ModelDocument, diagnostics: Diagn
     };
     for (const action of entity.actions) if (action.kind === "destroy") refuseDestroyStep(action.do, `destroy :${action.name} of :${entity.name}`);
     for (const always of entity.always) {
-      const covers = always.types?.includes("destroy") || always.actions?.some((ref) => entity.actions.find((a) => a.name === ref.name)?.kind === "destroy");
+      const covers = always.types?.includes("destroy") || always.actions?.some((ref) => entity.actions.find((a) => a.name === ref.name)?.kind === "destroy" || (ref.name === "destroy" && entity.auto.includes("destroy")));
       if (covers) refuseDestroyStep(always.do, `an always block of :${entity.name} that covers a destroy`);
     }
     for (const always of entity.always) {

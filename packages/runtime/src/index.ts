@@ -22,5 +22,5 @@ export { expr, scope, systemClock } from "./expr.ts";
 export { runCheck } from "./lifecycle.ts";
 export type { BindOptions, CheckSpec } from "./lifecycle.ts";
 export type { Clock, Scope } from "./expr.ts";
-export { loadRows, loadInto, unloadFrom, guarded, readOnlyRecord, rejectComputedQuery, CHUNK } from "./load.ts";
+export { loadRows, loadInto, unloadFrom, guarded, readOnlyRecord, type DeepReadonly, rejectComputedQuery, CHUNK } from "./load.ts";
 export type { LoadPlan, EntityPlan, RelationPlan, BelongsToPlan, HasPlan, ComputedPlan, LoadOptions } from "./load.ts";

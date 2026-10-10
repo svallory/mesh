@@ -86,11 +86,9 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}) {
             input: parsed,
             actor: $actor,
             context: $context,
-            before: $guarded(
-              $loadPlan,
-              "Membership",
-              $before,
-              "action function",
+            before: $readOnlyRecord(
+              $guarded($loadPlan, "Membership", $before, "action function"),
+              "Membership.changeRole",
             ) as unknown as Membership,
             tx: undefined,
           },
