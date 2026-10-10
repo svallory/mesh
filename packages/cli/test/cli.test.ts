@@ -452,7 +452,7 @@ describe("roadmap Jig port, acceptance 4: a project template overrides Mesh's", 
     }
     return out;
   }
-  const meshTemplate = join(repo, "packages/compiler/templates/validators.ts.jig");
+  const meshTemplate = join(repo, "packages/compiler/src/typescript/templates/validators.ts.jig");
 
   test("an overridden validators.ts.jig changes only the *.validators.ts files, and --check passes on the new output", async () => {
     const root = await builtProject();
@@ -514,7 +514,7 @@ describe("the data adapter's build half in mesh build", () => {
 });
 
 describe("mesh export generators (roadmap Jig port, acceptance 3)", () => {
-  const templates = join(repo, "packages/compiler/templates");
+  const templates = join(repo, "packages/compiler/src/typescript/templates");
   const names = ["types.ts.jig", "validators.ts.jig", "actions.ts.jig", "index.ts.jig"];
   const summary = "0 errors, 0 warnings\n";
 

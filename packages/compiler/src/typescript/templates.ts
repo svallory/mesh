@@ -3,11 +3,11 @@ import { constants, type Stats } from "node:fs";
 import { join, resolve } from "node:path";
 import type { Generator } from "./emit.ts";
 import { emitError } from "./emit-error.ts";
-import { errorCode } from "./paths.ts";
+import { errorCode } from "../paths.ts";
 import type { Template } from "./render.ts";
 
 /** Mesh's own templates, shipped in the package next to `src/`. */
-export const MESH_TEMPLATES_DIR = resolve(import.meta.dir, "../templates");
+export const MESH_TEMPLATES_DIR = resolve(import.meta.dir, "templates");
 
 /** The project folder whose templates replace Mesh's, per template; `mesh export generators` writes it. */
 export const PROJECT_TEMPLATES_DIR = ".mesh-generators";

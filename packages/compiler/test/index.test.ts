@@ -3,10 +3,10 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { FrameworkError, InvalidInputError, NotFoundError } from "@meshfw/runtime";
-import { buildModel } from "../src/build.ts";
-import { EmitError, generateFiles, writeGeneratedFiles } from "../src/emit.ts";
-import { actionsGenerator } from "../src/emitters/actions.ts";
-import { indexView } from "../src/views/index.ts";
+import { buildModel } from "../src/front-end/build.ts";
+import { EmitError, generateFiles, writeGeneratedFiles } from "../src/typescript/emit.ts";
+import { actionsGenerator } from "../src/typescript/emitters/actions.ts";
+import { indexView } from "../src/typescript/views/index.ts";
 import { checkTypes, configOf } from "./generated.ts";
 
 const roots: string[] = [];

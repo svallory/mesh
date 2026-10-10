@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { buildModel } from "../src/build.ts";
+import { buildModel } from "../src/front-end/build.ts";
 import { fixture } from "./helpers.ts";
 import { build, keyed, list, project } from "./v4.ts";
 

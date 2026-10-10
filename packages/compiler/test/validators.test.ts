@@ -2,13 +2,13 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { ATTRIBUTE_TYPES } from "@meshfw/model";
-import { buildModel, BUILTIN_OBJECT_PROPERTY_NAMES } from "../src/build.ts";
+import { buildModel, BUILTIN_OBJECT_PROPERTY_NAMES } from "../src/front-end/build.ts";
 import {
   generateFiles,
   generatedImportDiagnostics,
   writeGeneratedFiles,
-} from "../src/emit.ts";
-import { VALIDATOR_TYPES } from "../src/views/validators.ts";
+} from "../src/typescript/emit.ts";
+import { VALIDATOR_TYPES } from "../src/typescript/views/validators.ts";
 interface StandardSchemaV1 {
   "~standard": {
     validate(

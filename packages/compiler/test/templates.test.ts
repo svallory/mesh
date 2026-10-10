@@ -2,9 +2,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { GENERATORS } from "../src/emit.ts";
-import { EmitError } from "../src/emit-error.ts";
-import { MESH_TEMPLATES_DIR, loadTemplates } from "../src/templates.ts";
+import { GENERATORS } from "../src/typescript/emit.ts";
+import { EmitError } from "../src/typescript/emit-error.ts";
+import { MESH_TEMPLATES_DIR, loadTemplates } from "../src/typescript/templates.ts";
 
 const roots: string[] = [];
 afterEach(async () => {

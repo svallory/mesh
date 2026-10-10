@@ -2,11 +2,11 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Entity, ModelDocument } from "@meshfw/model";
-import { buildModel } from "../src/build.ts";
+import { buildModel } from "../src/front-end/build.ts";
 import type { ResolvedConfig } from "../src/config.ts";
-import { EmitError, generateFiles, writeGeneratedFiles } from "../src/emit.ts";
-import { orderedDocument } from "../src/emitters/order.ts";
-import { entityInputs } from "../src/views/inputs.ts";
+import { EmitError, generateFiles, writeGeneratedFiles } from "../src/typescript/emit.ts";
+import { orderedDocument } from "../src/typescript/emitters/order.ts";
+import { entityInputs } from "../src/typescript/views/inputs.ts";
 import { project } from "./v4.ts";
 import { checkTypes, configOf } from "./generated.ts";
 

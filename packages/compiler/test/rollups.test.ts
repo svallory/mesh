@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { buildModel } from "../src/build.ts";
+import { buildModel } from "../src/front-end/build.ts";
 const target = `import { Line } from "./line.mesh.mx"
 entity :Line
   attributes
