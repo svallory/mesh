@@ -168,7 +168,7 @@ function columnOf(entity: Entity, name: string, position: SourcePosition): { nam
   const attribute = entity.attributes.find((a) => a.name === name);
   if (attribute) return attribute;
   const relation = entity.relationships.find((r) => r.name === name && r.keyColumn);
-  if (relation) return { name: relation.keyColumn!, type: "string" };
+  if (relation) return { name: relation.keyColumn!, type: relation.keyType ?? "string" };
   throw emitError("MESH_UNKNOWN_MEMBER", `Unknown member &${name} in entity :${entity.name}`, position);
 }
 

@@ -118,7 +118,7 @@ export function typesView({ document }: EmitInput, entity: Entity): TypesView {
         name: relation.keyColumn,
         optional: false,
         key: propertyName(relation.keyColumn),
-        type: `string${relation.nullable ? " | null" : ""}`,
+        type: `${attributeTypeInfo(relation.keyType ?? "string").tsType}${relation.nullable ? " | null" : ""}`,
       });
   return {
     entityFile: entityFileComment(entity),

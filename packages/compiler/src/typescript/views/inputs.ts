@@ -82,7 +82,7 @@ export function queryColumns(entity: Entity): QueryColumn[] {
     .filter((attribute) => attributeTypeInfo(attribute.type).queryable)
     .map(({ name, type, nullable, values }) => ({ name, type, nullable, ...(values ? { values } : {}) }));
   for (const relation of entity.relationships)
-    if (relation.keyColumn) columns.push({ name: relation.keyColumn, type: "string", nullable: relation.nullable });
+    if (relation.keyColumn) columns.push({ name: relation.keyColumn, type: relation.keyType ?? "string", nullable: relation.nullable });
   return columns;
 }
 export const filterTypeName = (entity: Entity) => `${typeName(entity.name, entity.position)}Filter`;

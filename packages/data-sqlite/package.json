@@ -41,6 +41,7 @@
   "devDependencies": {
     "@meshfw/compiler": "workspace:*",
     "@meshfw/model": "workspace:*",
-    "drizzle-kit": "0.31.11"
+    "drizzle-kit": "0.31.11",
+    "zod": "4.6.5"
   }
 }
