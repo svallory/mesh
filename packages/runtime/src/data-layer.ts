@@ -11,18 +11,95 @@ export type Key = Readonly<Record<string, unknown>>;
  */
 export type TableHandle = object;
 
-/** Contract v0: operations are available only inside a transaction. Replaced in M3. */
+/** A value a filter can compare an attribute with. `null` is how a filter says "no value". */
+export type Scalar = string | number | boolean | Date | null;
+
+/**
+ * What one attribute is compared with. Every operator is lowercase; several operators
+ * in one object must all hold. An operator whose value is `undefined` is an error, not
+ * a skipped condition, so a missing variable never widens a query.
+ *
+ * `eq: null` and `ne: null` mean "is null" and "is not null" (as `nil` does), never SQL
+ * `= NULL`. `lt`, `lte`, `gt` and `gte` reject `null`. `in` takes a list of non-null
+ * values; an empty list matches nothing.
+ */
+export interface Comparison {
+  readonly eq?: Scalar;
+  readonly ne?: Scalar;
+  readonly lt?: Exclude<Scalar, null>;
+  readonly lte?: Exclude<Scalar, null>;
+  readonly gt?: Exclude<Scalar, null>;
+  readonly gte?: Exclude<Scalar, null>;
+  readonly in?: readonly Exclude<Scalar, null>[];
+  /** `true` matches null, `false` matches not null. */
+  readonly nil?: boolean;
+}
+
+/**
+ * A plain-data filter over attribute names (ADR-0013, ADR-0014): data, never a string
+ * or a query-library object. A key `and` or `or` holding a list combines filters, and
+ * every other key names an attribute; the keys of one object are all required to hold.
+ * `{ and: [] }` matches every row and `{ or: [] }` matches none. An attribute named
+ * `and` or `or` therefore cannot be filtered.
+ */
+export type Filter =
+  | { readonly and: readonly Filter[] }
+  | { readonly or: readonly Filter[] }
+  | { readonly [attribute: string]: Comparison };
+
+/** Attribute names in order of priority; a leading `-` sorts that attribute descending. */
+export type Sort = readonly string[];
+
+/**
+ * A read. Rows that tie on every `sort` field come back in primary-key order, so a page
+ * is the same page every time. `offset` without `limit` skips rows and returns the rest.
+ * `limit` and `offset` are non-negative integers; an offset past the end returns no rows.
+ */
+export interface Query {
+  readonly filter?: Filter;
+  readonly sort?: Sort;
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+/**
+ * Contract v1: operations are available only inside a transaction.
+ *
+ * Keys: an insert whose row has no value for a single-column primary key gets one. A text
+ * key becomes a UUIDv7 (time-ordered, and increasing within one process even inside one
+ * millisecond); an integer key becomes the highest stored value plus one, computed in the
+ * write transaction, so a rolled-back insert leaves no gap. A value the caller supplies is
+ * stored as given. The adapter must declare `integer-key-fill` to take an integer key.
+ */
 export interface DataOperations {
-  /** Insert a row and return its stored representation in TypeScript values. */
+  /** Insert a row and return its stored representation in TypeScript values, key included. */
   insert(table: TableHandle, row: Row): Promise<Row>;
   /** Find one row by primary key, or undefined when absent. */
   selectByKey(table: TableHandle, key: Key): Promise<Row | undefined>;
-  /** Return every row in this entity's storage; order is unspecified. */
+  /**
+   * Reload one row by primary key under the transaction's write lock, or undefined when
+   * absent. No other writer can change the row until this transaction ends, so a rule that
+   * reads, decides and then writes sees what it writes over.
+   */
+  selectByKeyForUpdate(table: TableHandle, key: Key): Promise<Row | undefined>;
+  /** Rows matching a plain-data query. No query means every row, in primary-key order. */
+  select(table: TableHandle, query?: Query): Promise<Row[]>;
+  /**
+   * Return every row in this entity's storage; order is unspecified.
+   * @deprecated Use `select`. Kept so M2 generated code keeps working; M3b removes it.
+   */
   selectAll(table: TableHandle): Promise<Row[]>;
   /** Apply changes and return the stored row, or undefined when absent. */
   updateByKey(table: TableHandle, key: Key, changes: Row): Promise<Row | undefined>;
   /** Delete one row, returning false when absent. */
   deleteByKey(table: TableHandle, key: Key): Promise<boolean>;
+  /**
+   * The highest value of one attribute among the rows matching `filter`, or null when no
+   * row matches or every match is null. No joins. Requires the `aggregates` capability.
+   */
+  max(table: TableHandle, attribute: string, filter?: Filter): Promise<Exclude<Scalar, boolean> | null>;
+  /** How many matching rows have a value (not null) in `attribute`. Requires `aggregates`. */
+  count(table: TableHandle, attribute: string, filter?: Filter): Promise<number>;
 }
 
 /** A bound data adapter; handlers always open a transaction before operations. */
@@ -31,7 +108,12 @@ export interface DataLayer {
    * One transaction runs at a time per layer; unrelated concurrent calls queue, and
    * a failed transaction does not block the queue unless its own rollback failed, which
    * makes the layer unusable: queued and later calls reject and only close() works.
-   * A nested call from inside a running transaction is an error.
+   * Re-entrant: a call made inside a running transaction (from its callback or from
+   * anything that callback awaits) joins it and receives the same operations. It commits
+   * nothing and rolls nothing back by itself: the outer call decides, so a throw that
+   * leaves the outer callback rolls back the inner call's writes too. An inner call whose
+   * error the outer callback catches keeps its partial writes; the transaction has no
+   * savepoints. A call made after the outer transaction settled starts a new one.
    */
   transaction<T>(run: (tx: DataOperations) => Promise<T>): Promise<T>;
   /** Release the adapter's connection and other owned handles. Rejects while

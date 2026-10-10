@@ -12,6 +12,9 @@ export { MeshError, InvalidInputError, NotFoundError, ForbiddenError, FrameworkE
 export type { Issue, IssueSource, PolicyCheck } from "./errors.ts";
 export { parseInput } from "./input.ts";
 export type { StandardSchemaV1 } from "./standard-schema.ts";
-export type { Row, Key, TableHandle, DataOperations, DataLayer } from "./data-layer.ts";
+export type { Row, Key, TableHandle, Scalar, Comparison, Filter, Sort, Query, DataOperations, DataLayer } from "./data-layer.ts";
+export { CAPABILITIES, defineCapabilities, validateCapabilityManifest } from "./capabilities.ts";
+export type { Capability, CapabilityManifest } from "./capabilities.ts";
+export { uuidv7 } from "./uuid.ts";
 export type { DataAdapter } from "./data-adapter.ts";
 export { defineConfig, type MeshConfig, type ExtensionDescriptor } from "./config.ts";
