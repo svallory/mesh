@@ -19,6 +19,7 @@ export const postTable = _meshSqlite("posts", {
   publicationDate: integer("publicationDate", { mode: "timestamp_ms" }),
   publishedAt: integer("publishedAt", { mode: "timestamp_ms" }),
   state: text("state", { enum: ["draft", "published"] }).notNull(),
+  metadata: text("metadata", { mode: "json" }).notNull(),
   insertedAt: integer("insertedAt", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updatedAt", { mode: "timestamp_ms" }).notNull(),
   authorId: text("authorId").notNull(),

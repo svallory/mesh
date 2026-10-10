@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 
-import type { CreateUserInput, ReadUserInput } from "./user.types";
+import type { CreateUserInput, ReadUserInput, UserFilter } from "./user.types";
 
 type Keys<T> = T extends Record<string, never> ? never : keyof T;
 
@@ -19,6 +19,34 @@ type SameShape<A, B> = [Keys<A>] extends [Keys<B>]
 
 type Assert<T extends true> = T;
 
+const comparison = <T extends z.ZodType>(value: T) =>
+  z.strictObject({
+    eq: value.nullable().optional(),
+    ne: value.nullable().optional(),
+    lt: value.optional(),
+    lte: value.optional(),
+    gt: value.optional(),
+    gte: value.optional(),
+    in: z.array(value).readonly().optional(),
+    nil: z.boolean().optional(),
+  });
+
+// The cast is the schema's only gap: zod writes an absent key as `?: T | undefined`, which the
+// strictest `exactOptionalPropertyTypes` setting does not let the filter type accept.
+export const userFilter: z.ZodType<UserFilter> = z.lazy(
+  () =>
+    z.union([
+      z.strictObject({ and: z.array(userFilter).readonly() }),
+      z.strictObject({ or: z.array(userFilter).readonly() }),
+      z.strictObject({
+        id: comparison(z.uuid()).optional(),
+        name: comparison(z.string()).optional(),
+      }),
+    ]) as unknown as z.ZodType<UserFilter>,
+);
+
+export const userSort = z.array(z.enum(["id", "-id", "name", "-name"])).readonly();
+
 export const createUserInput = z.strictObject({
   name: z.string(),
 }) satisfies z.ZodType<CreateUserInput>;
@@ -27,6 +55,11 @@ export type CreateUserInputShape = Assert<
   SameShape<z.output<typeof createUserInput>, CreateUserInput>
 >;
 
-export const readUserInput = z.strictObject({}) satisfies z.ZodType<ReadUserInput>;
+export const readUserInput = z.strictObject({
+  filter: userFilter.optional(),
+  sort: userSort.optional(),
+  limit: z.int().min(0).optional(),
+  offset: z.int().min(0).optional(),
+}) satisfies z.ZodType<ReadUserInput>;
 
 export type ReadUserInputShape = Assert<SameShape<z.output<typeof readUserInput>, ReadUserInput>>;

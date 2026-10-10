@@ -9,7 +9,7 @@ import {
   type DataLayer as $DataLayer,
 } from "@meshfw/runtime";
 import { bindComment } from "./blog/comment.actions";
-import type { Comment, ReadCommentInput } from "./blog/comment.types";
+import type { Comment, ReadCommentInput, CommentFilter, CommentSort } from "./blog/comment.types";
 import { bindPost } from "./blog/post.actions";
 import type {
   Post,
@@ -19,13 +19,17 @@ import type {
   PublishedPostInput,
   ReadPostInput,
   DestroyPostInput,
+  PostFilter,
+  PostSort,
 } from "./blog/post.types";
 import { bindUser } from "./blog/user.actions";
-import type { User, CreateUserInput, ReadUserInput } from "./blog/user.types";
+import type { User, CreateUserInput, ReadUserInput, UserFilter, UserSort } from "./blog/user.types";
 
 export type {
   Comment,
   ReadCommentInput,
+  CommentFilter,
+  CommentSort,
   Post,
   CreatePostInput,
   PublishPostInput,
@@ -33,9 +37,13 @@ export type {
   PublishedPostInput,
   ReadPostInput,
   DestroyPostInput,
+  PostFilter,
+  PostSort,
   User,
   CreateUserInput,
   ReadUserInput,
+  UserFilter,
+  UserSort,
 };
 export { tables, commentTable, postTable, userTable } from "./schema";
 

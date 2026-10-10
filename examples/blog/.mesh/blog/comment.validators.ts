@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 
-import type { ReadCommentInput } from "./comment.types";
+import type { ReadCommentInput, CommentFilter } from "./comment.types";
 
 type Keys<T> = T extends Record<string, never> ? never : keyof T;
 
@@ -19,7 +19,40 @@ type SameShape<A, B> = [Keys<A>] extends [Keys<B>]
 
 type Assert<T extends true> = T;
 
-export const readCommentInput = z.strictObject({}) satisfies z.ZodType<ReadCommentInput>;
+const comparison = <T extends z.ZodType>(value: T) =>
+  z.strictObject({
+    eq: value.nullable().optional(),
+    ne: value.nullable().optional(),
+    lt: value.optional(),
+    lte: value.optional(),
+    gt: value.optional(),
+    gte: value.optional(),
+    in: z.array(value).readonly().optional(),
+    nil: z.boolean().optional(),
+  });
+
+// The cast is the schema's only gap: zod writes an absent key as `?: T | undefined`, which the
+// strictest `exactOptionalPropertyTypes` setting does not let the filter type accept.
+export const commentFilter: z.ZodType<CommentFilter> = z.lazy(
+  () =>
+    z.union([
+      z.strictObject({ and: z.array(commentFilter).readonly() }),
+      z.strictObject({ or: z.array(commentFilter).readonly() }),
+      z.strictObject({
+        id: comparison(z.uuid()).optional(),
+        body: comparison(z.string()).optional(),
+      }),
+    ]) as unknown as z.ZodType<CommentFilter>,
+);
+
+export const commentSort = z.array(z.enum(["id", "-id", "body", "-body"])).readonly();
+
+export const readCommentInput = z.strictObject({
+  filter: commentFilter.optional(),
+  sort: commentSort.optional(),
+  limit: z.int().min(0).optional(),
+  offset: z.int().min(0).optional(),
+}) satisfies z.ZodType<ReadCommentInput>;
 
 export type ReadCommentInputShape = Assert<
   SameShape<z.output<typeof readCommentInput>, ReadCommentInput>

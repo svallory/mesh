@@ -14,9 +14,14 @@ import { tables } from "../schema";
 export function bindComment(layer: $DataLayer) {
   return Object.freeze({
     async read(input: ReadCommentInput, ...[_context]: $ContextArgument): Promise<Comment[]> {
-      await parseInput(readCommentInput, input);
+      const parsed = await parseInput(readCommentInput, input);
       return layer.transaction(async (tx) => {
-        return (await tx.selectAll(tables.comment)) as Comment[];
+        return (await tx.select(tables.comment, {
+          filter: parsed.filter,
+          sort: parsed.sort,
+          limit: parsed.limit,
+          offset: parsed.offset,
+        })) as Comment[];
       });
     },
   });

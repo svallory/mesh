@@ -13,6 +13,7 @@ entity :Post table="posts"
     date :publicationDate nullable
     datetime :publishedAt nullable
     enum :state values=[:draft, :published] default=:draft
+    json :metadata default={}
     timestamp :insertedAt on=:create
     timestamp :updatedAt on=:update
   relationships
@@ -26,6 +27,7 @@ entity :Post table="posts"
       input
         &title
         &body
+        &metadata
         &author
     update :publish
       validate

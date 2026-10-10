@@ -10,6 +10,7 @@ import type {
   PublishedPostInput,
   ReadPostInput,
   DestroyPostInput,
+  PostFilter,
 } from "./post.types";
 
 type Keys<T> = T extends Record<string, never> ? never : keyof T;
@@ -26,9 +27,86 @@ type SameShape<A, B> = [Keys<A>] extends [Keys<B>]
 
 type Assert<T extends true> = T;
 
+const comparison = <T extends z.ZodType>(value: T) =>
+  z.strictObject({
+    eq: value.nullable().optional(),
+    ne: value.nullable().optional(),
+    lt: value.optional(),
+    lte: value.optional(),
+    gt: value.optional(),
+    gte: value.optional(),
+    in: z.array(value).readonly().optional(),
+    nil: z.boolean().optional(),
+  });
+
+// The cast is the schema's only gap: zod writes an absent key as `?: T | undefined`, which the
+// strictest `exactOptionalPropertyTypes` setting does not let the filter type accept.
+export const postFilter: z.ZodType<PostFilter> = z.lazy(
+  () =>
+    z.union([
+      z.strictObject({ and: z.array(postFilter).readonly() }),
+      z.strictObject({ or: z.array(postFilter).readonly() }),
+      z.strictObject({
+        id: comparison(z.uuid()).optional(),
+        title: comparison(z.string()).optional(),
+        body: comparison(z.string()).optional(),
+        views: comparison(z.int()).optional(),
+        rating: comparison(z.number()).optional(),
+        price: comparison(z.number()).optional(),
+        featured: comparison(z.boolean()).optional(),
+        publicationDate: comparison(z.date()).optional(),
+        publishedAt: comparison(z.date()).optional(),
+        state: comparison(z.enum(["draft", "published"])).optional(),
+        insertedAt: comparison(z.date()).optional(),
+        updatedAt: comparison(z.date()).optional(),
+        authorId: comparison(z.string()).optional(),
+      }),
+    ]) as unknown as z.ZodType<PostFilter>,
+);
+
+export const postSort = z
+  .array(
+    z.enum([
+      "id",
+      "-id",
+      "title",
+      "-title",
+      "body",
+      "-body",
+      "views",
+      "-views",
+      "rating",
+      "-rating",
+      "price",
+      "-price",
+      "featured",
+      "-featured",
+      "publicationDate",
+      "-publicationDate",
+      "publishedAt",
+      "-publishedAt",
+      "state",
+      "-state",
+      "insertedAt",
+      "-insertedAt",
+      "updatedAt",
+      "-updatedAt",
+      "authorId",
+      "-authorId",
+    ]),
+  )
+  .readonly();
+
 export const createPostInput = z.strictObject({
   title: z.string().min(1).max(200),
   body: z.string().nullable().optional(),
+  metadata: (
+    z
+      .json()
+      .refine((value) => value !== null, {
+        message: "null is only allowed on a nullable attribute",
+      }) as z.ZodType<unknown>
+  ).optional(),
   author: z.uuid(),
 }) satisfies z.ZodType<CreatePostInput>;
 
@@ -52,13 +130,23 @@ export type ArchivePostInputShape = Assert<
   SameShape<z.output<typeof archivePostInput>, ArchivePostInput>
 >;
 
-export const publishedPostInput = z.strictObject({}) satisfies z.ZodType<PublishedPostInput>;
+export const publishedPostInput = z.strictObject({
+  filter: postFilter.optional(),
+  sort: postSort.optional(),
+  limit: z.int().min(0).optional(),
+  offset: z.int().min(0).optional(),
+}) satisfies z.ZodType<PublishedPostInput>;
 
 export type PublishedPostInputShape = Assert<
   SameShape<z.output<typeof publishedPostInput>, PublishedPostInput>
 >;
 
-export const readPostInput = z.strictObject({}) satisfies z.ZodType<ReadPostInput>;
+export const readPostInput = z.strictObject({
+  filter: postFilter.optional(),
+  sort: postSort.optional(),
+  limit: z.int().min(0).optional(),
+  offset: z.int().min(0).optional(),
+}) satisfies z.ZodType<ReadPostInput>;
 
 export type ReadPostInputShape = Assert<SameShape<z.output<typeof readPostInput>, ReadPostInput>>;
 

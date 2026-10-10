@@ -36,7 +36,6 @@ export function bindPost(layer: $DataLayer) {
       return layer.transaction(async (tx) => {
         const now = new Date();
         const row = await tx.insert(tables.post, {
-          id: crypto.randomUUID(),
           title: parsed.title,
           body: parsed.body === undefined ? null : parsed.body,
           views: 0,
@@ -46,6 +45,7 @@ export function bindPost(layer: $DataLayer) {
           publicationDate: null,
           publishedAt: null,
           state: "draft",
+          metadata: parsed.metadata === undefined ? {} : parsed.metadata,
           insertedAt: now,
           updatedAt: now,
           authorId: parsed.author,
@@ -88,9 +88,14 @@ export function bindPost(layer: $DataLayer) {
 
     async read(input: ReadPostInput, ...[_context]: $ContextArgument): Promise<Post[]> {
       // Not run in this version: on:load published; policies public
-      await parseInput(readPostInput, input);
+      const parsed = await parseInput(readPostInput, input);
       return layer.transaction(async (tx) => {
-        return (await tx.selectAll(tables.post)) as Post[];
+        return (await tx.select(tables.post, {
+          filter: parsed.filter,
+          sort: parsed.sort,
+          limit: parsed.limit,
+          offset: parsed.offset,
+        })) as Post[];
       });
     },
 
