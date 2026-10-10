@@ -130,6 +130,7 @@ export const postDocument: ModelDocument = {
           entity: { identifier: "Customer", from: "./customer.mesh.mx" },
           nullable: false,
           keyColumn: "customerId",
+          keyType: "uuid",
           position: at("belongs-to"),
         },
         {

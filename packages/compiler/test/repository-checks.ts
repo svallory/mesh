@@ -321,6 +321,9 @@ function invalidMembersInV4(source: string): string | null {
     const declaration = /^[a-z][\w-]*\s+:(\w+)/.exec(text);
     if (declaration && (V4_MEMBER_SECTIONS.has(parent?.kind ?? "") ||
       (kind === "check" && parents.some((entry) => entry.kind === "validate")))) members.add(declaration[1]!);
+    // An entity may name its own type in a relationship with no import (M7).
+    const own = /^entity\s+:(\w+)/.exec(text);
+    if (own) imports.add(own[1]!);
     const namedImport = /^import\s*\{([^}]+)\}/.exec(text);
     if (namedImport) for (const entry of namedImport[1]!.split(",")) {
       const local = /^\s*\w+(?:\s+as\s+(\w+))?\s*$/.exec(entry);

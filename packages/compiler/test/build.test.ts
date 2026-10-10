@@ -11,7 +11,7 @@ function withoutTrees<T>(value: T): T {
   if (value && typeof value === "object") {
     const record = value as Record<string, unknown>;
     return Object.fromEntries(Object.entries(record)
-      .filter(([k]) => k !== "tree" && k !== "plain" && k !== "helper" && !(k === "nullable" && "body" in record))
+      .filter(([k]) => k !== "tree" && k !== "plain" && k !== "needs" && k !== "helper" && !(k === "nullable" && "body" in record))
       .map(([k, v]) => [k, withoutTrees(v)])) as T;
   }
   return value;
