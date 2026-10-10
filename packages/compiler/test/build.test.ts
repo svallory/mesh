@@ -11,7 +11,7 @@ function withoutTrees<T>(value: T): T {
   if (value && typeof value === "object") {
     const record = value as Record<string, unknown>;
     return Object.fromEntries(Object.entries(record)
-      .filter(([k]) => k !== "tree" && k !== "plain" && !(k === "nullable" && "body" in record))
+      .filter(([k]) => k !== "tree" && k !== "plain" && k !== "helper" && !(k === "nullable" && "body" in record))
       .map(([k, v]) => [k, withoutTrees(v)])) as T;
   }
   return value;
@@ -86,7 +86,8 @@ test(
       domainRoot: "src/domain",
       files: [{ file: postFile, source: postSource }, ...dependencies],
     });
-    expect(result.diagnostics).toEqual([]);
+    // `label` concatenates strings and calls a helper with the record: plain code, so the build warns (M4).
+    expect(result.diagnostics.map((d) => d.code)).toEqual(["MESH_EXPR_PLAIN"]);
     // The hand-built model predates M4: compare it without the trees (expressions.test.ts covers those).
     expect(
       withoutTrees(result.document!.entities.find((entity) => entity.name === "Invoice")),

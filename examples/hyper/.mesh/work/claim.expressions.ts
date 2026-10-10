@@ -6,7 +6,7 @@ import type { Claim } from "./claim.types";
 
 /** What every expression of Claim reads. */
 export type ClaimScope = $Scope<{
-  self: Claim & Record<string, any>;
+  self: Claim & { task: any; holder: any; lapsed: any };
   input: any;
   actor: any;
   context: any;

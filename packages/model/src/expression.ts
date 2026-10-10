@@ -8,7 +8,7 @@ import type { SourcePosition } from "./position.ts";
  */
 export type FunctionId =
   | "eq" | "ne" | "isNull" | "isNotNull" | "lt" | "lte" | "gt" | "gte"
-  | "and" | "or" | "not" | "add" | "sub" | "mul" | "div" | "neg"
+  | "and" | "or" | "not" | "add" | "sub" | "mul" | "div" | "idiv" | "neg"
   | "length" | "now" | "today" | "coalesce" | "cond";
 
 export type QuantifierId = "some" | "every" | "find" | "filter";
@@ -47,6 +47,8 @@ export interface PlainReason {
   edits: SourceEdit[];
   /** The authored text is a method (`(params) { body }`), so TypeScript needs `function` before it. */
   method?: true;
+  /** The authored code uses an operator whose null rule differs from Mesh's (comparison, `!`, `&&`, `||`, arithmetic), so the build warns. */
+  operators?: true;
 }
 
 export type TypeClass = "number" | "string" | "boolean" | "date" | "enum" | "json" | "list" | "record" | "any";
@@ -77,7 +79,8 @@ export const FUNCTIONS: readonly FunctionSpec[] = Object.freeze([
   { id: "add", spelling: "a + b", arity: 2, signature: "(number, number) -> number", nulls: "any operand null: null" },
   { id: "sub", spelling: "a - b", arity: 2, signature: "(number, number) -> number", nulls: "any operand null: null" },
   { id: "mul", spelling: "a * b", arity: 2, signature: "(number, number) -> number", nulls: "any operand null: null" },
-  { id: "div", spelling: "a / b", arity: 2, signature: "(number, number) -> number", nulls: "any operand null, or a zero divisor: null" },
+  { id: "div", spelling: "a / b (a float or decimal operand)", arity: 2, signature: "(number, number) -> number", nulls: "exact division; any operand null, or a zero divisor: null" },
+  { id: "idiv", spelling: "a / b (both integers)", arity: 2, signature: "(integer, integer) -> integer", nulls: "truncates toward zero; any operand null, or a zero divisor: null" },
   { id: "neg", spelling: "-a", arity: 1, signature: "(number) -> number", nulls: "null: null" },
   { id: "length", spelling: "a.length", arity: 1, signature: "(string | list) -> number", nulls: "null string: null; a list is never null" },
   { id: "now", spelling: "now()", arity: 0, signature: "() -> date", nulls: "never null; one instant per scope" },

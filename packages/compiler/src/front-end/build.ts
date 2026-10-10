@@ -211,7 +211,7 @@ function buildEntity(
     fail(problem.code, problem.message, at(problem.offset));
   entity.imports = imports.imports.map(
     (i): Import => {
-      const value = { identifiers: i.names, from: i.from, position: at(i.offset) };
+      const value: Import = { identifiers: i.names, from: i.from, ...(hasMeshExtension(i.from) ? {} : { helper: true as const }), position: at(i.offset) };
       importDetails.set(value, i);
       return value;
     },
@@ -258,7 +258,9 @@ function buildEntity(
       {
         helpers: helperImports,
         imported: new Set(importNames.keys()),
-        report: (d) => diagnostics.push(d),
+        report: (d) => {
+          if (!diagnostics.some((x) => x.code === d.code && x.position.file === d.position.file && x.position.offset === d.position.offset)) diagnostics.push(d);
+        },
         ...(runStep ? { runStep } : {}),
       },
     );

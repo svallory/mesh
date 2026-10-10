@@ -16,7 +16,7 @@ Each line names the entity, the construct left out, its code in the [gap analysi
 - Claim, Membership, Assignment: engine-set timestamps (`acquiredAt`, `expiresAt`, `grantedAt`, `startedAt`, `endedAt`, `revokedAt`) are client inputs or left null. `now()` exists since M4 (G23), but a `set` with an expression is applied by the action lifecycle, which is M5 (D04): M5.
 - Claim, Attempt, Submission: engine-computed values (`fence` as the highest plus one, `number`, `taskVersion`) are client inputs (D04): M5.
 - Review: `ruleApplied` and `reviewer` are client inputs; Hyper derives both from the reviewer rule (G07, D04): after 1.0.
-- Task: the filtered has-ones (`currentAssignment`, `activeClaim`, `pendingSubmission`) and the `exists` computed fields built on them (`claimed`, `inReview`, `assigned`) (G07): after 1.0.
+- Task: the filtered has-ones (`currentAssignment`, `activeClaim`, `pendingSubmission`) (G07): after 1.0.
 - Task: the `reviewer` and `derivedState` computed fields, and `blocked_reasons` as a list of maps (G07, G29): M7.
 - Task: the `maxFence` rollup, an unfiltered `max` over the claims (G07): M7.
 - Task: the `lastSettledAt` rollup over a filtered subset of events (G07): after 1.0.
@@ -53,4 +53,4 @@ Each line names the entity, the construct left out, its code in the [gap analysi
 - Workspace: `owner_ids` and `stats`, results that are not a record (G10, G26): application code.
 - Workspace: `export` and `import` (G18): after 1.0.
 
-What M4 added: Task's `childrenSettled` and `hasActiveClaim` computed fields (the body of rule `task.children-settled`, and a test the claim rules build on) and Claim's `lapsed` (rule `claim.expired`) are written and evaluated in memory since M4 (`test/expressions.test.ts`); the rules that read them are `check`s, which M5 runs (G07).
+What M4 added: the spec's computed fields that are one expression over a has-many are written and evaluated in memory (`test/expressions.test.ts`): Task's `childrenSettled` (rule `task.children-settled`), `claimed`, `inReview`, `assigned` and `lapsedClaim` (the `.some(...)` forms the spec uses instead of the filtered has-ones), and Claim's `lapsed` (rule `claim.expired`). The rules that read them are `check`s, which M5 runs (G07).

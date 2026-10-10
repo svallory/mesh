@@ -34,20 +34,24 @@ interface Ty {
   viaOptional?: boolean;
   entity?: Entity;
   values?: readonly string[];
+  /** A whole number: `integer` attribute, integer literal, or arithmetic over integers. */
+  int?: boolean;
   /** A literal, so `a === b` does not warn about null equality. */
   literal?: boolean;
   atom?: string;
 }
 
 class Demote extends Error {
-  constructor(readonly detail: string, readonly position: SourcePosition) { super(detail); }
+  /** `always`: the build warns even without an operator (truthiness). */
+  constructor(readonly detail: string, readonly position: SourcePosition, readonly always = false) { super(detail); }
 }
 
 const CLASS: Record<string, TypeClass> = {
   uuid: "string", string: "string", integer: "number", float: "number", decimal: "number",
   boolean: "boolean", enum: "enum", date: "date", datetime: "date", timestamp: "date", json: "json",
 };
-const BOOLEAN_OPERATORS = new Set(["eq", "ne", "lt", "lte", "gt", "gte", "and", "or", "not", "coalesce"]);
+/** Functions whose null rule differs from JavaScript's: `??` and `?.` do not (COALESCE and a left join mean the same). */
+const DIFFERING = new Set(["eq", "ne", "lt", "lte", "gt", "gte", "and", "or", "not", "add", "sub", "mul", "div", "idiv", "neg", "length"]);
 
 interface Scope {
   entity: Entity;
@@ -65,7 +69,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     diagnostics.push({ severity, code, message, position, fix });
 
   const attributeTy = (a: Attribute): Ty => ({
-    c: CLASS[a.type] ?? "any", nullable: a.nullable,
+    c: CLASS[a.type] ?? "any", nullable: a.nullable, ...(a.type === "integer" ? { int: true } : {}),
     ...(a.values ? { values: a.values.map((v) => v.value) } : {}),
   });
 
@@ -86,7 +90,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     const computed = e.computed.find((x) => x.name === name);
     if (computed) {
       const nullable = computed.rollup ? computed.nullable : (computed.nullable ?? false);
-      return { c: CLASS[computed.type] ?? "any", nullable };
+      return { c: CLASS[computed.type] ?? "any", nullable, ...(computed.type === "integer" ? { int: true } : {}) };
     }
     return { c: "any", nullable: false };
   }
@@ -97,7 +101,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     switch (n.kind) {
       case "literal":
         if (n.value === null) return { c: "any", nullable: true, literal: true };
-        return { c: typeof n.value === "number" ? "number" : typeof n.value === "boolean" ? "boolean" : "string", nullable: false, literal: true };
+        return { c: typeof n.value === "number" ? "number" : typeof n.value === "boolean" ? "boolean" : "string", nullable: false, literal: true, ...(typeof n.value === "number" && Number.isInteger(n.value) ? { int: true } : {}) };
       case "atom": return { c: "enum", nullable: false, literal: true, atom: n.value };
       case "var": {
         if (n.name === "self") return { c: "record", nullable: false, entity: scope.entity };
@@ -128,7 +132,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
         if (source.c !== "list" && source.c !== "any") return fail(`\`${n.op}\` on something that is not a list`);
         const local: Ty = source.entity ? { c: "record", nullable: false, entity: source.entity } : { c: "any", nullable: false };
         const body = infer(n.body, { ...scope, locals: new Map([...scope.locals, [n.param, local]]) });
-        if (body.c !== "boolean" && body.c !== "any") return fail("a predicate that is not a boolean");
+        if (body.c !== "boolean" && body.c !== "any") throw new Demote("a predicate that is not a boolean (truthiness)", n.position, true);
         if (n.op === "some" || n.op === "every") return { c: "boolean", nullable: source.nullable };
         if (n.op === "find") return { c: "record", nullable: true, entity: source.entity, viaOptional: false };
         return { c: "list", nullable: source.nullable, ...(source.entity ? { entity: source.entity } : {}) };
@@ -166,26 +170,34 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
             return { c: "boolean", nullable };
           }
           case "and": case "or": {
-            if (!a.every((t) => bothClass(t, "boolean"))) return fail("a non-boolean operand of `&&`/`||` (truthiness)");
+            if (!a.every((t) => bothClass(t, "boolean"))) throw new Demote("a non-boolean operand of `&&`/`||` (truthiness)", n.position, true);
             return { c: "boolean", nullable };
           }
           case "not": {
-            if (!bothClass(a[0]!, "boolean")) return fail("a non-boolean operand of `!` (truthiness)");
+            if (!bothClass(a[0]!, "boolean")) throw new Demote("a non-boolean operand of `!` (truthiness)", n.position, true);
             if (nullable) report("warning", "MESH_EXPR_NEGATED_UNKNOWN",
               "`!` on a value that can be unknown is unknown, so the check fails or the row is left out (JavaScript says true for null)", n.position,
               "test for null first: `x !== null && !x`");
             return { c: "boolean", nullable };
           }
-          case "add": case "sub": case "mul": case "div": case "neg": {
+          case "add": case "sub": case "mul": case "div": case "idiv": case "neg": {
             if (!a.every((t) => bothClass(t, "number"))) return fail("arithmetic on values that are not numbers");
+            const int = a.every((t) => t.int === true);
+            if (n.fn === "div" && int) {
+              n.fn = "idiv";
+              report("warning", "MESH_EXPR_INTEGER_DIVISION",
+                "dividing two integers truncates toward zero (7 / 2 is 3, -7 / 2 is -3), as in SQL; JavaScript gives 3.5", n.position,
+                "make one operand a float or decimal for exact division");
+            }
             const divisor = n.args[1];
             const safe = divisor?.kind === "literal" && typeof divisor.value === "number" && divisor.value !== 0;
-            return { c: "number", nullable: n.fn === "div" && !safe ? true : nullable };
+            const divides = n.fn === "div" || n.fn === "idiv";
+            return { c: "number", nullable: divides && !safe ? true : nullable, ...(int ? { int: true } : {}) };
           }
           case "length": {
             const x = a[0]!;
             if (!bothClass(x, "string", "list")) return fail("`.length` of something that is not a string or a list");
-            return { c: "number", nullable: x.c === "string" ? x.nullable : false };
+            return { c: "number", nullable: x.c === "string" ? x.nullable : false, int: true };
           }
           case "now": case "today": return { c: "date", nullable: false };
           case "coalesce": {
@@ -195,7 +207,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
           }
           case "cond": {
             const [c, x, y] = a as [Ty, Ty, Ty];
-            if (!bothClass(c, "boolean")) return fail("a non-boolean test in `?:` (truthiness)");
+            if (!bothClass(c, "boolean")) throw new Demote("a non-boolean test in `?:` (truthiness)", n.position, true);
             if (!same(x, y)) return fail("`?:` branches of different types");
             return { ...(x.c === "any" ? y : x), nullable: x.nullable || y.nullable, literal: false, atom: undefined };
           }
@@ -205,18 +217,17 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
   }
 
   function hasOperator(n: ExprNode): boolean {
-    if (n.kind === "call") return BOOLEAN_OPERATORS.has(n.fn) || n.args.some(hasOperator);
+    if (n.kind === "call") return DIFFERING.has(n.fn) || n.args.some(hasOperator);
     if (n.kind === "member") return hasOperator(n.object);
     if (n.kind === "helper") return n.args.some(hasOperator);
     if (n.kind === "quantify") return hasOperator(n.source) || hasOperator(n.body);
     return false;
   }
-  const SOURCE_OPERATOR = /[<>]|[!=]==?|&&|\|\||\?\?|(?<![=!<>])!(?!=)/;
   function warnPlain(e: Expression, detail: string, position: SourcePosition): void {
     // A construct the build already rejects does not also deserve a warning.
     if (diagnostics.some((d) => d.severity === "error" && d.position.file === position.file && d.position.offset >= e.position.offset && d.position.offset <= e.position.offset + e.source.length)) return;
     report("warning", "MESH_EXPR_PLAIN",
-      `this expression runs as plain TypeScript with JavaScript's rules for null, not Mesh's, because it uses ${detail}`, position,
+      `this expression runs as plain TypeScript with JavaScript's rules for null, not Mesh's, because of ${detail}`, position,
       "rewrite it with comparisons, `&&`, `||`, `!`, `??`, `?.`, `now()`, `today()` and the list methods some, every, find and filter to have Mesh translate it");
     void e;
   }
@@ -225,20 +236,20 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     const tree = e.tree!;
     delete e.tree;
     e.plain = { why: "unsupported-construct", detail: d.detail, position: d.position, edits: options.editsOf(e), ...(/^\s*\(.*\)\s*\{/s.test(e.source) && !e.source.includes("=>") ? { method: true as const } : {}) };
-    if (hasOperator(tree)) warnPlain(e, d.detail, d.position);
+    if (d.always || hasOperator(tree)) warnPlain(e, d.detail, d.position);
   }
 
   /** Check one expression; `boolean` says the result must be a boolean (a check, a condition, a filter). Returns the result type. */
   function visit(e: Expression, scope: Scope, boolean: boolean): Ty | null {
     if (e.plain) {
-      if ((e.plain.why === "unsupported-construct" || e.plain.why === "reads-record-in-helper") && SOURCE_OPERATOR.test(e.source.replaceAll("=>", "")))
+      if ((e.plain.why === "unsupported-construct" || e.plain.why === "reads-record-in-helper") && e.plain.operators)
         warnPlain(e, e.plain.detail, e.plain.position);
       return null;
     }
     if (!e.tree) return null;
     try {
       const t = infer(e.tree, scope);
-      if (boolean && t.c !== "boolean" && t.c !== "any") throw new Demote("a result that is not a boolean (truthiness)", e.tree.position);
+      if (boolean && t.c !== "boolean" && t.c !== "any") throw new Demote("a result that is not a boolean (truthiness)", e.tree.position, true);
       return t;
     } catch (x) {
       if (x instanceof Demote) { demote(e, x); return null; }
@@ -251,7 +262,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     for (const field of action.input) {
       if (field.kind === "member") {
         const a = entity.attributes.find((x) => x.name === field.ref.name);
-        map.set(field.ref.name, a ? attributeTy(a) : { c: "any", nullable: false });
+        map.set(field.ref.name, a ? { ...attributeTy(a), nullable: a.nullable || action.kind === "update" } : { c: "any", nullable: false });
       } else map.set(field.name, { ...attributeTy(field as unknown as Attribute) });
     }
     return map;
@@ -264,7 +275,10 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
           if (typeof value === "object" && value !== null && "source" in value) {
             const t = visit(value as Expression, scope, false);
             const attr = entity.attributes.find((a) => a.name === member.name);
-            if (t?.nullable && attr && !attr.nullable && !attr.primaryKey)
+            // `set &x=({ input }) => input.x` is "unchanged" when the caller omits x (M5 skips it): not an error.
+            const tree = (value as Expression).tree;
+            const passthrough = tree?.kind === "member" && tree.object.kind === "var" && tree.object.name === "input" && tree.name === member.name;
+            if (t?.nullable && attr && !attr.nullable && !attr.primaryKey && !passthrough)
               report("error", "MESH_EXPR_NULL_TO_REQUIRED",
                 `\`${member.name}\` is required, and this value can be null`, (value as Expression).position,
                 "give it a default with `?? value`, or check it first");
@@ -297,8 +311,9 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       blocks(entity, action.validate, action.do, scope);
     }
     for (const block of entity.always) {
-      const covers = block.types ?? (block.actions ? ["create"] : ["create"]);
-      blocks(entity, block.validate, block.do, { ...base, beforeNullable: covers.includes("create"), inputs: null });
+      const named = block.actions?.map((ref) => entity.actions.find((a) => a.name === ref.name)?.kind);
+      const covers: (string | undefined)[] = block.types ?? named ?? ["create"];
+      blocks(entity, block.validate, block.do, { ...base, beforeNullable: covers.includes("create") || covers.includes(undefined), inputs: null });
     }
     for (const policy of entity.policies) {
       const scope = { ...base, inputs: null };

@@ -23,8 +23,22 @@ test("claim.expired: an active claim whose expiry has passed, by the injected cl
   expect(lapsed("released", 1_000, 2_000)).toBe(false);
 });
 
-test("task.hasActiveClaim: some claim is active", () => {
-  const has = (claims: { state: string }[]) => task["computed.hasActiveClaim"](scope({ self: { claims } } as never));
-  expect(has([])).toBe(false);
-  expect(has([{ state: "released" }, { state: "active" }])).toBe(true);
+const at = (ms: number) => new Date(ms);
+const withClock = (self: object, now: number) => scope({ self } as never, { clock: () => at(now) });
+
+test("task.claimed and task.lapsedClaim: an active claim by its expiry, a released one by neither", () => {
+  const claims = [{ state: "released", expiresAt: at(9_000) }, { state: "active", expiresAt: at(5_000) }];
+  expect(task["computed.claimed"](withClock({ claims: [] }, 1_000))).toBe(false);
+  expect(task["computed.claimed"](withClock({ claims }, 1_000))).toBe(true);
+  expect(task["computed.claimed"](withClock({ claims }, 6_000))).toBe(false);
+  expect(task["computed.lapsedClaim"](withClock({ claims }, 1_000))).toBe(false);
+  expect(task["computed.lapsedClaim"](withClock({ claims }, 6_000))).toBe(true);
+});
+
+test("task.inReview and task.assigned", () => {
+  const run = (id: string, self: object) => (task as Record<string, (s: unknown) => unknown>)[id]!(scope({ self } as never));
+  expect(run("computed.inReview", { submissions: [{ state: "accepted" }] })).toBe(false);
+  expect(run("computed.inReview", { submissions: [{ state: "accepted" }, { state: "pending" }] })).toBe(true);
+  expect(run("computed.assigned", { assignments: [{ endedAt: new Date(1) }] })).toBe(false);
+  expect(run("computed.assigned", { assignments: [{ endedAt: null }] })).toBe(true);
 });

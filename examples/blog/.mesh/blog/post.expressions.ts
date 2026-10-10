@@ -6,7 +6,7 @@ import type { Post } from "./post.types";
 
 /** What every expression of Post reads. */
 export type PostScope = $Scope<{
-  self: Post & Record<string, any>;
+  self: Post & { author: any; comments: any[]; excerpt: any; commentCount: any };
   input: any;
   actor: any;
   context: any;
@@ -15,12 +15,11 @@ export type PostScope = $Scope<{
 }>;
 
 export const expressions = {
-  // computed excerpt, plain (block-body) (src/domain/blog/post.mesh.mx:23:20)
+  // computed excerpt, plain (unsupported-construct) (src/domain/blog/post.mesh.mx:23:20)
   "computed.excerpt": (s: PostScope) => {
     const { self } = s;
     return (function () {
-      const text = self.body ?? "";
-      return text.slice(0, 200);
+      return (self.body ?? "").slice(0, 200);
     })();
   },
   // check :titlePresent that, translated (src/domain/blog/post.mesh.mx:34:34)
@@ -30,5 +29,5 @@ export const expressions = {
   // policy :public authorize-if, translated (src/domain/blog/post.mesh.mx:46:20)
   "policy.public.authorize-if.0": (s: PostScope) => $.eq(s.self.state, "published"),
   // policy :owner authorize-if, translated (src/domain/blog/post.mesh.mx:48:20)
-  "policy.owner.authorize-if.0": (s: PostScope) => $.eq(s.self.author.id, s.actor.id),
+  "policy.owner.authorize-if.0": (s: PostScope) => $.eq(s.self.author?.id, s.actor?.id),
 } as const;

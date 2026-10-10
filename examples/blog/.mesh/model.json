@@ -65,7 +65,7 @@
                   "column": 8,
                   "file": "src/domain/blog/post.mesh.mx",
                   "line": 28,
-                  "offset": 872
+                  "offset": 855
                 }
               }
             },
@@ -77,7 +77,7 @@
                   "column": 8,
                   "file": "src/domain/blog/post.mesh.mx",
                   "line": 29,
-                  "offset": 887
+                  "offset": 870
                 }
               }
             },
@@ -89,7 +89,7 @@
                   "column": 8,
                   "file": "src/domain/blog/post.mesh.mx",
                   "line": 30,
-                  "offset": 901
+                  "offset": 884
                 }
               }
             },
@@ -101,7 +101,7 @@
                   "column": 8,
                   "file": "src/domain/blog/post.mesh.mx",
                   "line": 31,
-                  "offset": 919
+                  "offset": 902
                 }
               }
             }
@@ -112,7 +112,7 @@
             "column": 4,
             "file": "src/domain/blog/post.mesh.mx",
             "line": 26,
-            "offset": 837
+            "offset": 820
           },
           "validate": []
         },
@@ -127,7 +127,7 @@
                       "column": 10,
                       "file": "src/domain/blog/post.mesh.mx",
                       "line": 37,
-                      "offset": 1100
+                      "offset": 1083
                     }
                   },
                   "value": {
@@ -140,7 +140,7 @@
                 "column": 8,
                 "file": "src/domain/blog/post.mesh.mx",
                 "line": 36,
-                "offset": 1086
+                "offset": 1069
               }
             },
             {
@@ -152,7 +152,7 @@
                     "column": 14,
                     "file": "src/domain/blog/post.mesh.mx",
                     "line": 38,
-                    "offset": 1132
+                    "offset": 1115
                   }
                 },
                 {
@@ -161,7 +161,7 @@
                     "column": 25,
                     "file": "src/domain/blog/post.mesh.mx",
                     "line": 38,
-                    "offset": 1143
+                    "offset": 1126
                   }
                 }
               ],
@@ -169,7 +169,7 @@
                 "column": 8,
                 "file": "src/domain/blog/post.mesh.mx",
                 "line": 38,
-                "offset": 1126
+                "offset": 1109
               }
             }
           ],
@@ -180,7 +180,7 @@
             "column": 4,
             "file": "src/domain/blog/post.mesh.mx",
             "line": 32,
-            "offset": 931
+            "offset": 914
           },
           "validate": [
             {
@@ -191,7 +191,7 @@
                 "column": 8,
                 "file": "src/domain/blog/post.mesh.mx",
                 "line": 34,
-                "offset": 970
+                "offset": 953
               },
               "that": {
                 "params": [],
@@ -199,7 +199,7 @@
                   "column": 33,
                   "file": "src/domain/blog/post.mesh.mx",
                   "line": 34,
-                  "offset": 995
+                  "offset": 978
                 },
                 "source": "() => &title.length > 0",
                 "tree": {
@@ -216,7 +216,7 @@
                               "column": 39,
                               "file": "src/domain/blog/post.mesh.mx",
                               "line": 34,
-                              "offset": 1001
+                              "offset": 984
                             }
                           },
                           "optional": false,
@@ -224,7 +224,7 @@
                             "column": 39,
                             "file": "src/domain/blog/post.mesh.mx",
                             "line": 34,
-                            "offset": 1001
+                            "offset": 984
                           }
                         }
                       ],
@@ -234,7 +234,7 @@
                         "column": 39,
                         "file": "src/domain/blog/post.mesh.mx",
                         "line": 34,
-                        "offset": 1001
+                        "offset": 984
                       }
                     },
                     {
@@ -243,7 +243,7 @@
                         "column": 55,
                         "file": "src/domain/blog/post.mesh.mx",
                         "line": 34,
-                        "offset": 1017
+                        "offset": 1000
                       },
                       "value": 0
                     }
@@ -254,7 +254,7 @@
                     "column": 39,
                     "file": "src/domain/blog/post.mesh.mx",
                     "line": 34,
-                    "offset": 1001
+                    "offset": 984
                   }
                 }
               }
@@ -270,7 +270,7 @@
             "column": 4,
             "file": "src/domain/blog/post.mesh.mx",
             "line": 39,
-            "offset": 1157
+            "offset": 1140
           },
           "validate": []
         },
@@ -282,7 +282,7 @@
               "column": 13,
               "file": "src/domain/blog/post.mesh.mx",
               "line": 41,
-              "offset": 1207
+              "offset": 1190
             },
             "source": "() => &state === :published",
             "tree": {
@@ -297,7 +297,7 @@
                       "column": 19,
                       "file": "src/domain/blog/post.mesh.mx",
                       "line": 41,
-                      "offset": 1213
+                      "offset": 1196
                     }
                   },
                   "optional": false,
@@ -305,7 +305,7 @@
                     "column": 19,
                     "file": "src/domain/blog/post.mesh.mx",
                     "line": 41,
-                    "offset": 1213
+                    "offset": 1196
                   }
                 },
                 {
@@ -314,7 +314,7 @@
                     "column": 30,
                     "file": "src/domain/blog/post.mesh.mx",
                     "line": 41,
-                    "offset": 1224
+                    "offset": 1207
                   },
                   "value": "published"
                 }
@@ -325,7 +325,7 @@
                 "column": 19,
                 "file": "src/domain/blog/post.mesh.mx",
                 "line": 41,
-                "offset": 1213
+                "offset": 1196
               }
             }
           },
@@ -336,7 +336,7 @@
             "column": 4,
             "file": "src/domain/blog/post.mesh.mx",
             "line": 40,
-            "offset": 1178
+            "offset": 1161
           },
           "sort": [
             {
@@ -347,7 +347,7 @@
                   "column": 13,
                   "file": "src/domain/blog/post.mesh.mx",
                   "line": 43,
-                  "offset": 1259
+                  "offset": 1242
                 }
               }
             }
@@ -556,22 +556,22 @@
           "body": {
             "params": [],
             "plain": {
-              "detail": "a block body of 2 statements",
+              "detail": "a method call",
               "edits": [
                 {
-                  "from": 18,
+                  "from": 13,
                   "text": "self.body",
-                  "to": 23
+                  "to": 18
                 }
               ],
               "method": true,
               "position": {
-                "column": 19,
+                "column": 31,
                 "file": "src/domain/blog/post.mesh.mx",
                 "line": 23,
-                "offset": 684
+                "offset": 696
               },
-              "why": "block-body"
+              "why": "unsupported-construct"
             },
             "position": {
               "column": 19,
@@ -579,7 +579,7 @@
               "line": 23,
               "offset": 684
             },
-            "source": "() { const text = &body ?? \"\"; return text.slice(0, 200) }"
+            "source": "() { return (&body ?? \"\").slice(0, 200) }"
           },
           "name": "excerpt",
           "nullable": false,
@@ -598,7 +598,7 @@
             "column": 4,
             "file": "src/domain/blog/post.mesh.mx",
             "line": 24,
-            "offset": 747
+            "offset": 730
           },
           "rollup": {
             "fn": "count",
@@ -642,7 +642,7 @@
           "column": 41,
           "file": "src/domain/blog/post.mesh.mx",
           "line": 25,
-          "offset": 822
+          "offset": 805
         }
       },
       "policies": [
@@ -654,7 +654,7 @@
                 "column": 19,
                 "file": "src/domain/blog/post.mesh.mx",
                 "line": 46,
-                "offset": 1334
+                "offset": 1317
               },
               "source": "() => &state === :published",
               "tree": {
@@ -669,7 +669,7 @@
                         "column": 25,
                         "file": "src/domain/blog/post.mesh.mx",
                         "line": 46,
-                        "offset": 1340
+                        "offset": 1323
                       }
                     },
                     "optional": false,
@@ -677,7 +677,7 @@
                       "column": 25,
                       "file": "src/domain/blog/post.mesh.mx",
                       "line": 46,
-                      "offset": 1340
+                      "offset": 1323
                     }
                   },
                   {
@@ -686,7 +686,7 @@
                       "column": 36,
                       "file": "src/domain/blog/post.mesh.mx",
                       "line": 46,
-                      "offset": 1351
+                      "offset": 1334
                     },
                     "value": "published"
                   }
@@ -697,7 +697,7 @@
                   "column": 25,
                   "file": "src/domain/blog/post.mesh.mx",
                   "line": 46,
-                  "offset": 1340
+                  "offset": 1323
                 }
               }
             }
@@ -708,7 +708,7 @@
             "column": 4,
             "file": "src/domain/blog/post.mesh.mx",
             "line": 45,
-            "offset": 1286
+            "offset": 1269
           },
           "types": [
             "read"
@@ -722,7 +722,7 @@
                 "column": 27,
                 "file": "src/domain/blog/post.mesh.mx",
                 "line": 47,
-                "offset": 1389
+                "offset": 1372
               }
             },
             {
@@ -731,7 +731,7 @@
                 "column": 37,
                 "file": "src/domain/blog/post.mesh.mx",
                 "line": 47,
-                "offset": 1399
+                "offset": 1382
               }
             }
           ],
@@ -744,7 +744,7 @@
                 "column": 19,
                 "file": "src/domain/blog/post.mesh.mx",
                 "line": 48,
-                "offset": 1428
+                "offset": 1411
               },
               "source": "({ actor }) => &author.id === actor.id",
               "tree": {
@@ -762,7 +762,7 @@
                           "column": 34,
                           "file": "src/domain/blog/post.mesh.mx",
                           "line": 48,
-                          "offset": 1443
+                          "offset": 1426
                         }
                       },
                       "optional": false,
@@ -770,7 +770,7 @@
                         "column": 34,
                         "file": "src/domain/blog/post.mesh.mx",
                         "line": 48,
-                        "offset": 1443
+                        "offset": 1426
                       }
                     },
                     "optional": false,
@@ -778,7 +778,7 @@
                       "column": 34,
                       "file": "src/domain/blog/post.mesh.mx",
                       "line": 48,
-                      "offset": 1443
+                      "offset": 1426
                     }
                   },
                   {
@@ -791,7 +791,7 @@
                         "column": 49,
                         "file": "src/domain/blog/post.mesh.mx",
                         "line": 48,
-                        "offset": 1458
+                        "offset": 1441
                       }
                     },
                     "optional": false,
@@ -799,7 +799,7 @@
                       "column": 49,
                       "file": "src/domain/blog/post.mesh.mx",
                       "line": 48,
-                      "offset": 1458
+                      "offset": 1441
                     }
                   }
                 ],
@@ -809,7 +809,7 @@
                   "column": 34,
                   "file": "src/domain/blog/post.mesh.mx",
                   "line": 48,
-                  "offset": 1443
+                  "offset": 1426
                 }
               }
             }
@@ -820,7 +820,7 @@
             "column": 4,
             "file": "src/domain/blog/post.mesh.mx",
             "line": 47,
-            "offset": 1366
+            "offset": 1349
           }
         }
       ],

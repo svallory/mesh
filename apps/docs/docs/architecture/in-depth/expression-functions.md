@@ -19,7 +19,7 @@ Signature: `(T, T) -> boolean`. Null behaviour: any operand null: unknown.
 |:--|:--|:--|
 | `1` | `1` | `true` |
 | `1` | `2` | `false` |
-| `0` | `0` | `true` |
+| `0` | `-0` | `true` |
 | `1` | `null` | `null` |
 | `null` | `1` | `null` |
 | `null` | `null` | `null` |
@@ -45,7 +45,7 @@ Signature: `(T, T) -> boolean`. Null behaviour: any operand null: unknown.
 |:--|:--|:--|
 | `1` | `1` | `false` |
 | `1` | `2` | `true` |
-| `0` | `0` | `false` |
+| `0` | `-0` | `false` |
 | `1` | `null` | `null` |
 | `null` | `1` | `null` |
 | `null` | `null` | `null` |
@@ -230,13 +230,31 @@ Signature: `(number, number) -> number`. Null behaviour: any operand null: null.
 | `4` | `2.5` | `10` |
 | `0` | `null` | `null` |
 
-## `a / b` (div)
+## `a / b (a float or decimal operand)` (div)
 
-Signature: `(number, number) -> number`. Null behaviour: any operand null, or a zero divisor: null.
+Signature: `(number, number) -> number`. Null behaviour: exact division; any operand null, or a zero divisor: null.
 
 | Argument 1 | Argument 2 | Result |
 |:--|:--|:--|
 | `7` | `2` | `3.5` |
+| `-7` | `2` | `-3.5` |
+| `1` | `0` | `null` |
+| `0` | `0` | `null` |
+| `null` | `2` | `null` |
+| `2` | `null` | `null` |
+
+## `a / b (both integers)` (idiv)
+
+Signature: `(integer, integer) -> integer`. Null behaviour: truncates toward zero; any operand null, or a zero divisor: null.
+
+| Argument 1 | Argument 2 | Result |
+|:--|:--|:--|
+| `7` | `2` | `3` |
+| `-7` | `2` | `-3` |
+| `7` | `-2` | `-3` |
+| `-7` | `-2` | `3` |
+| `6` | `3` | `2` |
+| `0` | `5` | `0` |
 | `1` | `0` | `null` |
 | `0` | `0` | `null` |
 | `null` | `2` | `null` |
@@ -260,9 +278,9 @@ Signature: `(string | list) -> number`. Null behaviour: null string: null; a lis
 |:--|:--|
 | `""` | `0` |
 | `"abc"` | `3` |
-| `"é"` | `1` |
-| `"é"` | `2` |
-| `"😀"` | `1` |
+| `"\u{e9}"` | `1` |
+| `"e\u{301}"` | `2` |
+| `"\u{1f600}"` | `1` |
 | `null` | `null` |
 | `[]` | `0` |
 | `[{…}, {…}]` | `2` |

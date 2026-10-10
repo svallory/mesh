@@ -94,12 +94,17 @@ export function hasExpressions(entity: Entity): boolean {
 export function expressionsView({ config }: EmitInput, entity: Entity, generatedPath: string): ExpressionsView {
   const recordName = typeName(entity.name, entity.position);
   const scopeName = `${recordName}Scope`;
-  const scopeType = `$Scope<{ self: ${recordName} & Record<string, any>; input: any; actor: any; context: any; before: ${recordName} | null; tx: any }>`;
+  // Relationships and computed fields are loaded onto the record when an expression reads them (M7); a list is `any[]` so a callback parameter is typed.
+  const loaded = [
+    ...entity.relationships.map((r) => `${JSON.stringify(r.name)}: ${r.kind === "has-many" ? "any[]" : "any"}`),
+    ...entity.computed.map((c) => `${JSON.stringify(c.name)}: any`),
+  ];
+  const scopeType = `$Scope<{ self: ${recordName}${loaded.length ? ` & { ${loaded.join("; ")} }` : ""}; input: any; actor: any; context: any; before: ${recordName} | null; tx: any }>`;
   const found = collect(entity);
   // Helper imports: the entity file's non-entity imports, rewritten relative to the generated file.
   const helperFrom = new Map<string, string>();
   for (const imported of entity.imports)
-    if (!/\.mesh\.mx$/.test(imported.from)) for (const name of imported.identifiers) helperFrom.set(name, imported.from);
+    if (imported.helper) for (const name of imported.identifiers) helperFrom.set(name, imported.from);
   const used = new Set<string>();
   for (const { expression } of found) {
     if (expression.tree) helpersIn(expression.tree, used);
@@ -112,20 +117,22 @@ export function expressionsView({ config }: EmitInput, entity: Entity, generated
     if (!relative.startsWith(".")) relative = `./${relative}`;
     byModule.set(relative, [...(byModule.get(relative) ?? []), name]);
   }
+  const entries = found.map((f) => ({
+      key: JSON.stringify(f.id),
+      comment: `${f.what}, ${f.expression.tree ? "translated" : `plain (${f.expression.plain!.why})`} (${entity.file}:${f.expression.position.line}:${f.expression.position.column + 1})`
+        .replace(/[\r\n\u2028\u2029]/g, " "),
+      code: printExpression(f.expression, scopeName, f.boolean),
+    }));
+  const usesExpr = entries.some((e) => e.code.includes("$."));
   void config;
   return {
     entityFile: entityFileComment(entity),
-    usesExpr: found.some((f) => f.expression.tree !== undefined),
+    usesExpr,
     recordName,
     typesFromLiteral: JSON.stringify(`./${entitySegment(entity)}.types`),
     scopeName,
     scopeType,
     helperImports: [...byModule].map(([from, names]) => ({ names: names.join(", "), fromLiteral: JSON.stringify(from) })),
-    entries: found.map((f) => ({
-      key: JSON.stringify(f.id),
-      comment: `${f.what}, ${f.expression.tree ? "translated" : `plain (${f.expression.plain!.why})`} (${entity.file}:${f.expression.position.line}:${f.expression.position.column + 1})`
-        .replace(/[\r\n\u2028\u2029]/g, " "),
-      code: printExpression(f.expression, scopeName, f.boolean),
-    })),
+    entries,
   };
 }

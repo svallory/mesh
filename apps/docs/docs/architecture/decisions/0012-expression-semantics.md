@@ -34,7 +34,7 @@ The semantics, in summary (the design is `notes/m4/design.md`; the page above is
 - A boolean is `true`, `false` or **unknown** (`null`). Comparison with a null operand is unknown; `&&`, `||` and `!` are Kleene logic; `x === null` is `IS NULL`; `??` is `COALESCE`; `?.` is a left join; `undefined` does not exist.
 - An unknown result **fails a `check`** (fail closed, not SQL `CHECK` semantics, which pass), **skips a `when`**, **excludes a row** in a `filter`, and is `null` in a computed field. In M8, an unknown `forbid-if` forbids.
 - `every` is strict: an element whose predicate is unknown makes it false. M10 must translate `every(p)` as `NOT EXISTS (... WHERE p IS NOT TRUE)`. `some`, `find` and `filter` ignore elements whose predicate is unknown.
-- Division by zero is `null`; `/` is real division (M10's adapters wrap it); `length` of a string counts Unicode code points (what both databases count); `now()` is read once per scope from an injectable clock.
+- Division by zero is `null`; `integer / integer` truncates toward zero (`7 / 2` is 3, `-7 / 2` is -3), as SQLite and Postgres divide two integers (ruling of 2026-10-10 14:00, and the checker warns because JavaScript gives 3.5); a `float` or `decimal` operand divides exactly (M10's adapters wrap that case); `length` of a string counts Unicode code points (what both databases count); `now()` is read once per scope from an injectable clock.
 - A construct the registry does not define (string ordering, truthiness, `==`, string concatenation, string methods) is **not translated**: it stays plain code with JavaScript semantics, and the build warns (`MESH_EXPR_PLAIN`). At M10 these become errors only where SQL is required (`filter`, `sort`, policies). Legal syntax is never made illegal. Member access through a value that may be null is a build error, because TypeScript's strict null checks reject it too.
 - Two build warnings cover legal translated code whose JavaScript reading flips on null: `MESH_EXPR_NULL_EQUALITY` (two nullable operands) and `MESH_EXPR_NEGATED_UNKNOWN` (`!`, `!==` over something that can be unknown).
 
@@ -85,6 +85,6 @@ Because A was ruled: every function page documents its null behaviour; each adap
 ## Action items
 - [x] Before M4: ruling by the lead (2026-10-10). The operator reviews it.
 - [x] M4: per-function null behaviour in the registry; tables with null cases.
-- [x] M4: the disagreements for the first registry, decided: `/` (real division, zero divisor null), `length` (code points) and string ordering (not translated) are the three to wrap or avoid in M10.
+- [x] M4: the disagreements for the first registry, decided: `/` (exact division for float and decimal, zero divisor null), `length` (code points) and string ordering (not translated) are the three to wrap or avoid in M10.
 - [ ] M10: pass every table through the SQL evaluator on SQLite and Postgres, wrapping `/` and `every` as above.
 - [ ] Operator: review this ruling.

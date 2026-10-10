@@ -53,7 +53,11 @@ test("the model folder imports neither half", () => {
 test("only the extensions list spells an entity file extension", () => {
   const offenders = files(src)
     .filter((file) => !file.endsWith("front-end/extensions.ts"))
-    .filter((file) => MESH_EXTENSIONS.some((extension) => readFileSync(file, "utf8").includes(extension)))
+    .filter((file) => {
+      const text = readFileSync(file, "utf8");
+      // The literal spelling, and a regular-expression spelling with the dots escaped (`/\.mesh\.mx$/`).
+      return MESH_EXTENSIONS.some((extension) => text.includes(extension) || text.includes(extension.replaceAll(".", "\\.")));
+    })
     .map((file) => relative(src, file));
   expect(offenders).toEqual([]);
 });

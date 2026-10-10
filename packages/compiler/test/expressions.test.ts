@@ -153,6 +153,25 @@ describe("type rules", () => {
     expect(codes(entity(check("() => &children.find((c) => c.n > 1)?.n > 1")))).toEqual([]);
     expect(codes(entity(check("() => &parent?.parent.n > 1")))).toEqual([]);
   });
+  test("every access prints as ?., so a null anywhere in a chain gives null, not a crash", () => {
+    const tree = exprOf(entity(check("() => &parent?.parent.n > 1"))).tree!;
+    const code = printTree(tree);
+    expect(code).toContain("?.parent?.n");
+    const run = (self: object) => new Function("$", "s", `return ${code};`)(expr, scope({ self }));
+    expect(run({ parent: null })).toBeNull();
+    expect(run({ parent: { parent: null } })).toBeNull();
+    expect(run({ parent: { parent: { n: 2 } } })).toBe(true);
+  });
+  test("integer by integer division truncates and warns; a float or decimal divides exactly (ruling of 14:00)", () => {
+    const base = entity("").replace("      validate\n", "").replace("    integer :m nullable\n", "    integer :m nullable\n    float :ratio default=1\n");
+    const e = exprOf(entity(check("() => &n / 2 > 1")).replace("    integer :m nullable\n", "    integer :m nullable\n    float :ratio default=1\n"));
+    expect(e.tree).toMatchObject({ fn: "gt", args: [{ fn: "idiv" }, {}] });
+    expect(codes(entity(check("() => &n / 2 > 1")))).toEqual(["warning:MESH_EXPR_INTEGER_DIVISION"]);
+    const float = entity(check("() => &ratio / 2 > 1")).replace("    integer :m nullable\n", "    integer :m nullable\n    float :ratio default=1\n");
+    expect(exprOf(float).tree).toMatchObject({ fn: "gt", args: [{ fn: "div" }, {}] });
+    expect(codes(float)).toEqual([]);
+    void base;
+  });
   test("an atom outside the enum's values is an error naming them", () => {
     const d = build(entity(check("() => &state === :wrong"))).diagnostics.find((x) => x.code === "MESH_EXPR_UNKNOWN_ATOM")!;
     expect(d.message).toContain(":open, :done");
@@ -180,16 +199,51 @@ describe("type rules", () => {
       expect(codes(entity(check(that)))).toContain("warning:MESH_EXPR_PLAIN");
     }
   });
+  test("truthiness warns even without an operator; so does arithmetic that JavaScript reads differently", () => {
+    for (const that of ["() => &title", "() => &m ? true : false", "() => Math.round(&m * 2) === 1", "() => `${&n}` + &title === \"\""])
+      expect(codes(entity(check(that))), that).toContain("warning:MESH_EXPR_PLAIN");
+  });
+  test("?? and operators inside string literals do not warn", () => {
+    const base = entity("").replace("      validate\n", "").replace("  computed", "  computed").replace("  actions auto", "  computed\n    string :ex() { return (&title ?? \"\").slice(0, 200) }\n    string :tag() { return `<${&n}>` }\n  actions auto");
+    expect(codes(base)).toEqual([]);
+  });
+  test("a quantifier's parameter used outside its quantifier is a free variable at its node", () => {
+    const source = entity(check("() => &children.some((x) => x.n > 1) && x.n > 0"));
+    const d = build(source).diagnostics.filter((x) => x.code === "MESH_EXPR_FREE_VARIABLE");
+    expect(d).toHaveLength(1);
+    expect(d[0]!.position.offset).toBe(source.lastIndexOf("x.n"));
+  });
+  test("input members on an update are nullable, so the negation warning fires; set &x=input.x is exempt", () => {
+    expect(codes(entity(check("({ input }) => input.m !== 5")).replace("      validate", "      input\n        &m\n      validate"))).toContain("warning:MESH_EXPR_NEGATED_UNKNOWN");
+    const passthrough = entity("").replace("      validate\n", "      input\n        &n\n") + "      do\n        set\n          &n=({ input }) => input.n\n";
+    expect(codes(passthrough)).toEqual([]);
+  });
+  test("always actions=[...] resolves the named actions' kinds for `before`", () => {
+    const withAlways = (target: string) => entity("").replace("      validate\n", "").replace("  actions auto=[:read]\n", `  actions auto=[:read]\n    always actions=[&${target}]\n      validate\n        check :c that=({ before }) => before.n > 0 code="c" message="m"\n`) + "    create :make\n      input\n        &n\n";
+    expect(codes(withAlways("go"))).toEqual([]);
+    expect(codes(withAlways("make"))).toContain("error:MESH_EXPR_NULLABLE_ACCESS");
+  });
   test("a plain expression without operators does not warn; neither does tx", () => {
     expect(codes(entity(check("({ tx }) => tx.ok(&n)")))).toEqual([]);
     expect(exprOf(entity(check("({ tx }) => tx.ok(&n)"))).plain).toMatchObject({ why: "uses-tx" });
   });
-  test("a helper that does not read the record is translated; one that does is plain", () => {
-    const withHelper = (that: string) => entity(check(that)).replace("entity :Task", 'import { isStaff, money } from "./helpers"\nentity :Task');
-    const bad = buildModel({ root: "/p", files: [{ file: "task.mesh.mx", source: withHelper("({ actor }) => isStaff(actor)") }, { file: "helpers.ts", source: "" }] });
-    // helpers.ts is not an entity file; the missing-file check is the build's own, so only look at the expression.
-    const e = bad.document?.entities[0]?.actions[0]?.validate[0]?.that;
-    if (e) expect(e.tree).toMatchObject({ kind: "helper", name: "isStaff" });
+  test("a helper that does not read the record is translated and imported; one given the record is plain", async () => {
+    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-helper-"));
+    roots.push(root);
+    await writeFile(resolve(root, "helpers.ts"), "export const isStaff = (actor: { staff?: boolean }) => actor.staff === true;\nexport const big = (n: number) => n > 100;\n");
+    const withHelper = (that: string) => entity(check(that)).replace("import { Task }", 'import { isStaff, big } from "./helpers"\nimport { Task }');
+    const build = (that: string) => buildModel({ root, files: [{ file: "task.mesh.mx", source: withHelper(that) }] });
+    const ok = build("({ actor }) => isStaff(actor) && &n > 1");
+    expect(ok.diagnostics).toEqual([]);
+    const tree = ok.document!.entities[0]!.actions[0]!.validate[0]!.that.tree!;
+    expect(tree).toMatchObject({ fn: "and", args: [{ kind: "helper", name: "isStaff", from: "./helpers" }, {}] });
+    expect(ok.document!.entities[0]!.imports[0]).toMatchObject({ helper: true, identifiers: ["isStaff", "big"] });
+    expect(printTree(tree, true)).toContain("$.asBool(isStaff(s.actor))");
+    const plain = build("() => big(&n)");
+    expect(plain.document!.entities[0]!.actions[0]!.validate[0]!.that.plain).toMatchObject({ why: "reads-record-in-helper" });
+    const config = configOf(root);
+    const files = await generateFiles({ document: ok.document!, config });
+    expect(files.find((f) => f.path.endsWith("task.expressions.ts"))!.contents).toContain('import { isStaff } from "../helpers"');
   });
 });
 
@@ -241,6 +295,14 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     const overdue = expressions["computed.overdue"] as (s: unknown) => unknown;
     expect(overdue(scope({ self: { dueAt: new Date(86_400_000 * 3 + 5) } }, { clock: () => new Date(86_400_000 * 3 + 100) }))).toBe(false);
     expect(overdue(scope({ self: { dueAt: new Date(86_400_000 * 3 - 1) } }, { clock: () => new Date(86_400_000 * 3 + 100) }))).toBe(true);
+  });
+
+  test("plain code type-checks strictly: quantifier callbacks, atoms without &, a bare self", async () => {
+    const plain = entity(check("() => true")).replace("  actions auto", "  computed\n    boolean :a() { return &children.some((c) => c.title.startsWith(\"a\")) }\n    boolean :b({ self }) { return self.state.toString() === :open }\n    boolean :c() { return self.n.toFixed(0) === \"1\" }\n  actions auto");
+    const { root, files } = await generated(plain);
+    expect(checkTypes(root, ["generated/task.expressions.ts", "generated/task.types.ts"])).toEqual({ code: 0, output: "" });
+    const { expressions } = await import(resolve(root, "generated/task.expressions.ts"));
+    expect(expressions["computed.c"](scope({ self: { n: 1 } }))).toBe(true);
   });
 
   test("plain code runs with the authored meaning, `&` and atoms desugared", async () => {

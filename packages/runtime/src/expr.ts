@@ -71,6 +71,8 @@ export const add = (a: unknown, b: unknown) => arithmetic(a, b, (x, y) => x + y)
 export const sub = (a: unknown, b: unknown) => arithmetic(a, b, (x, y) => x - y);
 export const mul = (a: unknown, b: unknown) => arithmetic(a, b, (x, y) => x * y);
 export const div = (a: unknown, b: unknown) => arithmetic(a, b, (x, y) => (y === 0 ? null : x / y));
+/** Integer division, truncating toward zero (`7/2` is 3, `-7/2` is -3), as SQLite and Postgres divide two integers. */
+export const idiv = (a: unknown, b: unknown) => arithmetic(a, b, (x, y) => (y === 0 ? null : Math.trunc(x / y) + 0));
 export const neg = (a: unknown): number | null => (isNull(a) ? null : -(a as number) + 0);
 
 /** String: Unicode code points (what SQLite `length()` and Postgres `char_length()` count). List: its size. */
@@ -125,6 +127,6 @@ export const holds = (v: unknown): boolean => v === true;
 /** The namespace generated code calls: `$.gte(a, b)`. */
 export const expr = Object.freeze({
   eq, ne, isNull: isNullFn, isNotNull, lt, lte, gt, gte, and, or, not,
-  add, sub, mul, div, neg, length, now, today, coalesce, cond,
+  add, sub, mul, div, idiv, neg, length, now, today, coalesce, cond,
   some, every, find, filter, asBool, holds,
 });

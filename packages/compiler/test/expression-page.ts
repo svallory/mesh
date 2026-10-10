@@ -11,7 +11,9 @@ const show = (v: unknown): string => {
   if (v instanceof Date) return `D(${v.getTime()})`;
   if (Array.isArray(v)) return `[${v.map(show).join(", ")}]`;
   if (typeof v === "object") return "{…}";
-  if (typeof v === "string") return JSON.stringify(v);
+  // Non-ASCII text is shown as code points, so a precomposed and a decomposed letter differ on the page.
+  if (typeof v === "string") return JSON.stringify(v).replace(/[^\x20-\x7e]/gu, (c) => `\\u{${c.codePointAt(0)!.toString(16)}}`);
+  if (Object.is(v, -0)) return "-0";
   return String(v);
 };
 const cell = (v: string) => `\`${v.replace(/\|/g, "\\|")}\``;

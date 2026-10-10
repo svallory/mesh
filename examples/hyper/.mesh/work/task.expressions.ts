@@ -6,7 +6,21 @@ import type { Task } from "./task.types";
 
 /** What every expression of Task reads. */
 export type TaskScope = $Scope<{
-  self: Task & Record<string, any>;
+  self: Task & {
+    parent: any;
+    creator: any;
+    children: any[];
+    assignments: any[];
+    claims: any[];
+    submissions: any[];
+    completions: any[];
+    events: any[];
+    childrenSettled: any;
+    claimed: any;
+    lapsedClaim: any;
+    inReview: any;
+    assigned: any;
+  };
   input: any;
   actor: any;
   context: any;
@@ -18,7 +32,16 @@ export const expressions = {
   // computed childrenSettled, translated (src/domain/work/task.mesh.mx:28:29)
   "computed.childrenSettled": (s: TaskScope) =>
     $.every(s.self.children, (c: any) => $.ne(c.state, "open")),
-  // computed hasActiveClaim, translated (src/domain/work/task.mesh.mx:29:28)
-  "computed.hasActiveClaim": (s: TaskScope) =>
-    $.some(s.self.claims, (c: any) => $.eq(c.state, "active")),
+  // computed claimed, translated (src/domain/work/task.mesh.mx:29:21)
+  "computed.claimed": (s: TaskScope) =>
+    $.some(s.self.claims, (c: any) => $.and($.eq(c.state, "active"), $.gt(c.expiresAt, $.now(s)))),
+  // computed lapsedClaim, translated (src/domain/work/task.mesh.mx:30:25)
+  "computed.lapsedClaim": (s: TaskScope) =>
+    $.some(s.self.claims, (c: any) => $.and($.eq(c.state, "active"), $.lte(c.expiresAt, $.now(s)))),
+  // computed inReview, translated (src/domain/work/task.mesh.mx:31:22)
+  "computed.inReview": (s: TaskScope) =>
+    $.some(s.self.submissions, (s: any) => $.eq(s.state, "pending")),
+  // computed assigned, translated (src/domain/work/task.mesh.mx:32:22)
+  "computed.assigned": (s: TaskScope) =>
+    $.some(s.self.assignments, (a: any) => $.isNull(a.endedAt)),
 } as const;

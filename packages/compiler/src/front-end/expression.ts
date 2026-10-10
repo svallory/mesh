@@ -113,6 +113,22 @@ function freeVariables(fn: N, ctx: ConvertContext): void {
   for (const p of fn.params ?? []) walk(p);
 }
 
+/** Whether the code uses an operator whose null rule differs between JavaScript and Mesh (`??` and `?.` do not). */
+function hasDifferingOperator(root: unknown): boolean {
+  const COMPARE = new Set(["<", "<=", ">", ">=", "===", "!==", "==", "!=", "+", "-", "*", "/"]);
+  const walk = (value: unknown): boolean => {
+    if (!value || typeof value !== "object") return false;
+    if (Array.isArray(value)) return value.some(walk);
+    const n = value as N;
+    if (typeof n.type === "string" && n.type.startsWith("TS")) return false;
+    if (n.type === "BinaryExpression" && COMPARE.has(n.operator as string)) return true;
+    if (n.type === "UnaryExpression" && (n.operator === "!" || n.operator === "-")) return true;
+    if (n.type === "LogicalExpression" && n.operator !== "??") return true;
+    return Object.entries(n).some(([k, child]) => k !== "loc" && k !== "extra" && walk(child));
+  };
+  return walk(root);
+}
+
 /** The edits that turn the authored text into TypeScript: `&name` to `self.name`, `:atom` to a string. */
 function editsFor(fn: N, base: number): SourceEdit[] {
   const edits: SourceEdit[] = [];
@@ -169,6 +185,17 @@ function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode 
       if (env.locals.has(name)) { env.reads.record = true; return { kind: "var", name, position }; }
       if (name === "self") { env.reads.record = true; return { kind: "var", name: "self", position }; }
       if (name === "undefined") throw new Plain("unsupported-construct", "`undefined` (Mesh has no undefined; use null)", n);
+      if (!ctx.imported.has(name) && !GLOBALS.has(name) && !SCOPE_NAMES.has(name)) {
+        // Not bound in this expression's own scope (a quantifier parameter used outside its quantifier, say).
+        ctx.report({
+          severity: "error",
+          code: "MESH_EXPR_FREE_VARIABLE",
+          message: `\`${name}\` is not defined here: a function in an entity file may use its parameters, \`&members\`, imported helpers, \`now()\` and \`today()\``,
+          position: ctx.at(start(n)),
+          fix: "import it from a helper module, or pass it in through `context`",
+        });
+        throw new Plain("unsupported-construct", `the name \`${name}\``, n);
+      }
       throw new Plain("unsupported-construct", `the name \`${name}\``, n);
     }
     case "MemberExpression": case "OptionalMemberExpression": {
@@ -228,7 +255,7 @@ function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode 
           const before = env.reads.record;
           env.reads.record = false;
           const converted = args.map((a) => sub(a, true));
-          if (env.reads.record) throw new Plain("reads-record-in-helper", `the call to ${name} reads the record`, n);
+          if (env.reads.record) throw new Plain("reads-record-in-helper", `a call to ${name}, which is given the record`, n);
           env.reads.record = before;
           return { kind: "helper", name, from, args: converted, position };
         }
@@ -265,7 +292,7 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
   const f = fn as N;
   freeVariables(f, ctx);
   const plain = (e: Plain): { plain: PlainReason } => ({
-    plain: { why: e.why, detail: e.detail, position: ctx.at(start(e.node) || span.sourceStart), edits: editsFor(f, span.sourceStart), ...(f.type === "FunctionExpression" ? { method: true as const } : {}) },
+    plain: { why: e.why, detail: e.detail, position: ctx.at(start(e.node) || span.sourceStart), edits: editsFor(f, span.sourceStart), ...(hasDifferingOperator(f.body) ? { operators: true as const } : {}), ...(f.type === "FunctionExpression" ? { method: true as const } : {}) },
   });
   try {
     if (ctx.runStep) throw new Plain("run-step", "a run step is plain code", f);

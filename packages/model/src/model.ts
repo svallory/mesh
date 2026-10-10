@@ -31,6 +31,8 @@ export interface EntityRef {
 export interface Import {
   identifiers: string[];
   from: string;
+  /** Present (true) when the import is a helper module and not an entity file. */
+  helper?: true;
   position: SourcePosition;
 }
 /** Authored function text; no translation or evaluation during model building. */

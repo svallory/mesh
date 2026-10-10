@@ -20,7 +20,7 @@ entity :Post table="posts"
     belongs-to :author entity=User
     has-many :comments entity=Comment
   computed
-    string :excerpt() { const text = &body ?? ""; return text.slice(0, 200) }
+    string :excerpt() { return (&body ?? "").slice(0, 200) }
     count :commentCount of="comments"
   actions auto=[:read, :destroy] on:load=&published
     create :create

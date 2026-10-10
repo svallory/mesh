@@ -18,7 +18,11 @@ export function printTree(n: ExprNode, bool = false): string {
     case "literal": return JSON.stringify(n.value);
     case "atom": return JSON.stringify(n.value);
     case "var": return ROOTS.includes(n.name as (typeof ROOTS)[number]) ? `s.${n.name}` : n.name;
-    case "member": return `${printTree(n.object)}${access(n.name, n.optional)}`;
+    case "member": {
+      // Every access is `?.` except on the roots that are never null: a null anywhere in a chain gives null, as a left join does.
+      const safe = n.object.kind === "var" && (n.object.name === "self" || n.object.name === "input" || !ROOTS.includes(n.object.name as (typeof ROOTS)[number]));
+      return `${printTree(n.object)}${access(n.name, n.optional || !safe)}`;
+    }
     case "call": {
       if (n.fn === "now" || n.fn === "today") return `$.${n.fn}(s)`;
       const booleanArgs = n.fn === "and" || n.fn === "or" || n.fn === "not";
@@ -43,7 +47,7 @@ export function printExpression(e: Expression, scopeType: string, boolean: boole
     text = text.slice(0, edit.from) + edit.text + text.slice(edit.to);
   const fn = plain.method ? `function ${text}` : text;
   // Roots the authored parameters destructure are bound by the function itself; the rest it reads from the scope.
-  const used = ROOTS.filter((root) => !e.params.includes(root) && (root === "self" ? plain.edits.length > 0 : false || new RegExp(`\\b${root}\\b`).test(text)));
+  const used = ROOTS.filter((root) => !e.params.includes(root) && new RegExp(`(?<![A-Za-z0-9_$.])${root}\\b`).test(text));
   const declare = used.length ? `const { ${used.join(", ")} } = s; ` : "";
   return withScope(`{ ${declare}return (${fn})(${e.params.length ? "s" : ""}); }`);
 }

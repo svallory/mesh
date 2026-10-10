@@ -5239,8 +5239,8 @@
                 "position": {
                   "column": 8,
                   "file": "src/domain/work/task.mesh.mx",
-                  "line": 33,
-                  "offset": 1190
+                  "line": 36,
+                  "offset": 1471
                 }
               }
             },
@@ -5251,8 +5251,8 @@
                 "position": {
                   "column": 8,
                   "file": "src/domain/work/task.mesh.mx",
-                  "line": 34,
-                  "offset": 1205
+                  "line": 37,
+                  "offset": 1486
                 }
               }
             },
@@ -5263,8 +5263,8 @@
                 "position": {
                   "column": 8,
                   "file": "src/domain/work/task.mesh.mx",
-                  "line": 35,
-                  "offset": 1221
+                  "line": 38,
+                  "offset": 1502
                 }
               }
             },
@@ -5275,8 +5275,8 @@
                 "position": {
                   "column": 8,
                   "file": "src/domain/work/task.mesh.mx",
-                  "line": 36,
-                  "offset": 1237
+                  "line": 39,
+                  "offset": 1518
                 }
               }
             },
@@ -5287,8 +5287,8 @@
                 "position": {
                   "column": 8,
                   "file": "src/domain/work/task.mesh.mx",
-                  "line": 37,
-                  "offset": 1255
+                  "line": 40,
+                  "offset": 1536
                 }
               }
             }
@@ -5298,8 +5298,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
-            "line": 31,
-            "offset": 1155
+            "line": 34,
+            "offset": 1436
           },
           "validate": []
         },
@@ -5313,8 +5313,8 @@
                 "position": {
                   "column": 8,
                   "file": "src/domain/work/task.mesh.mx",
-                  "line": 40,
-                  "offset": 1308
+                  "line": 43,
+                  "offset": 1589
                 }
               }
             }
@@ -5324,8 +5324,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
-            "line": 38,
-            "offset": 1268
+            "line": 41,
+            "offset": 1549
           },
           "validate": []
         },
@@ -5339,8 +5339,8 @@
                 "position": {
                   "column": 8,
                   "file": "src/domain/work/task.mesh.mx",
-                  "line": 43,
-                  "offset": 1355
+                  "line": 46,
+                  "offset": 1636
                 }
               }
             }
@@ -5350,8 +5350,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
-            "line": 41,
-            "offset": 1322
+            "line": 44,
+            "offset": 1603
           },
           "validate": []
         }
@@ -5570,64 +5570,120 @@
           "body": {
             "params": [],
             "position": {
-              "column": 27,
+              "column": 20,
               "file": "src/domain/work/task.mesh.mx",
               "line": 29,
-              "offset": 1073
+              "offset": 1066
             },
-            "source": "() { return &claims.some((c) => c.state === :active) }",
+            "source": "() { return &claims.some((c) => c.state === :active && c.expiresAt > now()) }",
             "tree": {
               "body": {
                 "args": [
                   {
-                    "kind": "member",
-                    "name": "state",
-                    "object": {
-                      "kind": "var",
-                      "name": "c",
-                      "position": {
-                        "column": 59,
-                        "file": "src/domain/work/task.mesh.mx",
-                        "line": 29,
-                        "offset": 1105
+                    "args": [
+                      {
+                        "kind": "member",
+                        "name": "state",
+                        "object": {
+                          "kind": "var",
+                          "name": "c",
+                          "position": {
+                            "column": 52,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 29,
+                            "offset": 1098
+                          }
+                        },
+                        "optional": false,
+                        "position": {
+                          "column": 52,
+                          "file": "src/domain/work/task.mesh.mx",
+                          "line": 29,
+                          "offset": 1098
+                        }
+                      },
+                      {
+                        "kind": "atom",
+                        "position": {
+                          "column": 64,
+                          "file": "src/domain/work/task.mesh.mx",
+                          "line": 29,
+                          "offset": 1110
+                        },
+                        "value": "active"
                       }
-                    },
-                    "optional": false,
+                    ],
+                    "fn": "eq",
+                    "kind": "call",
                     "position": {
-                      "column": 59,
+                      "column": 52,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 29,
-                      "offset": 1105
+                      "offset": 1098
                     }
                   },
                   {
-                    "kind": "atom",
+                    "args": [
+                      {
+                        "kind": "member",
+                        "name": "expiresAt",
+                        "object": {
+                          "kind": "var",
+                          "name": "c",
+                          "position": {
+                            "column": 75,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 29,
+                            "offset": 1121
+                          }
+                        },
+                        "optional": false,
+                        "position": {
+                          "column": 75,
+                          "file": "src/domain/work/task.mesh.mx",
+                          "line": 29,
+                          "offset": 1121
+                        }
+                      },
+                      {
+                        "args": [],
+                        "fn": "now",
+                        "kind": "call",
+                        "position": {
+                          "column": 89,
+                          "file": "src/domain/work/task.mesh.mx",
+                          "line": 29,
+                          "offset": 1135
+                        }
+                      }
+                    ],
+                    "fn": "gt",
+                    "kind": "call",
                     "position": {
-                      "column": 71,
+                      "column": 75,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 29,
-                      "offset": 1117
-                    },
-                    "value": "active"
+                      "offset": 1121
+                    }
                   }
                 ],
-                "fn": "eq",
+                "fn": "and",
                 "kind": "call",
                 "position": {
-                  "column": 59,
+                  "column": 52,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 29,
-                  "offset": 1105
+                  "offset": 1098
                 }
               },
               "kind": "quantify",
               "op": "some",
               "param": "c",
               "position": {
-                "column": 39,
+                "column": 32,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 29,
-                "offset": 1085
+                "offset": 1078
               },
               "source": {
                 "kind": "member",
@@ -5636,29 +5692,363 @@
                   "kind": "var",
                   "name": "self",
                   "position": {
-                    "column": 39,
+                    "column": 32,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 29,
-                    "offset": 1085
+                    "offset": 1078
                   }
                 },
                 "optional": false,
                 "position": {
-                  "column": 39,
+                  "column": 32,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 29,
-                  "offset": 1085
+                  "offset": 1078
                 }
               }
             }
           },
-          "name": "hasActiveClaim",
+          "name": "claimed",
           "nullable": false,
           "position": {
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 29,
             "offset": 1050
+          },
+          "type": "boolean"
+        },
+        {
+          "body": {
+            "params": [],
+            "position": {
+              "column": 24,
+              "file": "src/domain/work/task.mesh.mx",
+              "line": 30,
+              "offset": 1168
+            },
+            "source": "() { return &claims.some((c) => c.state === :active && c.expiresAt <= now()) }",
+            "tree": {
+              "body": {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "kind": "member",
+                        "name": "state",
+                        "object": {
+                          "kind": "var",
+                          "name": "c",
+                          "position": {
+                            "column": 56,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 30,
+                            "offset": 1200
+                          }
+                        },
+                        "optional": false,
+                        "position": {
+                          "column": 56,
+                          "file": "src/domain/work/task.mesh.mx",
+                          "line": 30,
+                          "offset": 1200
+                        }
+                      },
+                      {
+                        "kind": "atom",
+                        "position": {
+                          "column": 68,
+                          "file": "src/domain/work/task.mesh.mx",
+                          "line": 30,
+                          "offset": 1212
+                        },
+                        "value": "active"
+                      }
+                    ],
+                    "fn": "eq",
+                    "kind": "call",
+                    "position": {
+                      "column": 56,
+                      "file": "src/domain/work/task.mesh.mx",
+                      "line": 30,
+                      "offset": 1200
+                    }
+                  },
+                  {
+                    "args": [
+                      {
+                        "kind": "member",
+                        "name": "expiresAt",
+                        "object": {
+                          "kind": "var",
+                          "name": "c",
+                          "position": {
+                            "column": 79,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 30,
+                            "offset": 1223
+                          }
+                        },
+                        "optional": false,
+                        "position": {
+                          "column": 79,
+                          "file": "src/domain/work/task.mesh.mx",
+                          "line": 30,
+                          "offset": 1223
+                        }
+                      },
+                      {
+                        "args": [],
+                        "fn": "now",
+                        "kind": "call",
+                        "position": {
+                          "column": 94,
+                          "file": "src/domain/work/task.mesh.mx",
+                          "line": 30,
+                          "offset": 1238
+                        }
+                      }
+                    ],
+                    "fn": "lte",
+                    "kind": "call",
+                    "position": {
+                      "column": 79,
+                      "file": "src/domain/work/task.mesh.mx",
+                      "line": 30,
+                      "offset": 1223
+                    }
+                  }
+                ],
+                "fn": "and",
+                "kind": "call",
+                "position": {
+                  "column": 56,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 30,
+                  "offset": 1200
+                }
+              },
+              "kind": "quantify",
+              "op": "some",
+              "param": "c",
+              "position": {
+                "column": 36,
+                "file": "src/domain/work/task.mesh.mx",
+                "line": 30,
+                "offset": 1180
+              },
+              "source": {
+                "kind": "member",
+                "name": "claims",
+                "object": {
+                  "kind": "var",
+                  "name": "self",
+                  "position": {
+                    "column": 36,
+                    "file": "src/domain/work/task.mesh.mx",
+                    "line": 30,
+                    "offset": 1180
+                  }
+                },
+                "optional": false,
+                "position": {
+                  "column": 36,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 30,
+                  "offset": 1180
+                }
+              }
+            }
+          },
+          "name": "lapsedClaim",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 30,
+            "offset": 1148
+          },
+          "type": "boolean"
+        },
+        {
+          "body": {
+            "params": [],
+            "position": {
+              "column": 21,
+              "file": "src/domain/work/task.mesh.mx",
+              "line": 31,
+              "offset": 1268
+            },
+            "source": "() { return &submissions.some((s) => s.state === :pending) }",
+            "tree": {
+              "body": {
+                "args": [
+                  {
+                    "kind": "member",
+                    "name": "state",
+                    "object": {
+                      "kind": "var",
+                      "name": "s",
+                      "position": {
+                        "column": 58,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 31,
+                        "offset": 1305
+                      }
+                    },
+                    "optional": false,
+                    "position": {
+                      "column": 58,
+                      "file": "src/domain/work/task.mesh.mx",
+                      "line": 31,
+                      "offset": 1305
+                    }
+                  },
+                  {
+                    "kind": "atom",
+                    "position": {
+                      "column": 70,
+                      "file": "src/domain/work/task.mesh.mx",
+                      "line": 31,
+                      "offset": 1317
+                    },
+                    "value": "pending"
+                  }
+                ],
+                "fn": "eq",
+                "kind": "call",
+                "position": {
+                  "column": 58,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 31,
+                  "offset": 1305
+                }
+              },
+              "kind": "quantify",
+              "op": "some",
+              "param": "s",
+              "position": {
+                "column": 33,
+                "file": "src/domain/work/task.mesh.mx",
+                "line": 31,
+                "offset": 1280
+              },
+              "source": {
+                "kind": "member",
+                "name": "submissions",
+                "object": {
+                  "kind": "var",
+                  "name": "self",
+                  "position": {
+                    "column": 33,
+                    "file": "src/domain/work/task.mesh.mx",
+                    "line": 31,
+                    "offset": 1280
+                  }
+                },
+                "optional": false,
+                "position": {
+                  "column": 33,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 31,
+                  "offset": 1280
+                }
+              }
+            }
+          },
+          "name": "inReview",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 31,
+            "offset": 1251
+          },
+          "type": "boolean"
+        },
+        {
+          "body": {
+            "params": [],
+            "position": {
+              "column": 21,
+              "file": "src/domain/work/task.mesh.mx",
+              "line": 32,
+              "offset": 1350
+            },
+            "source": "() { return &assignments.some((a) => a.endedAt === null) }",
+            "tree": {
+              "body": {
+                "args": [
+                  {
+                    "kind": "member",
+                    "name": "endedAt",
+                    "object": {
+                      "kind": "var",
+                      "name": "a",
+                      "position": {
+                        "column": 58,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 32,
+                        "offset": 1387
+                      }
+                    },
+                    "optional": false,
+                    "position": {
+                      "column": 58,
+                      "file": "src/domain/work/task.mesh.mx",
+                      "line": 32,
+                      "offset": 1387
+                    }
+                  }
+                ],
+                "fn": "isNull",
+                "kind": "call",
+                "position": {
+                  "column": 58,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 32,
+                  "offset": 1387
+                }
+              },
+              "kind": "quantify",
+              "op": "some",
+              "param": "a",
+              "position": {
+                "column": 33,
+                "file": "src/domain/work/task.mesh.mx",
+                "line": 32,
+                "offset": 1362
+              },
+              "source": {
+                "kind": "member",
+                "name": "assignments",
+                "object": {
+                  "kind": "var",
+                  "name": "self",
+                  "position": {
+                    "column": 33,
+                    "file": "src/domain/work/task.mesh.mx",
+                    "line": 32,
+                    "offset": 1362
+                  }
+                },
+                "optional": false,
+                "position": {
+                  "column": 33,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 32,
+                  "offset": 1362
+                }
+              }
+            }
+          },
+          "name": "assigned",
+          "nullable": false,
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 32,
+            "offset": 1333
           },
           "type": "boolean"
         }
