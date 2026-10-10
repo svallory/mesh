@@ -32,6 +32,17 @@ export type ReadCompletionInput = {
   offset?: number | undefined;
 };
 
+/** What `load` attaches to a Completion. The record has none of it, so reading one that was not loaded is a type error. */
+export type CompletionLoadable = {
+  task: Task;
+  submission: Submission | null;
+  completedBy: Collaborator;
+};
+
+/** A Completion with the relationships and computed fields named in N loaded. */
+export type CompletionWith<N extends keyof CompletionLoadable> = Completion &
+  Pick<CompletionLoadable, N>;
+
 export type CompletionFilter =
   | { and: readonly CompletionFilter[] }
   | { or: readonly CompletionFilter[] }

@@ -30,6 +30,15 @@ export type ReadEvidenceReferenceInput = {
   offset?: number | undefined;
 };
 
+/** What `load` attaches to a EvidenceReference. The record has none of it, so reading one that was not loaded is a type error. */
+export type EvidenceReferenceLoadable = {
+  recordedBy: Collaborator;
+};
+
+/** A EvidenceReference with the relationships and computed fields named in N loaded. */
+export type EvidenceReferenceWith<N extends keyof EvidenceReferenceLoadable> = EvidenceReference &
+  Pick<EvidenceReferenceLoadable, N>;
+
 export type EvidenceReferenceFilter =
   | { and: readonly EvidenceReferenceFilter[] }
   | { or: readonly EvidenceReferenceFilter[] }

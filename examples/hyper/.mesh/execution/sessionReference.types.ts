@@ -42,6 +42,17 @@ export type ReadSessionReferenceInput = {
   offset?: number | undefined;
 };
 
+/** What `load` attaches to a SessionReference. The record has none of it, so reading one that was not loaded is a type error. */
+export type SessionReferenceLoadable = {
+  machine: Machine;
+  agentProfile: Collaborator;
+  recordedBy: Collaborator;
+};
+
+/** A SessionReference with the relationships and computed fields named in N loaded. */
+export type SessionReferenceWith<N extends keyof SessionReferenceLoadable> = SessionReference &
+  Pick<SessionReferenceLoadable, N>;
+
 export type SessionReferenceFilter =
   | { and: readonly SessionReferenceFilter[] }
   | { or: readonly SessionReferenceFilter[] }

@@ -4,6 +4,7 @@
 
 import {
   parseInput,
+  rejectComputedQuery,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
 } from "@meshfw/runtime";
@@ -33,6 +34,7 @@ export function bindClaim(layer: $DataLayer) {
     async read(input: ReadClaimInput, ...[_context]: $ContextArgument): Promise<Claim[]> {
       const parsed = await parseInput(readClaimInput, input);
       return layer.transaction(async (tx) => {
+        rejectComputedQuery("Claim", ["lapsed"], parsed);
         return (await tx.select(tables.claim, {
           filter: parsed.filter,
           sort: parsed.sort,

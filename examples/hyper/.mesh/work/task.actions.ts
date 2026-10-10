@@ -5,6 +5,7 @@
 import {
   NotFoundError as $NotFoundError,
   parseInput,
+  rejectComputedQuery,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
 } from "@meshfw/runtime";
@@ -70,6 +71,20 @@ export function bindTask(layer: $DataLayer) {
     async read(input: ReadTaskInput, ...[_context]: $ContextArgument): Promise<Task[]> {
       const parsed = await parseInput(readTaskInput, input);
       return layer.transaction(async (tx) => {
+        rejectComputedQuery(
+          "Task",
+          [
+            "childrenSettled",
+            "claimed",
+            "lapsedClaim",
+            "inReview",
+            "assigned",
+            "blocked",
+            "maxFence",
+            "derivedState",
+          ],
+          parsed,
+        );
         return (await tx.select(tables.task, {
           filter: parsed.filter,
           sort: parsed.sort,

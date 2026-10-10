@@ -32,6 +32,16 @@ export type ReadLateResultInput = {
   offset?: number | undefined;
 };
 
+/** What `load` attaches to a LateResult. The record has none of it, so reading one that was not loaded is a type error. */
+export type LateResultLoadable = {
+  task: Task;
+  submitter: Collaborator;
+};
+
+/** A LateResult with the relationships and computed fields named in N loaded. */
+export type LateResultWith<N extends keyof LateResultLoadable> = LateResult &
+  Pick<LateResultLoadable, N>;
+
 export type LateResultFilter =
   | { and: readonly LateResultFilter[] }
   | { or: readonly LateResultFilter[] }

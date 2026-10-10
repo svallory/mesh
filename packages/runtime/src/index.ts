@@ -20,3 +20,5 @@ export type { DataAdapter } from "./data-adapter.ts";
 export { defineConfig, type MeshConfig, type ExtensionDescriptor } from "./config.ts";
 export { expr, scope, systemClock } from "./expr.ts";
 export type { Clock, Scope } from "./expr.ts";
+export { loadRows, rejectComputedQuery, CHUNK } from "./load.ts";
+export type { LoadPlan, EntityPlan, RelationPlan, BelongsToPlan, HasPlan, ComputedPlan, LoadOptions } from "./load.ts";

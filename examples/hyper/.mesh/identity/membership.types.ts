@@ -36,6 +36,17 @@ export type ReadMembershipInput = {
   offset?: number | undefined;
 };
 
+/** What `load` attaches to a Membership. The record has none of it, so reading one that was not loaded is a type error. */
+export type MembershipLoadable = {
+  collaborator: Collaborator;
+  grantedBy: Collaborator;
+  revokedBy: Collaborator | null;
+};
+
+/** A Membership with the relationships and computed fields named in N loaded. */
+export type MembershipWith<N extends keyof MembershipLoadable> = Membership &
+  Pick<MembershipLoadable, N>;
+
 export type MembershipFilter =
   | { and: readonly MembershipFilter[] }
   | { or: readonly MembershipFilter[] }

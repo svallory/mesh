@@ -71,6 +71,19 @@ export type ReadInvocationInput = {
   offset?: number | undefined;
 };
 
+/** What `load` attaches to a Invocation. The record has none of it, so reading one that was not loaded is a type error. */
+export type InvocationLoadable = {
+  attempt: Attempt;
+  task: Task;
+  session: SessionReference | null;
+  corrects: Invocation | null;
+  recordedBy: Collaborator;
+};
+
+/** A Invocation with the relationships and computed fields named in N loaded. */
+export type InvocationWith<N extends keyof InvocationLoadable> = Invocation &
+  Pick<InvocationLoadable, N>;
+
 export type InvocationFilter =
   | { and: readonly InvocationFilter[] }
   | { or: readonly InvocationFilter[] }

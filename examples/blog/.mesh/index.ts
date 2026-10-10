@@ -21,6 +21,8 @@ import type {
   DestroyPostInput,
   PostFilter,
   PostSort,
+  PostLoadable,
+  PostWith,
 } from "./blog/post.types";
 import { bindUser } from "./blog/user.actions";
 import type { User, CreateUserInput, ReadUserInput, UserFilter, UserSort } from "./blog/user.types";
@@ -39,6 +41,8 @@ export type {
   DestroyPostInput,
   PostFilter,
   PostSort,
+  PostLoadable,
+  PostWith,
   User,
   CreateUserInput,
   ReadUserInput,
@@ -46,6 +50,7 @@ export type {
   UserSort,
 };
 export { tables, commentTable, postTable, userTable } from "./schema";
+export { loadPostFields } from "./load";
 
 /**
  * Every action function, bound to `layer`. Opens nothing and creates no table:

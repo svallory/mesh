@@ -50,9 +50,9 @@ export const completionFilter: z.ZodType<CompletionFilter> = z.lazy(
           z.enum(["review-accepted", "performer-is-reviewer", "review-waived"]),
         ).exactOptional(),
         completedAt: comparison(z.date()).exactOptional(),
-        taskId: comparison(z.string()).exactOptional(),
-        submissionId: comparison(z.string()).exactOptional(),
-        completedById: comparison(z.string()).exactOptional(),
+        taskId: comparison(z.uuid()).exactOptional(),
+        submissionId: comparison(z.uuid()).exactOptional(),
+        completedById: comparison(z.uuid()).exactOptional(),
       }),
     ]) as unknown as z.ZodType<CompletionFilter>,
 );

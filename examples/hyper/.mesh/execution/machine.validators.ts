@@ -52,7 +52,7 @@ export const machineFilter: z.ZodType<MachineFilter> = z.lazy(
         state: comparison(z.enum(["active", "retired"])).exactOptional(),
         version: comparison(z.int()).exactOptional(),
         registeredAt: comparison(z.date()).exactOptional(),
-        firstReportedById: comparison(z.string()).exactOptional(),
+        firstReportedById: comparison(z.uuid()).exactOptional(),
       }),
     ]) as unknown as z.ZodType<MachineFilter>,
 );

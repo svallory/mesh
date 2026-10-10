@@ -243,3 +243,141 @@ describe("helper names that collide with generated internals", () => {
     expect(codes(result as never)).toEqual(["MESH_HELPER_NAME"]);
   });
 });
+
+describe("what loading a computed field needs", () => {
+  const user = `import { Doc } from "./doc.mesh.mx"
+entity :User
+  attributes
+    uuid :id primary-key
+    string :name
+  relationships
+    has-many :docs entity=Doc via=:owner
+  computed
+    count :docCount of="docs"
+`;
+  const doc = (computed: string) => `import { User } from "./user.mesh.mx"
+import { Note } from "./note.mesh.mx"
+entity :Doc
+  attributes
+    uuid :id primary-key
+    string :title
+    string :body nullable
+    enum :state values=[:open, :done]
+  relationships
+    belongs-to :owner entity=User
+    belongs-to :editor entity=User nullable
+    has-many :notes entity=Note
+  computed
+${computed.split("\n").map((line) => `    ${line}`).join("\n")}
+`;
+  const note = `import { Doc } from "./doc.mesh.mx"
+entity :Note
+  attributes
+    uuid :id primary-key
+    boolean :pinned
+  relationships
+    belongs-to :doc entity=Doc
+    belongs-to :author entity=User
+`.replace("import { Doc }", 'import { User } from "./user.mesh.mx"\nimport { Doc }');
+  const needs = (computed: string) => {
+    const result = build({ "user.mesh.mx": user, "doc.mesh.mx": doc(computed), "note.mesh.mx": note });
+    return { result, of: (name: string) => entityOf(result, "Doc").computed.find((c) => c.name === name)?.needs };
+  };
+
+  test("a list quantifier names the list; a read through its parameter names the path", () => {
+    const { result, of } = needs(`boolean :anyPinned() { return &notes.some((n) => n.pinned) }
+boolean :anyoneNamed() { return &notes.some((n) => n.author.name === "Ada") }
+boolean :none() { return &notes.length === 0 }`);
+    expect(result.diagnostics).toEqual([]);
+    expect(of("anyPinned")).toEqual(["notes"]);
+    expect(of("anyoneNamed")).toEqual(["notes", "notes.author"]);
+    expect(of("none")).toEqual(["notes"]);
+  });
+
+  test("a read through a belongs-to, and a rollup or computed field of the related row", () => {
+    const { result, of } = needs(`string :ownerName() { return &owner.name }
+boolean :busyOwner() { return &owner.docCount > 3 }
+boolean :editedBy() { return &editor?.name === &owner.name }`);
+    expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    expect(of("ownerName")).toEqual(["owner"]);
+    expect(of("busyOwner")).toEqual(["owner", "owner.docCount"]);
+    expect(of("editedBy")).toEqual(["editor", "owner"]);
+  });
+
+  test("the row find returns, and the rows filter keeps, are rows of the list", () => {
+    const { result, of } = needs(`string :pinnedAuthor() { return &notes.find((n) => n.pinned)?.author.name ?? "" }
+integer :pinnedCount() { return &notes.filter((n) => n.pinned).length }`);
+    expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    expect(of("pinnedAuthor")).toEqual(["notes", "notes.author"]);
+    expect(of("pinnedCount")).toEqual(["notes"]);
+  });
+
+  test("another computed field of the same entity is a need, whatever the order they are written in", () => {
+    const { result, of } = needs(`boolean :ready() { return &anyPinned && &state === :open }
+boolean :anyPinned() { return &notes.some((n) => n.pinned) }`);
+    expect(result.diagnostics).toEqual([]);
+    expect(of("ready")).toEqual(["anyPinned"]);
+    expect(of("anyPinned")).toEqual(["notes"]);
+  });
+
+  test("an attribute is not a need, and neither is a field the body does not read", () => {
+    const { of } = needs(`boolean :untitled() { return &title === "" }
+boolean :untouched() { return &state === :done }`);
+    expect(of("untitled")).toEqual([]);
+    expect(of("untouched")).toEqual([]);
+  });
+
+  test("a body that runs as plain code needs the &names it reads on the record", () => {
+    const { result, of } = needs(`string :summary() { return \`\${&title}: \${&notes.length} notes by \${&owner.name}\` }`);
+    expect(entityOf(result, "Doc").computed[0]!.body!.plain).toBeDefined();
+    expect(of("summary")).toEqual(["notes", "owner"]);
+  });
+
+  test("a computed field needs nothing of a related entity that the body only names in a local", () => {
+    const { of } = needs("boolean :shadow() { return &notes.some((owner) => owner.pinned) }");
+    expect(of("shadow")).toEqual(["notes"]);
+  });
+
+  test("computed fields that read each other are a build error that names the cycle", () => {
+    const { result } = needs(`boolean :a() { return &b }
+boolean :b() { return &c }
+boolean :c() { return &a }`);
+    expect(result.diagnostics.filter((d) => d.code === "MESH_COMPUTED_CYCLE")).toEqual([
+      expect.objectContaining({ message: "Computed fields read each other: &a reads &b reads &c reads &a" }),
+    ]);
+  });
+
+  test("a computed field that reads itself is a cycle of one", () => {
+    const { result } = needs("boolean :loop() { return &loop }");
+    expect(result.diagnostics.filter((d) => d.code === "MESH_COMPUTED_CYCLE")).toEqual([
+      expect.objectContaining({ message: "Computed fields read each other: &loop reads &loop" }),
+    ]);
+  });
+
+  test("a rollup has no needs: it calls the data layer", () => {
+    const { result } = needs('count :noteCount of="notes"');
+    expect(entityOf(result, "Doc").computed[0]!.needs).toBeUndefined();
+  });
+});
+
+describe("a computed enum names its values", () => {
+  const source = (line: string) => `entity :Doc\n  attributes\n    uuid :id primary-key\n    enum :state values=[:open, :done]\n  computed\n    ${line}\n`;
+  test("with values, the field has them", () => {
+    const result = build({ "doc.mesh.mx": source("enum :phase values=[:early, :late] value=() => &state === :open ? :early : :late") });
+    expect(result.diagnostics).toEqual([]);
+    expect(entityOf(result, "Doc").computed[0]).toMatchObject({ type: "enum", values: [{ value: "early" }, { value: "late" }] });
+  });
+  test("without values it still builds (its TypeScript type is string)", () => {
+    const result = build({ "doc.mesh.mx": source("enum :phase() { return :early }") });
+    expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    expect(entityOf(result, "Doc").computed[0]!.values).toBeUndefined();
+  });
+  test("a non-enum computed field takes no values, and no other option", () => {
+    expect(codes(build({ "doc.mesh.mx": source("string :label values=[:a] value=() => &state") }))).toEqual(["MESH_SYNTAX"]);
+    expect(codes(build({ "doc.mesh.mx": source("string :label nullable value=() => &state") }))).toContain("MESH_COMPUTED_OPTIONS");
+    expect(codes(build({ "doc.mesh.mx": source("enum :phase nullable value=() => :a") }))).toContain("MESH_COMPUTED_OPTIONS");
+  });
+  test("repeated values are the same error an enum attribute gives", () => {
+    expect(codes(build({ "doc.mesh.mx": source("enum :phase values=[:a, :a] value=() => :a") }))).toContain("MESH_ATOM_LIST");
+  });
+});

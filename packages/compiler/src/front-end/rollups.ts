@@ -110,11 +110,11 @@ export function resolveRollups(
         const numeric =
           attribute.type === "integer" || attribute.type === "decimal";
         const ordered =
-          numeric || attribute.type === "date" || attribute.type === "datetime";
+          numeric || attribute.type === "date" || attribute.type === "datetime" || attribute.type === "timestamp";
         if (fn === "sum" || fn === "avg" ? !numeric : !ordered) {
           fail(
             "MESH_ROLLUP_TYPE",
-            `${fn} needs ${fn === "sum" || fn === "avg" ? "a number" : "a number, date or datetime"}, &${ref.name} is :${attribute.type}`,
+            `${fn} needs ${fn === "sum" || fn === "avg" ? "a number" : "a number, date, datetime or timestamp"}, &${ref.name} is :${attribute.type}`,
             ref.position,
           );
           break;

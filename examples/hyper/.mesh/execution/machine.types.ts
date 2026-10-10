@@ -5,6 +5,8 @@ import type { Comparison as $Comparison } from "@meshfw/runtime";
 
 import type { Collaborator } from "../identity/collaborator.types";
 
+import type { Attempt } from "./attempt.types";
+
 export type Machine = {
   id: string;
   name: string;
@@ -32,6 +34,15 @@ export type ReadMachineInput = {
   limit?: number | undefined;
   offset?: number | undefined;
 };
+
+/** What `load` attaches to a Machine. The record has none of it, so reading one that was not loaded is a type error. */
+export type MachineLoadable = {
+  firstReportedBy: Collaborator | null;
+  attempts: Attempt[];
+};
+
+/** A Machine with the relationships and computed fields named in N loaded. */
+export type MachineWith<N extends keyof MachineLoadable> = Machine & Pick<MachineLoadable, N>;
 
 export type MachineFilter =
   | { and: readonly MachineFilter[] }

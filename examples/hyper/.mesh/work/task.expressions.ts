@@ -10,6 +10,8 @@ export type TaskScope = $Scope<{
     parent: any;
     creator: any;
     children: any[];
+    dependencies: any[];
+    dependents: any[];
     assignments: any[];
     claims: any[];
     submissions: any[];
@@ -20,6 +22,9 @@ export type TaskScope = $Scope<{
     lapsedClaim: any;
     inReview: any;
     assigned: any;
+    blocked: any;
+    maxFence: any;
+    derivedState: any;
   };
   input: any;
   actor: any;
@@ -29,23 +34,41 @@ export type TaskScope = $Scope<{
 }>;
 
 export const expressions = {
-  // computed childrenSettled, translated (src/domain/work/task.mesh.mx:28:29)
+  // computed childrenSettled, translated (src/domain/work/task.mesh.mx:30:29)
   "computed.childrenSettled": ($s: TaskScope) =>
     $.every($s.self.children, (l$c: any) => $.ne(l$c.state, "open")),
-  // computed claimed, translated (src/domain/work/task.mesh.mx:29:21)
+  // computed claimed, translated (src/domain/work/task.mesh.mx:31:21)
   "computed.claimed": ($s: TaskScope) =>
     $.some($s.self.claims, (l$c: any) =>
       $.and($.eq(l$c.state, "active"), $.gt(l$c.expiresAt, $.now($s))),
     ),
-  // computed lapsedClaim, translated (src/domain/work/task.mesh.mx:30:25)
+  // computed lapsedClaim, translated (src/domain/work/task.mesh.mx:32:25)
   "computed.lapsedClaim": ($s: TaskScope) =>
     $.some($s.self.claims, (l$c: any) =>
       $.and($.eq(l$c.state, "active"), $.lte(l$c.expiresAt, $.now($s))),
     ),
-  // computed inReview, translated (src/domain/work/task.mesh.mx:31:22)
+  // computed inReview, translated (src/domain/work/task.mesh.mx:33:22)
   "computed.inReview": ($s: TaskScope) =>
     $.some($s.self.submissions, (l$s: any) => $.eq(l$s.state, "pending")),
-  // computed assigned, translated (src/domain/work/task.mesh.mx:32:22)
+  // computed assigned, translated (src/domain/work/task.mesh.mx:34:22)
   "computed.assigned": ($s: TaskScope) =>
     $.some($s.self.assignments, (l$a: any) => $.isNull(l$a.endedAt)),
+  // computed blocked, translated (src/domain/work/task.mesh.mx:35:21)
+  "computed.blocked": ($s: TaskScope) =>
+    $.some($s.self.dependencies, (l$d: any) => $.ne(l$d.prerequisite?.state, "done")),
+  // computed derivedState, translated (src/domain/work/task.mesh.mx:37:96)
+  "computed.derivedState": ($s: TaskScope) =>
+    $.cond(
+      $.eq($s.self.state, "done"),
+      "done",
+      $.cond(
+        $.eq($s.self.state, "canceled"),
+        "canceled",
+        $.cond(
+          $s.self.inReview,
+          "in-review",
+          $.cond($s.self.claimed, "claimed", $.cond($s.self.blocked, "blocked", "ready")),
+        ),
+      ),
+    ),
 } as const;

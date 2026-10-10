@@ -6,6 +6,7 @@ import {
   FrameworkError as $FrameworkError,
   NotFoundError as $NotFoundError,
   parseInput,
+  rejectComputedQuery,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
 } from "@meshfw/runtime";
@@ -90,6 +91,7 @@ export function bindPost(layer: $DataLayer) {
       // Not run in this version: on:load published; policies public
       const parsed = await parseInput(readPostInput, input);
       return layer.transaction(async (tx) => {
+        rejectComputedQuery("Post", ["excerpt", "commentCount"], parsed);
         return (await tx.select(tables.post, {
           filter: parsed.filter,
           sort: parsed.sort,

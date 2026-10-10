@@ -3,6 +3,7 @@ import type { EmitInput, Generator } from "../emit.ts";
 import { emitError } from "../emit-error.ts";
 import { effectiveActions, entityPath } from "../views/inputs.ts";
 import { actionsView, tableKey, type ActionsView } from "../views/actions.ts";
+import { hasLoader, loaderName } from "../views/load.ts";
 import { orderedEntities, outputPrefix } from "./order.ts";
 
 /**
@@ -54,6 +55,7 @@ function checkNames({ document }: EmitInput, views: readonly ActionsView[]): voi
     const entity = entities[index]!;
     claim(view.bindName, `Entity :${entity.name}'s binding`, entity.position);
     claim(`${tableKey(entity)}Table`, `Entity :${entity.name}'s table handle`, entity.position);
+    if (hasLoader(entity)) claim(loaderName(entity), `Entity :${entity.name}'s load function`, entity.position);
     view.methods.forEach((method, position) => {
       const action = effectiveActions(entity)[position]!;
       claim(method.functionName, `Action :${action.name} of :${entity.name}`, action.position);

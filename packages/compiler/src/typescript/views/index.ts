@@ -2,6 +2,7 @@ import { relative } from "node:path";
 import type { EmitInput } from "../emit.ts";
 import { orderedEntities } from "../emitters/order.ts";
 import { actionsView } from "./actions.ts";
+import { hasLoader, loaderName } from "./load.ts";
 import { camelCase, entityInputs, entityPath, filterTypeName, hasRead, sortTypeName, typeName } from "./inputs.ts";
 
 /**
@@ -19,6 +20,8 @@ export interface IndexView {
   readonly functions: readonly IndexFunction[];
   /** Every record and input type, in entity order: re-exported with `export type { ... }`. */
   readonly types: readonly string[];
+  /** The names of the load functions re-exported from `./load` (`loadTaskFields`), in entity order; empty when no entity has a relationship or a computed field. */
+  readonly loaders: readonly string[];
   /** The schema exports re-exported from `./schema`: `tables`, then each entity's table handle. */
   readonly schemaExports: readonly string[];
   /** True when at least one action exists; when false, `bind` returns an empty object. */
@@ -64,6 +67,7 @@ export function indexView(input: EmitInput): IndexView {
   const functions: IndexFunction[] = [];
   const types: string[] = [];
   const handles: string[] = [];
+  const loaders: string[] = [];
   for (const entity of orderedEntities(document)) {
     const actions = actionsView(input, entity);
     const key = camelCase(entity.name);
@@ -72,7 +76,9 @@ export function indexView(input: EmitInput): IndexView {
       typeName(entity.name, entity.position),
       ...entityInputs(entity, document).map((i) => i.name),
       ...(hasRead(entity) ? [filterTypeName(entity), sortTypeName(entity)] : []),
+      ...(hasLoader(entity) ? [`${typeName(entity.name, entity.position)}Loadable`, `${typeName(entity.name, entity.position)}With`] : []),
     ];
+    if (hasLoader(entity)) loaders.push(loaderName(entity));
     types.push(...entityTypes);
     handles.push(`${key}Table`);
     entities.push({
@@ -98,6 +104,7 @@ export function indexView(input: EmitInput): IndexView {
     entities,
     functions,
     types,
+    loaders,
     schemaExports: ["tables", ...handles.sort()],
     hasFunctions: functions.length > 0,
   };

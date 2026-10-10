@@ -31,7 +31,9 @@ test("v4 record and input types preserve the legacy layout and action names", as
   expect(output).toContain("title: string;");
   expect(output).toContain("rating: number | null;");
   expect(output).toContain("listId: string;");
-  expect(output).not.toContain("total:");
+  // A computed field is not on the stored record; it is what `load` attaches (TodoLoadable).
+  expect(/export type Todo = \{[^}]*\};/.exec(output)![0]).not.toContain("total:");
+  expect(output).toContain("total: number | null;");
   expect(output).toContain('list: List["id"]');
   const inputs = entityInputs(todo(document), document);
   expect(inputs.map((input) => input.name)).toEqual(
@@ -236,7 +238,7 @@ test("Date type shadows are diagnosed only where the global is used", async () =
   );
   expect(
     (await generateFiles({ document, config: configOf("/project") })).length,
-  ).toBe(6);
+  ).toBe(7); // model.json, types, validators, expressions, load, actions and index for one entity
 });
 
 test("source path line terminators are escaped in headers", async () => {

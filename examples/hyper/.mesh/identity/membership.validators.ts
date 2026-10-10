@@ -52,9 +52,9 @@ export const membershipFilter: z.ZodType<MembershipFilter> = z.lazy(
         grantedAt: comparison(z.date()).exactOptional(),
         revokedAt: comparison(z.date()).exactOptional(),
         version: comparison(z.int()).exactOptional(),
-        collaboratorId: comparison(z.string()).exactOptional(),
-        grantedById: comparison(z.string()).exactOptional(),
-        revokedById: comparison(z.string()).exactOptional(),
+        collaboratorId: comparison(z.uuid()).exactOptional(),
+        grantedById: comparison(z.uuid()).exactOptional(),
+        revokedById: comparison(z.uuid()).exactOptional(),
       }),
     ]) as unknown as z.ZodType<MembershipFilter>,
 );

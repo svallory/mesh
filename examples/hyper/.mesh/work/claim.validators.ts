@@ -48,8 +48,9 @@ export const claimFilter: z.ZodType<ClaimFilter> = z.lazy(
         endedAt: comparison(z.date()).exactOptional(),
         endReason: comparison(z.string()).exactOptional(),
         state: comparison(z.enum(["active", "released", "revoked", "expired"])).exactOptional(),
-        taskId: comparison(z.string()).exactOptional(),
-        holderId: comparison(z.string()).exactOptional(),
+        taskId: comparison(z.uuid()).exactOptional(),
+        holderId: comparison(z.uuid()).exactOptional(),
+        lapsed: comparison(z.boolean()).exactOptional(),
       }),
     ]) as unknown as z.ZodType<ClaimFilter>,
 );
@@ -75,6 +76,8 @@ export const claimSort = z
       "-taskId",
       "holderId",
       "-holderId",
+      "lapsed",
+      "-lapsed",
     ]),
   )
   .readonly();

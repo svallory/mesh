@@ -1,6 +1,5 @@
 import { Task } from "../work/task.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
-import { Run } from "./run.mesh.mx"
 import { Attempt } from "./attempt.mesh.mx"
 
 entity :Run table="runs"

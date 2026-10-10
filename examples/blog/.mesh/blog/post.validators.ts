@@ -61,7 +61,9 @@ export const postFilter: z.ZodType<PostFilter> = z.lazy(
         state: comparison(z.enum(["draft", "published"])).exactOptional(),
         insertedAt: comparison(z.date()).exactOptional(),
         updatedAt: comparison(z.date()).exactOptional(),
-        authorId: comparison(z.string()).exactOptional(),
+        authorId: comparison(z.uuid()).exactOptional(),
+        excerpt: comparison(z.string()).exactOptional(),
+        commentCount: comparison(z.int()).exactOptional(),
       }),
     ]) as unknown as z.ZodType<PostFilter>,
 );
@@ -95,6 +97,10 @@ export const postSort = z
       "-updatedAt",
       "authorId",
       "-authorId",
+      "excerpt",
+      "-excerpt",
+      "commentCount",
+      "-commentCount",
     ]),
   )
   .readonly();

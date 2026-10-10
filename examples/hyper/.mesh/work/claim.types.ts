@@ -34,6 +34,16 @@ export type ReadClaimInput = {
   offset?: number | undefined;
 };
 
+/** What `load` attaches to a Claim. The record has none of it, so reading one that was not loaded is a type error. */
+export type ClaimLoadable = {
+  task: Task;
+  holder: Collaborator;
+  lapsed: boolean;
+};
+
+/** A Claim with the relationships and computed fields named in N loaded. */
+export type ClaimWith<N extends keyof ClaimLoadable> = Claim & Pick<ClaimLoadable, N>;
+
 export type ClaimFilter =
   | { and: readonly ClaimFilter[] }
   | { or: readonly ClaimFilter[] }
@@ -47,6 +57,7 @@ export type ClaimFilter =
       state?: $Comparison<"active" | "released" | "revoked" | "expired">;
       taskId?: $Comparison<string>;
       holderId?: $Comparison<string>;
+      lapsed?: $Comparison<boolean>;
     };
 
 export type ClaimSort = readonly (
@@ -68,4 +79,6 @@ export type ClaimSort = readonly (
   | "-taskId"
   | "holderId"
   | "-holderId"
+  | "lapsed"
+  | "-lapsed"
 )[];

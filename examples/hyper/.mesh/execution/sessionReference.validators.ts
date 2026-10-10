@@ -55,9 +55,9 @@ export const sessionReferenceFilter: z.ZodType<SessionReferenceFilter> = z.lazy(
         location: comparison(z.string()).exactOptional(),
         version: comparison(z.int()).exactOptional(),
         recordedAt: comparison(z.date()).exactOptional(),
-        machineId: comparison(z.string()).exactOptional(),
-        agentProfileId: comparison(z.string()).exactOptional(),
-        recordedById: comparison(z.string()).exactOptional(),
+        machineId: comparison(z.uuid()).exactOptional(),
+        agentProfileId: comparison(z.uuid()).exactOptional(),
+        recordedById: comparison(z.uuid()).exactOptional(),
       }),
     ]) as unknown as z.ZodType<SessionReferenceFilter>,
 );

@@ -30,6 +30,18 @@ export type {{ input.name }} = {
 };
 
 @end
+@if(loadable)
+/** What `load` attaches to a {{ record.name }}. The record has none of it, so reading one that was not loaded is a type error. */
+export type {{ loadable.name }} = {
+  @each(member in loadable.members)
+  {{ member.key }}: {{ member.type }};
+  @end
+};
+
+/** A {{ record.name }} with the relationships and computed fields named in N loaded. */
+export type {{ loadable.withName }}<N extends keyof {{ loadable.name }}> = {{ record.name }} & Pick<{{ loadable.name }}, N>;
+
+@end
 @if(query)
 export type {{ query.filterName }} =
   | { and: readonly {{ query.filterName }}[] }

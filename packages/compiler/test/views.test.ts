@@ -71,6 +71,7 @@ describe("typesView", () => {
       },
       inputs: [],
       query: null,
+      loadable: null,
     });
   });
 

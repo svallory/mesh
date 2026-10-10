@@ -37,6 +37,15 @@ export type ReadReviewInput = {
   offset?: number | undefined;
 };
 
+/** What `load` attaches to a Review. The record has none of it, so reading one that was not loaded is a type error. */
+export type ReviewLoadable = {
+  submission: Submission;
+  reviewer: Collaborator;
+};
+
+/** A Review with the relationships and computed fields named in N loaded. */
+export type ReviewWith<N extends keyof ReviewLoadable> = Review & Pick<ReviewLoadable, N>;
+
 export type ReviewFilter =
   | { and: readonly ReviewFilter[] }
   | { or: readonly ReviewFilter[] }

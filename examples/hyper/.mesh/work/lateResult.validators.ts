@@ -49,8 +49,8 @@ export const lateResultFilter: z.ZodType<LateResultFilter> = z.lazy(
         fence: comparison(z.int()).exactOptional(),
         summary: comparison(z.string()).exactOptional(),
         recordedAt: comparison(z.date()).exactOptional(),
-        taskId: comparison(z.string()).exactOptional(),
-        submitterId: comparison(z.string()).exactOptional(),
+        taskId: comparison(z.uuid()).exactOptional(),
+        submitterId: comparison(z.uuid()).exactOptional(),
       }),
     ]) as unknown as z.ZodType<LateResultFilter>,
 );

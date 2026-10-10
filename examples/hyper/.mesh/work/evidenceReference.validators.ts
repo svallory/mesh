@@ -51,7 +51,7 @@ export const evidenceReferenceFilter: z.ZodType<EvidenceReferenceFilter> = z.laz
         contentHash: comparison(z.string()).exactOptional(),
         description: comparison(z.string()).exactOptional(),
         recordedAt: comparison(z.date()).exactOptional(),
-        recordedById: comparison(z.string()).exactOptional(),
+        recordedById: comparison(z.uuid()).exactOptional(),
       }),
     ]) as unknown as z.ZodType<EvidenceReferenceFilter>,
 );

@@ -7,6 +7,8 @@ import type { Task } from "../work/task.types";
 
 import type { Collaborator } from "../identity/collaborator.types";
 
+import type { Attempt } from "./attempt.types";
+
 export type Run = {
   id: string;
   inputs: unknown;
@@ -36,6 +38,18 @@ export type ReadRunInput = {
   limit?: number | undefined;
   offset?: number | undefined;
 };
+
+/** What `load` attaches to a Run. The record has none of it, so reading one that was not loaded is a type error. */
+export type RunLoadable = {
+  task: Task;
+  responsible: Collaborator;
+  startedBy: Collaborator;
+  parentRun: Run | null;
+  attempts: Attempt[];
+};
+
+/** A Run with the relationships and computed fields named in N loaded. */
+export type RunWith<N extends keyof RunLoadable> = Run & Pick<RunLoadable, N>;
 
 export type RunFilter =
   | { and: readonly RunFilter[] }

@@ -48,9 +48,9 @@ export const dependencyFilter: z.ZodType<DependencyFilter> = z.lazy(
       z.strictObject({
         id: comparison(z.uuid()).exactOptional(),
         createdAt: comparison(z.date()).exactOptional(),
-        dependentId: comparison(z.string()).exactOptional(),
-        prerequisiteId: comparison(z.string()).exactOptional(),
-        createdById: comparison(z.string()).exactOptional(),
+        dependentId: comparison(z.uuid()).exactOptional(),
+        prerequisiteId: comparison(z.uuid()).exactOptional(),
+        createdById: comparison(z.uuid()).exactOptional(),
       }),
     ]) as unknown as z.ZodType<DependencyFilter>,
 );

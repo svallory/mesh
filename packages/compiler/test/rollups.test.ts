@@ -52,6 +52,8 @@ test.each([
   ["max", "lines.amount", "decimal", true],
   ["min", "lines.paidAt", "datetime", true],
   ["max", "lines.dueOn", "date", true],
+  ["max", "lines.createdAt", "timestamp", true],
+  ["min", "lines.createdAt", "timestamp", true],
   ["max", "lines.parent.dueOn", "date", true],
 ] as const)("%s of %s infers %s, nullable %s", (fn, path, type, nullable) => {
   const { result } = build(fn, path);
@@ -104,13 +106,7 @@ test.each([
     "min",
     "lines.done",
     "MESH_ROLLUP_TYPE",
-    "min needs a number, date or datetime, &done is :boolean",
-  ],
-  [
-    "max",
-    "lines.createdAt",
-    "MESH_ROLLUP_TYPE",
-    "max needs a number, date or datetime, &createdAt is :timestamp",
+    "min needs a number, date, datetime or timestamp, &done is :boolean",
   ],
   [
     "count",

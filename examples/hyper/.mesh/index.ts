@@ -15,6 +15,8 @@ import type {
   ReadEventInput,
   EventFilter,
   EventSort,
+  EventLoadable,
+  EventWith,
 } from "./audit/event.types";
 import { bindAttempt } from "./execution/attempt.actions";
 import type {
@@ -23,6 +25,8 @@ import type {
   ReadAttemptInput,
   AttemptFilter,
   AttemptSort,
+  AttemptLoadable,
+  AttemptWith,
 } from "./execution/attempt.types";
 import { bindInvocation } from "./execution/invocation.actions";
 import type {
@@ -32,6 +36,8 @@ import type {
   ReadInvocationInput,
   InvocationFilter,
   InvocationSort,
+  InvocationLoadable,
+  InvocationWith,
 } from "./execution/invocation.types";
 import { bindMachine } from "./execution/machine.actions";
 import type {
@@ -41,9 +47,19 @@ import type {
   ReadMachineInput,
   MachineFilter,
   MachineSort,
+  MachineLoadable,
+  MachineWith,
 } from "./execution/machine.types";
 import { bindRun } from "./execution/run.actions";
-import type { Run, StartRunInput, ReadRunInput, RunFilter, RunSort } from "./execution/run.types";
+import type {
+  Run,
+  StartRunInput,
+  ReadRunInput,
+  RunFilter,
+  RunSort,
+  RunLoadable,
+  RunWith,
+} from "./execution/run.types";
 import { bindSessionReference } from "./execution/sessionReference.actions";
 import type {
   SessionReference,
@@ -52,6 +68,8 @@ import type {
   ReadSessionReferenceInput,
   SessionReferenceFilter,
   SessionReferenceSort,
+  SessionReferenceLoadable,
+  SessionReferenceWith,
 } from "./execution/sessionReference.types";
 import { bindCollaborator } from "./identity/collaborator.actions";
 import type {
@@ -61,6 +79,8 @@ import type {
   ReadCollaboratorInput,
   CollaboratorFilter,
   CollaboratorSort,
+  CollaboratorLoadable,
+  CollaboratorWith,
 } from "./identity/collaborator.types";
 import { bindMembership } from "./identity/membership.actions";
 import type {
@@ -70,6 +90,8 @@ import type {
   ReadMembershipInput,
   MembershipFilter,
   MembershipSort,
+  MembershipLoadable,
+  MembershipWith,
 } from "./identity/membership.types";
 import { bindWorkspace } from "./identity/workspace.actions";
 import type {
@@ -87,6 +109,8 @@ import type {
   ReadAssignmentInput,
   AssignmentFilter,
   AssignmentSort,
+  AssignmentLoadable,
+  AssignmentWith,
 } from "./work/assignment.types";
 import { bindClaim } from "./work/claim.actions";
 import type {
@@ -95,6 +119,8 @@ import type {
   ReadClaimInput,
   ClaimFilter,
   ClaimSort,
+  ClaimLoadable,
+  ClaimWith,
 } from "./work/claim.types";
 import { bindCompletion } from "./work/completion.actions";
 import type {
@@ -103,6 +129,8 @@ import type {
   ReadCompletionInput,
   CompletionFilter,
   CompletionSort,
+  CompletionLoadable,
+  CompletionWith,
 } from "./work/completion.types";
 import { bindDependency } from "./work/dependency.actions";
 import type {
@@ -112,6 +140,8 @@ import type {
   ReadDependencyInput,
   DependencyFilter,
   DependencySort,
+  DependencyLoadable,
+  DependencyWith,
 } from "./work/dependency.types";
 import { bindEvidenceReference } from "./work/evidenceReference.actions";
 import type {
@@ -120,6 +150,8 @@ import type {
   ReadEvidenceReferenceInput,
   EvidenceReferenceFilter,
   EvidenceReferenceSort,
+  EvidenceReferenceLoadable,
+  EvidenceReferenceWith,
 } from "./work/evidenceReference.types";
 import { bindLateResult } from "./work/lateResult.actions";
 import type {
@@ -128,6 +160,8 @@ import type {
   ReadLateResultInput,
   LateResultFilter,
   LateResultSort,
+  LateResultLoadable,
+  LateResultWith,
 } from "./work/lateResult.types";
 import { bindReview } from "./work/review.actions";
 import type {
@@ -137,6 +171,8 @@ import type {
   ReadReviewInput,
   ReviewFilter,
   ReviewSort,
+  ReviewLoadable,
+  ReviewWith,
 } from "./work/review.types";
 import { bindSubmission } from "./work/submission.actions";
 import type {
@@ -145,6 +181,8 @@ import type {
   ReadSubmissionInput,
   SubmissionFilter,
   SubmissionSort,
+  SubmissionLoadable,
+  SubmissionWith,
 } from "./work/submission.types";
 import { bindTask } from "./work/task.actions";
 import type {
@@ -155,6 +193,8 @@ import type {
   ReadTaskInput,
   TaskFilter,
   TaskSort,
+  TaskLoadable,
+  TaskWith,
 } from "./work/task.types";
 
 export type {
@@ -163,46 +203,62 @@ export type {
   ReadEventInput,
   EventFilter,
   EventSort,
+  EventLoadable,
+  EventWith,
   Attempt,
   StartAttemptInput,
   ReadAttemptInput,
   AttemptFilter,
   AttemptSort,
+  AttemptLoadable,
+  AttemptWith,
   Invocation,
   RecordInvocationInput,
   CorrectInvocationInput,
   ReadInvocationInput,
   InvocationFilter,
   InvocationSort,
+  InvocationLoadable,
+  InvocationWith,
   Machine,
   RegisterMachineInput,
   UpdateMachineInput,
   ReadMachineInput,
   MachineFilter,
   MachineSort,
+  MachineLoadable,
+  MachineWith,
   Run,
   StartRunInput,
   ReadRunInput,
   RunFilter,
   RunSort,
+  RunLoadable,
+  RunWith,
   SessionReference,
   RecordSessionReferenceInput,
   SetAvailabilitySessionReferenceInput,
   ReadSessionReferenceInput,
   SessionReferenceFilter,
   SessionReferenceSort,
+  SessionReferenceLoadable,
+  SessionReferenceWith,
   Collaborator,
   RegisterCollaboratorInput,
   UpdateCollaboratorInput,
   ReadCollaboratorInput,
   CollaboratorFilter,
   CollaboratorSort,
+  CollaboratorLoadable,
+  CollaboratorWith,
   Membership,
   GrantMembershipInput,
   ChangeRoleMembershipInput,
   ReadMembershipInput,
   MembershipFilter,
   MembershipSort,
+  MembershipLoadable,
+  MembershipWith,
   Workspace,
   CreateWorkspaceInput,
   RenameWorkspaceInput,
@@ -214,43 +270,59 @@ export type {
   ReadAssignmentInput,
   AssignmentFilter,
   AssignmentSort,
+  AssignmentLoadable,
+  AssignmentWith,
   Claim,
   AcquireClaimInput,
   ReadClaimInput,
   ClaimFilter,
   ClaimSort,
+  ClaimLoadable,
+  ClaimWith,
   Completion,
   RecordCompletionInput,
   ReadCompletionInput,
   CompletionFilter,
   CompletionSort,
+  CompletionLoadable,
+  CompletionWith,
   Dependency,
   AddDependencyInput,
   RemoveDependencyInput,
   ReadDependencyInput,
   DependencyFilter,
   DependencySort,
+  DependencyLoadable,
+  DependencyWith,
   EvidenceReference,
   RecordEvidenceReferenceInput,
   ReadEvidenceReferenceInput,
   EvidenceReferenceFilter,
   EvidenceReferenceSort,
+  EvidenceReferenceLoadable,
+  EvidenceReferenceWith,
   LateResult,
   RecordLateResultInput,
   ReadLateResultInput,
   LateResultFilter,
   LateResultSort,
+  LateResultLoadable,
+  LateResultWith,
   Review,
   AcceptReviewInput,
   ReturnReviewInput,
   ReadReviewInput,
   ReviewFilter,
   ReviewSort,
+  ReviewLoadable,
+  ReviewWith,
   Submission,
   SubmitSubmissionInput,
   ReadSubmissionInput,
   SubmissionFilter,
   SubmissionSort,
+  SubmissionLoadable,
+  SubmissionWith,
   Task,
   CreateTaskInput,
   SetPriorityTaskInput,
@@ -258,6 +330,8 @@ export type {
   ReadTaskInput,
   TaskFilter,
   TaskSort,
+  TaskLoadable,
+  TaskWith,
 };
 export {
   tables,
@@ -280,6 +354,25 @@ export {
   taskTable,
   workspaceTable,
 } from "./schema";
+export {
+  loadEventFields,
+  loadAttemptFields,
+  loadInvocationFields,
+  loadMachineFields,
+  loadRunFields,
+  loadSessionReferenceFields,
+  loadCollaboratorFields,
+  loadMembershipFields,
+  loadAssignmentFields,
+  loadClaimFields,
+  loadCompletionFields,
+  loadDependencyFields,
+  loadEvidenceReferenceFields,
+  loadLateResultFields,
+  loadReviewFields,
+  loadSubmissionFields,
+  loadTaskFields,
+} from "./load";
 
 /**
  * Every action function, bound to `layer`. Opens nothing and creates no table:

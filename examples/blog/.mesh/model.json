@@ -582,6 +582,7 @@
             "source": "() { return (&body ?? \"\").slice(0, 200) }"
           },
           "name": "excerpt",
+          "needs": [],
           "nullable": false,
           "position": {
             "column": 4,
@@ -837,6 +838,7 @@
             "identifier": "User"
           },
           "keyColumn": "authorId",
+          "keyType": "uuid",
           "kind": "belongs-to",
           "name": "author",
           "nullable": false,

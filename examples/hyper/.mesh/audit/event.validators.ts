@@ -54,7 +54,7 @@ export const eventFilter: z.ZodType<EventFilter> = z.lazy(
         caller: comparison(z.string()).exactOptional(),
         occurredAt: comparison(z.date()).exactOptional(),
         recordedAt: comparison(z.date()).exactOptional(),
-        taskId: comparison(z.string()).exactOptional(),
+        taskId: comparison(z.uuid()).exactOptional(),
       }),
     ]) as unknown as z.ZodType<EventFilter>,
 );

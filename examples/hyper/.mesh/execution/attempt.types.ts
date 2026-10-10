@@ -52,6 +52,19 @@ export type ReadAttemptInput = {
   offset?: number | undefined;
 };
 
+/** What `load` attaches to a Attempt. The record has none of it, so reading one that was not loaded is a type error. */
+export type AttemptLoadable = {
+  run: Run;
+  task: Task;
+  performer: Collaborator;
+  delegator: Collaborator;
+  machine: Machine | null;
+  session: SessionReference | null;
+};
+
+/** A Attempt with the relationships and computed fields named in N loaded. */
+export type AttemptWith<N extends keyof AttemptLoadable> = Attempt & Pick<AttemptLoadable, N>;
+
 export type AttemptFilter =
   | { and: readonly AttemptFilter[] }
   | { or: readonly AttemptFilter[] }

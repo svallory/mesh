@@ -3,6 +3,8 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
+import type { Membership } from "./membership.types";
+
 export type Collaborator = {
   id: string;
   kind: "human" | "agent";
@@ -27,6 +29,15 @@ export type ReadCollaboratorInput = {
   limit?: number | undefined;
   offset?: number | undefined;
 };
+
+/** What `load` attaches to a Collaborator. The record has none of it, so reading one that was not loaded is a type error. */
+export type CollaboratorLoadable = {
+  memberships: Membership[];
+};
+
+/** A Collaborator with the relationships and computed fields named in N loaded. */
+export type CollaboratorWith<N extends keyof CollaboratorLoadable> = Collaborator &
+  Pick<CollaboratorLoadable, N>;
 
 export type CollaboratorFilter =
   | { and: readonly CollaboratorFilter[] }

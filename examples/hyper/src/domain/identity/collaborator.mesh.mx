@@ -1,3 +1,5 @@
+import { Membership } from "./membership.mesh.mx"
+
 entity :Collaborator table="collaborators"
   attributes
     uuid :id primary-key
@@ -5,6 +7,8 @@ entity :Collaborator table="collaborators"
     string :name
     enum :state values=[:active, :retired] default=:active
     integer :version default=1
+  relationships
+    has-many :memberships entity=Membership via=:collaborator
   actions auto=[:read]
     create :register
       input

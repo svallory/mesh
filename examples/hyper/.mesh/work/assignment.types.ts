@@ -33,6 +33,17 @@ export type ReadAssignmentInput = {
   offset?: number | undefined;
 };
 
+/** What `load` attaches to a Assignment. The record has none of it, so reading one that was not loaded is a type error. */
+export type AssignmentLoadable = {
+  task: Task;
+  assignee: Collaborator;
+  delegator: Collaborator;
+};
+
+/** A Assignment with the relationships and computed fields named in N loaded. */
+export type AssignmentWith<N extends keyof AssignmentLoadable> = Assignment &
+  Pick<AssignmentLoadable, N>;
+
 export type AssignmentFilter =
   | { and: readonly AssignmentFilter[] }
   | { or: readonly AssignmentFilter[] }
