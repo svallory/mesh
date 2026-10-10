@@ -1,39 +1,56 @@
 // The atom contract checks (`values`, `pattern`, `ref`, `declares`) as Mesh's dialect runs them (ported from MX's
 // `lowered-unit.test.ts`, `ir-entry/contract-fields.test.ts` and `ir-entry/lower-source.test.ts` at MX commit 750c80ec1).
 // `MESH_DIALECT` claims those contract keys (`contractFields`) and checks them in `checkContract` and `afterLower`.
-// The reference is core's built-in path (`tagRules: "none"`, no dialect), which runs the same checks itself: the
-// diagnostics must be equal field for field (message, line, column, offset, code). Both paths are public API.
+// The expected diagnostics are literal data in `fixtures/atom-contracts.json` (message, line, column, offset, code, one
+// entry per source), generated once from the output MX's reference module and core's built-in path agreed on. Nothing
+// here lowers without `MESH_DIALECT`, so the tests do not depend on core's own Mesh behaviour (core is dropping it).
+//
+//   MESH_CONTRACTS_UPDATE=1 bun test packages/compiler/test/atom-contracts.test.ts
+//
+// rewrites the data; review its diff like any other change.
 import { lowerSource, type CustomTag, type Dialect, type LowerSourceOptions } from "@mxlang/core";
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { MESH_DIALECT } from "../src/front-end/dialect.ts";
 import { FAILING, PASSING, REGISTRATION, vocab } from "./atom-contract-cases.ts";
 
-const BUILT_IN: LowerSourceOptions = { tagRules: "none" } as LowerSourceOptions;
 const MESH: LowerSourceOptions = { dialect: MESH_DIALECT };
+
+const DATA = join(import.meta.dir, "fixtures/atom-contracts.json");
+const update = process.env.MESH_CONTRACTS_UPDATE === "1";
+const recorded: Record<string, unknown> = update ? {} : JSON.parse(readFileSync(DATA, "utf8"));
+if (update) afterAll(() => writeFileSync(DATA, `${JSON.stringify(recorded, null, 1)}\n`));
+
+/** `actual` equals the diagnostics recorded under `key` (when updating, `actual` is recorded instead). */
+function expectRecorded(key: string, actual: unknown): void {
+  if (update) recorded[key] = actual;
+  expect(Object.hasOwn(recorded, key), `no recorded data for ${key}`).toBe(true);
+  expect(actual).toEqual(recorded[key]);
+}
 
 const diagnosticsOf = (source: string, tags: Record<string, CustomTag>, options: LowerSourceOptions, file = "/v/x.mx") =>
   lowerSource(source, file, { ...options, customTags: tags }).diagnostics;
 
-describe("the dialect's contract checks match core's built-in path", () => {
-  test.each(FAILING.map((s) => [s]))("rejects like the built-in path: %s", (source) => {
-    const expected = diagnosticsOf(source, vocab, BUILT_IN);
-    expect(expected.length).toBeGreaterThan(0);
-    expect(expected[0]?.severity).toBe("error");
-    expect(diagnosticsOf(source, vocab, MESH)).toEqual(expected);
+describe("the dialect's contract checks", () => {
+  test.each(FAILING.map((s) => [s]))("rejects: %s", (source) => {
+    const found = diagnosticsOf(source, vocab, MESH);
+    expect(found.length).toBeGreaterThan(0);
+    expect(found[0]?.severity).toBe("error");
+    expectRecorded(`vocab|${source}`, found);
   });
 
-  test.each(PASSING.map((s) => [s]))("accepts like the built-in path: %s", (source) => {
-    expect(diagnosticsOf(source, vocab, BUILT_IN)).toEqual([]);
+  test.each(PASSING.map((s) => [s]))("accepts: %s", (source) => {
     expect(diagnosticsOf(source, vocab, MESH)).toEqual([]);
   });
 
-  test.each(REGISTRATION.map(([name, tags]) => [name, tags] as const))("registration: %s", (_, tags) => {
-    // The tag is never called: `checkContract` runs at registration, as core's own check does.
-    const expected = diagnosticsOf("<div/>", tags, BUILT_IN);
-    expect(expected).toHaveLength(1);
-    expect(expected[0]).toMatchObject({ line: 1, column: 0, offset: 0 });
-    expect(diagnosticsOf("<div/>", tags, MESH)).toEqual(expected);
-    expect(diagnosticsOf("<box/>", tags, MESH)).toEqual(diagnosticsOf("<box/>", tags, BUILT_IN));
+  test.each(REGISTRATION.map(([name, tags]) => [name, tags] as const))("registration: %s", (name, tags) => {
+    // The tag is never called: `checkContract` runs at registration, file-level.
+    const found = diagnosticsOf("<div/>", tags, MESH);
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ severity: "error", line: 1, column: 0, offset: 0 });
+    expectRecorded(`registration|${name}`, found);
+    expect(diagnosticsOf("<box/>", tags, MESH)).toEqual(found);
   });
 
   test("a duplicate declaration names both places", () => {
@@ -79,16 +96,15 @@ const ENTITY_FAILING: readonly string[] = [
 const ENTITY_PASSING =
   "entity :Invoice\n  attributes\n    string :title\n  actions\n    action :rename\n      arguments\n        string :newTitle\n      policy require=[:title, :newTitle] types=:update slug=:abc\n";
 
-describe("an entity file through the dialect and the built-in path", () => {
-  test.each(ENTITY_FAILING.map((s) => [s]))("same single error: %s", (source) => {
-    const expected = diagnosticsOf(source, customTags, BUILT_IN, "/v/invoice.mx");
-    expect(expected).toHaveLength(1);
-    expect(expected[0]?.severity).toBe("error");
-    expect(diagnosticsOf(source, customTags, MESH, "/v/invoice.mx")).toEqual(expected);
+describe("an entity file through the dialect", () => {
+  test.each(ENTITY_FAILING.map((s) => [s]))("one error: %s", (source) => {
+    const found = diagnosticsOf(source, customTags, MESH, "/v/invoice.mx");
+    expect(found).toHaveLength(1);
+    expect(found[0]?.severity).toBe("error");
+    expectRecorded(`entity|${source}`, found);
   });
 
-  test("accepts what the built-in path accepts", () => {
-    expect(diagnosticsOf(ENTITY_PASSING, customTags, BUILT_IN)).toEqual([]);
+  test("accepts a file that uses every check correctly", () => {
     expect(diagnosticsOf(ENTITY_PASSING, customTags, MESH)).toEqual([]);
   });
 
@@ -104,7 +120,6 @@ describe("an entity file through the dialect and the built-in path", () => {
       column: 0,
       offset: 0,
     };
-    expect(diagnosticsOf(source, tags, BUILT_IN)).toEqual([expected]);
     expect(diagnosticsOf(source, tags, MESH)).toEqual([expected]);
   });
 });

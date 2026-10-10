@@ -1,0 +1,623 @@
+{
+ "vocab|<box mode=:strct/>": [
+  {
+   "severity": "error",
+   "message": "`<box>`: attribute `mode`: `:strct` is not one of :loose, :strict; did you mean `:strict`?",
+   "line": 1,
+   "column": 10,
+   "offset": 10
+  }
+ ],
+ "vocab|<box mode=:zzzzzz/>": [
+  {
+   "severity": "error",
+   "message": "`<box>`: attribute `mode`: `:zzzzzz` is not one of :loose, :strict",
+   "line": 1,
+   "column": 10,
+   "offset": 10
+  }
+ ],
+ "vocab|<box slug=:ab-c/>": [
+  {
+   "severity": "error",
+   "message": "`<box>`: attribute `slug`: `:ab-c` does not match the pattern /^[a-z]+$/",
+   "line": 1,
+   "column": 10,
+   "offset": 10
+  }
+ ],
+ "vocab|<box both=:b9/>": [
+  {
+   "severity": "error",
+   "message": "`<box>`: attribute `both`: `:b9` is not one of :a1, :b2",
+   "line": 1,
+   "column": 10,
+   "offset": 10
+  }
+ ],
+ "vocab|<box both=:c3/>": [
+  {
+   "severity": "error",
+   "message": "`<box>`: attribute `both`: `:c3` is not one of :a1, :b2",
+   "line": 1,
+   "column": 10,
+   "offset": 10
+  }
+ ],
+ "vocab|<box mode=[:strict, :lose]/>": [
+  {
+   "severity": "error",
+   "message": "`<box>`: attribute `mode`: `:lose` is not one of :loose, :strict; did you mean `:loose`?",
+   "line": 1,
+   "column": 20,
+   "offset": 20
+  }
+ ],
+ "vocab|<box mode=(c ? :strict : :lose)/>": [
+  {
+   "severity": "error",
+   "message": "`<box>`: attribute `mode`: `:lose` is not one of :loose, :strict; did you mean `:loose`?",
+   "line": 1,
+   "column": 25,
+   "offset": 25
+  }
+ ],
+ "vocab|<box many=:zz/>": [
+  {
+   "severity": "error",
+   "message": "`<box>`: attribute `many`: `:zz` is not one of :alpha, :bravo, :charlie, :delta, :echo, :foxtrot, :golf, :hotel, :india, :juliet +2 more",
+   "line": 1,
+   "column": 10,
+   "offset": 10
+  }
+ ],
+ "vocab|<box many=:alpah/>": [
+  {
+   "severity": "error",
+   "message": "`<box>`: attribute `many`: `:alpah` is not one of :alpha, :bravo, :charlie, :delta, :echo, :foxtrot, :golf, :hotel, :india, :juliet +2 more; did you mean `:alpha`?",
+   "line": 1,
+   "column": 10,
+   "offset": 10
+  }
+ ],
+ "vocab|<box ten=:zz/>": [
+  {
+   "severity": "error",
+   "message": "`<box>`: attribute `ten`: `:zz` is not one of :alpha, :bravo, :charlie, :delta, :echo, :foxtrot, :golf, :hotel, :india, :juliet",
+   "line": 1,
+   "column": 9,
+   "offset": 9
+  }
+ ],
+ "vocab|<box mode='strict'/>": [
+  {
+   "severity": "error",
+   "message": "`<box>`: attribute `mode` must be atom, got string (one of :loose, :strict)",
+   "line": 1,
+   "column": 10,
+   "offset": 10
+  }
+ ],
+ "vocab|<box mode=1/>": [
+  {
+   "severity": "error",
+   "message": "`<box>`: attribute `mode` must be atom, got number (one of :loose, :strict)",
+   "line": 1,
+   "column": 10,
+   "offset": 10
+  }
+ ],
+ "vocab|<link to='a'/>": [
+  {
+   "severity": "error",
+   "message": "`<link>`: attribute `to` must be atom, got string (none declared); write it as `:a`",
+   "line": 1,
+   "column": 9,
+   "offset": 9
+  }
+ ],
+ "vocab|<node#a/><node#b/><link to=\"c\"/>": [
+  {
+   "severity": "error",
+   "message": "`<link>`: attribute `to` must be atom, got string (one of :a, :b); write it as `:c`",
+   "line": 1,
+   "column": 27,
+   "offset": 27
+  }
+ ],
+ "vocab|<node#a/><link to=:b/>": [
+  {
+   "severity": "error",
+   "message": "`<link>`: attribute `to`: `:b` is not a declared node here (one of :a)",
+   "line": 1,
+   "column": 18,
+   "offset": 18
+  }
+ ],
+ "vocab|<node#alpha/><link to=:alpah/>": [
+  {
+   "severity": "error",
+   "message": "`<link>`: attribute `to`: `:alpah` is not a declared node here (one of :alpha); did you mean `:alpha`?",
+   "line": 1,
+   "column": 22,
+   "offset": 22
+  }
+ ],
+ "vocab|<node#alpha/><node#bravo/><node#charlie/><node#delta/><node#echo/><node#foxtrot/><node#golf/><node#hotel/><node#india/><node#juliet/><node#kilo/><node#lima/><link to=:zz/>": [
+  {
+   "severity": "error",
+   "message": "`<link>`: attribute `to`: `:zz` is not a declared node here (one of :alpha, :bravo, :charlie, :delta, :echo, :foxtrot, :golf, :hotel, :india, :juliet +2 more)",
+   "line": 1,
+   "column": 166,
+   "offset": 166
+  }
+ ],
+ "vocab|<node#a/>\n<node#a/>": [
+  {
+   "severity": "error",
+   "message": "`a` is already declared as `node` at 1:7",
+   "line": 2,
+   "column": 6,
+   "offset": 16
+  }
+ ],
+ "vocab|<entity>\n  <attributes><string :a/></attributes>\n</entity>\n<slot :a/><node#a/>": [
+  {
+   "severity": "error",
+   "message": "`a` is already declared as `node` (it clashes with the `slot` of the same name) at 4:7",
+   "line": 4,
+   "column": 16,
+   "offset": 75
+  }
+ ],
+ "vocab|<node#a/><slot :a/>": [
+  {
+   "severity": "error",
+   "message": "`a` is already declared as `slot` (it clashes with the `node` of the same name) at 1:7",
+   "line": 1,
+   "column": 15,
+   "offset": 15
+  }
+ ],
+ "vocab|<scoped :q/>": [
+  {
+   "severity": "error",
+   "message": "`q` declares an `item` scoped to `list` or `grid`, but has no such ancestor",
+   "line": 1,
+   "column": 8,
+   "offset": 8
+  }
+ ],
+ "vocab|<derive-scoped/>": [
+  {
+   "severity": "error",
+   "message": "`lost` declares a `node` scoped to `nowhere`, but has no such ancestor",
+   "line": 1,
+   "column": 0,
+   "offset": 0
+  }
+ ],
+ "vocab|<derive/><node#made/>": [
+  {
+   "severity": "error",
+   "message": "`made` is already declared as `node` at 1:1",
+   "line": 1,
+   "column": 15,
+   "offset": 15
+  }
+ ],
+ "vocab|<list><item :a/></list><pick of=:a/>": [
+  {
+   "severity": "error",
+   "message": "`<pick>`: attribute `of`: `:a` is not a declared item here (none declared)",
+   "line": 1,
+   "column": 32,
+   "offset": 32
+  }
+ ],
+ "vocab|<list><item :a/></list><list><item :b/><pick of=:a/></list>": [
+  {
+   "severity": "error",
+   "message": "`<pick>`: attribute `of`: `:a` is not a declared item here (one of :b)",
+   "line": 1,
+   "column": 48,
+   "offset": 48
+  }
+ ],
+ "vocab|<list><derive-list/><pick of=:autoo/></list>": [
+  {
+   "severity": "error",
+   "message": "`<pick>`: attribute `of`: `:autoo` is not a declared item here (one of :auto); did you mean `:auto`?",
+   "line": 1,
+   "column": 29,
+   "offset": 29
+  }
+ ],
+ "vocab|<entity :invoice>\n  <attributes>\n    <string :title/>\n    <string :body/>\n  </attributes>\n  <policy accept=[:title, :bdy]/>\n</entity>": [
+  {
+   "severity": "error",
+   "message": "`<policy>`: attribute `accept`: `:bdy` is not a declared attribute here (one of :body, :title); did you mean `:body`?",
+   "line": 6,
+   "column": 26,
+   "offset": 116
+  }
+ ],
+ "vocab|<entity :invoice>\n  <relationships><has-many :items/></relationships>\n  <attributes><string :title/><calc :total/></attributes>\n  <policy load=[:items, :title]/>\n</entity>": [
+  {
+   "severity": "error",
+   "message": "`<policy>`: attribute `load`: `:title` is not a declared relationship or computed here (one of :items, :total)",
+   "line": 4,
+   "column": 24,
+   "offset": 152
+  }
+ ],
+ "vocab|<entity :invoice>\n  <attributes><string :status/></attributes>\n  <actions>\n    <action :pay>\n      <set>\n        <:statuss=\"paid\"/>\n      </set>\n    </action>\n  </actions>\n</entity>": [
+  {
+   "severity": "error",
+   "message": "`<setter>`: attribute `name`: `:statuss` is not a declared attribute here (one of :status); did you mean `:status`?",
+   "line": 6,
+   "column": 9,
+   "offset": 114
+  }
+ ],
+ "vocab|<entity :invoice>\n  <attributes><string name=\"title\"/></attributes>\n</entity>": [
+  {
+   "severity": "error",
+   "message": "`<string>`: attribute `name` must be atom, got string",
+   "line": 2,
+   "column": 27,
+   "offset": 45
+  }
+ ],
+ "vocab|<entity :invoice>\n  <attributes><string :title/></attributes>\n  <actions>\n    <action :rename>\n      <arguments><string :newTitle/></arguments>\n    </action>\n    <action :other>\n      <policy require=:newTitle/>\n    </action>\n  </actions>\n</entity>": [
+  {
+   "severity": "error",
+   "message": "`<policy>`: attribute `require`: `:newTitle` is not a declared attribute or argument here (one of :title)",
+   "line": 8,
+   "column": 22,
+   "offset": 200
+  }
+ ],
+ "vocab|<entity>\n  <attributes><string :title/><string :body/><string :tag/></attributes>\n  <policy only=:tag/>\n  <policy shaped=:body/>\n</entity>": [
+  {
+   "severity": "error",
+   "message": "`<policy>`: attribute `only`: `:tag` is not one of :body, :title",
+   "line": 3,
+   "column": 15,
+   "offset": 97
+  }
+ ],
+ "vocab|<entity>\n  <attributes><string :title/></attributes>\n  <policy accept=\"title\"/>\n</entity>": [
+  {
+   "severity": "error",
+   "message": "`<policy>`: attribute `accept` must be atom, got string (one of :title); write it as `:title`",
+   "line": 3,
+   "column": 17,
+   "offset": 70
+  }
+ ],
+ "vocab|<box><@row mode=:c/></box>": [
+  {
+   "severity": "error",
+   "message": "`<box>`: `<@row>`: attribute `mode`: `:c` is not one of :a, :b",
+   "line": 1,
+   "column": 16,
+   "offset": 16
+  }
+ ],
+ "vocab|<node#n/><box><@row to=:m/></box>": [
+  {
+   "severity": "error",
+   "message": "`<box>`: `<@row>`: attribute `to`: `:m` is not a declared node here (one of :n)",
+   "line": 1,
+   "column": 23,
+   "offset": 23
+  }
+ ],
+ "vocab|<box><@row><@cell k=:z/></@row></box>": [
+  {
+   "severity": "error",
+   "message": "`<box>`: `<@row>`: `<@cell>`: attribute `k`: `:z` is not one of :x, :y",
+   "line": 1,
+   "column": 20,
+   "offset": 20
+  }
+ ],
+ "vocab|<box><@row><@cell k=[:x, :w]/></@row></box>": [
+  {
+   "severity": "error",
+   "message": "`<box>`: `<@row>`: `<@cell>`: attribute `k`: `:w` is not one of :x, :y",
+   "line": 1,
+   "column": 25,
+   "offset": 25
+  }
+ ],
+ "vocab|<node#n/><box><@col-1 to=:nn/></box>": [
+  {
+   "severity": "error",
+   "message": "`<box>`: `<@col-1>`: attribute `to`: `:nn` is not a declared node here (one of :n)",
+   "line": 1,
+   "column": 25,
+   "offset": 25
+  }
+ ],
+ "vocab|<node#n/><box><@col-1 to=\"n\"/></box>": [
+  {
+   "severity": "error",
+   "message": "`<box>`: `<@col-1>`: attribute `to` must be atom, got string (one of :n); write it as `:n`",
+   "line": 1,
+   "column": 25,
+   "offset": 25
+  }
+ ],
+ "vocab|<link to=\"red\"/>": [
+  {
+   "severity": "error",
+   "message": "`<link>`: attribute `to` must be atom, got string (none declared); write it as `:red`",
+   "line": 1,
+   "column": 9,
+   "offset": 9
+  }
+ ],
+ "vocab|<node#a/><link to=:zz/><link to=\"red\"/>": [
+  {
+   "severity": "error",
+   "message": "`<link>`: attribute `to`: `:zz` is not a declared node here (one of :a)",
+   "line": 1,
+   "column": 18,
+   "offset": 18
+  }
+ ],
+ "vocab|<node#a/><link to=\"red\"/><link to=:zz/>": [
+  {
+   "severity": "error",
+   "message": "`<link>`: attribute `to` must be atom, got string (one of :a); write it as `:red`",
+   "line": 1,
+   "column": 18,
+   "offset": 18
+  }
+ ],
+ "vocab|<box any=\"red\"/>": [
+  {
+   "severity": "error",
+   "message": "`<box>`: attribute `any` must be atom, got string",
+   "line": 1,
+   "column": 9,
+   "offset": 9
+  }
+ ],
+ "vocab|<box mode=\"red\"/>": [
+  {
+   "severity": "error",
+   "message": "`<box>`: attribute `mode` must be atom, got string (one of :loose, :strict)",
+   "line": 1,
+   "column": 10,
+   "offset": 10
+  }
+ ],
+ "registration|values": [
+  {
+   "severity": "error",
+   "message": "Invalid \"a\" attribute declaration of tag \"box\": `values` requires `type: \"atom\"`",
+   "line": 1,
+   "column": 0,
+   "offset": 0
+  }
+ ],
+ "registration|pattern": [
+  {
+   "severity": "error",
+   "message": "Invalid \"a\" attribute declaration of tag \"box\": `pattern` requires `type: \"atom\"`",
+   "line": 1,
+   "column": 0,
+   "offset": 0
+  }
+ ],
+ "registration|ref": [
+  {
+   "severity": "error",
+   "message": "Invalid \"a\" attribute declaration of tag \"box\": `ref` requires `type: \"atom\"`",
+   "line": 1,
+   "column": 0,
+   "offset": 0
+  }
+ ],
+ "registration|bad values": [
+  {
+   "severity": "error",
+   "message": "Invalid \"a\" attribute declaration of tag \"box\": `values` must be an array of strings",
+   "line": 1,
+   "column": 0,
+   "offset": 0
+  }
+ ],
+ "registration|bad pattern": [
+  {
+   "severity": "error",
+   "message": "Invalid \"a\" attribute declaration of tag \"box\": `pattern` must be a valid regular expression source string",
+   "line": 1,
+   "column": 0,
+   "offset": 0
+  }
+ ],
+ "registration|bad ref": [
+  {
+   "severity": "error",
+   "message": "Invalid \"a\" attribute declaration of tag \"box\": `ref` must be a kind name or an array of kind names",
+   "line": 1,
+   "column": 0,
+   "offset": 0
+  }
+ ],
+ "registration|nested values": [
+  {
+   "severity": "error",
+   "message": "Invalid \"a\" attribute declaration of tag \"box\": \"<@row>\": `values` requires `type: \"atom\"`",
+   "line": 1,
+   "column": 0,
+   "offset": 0
+  }
+ ],
+ "registration|wildcard values": [
+  {
+   "severity": "error",
+   "message": "Invalid \"a\" attribute declaration of tag \"box\": `attributeTags[\"*\"]` entry 1: `values` requires `type: \"atom\"`",
+   "line": 1,
+   "column": 0,
+   "offset": 0
+  }
+ ],
+ "registration|declares from": [
+  {
+   "severity": "error",
+   "message": "Invalid `declares` of tag \"box\": `from` must be \"id\" or \"name\"",
+   "line": 1,
+   "column": 0,
+   "offset": 0
+  }
+ ],
+ "registration|declares kind": [
+  {
+   "severity": "error",
+   "message": "Invalid `declares` of tag \"box\": `kind` must be a non-empty kind name",
+   "line": 1,
+   "column": 0,
+   "offset": 0
+  }
+ ],
+ "registration|declares key": [
+  {
+   "severity": "error",
+   "message": "Invalid `declares` of tag \"box\": unknown key \"scoped\"; allowed: kind, from, scope, uniqueWith, under",
+   "line": 1,
+   "column": 0,
+   "offset": 0
+  }
+ ],
+ "registration|declares empty": [
+  {
+   "severity": "error",
+   "message": "Invalid `declares` of tag \"box\": it has no entries",
+   "line": 1,
+   "column": 0,
+   "offset": 0
+  }
+ ],
+ "registration|declares entry": [
+  {
+   "severity": "error",
+   "message": "Invalid `declares` of tag \"box\": each entry must be an object",
+   "line": 1,
+   "column": 0,
+   "offset": 0
+  }
+ ],
+ "registration|declares scope": [
+  {
+   "severity": "error",
+   "message": "Invalid `declares` of tag \"box\": `scope` must be a tag name or an array of tag names",
+   "line": 1,
+   "column": 0,
+   "offset": 0
+  }
+ ],
+ "registration|declares uniqueWith": [
+  {
+   "severity": "error",
+   "message": "Invalid `declares` of tag \"box\": `uniqueWith` must be an array of kind names",
+   "line": 1,
+   "column": 0,
+   "offset": 0
+  }
+ ],
+ "registration|unknown key beside the claimed ones": [
+  {
+   "severity": "error",
+   "message": "Unknown key \"bogus\" in the \"a\" attribute declaration of tag \"box\"; allowed: type, items, required, enum, default, literalOnly, values, pattern, ref",
+   "line": 1,
+   "column": 0,
+   "offset": 0
+  }
+ ],
+ "registration|inline children contract": [
+  {
+   "severity": "error",
+   "message": "Invalid \"a\" attribute declaration of tag \"box\": `children[\"*\"]` entry 2: `pattern` requires `type: \"atom\"`",
+   "line": 1,
+   "column": 0,
+   "offset": 0
+  }
+ ],
+ "registration|attribute tag inside an inline children contract": [
+  {
+   "severity": "error",
+   "message": "Invalid \"a\" attribute declaration of tag \"box\": `children[\"*\"]` entry 1: \"<@row>\": `ref` must be a kind name or an array of kind names",
+   "line": 1,
+   "column": 0,
+   "offset": 0
+  }
+ ],
+ "entity|entity :Invoice\n  attributes\n    string :title\n    string :body\n  policy accept=[:title, :bdy]\n": [
+  {
+   "severity": "error",
+   "message": "`<policy>`: attribute `accept`: `:bdy` is not a declared attribute here (one of :body, :title); did you mean `:body`?",
+   "line": 5,
+   "column": 25,
+   "offset": 89
+  }
+ ],
+ "entity|entity :Invoice\n  attributes\n    string :title\n  policy accept=\"title\"\n": [
+  {
+   "severity": "error",
+   "message": "`<policy>`: attribute `accept` must be atom, got string (one of :title); write it as `:title`",
+   "line": 4,
+   "column": 16,
+   "offset": 63
+  }
+ ],
+ "entity|entity :Invoice\n  policy types=:craete\n": [
+  {
+   "severity": "error",
+   "message": "`<policy>`: attribute `types`: `:craete` is not one of :create, :destroy, :read, :update; did you mean `:create`?",
+   "line": 2,
+   "column": 15,
+   "offset": 31
+  }
+ ],
+ "entity|entity :Invoice\n  policy slug=:Upper\n": [
+  {
+   "severity": "error",
+   "message": "`<policy>`: attribute `slug`: `:Upper` does not match the pattern /^[a-z]+$/",
+   "line": 2,
+   "column": 14,
+   "offset": 30
+  }
+ ],
+ "entity|entity :Invoice\n  attributes\n    string :title\n    string :title\n": [
+  {
+   "severity": "error",
+   "message": "`title` is already declared as `attribute` at 3:12",
+   "line": 4,
+   "column": 11,
+   "offset": 58
+  }
+ ],
+ "entity|entity :Invoice\n  actions\n    action :rename\n      arguments\n        string :newTitle\n    action :other\n      policy require=:newTitle\n": [
+  {
+   "severity": "error",
+   "message": "`<policy>`: attribute `require`: `:newTitle` is not a declared attribute or argument here (none declared)",
+   "line": 7,
+   "column": 21,
+   "offset": 125
+  }
+ ],
+ "entity|entity :Invoice\n  arguments\n    string :orphan\n": [
+  {
+   "severity": "error",
+   "message": "`orphan` declares an `argument` scoped to `action`, but has no such ancestor",
+   "line": 3,
+   "column": 11,
+   "offset": 39
+  }
+ ]
+}
