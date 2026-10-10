@@ -469,6 +469,10 @@
               "path": "/architecture/in-depth/expressions/"
             },
             {
+              "title": "Expression functions",
+              "path": "/architecture/in-depth/expression-functions/"
+            },
+            {
               "title": "Extension host and composed contracts",
               "path": "/architecture/in-depth/extension-host/"
             },

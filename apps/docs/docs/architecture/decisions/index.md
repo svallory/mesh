@@ -54,7 +54,7 @@ The operator accepted [roadmap revision 5](../roadmap/roadmap.md), which ends Me
 | [0004](./0004-no-measurement-gate.md) | Mesh is built regardless; measuring the agent benefit is not a gate | Accepted | operator |
 | [0005](./0005-core-interface-is-a-function-call.md) | The core's interface is a function call; transports are optional adapters, none in v1 | Accepted | operator |
 | [0010](./0010-one-expression-tree-two-evaluators.md) | One expression tree, evaluated in memory and in SQL | Accepted, amended by 0056, 0072 | operator; roadmap author |
-| [0012](./0012-expression-semantics.md) | Expression semantics where SQL and JavaScript differ | Proposed (blocks M4) | operator or lead |
+| [0012](./0012-expression-semantics.md) | Expression semantics where SQL and JavaScript differ | Accepted (lead ruling, pending operator review) | lead |
 | [0013](./0013-data-layer-contract-and-capabilities.md) | Data-layer contract: a mandatory set plus declared capabilities | Accepted | operator |
 | [0014](./0014-sql-adapters-on-drizzle.md) | SQL adapters are built on Drizzle and drizzle-kit | Accepted | operator's position, lead's choice of tool |
 | [0016](./0016-in-memory-data-via-sqlite.md) | In-memory data for tests is SQLite's in-memory mode | Accepted | roadmap author |
@@ -132,4 +132,4 @@ The operator accepted [roadmap revision 5](../roadmap/roadmap.md), which ends Me
 
 ## Open decisions at a glance
 
-Seven records are Proposed. One blocks v1 work outright: [ADR-0012](./0012-expression-semantics.md) (expression semantics, before M4). [ADR-0037](./0037-vocabulary-source-of-truth.md) now also decides where attribute-type tag names come from ([ADR-0050](./0050-entity-file-syntax.md)) and should be ruled in the realignment task. [ADR-0039](./0039-run-time-error-positions.md) (before M5), [ADR-0045](./0045-has-one-uniqueness.md) (before M7) and [ADR-0046](./0046-denied-atomic-write-outcome.md) (before M8) have a working assumption in the roadmap. [ADR-0044](./0044-folding-record-reading-validations.md) is for after v1. [ADR-0035](./0035-meaning-of-public.md) blocks nothing in v1.
+Six records are Proposed. [ADR-0012](./0012-expression-semantics.md) (expression semantics) was ruled by the lead on 2026-10-10 and awaits the operator's review. [ADR-0037](./0037-vocabulary-source-of-truth.md) now also decides where attribute-type tag names come from ([ADR-0050](./0050-entity-file-syntax.md)) and should be ruled in the realignment task. [ADR-0039](./0039-run-time-error-positions.md) (before M5), [ADR-0045](./0045-has-one-uniqueness.md) (before M7) and [ADR-0046](./0046-denied-atomic-write-outcome.md) (before M8) have a working assumption in the roadmap. [ADR-0044](./0044-folding-record-reading-validations.md) is for after v1. [ADR-0035](./0035-meaning-of-public.md) blocks nothing in v1.

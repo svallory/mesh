@@ -1,13 +1,13 @@
 ---
 title: "0012. Which semantics a Mesh expression has"
-description: "Decision record 0012: Which semantics a Mesh expression has. Status: Proposed."
+description: "Decision record 0012: Which semantics a Mesh expression has. Status: Accepted (lead ruling, pending operator review): option A."
 ---
 
 # 0012. Which semantics a Mesh expression has
 
 ## Status
 
-Proposed
+Accepted (lead ruling, pending operator review)
 
 ## Date
 
@@ -15,7 +15,7 @@ Proposed
 
 ## Deciders
 
-open; the operator or the lead must rule. The recommendation is the roadmap author's. Provisional until ruled: question Q10 ("SQL's, documented") was accepted by the lead without analysis ([rulings of 2026-10-04](./rulings-2026-10-04.md), "Review note").
+the lead, ruling on 2026-10-10 (option A, with the M4 design rulings D1 to D10 of the same day, decisions log 13:10 and 13:25), pending the operator's review. Earlier, question Q10 ("SQL's, documented") had been accepted by the lead without analysis ([rulings of 2026-10-04](./rulings-2026-10-04.md), "Review note").
 
 ## Context
 
@@ -27,9 +27,16 @@ Ash is the precedent for the host-language option, not the SQL one. AshPostgres 
 
 ## Decision
 
-Not decided.
+**Option A.** Mesh defines the semantics of each registered function and operator, and the function tables are the written definition: [Expression functions](../in-depth/expression-functions.md) lists every row; the same rows are test data (`EXPRESSION_TABLES` in `@meshfw/runtime/testing`). Where SQLite and Postgres agree natively (three-valued null logic) Mesh follows SQL. The in-memory evaluator built in M4 must give the answers the M10 SQL evaluator will give; M10 and every later SQL adapter run the same tables.
 
-**Recommendation (roadmap author):** option A. The function tables of M4 test 1 are the written definition. **Blocks:** M4, whose tables and in-memory implementations are that definition ([roadmap](../roadmap/roadmap.md), section 4: M4 needs ADR-0012 ruled). It must be ruled before M4 starts.
+The semantics, in summary (the design is `notes/m4/design.md`; the page above is the reference):
+
+- A boolean is `true`, `false` or **unknown** (`null`). Comparison with a null operand is unknown; `&&`, `||` and `!` are Kleene logic; `x === null` is `IS NULL`; `??` is `COALESCE`; `?.` is a left join; `undefined` does not exist.
+- An unknown result **fails a `check`** (fail closed, not SQL `CHECK` semantics, which pass), **skips a `when`**, **excludes a row** in a `filter`, and is `null` in a computed field. In M8, an unknown `forbid-if` forbids.
+- `every` is strict: an element whose predicate is unknown makes it false. M10 must translate `every(p)` as `NOT EXISTS (... WHERE p IS NOT TRUE)`. `some`, `find` and `filter` ignore elements whose predicate is unknown.
+- Division by zero is `null`; `/` is real division (M10's adapters wrap it); `length` of a string counts Unicode code points (what both databases count); `now()` is read once per scope from an injectable clock.
+- A construct the registry does not define (string ordering, truthiness, `==`, string concatenation, string methods) is **not translated**: it stays plain code with JavaScript semantics, and the build warns (`MESH_EXPR_PLAIN`). At M10 these become errors only where SQL is required (`filter`, `sort`, policies). Legal syntax is never made illegal. Member access through a value that may be null is a build error, because TypeScript's strict null checks reject it too.
+- Two build warnings cover legal translated code whose JavaScript reading flips on null: `MESH_EXPR_NULL_EQUALITY` (two nullable operands) and `MESH_EXPR_NEGATED_UNKNOWN` (`!`, `!==` over something that can be unknown).
 
 ## Options considered
 
@@ -73,9 +80,11 @@ A and C combine: define semantics per function, and reject at build time what ca
 
 ## Consequences
 
-If A: every function page documents its null behaviour; each adapter ships wrappers for its disagreements; adding a database adapter means passing every table. If unruled, M4 cannot write its tables.
+Because A was ruled: every function page documents its null behaviour; each adapter ships wrappers for its disagreements; adding a database adapter means passing every table. If unruled, M4 cannot write its tables.
 
 ## Action items
-- [ ] Before M4: ruling by the operator or the lead.
-- [ ] M4: per-function null behaviour in the registry; tables with null cases.
-- [ ] M4: list the SQLite and Postgres disagreements for the first registry and decide wrap or reject for each.
+- [x] Before M4: ruling by the lead (2026-10-10). The operator reviews it.
+- [x] M4: per-function null behaviour in the registry; tables with null cases.
+- [x] M4: the disagreements for the first registry, decided: `/` (real division, zero divisor null), `length` (code points) and string ordering (not translated) are the three to wrap or avoid in M10.
+- [ ] M10: pass every table through the SQL evaluator on SQLite and Postgres, wrapping `/` and `every` as above.
+- [ ] Operator: review this ruling.

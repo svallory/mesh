@@ -1,0 +1,131 @@
+import { dirname, posix } from "node:path";
+import type { Entity, Expression, ExprNode, Step } from "@meshfw/model";
+import type { EmitInput } from "../emit.ts";
+import { mentioned, printExpression } from "../expression-printer.ts";
+import { entityFileComment } from "./types.ts";
+import { entitySegment, typeName } from "./inputs.ts";
+
+/**
+ * What `expressions.ts.jig` renders for one entity: every expression in its entity file as
+ * one function of a scope, keyed by a stable id. Every string is final; the template prints,
+ * loops and branches on these fields and computes nothing.
+ */
+export interface ExpressionsView {
+  /** The entity file this file is generated from, project-relative, line terminators escaped as `\uXXXX`. */
+  readonly entityFile: string;
+  /** True when some entry is a translated tree, so the file calls `$`. */
+  readonly usesExpr: boolean;
+  /** The entity's record type name, e.g. `Invoice`. */
+  readonly recordName: string;
+  /** The module specifier of the entity's types file as a quoted string literal. */
+  readonly typesFromLiteral: string;
+  /** The scope type's exported name, e.g. `InvoiceScope`. */
+  readonly scopeName: string;
+  /** The scope type's definition. */
+  readonly scopeType: string;
+  /** Imports of the helper functions the expressions call, one per module. */
+  readonly helperImports: readonly { names: string; fromLiteral: string }[];
+  /** One function per expression, in the order of the entity file. */
+  readonly entries: readonly ExpressionEntry[];
+}
+export interface ExpressionEntry {
+  /** The stable id, as a quoted string literal: `"pay.check.invoiceIsSent.that"`. */
+  readonly key: string;
+  /** One line saying what it is and where it was written. */
+  readonly comment: string;
+  /** `(s: InvoiceScope) => ...`. */
+  readonly code: string;
+}
+
+interface Found { id: string; what: string; expression: Expression; boolean: boolean }
+
+function collect(entity: Entity): Found[] {
+  const found: Found[] = [];
+  const add = (id: string, what: string, expression: Expression, boolean: boolean) => found.push({ id, what, expression, boolean });
+  entity.computed.forEach((c) => { if (c.body) add(`computed.${c.name}`, `computed ${c.name}`, c.body, false); });
+  const checks = (prefix: string, list: { label: string; that: Expression; when?: Expression }[]) => {
+    for (const check of list) {
+      add(`${prefix}.check.${check.label}.that`, `check :${check.label} that`, check.that, true);
+      if (check.when) add(`${prefix}.check.${check.label}.when`, `check :${check.label} when`, check.when, true);
+    }
+  };
+  const steps = (prefix: string, list: Step[], path: string) => {
+    list.forEach((step, index) => {
+      const here = path === "" ? String(index) : `${path}.${index}`;
+      if (step.kind === "set") {
+        for (const { member, value } of step.assignments)
+          if (typeof value === "object" && value !== null && "source" in value)
+            add(`${prefix}.step.${here}.set.${member.name}`, `set &${member.name}`, value as Expression, false);
+      } else if (step.kind === "when") {
+        add(`${prefix}.step.${here}.when`, "step when", step.condition, true);
+        steps(prefix, step.steps, here);
+      } else if (step.kind === "run") add(`${prefix}.step.${here}.run`, "run", step.fn, false);
+    });
+  };
+  for (const action of entity.actions) {
+    if (action.filter) add(`${action.name}.filter`, `${action.name} filter`, action.filter, true);
+    checks(action.name, action.validate);
+    steps(action.name, action.do, "");
+  }
+  entity.always.forEach((block, i) => {
+    checks(`always.${i}`, block.validate);
+    steps(`always.${i}`, block.do, "");
+  });
+  for (const policy of entity.policies) {
+    policy.authorizeIf.forEach((e, i) => add(`policy.${policy.name}.authorize-if.${i}`, `policy :${policy.name} authorize-if`, e, true));
+    policy.forbidIf.forEach((e, i) => add(`policy.${policy.name}.forbid-if.${i}`, `policy :${policy.name} forbid-if`, e, true));
+    if (policy.when) add(`policy.${policy.name}.when`, `policy :${policy.name} when`, policy.when, true);
+  }
+  return found;
+}
+
+function helpersIn(n: ExprNode, into: Set<string>): void {
+  if (n.kind === "helper") { into.add(n.name); n.args.forEach((a) => helpersIn(a, into)); }
+  else if (n.kind === "call") n.args.forEach((a) => helpersIn(a, into));
+  else if (n.kind === "member") helpersIn(n.object, into);
+  else if (n.kind === "quantify") { helpersIn(n.source, into); helpersIn(n.body, into); }
+}
+
+/** The entities that have at least one expression get a file; the rest get none. */
+export function hasExpressions(entity: Entity): boolean {
+  return collect(entity).length > 0;
+}
+
+export function expressionsView({ config }: EmitInput, entity: Entity, generatedPath: string): ExpressionsView {
+  const recordName = typeName(entity.name, entity.position);
+  const scopeName = `${recordName}Scope`;
+  const scopeType = `$Scope<{ self: ${recordName} & Record<string, any>; input: any; actor: any; context: any; before: ${recordName} | null; tx: any }>`;
+  const found = collect(entity);
+  // Helper imports: the entity file's non-entity imports, rewritten relative to the generated file.
+  const helperFrom = new Map<string, string>();
+  for (const imported of entity.imports)
+    if (!/\.mesh\.mx$/.test(imported.from)) for (const name of imported.identifiers) helperFrom.set(name, imported.from);
+  const used = new Set<string>();
+  for (const { expression } of found) {
+    if (expression.tree) helpersIn(expression.tree, used);
+    else for (const name of mentioned(expression, helperFrom.keys())) used.add(name);
+  }
+  const byModule = new Map<string, string[]>();
+  for (const name of [...used].filter((n) => helperFrom.has(n)).sort()) {
+    const absolute = posix.join(dirname(entity.file), helperFrom.get(name)!);
+    let relative = posix.relative(dirname(generatedPath), absolute);
+    if (!relative.startsWith(".")) relative = `./${relative}`;
+    byModule.set(relative, [...(byModule.get(relative) ?? []), name]);
+  }
+  void config;
+  return {
+    entityFile: entityFileComment(entity),
+    usesExpr: found.some((f) => f.expression.tree !== undefined),
+    recordName,
+    typesFromLiteral: JSON.stringify(`./${entitySegment(entity)}.types`),
+    scopeName,
+    scopeType,
+    helperImports: [...byModule].map(([from, names]) => ({ names: names.join(", "), fromLiteral: JSON.stringify(from) })),
+    entries: found.map((f) => ({
+      key: JSON.stringify(f.id),
+      comment: `${f.what}, ${f.expression.tree ? "translated" : `plain (${f.expression.plain!.why})`} (${entity.file}:${f.expression.position.line}:${f.expression.position.column + 1})`
+        .replace(/[\r\n\u2028\u2029]/g, " "),
+      code: printExpression(f.expression, scopeName, f.boolean),
+    })),
+  };
+}

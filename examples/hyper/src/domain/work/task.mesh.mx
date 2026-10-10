@@ -24,6 +24,9 @@ entity :Task table="tasks"
     has-many :submissions entity=Submission
     has-many :completions entity=Completion
     has-many :events entity=Event
+  computed
+    boolean :childrenSettled() { return &children.every((c) => c.state !== :open) }
+    boolean :hasActiveClaim() { return &claims.some((c) => c.state === :active) }
   actions auto=[:read]
     create :create
       input

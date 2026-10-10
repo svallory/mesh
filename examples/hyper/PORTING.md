@@ -13,7 +13,7 @@ Each line names the entity, the construct left out, its code in the [gap analysi
 - All entities: microsecond timestamps; Mesh stores milliseconds (G24): not scheduled.
 - Task, Claim, Run, Attempt: the state machines and their named transitions; `state` is an enum and each action would carry a check (G03): after 1.0.
 - Task, Dependency, Assignment, Claim, Submission, Review, Completion, LateResult, EvidenceReference, Membership, Run, Attempt, Invocation, Machine, SessionReference: a relationship Hyper sets from the actor (`creator`, `createdBy`, `delegator`, `holder`, `submitter`, `reviewer`, `completedBy`, `recordedBy`, `grantedBy`, `startedBy`, `performer`, `firstReportedBy`) is a client input here, which changes Hyper's wire (G30, D01): M5.
-- Claim, Membership, Assignment: engine-set timestamps (`acquiredAt`, `expiresAt`, `grantedAt`, `startedAt`, `endedAt`, `revokedAt`) are client inputs or left null, for want of `now()` (G23, D04): M4.
+- Claim, Membership, Assignment: engine-set timestamps (`acquiredAt`, `expiresAt`, `grantedAt`, `startedAt`, `endedAt`, `revokedAt`) are client inputs or left null. `now()` exists since M4 (G23), but a `set` with an expression is applied by the action lifecycle, which is M5 (D04): M5.
 - Claim, Attempt, Submission: engine-computed values (`fence` as the highest plus one, `number`, `taskVersion`) are client inputs (D04): M5.
 - Review: `ruleApplied` and `reviewer` are client inputs; Hyper derives both from the reviewer rule (G07, D04): after 1.0.
 - Task: the filtered has-ones (`currentAssignment`, `activeClaim`, `pendingSubmission`) and the `exists` computed fields built on them (`claimed`, `inReview`, `assigned`) (G07): after 1.0.
@@ -52,3 +52,5 @@ Each line names the entity, the construct left out, its code in the [gap analysi
 - Event: the `subtree` read, a walk over descendants (G36): M5.
 - Workspace: `owner_ids` and `stats`, results that are not a record (G10, G26): application code.
 - Workspace: `export` and `import` (G18): after 1.0.
+
+What M4 added: Task's `childrenSettled` and `hasActiveClaim` computed fields (the body of rule `task.children-settled`, and a test the claim rules build on) and Claim's `lapsed` (rule `claim.expired`) are written and evaluated in memory since M4 (`test/expressions.test.ts`); the rules that read them are `check`s, which M5 runs (G07).

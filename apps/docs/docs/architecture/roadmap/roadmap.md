@@ -126,7 +126,7 @@ after 1.0, in no fixed order:
 
 **Rules across tracks.** M7 needs M3 for loading and self-reference and M4 for computed fields; it comes before M5 because many of the 57 rules and the relationship policies read a related row (`&task.state`), a loaded has-many (`&children.every(...)`) or a rollup (`&task.maxFence`), and M5's and M8's acceptance tests run them. M6 needs M5's phase structure (it adds the seams to it). M8 needs M5 (policies run in the lifecycle's slots) and M7 (the relationship checks), not M6. The gate needs M5 to M8 and HA. A milestone that adds a data-layer capability implements it in SQLite, the only adapter until M9.
 
-**Prerequisites that are decisions or outside work, not milestones.** M4 needs [ADR-0012](../decisions/0012-expression-semantics.md) ruled, for the in-memory semantics only: JavaScript's, with `null` and `undefined` equal in `== null` and atoms compared by name.
+**Prerequisites that are decisions or outside work, not milestones.** M4 needs [ADR-0012](../decisions/0012-expression-semantics.md) ruled, for the in-memory semantics only, and it is ruled: option A (2026-10-10), Mesh defines each registered function and operator and follows SQL's three-valued null logic, so the in-memory form gives the answers the M10 SQL evaluator will give; a construct the registry does not define stays plain code with JavaScript semantics (see [ADR-0012](../decisions/0012-expression-semantics.md)).
 
 Sizes: **S** one pull request; **M** two to four; **L** five or more, split into tasks by whoever leads it. Sizes are scope, not time.
 

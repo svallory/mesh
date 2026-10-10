@@ -5,6 +5,18 @@ import { postDocument, postFile, postSource } from "../../model/test/sample.ts";
 import { fixture, fixtureDir } from "./helpers.ts";
 import { build, keyed, project, todo } from "./v4.ts";
 
+/** Drop `tree`, `plain` and a function computed field's inferred `nullable`, recursively. */
+function withoutTrees<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(withoutTrees) as T;
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return Object.fromEntries(Object.entries(record)
+      .filter(([k]) => k !== "tree" && k !== "plain" && !(k === "nullable" && "body" in record))
+      .map(([k, v]) => [k, withoutTrees(v)])) as T;
+  }
+  return value;
+}
+
 test("all currently parseable v4 constructs are represented", () => {
   const result = buildModel(project());
   expect(result.diagnostics).toEqual([]);
@@ -75,8 +87,9 @@ test(
       files: [{ file: postFile, source: postSource }, ...dependencies],
     });
     expect(result.diagnostics).toEqual([]);
+    // The hand-built model predates M4: compare it without the trees (expressions.test.ts covers those).
     expect(
-      result.document!.entities.find((entity) => entity.name === "Invoice"),
+      withoutTrees(result.document!.entities.find((entity) => entity.name === "Invoice")),
     ).toStrictEqual(postDocument.entities[0]);
   },
 );

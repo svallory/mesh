@@ -1,9 +1,11 @@
 import type { SpannedIr } from "@mxlang/core";
+import { rememberEdits, translate, type ConvertContext } from "./expression.ts";
 import type {
   Atom,
   Diagnostic,
   Expression,
   Literal,
+  SourceEdit,
   MemberRef,
   SourcePosition,
 } from "@meshfw/model";
@@ -38,6 +40,8 @@ export interface SyntaxNode {
   computed?: boolean;
   extra?: { mxAtom?: unknown; mxMember?: { name: string; span: Span } };
   loc?: { start: { index: number } };
+  start?: number;
+  end?: number;
 }
 type Span = { sourceStart: number; sourceEnd: number };
 export type At = (offset: number) => SourcePosition;
@@ -205,6 +209,7 @@ export function expression(
   at: At,
   visit: (ref: MemberRef) => void,
   assign: (assignment: MemberAssignment) => void = () => {},
+  convert?: Omit<ConvertContext, "source" | "at">,
 ): Expression {
   if (a?.kind !== "dynamic")
     throw new Error("This declaration needs a function body");
@@ -221,11 +226,18 @@ export function expression(
   );
   // Expr.code is printed (`self.x`); the authored text is the span's slice.
   const data: DynamicAttr["value"] = a.value;
-  return {
+  const translated = convert
+    ? translate(n, data.span, { ...convert, source, at })
+    : {};
+  const { edits, ...fields } = translated as { edits?: SourceEdit[] };
+  const result: Expression = {
     source: source.slice(data.span.sourceStart, data.span.sourceEnd),
     params,
     position: at(data.span.sourceStart),
+    ...fields,
   };
+  if (edits) rememberEdits(result, edits);
+  return result;
 }
 /** The members an assignment or update writes to or through (`&a`, `&a.b`,
  * `&a[0]`), from MX's marks only: the target's member-access root is marked. */
