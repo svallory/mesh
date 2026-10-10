@@ -251,13 +251,13 @@
    "offset": 152
   }
  ],
- "vocab|<entity :invoice>\n  <attributes><string :status/></attributes>\n  <actions>\n    <action :pay>\n      <set>\n        <:statuss=\"paid\"/>\n      </set>\n    </action>\n  </actions>\n</entity>": [
+ "vocab|<entity :invoice>\n  <attributes><string :status/></attributes>\n  <actions>\n    <action :pay>\n      <set>\n        <setter :statuss=\"paid\"/>\n      </set>\n    </action>\n  </actions>\n</entity>": [
   {
    "severity": "error",
    "message": "`<setter>`: attribute `name`: `:statuss` is not a declared attribute here (one of :status); did you mean `:status`?",
    "line": 6,
-   "column": 9,
-   "offset": 114
+   "column": 16,
+   "offset": 121
   }
  ],
  "vocab|<entity :invoice>\n  <attributes><string name=\"title\"/></attributes>\n</entity>": [

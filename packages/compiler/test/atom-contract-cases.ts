@@ -172,7 +172,7 @@ export const FAILING: readonly string[] = [
   <actions>
     <action :pay>
       <set>
-        <:statuss="paid"/>
+        <setter :statuss="paid"/>
       </set>
     </action>
   </actions>
@@ -318,4 +318,3 @@ export const REGISTRATION: ReadonlyArray<
     },
   ],
 ] as unknown as ReadonlyArray<readonly [string, Record<string, CustomTag>]>;
-

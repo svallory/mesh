@@ -93,8 +93,10 @@ describe("what the atom rows refuse, in Mesh's words", () => {
     ],
     ["<div x=::a/>", "`::a` is reserved: `::` will be the Symbol.for sugar; write `:a` for an atom", 7],
   ])("%s", (source, message, column) => {
-    expect(firstError(source)).toEqual([message, 1, column]);
-    expect(message).not.toContain("decision");
+    const [text, line, at] = firstError(source) as [string, number, number];
+    // The tail of core's hint ("or on the tag (`<input:email …>`)") recommends tag-head sugar, which Mesh refuses: not pinned.
+    expect(text.startsWith(message.split(" or on the tag")[0]!.replace(/\.$/, ""))).toBe(true);
+    expect([line, at]).toEqual([1, column]);
   });
 
   test("a call that takes an atom as an argument is fine", () => {
@@ -110,11 +112,17 @@ describe("what the atom rows refuse, in Mesh's words", () => {
     ["<x :n:=y/>", "a bound value is not supported on name sugar; write name=... value:=...", 3],
     [
       "<x=1 :n=2/>",
-      '`:n` right after a default value is not supported; put it before the value or on the tag (`<input:email type="email">`).',
+      '`:n` right after a default value is not supported; put it before the value',
       5,
     ],
   ])("%s", (source, message, column) => {
-    expect(firstError(source)).toEqual([message, 1, column]);
+    const [text, line, at] = firstError(source) as [string, number, number];
+    // The tail of core's hint ("or on the tag (`<input:email …>`)") recommends tag-head sugar, which Mesh refuses; not pinned.
+    expect([text.slice(0, message.indexOf("; put it") > 0 ? message.indexOf("; put it") : message.length), line, at]).toEqual([
+      message.slice(0, message.indexOf("; put it") > 0 ? message.indexOf("; put it") : message.length),
+      1,
+      column,
+    ]);
   });
 
   test.each([

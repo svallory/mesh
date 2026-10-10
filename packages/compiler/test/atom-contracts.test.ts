@@ -143,7 +143,7 @@ describe("a dialect's own contract key", () => {
           if (call.tag !== "index") continue;
           seen.push([call.tag, call.contract.relations]);
           const on = call.attrs.find((attr) => !("spread" in attr) && attr.name === "on");
-          // The unit view names an atom `mx:Atom` whatever dialect claims it (the IR node says `mesh:Atom`).
+          // The unit view names an atom `mx:Atom` whatever dialect claims it (in the IR a value atom is a string literal marked `extra.mxAtom`).
           const value = on && !("spread" in on) ? on.value : null;
           if (value?.type === "mx:Atom" && call.contract.attributes?.on?.unique) {
             unit.fail(`\`:${(value as { name: string }).name}\` is not unique`, { at: value.span, code: "MESH_UNIQUE" });

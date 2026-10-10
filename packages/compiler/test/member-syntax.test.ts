@@ -429,3 +429,13 @@ describe("Mesh review of PR 451 (M1, M4, M5, one member per slot)", () => {
     ]);
   });
 });
+
+describe("a member inside an attribute's argument list (ported from MX's `attr-args.test.ts`)", () => {
+  test("`x a(&b)` carries the member the dialect built", () => {
+    const [tag] = tags(ir("x a(&b)\n").body);
+    const attr = attrNamed(tag!, "a");
+    const [arg] = "args" in attr ? (attr.args ?? []) : [];
+    expect(arg?.code).toBe("self.b");
+    expect(arg?.node).toMatchObject({ extra: { mxMember: { name: "b" } } });
+  });
+});

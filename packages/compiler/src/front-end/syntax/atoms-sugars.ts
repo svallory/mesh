@@ -944,9 +944,32 @@ function queueAttributeTags(
   }
 }
 
-/** The module's `afterLower`: register, declare every name of the unit, then check every atom against them. */
+/**
+ * A name written against its tag (`uuid:id`, `<string:title/>`, `entity:Todo`, `<:x …/>`) is not Mesh syntax: a line is
+ * `kind :name`. Core lowers it as name sugar today and may stop; Mesh refuses it here from the unit's own text (the
+ * character right after the tag's name is the `:`), so the answer does not depend on core still having the sugar.
+ */
+function refuseUnspacedName(unit: LoweredUnit): void {
+  for (const call of unit.calls) {
+    const head = call.nameSpan;
+    if (!head || unit.source[head.sourceEnd] !== ":") continue;
+    const name = call.attrs.find((attr) => "name" in attr && attr.name === "name" && "nameSpan" in attr);
+    const at = name && "nameSpan" in name ? name.nameSpan : undefined;
+    const end = at && at.sourceStart === head.sourceEnd ? at.sourceEnd : head.sourceEnd + 1;
+    const written = unit.source.slice(head.sourceStart, end);
+    const kind = unit.source.slice(head.sourceStart, head.sourceEnd) || call.tag;
+    const spaced = `${kind} ${unit.source.slice(head.sourceEnd, end)}`;
+    unit.fail(
+      `MESH_UNSPACED_NAME: \`${written}\` writes the name against the tag; Mesh writes a name after a space: \`${spaced}\``,
+      { at: { sourceStart: head.sourceStart, sourceEnd: end } },
+    );
+  }
+}
+
+/** The module's `afterLower`: refuse an unspaced name, register, declare every name of the unit, then check every atom against them. */
 function checkAtomContracts(unit: LoweredUnit): void {
   const { calls, declared } = unit;
+  refuseUnspacedName(unit);
   if (calls.length === 0 && declared.length === 0) return;
   const scopes = declare(unit);
   const refs: Array<() => void> = [];

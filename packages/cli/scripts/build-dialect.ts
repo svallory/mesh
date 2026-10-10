@@ -1,6 +1,7 @@
 // Builds the dialect module MX loads (`mx.dialect.module`): `src/dialect.ts` bundled to
-// `dist/dialect.js`, plain JavaScript with every import inlined, so Node loads it with no install
-// beside it. Also keeps `mx.dialect` honest: its `extensions` must be Mesh's one extension list
+// `dist/dialect.js`, plain JavaScript with every Mesh import inlined, so Node loads it with no install
+// beside it. Mesh's syntax files import only types from MX's core package, so nothing of MX is inlined.
+// Also keeps `mx.dialect` honest: its `extensions` must be Mesh's one extension list
 // (`MESH_EXTENSIONS`), its `id` must stay `mesh` (the `Atom` node says `dialect: "mesh"`), and
 // the module must be the file this script writes. Any mismatch fails the build.
 import { MESH_EXTENSIONS } from "@meshfw/compiler/extensions";
@@ -37,9 +38,10 @@ if (!result.success) {
   console.error(result.logs.map(String).join("\n"));
   process.exit(1);
 }
-// The bundler marks each inlined module with a path comment (`// ../../node_modules/.../mxlang/...`).
-// Drop them: they are noise, and the repository check keeps every mention of MX's package out of the
-// workspace outside `packages/compiler`.
+// The bundler marks each inlined module with a path comment (`// ../../packages/compiler/...`). Drop
+// them: they are noise. Then check that no mention of MX's package is left in the bundle (nothing of MX
+// is inlined today, and the repository check keeps MX's package name out of the workspace outside
+// `packages/compiler`); the check guards against a value import of MX creeping in.
 const file = join(root, "dist/dialect.js");
 const text = (await Bun.file(file).text()).replace(/^\/\/ \.\.?\/.*\.[cm]?[jt]s\n/gm, "");
 if (text.includes("mxlang")) {

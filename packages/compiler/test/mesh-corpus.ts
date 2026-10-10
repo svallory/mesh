@@ -33,4 +33,3 @@ export function corpusFiles(dir = CORPUS): string[] {
   }
   return files.sort();
 }
-
