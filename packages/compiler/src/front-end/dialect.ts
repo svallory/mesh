@@ -19,8 +19,8 @@
  * The rows, the lowering hooks and the atom contract checks (`values`,
  * `pattern`, `ref`, `declares`) live in `syntax/`, ported from MX's reference
  * module at MX commit `750c80ec1`; from `@mxlang/core` Mesh imports only the
- * public dialect API (types), and `test/architecture.test.ts` fails on any
- * import of `@mxlang/core/syntax`. `MESH_DIALECT` adds the identity: `id` must
+ * public dialect API (types), and `test/no-core-syntax-import.test.ts` fails on
+ * any import of core's `syntax` modules. `MESH_DIALECT` adds the identity: `id` must
  * stay `mesh`, because the `Atom` node says `dialect: "mesh"`. The compiler
  * passes the dialect to `lowerSource`; tools find it through `meshfw`'s
  * `mx.dialect` registration, whose built module re-exports this value.
