@@ -492,7 +492,7 @@ Steps run top to bottom after validation. Each sees the record as earlier steps 
 | `set` | Assigns fields with `&field=value` lines; a value is a literal or a one-expression arrow. A line may name a relationship, `&creator=({ actor }) => actor.id`, and stores its key |
 | `when=cond` | Runs the nested steps only when the condition holds |
 | `load=[&customer]` | Loads relationships or computed fields onto the returned record; writes nothing |
-| `run(…) { }` | Plain code inside the transaction; `self`, `before` and the records reached through them are read-only in it (a change throws, so use `set`); it can call other actions |
+| `run(…) { }` | Plain code inside the transaction; `self`, `before`, `input` and the records reached through them are read-only in it (a change throws, so use `set`); it can call other actions |
 
 The larger example below shows `set`, `when` and `load`. For the work a field assignment cannot express, use `run`:
 
@@ -511,7 +511,7 @@ entity :Invoice
         }
 ```
 
-A `run` body may call anything, including logging or messaging code. The pure-helper rule applies to translated expressions, not `run`. Reach for it only when the work is not a field assignment. A change made inside a `run` is never stored. `self`, `before`, related records and the objects and arrays inside a `json` field are read-only, so assigning, deleting or defining a property on any of them throws an error that points at `set`; the types are deep `readonly`, so most such changes are type errors before they run. A `Date` is handed out as a copy: calling a setter such as `setFullYear` throws, and changing it in place would have no effect either way, so build the new value and assign it with `set`. A `destroy` refuses `set` and `load` steps (build error `MESH_DESTROY_STEP`): it returns nothing and writes nothing, so use `check` and `run` there. Every update reads the row first and writes second, whether or not it has a `run`; [Using your domain](./using-your-domain.md#update) explains the one statement versus two.
+A `run` body may call anything, including logging or messaging code. The pure-helper rule applies to translated expressions, not `run`. Reach for it only when the work is not a field assignment. A change made inside a `run` is never stored. `self`, `before`, `input`, related records and the objects and arrays inside a `json` field are read-only (in a `check`, `when` or `set` function too, not only a `run`), so assigning, deleting or defining a property on any of them throws an error that points at `set`; the types are deep `readonly`, so most such changes are type errors before they run. A `Date` is handed out as a copy: calling a setter such as `setFullYear` throws, and changing it in place would have no effect either way, so build the new value and assign it with `set`. A `destroy` refuses `set` and `load` steps (build error `MESH_DESTROY_STEP`): it returns nothing and writes nothing, so use `check` and `run` there. Every update reads the row first and writes second, whether or not it has a `run`; [Using your domain](./using-your-domain.md#update) explains the one statement versus two.
 
 ### Calling other actions
 

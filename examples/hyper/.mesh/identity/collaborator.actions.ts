@@ -82,11 +82,11 @@ export function bindCollaborator(layer: $DataLayer, options: $BindOptions = {}) 
         const $s = $scope(
           {
             self: $self,
-            input: parsed,
+            input: $readOnlyRecord(parsed, "Collaborator.update"),
             actor: $actor,
             context: $context,
             before: $readOnlyRecord(
-              $guarded($loadPlan, "Collaborator", $before, "action function"),
+              $guarded($loadPlan, "Collaborator", $before, "before"),
               "Collaborator.update",
             ) as unknown as Collaborator,
             tx: undefined,

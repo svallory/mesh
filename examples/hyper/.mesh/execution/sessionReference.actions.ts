@@ -91,11 +91,11 @@ export function bindSessionReference(layer: $DataLayer, options: $BindOptions = 
         const $s = $scope(
           {
             self: $self,
-            input: parsed,
+            input: $readOnlyRecord(parsed, "SessionReference.setAvailability"),
             actor: $actor,
             context: $context,
             before: $readOnlyRecord(
-              $guarded($loadPlan, "SessionReference", $before, "action function"),
+              $guarded($loadPlan, "SessionReference", $before, "before"),
               "SessionReference.setAvailability",
             ) as unknown as SessionReference,
             tx: undefined,
@@ -166,11 +166,11 @@ export function bindSessionReference(layer: $DataLayer, options: $BindOptions = 
         const $s = $scope(
           {
             self: $self,
-            input: parsed,
+            input: $readOnlyRecord(parsed, "SessionReference.redact"),
             actor: $actor,
             context: $context,
             before: $readOnlyRecord(
-              $guarded($loadPlan, "SessionReference", $before, "action function"),
+              $guarded($loadPlan, "SessionReference", $before, "before"),
               "SessionReference.redact",
             ) as unknown as SessionReference,
             tx: undefined,

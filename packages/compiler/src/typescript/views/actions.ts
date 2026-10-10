@@ -393,7 +393,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
                 else {
                   runtime.add("InvalidInputError");
                   const issue = `{ label: null, code: "required", path: [${JSON.stringify(member.name)}], message: ${JSON.stringify(`${member.name} is required and cannot be null`)}, source: null, details: null }`;
-                  emit(`{ const $value = await ${call(value)}; if ($value === null${action.kind === "create" ? " || $value === undefined" : ""}) throw new $InvalidInputError([${issue}]); if ($value !== undefined) ${target(column.name)} = $value; }`);
+                  emit(`{ const $value = await ${call(value)}; if ($value === null) throw new $InvalidInputError([${issue}]); if ($value !== undefined) ${target(column.name)} = $value; }`);
                 }
               } else if (nullable || !writes) {
                 emit(`{ const $value = await ${call(value)}; ${target(column.name)} = $value === undefined ? null : $value; }`);
@@ -484,9 +484,9 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       } else afterHead.push(`const $self = $readOnlyRecord($record, ${where});`);
       // `before` holds the stored columns only: a relationship or computed field read on it throws instead of coming back undefined.
       const beforeView = action.kind === "create" ? "null"
-        : loader ? `$readOnlyRecord($guarded($loadPlan, ${JSON.stringify(entity.name)}, $before, "action function"), ${where}) as unknown as ${recordName}`
+        : loader ? `$readOnlyRecord($guarded($loadPlan, ${JSON.stringify(entity.name)}, $before, "before"), ${where}) as unknown as ${recordName}`
           : `$readOnlyRecord($before, ${where}) as unknown as ${recordName}`;
-      afterHead.push(`const $s = $scope({ self: $self, input: parsed, actor: $actor, context: $context, before: ${beforeView}, tx: undefined }, options) as unknown as ${scopeAlias};`);
+      afterHead.push(`const $s = $scope({ self: $self, input: $readOnlyRecord(parsed, ${where}), actor: $actor, context: $context, before: ${beforeView}, tx: undefined }, options) as unknown as ${scopeAlias};`);
     }
     if (used.plan) planUsed = true;
     if (used.options) optionsUsed = true;

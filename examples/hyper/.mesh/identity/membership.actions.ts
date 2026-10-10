@@ -83,11 +83,11 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}) {
         const $s = $scope(
           {
             self: $self,
-            input: parsed,
+            input: $readOnlyRecord(parsed, "Membership.changeRole"),
             actor: $actor,
             context: $context,
             before: $readOnlyRecord(
-              $guarded($loadPlan, "Membership", $before, "action function"),
+              $guarded($loadPlan, "Membership", $before, "before"),
               "Membership.changeRole",
             ) as unknown as Membership,
             tx: undefined,

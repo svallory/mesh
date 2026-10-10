@@ -75,7 +75,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
         const $s = $scope(
           {
             self: $self,
-            input: parsed,
+            input: $readOnlyRecord(parsed, "Task.create"),
             actor: $actor,
             context: $context,
             before: null,
@@ -122,11 +122,11 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
         const $s = $scope(
           {
             self: $self,
-            input: parsed,
+            input: $readOnlyRecord(parsed, "Task.update"),
             actor: $actor,
             context: $context,
             before: $readOnlyRecord(
-              $guarded($loadPlan, "Task", $before, "action function"),
+              $guarded($loadPlan, "Task", $before, "before"),
               "Task.update",
             ) as unknown as Task,
             tx: undefined,
@@ -195,11 +195,11 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
         const $s = $scope(
           {
             self: $self,
-            input: parsed,
+            input: $readOnlyRecord(parsed, "Task.setPriority"),
             actor: $actor,
             context: $context,
             before: $readOnlyRecord(
-              $guarded($loadPlan, "Task", $before, "action function"),
+              $guarded($loadPlan, "Task", $before, "before"),
               "Task.setPriority",
             ) as unknown as Task,
             tx: undefined,
@@ -262,11 +262,11 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
         const $s = $scope(
           {
             self: $self,
-            input: parsed,
+            input: $readOnlyRecord(parsed, "Task.move"),
             actor: $actor,
             context: $context,
             before: $readOnlyRecord(
-              $guarded($loadPlan, "Task", $before, "action function"),
+              $guarded($loadPlan, "Task", $before, "before"),
               "Task.move",
             ) as unknown as Task,
             tx: undefined,
@@ -343,11 +343,11 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
         const $s = $scope(
           {
             self: $self,
-            input: parsed,
+            input: $readOnlyRecord(parsed, "Task.reopen"),
             actor: $actor,
             context: $context,
             before: $readOnlyRecord(
-              $guarded($loadPlan, "Task", $before, "action function"),
+              $guarded($loadPlan, "Task", $before, "before"),
               "Task.reopen",
             ) as unknown as Task,
             tx: undefined,

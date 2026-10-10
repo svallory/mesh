@@ -1,6 +1,15 @@
-import type { ActionType, Diagnostic, ModelDocument, Step } from "@meshfw/model";
-import { actionExpressions } from "./action-expressions.ts";
+import type { ActionType, Diagnostic, Entity, ModelDocument, Step } from "@meshfw/model";
+import { actionExpressions, type ActionExpression } from "./action-expressions.ts";
 import { error } from "./diagnostics.ts";
+
+/** True when the function only ever runs in a create: an action that is one, or an `always` block that covers nothing else. */
+function createOnly(entity: Entity, owner: ActionExpression["owner"]): boolean {
+  if ("action" in owner) return owner.action.kind === "create";
+  const { always } = owner;
+  const named = always.actions?.map((ref) => entity.actions.find((a) => a.name === ref.name)?.kind ?? (ref.name === "create" ? "create" : undefined));
+  const covers = always.types ?? named;
+  return covers !== undefined && covers.length > 0 && covers.every((kind) => kind === "create");
+}
 
 /**
  * What the action lifecycle (M5) does not run yet is a build error that names the milestone (ADR-0018), never a
@@ -20,7 +29,11 @@ export function checkLifecycleLimits(document: ModelDocument, diagnostics: Diagn
     // A plain function (a `run`, or a body that is not one expression) is not type-checked by the expression pass, so a create's
     // `before` parameter is caught here: a create has no stored record.
     for (const { expression, what, owner } of actionExpressions(entity)) {
-      if (!expression.plain || !expression.params.includes("before") || !("action" in owner) || owner.action.kind !== "create") continue;
+      const reads = expression.params.includes("before") || (expression.rest && /\bbefore\b/.test(expression.source));
+      if (!expression.plain || !reads || !createOnly(entity, owner)) continue;
+      // The type pass already reported a `before` it found inside this function (a `details` value it could translate).
+      const end = expression.position.offset + expression.source.length;
+      if (diagnostics.some((d) => d.code === "MESH_BEFORE_IN_CREATE" && d.position.file === expression.position.file && d.position.offset >= expression.position.offset && d.position.offset < end)) continue;
       diagnostics.push(error("MESH_BEFORE_IN_CREATE",
         `${what} reads \`before\`, the stored record, and a create has none, so it is always null`, expression.position,
         "Remove it. Compare with `self` or `input`, or move the rule to an update"));

@@ -75,11 +75,11 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}) {
         const $s = $scope(
           {
             self: $self,
-            input: parsed,
+            input: $readOnlyRecord(parsed, "Machine.update"),
             actor: $actor,
             context: $context,
             before: $readOnlyRecord(
-              $guarded($loadPlan, "Machine", $before, "action function"),
+              $guarded($loadPlan, "Machine", $before, "before"),
               "Machine.update",
             ) as unknown as Machine,
             tx: undefined,

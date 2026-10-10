@@ -39,6 +39,8 @@ export interface Import {
 export interface Expression {
   source: string;
   params: string[];
+  /** The parameter pattern has a rest element (`{ context, ...rest }`), which can reach any name in the scope. */
+  rest?: true;
   position: SourcePosition;
   /** Present when Mesh translated the function: the tree the evaluators run (M4). */
   tree?: ExprNode;

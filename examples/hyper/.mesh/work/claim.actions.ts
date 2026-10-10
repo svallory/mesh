@@ -84,11 +84,11 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}) {
         const $s = $scope(
           {
             self: $self,
-            input: parsed,
+            input: $readOnlyRecord(parsed, "Claim.renew"),
             actor: $actor,
             context: $context,
             before: $readOnlyRecord(
-              $guarded($loadPlan, "Claim", $before, "action function"),
+              $guarded($loadPlan, "Claim", $before, "before"),
               "Claim.renew",
             ) as unknown as Claim,
             tx: undefined,
@@ -156,11 +156,11 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}) {
         const $s = $scope(
           {
             self: $self,
-            input: parsed,
+            input: $readOnlyRecord(parsed, "Claim.release"),
             actor: $actor,
             context: $context,
             before: $readOnlyRecord(
-              $guarded($loadPlan, "Claim", $before, "action function"),
+              $guarded($loadPlan, "Claim", $before, "before"),
               "Claim.release",
             ) as unknown as Claim,
             tx: undefined,
@@ -229,11 +229,11 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}) {
         const $s = $scope(
           {
             self: $self,
-            input: parsed,
+            input: $readOnlyRecord(parsed, "Claim.revoke"),
             actor: $actor,
             context: $context,
             before: $readOnlyRecord(
-              $guarded($loadPlan, "Claim", $before, "action function"),
+              $guarded($loadPlan, "Claim", $before, "before"),
               "Claim.revoke",
             ) as unknown as Claim,
             tx: undefined,

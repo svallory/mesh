@@ -101,11 +101,11 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}) {
         const $s = $scope(
           {
             self: $self,
-            input: parsed,
+            input: $readOnlyRecord(parsed, "Post.publish"),
             actor: $actor,
             context: $context,
             before: $readOnlyRecord(
-              $guarded($loadPlan, "Post", $before, "action function"),
+              $guarded($loadPlan, "Post", $before, "before"),
               "Post.publish",
             ) as unknown as Post,
             tx: undefined,

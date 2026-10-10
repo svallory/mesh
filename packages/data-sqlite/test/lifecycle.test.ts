@@ -34,6 +34,7 @@ entity :Task table="tasks"
     string :note nullable
     integer :version default=1
     integer :priority default=0 min=0 max=9
+    integer :rank default=4
     enum :state values=[:open, :doing, :done] default=:open
     timestamp :openedAt
     timestamp :doneAt nullable
@@ -210,6 +211,72 @@ entity :Task table="tasks"
           if (input.what === "before") stored.title = "hacked";
           if (input.what === "beforeJson") stored.meta.injected = true;
         }
+    create :openInput
+      input
+        &title
+        &owner
+        &reviewer
+        &meta
+        &doneAt
+        string :what
+        string :site
+      validate
+        check :mutated [
+          that=({ input }) => { if (input.site === "check") { const m: any = input; if (input.what === "json" && m.meta) m.meta.injected = true; if (input.what === "array" && m.meta) m.meta.list.push(9); if (input.what === "date" && m.doneAt) m.doneAt.setUTCFullYear(2000); if (input.what === "scalar") m.title = "changed"; } return true }
+          code="task.mutated"
+          message="mutated"
+        ]
+      do
+        set
+          &openedAt=() => now()
+        when=({ input }) => { if (input.site === "when") { const m: any = input; if (input.what === "json" && m.meta) m.meta.injected = true; if (input.what === "array" && m.meta) m.meta.list.push(9); if (input.what === "date" && m.doneAt) m.doneAt.setUTCFullYear(2000); if (input.what === "scalar") m.title = "changed"; } return false }
+          set
+            &note="never"
+        set
+          &note=({ input }) => { if (input.site === "set") { const m: any = input; if (input.what === "json" && m.meta) m.meta.injected = true; if (input.what === "array" && m.meta) m.meta.list.push(9); if (input.what === "date" && m.doneAt) m.doneAt.setUTCFullYear(2000); if (input.what === "scalar") m.title = "changed"; } return "set" }
+        run({ input }) {
+          if (input.site === "run") { const m: any = input; if (input.what === "json" && m.meta) m.meta.injected = true; if (input.what === "array" && m.meta) m.meta.list.push(9); if (input.what === "date" && m.doneAt) m.doneAt.setUTCFullYear(2000); if (input.what === "scalar") m.title = "changed"; }
+        }
+    update :editInput
+      input
+        &meta
+        &doneAt
+        string :what
+        string :site
+      validate
+        check :mutated [
+          that=({ input }) => { if (input.site === "check") { const m: any = input; if (input.what === "json" && m.meta) m.meta.injected = true; if (input.what === "array" && m.meta) m.meta.list.push(9); if (input.what === "date" && m.doneAt) m.doneAt.setUTCFullYear(2000); if (input.what === "scalar") m.title = "changed"; } return true }
+          code="task.mutated"
+          message="mutated"
+        ]
+      do
+        when=({ input }) => { if (input.site === "when") { const m: any = input; if (input.what === "json" && m.meta) m.meta.injected = true; if (input.what === "array" && m.meta) m.meta.list.push(9); if (input.what === "date" && m.doneAt) m.doneAt.setUTCFullYear(2000); if (input.what === "scalar") m.title = "changed"; } return false }
+          set
+            &note="never"
+        set
+          &note=({ input }) => { if (input.site === "set") { const m: any = input; if (input.what === "json" && m.meta) m.meta.injected = true; if (input.what === "array" && m.meta) m.meta.list.push(9); if (input.what === "date" && m.doneAt) m.doneAt.setUTCFullYear(2000); if (input.what === "scalar") m.title = "changed"; } return "set" }
+        run({ input }) {
+          if (input.site === "run") { const m: any = input; if (input.what === "json" && m.meta) m.meta.injected = true; if (input.what === "array" && m.meta) m.meta.list.push(9); if (input.what === "date" && m.doneAt) m.doneAt.setUTCFullYear(2000); if (input.what === "scalar") m.title = "changed"; }
+        }
+    create :rankMake
+      input
+        &title
+        &owner
+        &reviewer
+        &rank
+      do
+        set
+          &openedAt=() => now()
+          &rank=({ input }) => input.rank
+    create :rankQuick
+      input
+        &title
+        &owner
+        &reviewer
+      do
+        set
+          &openedAt=() => now()
+          &rank=({ input }) => input.rank
     update :peek
       do
         run({ before, context }) {
@@ -376,7 +443,7 @@ describe("create", () => {
       expect(error.code).toBe("invalid_input");
       expect(error.issues).toEqual([{
         label: "titleNotShouting", code: "task.shouting", path: [], message: "do not shout", details: null,
-        source: { file: "src/domain/task.mesh.mx", line: 25, column: 9 },
+        source: { file: "src/domain/task.mesh.mx", line: 26, column: 9 },
       }]);
       expect(error.message).toBe("titleNotShouting: do not shout");
     } finally { await world.db.close(); }
@@ -574,7 +641,8 @@ describe("a function cannot reach past what it was given", () => {
       const error = await failure(world.mesh.peekTask({ id: row.id }, world.ctx));
       expect(error).toBeInstanceOf(FrameworkError);
       expect((error as Error).message).toContain("Task.owner");
-      expect((error as Error).message).toContain("not loaded");
+      expect((error as Error).message).toContain("`before` holds the stored columns");
+      expect((error as Error).message).not.toContain("so Mesh loads what it reads");
     } finally { await world.db.close(); }
   });
 
@@ -632,6 +700,92 @@ describe("a change made inside a run is never stored, and a guarded path throws"
       }
       expect(await stored(world, row.id)).toMatchObject({ title: "m", meta: { a: 1, list: [1] } });
       expect((await world.mesh.readMember({}, world.ctx)).map((m: { name: string }) => m.name).sort()).toEqual(["Ada", "Bo"]);
+    } finally { await world.db.close(); }
+  });
+});
+
+describe("a change made inside a function to `input` is never stored, in any step", () => {
+  const DONE = new Date("2026-01-01T00:00:00.000Z");
+  const stored = async (world: World, id: string) => (await world.mesh.readTask({ filter: { id: { eq: id } } }, world.ctx))[0];
+  const sites = ["run", "check", "set", "when"];
+  const kinds = ["json", "array", "date", "scalar"];
+  for (const site of sites) {
+    for (const what of kinds) {
+      test(`create, field sent: changing ${what} of input in a ${site} throws a FrameworkError and stores nothing`, async () => {
+        const world = await fresh();
+        try {
+          const error = await failure(world.mesh.openInputTask({ title: "m", owner: world.member.id, reviewer: world.member.id, meta: { a: 1, list: [1] }, doneAt: DONE, what, site }, world.ctx));
+          expect(error).toBeInstanceOf(FrameworkError);
+          expect(await world.mesh.readTask({}, world.ctx)).toEqual([]);
+        } finally { await world.db.close(); }
+      });
+
+      test(`create, field omitted: changing ${what} of input in a ${site} ${what === "scalar" ? "throws and stores nothing" : "does nothing, and the row stores null"}`, async () => {
+        const world = await fresh();
+        try {
+          const call = world.mesh.openInputTask({ title: "m", owner: world.member.id, reviewer: world.member.id, what, site }, world.ctx);
+          if (what === "scalar") {
+            expect(await failure(call)).toBeInstanceOf(FrameworkError);
+            expect(await world.mesh.readTask({}, world.ctx)).toEqual([]);
+          } else expect(await call).toMatchObject({ meta: null, doneAt: null });
+        } finally { await world.db.close(); }
+      });
+
+      test(`update, field sent: changing ${what} of input in a ${site} throws a FrameworkError and the stored row is unchanged`, async () => {
+        const world = await fresh();
+        try {
+          const row = await world.mesh.openInputTask({ title: "m", owner: world.member.id, reviewer: world.member.id, meta: { a: 1, list: [1] }, doneAt: DONE, what: "none", site: "none" }, world.ctx);
+          const error = await failure(world.mesh.editInputTask({ id: row.id, meta: { b: 2, list: [2] }, doneAt: DONE, what, site }, world.ctx));
+          expect(error).toBeInstanceOf(FrameworkError);
+          expect(await stored(world, row.id)).toMatchObject({ title: "m", meta: { a: 1, list: [1] }, doneAt: DONE });
+        } finally { await world.db.close(); }
+      });
+
+      test(`update, field omitted: changing ${what} of input in a ${site} ${what === "scalar" ? "throws and the stored row is unchanged" : "does nothing, and the stored row is unchanged"}`, async () => {
+        const world = await fresh();
+        try {
+          const row = await world.mesh.openInputTask({ title: "m", owner: world.member.id, reviewer: world.member.id, meta: { a: 1, list: [1] }, doneAt: DONE, what: "none", site: "none" }, world.ctx);
+          const call = world.mesh.editInputTask({ id: row.id, what, site }, world.ctx);
+          if (what === "scalar") expect(await failure(call)).toBeInstanceOf(FrameworkError);
+          else await call;
+          expect(await stored(world, row.id)).toMatchObject({ title: "m", meta: { a: 1, list: [1] }, doneAt: DONE });
+        } finally { await world.db.close(); }
+      });
+    }
+  }
+});
+
+describe("a set that passes an input through to a required column with a default", () => {
+  test("a create that omits the field stores the column default", async () => {
+    const world = await fresh();
+    try {
+      const row = await world.mesh.rankMakeTask({ title: "m", owner: world.member.id, reviewer: world.member.id }, world.ctx);
+      expect(row.rank).toBe(4);
+    } finally { await world.db.close(); }
+  });
+
+  test("a create that sends the field stores it", async () => {
+    const world = await fresh();
+    try {
+      const row = await world.mesh.rankMakeTask({ title: "m", owner: world.member.id, reviewer: world.member.id, rank: 9 }, world.ctx);
+      expect(row.rank).toBe(9);
+    } finally { await world.db.close(); }
+  });
+
+  test("a create that does not take the field at all stores the column default", async () => {
+    const world = await fresh();
+    try {
+      const row = await world.mesh.rankQuickTask({ title: "m", owner: world.member.id, reviewer: world.member.id }, world.ctx);
+      expect(row.rank).toBe(4);
+    } finally { await world.db.close(); }
+  });
+
+  test("an explicit null for the required column fails with an InvalidInputError and stores nothing", async () => {
+    const world = await fresh();
+    try {
+      const error = await failure(world.mesh.rankMakeTask({ title: "m", owner: world.member.id, reviewer: world.member.id, rank: null }, world.ctx));
+      expect(error).toBeInstanceOf(InvalidInputError);
+      expect(await world.mesh.readTask({}, world.ctx)).toEqual([]);
     } finally { await world.db.close(); }
   });
 });

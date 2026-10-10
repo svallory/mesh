@@ -132,7 +132,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
           && (owner.entity.relationships.some((r) => r.name === n.name) || owner.entity.computed.some((x) => x.name === n.name))) {
           report("error", "MESH_BEFORE_NOT_LOADED",
             `\`before.${n.name}\` is a ${owner.entity.relationships.some((r) => r.name === n.name) ? "relationship" : "computed field"}, and \`before\` holds only the stored columns`, n.position,
-            `read \`&${n.name}\` (or \`self.${n.name}\`) to get it loaded, or compare the stored key (for a relationship, \`before.${n.name}Id\`)`);
+            `read \`&${n.name}\` for the proposed record's (Mesh loads it), or compare the stored key (for a relationship, \`before.${n.name}Id\`)`);
         }
         let result: Ty;
         try { result = memberTy(scope, owner, n.name); }

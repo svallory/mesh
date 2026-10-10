@@ -837,6 +837,15 @@ export function buildModel(project: ProjectDescription): BuildResult {
         // stands until MX fills diagnostic codes for contracts and returns them
         // on the diagnostic.
         const coded = /\b(MESH_[A-Z_]+): (.*)/s.exec(d.message);
+        // `run [after=:write]` is documented but not built: say which milestone owns it, not just "unknown attribute".
+        if (!coded && /^`<run>`: unknown attribute `after`/.test(d.message))
+          return {
+            severity: "error",
+            code: "MESH_NOT_IMPLEMENTED",
+            message: "`run [after=:write]` places a function after the write, which belongs to action composition: it arrives in the second half of M5 (m5b)",
+            position: { file, line: d.line, column: d.column, offset: d.offset },
+            fix: "Remove `after=:write` for now; a plain `run` runs before the write",
+          };
         return {
           severity: d.severity,
           code: coded?.[1] ?? "MESH_SYNTAX",

@@ -61,7 +61,7 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}) {
         const $s = $scope(
           {
             self: $self,
-            input: parsed,
+            input: $readOnlyRecord(parsed, "Dependency.add"),
             actor: $actor,
             context: $context,
             before: null,

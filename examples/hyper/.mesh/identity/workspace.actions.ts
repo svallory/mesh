@@ -71,7 +71,7 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}) {
         const $s = $scope(
           {
             self: $self,
-            input: parsed,
+            input: $readOnlyRecord(parsed, "Workspace.rename"),
             actor: $actor,
             context: $context,
             before: $readOnlyRecord($before, "Workspace.rename") as unknown as Workspace,
