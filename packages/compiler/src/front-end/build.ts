@@ -819,7 +819,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
       ...parsed.diagnostics.filter((d, _, all) => {
         // MX reports both parent rejection and unknown-tag rejection for the
         // same unknown child. Keep the specific unknown-tag error only.
-        // The match is on MX's message text because MX 0.1.0-alpha.15's
+        // The match is on MX's message text because MX 0.1.0-alpha.16's
         // IrDiagnostic carries a `code` only from a dialect's `ctx.fail`. It stands
         // until MX fills diagnostic codes; do not replace it with an offset-only
         // rule, which would depend on MX's diagnostic order instead.

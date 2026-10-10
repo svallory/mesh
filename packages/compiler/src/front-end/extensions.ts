@@ -5,7 +5,7 @@
  * may join it later, and adding an entry here is the whole change.
  *
  * It is also the `extensions` of Mesh's dialect registration (`mx.dialect` in
- * `meshfw`'s package.json, a separate change).
+ * `meshfw`'s package.json; `meshfw`'s build fails when the two differ).
  */
 export const MESH_EXTENSIONS: readonly string[] = Object.freeze([".mesh.mx"]);
 

@@ -5,7 +5,7 @@ description: "How Mesh reads static entity files through MX, the syntax-v4 parse
 
 # How Mesh uses MX
 
-Status: the loader and the closed v4 contracts are built (PR #47), MX is pinned at `0.1.0-alpha.15`, whose `lowerSource` returns the IR and lowers every `&` member position through Mesh's dialect, and `verify` checks the MX import boundary and complete MX samples in the Docs pages. The composed contracts module is built in M6; the `mesh` MX host package follows MX decision 148 ([ADR-0051](../decisions/0051-mesh-mx-files-and-the-mesh-host.md)).
+Status: the loader and the closed v4 contracts are built (PR #47), MX is pinned at `0.1.0-alpha.16`, whose `lowerSource` returns the IR and lowers every `&` member position and every atom (expression, attribute and value position) through Mesh's dialect, and `meshfw` registers that dialect with MX tooling, and `verify` checks the MX import boundary and complete MX samples in the Docs pages. The composed contracts module is built in M6; the `mesh` MX host package follows MX decision 148 ([ADR-0051](../decisions/0051-mesh-mx-files-and-the-mesh-host.md)).
 
 ::: callout info "What the code does today"
 `packages/compiler/src/front-end/contracts.ts` on `main` declares the closed contracts of entity file syntax v4 ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)), and `packages/compiler/src/front-end/dialect.ts` is Mesh's MX dialect, which the compiler passes to every parse. The Docs samples parse as authored. The mechanisms below (the call, the tree, `analyze`, the import boundary) are as built.
@@ -32,19 +32,19 @@ The vocabulary is Mesh's own, informed by Ash ([ADR-0049](../decisions/0049-voca
 
 ## The MX features syntax v4 depends on
 
-Measured on `@mxlang/core` `0.1.0-alpha.15` through the compiler's parse (`parseEntitySource`: the production contracts, `dialect: MESH_DIALECT`, `structural: "reject"`, `unknownTags: "reject"`, `imports: "pass"`), on an Invoice with each spelling below. Every row parses with no diagnostic.
+Measured on `@mxlang/core` `0.1.0-alpha.16` through the compiler's parse (`parseEntitySource`: the production contracts, `dialect: MESH_DIALECT`, `structural: "reject"`, `unknownTags: "reject"`, `imports: "pass"`), on an Invoice with each spelling below. Every row parses with no diagnostic.
 
-| Feature | Used for | State on alpha.15 |
+| Feature | Used for | State on alpha.16 |
 |---|---|---|
-| Atoms and `kind :name` | Declarations and fixed-set/enum values | Parses; a whole-value atom is a `static` attribute with `atom: { name, span }`; expression atoms have `extra.mxAtom` |
+| Atoms and `kind :name` | Declarations and fixed-set/enum values | Parses; a whole-value atom (`via=:owner`) is claimed by the dialect's `mesh:Atom` node type and lowers to a `static` attribute with `atom: { name, span }`, exactly as on alpha.15; expression atoms have `extra.mxAtom`. `Attr.node` stays unset |
 | Comments | `// …` before the entity, at the end of a line and on their own line in a body | Parse under structural rejection |
 | Entity imports and `entity=Customer` | Cross-file identity | Parse; each IR `Import` carries `from` and `names` (optional in MX's types, guarded by the reader) (`imported`, `local`, `kind`, `typeOnly`), read by the compiler. Each name carries `span` (and `localSpan` for an alias), so an import diagnostic points at the name |
 | `&name` after a kind | `asc &dueOn` | Lowered to a `static` attribute named `member` with `member: { name: "dueOn", span }`; a second member in the slot is an MX error |
 | `&name` in an expression | `() => &status === :sent`, a method body (`boolean :isOverdue() { return &status === :sent }`), `load=[&customer]` | Lowered to `self.status`, a `MemberExpression` marked `extra.mxMember = { span, name }`; arrays hold marked members |
 | `&name` as a whole value | `on:load=&visible` | One marked member, which the contract type `member` accepts |
 | A tagless member line | `&dueOn` in `input`, `&status=:sent` in `set` | Lowered to a `member` child tag, marked `trigger.id === "member"` (an authored `member` tag has none), with a string `name` and, when written, a `value` of the kind written (boolean, atom, string or expression) |
-| Dialect | Mesh's `&` trigger and atoms, `tagRules: "none"` | `packages/compiler/src/front-end/dialect.ts` (MX's `@mxlang/core/syntax/mesh` with `id: "mesh"`, `name: "Mesh"` and the `#id`/`.class` rows dropped), passed as the `dialect` option; the `mx.dialect` registration in `meshfw`'s package.json waits for MX alpha.16 |
-| Dialect registration | `.mesh.mx` tooling | Separate change, after MX alpha.16 (tools route dialect files from dialect PR 1b) |
+| Dialect | Mesh's `&` trigger and atoms, `tagRules: "none"` | `packages/compiler/src/front-end/dialect.ts` (built from Mesh's own rows in `src/front-end/syntax/`, ported from MX's reference module at MX commit `750c80ec1` after MX handed the syntax to Mesh; `id: "mesh"`, `name: "Mesh"`, no `#id`/`.class` rows; the `atom-value` row and the `Atom` node type are Mesh's, and the id must stay `mesh` because the row names it), passed as the `dialect` option |
+| Dialect registration | `.mesh.mx` tooling | `meshfw`'s package.json declares `mx.dialect` (`id: "mesh"`, `name: "Mesh"`, `extensions` equal to `MESH_EXTENSIONS`, `module: "./dist/dialect.js"`). A project that lists `meshfw` as a direct dependency gets its `.mesh.mx` files routed to the dialect by MX discovery. The module is built JavaScript (`bun run build` in `packages/cli` bundles `src/dialect.ts`, which re-exports `MESH_DIALECT`, with every import inlined), because MX refuses a TypeScript module from an installed package; the build fails if the extensions, the id or the module path drift. `mx.contracts` stays on `@meshfw/compiler`, the only other `mx` key in the workspace. `test/dialect-registration.test.ts` routes files in a temporary project |
 
 MX does not police member semantics. It lowers `&a = 1` inside an expression to `self.a = 1` without complaint, so the compiler reports it as `MESH_MEMBER_ASSIGN`; whether a member exists is the compiler's `MESH_UNKNOWN_MEMBER`.
 

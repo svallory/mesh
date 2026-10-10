@@ -11,13 +11,30 @@
   "bin": {
     "mesh": "./src/bin.ts"
   },
+  "mx": {
+    "dialect": {
+      "id": "mesh",
+      "name": "Mesh",
+      "extensions": [
+        ".mesh.mx"
+      ],
+      "module": "./dist/dialect.js"
+    }
+  },
   "scripts": {
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "bun scripts/build-dialect.ts",
+    "prepare": "bun scripts/build-dialect.ts"
   },
   "dependencies": {
     "@meshfw/compiler": "workspace:*",
     "@meshfw/model": "workspace:*",
     "@meshfw/runtime": "workspace:*"
-  }
+  },
+  "files": [
+    "src",
+    "!src/dialect.ts",
+    "dist"
+  ]
 }
