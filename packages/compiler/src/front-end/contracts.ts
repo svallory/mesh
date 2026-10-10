@@ -209,7 +209,8 @@ for (const type of ATTRIBUTE_TYPES)
       ...named(),
       ...options(type),
       ...(["uuid", "integer", "string"].includes(type) ? { "primary-key": flag() } : {}),
-      unique: flag(),
+      // A json value is opaque to the database, so it cannot be unique (ADR-0069).
+      ...(type === "json" ? {} : { unique: flag() }),
       ...(type === "timestamp" ? { on: { type: "atom" as const, values: ["create", "update"] } } : {}),
       value: fn(),
     },

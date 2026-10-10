@@ -52,7 +52,7 @@ async function project(config = true): Promise<string> {
   await symlink(join(repo, "packages/compiler/node_modules/zod"), join(root, "node_modules/zod"));
   await writeFile(join(root, sourcePath), source);
   if (config) await writeFile(join(root, "mesh.config.ts"), `import { defineConfig } from "meshfw";
-export default defineConfig({ domain: "domain", output: "generated", data: { kind: "data-adapter", name: "sqlite", build: "./adapter.ts", options: { file: ":memory:" } } });\n`);
+export default defineConfig({ domain: "domain", output: "generated", data: { kind: "data-adapter", name: "sqlite", build: "./adapter.ts", capabilities: { adapter: "sqlite", capabilities: [] }, options: { file: ":memory:" } } });\n`);
   // The data adapter's build half: no generators, so the core tree is what these tests see.
   await writeFile(join(root, "adapter.ts"), adapterSource);
   return root;
@@ -73,7 +73,7 @@ async function builtProject(): Promise<string> {
 }
 
 test("defineConfig is re-exported from meshfw", () => {
-  const config = { domain: "domain", output: "generated", data: { kind: "data-adapter" as const, name: "sqlite", build: "@meshfw/data-sqlite/build", options: { file: ":memory:" } } };
+  const config = { domain: "domain", output: "generated", data: { kind: "data-adapter" as const, name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: [] }, options: { file: ":memory:" } } };
   expect(defineConfig(config)).toBe(config);
 });
 
@@ -161,7 +161,7 @@ test("missing config is exit 1 with a diagnostic, with no upward search", async 
 
 test("invalid config is exit 1 with exact position", async () => {
   const root = await project();
-  await writeFile(join(root, "mesh.config.ts"), 'export default { domain: "domain", output: 3, data: { kind: "data-adapter", name: "sqlite", build: "./adapter.ts", options: {} } };\n');
+  await writeFile(join(root, "mesh.config.ts"), 'export default { domain: "domain", output: 3, data: { kind: "data-adapter", name: "sqlite", build: "./adapter.ts", capabilities: { adapter: "sqlite", capabilities: [] }, options: {} } };\n');
   expect(run(root, "build")).toEqual({ code: 1, stdout: "", stderr: "mesh.config.ts:1:36 error Configuration field `output` must be a non-empty relative directory path\n  fix: Fix the output field in mesh.config.ts\n1 error, 0 warnings\n" });
 });
 
@@ -511,7 +511,7 @@ describe("the data adapter's build half in mesh build", () => {
 
   test.each(["build", "inspect"])("mesh %s reports an uninstalled build half as MESH_ADAPTER_BUILD and writes nothing", async (name) => {
     const root = await project();
-    await writeFile(join(root, "mesh.config.ts"), 'export default { domain: "domain", output: "generated", data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", options: { file: ":memory:" } } };\n');
+    await writeFile(join(root, "mesh.config.ts"), 'export default { domain: "domain", output: "generated", data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: [] }, options: { file: ":memory:" } } };\n');
     expect(run(root, name)).toEqual({ code: 1, stdout: "",
       stderr: "mesh.config.ts:1:1 error the data adapter's build entry \"@meshfw/data-sqlite/build\" cannot be resolved from this project: either @meshfw/data-sqlite is not installed, or the installed version does not export \"@meshfw/data-sqlite/build\". Run: bun add @meshfw/data-sqlite\n  fix: Install the package of the data adapter that mesh.config.ts names, in a version that has this build entry\n1 error, 0 warnings\n" });
     expect(existsSync(join(root, "generated"))).toBe(false);

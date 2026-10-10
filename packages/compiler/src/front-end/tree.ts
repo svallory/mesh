@@ -117,6 +117,18 @@ export function valueOf(a: Attr | undefined): Literal | Atom {
   if (a.kind === "boolean") return true;
   return readLiteral(nodeOf(a));
 }
+/** True when an option value is an atom, or holds one anywhere inside a list or object literal. */
+export function containsAtom(a: Attr | undefined): boolean {
+  if (atomOf(a)) return true;
+  const visit = (n: SyntaxNode | null | undefined): boolean => {
+    if (!n) return false;
+    if (n.type === "StringLiteral") return !!n.extra?.mxAtom;
+    if (n.type === "ArrayExpression") return (n.elements ?? []).some(visit);
+    if (n.type === "ObjectExpression") return (n.properties ?? []).some((p) => visit(p.value as SyntaxNode | undefined));
+    return false;
+  };
+  return visit(nodeOf(a));
+}
 export function atomList(a: Attr | undefined): string[] {
   if (!a) return [];
   const n = nodeOf(a);

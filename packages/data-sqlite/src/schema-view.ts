@@ -49,7 +49,7 @@ export interface ColumnView {
 /**
  * How each attribute type is stored. The TypeScript type Drizzle infers for each
  * column equals the record type the `types` generator writes for the attribute
- * (`string`, `number`, `boolean`, `Date`, or the union of an enum's values); a
+ * (`string`, `number`, `boolean`, `Date`, `unknown` for `json`, or the union of an enum's values); a
  * type-level test checks every entry. No defaults: the generated actions write
  * every default, generated id and timestamp themselves (ADR-0003).
  */
@@ -64,6 +64,7 @@ export const SQLITE_COLUMNS = Object.freeze({
   date: { builder: "integer", options: '{ mode: "timestamp_ms" }' },
   datetime: { builder: "integer", options: '{ mode: "timestamp_ms" }' },
   timestamp: { builder: "integer", options: '{ mode: "timestamp_ms" }' },
+  json: { builder: "text", options: '{ mode: "json" }' },
 } as const satisfies Record<AttributeType, { builder: string; options: string | null }>);
 
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;

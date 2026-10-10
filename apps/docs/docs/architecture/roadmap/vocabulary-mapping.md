@@ -172,6 +172,11 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `integer.primary-key` | `integer :field primary-key` | `integer.primary-key` | on main |
 | `integer.unique` | `integer :field unique` | `integer.unique` | on main |
 | `integer.value` | `integer :field() { return 0 }` | `integer.value` | on main |
+| `json` | `json :field` | `json` | on main |
+| `json.name` | `json :field` | `json.name` | on main |
+| `json.nullable` | `json :field nullable` | `json.nullable` | on main |
+| `json.default` | `json :field default={ list: [1, 2] }` | `json.default` | on main |
+| `json.value` | `json :field() { return null }` | `json.value` | on main |
 | `load` | `load=[&lines]` | `load` | on main |
 | `load.value` | `load=[&lines]` | `load.value` | on main |
 | `max` | `max :total of="lines.dueOn"` | `max` | on main |

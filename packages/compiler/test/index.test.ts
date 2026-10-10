@@ -44,7 +44,7 @@ describe("index view", () => {
       ["readNote", "noteActions.read", "ReadNoteInput", "Note[]"],
       ["destroyNote", "noteActions.destroy", "DestroyNoteInput", "void"],
     ]);
-    expect(view.types).toEqual(["Note", "CreateNoteInput", "EditNoteInput", "ReadNoteInput", "DestroyNoteInput", "Tag"]);
+    expect(view.types).toEqual(["Note", "CreateNoteInput", "EditNoteInput", "ReadNoteInput", "DestroyNoteInput", "NoteFilter", "NoteSort", "Tag"]);
     expect(view.schemaExports).toEqual(["tables", "noteTable", "tagTable"]);
     expect(view.entities.map((e) => [e.local, e.hasActions, e.actionsFromLiteral, e.typesFromLiteral])).toEqual([
       ["noteActions", true, '"./notes/note.actions"', '"./notes/note.types"'],
@@ -73,9 +73,9 @@ export const closes = { count: 0 };
 export const events = [];
 export const failClose = { next: false };
 const ops = {
-  async insert(_table, row) { rows.set(row.id, { ...row }); return { ...row }; },
+  async insert(_table, row) { const stored = { ...row, id: row.id ?? crypto.randomUUID() }; rows.set(stored.id, stored); return { ...stored }; },
+  async select() { return [...rows.values()]; },
   async selectByKey(_table, key) { return rows.get(key.id); },
-  async selectAll() { return [...rows.values()]; },
   async updateByKey(_table, key, changes) {
     const row = rows.get(key.id);
     if (!row) return undefined;
@@ -84,14 +84,14 @@ const ops = {
   },
   async deleteByKey(_table, key) { return rows.delete(key.id); },
 };
-export default { data: { kind: "data-adapter", name: "memory", build: "./none", options: {},
+export default { data: { kind: "data-adapter", name: "memory", build: "./none", capabilities: { adapter: "memory", capabilities: [] }, options: {},
   transaction: async (run) => { const result = await run(ops); events.push("commit"); return result; },
   close: async () => {
     if (failClose.next) { failClose.next = false; throw new Error("close failed"); }
     closes.count++; events.push("close");
   } } };
 `;
-const descriptorConfig = `export default { data: { kind: "data-adapter", name: "remote", build: "./none", options: {} } };\n`;
+const descriptorConfig = `export default { data: { kind: "data-adapter", name: "remote", build: "./none", capabilities: { adapter: "remote", capabilities: [] }, options: {} } };\n`;
 
 async function generated(config = memoryConfig) {
   const root = await mkdtemp(resolve(import.meta.dir, "../mesh-index-"));

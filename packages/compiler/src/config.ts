@@ -2,10 +2,11 @@ import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { readFile, stat, realpath, lstat } from "node:fs/promises";
 import type { Diagnostic } from "@meshfw/model";
-import type { DataAdapter, ExtensionDescriptor } from "@meshfw/runtime";
+import { FrameworkError, validateCapabilityManifest, type DataAdapter, type ExtensionDescriptor } from "@meshfw/runtime";
 export { defineConfig, type MeshConfig, type ExtensionDescriptor } from "@meshfw/runtime";
 import { buildModel } from "./front-end/build.ts";
 import { hasMeshExtension, meshExtensionsText, meshGlob } from "./front-end/extensions.ts";
+import { capabilityDiagnostics } from "./capabilities.ts";
 import { error, positionAt, type BuildResult } from "./model/index.ts";
 import { absolutePath, canonicalFuturePath, confinedGlob, foreignAbsolute, inside, normalizePath, projectPath, resolveEntityFile, errorCode } from "./paths.ts";
 
@@ -25,6 +26,12 @@ const nonEmpty = (value: unknown): value is string => typeof value === "string" 
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 function isDataAdapter(value: unknown): value is DataAdapter {
   return record(value) && value.kind === "data-adapter" && nonEmpty(value.name) && nonEmpty(value.build) && record(value.options);
+}
+/** Why the adapter's capability manifest is missing or invalid, or `null` when it is a valid one. */
+function manifestProblem(adapter: DataAdapter): string | null {
+  if (adapter.capabilities === undefined) return `The data adapter "${adapter.name}" declares no capabilities; its descriptor needs \`capabilities\`, a manifest made by defineCapabilities(...)`;
+  try { validateCapabilityManifest(adapter.capabilities); return null; }
+  catch (cause) { return `The data adapter "${adapter.name}" declares invalid capabilities: ${cause instanceof FrameworkError ? cause.message : String(cause)}`; }
 }
 
 /** mesh.config.ts is trusted executable project code, not an entity declaration.
@@ -83,6 +90,10 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
   }
   const data = config.data;
   if (!isDataAdapter(data)) fail("data", "Configuration field `data` must be a data adapter descriptor", 'Import `sqlite` from `@meshfw/data-sqlite` and set data: sqlite({ file: "app.db" })');
+  else {
+    const problem = manifestProblem(data);
+    if (problem) fail("data", problem, "Use a data adapter that publishes a capability manifest (defineCapabilities from @meshfw/runtime)");
+  }
   const extensions = config.extensions;
   if (Object.hasOwn(config, "extensions")) {
     if (!Array.isArray(extensions)) fail("extensions", "Configuration field `extensions` must be an array");
@@ -210,5 +221,6 @@ export async function loadProject(config: ResolvedConfig): Promise<BuildResult> 
     ignored: (config.ignoredFiles ?? []).map(({ file, pattern }) => ({ file: projectPath(config.root, file), pattern })),
   });
   if (result.document) result.document.data = { name: config.data.name };
-  return { document: diagnostics.length ? null : result.document, diagnostics: [...diagnostics, ...result.diagnostics] };
+  const capabilities = result.document ? capabilityDiagnostics(result.document, config.data) : [];
+  return { document: diagnostics.length || capabilities.length ? null : result.document, diagnostics: [...diagnostics, ...result.diagnostics, ...capabilities] };
 }

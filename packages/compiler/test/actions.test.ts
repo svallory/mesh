@@ -119,7 +119,6 @@ describe("actions view", () => {
     expect(create.statements).toEqual([
       "const now = new Date();",
       "const row = await tx.insert(tables.article, {",
-      "  id: crypto.randomUUID(),",
       "  title: parsed.title,",
       "  body: parsed.body === undefined ? null : parsed.body,",
       "  views: parsed.views === undefined ? 0 : parsed.views,",
@@ -160,7 +159,8 @@ describe("actions view", () => {
     expect(live.unsupported).toBe('"liveArticle cannot run in this version: its filter is evaluated from M4"');
     expect(live.statements).toEqual([]);
     const read = methods.find((m) => m.name === "read")!;
-    expect(read).toMatchObject({ unsupported: null, usesParsed: false, statements: ["return (await tx.selectAll(tables.article)) as Article[];"] });
+    expect(read).toMatchObject({ unsupported: null, usesParsed: true, statements: [
+      "return (await tx.select(tables.article, { filter: parsed.filter, sort: parsed.sort, limit: parsed.limit, offset: parsed.offset })) as Article[];"] });
   });
 
   test("destroy deletes by key and turns a missing row into NotFoundError", () => {
@@ -237,10 +237,9 @@ describe("build errors", () => {
 function memoryLayer(): DataLayer {
   const of = (table: TableHandle) => (table as { rows: Map<unknown, Row> }).rows;
   const ops: DataOperations = {
-    async insert(table, row) { of(table).set(row.id, { ...row }); return { ...row }; },
+    // The data layer fills the key of a row that lacks one (the generated create no longer writes it).
+    async insert(table, row) { const stored = { ...row, id: row.id ?? crypto.randomUUID() }; of(table).set(stored.id, stored); return { ...stored }; },
     async selectByKey(table, key) { return of(table).get(key.id); },
-    async selectAll(table) { return [...of(table).values()]; },
-    // Contract v1 members the generated M2 code does not call yet.
     async select(table) { return [...of(table).values()]; },
     async selectByKeyForUpdate(table, key) { return of(table).get(key.id); },
     async max() { throw new Error("not used"); },
@@ -294,6 +293,7 @@ describe("the generated file", () => {
     expect(published.state).toBe("live");
     expect(published.insertedAt).toBe(created.insertedAt);
     expect(published.updatedAt).not.toBe(created.updatedAt);
+    expect(typeof created.id).toBe("string");
     expect(await articles.read({})).toHaveLength(1);
     await expect(articles.live({})).rejects.toBeInstanceOf(FrameworkError);
     await expect(articles.create({ title: "x", author: ada.id, typo: 1 })).rejects.toBeInstanceOf(InvalidInputError);

@@ -3,9 +3,14 @@ import { attributeTypeInfo, type Entity } from "@meshfw/model";
 import { emitError } from "../emit-error.ts";
 import type { EmitInput } from "../emit.ts";
 import {
+  baseType,
   entityInputs,
   entityPath,
+  filterTypeName,
+  hasRead,
   propertyName,
+  queryColumns,
+  sortTypeName,
   typeName,
   valueType,
   type PlannedField,
@@ -25,6 +30,20 @@ export interface TypesView {
   readonly record: RecordDeclaration;
   /** One input type per action, explicit actions in authored order, then the `auto` actions. */
   readonly inputs: readonly TypeDeclaration[];
+  /** The filter and sort types a read's input names; `null` when the entity has no read action. */
+  readonly query: QueryDeclaration | null;
+}
+
+/** `export type <filterName> = ...` and `export type <sortName> = ...`: what a caller of a read may filter and sort by. */
+export interface QueryDeclaration {
+  /** The filter type's name, e.g. `PostFilter`. */
+  readonly filterName: string;
+  /** One member per column a filter may name (not `json`): `<key>?: $Comparison<<type>>;` with `optional` true. */
+  readonly filterMembers: readonly TypeMember[];
+  /** The sort type's name, e.g. `PostSort`. */
+  readonly sortName: string;
+  /** Every sortable column as a quoted literal, ascending then descending, e.g. `"title"`, `"-title"`. */
+  readonly sortKeys: readonly string[];
 }
 
 /** `import type { <name> } from <fromLiteral>;` */
@@ -92,7 +111,7 @@ export function typesView({ document }: EmitInput, entity: Entity): TypesView {
     if (!path.startsWith(".")) path = `./${path}`;
     return { name, fromLiteral: JSON.stringify(`${path}.types`) };
   });
-  const recordMembers = entity.attributes.map((attribute) => member({ attribute, optional: false }));
+  const recordMembers = entity.attributes.map((attribute) => member({ attribute, optional: false }, entity));
   for (const relation of entity.relationships)
     if (relation.keyColumn)
       recordMembers.push({
@@ -105,7 +124,21 @@ export function typesView({ document }: EmitInput, entity: Entity): TypesView {
     entityFile: entityFileComment(entity),
     imports,
     record: { name: recordName, members: recordMembers },
-    inputs: inputs.map((input) => declaration(input.name, input.fields.map(member))),
+    inputs: inputs.map((input) => declaration(input.name, input.fields.map((field) => member(field, entity)))),
+    query: hasRead(entity) ? queryDeclaration(entity) : null,
+  };
+}
+
+/** The columns a caller of a read may name. An attribute called `and` or `or` cannot be filtered: the contract reads those keys as combinators. */
+function queryDeclaration(entity: Entity): QueryDeclaration {
+  const columns = queryColumns(entity);
+  return {
+    filterName: filterTypeName(entity),
+    filterMembers: columns
+      .filter((column) => column.name !== "and" && column.name !== "or")
+      .map((column): TypeMember => ({ name: column.name, optional: true, key: propertyName(column.name), type: `$Comparison<${baseType(column)}>` })),
+    sortName: sortTypeName(entity),
+    sortKeys: columns.flatMap((column) => [JSON.stringify(column.name), JSON.stringify(`-${column.name}`)]),
   };
 }
 
@@ -118,8 +151,10 @@ function declaration(name: string, members: TypeMember[]): TypeDeclaration {
   return { name, empty: members.length === 0, members };
 }
 
-function member({ attribute, optional, reference }: PlannedField): TypeMember {
-  const type = reference
+function member({ attribute, optional, reference, query }: PlannedField, entity: Entity): TypeMember {
+  const type = query
+    ? query === "filter" ? filterTypeName(entity) : query === "sort" ? sortTypeName(entity) : "number"
+    : reference
     ? `${typeName(reference.name, reference.position)}[${JSON.stringify(reference.attributes.find((a) => a.primaryKey)!.name)}]${attribute.nullable ? " | null" : ""}`
     : valueType(attribute);
   return {

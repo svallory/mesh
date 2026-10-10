@@ -5,7 +5,7 @@ import build, { SQLITE_COLUMNS, camelCase, schemaGenerator, schemaView } from ".
 
 const config: ResolvedConfig = {
   root: "/project", configFile: "/project/mesh.config.ts", entityFiles: [], domainRoot: "/project/src/domain",
-  data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", options: { file: ":memory:" } },
+  data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: [] }, options: { file: ":memory:" } },
   output: "/project/.mesh",
 };
 
