@@ -5,7 +5,9 @@
 let lastMillis = -1;
 let counter = 0;
 
-/** A time-ordered UUID. Increases strictly within one process, even inside one millisecond. */
+/** A time-ordered UUID. Increases strictly within one process (one copy of this module), even
+ * inside one millisecond. `now` is honoured only when it is ahead of the last id issued; otherwise
+ * the id continues from the last one, so a fixed `now` in a test is not reproducible. */
 export function uuidv7(now: number = Date.now()): string {
   if (now > lastMillis) {
     lastMillis = now;

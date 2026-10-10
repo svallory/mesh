@@ -268,6 +268,59 @@ export function contractV1Checks(makeLayer: () => Promise<DataLayerFixtureV1>, m
       assert(inside === 42, "an aggregate must see the transaction's own insert");
       assert(await run((tx) => tx.max(taskTable, "rank")) === 42, "the insert committed");
     })],
+    ["reads on an empty table return nothing and aggregates are null or 0", withFixture(async ({ layer, uuidTable }) => {
+      await layer.transaction(async (tx) => {
+        assert((await tx.select(uuidTable)).length === 0, "select on an empty table must return no rows");
+        assert((await tx.select(uuidTable, { filter: { label: { eq: "x" } }, sort: ["-label"], limit: 5, offset: 2 })).length === 0, "a full query on an empty table must return no rows");
+        assert(await tx.selectByKey(uuidTable, { id: "none" }) === undefined, "selectByKey on an empty table must return undefined");
+        assert(await tx.selectByKeyForUpdate(uuidTable, { id: "none" }) === undefined, "read for update on an empty table must return undefined");
+        if (declared("aggregates")) {
+          assert(await tx.max(uuidTable, "label") === null, "max on an empty table must be null");
+          assert(await tx.count(uuidTable, "label") === 0, "count on an empty table must be 0");
+          assert(await tx.max(uuidTable, "id", { label: { eq: "x" } }) === null, "filtered max on an empty table must be null");
+        }
+      });
+    })],
+    ["a joined call that fails rejects the commit even when the outer callback catches it", withFixture(async ({ layer, uuidTable }) => {
+      const inner = new Error("inner failed");
+      let caught: unknown;
+      try {
+        await layer.transaction(async (tx) => {
+          await tx.insert(uuidTable, { label: "outer" });
+          try { await layer.transaction(async (joined) => { await joined.insert(uuidTable, { label: "inner" }); throw inner; }); }
+          catch { /* the outer callback swallows the failure */ }
+        });
+      } catch (cause) { caught = cause; }
+      assert(caught instanceof FrameworkError, "a caught joined failure must reject the commit with a FrameworkError");
+      assert((caught as Error).cause === inner, "the rejection must carry the inner error as its cause");
+      assert((await layer.transaction((tx) => tx.select(uuidTable))).length === 0, "nothing of a poisoned transaction may commit, the outer write included");
+      // The failure marks that transaction only: the next one commits normally.
+      await layer.transaction((tx) => tx.insert(uuidTable, { label: "fine" }));
+      assert((await layer.transaction((tx) => tx.select(uuidTable))).length === 1, "a later transaction must commit");
+    })],
+    ["one failing joined call among parallel ones rolls back all of them", withFixture(async ({ layer, uuidTable }) => {
+      const outcome = await failure(layer, async () => {
+        const results = await Promise.allSettled([
+          layer.transaction(async (tx) => { await tx.insert(uuidTable, { label: "a" }); }),
+          layer.transaction(async (tx) => { await tx.insert(uuidTable, { label: "b" }); throw new Error("b failed"); }),
+          layer.transaction(async (tx) => { await tx.insert(uuidTable, { label: "c" }); }),
+        ]);
+        assert(results.filter((result) => result.status === "rejected").length === 1, "exactly one joined call fails");
+      });
+      assert(outcome instanceof FrameworkError, "the outer call must reject after a parallel joined call failed");
+      assert((await layer.transaction((tx) => tx.select(uuidTable))).length === 0, "no parallel joined write may commit");
+    })],
+    ["parallel inserts with integer fill get distinct consecutive keys", withFixture(async ({ layer, integerTable }) => {
+      if (!declared("integer-key-fill")) return;
+      assert(integerTable !== undefined, "integer-key-fill needs the fixture's integerTable");
+      const direct = await layer.transaction((tx) => Promise.all(Array.from({ length: 25 }, (_, index) => tx.insert(integerTable, { label: `p${index}` }))));
+      assert(direct.map((row) => row.seq).sort((a, b) => Number(a) - Number(b)).join() === Array.from({ length: 25 }, (_, index) => index + 1).join(), "parallel inserts must get keys 1 to 25");
+      const joined = await layer.transaction(() => Promise.all(Array.from({ length: 10 }, (_, index) =>
+        layer.transaction((tx) => tx.insert(integerTable, { label: `j${index}` })))));
+      assert(joined.map((row) => row.seq).sort((a, b) => Number(a) - Number(b)).join() === Array.from({ length: 10 }, (_, index) => index + 26).join(), "parallel joined calls must continue the same sequence");
+      const stored = (await layer.transaction((tx) => tx.select(integerTable))).map((row) => row.seq);
+      assert(stored.length === 35 && stored.every((seq, index) => seq === index + 1), "every key must be stored once");
+    })],
     ["a text primary key left out is a UUIDv7 and ids sort in creation order", withFixture(async ({ layer, uuidTable }) => {
       const before = Date.now();
       const made: string[] = [];

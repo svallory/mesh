@@ -68,7 +68,9 @@ export interface Query {
  * Keys: an insert whose row has no value for a single-column primary key gets one. A text
  * key becomes a UUIDv7 (time-ordered, and increasing within one process even inside one
  * millisecond); an integer key becomes the highest stored value plus one, computed in the
- * write transaction, so a rolled-back insert leaves no gap. A value the caller supplies is
+ * write transaction, so a rolled-back insert leaves no gap. Inserts into one table run one at a time,
+ * so parallel inserts get distinct consecutive keys. Deleting the highest row frees its key for the
+ * next insert, so a key is not a monotonic cursor. A value the caller supplies is
  * stored as given. The adapter must declare `integer-key-fill` to take an integer key.
  */
 export interface DataOperations {
@@ -79,7 +81,9 @@ export interface DataOperations {
   /**
    * Reload one row by primary key under the transaction's write lock, or undefined when
    * absent. No other writer can change the row until this transaction ends, so a rule that
-   * reads, decides and then writes sees what it writes over.
+   * reads, decides and then writes sees what it writes over. How the lock is taken is the
+   * adapter's: SQLite's single writer already holds it, so there it is a plain keyed read; a
+   * server dialect issues `SELECT ... FOR UPDATE` (the Drizzle layer has a hook for it).
    */
   selectByKeyForUpdate(table: TableHandle, key: Key): Promise<Row | undefined>;
   /** Rows matching a plain-data query. No query means every row, in primary-key order. */
@@ -111,9 +115,13 @@ export interface DataLayer {
    * Re-entrant: a call made inside a running transaction (from its callback or from
    * anything that callback awaits) joins it and receives the same operations. It commits
    * nothing and rolls nothing back by itself: the outer call decides, so a throw that
-   * leaves the outer callback rolls back the inner call's writes too. An inner call whose
-   * error the outer callback catches keeps its partial writes; the transaction has no
-   * savepoints. A call made after the outer transaction settled starts a new one.
+   * leaves the outer callback rolls back the inner call's writes too. Rollback-only: when
+   * a joined call fails, the transaction is marked, and the outer call rejects with a
+   * FrameworkError (cause: the inner error) and rolls back everything even if its callback
+   * caught the error. This holds for parallel joined calls; there are no savepoints, so an
+   * inner failure cannot be undone alone. Joining follows async context, so a detached
+   * promise started inside the callback and still running joins it too. A call made after
+   * the outer transaction settled starts a new one.
    */
   transaction<T>(run: (tx: DataOperations) => Promise<T>): Promise<T>;
   /** Release the adapter's connection and other owned handles. Rejects while

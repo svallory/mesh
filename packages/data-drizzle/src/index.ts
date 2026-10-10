@@ -11,6 +11,13 @@ export interface DrizzleCommands<T extends Table> {
   table(handle: TableHandle): T;
   insert(table: T, row: Row): Row | Promise<Row>;
   select(table: T, options?: DrizzleSelect): Row[] | Promise<Row[]>;
+  /**
+   * Optional: the same read, locking the matching rows (`SELECT ... FOR UPDATE`). A dialect
+   * whose transactions do not already hold an exclusive write lock must provide it; without
+   * it, `selectByKeyForUpdate` is a plain read. SQLite leaves it out: `BEGIN IMMEDIATE`
+   * holds the single write lock for the whole transaction.
+   */
+  selectForUpdate?(table: T, options: DrizzleSelect): Row[] | Promise<Row[]>;
   /** `max(column)` or `count(column)` over rows matching `where`, decoded as the column decodes. */
   aggregate(table: T, kind: "max" | "count", column: Column, where?: SQL): unknown | Promise<unknown>;
   update(table: T, condition: SQL, changes: Row): Row[] | Promise<Row[]>;
@@ -63,9 +70,18 @@ export function drizzleOperations<T extends Table>(commands: DrizzleCommands<T>,
       throw new FrameworkError("Database operation failed", { cause });
     }
   };
-  const byKey = async (handle: TableHandle, key: Key) => {
+  const byKey = async (handle: TableHandle, key: Key, lock: boolean) => {
     const table = commands.table(handle);
-    return (await commands.select(table, { where: keyCondition(table, key), orderBy: [] }))[0];
+    const options = { where: keyCondition(table, key), orderBy: [] };
+    return (await (lock && commands.selectForUpdate ? commands.selectForUpdate(table, options) : commands.select(table, options)))[0];
+  };
+  // Inserts into one table run one at a time, so two parallel inserts never read the same
+  // highest key. The queue lives as long as these operations, that is, one transaction.
+  const inserts = new Map<Table, Promise<unknown>>();
+  const serial = <R>(table: Table, run: () => Promise<R>): Promise<R> => {
+    const result = (inserts.get(table) ?? Promise.resolve()).then(run);
+    inserts.set(table, result.then(() => undefined, () => undefined));
+    return result;
   };
   const aggregate = (kind: "max" | "count", handle: TableHandle, attribute: string, filter: Filter | undefined) => {
     const table = commands.table(handle);
@@ -87,7 +103,7 @@ export function drizzleOperations<T extends Table>(commands: DrizzleCommands<T>,
     insert: (handle: TableHandle, row: Row) => execute(async () => {
       const table = commands.table(handle);
       checkNames(table, row);
-      return commands.insert(table, await withKey(table, row));
+      return serial(table, async () => commands.insert(table, await withKey(table, row)));
     }),
     select: (handle: TableHandle, query?: Query) => execute(() => {
       const table = commands.table(handle);
@@ -97,10 +113,9 @@ export function drizzleOperations<T extends Table>(commands: DrizzleCommands<T>,
       const table = commands.table(handle);
       return commands.select(table, selectOptions(table, undefined));
     }),
-    selectByKey: (handle: TableHandle, key: Key) => execute(() => byKey(handle, key)),
-    // A transaction holds the write lock from its first statement (SQLite BEGIN IMMEDIATE),
-    // so a plain read is already a read under the lock. A server database adds FOR UPDATE.
-    selectByKeyForUpdate: (handle: TableHandle, key: Key) => execute(() => byKey(handle, key)),
+    selectByKey: (handle: TableHandle, key: Key) => execute(() => byKey(handle, key, false)),
+    // Locks through the dialect's `selectForUpdate` when it has one; SQLite does not need it.
+    selectByKeyForUpdate: (handle: TableHandle, key: Key) => execute(() => byKey(handle, key, true)),
     updateByKey: (handle: TableHandle, key: Key, changes: Row) => execute(async () => {
       const table = commands.table(handle);
       const condition = keyCondition(table, key);

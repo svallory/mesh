@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
-import { CAPABILITIES, FrameworkError, type DataLayer } from "@meshfw/runtime";
+import { CAPABILITIES, FrameworkError, type DataLayer, type DataOperations } from "@meshfw/runtime";
 import { dataLayerConformanceV1, type DataLayerFixtureV1 } from "@meshfw/runtime/testing";
 import { capabilities, createSchema, sqlite } from "../src/index.ts";
 
@@ -107,6 +107,15 @@ describe("the suite catches adapters that break the contract", () => {
         insert: (table, row) => table === integerTable && row.seq === undefined ? tx.insert(table, { ...row, seq: ++issued }) : tx.insert(table, row),
       })),
     }), "an integer primary key is filled with the next integer, with no gap after a rollback", "no gap");
+  });
+
+  test("a layer that lets a caught joined failure commit", async () => {
+    const outer = new AsyncLocalStorage<DataOperations>();
+    await broken((layer) => ({
+      close: layer.close,
+      // Joins by handing the outer operations to the inner callback, with no failure mark.
+      transaction: (run) => outer.getStore() ? run(outer.getStore()!) : layer.transaction((tx) => outer.run(tx, () => run(tx))),
+    }), "a joined call that fails rejects the commit even when the outer callback catches it", "must reject the commit");
   });
 
   test("a manifest that names a capability outside the union is refused", async () => {

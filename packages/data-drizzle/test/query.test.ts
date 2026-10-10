@@ -212,3 +212,32 @@ describe("generated keys", () => {
     expect(inserted).toEqual([{ orderId: "o", no: 1 }]);
   });
 });
+
+describe("read for update and serialised inserts", () => {
+  test("selectByKeyForUpdate uses the dialect's selectForUpdate when it has one, else a plain select", async () => {
+    const calls: string[] = [];
+    const base = { table: () => tasks, insert: (_t: unknown, r: Row) => r, aggregate: () => null, update: () => [], delete: () => [] };
+    const plain = drizzleOperations({ ...base, select: () => { calls.push("select"); return []; } } as never, () => {});
+    await plain.selectByKeyForUpdate(tasks, { id: "a" });
+    const locking = drizzleOperations({ ...base, select: () => { calls.push("plain"); return []; }, selectForUpdate: () => { calls.push("for update"); return []; } } as never, () => {});
+    await locking.selectByKeyForUpdate(tasks, { id: "a" });
+    await locking.selectByKey(tasks, { id: "a" });
+    expect(calls).toEqual(["select", "for update", "plain"]);
+  });
+
+  test("parallel inserts into one table never overlap, and a failed one does not block the next", async () => {
+    const counters = sqliteTable("counters2", { seq: integer("seq").primaryKey().notNull(), label: text("label") });
+    let stored = 0;
+    let running = 0;
+    let overlap = false;
+    const operations = drizzleOperations({
+      table: () => counters, select: () => [], update: () => [], delete: () => [],
+      aggregate: async () => { running++; if (running > 1) overlap = true; await new Promise((resolve) => setTimeout(resolve, 2)); return stored; },
+      insert: async (_t: unknown, row: Row) => { if (row.label === "bad") { running--; throw new Error("boom"); } stored = row.seq as number; running--; return row; },
+    } as never, () => {});
+    const results = await Promise.allSettled(["a", "bad", "b", "c"].map((label) => operations.insert(counters, { label })));
+    expect(overlap).toBe(false);
+    expect(results.map((result) => result.status)).toEqual(["fulfilled", "rejected", "fulfilled", "fulfilled"]);
+    expect(results.flatMap((result) => result.status === "fulfilled" ? [result.value.seq] : [])).toEqual([1, 2, 3]);
+  });
+});

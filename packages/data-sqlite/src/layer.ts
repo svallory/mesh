@@ -46,7 +46,7 @@ export function sqliteTable(handle: TableHandle): SQLiteTable {
 }
 
 /** The running transaction: `operations` is set once BEGIN succeeded, and `active` ends with the outer call. */
-interface Token { active: boolean; operations?: DataOperations }
+interface Token { active: boolean; operations?: DataOperations; failed?: { cause: unknown } }
 
 interface State {
   exclusive<T>(run: (db: BunSQLiteDatabase, token: Token) => Promise<T>): Promise<T>;
@@ -123,7 +123,12 @@ export function sqlite(options: SQLiteOptions): SQLiteLayer {
     kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities, options: configured,
     transaction(run) {
       const current = context.getStore();
-      if (current?.active && current.operations) return run(current.operations);
+      if (current?.active && current.operations) {
+        // Rollback-only: a joined call that fails poisons the whole transaction, even if the
+        // outer callback catches the error, so a half-done inner call can never commit.
+        const joined = current;
+        return run(current.operations).catch((cause: unknown) => { joined.failed ??= { cause }; throw cause; });
+      }
       return state.exclusive(async (database, token) => {
         try { database.run(sql.raw("BEGIN IMMEDIATE")); }
         catch (cause) { throw connectionError("run BEGIN IMMEDIATE", configured.file, cause); }
@@ -151,6 +156,9 @@ export function sqlite(options: SQLiteOptions): SQLiteLayer {
         try {
           const result = await run(operations);
           active = false;
+          if (token.failed) {
+            throw new FrameworkError("A call joined to this transaction failed, so the transaction is rolled back even though its callback caught the error", { cause: token.failed.cause });
+          }
           database.run(sql.raw("COMMIT"));
           return result;
         } catch (cause) {
