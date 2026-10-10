@@ -51,4 +51,4 @@ An atom is the only spelling in the file that names something without referring 
 
 ## Action items
 
-- [ ] M7: the contract attribute, the cross-file check and the loader.
+- [x] M7: the contract attribute, the cross-file check and the loader (`front-end/relationships.ts`, `runtime/src/load.ts`). A `has-one` that has several `belongs-to` back to its entity is a build error too, because it takes no `via`; a `has-many` or `has-one` with none back builds and fails when it is loaded.
