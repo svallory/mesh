@@ -8,7 +8,7 @@ export interface ExtensionDescriptor { readonly name: string }
  * so that a program importing its configuration at run time loads no build code (ADR-0033).
  */
 export interface MeshConfig {
-  /** Entity folder (recursive .mesh.mx discovery), glob or file list. */
+  /** Entity folder (recursive entity file discovery), glob or file list. */
   domain: string | string[];
   /** Output folder relative to mesh.config.ts, conventionally .mesh. */
   output: string;

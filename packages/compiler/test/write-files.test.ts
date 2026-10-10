@@ -4,7 +4,7 @@ import * as crypto from "node:crypto";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { EmitError, writeGeneratedFiles, type GeneratedFile } from "../src/emit.ts";
+import { EmitError, writeGeneratedFiles, type GeneratedFile } from "../src/typescript/emit.ts";
 import type { ResolvedConfig } from "../src/config.ts";
 
 const roots: string[] = [];

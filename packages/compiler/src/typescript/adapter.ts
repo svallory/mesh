@@ -1,7 +1,7 @@
 import { isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Diagnostic } from "@meshfw/model";
-import type { ResolvedConfig } from "./config.ts";
+import type { ResolvedConfig } from "../config.ts";
 import { GENERATORS, type Generator } from "./emit.ts";
 
 /**

@@ -2,12 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
-import { buildModel } from "../src/build.ts";
+import { buildModel } from "../src/front-end/build.ts";
 import type { ResolvedConfig } from "../src/config.ts";
-import { EMITTERS, GENERATORS, renderGenerator, type EmitInput, type Generator } from "../src/emit.ts";
-import { EmitError } from "../src/emit-error.ts";
-import { typesGenerator } from "../src/emitters/types.ts";
-import { MESH_TEMPLATES_DIR, loadTemplates, type Templates } from "../src/templates.ts";
+import { EMITTERS, GENERATORS, renderGenerator, type EmitInput, type Generator } from "../src/typescript/emit.ts";
+import { EmitError } from "../src/typescript/emit-error.ts";
+import { typesGenerator } from "../src/typescript/emitters/types.ts";
+import { MESH_TEMPLATES_DIR, loadTemplates, type Templates } from "../src/typescript/templates.ts";
 import { project } from "./v4.ts";
 
 const repo = resolve(import.meta.dir, "../../..");
@@ -41,9 +41,9 @@ describe("generators", () => {
       ["index", "index.ts.jig"],
     ]);
     expect((await readdir(MESH_TEMPLATES_DIR)).sort()).toEqual(["actions.ts.jig", "index.ts.jig", "types.ts.jig", "validators.ts.jig"]);
-    expect(MESH_TEMPLATES_DIR).toBe(resolve(import.meta.dir, "../templates"));
+    expect(MESH_TEMPLATES_DIR).toBe(resolve(import.meta.dir, "../src/typescript/templates"));
     const manifest = JSON.parse(await readFile(resolve(import.meta.dir, "../package.json"), "utf8")) as { files: string[] };
-    expect(manifest.files).toContain("templates");
+    expect(manifest.files).toContain("src");
   });
 
   test("a generator renders one formatted file per view, at the view's path", async () => {
@@ -131,12 +131,12 @@ describe("acceptance 6: Jig stays in the compiler", () => {
     expect(offenders).toEqual([]);
   });
 
-  test("the compiler imports Jig in src/render.ts only", async () => {
+  test("the compiler imports Jig in src/typescript/render.ts only", async () => {
     const importers: string[] = [];
     for (const name of await readdir(resolve(import.meta.dir, "../src"), { recursive: true })) {
       const path = resolve(import.meta.dir, "../src", String(name));
       if (path.endsWith(".ts") && (await readFile(path, "utf8")).includes('from "@jig-lang/')) importers.push(String(name));
     }
-    expect(importers).toEqual(["render.ts"]);
+    expect(importers).toEqual(["typescript/render.ts"]);
   });
 });

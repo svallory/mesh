@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { Entity, ModelDocument } from "@meshfw/model";
-import { buildModel } from "../src/build.ts";
+import { buildModel } from "../src/front-end/build.ts";
 import type { ResolvedConfig } from "../src/config.ts";
-import type { EmitInput } from "../src/emit.ts";
-import { EmitError } from "../src/emit-error.ts";
+import type { EmitInput } from "../src/typescript/emit.ts";
+import { EmitError } from "../src/typescript/emit-error.ts";
 import { typesView, validatorsView, type TypesView, type ValidatorsView } from "../src/index.ts";
 import { project } from "./v4.ts";
 

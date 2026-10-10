@@ -1,4 +1,4 @@
-import { buildModel } from "../src/build.ts";
+import { buildModel } from "../src/front-end/build.ts";
 export const keyed = "entity :Todo\n  attributes\n    uuid :id primary-key\n";
 export const todo = `import { List } from "./list.mesh.mx"
 entity :Todo table="todos"

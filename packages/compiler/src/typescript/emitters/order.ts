@@ -1,8 +1,8 @@
 import { relative, resolve } from "node:path";
 import { isProjectRelativePath, type ModelDocument, type Entity, type Spanned } from "@meshfw/model";
-import type { ResolvedConfig } from "../config.ts";
+import type { ResolvedConfig } from "../../config.ts";
 import { emitError } from "../emit-error.ts";
-import { normalizePath } from "../paths.ts";
+import { normalizePath } from "../../paths.ts";
 
 /** Byte-order comparison, not a locale collation: the emitted order must not depend
  * on the machine. */

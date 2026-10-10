@@ -165,6 +165,11 @@ test("invalid config is exit 1 with exact position", async () => {
   expect(run(root, "build")).toEqual({ code: 1, stdout: "", stderr: "mesh.config.ts:1:36 error Configuration field `output` must be a non-empty relative directory path\n  fix: Fix the output field in mesh.config.ts\n1 error, 0 warnings\n" });
 });
 
+// Six `mesh` processes, each lowering entity files. The first `lowerSource` call in a process takes
+// about 430 ms on alpha.15 against about 200 ms for alpha.14's `parseData` (measured locally: core
+// loads its Marko front end lazily on that first call; the dialect and the build module cost under 20 ms),
+// so this test went from about 4.0 s to about 5.3 s on netcup and hit bun's 5 s default. The cost is MX's
+// per-process start-up, not something Mesh rebuilds per call (a second call takes about 2 ms).
 test("inspect prints precisely the built model bytes or the named entity with the same serialiser", async () => {
   const root = await builtProject();
   const bytes = await readFile(join(root, "generated/model.json"), "utf8");
@@ -177,7 +182,7 @@ test("inspect prints precisely the built model bytes or the named entity with th
   await rm(join(root, "generated"), { recursive: true });
   expect(run(root, "inspect").stdout).toBe(bytes);
   expect(await Bun.file(join(root, "generated/model.json")).exists()).toBe(false);
-});
+}, 20_000);
 
 test.each([[], ["unknown"], ["build", "--unknown"], ["build", "extra"], ["inspect", "a", "b"], ["inspect", "--check"], ["build", "--config", "x"]].map((args) => ({ args })))("usage error exits 2: $args", async ({ args }) => {
   const result = run(await project(false), ...args);
@@ -452,7 +457,7 @@ describe("roadmap Jig port, acceptance 4: a project template overrides Mesh's", 
     }
     return out;
   }
-  const meshTemplate = join(repo, "packages/compiler/templates/validators.ts.jig");
+  const meshTemplate = join(repo, "packages/compiler/src/typescript/templates/validators.ts.jig");
 
   test("an overridden validators.ts.jig changes only the *.validators.ts files, and --check passes on the new output", async () => {
     const root = await builtProject();
@@ -514,7 +519,7 @@ describe("the data adapter's build half in mesh build", () => {
 });
 
 describe("mesh export generators (roadmap Jig port, acceptance 3)", () => {
-  const templates = join(repo, "packages/compiler/templates");
+  const templates = join(repo, "packages/compiler/src/typescript/templates");
   const names = ["types.ts.jig", "validators.ts.jig", "actions.ts.jig", "index.ts.jig"];
   const summary = "0 errors, 0 warnings\n";
 

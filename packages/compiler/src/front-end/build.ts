@@ -5,10 +5,9 @@ import {
   inside,
   normalizePath,
   resolveEntityFile,
-} from "./paths.ts";
-export { projectPath } from "./paths.ts";
-import { parseData } from "@mxlang/data";
-import type { DataAttr, DataDocument, DataImport, DataTag } from "@mxlang/data/tree";
+} from "../paths.ts";
+export { projectPath } from "../paths.ts";
+import { lowerSource, type IrDiagnostic } from "@mxlang/core";
 import {
   findNonJsonValue,
   isActionKind,
@@ -33,7 +32,9 @@ import {
   type Step,
 } from "@meshfw/model";
 import contracts from "./contracts.ts";
-import { MESH_SYNTAX } from "./syntax.ts";
+import { MESH_DIALECT } from "./dialect.ts";
+import { hasMeshExtension } from "./extensions.ts";
+import { error, positionAt, type BuildResult, type ProjectDescription } from "../model/index.ts";
 import { nearestName } from "./nearest-name.ts";
 import { literalFits } from "./literal-types.ts";
 import {
@@ -43,6 +44,7 @@ import {
 } from "./rollups.ts";
 import {
   atomList,
+  atomOf,
   attr,
   attrOffset,
   declaredName,
@@ -55,6 +57,9 @@ import {
   readMembers,
   tags,
   valueOf,
+  type Attr,
+  type IrImport,
+  type Tag,
 } from "./tree.ts";
 
 export const BUILTIN_OBJECT_PROPERTY_NAMES = Object.freeze([
@@ -72,43 +77,7 @@ export const BUILTIN_OBJECT_PROPERTY_NAMES = Object.freeze([
   "__lookupGetter__",
   "__lookupSetter__",
 ] as const);
-export interface EntityFile {
-  file: string;
-  source: string;
-}
-export interface ProjectDescription {
-  root: string;
-  /** Defaults to the project root for callers building virtual files. */
-  domainRoot?: string;
-  files: readonly EntityFile[];
-}
-export interface BuildResult {
-  document: ModelDocument | null;
-  diagnostics: Diagnostic[];
-}
-/** UTF-16 position conversion only; never interprets entity syntax. */
-export function positionAt(
-  source: string,
-  file: string,
-  offset: number,
-): SourcePosition {
-  const before = source.slice(0, offset);
-  return {
-    file,
-    line: before.split("\n").length,
-    column: offset - (before.lastIndexOf("\n") + 1),
-    offset,
-  };
-}
-export function error(
-  code: string,
-  message: string,
-  position: SourcePosition,
-  fix: string | null = null,
-): Diagnostic {
-  return { severity: "error", code, message, position, fix };
-}
-/** An entity import as MX parsed it (`DataImport.from`/`names`); never re-parsed. */
+/** An entity import as MX parsed it (`Import.from`/`names`); never re-parsed. */
 interface ParsedImport {
   names: string[];
   /** `offset`: the imported name as written; `localOffset`: the local binding (the alias when written). */
@@ -121,8 +90,8 @@ interface ImportProblem {
   message: string;
   offset: number;
 }
-/** Entity files import other entities by name only: `import { List } from "./list.mesh.mx"`. */
-function readImports(imports: readonly DataImport[]): {
+/** Entity files import other entities by name only: `import { List } from "./list…"`, a relative path to an entity file. */
+function readImports(imports: readonly IrImport[]): {
   imports: ParsedImport[];
   problems: ImportProblem[];
 } {
@@ -130,21 +99,24 @@ function readImports(imports: readonly DataImport[]): {
   const problems: ImportProblem[] = [];
   for (const entry of imports) {
     const offset = entry.span.sourceStart;
+    // `from` and `names` are optional in MX's types and present on every authored import; a missing one is the same import-form error.
+    const names = entry.names ?? [];
+    const from = entry.from ?? "";
     if (
-      !entry.names.length ||
+      !names.length ||
       entry.typeOnly ||
-      entry.names.some((name) => name.kind !== "named" || name.typeOnly)
+      names.some((name) => name.kind !== "named" || name.typeOnly)
     ) {
       problems.push({
         code: "MESH_IMPORT_FORM",
-        message: entry.typeOnly || entry.names.some((name) => name.typeOnly)
+        message: entry.typeOnly || names.some((name) => name.typeOnly)
           ? "import the entity by name, not as a type: `import { List } from …`"
           : "import the entity by name: `import { List } from …`",
         offset,
       });
       continue;
     }
-    if (!entry.from.startsWith("./") && !entry.from.startsWith("../")) {
+    if (!from.startsWith("./") && !from.startsWith("../")) {
       problems.push({
         code: "MESH_UNKNOWN_IMPORT",
         message: "The import path must be relative (start with ./ or ../)",
@@ -153,14 +125,14 @@ function readImports(imports: readonly DataImport[]): {
       continue;
     }
     result.push({
-      names: entry.names.map((name) => name.local),
-      bindings: entry.names.map((name) => ({
+      names: names.map((name) => name.local),
+      bindings: names.map((name) => ({
         local: name.local,
         imported: name.imported,
         offset: name.span.sourceStart,
         localOffset: (name.localSpan ?? name.span).sourceStart,
       })),
-      from: entry.from,
+      from,
       offset,
     });
   }
@@ -173,8 +145,8 @@ const snakeCase = (name: string) =>
     .toLowerCase();
 
 function buildEntity(
-  root: DataTag,
-  tree: DataDocument,
+  root: Tag,
+  irImports: readonly IrImport[],
   source: string,
   file: string,
   diagnostics: Diagnostic[],
@@ -183,10 +155,10 @@ function buildEntity(
   module: string,
 ): Entity {
   const at = (offset: number) => positionAt(source, file, offset);
-  const pos = (tag: DataTag) => at(tag.nameSpan.sourceStart);
-  const fail = (code: string, message: string, tag: DataTag | SourcePosition) =>
+  const pos = (tag: Tag) => at(tag.nameSpan.sourceStart);
+  const fail = (code: string, message: string, tag: Tag | SourcePosition) =>
     diagnostics.push(error(code, message, "nameSpan" in tag ? pos(tag) : tag));
-  const opt = (tag: DataTag, key: string) => {
+  const opt = (tag: Tag, key: string) => {
     const a = attr(tag, key);
     return a ? valueOf(a) : undefined;
   };
@@ -213,7 +185,7 @@ function buildEntity(
     if (!/^[A-Za-z0-9_-]+$/.test(segment))
       fail("MESH_MODULE_NAME", `Module segment ${JSON.stringify(segment)} must contain only letters, digits, - or _`, root);
   }
-  const imports = readImports(tree.imports ?? []);
+  const imports = readImports(irImports);
   for (const problem of imports.problems)
     fail(problem.code, problem.message, at(problem.offset));
   entity.imports = imports.imports.map(
@@ -247,7 +219,7 @@ function buildEntity(
     pending.push({ ref, scope });
     return ref;
   };
-  const expr = (a: DataAttr | undefined): Expression =>
+  const expr = (a: Attr | undefined): Expression =>
     expression(
       a,
       source,
@@ -260,13 +232,13 @@ function buildEntity(
           position,
         ),
     );
-  const authoredMember = (line: DataTag) =>
+  const authoredMember = (line: Tag) =>
     fail(
       "MESH_SYNTAX",
       "`<member>` is not a known tag: write a member line as `&name`",
       line,
     );
-  const applyOptions = (tag: DataTag) => {
+  const applyOptions = (tag: Tag) => {
     const result: Pick<
       Attribute,
       "nullable" | "default" | "values" | "min" | "max" | "match"
@@ -284,7 +256,7 @@ function buildEntity(
       result.match = { pattern: match.pattern!, flags: match.flags ?? "" };
     return result;
   };
-  const shape = (tag: DataTag) => ({
+  const shape = (tag: Tag) => ({
     name: declaredName(tag),
     type: tag.name as AttributeType,
     ...applyOptions(tag),
@@ -370,7 +342,7 @@ function buildEntity(
       ...shape(tag),
       primaryKey: opt(tag, "primary-key") === true,
       unique: opt(tag, "unique") === true,
-      ...(on?.kind === "atom" ? { on: on.value as "create" | "update" } : {}),
+      ...(atomOf(on) ? { on: atomOf(on)!.name as "create" | "update" } : {}),
     };
     if (attr(tag, "value"))
       fail(
@@ -386,9 +358,9 @@ function buildEntity(
   for (const tag of tags(section("relationships")?.children ?? [])) {
     const identifier = nodeOf(attr(tag, "entity"))?.name ?? "";
     const imported = importNames.get(identifier);
-    if (!imported || !imported.from.endsWith(".mesh.mx")) {
+    if (!imported || !hasMeshExtension(imported.from)) {
       const names = [...importNames.keys()].filter((n) =>
-        importNames.get(n)!.from.endsWith(".mesh.mx"),
+        hasMeshExtension(importNames.get(n)!.from),
       );
       const suggestion = nearestName(identifier, new Set(names));
       fail(
@@ -444,7 +416,7 @@ function buildEntity(
       else entity.computed.push({ ...base, type: tag.name as AttributeType, body: body.value });
     }
   }
-  const checks = (holder: DataTag): Check[] => {
+  const checks = (holder: Tag): Check[] => {
     const names = new Set<string>();
     return tags(tags(holder.children).find((t) => t.name === "validate")?.children ?? []).map((tag) => {
       const label = declaredName(tag);
@@ -453,7 +425,7 @@ function buildEntity(
       return { label, that: expr(attr(tag, "that")), code: String(opt(tag, "code")), message: String(opt(tag, "message")), ...(attr(tag, "when") ? { when: expr(attr(tag, "when")) } : {}), position: pos(tag) };
     });
   };
-  const steps = (holder: DataTag): Step[] =>
+  const steps = (holder: Tag): Step[] =>
     tags(holder.children).map((tag): Step => {
       const position = pos(tag);
       const assigned = new Set<string>();
@@ -508,16 +480,16 @@ function buildEntity(
         return { kind: "run", fn: expr(attr(tag, "value")), position };
       throw new Error(`Unexpected step ${tag.name}`);
     });
-  const body = (holder: DataTag) => {
+  const body = (holder: Tag) => {
     const block = tags(holder.children).find((t) => t.name === "do");
     return { validate: checks(holder), do: block ? steps(block) : [] };
   };
-  const types = (a: DataAttr) =>
+  const types = (a: Attr) =>
     atomList(a).map((value): ActionType => {
       if (!isActionKind(value)) throw new Error(`Unknown action type ${value}`);
       return value;
     });
-  const scope = (tag: DataTag) => ({
+  const scope = (tag: Tag) => ({
     ...(attr(tag, "types") ? { types: types(attr(tag, "types")!) } : {}),
     ...(attr(tag, "actions")
       ? {
@@ -710,10 +682,13 @@ function buildEntity(
   return entity;
 }
 
-/** The compiler's one MX parse: closed contracts, Mesh's syntax module, rejection on. */
+/**
+ * The compiler's one MX call: `lowerSource` with closed contracts, Mesh's dialect (which carries
+ * its tag rules) and rejection on. It never throws; every problem is a positioned diagnostic.
+ */
 export function parseEntitySource(source: string, file: string) {
-  return parseData(source, file, {
-    syntax: MESH_SYNTAX,
+  return lowerSource(source, file, {
+    dialect: MESH_DIALECT,
     customTags: contracts,
     structural: "reject",
     unknownTags: "reject",
@@ -765,17 +740,18 @@ export function buildModel(project: ProjectDescription): BuildResult {
       ...parsed.diagnostics.filter((d, _, all) => {
         // MX reports both parent rejection and unknown-tag rejection for the
         // same unknown child. Keep the specific unknown-tag error only.
-        // The match is on MX's message text because MX 0.1.0-alpha.14's
-        // DataDiagnostic has no `code`. It stands until MX exposes diagnostic
-        // codes; do not replace it with an offset-only rule, which would
-        // depend on MX's diagnostic order instead.
+        // The match is on MX's message text because MX 0.1.0-alpha.15's
+        // IrDiagnostic carries a `code` only from a dialect's `ctx.fail`. It stands
+        // until MX fills diagnostic codes; do not replace it with an offset-only
+        // rule, which would depend on MX's diagnostic order instead.
         const denied = /`<([^>]+)>` is not allowed here;/.exec(d.message)?.[1];
         return !denied || !all.some((other) => other.offset === d.offset &&
           other.message.startsWith(`\`<${denied}>\` is not a known tag:`));
       }).map((d): Diagnostic => {
         // Mesh's contracts report their own code as a `MESH_X: ` message
-        // prefix, because MX's `ctx.fail(message, at?)` takes no code. This
-        // stands until MX accepts a code there and returns it on the diagnostic.
+        // prefix, because a contract's `ctx.fail(message, at?)` takes no code. This
+        // stands until MX fills diagnostic codes for contracts and returns them
+        // on the diagnostic.
         const coded = /\b(MESH_[A-Z_]+): (.*)/s.exec(d.message);
         return {
           severity: d.severity,
@@ -786,8 +762,8 @@ export function buildModel(project: ProjectDescription): BuildResult {
         };
       }),
     );
-    if (!parsed.tree) continue;
-    const roots = tags(parsed.tree.children);
+    if (!parsed.ir) continue;
+    const roots = tags(parsed.ir.body);
     if (roots.length !== 1)
       diagnostics.push(
         error(
@@ -801,7 +777,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
         document.entities.push(
           buildEntity(
             root,
-            parsed.tree,
+            parsed.ir.imports,
             input.source,
             file,
             diagnostics,
@@ -836,7 +812,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
     for (const imported of entity.imports) {
       const target = resolve(rootPath, dirname(entity.file), imported.from);
       const targetEntity = document.entities.find((candidate) => resolve(rootPath, candidate.file) === target);
-      if (imported.from.endsWith(".mesh.mx") && targetEntity) {
+      if (hasMeshExtension(imported.from) && targetEntity) {
         for (const binding of importDetails.get(imported)?.bindings ?? []) {
           if (binding.imported !== targetEntity.name) {
             const source = project.files.find((input) => resolveEntityFile(rootPath, input.file)?.file === entity.file)!.source;
@@ -844,7 +820,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
           }
         }
       }
-      const candidates = imported.from.endsWith(".mesh.mx")
+      const candidates = hasMeshExtension(imported.from)
         ? [target]
         : [target, `${target}.ts`, `${target}.tsx`, `${target}.js`];
       const found = candidates.some((candidate) => {
@@ -859,7 +835,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
           return false;
         }
       });
-      if (found && imported.from.endsWith(".mesh.mx") && !virtualFiles.has(target))
+      if (found && hasMeshExtension(imported.from) && !virtualFiles.has(target))
         diagnostics.push(error("MESH_UNKNOWN_ENTITY", `${imported.from} exists but is not under the configured entity directories`, imported.position));
       if (!found)
         diagnostics.push(

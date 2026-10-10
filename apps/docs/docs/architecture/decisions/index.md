@@ -112,6 +112,7 @@ The operator accepted [roadmap revision 5](../roadmap/roadmap.md), which ends Me
 | [0073](./0073-plugins-follow-the-specs-single-hook.md) | Plugins follow the spec: one `task.claim` hook, before the transaction | Accepted | operator |
 | [0074](./0074-write-policies-may-read-through-tx.md) | A write policy may read other entities through `tx` | Accepted | operator |
 | [0075](./0075-seams-use-the-extension-hosts-names.md) | Three lifecycle seams, named and shaped as the extension host's run-time points | Accepted | operator |
+| [0076](./0076-compiler-front-end-and-back-end-are-separate.md) | The compiler's front end and its TypeScript back end are separate folders | Accepted | operator |
 
 ## Superseded records
 

@@ -1,4 +1,4 @@
-import contracts, { ATTRIBUTE_TYPES } from "../src/contracts.ts";
+import contracts, { ATTRIBUTE_TYPES } from "../src/front-end/contracts.ts";
 
 interface Node { line: string; children: Node[] }
 const node = (line: string, children: Node[] = []): Node => ({ line, children });

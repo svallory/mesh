@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { buildModel } from "../src/build.ts";
+import { buildModel } from "../src/front-end/build.ts";
 import { parse } from "./helpers.ts";
 import { build, keyed } from "./v4.ts";
 

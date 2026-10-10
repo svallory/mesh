@@ -1,4 +1,4 @@
-import type { DataAttr, DataNode, DataTag } from "@mxlang/data/tree";
+import type { SpannedIr } from "@mxlang/core";
 import type {
   Atom,
   Diagnostic,
@@ -7,6 +7,18 @@ import type {
   MemberRef,
   SourcePosition,
 } from "@meshfw/model";
+
+/** One node of the IR body: `lowerSource`'s spanned IR (IR version 2). */
+type IrNode = SpannedIr["body"][number];
+/** A tag as MX lowered it (`DelegatedTag`); the IR wraps it in a node. */
+export type Tag = Extract<IrNode, { kind: "DelegatedTag" }>["tag"];
+export type Attr = Tag["attrs"][number];
+/** An authored `import` statement; `from` and `names` are optional in MX's types, present on every parsed import. */
+export type IrImport = SpannedIr["imports"][number];
+/** An attribute that is not a spread: it has a name. */
+type Named = Exclude<Attr, { kind: "spread" }>;
+type StaticAttr = Extract<Attr, { kind: "static" }>;
+type DynamicAttr = Extract<Attr, { kind: "dynamic" }>;
 
 /** Small read-only projection of MX's Babel tree, including MX's atom and member marks. */
 export interface SyntaxNode {
@@ -31,25 +43,39 @@ type Span = { sourceStart: number; sourceEnd: number };
 export type At = (offset: number) => SourcePosition;
 export type ReadResult<T> = { value: T; diagnostic?: never } | { value?: never; diagnostic: Diagnostic };
 /** A recoverable tree-read boundary: report the offending tag, not its entity. */
-export function readAt<T>(tag: DataTag, at: At, read: () => T): ReadResult<T> {
+export function readAt<T>(tag: Tag, at: At, read: () => T): ReadResult<T> {
   try { return { value: read() }; }
   catch (cause) {
     return { diagnostic: { severity: "error", code: "MESH_MODEL_SHAPE", message: cause instanceof Error ? cause.message : String(cause), position: at(tag.nameSpan.sourceStart), fix: null } };
   }
 }
-export const tags = (nodes: readonly DataNode[]): DataTag[] =>
-  nodes.filter((n): n is DataTag => n.kind === "tag");
-export const attr = (tag: DataTag, name: string): DataAttr | undefined =>
-  tag.attrs.find((a) => a.kind !== "spread" && a.name === name);
-export const nodeOf = (a: DataAttr | undefined): SyntaxNode | undefined =>
-  a?.kind === "expression"
+/** The tags among a node list (`Tag` unwraps MX's `DelegatedTag` node); comments and text are skipped. */
+export const tags = (nodes: readonly IrNode[]): Tag[] =>
+  nodes.flatMap((n) => (n.kind === "DelegatedTag" ? [n.tag] : []));
+export const attr = (tag: Tag, name: string): Attr | undefined =>
+  tag.attrs.find((a): a is Named => a.kind !== "spread" && a.name === name);
+/**
+ * MX folds what its `data` tree called `atom`, `member` and `string` attributes into one
+ * `static` kind and tells them apart by `atom` and `member` (a dialect `node`, which Mesh does
+ * not register, would be a third). These three read each shape; every other reader goes through them.
+ */
+export const atomOf = (a: Attr | undefined) => (a?.kind === "static" ? a.atom : undefined);
+const memberOf = (a: Attr | undefined) => (a?.kind === "static" ? a.member : undefined);
+const plainString = (a: Attr | undefined): StaticAttr | undefined =>
+  a?.kind === "static" && !a.atom && !a.member && !a.node ? a : undefined;
+export const nodeOf = (a: Attr | undefined): SyntaxNode | undefined =>
+  a?.kind === "dynamic"
     ? (a.value.node as SyntaxNode | undefined)
     : undefined;
-export function attrOffset(a: DataAttr): number {
-  if (a.kind === "expression" || a.kind === "spread")
+export function attrOffset(a: Attr): number {
+  if (a.kind === "dynamic" || a.kind === "bound" || a.kind === "spread")
     return a.value.span.sourceStart;
-  if (a.kind === "atom" || a.kind === "member") return a.span.sourceStart;
-  return a.kind === "string" ? a.valueSpan.sourceStart : a.nameSpan.sourceStart;
+  if (a.kind === "static") {
+    const own = a.atom ?? a.member;
+    // `valueSpan` is optional in MX's types; `lowerSource` fills it, and the name is the fallback.
+    return (own?.span ?? a.valueSpan ?? a.nameSpan).sourceStart;
+  }
+  return a.nameSpan.sourceStart;
 }
 export function readLiteral(n: SyntaxNode | null | undefined): Literal | Atom {
   if (!n) throw new Error("Use a literal value here");
@@ -82,14 +108,16 @@ export function readLiteral(n: SyntaxNode | null | undefined): Literal | Atom {
   }
   throw new Error("Use a literal value here");
 }
-export function valueOf(a: DataAttr | undefined): Literal | Atom {
+export function valueOf(a: Attr | undefined): Literal | Atom {
   if (!a) throw new Error("This option needs a value");
-  if (a.kind === "atom") return { value: a.value };
-  if (a.kind === "string") return a.value;
+  const atom = atomOf(a);
+  if (atom) return { value: atom.name };
+  const text = plainString(a);
+  if (text) return text.value;
   if (a.kind === "boolean") return true;
   return readLiteral(nodeOf(a));
 }
-export function atomList(a: DataAttr | undefined): string[] {
+export function atomList(a: Attr | undefined): string[] {
   if (!a) return [];
   const n = nodeOf(a);
   if (n?.type !== "ArrayExpression")
@@ -100,10 +128,10 @@ export function atomList(a: DataAttr | undefined): string[] {
     return String(e.value);
   });
 }
-export function declaredName(tag: DataTag): string {
-  const a = attr(tag, "name");
-  if (a?.kind !== "atom") throw new Error("A declaration name must be an atom");
-  return a.value;
+export function declaredName(tag: Tag): string {
+  const atom = atomOf(attr(tag, "name"));
+  if (!atom) throw new Error("A declaration name must be an atom");
+  return atom.name;
 }
 export function memberNode(
   n: SyntaxNode | null | undefined,
@@ -115,14 +143,14 @@ export function memberNode(
     : undefined;
 }
 /** A member slot: `{ kind: "member" }` after a kind, or a whole value that is one marked member (`on:load=&visible`). */
-export function readMember(a: DataAttr | undefined, at: At): MemberRef {
-  if (a?.kind === "member")
-    return { name: a.value, position: at(a.span.sourceStart) };
+export function readMember(a: Attr | undefined, at: At): MemberRef {
+  const member = memberOf(a);
+  if (member) return { name: member.name, position: at(member.span.sourceStart) };
   const ref = memberNode(nodeOf(a), at);
   if (!ref) throw new Error("Expected a member reference (&name)");
   return ref;
 }
-export function readMembers(a: DataAttr | undefined, at: At): MemberRef[] {
+export function readMembers(a: Attr | undefined, at: At): MemberRef[] {
   const n = nodeOf(a);
   if (n?.type !== "ArrayExpression") throw new Error("Use a list of member references, such as [&title]");
   return (n.elements ?? []).map((e) => {
@@ -137,16 +165,16 @@ export function readMembers(a: DataAttr | undefined, at: At): MemberRef[] {
  * `trigger: { id: "member", … }`. An authored `member name="x"` has no
  * `trigger`; `member` is lowering output, never authored.
  */
-export function isMemberLine(tag: DataTag): boolean {
+export function isMemberLine(tag: Tag): boolean {
   return tag.name === "member" && tag.trigger?.id === "member";
 }
 /** A lowered tagless `&name` / `&name=value` line (see `isMemberLine`). */
 export function readMemberLine(
-  tag: DataTag,
+  tag: Tag,
   at: At,
-): { ref: MemberRef; value?: DataAttr } {
-  const name = attr(tag, "name");
-  if (!isMemberLine(tag) || name?.kind !== "string")
+): { ref: MemberRef; value?: Attr } {
+  const name = plainString(attr(tag, "name"));
+  if (!isMemberLine(tag) || !name)
     throw new Error("Expected a tagless member line (&name)");
   const value = attr(tag, "value");
   return {
@@ -160,13 +188,13 @@ export interface MemberAssignment {
   position: SourcePosition;
 }
 export function expression(
-  a: DataAttr | undefined,
+  a: Attr | undefined,
   source: string,
   at: At,
   visit: (ref: MemberRef) => void,
   assign: (assignment: MemberAssignment) => void = () => {},
 ): Expression {
-  if (a?.kind !== "expression")
+  if (a?.kind !== "dynamic")
     throw new Error("This declaration needs a function body");
   const n = nodeOf(a);
   if (!n || !["ArrowFunctionExpression", "FunctionExpression"].includes(n.type))
@@ -179,8 +207,8 @@ export function expression(
         )
       : [],
   );
-  // DataExpr.code is printed (`self.x`); the authored text is the span's slice.
-  const data = a.value;
+  // Expr.code is printed (`self.x`); the authored text is the span's slice.
+  const data: DynamicAttr["value"] = a.value;
   return {
     source: source.slice(data.span.sourceStart, data.span.sourceEnd),
     params,

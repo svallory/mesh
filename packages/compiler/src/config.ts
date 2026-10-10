@@ -4,7 +4,9 @@ import { readFile, stat, realpath, lstat } from "node:fs/promises";
 import type { Diagnostic } from "@meshfw/model";
 import type { DataAdapter, ExtensionDescriptor } from "@meshfw/runtime";
 export { defineConfig, type MeshConfig, type ExtensionDescriptor } from "@meshfw/runtime";
-import { buildModel, error, positionAt, type BuildResult } from "./build.ts";
+import { buildModel } from "./front-end/build.ts";
+import { hasMeshExtension, meshExtensionsText, meshGlob } from "./front-end/extensions.ts";
+import { error, positionAt, type BuildResult } from "./model/index.ts";
 import { absolutePath, canonicalFuturePath, confinedGlob, foreignAbsolute, inside, normalizePath, projectPath, resolveEntityFile, errorCode } from "./paths.ts";
 
 export interface ResolvedConfig {
@@ -120,12 +122,12 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
           fail("domain", `Entity file "${projectPath(root, candidate)}" resolves outside the project`);
         } else {
           const cwd = folder ? candidate : root;
-          const glob = folder ? "**/*.mesh.mx" : input;
+          const glob = folder ? meshGlob : input;
           // A partial segment before a wildcard is not a static directory.
           const wildcard = input.search(/[*?{\[]/);
           const prefix = wildcard < 0 ? input : input.slice(0, wildcard);
           domainRoot = folder ? candidate : resolve(root, prefix.slice(0, prefix.lastIndexOf("/") + 1) || ".");
-          for await (const file of new Bun.Glob(glob).scan({ cwd, onlyFiles: true, followSymlinks: true, dot: true })) if (file.endsWith(".mesh.mx")) files.push(resolve(cwd, normalizePath(file)));
+          for await (const file of new Bun.Glob(glob).scan({ cwd, onlyFiles: true, followSymlinks: true, dot: true })) if (hasMeshExtension(file)) files.push(resolve(cwd, normalizePath(file)));
           if (files.length === 0) fail("domain", "Configuration field `domain` matches no files");
         }
       } catch (cause) { fail("domain", `Cannot expand entity file glob (${errorCode(cause) ?? "UNKNOWN"})`); }
@@ -134,7 +136,7 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
     for (const item of domain as string[]) {
       const path = absolutePath(item) ? null : resolveEntityFile(root, item);
       if (!path) fail("domain", "Entity file path must resolve inside the project");
-      else if (!path.file.endsWith(".mesh.mx")) fail("domain", "Entity files must end in .mesh.mx");
+      else if (!hasMeshExtension(path.file)) fail("domain", `Entity files must end in ${meshExtensionsText}`);
       else files.push(path.absolute);
     }
     if (files.length) {

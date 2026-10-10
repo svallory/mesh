@@ -92,7 +92,7 @@ const options = (type: string) => ({
 });
 const steps = children("set", "when", "load", "run");
 const body = { validate: {}, do: {} };
-// The `member` child MX lowers a tagless `&name` line to (`MESH_SYNTAX`). An
+// The `member` child MX lowers a tagless `&name` line to (`MESH_DIALECT`). An
 // inline wildcard contract, so no `member` tag is authorable at large; under
 // input/set the builder still refuses an authored `member name="x"`.
 const memberLine = (attributes: Record<string, CustomTagAttribute>) => ({

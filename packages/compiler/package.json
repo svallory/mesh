@@ -6,11 +6,10 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./contracts": "./src/contracts.ts"
+    "./contracts": "./src/front-end/contracts.ts"
   },
   "files": [
-    "src",
-    "templates"
+    "src"
   ],
   "description": "Mesh entity-file syntax v4 as MX CustomTag contracts",
   "scripts": {
@@ -18,15 +17,13 @@
     "typecheck": "tsc --noEmit"
   },
   "mx": {
-    "target": "tree",
-    "contracts": "./src/contracts.ts"
+    "contracts": "./src/front-end/contracts.ts"
   },
   "dependencies": {
     "@jig-lang/jig": "1.0.1",
     "@meshfw/model": "workspace:*",
     "@meshfw/runtime": "workspace:*",
-    "@mxlang/core": "0.1.0-alpha.14",
-    "@mxlang/data": "0.1.0-alpha.14",
+    "@mxlang/core": "0.1.0-alpha.15",
     "prettier": "3.6.2"
   },
   "devDependencies": {

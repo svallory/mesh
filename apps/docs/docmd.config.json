@@ -425,6 +425,10 @@
             {
               "title": "0075. Three lifecycle seams, named as the extension host's points",
               "path": "/architecture/decisions/0075-seams-use-the-extension-hosts-names/"
+            },
+            {
+              "title": "0076. The compiler's front end and its TypeScript back end",
+              "path": "/architecture/decisions/0076-compiler-front-end-and-back-end-are-separate/"
             }
           ]
         },

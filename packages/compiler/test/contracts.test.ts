@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
-import { createTargetLookup, getCustomTags, type WildcardChildEntry } from "@mxlang/core";
-import descriptor from "@mxlang/data/descriptor";
-import contracts, { ATTRIBUTE_TYPES } from "../src/contracts.ts";
-import { buildModel } from "../src/build.ts";
+import { type WildcardChildEntry } from "@mxlang/core";
+import contracts, { ATTRIBUTE_TYPES } from "../src/front-end/contracts.ts";
+import { buildModel } from "../src/front-end/build.ts";
 import { coverageProject } from "./coverage-examples.ts";
 import { fixture, fixtureDir, parse, parseFixture } from "./helpers.ts";
 import { build, keyed, todo } from "./v4.ts";
@@ -18,18 +17,15 @@ describe("v4 contracts", () => {
       expect(contract.finalize).toBeUndefined();
     }
   });
-  test("manifest exposes the same contracts through the tree target", () => {
+  test("manifest exposes the same contracts through mx.contracts, and declares no target", async () => {
     const manifest = JSON.parse(
       readFileSync(new URL("../package.json", import.meta.url), "utf8"),
     );
     expect(manifest.mx).toEqual({
-      target: "tree",
-      contracts: "./src/contracts.ts",
+      contracts: "./src/front-end/contracts.ts",
     });
-    const loaded = getCustomTags(`${fixtureDir}post.mesh.mx`, {
-      targets: createTargetLookup([descriptor]),
-      host: null,
-    });
+    // No target is declared, so MX has nothing to scan with; the module the manifest names is the contracts.
+    const loaded = (await import(new URL(manifest.mx.contracts, new URL("../package.json", import.meta.url)).href)).default;
     expect(Object.keys(loaded).sort()).toEqual(Object.keys(contracts).sort());
   });
   test("full currently supported vocabulary parses with contracts", () =>
@@ -66,7 +62,7 @@ describe("v4 contracts", () => {
         define: "<define/foo>\n</define>",
       };
       const result = parse(sources[tag]!);
-      expect(result.tree).toBeUndefined();
+      expect(result.ir).toBeUndefined();
       expect(result.diagnostics.length).toBeGreaterThan(0);
     },
   );
@@ -97,6 +93,14 @@ describe("v4 contracts", () => {
   ])("rejects old options or invalid shapes %s", (suffix) =>
     expect(parse(keyed + suffix).diagnostics.length).toBeGreaterThan(0),
   );
+  // MX regression, reported 2026-10-10: on alpha.14 this said "`<belongs-to>`: unknown attribute `value`"
+  // at 5:14 (the `=`); alpha.15 reports the second atom instead. A later MX fix should change this test.
+  test("old-relationship: exact message and position on alpha.15", () => {
+    const result = parseFixture("negative/old-relationship.mesh.mx");
+    expect(result.diagnostics.map((d) => ["MESH_SYNTAX", d.message, d.line, d.column])).toEqual([
+      [ "MESH_SYNTAX", "Expected a single expression, but found `:` after it.", 5, 21],
+    ]);
+  });
   test("every negative fixture fails with a positioned diagnostic", () => {
     const files = readdirSync(`${fixtureDir}negative`).filter((f) =>
       f.endsWith(".mesh.mx"),
@@ -122,7 +126,8 @@ describe("v4 contracts", () => {
       "unknown-entity": ["MESH_UNKNOWN_ENTITY", 5, 28],
       const: ["MESH_SYNTAX", 1, 0],
       "old-module": ["MESH_SYNTAX", 1, 13],
-      "old-relationship": ["MESH_SYNTAX", 5, 14],
+      // MX regression, reported 2026-10-10: also pinned exactly by its own test above.
+      "old-relationship": ["MESH_SYNTAX", 5, 21],
       "atom-input": ["MESH_SYNTAX", 7, 8],
       "read-input-member": ["MESH_READ_INPUT_MEMBER", 7, 8],
       "unknown-import": ["MESH_UNKNOWN_IMPORT", 1, 0],
