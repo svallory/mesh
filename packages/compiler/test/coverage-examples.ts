@@ -32,6 +32,6 @@ export function coverageProject(tag: string, option: string | undefined, example
   const render = (entry: Node, indent = ""): string => indent + entry.line + "\n" + entry.children.map((child) => render(child, indent + "  ")).join("");
   return { root: "/project", files: [
     { file: "docs/sample.mesh.mx", source: 'import { Line } from "./line.mesh.mx"\n' + render(root) },
-    { file: "docs/line.mesh.mx", source: "entity :Line\n  attributes\n    uuid :id primary-key\n    decimal :amount\n    date :dueOn\n" },
+    { file: "docs/line.mesh.mx", source: 'import { Sample } from "./sample.mesh.mx"\nentity :Line\n  attributes\n    uuid :id primary-key\n    decimal :amount\n    date :dueOn\n  relationships\n    belongs-to :owner entity=Sample nullable\n' },
   ] };
 }

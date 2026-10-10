@@ -3,9 +3,12 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
+import type { Post } from "./post.types";
+
 export type Comment = {
   id: string;
   body: string;
+  postId: string;
 };
 
 export type ReadCommentInput = {
@@ -15,12 +18,21 @@ export type ReadCommentInput = {
   offset?: number | undefined;
 };
 
+/** What `load` attaches to a Comment. The record has none of it, so reading one that was not loaded is a type error. */
+export type CommentLoadable = {
+  post: Post;
+};
+
+/** A Comment with the relationships and computed fields named in N loaded. */
+export type CommentWith<N extends keyof CommentLoadable> = Comment & Pick<CommentLoadable, N>;
+
 export type CommentFilter =
   | { and: readonly CommentFilter[] }
   | { or: readonly CommentFilter[] }
   | {
       id?: $Comparison<string>;
       body?: $Comparison<string>;
+      postId?: $Comparison<string>;
     };
 
-export type CommentSort = readonly ("id" | "-id" | "body" | "-body")[];
+export type CommentSort = readonly ("id" | "-id" | "body" | "-body" | "postId" | "-postId")[];

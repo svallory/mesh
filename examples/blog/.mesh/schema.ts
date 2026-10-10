@@ -6,6 +6,7 @@ import { sqliteTable as _meshSqlite, integer, real, text } from "drizzle-orm/sql
 export const commentTable = _meshSqlite("comments", {
   id: text("id").notNull().primaryKey(),
   body: text("body").notNull(),
+  postId: text("postId").notNull(),
 });
 
 export const postTable = _meshSqlite("posts", {

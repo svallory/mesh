@@ -1,4 +1,4 @@
-import { dirname, relative, resolve } from "node:path";
+import { basename, dirname, relative, resolve } from "node:path";
 import { realpathSync, statSync } from "node:fs";
 import {
   foreignAbsolute,
@@ -45,6 +45,8 @@ import {
   unknownMember,
   type PendingRollup,
 } from "./rollups.ts";
+import { resolveRelationships } from "./relationships.ts";
+import { computeNeeds } from "../model/needs.ts";
 import {
   atomList,
   atomOf,
@@ -169,6 +171,7 @@ function buildEntity(
   diagnostics: Diagnostic[],
   rollups: PendingRollup[],
   importDetails: Map<Import, ParsedImport>,
+  viaPositions: Map<Relationship, SourcePosition>,
   folder: string,
 ): Entity {
   const at = (offset: number) => positionAt(source, file, offset);
@@ -242,7 +245,19 @@ function buildEntity(
   };
   const helperImports = new Map<string, string>();
   for (const entry of entity.imports)
-    if (!hasMeshExtension(entry.from)) for (const name of entry.identifiers) helperImports.set(name, entry.from);
+    if (!hasMeshExtension(entry.from))
+      for (const [index, name] of entry.identifiers.entries()) {
+        helperImports.set(name, entry.from);
+        // Generated code names its own internals `$...` and prints every authored local as `l$...`.
+        if (/^(\$|l\$)/.test(name)) {
+          const localOffset = importDetails.get(entry)?.bindings[index]?.localOffset;
+          fail(
+            "MESH_HELPER_NAME",
+            `The helper name ${name} cannot start with $ or l$: generated code uses those prefixes for its own names`,
+            localOffset === undefined ? entry.position : at(localOffset),
+          );
+        }
+      }
   const expr = (a: Attr | undefined, scope: "expression" | "filter" = "expression", runStep = false): Expression =>
     expression(
       a,
@@ -394,11 +409,13 @@ function buildEntity(
   for (const tag of tags(section("relationships")?.children ?? [])) {
     const identifier = nodeOf(attr(tag, "entity"))?.name ?? "";
     const imported = importNames.get(identifier);
-    if (!imported || !hasMeshExtension(imported.from)) {
+    // An entity relates to its own type by its own name, with no import.
+    const itself = !imported && identifier === entity.name;
+    if (!itself && (!imported || !hasMeshExtension(imported.from))) {
       const names = [...importNames.keys()].filter((n) =>
         hasMeshExtension(importNames.get(n)!.from),
       );
-      const suggestion = nearestName(identifier, new Set(names));
+      const suggestion = nearestName(identifier, new Set([...names, entity.name]));
       fail(
         "MESH_UNKNOWN_ENTITY",
         `${identifier} is not an imported entity.${suggestion ? ` Did you mean ${suggestion}?` : ""}`,
@@ -407,14 +424,18 @@ function buildEntity(
     }
     const name = declaredName(tag);
     const kind = tag.name as Relationship["kind"];
-    entity.relationships.push({
+    const via = atomOf(attr(tag, "via"))?.name;
+    const relation: Relationship = {
       kind,
       name,
-      entity: { identifier, from: imported?.from ?? "" },
+      entity: { identifier, from: itself ? `./${basename(file)}` : imported?.from ?? "" },
       nullable: opt(tag, "nullable") === true,
       ...(kind === "belongs-to" ? { keyColumn: `${name}Id` } : {}),
+      ...(via !== undefined ? { via } : {}),
       position: pos(tag),
-    });
+    };
+    entity.relationships.push(relation);
+    if (via !== undefined) viaPositions.set(relation, at(attrOffset(attr(tag, "via")!)));
   }
   for (const tag of tags(section("computed")?.children ?? [])) {
     const base = { name: declaredName(tag), position: pos(tag) };
@@ -437,19 +458,29 @@ function buildEntity(
       });
       rollups.push({ entity, computed, segments });
     } else {
-      if (
-        tag.attrs.some(
-          (a) => a.kind !== "spread" && a.name !== "name" && a.name !== "value",
-        )
-      )
+      const allowed = tag.name === "enum" ? ["name", "value", "values"] : ["name", "value"];
+      if (tag.attrs.some((a) => a.kind !== "spread" && !allowed.includes(a.name)))
         fail(
           "MESH_COMPUTED_OPTIONS",
-          "A computed function takes only its name and body",
+          tag.name === "enum"
+            ? "A computed enum takes only its name, its values and its body"
+            : "A computed function takes only its name and body",
           tag,
         );
       const body = readAt(tag, at, () => expr(attr(tag, "value")));
       if (body.diagnostic) diagnostics.push(body.diagnostic);
-      else entity.computed.push({ ...base, type: tag.name as AttributeType, body: body.value });
+      else {
+        const field: Computed = { ...base, type: tag.name as AttributeType, body: body.value };
+        const values = attr(tag, "values");
+        if (tag.name === "enum") {
+          // The values are optional on a computed enum: without them its TypeScript type is `string`.
+          if (values) {
+            field.values = atomList(values).map((value) => ({ value }));
+            checkShape({ type: "enum", nullable: false, values: field.values, position: base.position });
+          }
+        }
+        entity.computed.push(field);
+      }
     }
   }
   const checks = (holder: Tag): Check[] => {
@@ -746,6 +777,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
   const document: ModelDocument = { entities: [] };
   const rollups: PendingRollup[] = [];
   const importDetails = new Map<Import, ParsedImport>();
+  const viaPositions = new Map<Relationship, SourcePosition>();
   if (foreignAbsolute(project.root))
     return {
       document: null,
@@ -830,6 +862,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
             diagnostics,
             rollups,
             importDetails,
+            viaPositions,
             normalizePath(relative(domainRoot, dirname(path.absolute))),
           ),
         );
@@ -897,8 +930,10 @@ export function buildModel(project: ProjectDescription): BuildResult {
         );
     }
   }
+  resolveRelationships(document, viaPositions, diagnostics);
   resolveRollups(document, rollups, diagnostics);
   checkExpressions(document, diagnostics, { editsOf });
+  computeNeeds(document, diagnostics);
   const invalid = findNonJsonValue(document);
   if (invalid)
     diagnostics.push(

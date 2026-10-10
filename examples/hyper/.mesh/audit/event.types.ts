@@ -46,6 +46,14 @@ export type ReadEventInput = {
   offset?: number | undefined;
 };
 
+/** What `load` attaches to a Event. The record has none of it, so reading one that was not loaded is a type error. */
+export type EventLoadable = {
+  task: Task | null;
+};
+
+/** A Event with the relationships and computed fields named in N loaded. */
+export type EventWith<N extends keyof EventLoadable> = Event & Pick<EventLoadable, N>;
+
 export type EventFilter =
   | { and: readonly EventFilter[] }
   | { or: readonly EventFilter[] }

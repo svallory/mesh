@@ -5,6 +5,18 @@ import type { Comparison as $Comparison } from "@meshfw/runtime";
 
 import type { Collaborator } from "../identity/collaborator.types";
 
+import type { Dependency } from "./dependency.types";
+
+import type { Assignment } from "./assignment.types";
+
+import type { Claim } from "./claim.types";
+
+import type { Submission } from "./submission.types";
+
+import type { Completion } from "./completion.types";
+
+import type { Event } from "../audit/event.types";
+
 export type Task = {
   id: string;
   title: string;
@@ -42,6 +54,31 @@ export type ReadTaskInput = {
   offset?: number | undefined;
 };
 
+/** What `load` attaches to a Task. The record has none of it, so reading one that was not loaded is a type error. */
+export type TaskLoadable = {
+  parent: Task | null;
+  creator: Collaborator;
+  children: Task[];
+  dependencies: Dependency[];
+  dependents: Dependency[];
+  assignments: Assignment[];
+  claims: Claim[];
+  submissions: Submission[];
+  completions: Completion[];
+  events: Event[];
+  childrenSettled: boolean;
+  claimed: boolean;
+  lapsedClaim: boolean;
+  inReview: boolean;
+  assigned: boolean;
+  blocked: boolean;
+  maxFence: number | null;
+  derivedState: "ready" | "blocked" | "claimed" | "in-review" | "done" | "canceled";
+};
+
+/** A Task with the relationships and computed fields named in N loaded. */
+export type TaskWith<N extends keyof TaskLoadable> = Task & Pick<TaskLoadable, N>;
+
 export type TaskFilter =
   | { and: readonly TaskFilter[] }
   | { or: readonly TaskFilter[] }
@@ -55,6 +92,16 @@ export type TaskFilter =
       createdAt?: $Comparison<Date>;
       parentId?: $Comparison<string>;
       creatorId?: $Comparison<string>;
+      childrenSettled?: $Comparison<boolean>;
+      claimed?: $Comparison<boolean>;
+      lapsedClaim?: $Comparison<boolean>;
+      inReview?: $Comparison<boolean>;
+      assigned?: $Comparison<boolean>;
+      blocked?: $Comparison<boolean>;
+      maxFence?: $Comparison<number>;
+      derivedState?: $Comparison<
+        "ready" | "blocked" | "claimed" | "in-review" | "done" | "canceled"
+      >;
     };
 
 export type TaskSort = readonly (
@@ -76,4 +123,20 @@ export type TaskSort = readonly (
   | "-parentId"
   | "creatorId"
   | "-creatorId"
+  | "childrenSettled"
+  | "-childrenSettled"
+  | "claimed"
+  | "-claimed"
+  | "lapsedClaim"
+  | "-lapsedClaim"
+  | "inReview"
+  | "-inReview"
+  | "assigned"
+  | "-assigned"
+  | "blocked"
+  | "-blocked"
+  | "maxFence"
+  | "-maxFence"
+  | "derivedState"
+  | "-derivedState"
 )[];

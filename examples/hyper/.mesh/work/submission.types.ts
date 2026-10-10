@@ -35,6 +35,16 @@ export type ReadSubmissionInput = {
   offset?: number | undefined;
 };
 
+/** What `load` attaches to a Submission. The record has none of it, so reading one that was not loaded is a type error. */
+export type SubmissionLoadable = {
+  task: Task;
+  submitter: Collaborator;
+};
+
+/** A Submission with the relationships and computed fields named in N loaded. */
+export type SubmissionWith<N extends keyof SubmissionLoadable> = Submission &
+  Pick<SubmissionLoadable, N>;
+
 export type SubmissionFilter =
   | { and: readonly SubmissionFilter[] }
   | { or: readonly SubmissionFilter[] }

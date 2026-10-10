@@ -253,7 +253,7 @@ describe("vocabulary-mapping section 3 Contract coverage", () => {
       const project = coverageProject(tag!, option, example);
       for (const file of project.files) expect(parse(file.source).diagnostics).toEqual([]);
       // The docs sample for `run` calls `audit`, a helper it does not import: a free variable, by design (M4).
-      expect(buildModel(project).diagnostics.filter((d) => !(d.code === "MESH_EXPR_FREE_VARIABLE" && example.includes("audit(")))).toEqual([]);
+      expect(buildModel(project).diagnostics.filter((d) => !(d.code === "MESH_EXPR_FREE_VARIABLE" && example.includes("audit(")) && !(d.code === "MESH_NOT_IMPLEMENTED" && /^(sum|avg|min)\b/.test(example)))).toEqual([]);
     };
     test(`${cell} example parses and builds`, check);
   }

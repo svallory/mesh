@@ -284,6 +284,36 @@ describe("the data adapter's capabilities", () => {
     }
   });
 
+  describe("count and max rollups call the data layer's aggregates", () => {
+    async function rollupProject(adapter: string, computed: string) {
+      const root = await mkdtemp(resolve(import.meta.dir, "../mesh-cap-"));
+      roots.push(root);
+      await mkdir(resolve(root, "src/domain"), { recursive: true });
+      await writeFile(resolve(root, "src/domain/list.mesh.mx"), `import { Todo } from "./todo.mesh.mx"\nentity :List\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :todos entity=Todo\n  computed\n    ${computed}\n`);
+      await writeFile(resolve(root, "src/domain/todo.mesh.mx"), `import { List } from "./list.mesh.mx"\nentity :Todo\n  attributes\n    uuid :id primary-key\n    integer :rank\n  relationships\n    belongs-to :list entity=List\n`);
+      await writeFile(resolve(root, "mesh.config.ts"), `export default { domain: "src/domain", output: ".mesh", data: { kind: "data-adapter", name: "fake", build: "./none", ${adapter} options: {} } };\n`);
+      return root;
+    }
+    test.each([['count :todoCount of="todos"', "count"], ['max :topRank of="todos.rank"', "max"]])("%s fails without aggregates, at the rollup", async (computed, fn) => {
+      const loaded = await loadConfig(await rollupProject(manifest("integer-key-fill"), computed));
+      const built = await loadProject(loaded.config!);
+      expect(built.document).toBeNull();
+      expect(built.diagnostics).toEqual([expect.objectContaining({
+        code: "MESH_CAPABILITY", severity: "error",
+        message: `Entity :List has the ${fn} rollup :${computed.split(" ")[1]!.slice(1)}, which calls the data layer's ${fn}, and the data adapter "fake" does not declare the aggregates capability`,
+        position: expect.objectContaining({ line: 8 }),
+        fix: "Use a data adapter that declares aggregates, or remove the rollup",
+      })]);
+    });
+    test("with aggregates it builds; a model with no rollup needs nothing", async () => {
+      const ok = await loadProject((await loadConfig(await rollupProject(manifest("aggregates"), 'count :todoCount of="todos"'))).config!);
+      expect(ok.diagnostics).toEqual([]);
+      expect(ok.document).not.toBeNull();
+      const plain = await loadProject((await loadConfig(await rollupProject(manifest(), 'boolean :empty() { return &todos.length === 0 }'))).config!);
+      expect(plain.diagnostics).toEqual([]);
+    });
+  });
+
   test("an adapter with no manifest, or an invalid one, fails the configuration", async () => {
     const missing = await loadConfig(await project(""));
     expect(missing.config).toBeNull();

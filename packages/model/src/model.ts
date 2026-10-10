@@ -65,7 +65,12 @@ export interface Relationship {
   name: string;
   entity: EntityRef;
   nullable: boolean;
+  /** `belongs-to` only: the stored column that holds the target's key. */
   keyColumn?: string;
+  /** `belongs-to` only: the type of the target's primary key, which is the type of `keyColumn`. Set when the build resolves the target. */
+  keyType?: AttributeType;
+  /** `has-many` and `has-one`: the name of the target's `belongs-to` this relationship follows, authored (`via=:name`) or the only candidate. Set when the build resolves the target. */
+  via?: string;
   position: SourcePosition;
 }
 export type Rollup = {
@@ -76,6 +81,14 @@ export type Rollup = {
 export type Computed = {
   name: string;
   type: AttributeType;
+  /** An `enum` computed field names its values, as an enum attribute does. */
+  values?: Atom[];
+  /**
+   * What loading this field needs on the record first (M7): dotted paths of relationships and
+   * computed fields on `self`, such as `claims`, `dependencies.prerequisite` or `claimed`. A
+   * prefix of a path is implied by it. Present on a field with a body; sorted, without duplicates.
+   */
+  needs?: string[];
   position: SourcePosition;
 } & (
   | { body: Expression; rollup?: never; nullable?: boolean }

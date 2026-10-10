@@ -32,6 +32,17 @@ export type ReadDependencyInput = {
   offset?: number | undefined;
 };
 
+/** What `load` attaches to a Dependency. The record has none of it, so reading one that was not loaded is a type error. */
+export type DependencyLoadable = {
+  dependent: Task;
+  prerequisite: Task;
+  createdBy: Collaborator;
+};
+
+/** A Dependency with the relationships and computed fields named in N loaded. */
+export type DependencyWith<N extends keyof DependencyLoadable> = Dependency &
+  Pick<DependencyLoadable, N>;
+
 export type DependencyFilter =
   | { and: readonly DependencyFilter[] }
   | { or: readonly DependencyFilter[] }

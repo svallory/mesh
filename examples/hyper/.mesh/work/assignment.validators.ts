@@ -50,9 +50,9 @@ export const assignmentFilter: z.ZodType<AssignmentFilter> = z.lazy(
         startedAt: comparison(z.date()).exactOptional(),
         endedAt: comparison(z.date()).exactOptional(),
         endReason: comparison(z.enum(["reassigned", "unassigned"])).exactOptional(),
-        taskId: comparison(z.string()).exactOptional(),
-        assigneeId: comparison(z.string()).exactOptional(),
-        delegatorId: comparison(z.string()).exactOptional(),
+        taskId: comparison(z.uuid()).exactOptional(),
+        assigneeId: comparison(z.uuid()).exactOptional(),
+        delegatorId: comparison(z.uuid()).exactOptional(),
       }),
     ]) as unknown as z.ZodType<AssignmentFilter>,
 );

@@ -51,8 +51,8 @@ export const submissionFilter: z.ZodType<SubmissionFilter> = z.lazy(
         taskVersion: comparison(z.int()).exactOptional(),
         state: comparison(z.enum(["pending", "accepted", "returned", "withdrawn"])).exactOptional(),
         submittedAt: comparison(z.date()).exactOptional(),
-        taskId: comparison(z.string()).exactOptional(),
-        submitterId: comparison(z.string()).exactOptional(),
+        taskId: comparison(z.uuid()).exactOptional(),
+        submitterId: comparison(z.uuid()).exactOptional(),
       }),
     ]) as unknown as z.ZodType<SubmissionFilter>,
 );

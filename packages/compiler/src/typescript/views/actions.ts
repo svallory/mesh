@@ -2,7 +2,7 @@ import { dirname, relative } from "node:path";
 import type { Action, Atom, Attribute, Entity, Expression, Literal, SourcePosition, Step } from "@meshfw/model";
 import { emitError } from "../emit-error.ts";
 import type { EmitInput } from "../emit.ts";
-import { camelCase, effectiveActions, entityInputs, entityPath, entitySegment, propertyName, typeName, valueName } from "./inputs.ts";
+import { camelCase, computedColumns, effectiveActions, entityInputs, entityPath, entitySegment, propertyName, typeName, valueName } from "./inputs.ts";
 import { entityFileComment } from "./types.ts";
 
 /**
@@ -168,7 +168,7 @@ function columnOf(entity: Entity, name: string, position: SourcePosition): { nam
   const attribute = entity.attributes.find((a) => a.name === name);
   if (attribute) return attribute;
   const relation = entity.relationships.find((r) => r.name === name && r.keyColumn);
-  if (relation) return { name: relation.keyColumn!, type: "string" };
+  if (relation) return { name: relation.keyColumn!, type: relation.keyType ?? "string" };
   throw emitError("MESH_UNKNOWN_MEMBER", `Unknown member &${name} in entity :${entity.name}`, position);
 }
 
@@ -215,8 +215,14 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
             `${base.functionName} cannot run in this version: its ${parts} ${action.filter && action.sort ? "are" : "is"} evaluated by the SQL evaluator, which arrives in M10`), statements: [] };
         }
         const query = ["filter", "sort", "limit", "offset"].map((name) => `${name}: ${read("parsed", name)}`).join(", ");
+        // A filter or sort by a computed field or rollup is the SQL evaluator's job (M10): say so before touching the database.
+        const computed = computedColumns(entity).map((column) => JSON.stringify(column.name));
+        if (computed.length) runtime.add("rejectComputedQuery");
         return { ...base, returnType: `${recordName}[]`, unsupported: null, usesParsed: true,
-          statements: [`return (await tx.select(${table}, { ${query} })) as ${recordName}[];`] };
+          statements: [
+            ...(computed.length ? [`rejectComputedQuery(${JSON.stringify(entity.name)}, [${computed.join(", ")}], parsed);`] : []),
+            `return (await tx.select(${table}, { ${query} })) as ${recordName}[];`,
+          ] };
       }
       case "destroy": {
         const accepted = action.input[0];

@@ -123,7 +123,7 @@ function tableView(entity: Entity): TableView {
       (attribute.values ?? []).map((atom) => atom.value), attribute.unique));
   }
   for (const relation of entity.relationships) {
-    if (relation.keyColumn) add(relation.keyColumn, relation.position, column(relation.keyColumn, "string", relation.nullable, false, []));
+    if (relation.keyColumn) add(relation.keyColumn, relation.position, column(relation.keyColumn, relation.keyType ?? "string", relation.nullable, false, []));
   }
   // Entity names are MX identifiers (`:blog-post`), so the camelCase name always is one.
   const key = camelCase(entity.name);

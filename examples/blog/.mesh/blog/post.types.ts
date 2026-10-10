@@ -5,6 +5,8 @@ import type { Comparison as $Comparison } from "@meshfw/runtime";
 
 import type { User } from "./user.types";
 
+import type { Comment } from "./comment.types";
+
 export type Post = {
   id: string;
   title: string;
@@ -55,6 +57,17 @@ export type DestroyPostInput = {
   id: string;
 };
 
+/** What `load` attaches to a Post. The record has none of it, so reading one that was not loaded is a type error. */
+export type PostLoadable = {
+  author: User;
+  comments: Comment[];
+  excerpt: string;
+  commentCount: number;
+};
+
+/** A Post with the relationships and computed fields named in N loaded. */
+export type PostWith<N extends keyof PostLoadable> = Post & Pick<PostLoadable, N>;
+
 export type PostFilter =
   | { and: readonly PostFilter[] }
   | { or: readonly PostFilter[] }
@@ -72,6 +85,8 @@ export type PostFilter =
       insertedAt?: $Comparison<Date>;
       updatedAt?: $Comparison<Date>;
       authorId?: $Comparison<string>;
+      excerpt?: $Comparison<string>;
+      commentCount?: $Comparison<number>;
     };
 
 export type PostSort = readonly (
@@ -101,4 +116,8 @@ export type PostSort = readonly (
   | "-updatedAt"
   | "authorId"
   | "-authorId"
+  | "excerpt"
+  | "-excerpt"
+  | "commentCount"
+  | "-commentCount"
 )[];

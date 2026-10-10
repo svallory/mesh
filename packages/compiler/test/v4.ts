@@ -22,9 +22,6 @@ entity :Todo table="todos"
   computed
     string :label({ self }) { return self.title }
     count :childCount of="children"
-    sum :total of="children.amount"
-    avg :average of="children.amount"
-    min :smallest of="children.amount"
     max :largest of="children.amount"
   actions auto=[:read, :destroy]
     always types=[:create, :update]
@@ -63,7 +60,7 @@ entity :Todo table="todos"
     policy :staff types=[:create, :update, :destroy] authorize-if=({ actor }) => !!actor
 `;
 export const list =
-  "entity :List\n  attributes\n    uuid :id primary-key\n    decimal :amount\n";
+  'import { Todo } from "./todo.mesh.mx"\nentity :List\n  attributes\n    uuid :id primary-key\n    decimal :amount\n  relationships\n    belongs-to :owner entity=Todo nullable\n';
 export const project = (source = todo) => ({
   root: "/project",
   files: [

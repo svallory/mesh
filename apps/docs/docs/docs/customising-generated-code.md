@@ -28,6 +28,7 @@ It copies the generator templates into your project:
   actions.ts.jig
   expressions.ts.jig
   index.ts.jig
+  load.ts.jig
   types.ts.jig
   validators.ts.jig
   schema.ts.jig

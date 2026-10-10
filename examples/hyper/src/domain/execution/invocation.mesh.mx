@@ -1,7 +1,6 @@
 import { Attempt } from "./attempt.mesh.mx"
 import { Task } from "../work/task.mesh.mx"
 import { SessionReference } from "./session-reference.mesh.mx"
-import { Invocation } from "./invocation.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
 
 entity :Invocation table="invocations"

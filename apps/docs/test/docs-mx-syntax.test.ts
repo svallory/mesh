@@ -146,6 +146,13 @@ entity :Todo
   expect(oldSpellingInV4(`${members}  actions\n    read :read\n      filter=() => some(({ self }) => self.title)\n`)).toBeNull();
 });
 
+test("an entity names its own type in a relationship with no import, and no other", () => {
+  const own = "entity :Task\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :parent entity=Task nullable\n    has-many :children entity=Task via=:parent\n";
+  expect(oldSpellingInV4(own)).toBeNull();
+  expect(parseV4(own, "own.mx")).toEqual([]);
+  expect(oldSpellingInV4(own.replace("entity=Task nullable", "entity=Nope nullable"))).toContain("entity=Nope must name an import");
+});
+
 // Member placement is the parse's job now: MX lowers `&name` through MESH_SYNTAX
 // and the production contracts refuse a member line out of place.
 const placementFailures = [

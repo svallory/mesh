@@ -79,7 +79,7 @@ test("mesh db push refuses a stale tree, refuses data loss without --force, and 
     expect(script(dir, "db:push").code).toBe(0);
     // Dropping a table loses data only when it holds rows.
     const db = new Database(join(dir, "blog.db"));
-    try { db.run("INSERT INTO comments (id, body) VALUES ('c1', 'kept')"); } finally { db.close(); }
+    try { db.run("INSERT INTO comments (id, body, postId) VALUES ('c1', 'kept', 'p1')"); } finally { db.close(); }
     rmSync(join(dir, "src/domain/blog/comment.mesh.mx"));
     writeFileSync(join(dir, "src/domain/blog/post.mesh.mx"), readFileSync(join(dir, "src/domain/blog/post.mesh.mx"), "utf8")
       .replace('import { Comment } from "./comment.mesh.mx"\n', "").replace("    has-many :comments entity=Comment\n", "")

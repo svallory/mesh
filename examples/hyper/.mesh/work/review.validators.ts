@@ -53,8 +53,8 @@ export const reviewFilter: z.ZodType<ReviewFilter> = z.lazy(
           z.enum(["parent-assignee", "parent-creator", "task-creator"]),
         ).exactOptional(),
         decidedAt: comparison(z.date()).exactOptional(),
-        submissionId: comparison(z.string()).exactOptional(),
-        reviewerId: comparison(z.string()).exactOptional(),
+        submissionId: comparison(z.uuid()).exactOptional(),
+        reviewerId: comparison(z.uuid()).exactOptional(),
       }),
     ]) as unknown as z.ZodType<ReviewFilter>,
 );

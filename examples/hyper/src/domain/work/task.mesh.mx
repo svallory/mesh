@@ -1,4 +1,4 @@
-import { Task } from "./task.mesh.mx"
+import { Dependency } from "./dependency.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
 import { Assignment } from "./assignment.mesh.mx"
 import { Claim } from "./claim.mesh.mx"
@@ -19,6 +19,8 @@ entity :Task table="tasks"
     belongs-to :parent entity=Task nullable
     belongs-to :creator entity=Collaborator
     has-many :children entity=Task
+    has-many :dependencies entity=Dependency via=:dependent
+    has-many :dependents entity=Dependency via=:prerequisite
     has-many :assignments entity=Assignment
     has-many :claims entity=Claim
     has-many :submissions entity=Submission
@@ -30,6 +32,9 @@ entity :Task table="tasks"
     boolean :lapsedClaim() { return &claims.some((c) => c.state === :active && c.expiresAt <= now()) }
     boolean :inReview() { return &submissions.some((s) => s.state === :pending) }
     boolean :assigned() { return &assignments.some((a) => a.endedAt === null) }
+    boolean :blocked() { return &dependencies.some((d) => d.prerequisite.state !== :done) }
+    max :maxFence of="claims.fence"
+    enum :derivedState values=[:ready, :blocked, :claimed, :in-review, :done, :canceled] value=() => &state === :done ? :done : &state === :canceled ? :canceled : &inReview ? :in-review : &claimed ? :claimed : &blocked ? :blocked : :ready
   actions auto=[:read]
     create :create
       input
