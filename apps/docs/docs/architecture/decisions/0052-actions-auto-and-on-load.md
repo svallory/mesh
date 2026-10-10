@@ -1,13 +1,17 @@
 ---
 title: "0052. Actions are always named; `auto` generates plain actions; `on:load` picks the read Mesh uses"
-description: "Decision record 0052: action declarations, `auto` in place of `defaults`, `on:load`, and the `arguments` section. Status: Accepted."
+description: "Decision record 0052: action declarations, `auto` in place of `defaults`, `on:load`, and the `arguments` section. Status: Accepted, amended by ADR-0067, ADR-0072."
 ---
 
 # 0052. Actions are always named; `auto` generates plain actions; `on:load` picks the read Mesh uses
 
+> **Amended** by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) on 2026-10-10: `on:load` comes after Mesh 1.0; a relationship load uses the entity's auto read. The body below is kept as history.
+
 ## Status
 
 Accepted. Amended by [ADR-0067](./0067-members-imports-input-static-files.md): one `input` section replaces `accept` and `arguments`; `on:load` takes a member reference.
+
+Amended by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) (2026-10-10): `on:load` comes after Mesh 1.0; a relationship load uses the entity's auto read.
 
 ## Date
 

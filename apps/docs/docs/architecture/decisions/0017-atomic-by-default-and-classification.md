@@ -1,15 +1,19 @@
 ---
 title: "0017. Updates are atomic by default; changes and validations are classified"
-description: "Decision record 0017: Updates are atomic by default; changes and validations are classified. Status: Amended by ADR-0053, 0054."
+description: "Decision record 0017: Updates are atomic by default; changes and validations are classified. Status: Accepted, amended by ADR-0053, ADR-0054, ADR-0072."
 ---
 
 # 0017. Updates are atomic by default; changes and validations are classified
 
 > **Amended** by [ADR-0053](./0053-validate-then-do.md) and [ADR-0054](./0054-write-strategy-is-inferred.md) on 2026-10-05: read the successor for what changed. The body below is kept as history.
+>
+> **Amended** by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) on 2026-10-10: Atomic one-statement updates come after Mesh 1.0; until then every update reads the row first, locked, and then writes. The body below is kept as history.
 
 ## Status
 
 Accepted, amended by [ADR-0053](./0053-validate-then-do.md) and [ADR-0054](./0054-write-strategy-is-inferred.md)
+
+Amended by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) (2026-10-10): Atomic one-statement updates come after Mesh 1.0; until then every update reads the row first, locked, and then writes.
 
 ## Date
 

@@ -1,13 +1,17 @@
 ---
 title: "0062. Zod 4 stays; a project depends directly on Zod, Drizzle and the OpenTelemetry API"
-description: "Decision record 0062: the outcome of the validation-library research, the stable Drizzle pin, and which libraries a project installs itself. Status: Accepted."
+description: "Decision record 0062: the outcome of the validation-library research, the stable Drizzle pin, and which libraries a project installs itself. Status: Accepted, amended by ADR-0072."
 ---
 
 # 0062. Zod 4 stays; a project depends directly on Zod, Drizzle and the OpenTelemetry API
 
+> **Amended** by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) on 2026-10-10: The OpenTelemetry API is not a project dependency until tracing returns after Mesh 1.0. The body below is kept as history.
+
 ## Status
 
 Accepted. Confirms [ADR-0028](./0028-validation-zod-behind-standard-schema.md) and [ADR-0048](./0048-schema-inside-the-process-for-tests.md).
+
+Amended by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) (2026-10-10): The OpenTelemetry API is not a project dependency until tracing returns after Mesh 1.0.
 
 ## Date
 

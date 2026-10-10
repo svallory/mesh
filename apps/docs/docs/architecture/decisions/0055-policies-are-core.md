@@ -1,13 +1,17 @@
 ---
 title: "0055. Policies are core; every covering policy must pass; an entity without policies forbids everything"
-description: "Decision record 0055: policy scope by `types=` and `actions=`, how checks combine without order, no `bypass`, fail closed, and policies in core instead of an extension. Status: Accepted."
+description: "Decision record 0055: policy scope by `types=` and `actions=`, how checks combine without order, no `bypass`, fail closed, and policies in core instead of an extension. Status: Accepted, amended by ADR-0071, ADR-0072, ADR-0074."
 ---
 
 # 0055. Policies are core; every covering policy must pass; an entity without policies forbids everything
 
+> **Amended** by [ADR-0071](./0071-system-key-on-the-action-context.md), [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) and [ADR-0074](./0074-write-policies-may-read-through-tx.md) on 2026-10-10: Internal writes pass through a reserved `system` context key and still no `bypass`; record-reading read policies wait for the SQL translator; a write policy may read through `tx`. The body below is kept as history.
+
 ## Status
 
 Accepted. Supersedes [ADR-0036](./0036-deny-by-default-arrives-with-policies.md). Amends [ADR-0022](./0022-policies-simple-tier-as-extension.md) (packaging and policy scope).
+
+Amended by [ADR-0071](./0071-system-key-on-the-action-context.md), [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) and [ADR-0074](./0074-write-policies-may-read-through-tx.md) (2026-10-10): Internal writes pass through a reserved `system` context key and still no `bypass`; record-reading read policies wait for the SQL translator; a write policy may read through `tx`.
 
 ## Date
 

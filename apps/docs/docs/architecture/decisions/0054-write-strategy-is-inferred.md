@@ -1,13 +1,17 @@
 ---
 title: "0054. Mesh infers the write strategy from the action body; there is no `require-atomic`"
-description: "Decision record 0054: an update or destroy is atomic when its body allows it, read-then-write otherwise, chosen at build time and printed by `mesh explain`. Status: Accepted."
+description: "Decision record 0054: an update or destroy is atomic when its body allows it, read-then-write otherwise, chosen at build time and printed by `mesh explain`. Status: Accepted, amended by ADR-0072."
 ---
 
 # 0054. Mesh infers the write strategy from the action body; there is no `require-atomic`
 
+> **Amended** by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) on 2026-10-10: Every update reads the row first until atomic updates return after Mesh 1.0; the inference stays as design. The body below is kept as history.
+
 ## Status
 
 Accepted. Amends [ADR-0017](./0017-atomic-by-default-and-classification.md) (the opt-out attribute).
+
+Amended by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) (2026-10-10): Every update reads the row first until atomic updates return after Mesh 1.0; the inference stays as design.
 
 ## Date
 

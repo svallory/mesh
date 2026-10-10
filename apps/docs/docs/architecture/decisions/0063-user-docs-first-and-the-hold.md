@@ -1,15 +1,19 @@
 ---
 title: "0063. User docs are written first, in the voice of a released 1.0; development is on hold until they are approved"
-description: "Decision record 0063: the docs-first practice, the 1.0 voice, where contributor material goes, and the hold on development. Status: Accepted."
+description: "Decision record 0063: the docs-first practice, the 1.0 voice, where contributor material goes, and the hold on development. Status: Accepted, amended by ADR-0072."
 ---
 
 # 0063. User docs are written first, in the voice of a released 1.0; development is on hold until they are approved
+
+> **Amended** by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) on 2026-10-10: Three sentences of the approved user docs changed with revision 5 of the roadmap, and tracing and `on:load` left them. The body below is kept as history.
 
 ## Status
 
 Accepted
 
 Amended 2026-10-09: the operator approved the user docs and lifted the hold; development resumed.
+
+Amended by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) (2026-10-10): Three sentences of the approved user docs changed with revision 5 of the roadmap, and tracing and `on:load` left them.
 
 ## Date
 
