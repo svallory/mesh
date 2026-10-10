@@ -11,6 +11,7 @@ function fixture() {
     table: () => table,
     insert: (_table, values) => values,
     select: () => [row],
+    aggregate: () => null,
     update: (_table, _condition, values) => { updates++; return [{ ...row, ...values }]; },
     delete: () => [row],
   };
@@ -70,6 +71,7 @@ test("revoked operations reject every method before touching a driver", async ()
 
 // The same operations over a real driver: Drizzle on an in-memory bun:sqlite database.
 import { Database } from "bun:sqlite";
+import { count, max } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { SQLiteTable } from "drizzle-orm/sqlite-core";
 import { pgTable, text as pgText } from "drizzle-orm/pg-core";
@@ -87,7 +89,18 @@ function sqliteOperations() {
   const commands: DrizzleCommands<SQLiteTable> = {
     table: (handle) => drizzleTable(handle, SQLiteTable, "SQLite"),
     insert: (target, values) => db.insert(target).values(values).returning().get()!,
-    select: (target, condition) => db.select().from(target).where(condition).all(),
+    select: (target, options) => {
+      let query = db.select().from(target).$dynamic();
+      if (options?.where) query = query.where(options.where);
+      if (options?.orderBy?.length) query = query.orderBy(...options.orderBy);
+      if (options?.limit !== undefined || options?.offset !== undefined) query = query.limit(options.limit ?? Number.MAX_SAFE_INTEGER);
+      if (options?.offset !== undefined) query = query.offset(options.offset);
+      return query.all();
+    },
+    aggregate: (target, kind, column, where) => {
+      const query = db.select({ value: kind === "max" ? max(column) : count(column) }).from(target).$dynamic();
+      return (where ? query.where(where) : query).get()?.value ?? null;
+    },
     update: (target, condition, changes) => db.update(target).set(changes).where(condition).returning().all(),
     delete: (target, condition) => db.delete(target).where(condition).returning().all(),
   };
