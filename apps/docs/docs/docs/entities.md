@@ -505,7 +505,7 @@ entity :Invoice
         }
 ```
 
-A call through `actions` is an ordinary call with three differences. It joins the running transaction, so a throw anywhere rolls back the payment and the receipt together. It carries your `context` unless you pass another as its second argument. And it is checked like any other call: the action it names runs its own validation, policies and steps, so a cascade can never do what its target forbids. A reason to keep `recordReceipt` for internal use is a policy that says so; see [internal writes](./using-your-domain.md#internal-writes).
+A call through `actions` is an ordinary call with three differences. It joins the running transaction, so a throw anywhere rolls back the payment and the receipt together. That includes a call that fails inside a `try`: the whole action fails even if your code catches the error, so decide before you call, with a `tx` read or its `can<Action>` check. It carries your `context` unless you pass another as its second argument. And it is checked like any other call: the action it names runs its own validation, policies and steps, so a cascade can never do what its target forbids. A reason to keep `recordReceipt` for internal use is a policy that says so; see [internal writes](./using-your-domain.md#internal-writes).
 
 `tx` reads the stored rows as they are inside the transaction. It does not run read policies: it is the rule's own view of the data, available only to code you wrote in the entity file.
 

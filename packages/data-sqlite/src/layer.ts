@@ -127,7 +127,9 @@ export function sqlite(options: SQLiteOptions): SQLiteLayer {
         // Rollback-only: a joined call that fails poisons the whole transaction, even if the
         // outer callback catches the error, so a half-done inner call can never commit.
         const joined = current;
-        return run(current.operations).catch((cause: unknown) => { joined.failed ??= { cause }; throw cause; });
+        // Promise.resolve().then also catches a callback that throws before returning a promise.
+        const operations = current.operations;
+        return Promise.resolve().then(() => run(operations)).catch((cause: unknown) => { joined.failed ??= { cause }; throw cause; });
       }
       return state.exclusive(async (database, token) => {
         try { database.run(sql.raw("BEGIN IMMEDIATE")); }
@@ -156,6 +158,7 @@ export function sqlite(options: SQLiteOptions): SQLiteLayer {
         try {
           const result = await run(operations);
           active = false;
+          token.active = false; // a call from here on starts a new transaction instead of joining
           if (token.failed) {
             throw new FrameworkError("A call joined to this transaction failed, so the transaction is rolled back even though its callback caught the error", { cause: token.failed.cause });
           }
@@ -163,6 +166,7 @@ export function sqlite(options: SQLiteOptions): SQLiteLayer {
           return result;
         } catch (cause) {
           active = false;
+          token.active = false;
           try { database.run(sql.raw("ROLLBACK")); }
           catch (rollback) {
             unusable = { transaction: cause, rollback };

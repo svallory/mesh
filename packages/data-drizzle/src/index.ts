@@ -79,7 +79,8 @@ export function drizzleOperations<T extends Table>(commands: DrizzleCommands<T>,
   // highest key. The queue lives as long as these operations, that is, one transaction.
   const inserts = new Map<Table, Promise<unknown>>();
   const serial = <R>(table: Table, run: () => Promise<R>): Promise<R> => {
-    const result = (inserts.get(table) ?? Promise.resolve()).then(run);
+    // The guard runs again when the queued step starts: its transaction may have ended while it waited.
+    const result = (inserts.get(table) ?? Promise.resolve()).then(() => { guard(); return run(); });
     inserts.set(table, result.then(() => undefined, () => undefined));
     return result;
   };

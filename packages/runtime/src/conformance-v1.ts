@@ -298,6 +298,20 @@ export function contractV1Checks(makeLayer: () => Promise<DataLayerFixtureV1>, m
       await layer.transaction((tx) => tx.insert(uuidTable, { label: "fine" }));
       assert((await layer.transaction((tx) => tx.select(uuidTable))).length === 1, "a later transaction must commit");
     })],
+    ["a joined callback that throws synchronously rejects the commit too", withFixture(async ({ layer, uuidTable }) => {
+      let caught: unknown;
+      try {
+        await layer.transaction(async (tx) => {
+          await tx.insert(uuidTable, { label: "outer" });
+          try {
+            // Not async: it throws before it can return a promise.
+            await layer.transaction(((): Promise<void> => { throw new Error("sync"); }) as never);
+          } catch { /* swallowed */ }
+        });
+      } catch (cause) { caught = cause; }
+      assert(caught instanceof FrameworkError, "a synchronous throw in a joined callback must reject the commit");
+      assert((await layer.transaction((tx) => tx.select(uuidTable))).length === 0, "nothing of that transaction may commit");
+    })],
     ["one failing joined call among parallel ones rolls back all of them", withFixture(async ({ layer, uuidTable }) => {
       const outcome = await failure(layer, async () => {
         const results = await Promise.allSettled([

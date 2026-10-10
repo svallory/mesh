@@ -327,7 +327,7 @@ console.log(todo.id);
 await disconnect();
 ```
 
-`actions` are the functions you import from `#mesh`, bound to this transaction and carrying the context you passed; each still validates its input and runs its own policies. `tx` reads inside the transaction and does not run read policies. A throw rolls back every call. An action that calls `transaction` while another is running joins it rather than opening a second one.
+`actions` are the functions you import from `#mesh`, bound to this transaction and carrying the context you passed; each still validates its input and runs its own policies. `tx` reads inside the transaction and does not run read policies. A throw rolls back every call, and so does a failed call you catch: if an action you call fails, the whole transaction fails even when your code handles the error, so decide before you call, with a `tx` read or its `can<Action>` check. An action that calls `transaction` while another is running joins it rather than opening a second one.
 
 ## Internal writes
 
