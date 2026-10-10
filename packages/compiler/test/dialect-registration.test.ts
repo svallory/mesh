@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { lowerSource, routeDialect, discoverDialects } from "@mxlang/core";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, rmdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { MESH_EXTENSIONS } from "../src/front-end/extensions.ts";
@@ -32,7 +32,13 @@ beforeAll(() => {
   mkdirSync(base, { recursive: true });
   work = mkdtempSync(join(base, "registration-"));
 });
-afterAll(() => rmSync(base, { recursive: true, force: true }));
+afterAll(() => {
+  rmSync(work, { recursive: true, force: true });
+  // `~/tmp/mx-alpha-16/` itself goes too, but only while it is empty: it is not ours to empty.
+  try {
+    rmdirSync(base);
+  } catch {}
+});
 
 test("a project that depends on meshfw routes .mesh.mx files to the mesh dialect, and only those", () => {
   const root = project("with-meshfw", { meshfw: "*" });

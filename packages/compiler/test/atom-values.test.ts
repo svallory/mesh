@@ -1,9 +1,11 @@
+import { lowerSource } from "@mxlang/core";
 import { describe, expect, test } from "bun:test";
+import { MESH_DIALECT } from "../src/front-end/dialect.ts";
 import { atomOf, containsAtom, valueOf, type Attr } from "../src/front-end/tree.ts";
 import { parse } from "./helpers.ts";
 
-// Atoms in value position (`type`-like options, `values=[...]`, `via=:x`, `on=:create`) arrive from MX
-// alpha.16 through the `mesh:Atom` node type. These pin that the front end reads each one as the atom it
+// Atoms in value position (`type`-like options, `values=[...]`, `via=:x`, `on=:create`) arrive through
+// Mesh's own `mesh:Atom` node type (`syntax/mesh.ts`). These pin that the front end reads each one as the atom it
 // was on alpha.15, and that MX's atom contract checks still see them (`ContractAttr` has no atom kind
 // until MX's slice c, so a blind check would show here as a missing diagnostic).
 const head = 'import { User } from "./user.mesh.mx"\nentity :Post\n  attributes\n    uuid :id primary-key\n';
@@ -12,21 +14,28 @@ const diagnostics = (body: string) => parse(head + body, "x.mesh.mx").diagnostic
 describe("normalisation", () => {
   const span = { sourceStart: 0, sourceEnd: 5 };
   const base = { kind: "static", name: "via", value: "owner", nameSpan: span, valueSpan: span } as const;
-  test("the atom mark and a claimed mesh:Atom node both read as one atom", () => {
+  test("the atom mark reads as one atom", () => {
     const marked = { ...base, atom: { kind: "atom", name: "owner", span } } as unknown as Attr;
-    const claimed = { ...base, node: { type: "mesh:Atom", name: "owner", span } } as unknown as Attr;
-    for (const attr of [marked, claimed]) {
-      expect(atomOf(attr)?.name).toBe("owner");
-      expect(valueOf(attr)).toEqual({ value: "owner" });
-      expect(containsAtom(attr)).toBe(true);
-    }
+    expect(atomOf(marked)?.name).toBe("owner");
+    expect(valueOf(marked)).toEqual({ value: "owner" });
+    expect(containsAtom(marked)).toBe(true);
   });
-  test("a plain string is not an atom, and neither is another dialect's node", () => {
+  test("a plain string is not an atom, and a node on the attribute does not make it one", () => {
     const plain = { ...base } as unknown as Attr;
-    const foreign = { ...base, node: { type: "other:Atom", name: "owner", span } } as unknown as Attr;
+    const withNode = { ...base, node: { type: "mesh:Atom", name: "owner", span } } as unknown as Attr;
     expect(atomOf(plain)).toBeUndefined();
-    expect(atomOf(foreign)).toBeUndefined();
+    expect(atomOf(withNode)).toBeUndefined();
     expect(valueOf(plain)).toBe("owner");
+  });
+  test("a whole-value atom lowers to the atom-marked static attribute, with `node` unset", () => {
+    const { ir, diagnostics } = lowerSource("<a via=:owner/>", "/v/x.mesh.mx", { dialect: MESH_DIALECT });
+    expect(diagnostics).toEqual([]);
+    const node = ir?.body[0];
+    const attr = node?.kind === "DelegatedTag" ? node.tag.attrs[0] : undefined;
+    expect(attr?.kind).toBe("static");
+    if (attr?.kind !== "static") return;
+    expect(attr.atom?.name).toBe("owner");
+    expect(attr.node).toBeUndefined();
   });
 });
 

@@ -59,24 +59,15 @@ export const tags = (nodes: readonly IrNode[]): Tag[] =>
 export const attr = (tag: Tag, name: string): Attr | undefined =>
   tag.attrs.find((a): a is Named => a.kind !== "spread" && a.name === name);
 /**
- * An atom in value position (`via=:owner`, `on=:create`) is claimed by Mesh's `Atom` node type (alpha.16,
- * `mesh:Atom`), which lowers to the atom-marked literal the expression trigger builds, so the IR holds
- * the same `atom` mark as before and `node` stays unset. Should MX keep the claimed node on the
- * attribute instead (its `Attr.node`, for a node that lowers to a string), it is read here too, so
- * both shapes reach the model as one atom.
+ * An atom in value position (`via=:owner`, `on=:create`) is claimed by Mesh's own `Atom` node type
+ * (`mesh:Atom`, `syntax/mesh.ts`). The row lowers it to the atom-marked literal the expression trigger
+ * builds, so the IR holds the same `atom` mark as an atom anywhere else and `Attr.node` stays unset.
  *
  * MX folds what its `data` tree called `atom`, `member` and `string` attributes into one `static` kind and
  * tells them apart by `atom`, `member` and `node`. `atomOf`, `memberOf` and `plainString` read each shape;
  * every other reader goes through them.
  */
-export const atomOf = (a: Attr | undefined): StaticAttr["atom"] => {
-  if (a?.kind !== "static") return undefined;
-  if (a.atom) return a.atom;
-  const node = a.node as ({ type: string; name?: unknown; span: unknown } & object) | undefined;
-  return node?.type === "mesh:Atom" && typeof node.name === "string"
-    ? ({ kind: "atom", name: node.name, span: node.span } as StaticAttr["atom"])
-    : undefined;
-};
+export const atomOf = (a: Attr | undefined): StaticAttr["atom"] => (a?.kind === "static" ? a.atom : undefined);
 const memberOf = (a: Attr | undefined) => (a?.kind === "static" ? a.member : undefined);
 const plainString = (a: Attr | undefined): StaticAttr | undefined =>
   a?.kind === "static" && !a.atom && !a.member && !a.node ? a : undefined;
@@ -88,7 +79,7 @@ export function attrOffset(a: Attr): number {
   if (a.kind === "dynamic" || a.kind === "bound" || a.kind === "spread")
     return a.value.span.sourceStart;
   if (a.kind === "static") {
-    const own = a.atom ?? a.member;
+    const own = atomOf(a) ?? memberOf(a);
     // `valueSpan` is optional in MX's types; `lowerSource` fills it, and the name is the fallback.
     return (own?.span ?? a.valueSpan ?? a.nameSpan).sourceStart;
   }

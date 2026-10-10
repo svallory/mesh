@@ -1,9 +1,9 @@
 // Builds the dialect module MX loads (`mx.dialect.module`): `src/dialect.ts` bundled to
 // `dist/dialect.js`, plain JavaScript with every import inlined, so Node loads it with no install
 // beside it. Also keeps `mx.dialect` honest: its `extensions` must be Mesh's one extension list
-// (`MESH_EXTENSIONS`), its `id` must stay `mesh` (the reference dialect's value row names it), and
+// (`MESH_EXTENSIONS`), its `id` must stay `mesh` (the `Atom` node says `dialect: "mesh"`), and
 // the module must be the file this script writes. Any mismatch fails the build.
-import { MESH_EXTENSIONS } from "@meshfw/compiler";
+import { MESH_EXTENSIONS } from "@meshfw/compiler/extensions";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 
