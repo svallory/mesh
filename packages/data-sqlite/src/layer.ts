@@ -1,10 +1,13 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { Database } from "bun:sqlite";
-import { sql } from "drizzle-orm";
+import { count, max, sql } from "drizzle-orm";
 import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { SQLiteTable } from "drizzle-orm/sqlite-core";
 import { drizzleOperations, drizzleTable } from "@meshfw/data-drizzle";
-import { FrameworkError, type DataAdapter, type DataLayer, type DataOperations, type TableHandle } from "@meshfw/runtime";
+import { FrameworkError, defineCapabilities, type CapabilityManifest, type DataAdapter, type DataLayer, type DataOperations, type TableHandle } from "@meshfw/runtime";
+
+/** What this adapter supports beyond the mandatory set, as static data (ADR-0013). */
+export const capabilities: CapabilityManifest = defineCapabilities("sqlite", ["aggregates", "integer-key-fill"]);
 
 // A type alias, not an interface, so it satisfies `DataAdapter.options` (an index signature).
 export type SQLiteOptions = { readonly file: string };
@@ -18,9 +21,10 @@ export interface SQLiteLayer extends DataAdapter, DataLayer {
   readonly kind: "data-adapter";
   readonly name: "sqlite";
   readonly build: "@meshfw/data-sqlite/build";
+  readonly capabilities: CapabilityManifest;
   readonly options: SQLiteOptions;
   /** Transactions are serialised per connection and await the callback before commit.
-   * Nested transactions are unsupported. There is no callback timeout: a callback
+   * A call inside a running transaction joins it (see `DataLayer.transaction`). There is no callback timeout: a callback
    * that never settles holds the queue; close rejects with running/queued counts
    * and leaves the layer open rather than rolling back under a running callback.
    * A failed rollback is fatal: queued and later work rejects until the caller
@@ -41,8 +45,11 @@ export function sqliteTable(handle: TableHandle): SQLiteTable {
   return drizzleTable(handle, SQLiteTable, "SQLite");
 }
 
+/** The running transaction: `operations` is set once BEGIN succeeded, and `active` ends with the outer call. */
+interface Token { active: boolean; operations?: DataOperations; failed?: { cause: unknown } }
+
 interface State {
-  exclusive<T>(run: (db: BunSQLiteDatabase) => Promise<T>): Promise<T>;
+  exclusive<T>(run: (db: BunSQLiteDatabase, token: Token) => Promise<T>): Promise<T>;
 }
 const states = new WeakMap<DataLayer, State>();
 
@@ -83,7 +90,7 @@ export function sqlite(options: SQLiteOptions): SQLiteLayer {
   let running = 0;
   let queued = 0;
   let tail: Promise<void> = Promise.resolve();
-  const context = new AsyncLocalStorage<{ active: boolean }>();
+  const context = new AsyncLocalStorage<Token>();
   const state: State = {
     exclusive(run) {
       const fatal = healthError();
@@ -93,7 +100,7 @@ export function sqlite(options: SQLiteOptions): SQLiteLayer {
       const work = tail.then(async () => {
         queued--;
         running++;
-        const token = { active: true };
+        const token: Token = { active: true };
         try {
           const fatal = healthError();
           if (fatal) throw fatal;
@@ -103,7 +110,7 @@ export function sqlite(options: SQLiteOptions): SQLiteLayer {
               db = drizzle(connection);
             } catch (cause) { throw connectionError("open a connection", configured.file, cause); }
           }
-          return await context.run(token, () => run(db!));
+          return await context.run(token, () => run(db!, token));
         } finally { token.active = false; running--; }
       });
       // Consume the queue link's rejection, not the caller's result. A failed
@@ -113,26 +120,53 @@ export function sqlite(options: SQLiteOptions): SQLiteLayer {
     },
   };
   const layer: SQLiteLayer = {
-    kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", options: configured,
+    kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities, options: configured,
     transaction(run) {
-      return state.exclusive(async (database) => {
+      const current = context.getStore();
+      if (current?.active && current.operations) {
+        // Rollback-only: a joined call that fails poisons the whole transaction, even if the
+        // outer callback catches the error, so a half-done inner call can never commit.
+        const joined = current;
+        // Promise.resolve().then also catches a callback that throws before returning a promise.
+        const operations = current.operations;
+        return Promise.resolve().then(() => run(operations)).catch((cause: unknown) => { joined.failed ??= { cause }; throw cause; });
+      }
+      return state.exclusive(async (database, token) => {
         try { database.run(sql.raw("BEGIN IMMEDIATE")); }
         catch (cause) { throw connectionError("run BEGIN IMMEDIATE", configured.file, cause); }
         let active = true;
         const operations = drizzleOperations({
           table: sqliteTable,
           insert: (table, row) => database.insert(table).values(row).returning().get()!,
-          select: (table, condition) => database.select().from(table).where(condition).all(),
+          select: (table, options) => {
+            let query = database.select().from(table).$dynamic();
+            if (options?.where) query = query.where(options.where);
+            if (options?.orderBy?.length) query = query.orderBy(...options.orderBy);
+            // SQLite has no OFFSET without LIMIT; Drizzle drops a negative limit, so use the largest safe integer.
+            if (options?.limit !== undefined || options?.offset !== undefined) query = query.limit(options.limit ?? Number.MAX_SAFE_INTEGER);
+            if (options?.offset !== undefined) query = query.offset(options.offset);
+            return query.all();
+          },
+          aggregate: (table, kind, column, where) => {
+            const query = database.select({ value: kind === "max" ? max(column) : count(column) }).from(table).$dynamic();
+            return (where ? query.where(where) : query).get()?.value ?? null;
+          },
           update: (table, condition, changes) => database.update(table).set(changes).where(condition).returning().all(),
           delete: (table, condition) => database.delete(table).where(condition).returning().all(),
         }, () => { if (!active) throw new FrameworkError("Transaction operations are no longer active"); });
+        token.operations = operations;
         try {
           const result = await run(operations);
           active = false;
+          token.active = false; // a call from here on starts a new transaction instead of joining
+          if (token.failed) {
+            throw new FrameworkError("A call joined to this transaction failed, so the transaction is rolled back even though its callback caught the error", { cause: token.failed.cause });
+          }
           database.run(sql.raw("COMMIT"));
           return result;
         } catch (cause) {
           active = false;
+          token.active = false;
           try { database.run(sql.raw("ROLLBACK")); }
           catch (rollback) {
             unusable = { transaction: cause, rollback };

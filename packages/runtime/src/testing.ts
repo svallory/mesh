@@ -1,5 +1,9 @@
 import type { DataLayer, DataOperations, Key, Row, TableHandle } from "./data-layer.ts";
+import { contractV1Checks, type DataLayerFixtureV1 } from "./conformance-v1.ts";
+import type { CapabilityManifest } from "./capabilities.ts";
 import { FrameworkError } from "./errors.ts";
+
+export type { DataLayerFixtureV1 } from "./conformance-v1.ts";
 
 function gate(): { promise: Promise<void>; release: () => void } {
   let release!: () => void;
@@ -45,6 +49,11 @@ function rowEquals(actual: Row | undefined, expected: Row, message: string): voi
 
 function rowsEqual(actual: Row[], expected: Row[], message: string): void {
   assert(actual.length === expected.length && expected.every((row) => actual.some((other) => sameRow(other, row))), message);
+}
+
+/** The contract v1 suite: the base checks plus reads, read for update, aggregates, keys and the manifest. */
+export function dataLayerConformanceV1(makeLayer: () => Promise<DataLayerFixtureV1>, manifest: CapabilityManifest): Record<string, () => Promise<void>> {
+  return { ...dataLayerConformance(makeLayer), ...contractV1Checks(makeLayer, manifest) };
 }
 
 /** Return named, runner-independent asynchronous checks for contract v0.
@@ -141,13 +150,65 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
       assert(caught instanceof FrameworkError, "close with an in-flight transaction must reject with FrameworkError");
       await layer.transaction(async (tx) => rowsEqual(await tx.selectAll(table), [sampleRow], "rejected close must leave the layer open and transaction able to commit"));
     }),
-    "nested transaction is rejected": withLayer(async ({ layer }) => {
-      await layer.transaction(async () => {
-        let caught: unknown;
-        try { await layer.transaction(async () => undefined); } catch (cause) { caught = cause; }
-        // The message is the adapter's; the contract is the error class.
-        assert(caught instanceof FrameworkError, "nested transaction must reject with FrameworkError");
+    "nested transaction joins the running one": withLayer(async ({ layer, table, sampleRow, secondRow, key, secondKey }) => {
+      const value = await layer.transaction(async (outer) => {
+        await outer.insert(table, sampleRow);
+        const inner = await layer.transaction(async (tx) => {
+          rowEquals(await tx.selectByKey(table, key), sampleRow, "a joined call must see the outer transaction's uncommitted write");
+          await tx.insert(table, secondRow);
+          return "inner";
+        });
+        rowEquals(await outer.selectByKey(table, secondKey), secondRow, "the outer transaction must see the joined call's write");
+        return inner;
       });
+      assert(value === "inner", "a joined call must return its own result");
+      await layer.transaction(async (tx) => rowsEqual(await tx.selectAll(table), [sampleRow, secondRow], "both writes must commit together"));
+    }),
+    "a throw after a joined call rolls back both": withLayer(async ({ layer, table, sampleRow, secondRow }) => {
+      const failure = new Error("after the inner call");
+      let caught: unknown;
+      try {
+        await layer.transaction(async (outer) => {
+          await outer.insert(table, sampleRow);
+          await layer.transaction(async (tx) => { await tx.insert(table, secondRow); });
+          throw failure;
+        });
+      } catch (cause) { caught = cause; }
+      assert(caught === failure, "the outer error must be rethrown unchanged");
+      await layer.transaction(async (tx) => assert((await tx.selectAll(table)).length === 0, "a throw after a joined call must roll back the outer and the inner write"));
+    }),
+    "a throw inside a joined call reaches the outer call and rolls back": withLayer(async ({ layer, table, sampleRow, secondRow }) => {
+      const failure = new Error("inside the inner call");
+      let caught: unknown;
+      try {
+        await layer.transaction(async (outer) => {
+          await outer.insert(table, sampleRow);
+          await layer.transaction(async (tx) => { await tx.insert(table, secondRow); throw failure; });
+        });
+      } catch (cause) { caught = cause; }
+      assert(caught === failure, "the inner error must reach the caller unchanged");
+      await layer.transaction(async (tx) => assert((await tx.selectAll(table)).length === 0, "a throw inside a joined call must roll back everything"));
+    }),
+    "joins nest more than one level and run in parallel": withLayer(async ({ layer, table, sampleRow, secondRow }) => {
+      await layer.transaction(async () => {
+        await layer.transaction(async () => {
+          await layer.transaction(async (tx) => { await tx.insert(table, sampleRow); });
+        });
+        await Promise.all([
+          layer.transaction(async (tx) => { await tx.insert(table, secondRow); }),
+          layer.transaction(async (tx) => { await tx.selectAll(table); }),
+        ]);
+      });
+      await layer.transaction(async (tx) => rowsEqual(await tx.selectAll(table), [sampleRow, secondRow], "nested and parallel joined writes must commit"));
+    }),
+    "a call after the transaction ended starts a new one": withLayer(async ({ layer, table, sampleRow, secondRow }) => {
+      let late: Promise<void> | undefined;
+      await layer.transaction(async (tx) => {
+        await tx.insert(table, sampleRow);
+        late = Promise.resolve().then(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); await layer.transaction(async (next) => { await next.insert(table, secondRow); }); });
+      });
+      await late;
+      await layer.transaction(async (tx) => rowsEqual(await tx.selectAll(table), [sampleRow, secondRow], "a late call must commit as its own transaction"));
     }),
     "insert returns the stored row": withLayer(async ({ layer, table, sampleRow, key }) => {
       await layer.transaction(async (tx) => {

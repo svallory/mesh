@@ -440,11 +440,24 @@ test("createSchema rejects unsafe direct table and column names before opening a
   } finally { await layer.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 
-test("nested calls throw immediately rather than queuing behind themselves", async () => {
+test("a nested call joins the running transaction instead of queuing behind it", async () => {
   await withLayer(async (layer) => {
-    await layer.transaction(async () => {
+    const outcome = await layer.transaction(async (outer) => {
       await Promise.resolve();
-      expect(() => layer.transaction(async () => {})).toThrow("nested transactions are not supported");
+      return layer.transaction(async (inner) => inner === outer);
     });
+    // The joined call receives the very operations of the outer call.
+    expect(outcome).toBe(true);
+  });
+});
+
+test("a call made from a settled transaction's leftover continuation queues as a new transaction", async () => {
+  await withLayer(async (layer) => {
+    let leaked: Promise<void> | undefined;
+    await layer.transaction(async () => {
+      leaked = new Promise((resolve) => setTimeout(resolve, 10)).then(() => layer.transaction(async (tx) => { await tx.insert(table, { ...sampleRow, id: "late" }); }));
+    });
+    await leaked;
+    await layer.transaction(async (tx) => expect((await tx.selectAll(table)).map((row) => row.id)).toEqual(["late"]));
   });
 });

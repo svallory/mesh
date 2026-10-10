@@ -240,6 +240,11 @@ function memoryLayer(): DataLayer {
     async insert(table, row) { of(table).set(row.id, { ...row }); return { ...row }; },
     async selectByKey(table, key) { return of(table).get(key.id); },
     async selectAll(table) { return [...of(table).values()]; },
+    // Contract v1 members the generated M2 code does not call yet.
+    async select(table) { return [...of(table).values()]; },
+    async selectByKeyForUpdate(table, key) { return of(table).get(key.id); },
+    async max() { throw new Error("not used"); },
+    async count() { throw new Error("not used"); },
     async updateByKey(table, key, changes) {
       const row = of(table).get(key.id);
       if (!row) return undefined;

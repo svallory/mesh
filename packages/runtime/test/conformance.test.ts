@@ -5,14 +5,14 @@ import { dataLayerConformance } from "@meshfw/runtime/testing";
 import type { DataLayerFixture } from "@meshfw/runtime/testing";
 
 // Only a test double for the suite: never shipped as an adapter.
-function fake(mode: "correct" | "no rollback" | "wrong error" | "no commit" | "bad update" | "ignores keys" | "ignores select key" | "ignores update key" | "ignores delete key" | "interleaves" | "closes while busy" | "allows nesting" | "poisoned queue" | "stays closed" = "correct"): DataLayerFixture & { closed: () => boolean } {
+function fake(mode: "correct" | "no rollback" | "wrong error" | "no commit" | "bad update" | "ignores keys" | "ignores select key" | "ignores update key" | "ignores delete key" | "interleaves" | "closes while busy" | "nests separately" | "rejects nesting" | "poisoned queue" | "stays closed" = "correct"): DataLayerFixture & { closed: () => boolean } {
   let rows = new Map<unknown, Row>();
   let closed = false;
   const table = {};
-  const context = new AsyncLocalStorage<{ active: boolean }>();
+  const context = new AsyncLocalStorage<{ active: boolean; tx?: DataOperations }>();
   let tail: Promise<void> = Promise.resolve();
   let pendingCount = 0;
-  const execute = async <T>(run: (tx: DataOperations) => Promise<T>): Promise<T> => {
+  const execute = async <T>(run: (tx: DataOperations) => Promise<T>, token?: { tx?: DataOperations }): Promise<T> => {
       if (closed && mode === "stays closed") throw new Error("closed");
       closed = false;
       const pending = structuredClone(rows);
@@ -31,7 +31,12 @@ function fake(mode: "correct" | "no rollback" | "wrong error" | "no commit" | "b
           return structuredClone(updated);
         },
         async deleteByKey(_table, key) { return pending.delete(lookupKey(key, "delete")); },
+        async select() { return structuredClone([...pending.values()]); },
+        async selectByKeyForUpdate(_table, key) { return structuredClone(pending.get(lookupKey(key, "select"))); },
+        async max() { throw new Error("not used"); },
+        async count() { throw new Error("not used"); },
       };
+      if (token) token.tx = tx;
       try {
         const value = await run(tx);
         if (mode !== "no commit") rows = pending;
@@ -44,14 +49,16 @@ function fake(mode: "correct" | "no rollback" | "wrong error" | "no commit" | "b
   };
   const layer: DataLayer = {
     transaction(run) {
-      if (context.getStore()?.active) {
-        if (mode === "allows nesting") return execute(run);
-        throw new FrameworkError("nested transactions are not supported");
+      const current = context.getStore();
+      if (current?.active) {
+        if (mode === "nests separately") return execute(run);
+        if (mode === "rejects nesting") throw new FrameworkError("nested transactions are not supported");
+        return run(current.tx!);
       }
       pendingCount++;
       const start = async () => {
-        const token = { active: true };
-        try { return await context.run(token, () => execute(run)); }
+        const token: { active: boolean; tx?: DataOperations } = { active: true };
+        try { return await context.run(token, () => execute(run, token)); }
         finally { token.active = false; pendingCount--; }
       };
       if (mode === "interleaves") return start();
@@ -84,7 +91,9 @@ for (const [name, check] of Object.entries(dataLayerConformance(async () => fake
 test.each([
   ["interleaves", "concurrent transactions never interleave statements", "transactions must not interleave statements"],
   ["closes while busy", "close with a transaction in flight rejects and leaves the layer open", "close with an in-flight transaction must reject with FrameworkError"],
-  ["allows nesting", "nested transaction is rejected", "nested transaction must reject with FrameworkError"],
+  ["rejects nesting", "nested transaction joins the running one", "nested transactions are not supported"],
+  ["nests separately", "nested transaction joins the running one", "a joined call must see the outer transaction's uncommitted write"],
+  ["nests separately", "a throw after a joined call rolls back both", "a throw after a joined call must roll back"],
   ["no rollback", "rejected run rolls back every write and rethrows the same error", "rejected insert must roll back"],
   ["wrong error", "rejected run rolls back every write and rethrows the same error", "transaction must rethrow the same error"],
   ["no commit", "resolved run commits and returns its result", "resolved run must commit"],
