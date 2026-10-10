@@ -124,6 +124,7 @@ function hasDifferingOperator(root: unknown): boolean {
     if (n.type === "BinaryExpression" && COMPARE.has(n.operator as string)) return true;
     if (n.type === "UnaryExpression" && (n.operator === "!" || n.operator === "-")) return true;
     if (n.type === "LogicalExpression" && n.operator !== "??") return true;
+    if (n.type === "ConditionalExpression") return true; // truthiness of the test
     return Object.entries(n).some(([k, child]) => k !== "loc" && k !== "extra" && walk(child));
   };
   return walk(root);
@@ -158,6 +159,11 @@ interface Env {
   reads: { record: boolean };
 }
 
+/** Written as a float (`2.0`, `1e3`): Babel's parsed value cannot tell, its raw text can. */
+const isFloatLiteral = (n: N): boolean => {
+  const raw = String((n.extra as { raw?: string } | undefined)?.raw ?? "");
+  return !/^0[xXbBoO]/.test(raw) && /[.eE]/.test(raw);
+};
 const isNull = (n: SyntaxNode | undefined) => n?.type === "NullLiteral";
 
 function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode {
@@ -168,7 +174,7 @@ function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode 
     return convert(child as N, env, ctx, inside);
   };
   switch (n.type) {
-    case "NumericLiteral": return { kind: "literal", value: n.value as number, position };
+    case "NumericLiteral": return { kind: "literal", value: n.value as number, ...(isFloatLiteral(n) ? { float: true as const } : {}), position };
     case "BooleanLiteral": return { kind: "literal", value: n.value as boolean, position };
     case "NullLiteral": return { kind: "literal", value: null, position };
     case "StringLiteral":
@@ -213,7 +219,7 @@ function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode 
     case "UnaryExpression": {
       if (n.operator === "!") return call("not", [sub(n.argument)]);
       if (n.operator === "-") {
-        if (n.argument?.type === "NumericLiteral") return { kind: "literal", value: -Number(n.argument.value), position };
+        if (n.argument?.type === "NumericLiteral") return { kind: "literal", value: -Number(n.argument.value), ...(isFloatLiteral(n.argument as N) ? { float: true as const } : {}), position };
         return call("neg", [sub(n.argument)]);
       }
       throw new Plain("unsupported-construct", `unary \`${n.operator}\``, n);

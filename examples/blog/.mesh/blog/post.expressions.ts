@@ -16,18 +16,18 @@ export type PostScope = $Scope<{
 
 export const expressions = {
   // computed excerpt, plain (unsupported-construct) (src/domain/blog/post.mesh.mx:23:20)
-  "computed.excerpt": (s: PostScope) => {
-    const { self } = s;
+  "computed.excerpt": ($s: PostScope) => {
+    const { self } = $s;
     return (function () {
       return (self.body ?? "").slice(0, 200);
     })();
   },
   // check :titlePresent that, translated (src/domain/blog/post.mesh.mx:34:34)
-  "publish.check.titlePresent.that": (s: PostScope) => $.gt($.length(s.self.title), 0),
+  "publish.check.titlePresent.that": ($s: PostScope) => $.gt($.length($s.self.title), 0),
   // published filter, translated (src/domain/blog/post.mesh.mx:41:14)
-  "published.filter": (s: PostScope) => $.eq(s.self.state, "published"),
+  "published.filter": ($s: PostScope) => $.eq($s.self.state, "published"),
   // policy :public authorize-if, translated (src/domain/blog/post.mesh.mx:46:20)
-  "policy.public.authorize-if.0": (s: PostScope) => $.eq(s.self.state, "published"),
+  "policy.public.authorize-if.0": ($s: PostScope) => $.eq($s.self.state, "published"),
   // policy :owner authorize-if, translated (src/domain/blog/post.mesh.mx:48:20)
-  "policy.owner.authorize-if.0": (s: PostScope) => $.eq(s.self.author?.id, s.actor?.id),
+  "policy.owner.authorize-if.0": ($s: PostScope) => $.eq($s.self.author?.id, $s.actor?.id),
 } as const;

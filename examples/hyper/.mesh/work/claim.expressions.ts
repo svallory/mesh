@@ -16,6 +16,6 @@ export type ClaimScope = $Scope<{
 
 export const expressions = {
   // computed lapsed, translated (src/domain/work/claim.mesh.mx:17:20)
-  "computed.lapsed": (s: ClaimScope) =>
-    $.and($.eq(s.self.state, "active"), $.lte(s.self.expiresAt, $.now(s))),
+  "computed.lapsed": ($s: ClaimScope) =>
+    $.and($.eq($s.self.state, "active"), $.lte($s.self.expiresAt, $.now($s))),
 } as const;

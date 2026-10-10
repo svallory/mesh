@@ -29,7 +29,7 @@ describe("the function tables (acceptance test 1)", () => {
         const tree: ExprNode = { kind: "call", fn: spec.id, args: c.args.map((_, i) => v(`a${i}`)), position: at };
         const code = printTree(tree);
         const s = scope({}, { clock: () => new Date(c.clock ?? 0) });
-        const run = new Function("$", "s", ...c.args.map((_, i) => `a${i}`), `return ${code};`);
+        const run = new Function("$", "$s", ...c.args.map((_, i) => `l$a${i}`), `return ${code};`);
         expect(run(expr, s, ...c.args)).toEqual(c.result as never);
       }
     });
@@ -37,8 +37,8 @@ describe("the function tables (acceptance test 1)", () => {
     test(`${op}, printed and evaluated`, () => {
       for (const c of QUANTIFIER_TABLES[op]) {
         const tree: ExprNode = { kind: "quantify", op, source: v("list"), param: "x", body: { kind: "call", fn: "eq", args: [v("x"), v("x")], position: at }, position: at };
-        const code = printTree(tree).replace("$.eq(x, x)", "pick(x)").replace(": any", "");
-        const run = new Function("$", "list", "pick", `return ${code};`);
+        const code = printTree(tree).replace("$.eq(l$x, l$x)", "pick(l$x)").replace(": any", "");
+        const run = new Function("$", "l$list", "pick", `return ${code};`);
         expect(run(expr, c.outcomes.map((_, i) => i), (i: number) => c.outcomes[i])).toEqual(c.result as never);
       }
     });
@@ -157,10 +157,40 @@ describe("type rules", () => {
     const tree = exprOf(entity(check("() => &parent?.parent.n > 1"))).tree!;
     const code = printTree(tree);
     expect(code).toContain("?.parent?.n");
-    const run = (self: object) => new Function("$", "s", `return ${code};`)(expr, scope({ self }));
+    const run = (self: object) => new Function("$", "$s", `return ${code};`)(expr, scope({ self }));
     expect(run({ parent: null })).toBeNull();
     expect(run({ parent: { parent: null } })).toBeNull();
     expect(run({ parent: { parent: { n: 2 } } })).toBe(true);
+  });
+  test("quantifier parameters named like the generated internals cannot capture them (R1)", async () => {
+    for (const name of ["s", "$", "$s", "scope", "clock", "self", "actor", "_s", "expr"]) {
+      if (["self", "actor"].includes(name)) continue; // a scope name as a parameter is a build-time shadow, not an internal clash
+      const that = `({ actor }) => &children.some((${name}) => ${name}.dueAt < now() && ${name}.id === actor.id)`;
+      const e = exprOf(entity(check(that)));
+      expect(e.tree, name).toBeDefined();
+      const code = printTree(e.tree!, true).replaceAll(": any", "");
+      const run = new Function("$", "$s", `return ${code};`);
+      const s = scope({ self: { children: [{ dueAt: new Date(10), id: "a" }, { dueAt: new Date(10), id: "x" }] }, actor: { id: "a" } }, { clock: () => new Date(100) });
+      expect(run(expr, s), name).toBe(true);
+      const s2 = scope({ self: { children: [{ dueAt: new Date(10), id: "x" }] }, actor: { id: "a" } }, { clock: () => new Date(100) });
+      expect(run(expr, s2), name).toBe(false);
+    }
+  });
+  test("a float literal forces exact division (R2); `2` does not", () => {
+    const withRatio = (that: string) => entity(check(that));
+    expect(exprOf(withRatio("() => &n / 2.0 > 1")).tree).toMatchObject({ fn: "gt", args: [{ fn: "div", args: [{}, { kind: "literal", value: 2, float: true }] }, {}] });
+    expect(codes(withRatio("() => &n / 2.0 > 1"))).toEqual([]);
+    expect(exprOf(withRatio("() => &n / 1e1 > 1")).tree).toMatchObject({ args: [{ fn: "div" }, {}] });
+    expect(exprOf(withRatio("() => &n / 2 > 1")).tree).toMatchObject({ args: [{ fn: "idiv" }, {}] });
+  });
+  test("truthiness in a ternary inside plain code warns (R3)", () => {
+    const source = entity(check("() => true")).replace("  actions auto", "  computed\n    string :w() { return &title ? &title.toUpperCase() : \"\" }\n  actions auto");
+    expect(codes(source)).toContain("warning:MESH_EXPR_PLAIN");
+  });
+  test("input is read with ?. so a scope without one gives null", () => {
+    const code = printTree(exprOf(entity(check("({ input }) => input.m !== 5"))).tree!);
+    expect(code).toContain("$s.input?.m");
+    expect(new Function("$", "$s", `return ${code};`)(expr, scope({ self: {} }))).toBeNull();
   });
   test("integer by integer division truncates and warns; a float or decimal divides exactly (ruling of 14:00)", () => {
     const base = entity("").replace("      validate\n", "").replace("    integer :m nullable\n", "    integer :m nullable\n    float :ratio default=1\n");
@@ -238,7 +268,7 @@ describe("type rules", () => {
     const tree = ok.document!.entities[0]!.actions[0]!.validate[0]!.that.tree!;
     expect(tree).toMatchObject({ fn: "and", args: [{ kind: "helper", name: "isStaff", from: "./helpers" }, {}] });
     expect(ok.document!.entities[0]!.imports[0]).toMatchObject({ helper: true, identifiers: ["isStaff", "big"] });
-    expect(printTree(tree, true)).toContain("$.asBool(isStaff(s.actor))");
+    expect(printTree(tree, true)).toContain("$.asBool(isStaff($s.actor))");
     const plain = build("() => big(&n)");
     expect(plain.document!.entities[0]!.actions[0]!.validate[0]!.that.plain).toMatchObject({ why: "reads-record-in-helper" });
     const config = configOf(root);

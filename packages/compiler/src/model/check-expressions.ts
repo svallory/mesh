@@ -101,7 +101,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     switch (n.kind) {
       case "literal":
         if (n.value === null) return { c: "any", nullable: true, literal: true };
-        return { c: typeof n.value === "number" ? "number" : typeof n.value === "boolean" ? "boolean" : "string", nullable: false, literal: true, ...(typeof n.value === "number" && Number.isInteger(n.value) ? { int: true } : {}) };
+        return { c: typeof n.value === "number" ? "number" : typeof n.value === "boolean" ? "boolean" : "string", nullable: false, literal: true, ...(typeof n.value === "number" && Number.isInteger(n.value) && !n.float ? { int: true } : {}) };
       case "atom": return { c: "enum", nullable: false, literal: true, atom: n.value };
       case "var": {
         if (n.name === "self") return { c: "record", nullable: false, entity: scope.entity };

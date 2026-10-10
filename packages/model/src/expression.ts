@@ -14,7 +14,8 @@ export type FunctionId =
 export type QuantifierId = "some" | "every" | "find" | "filter";
 
 export type ExprNode = (
-  | { kind: "literal"; value: string | number | boolean | null }
+  /** `float` is set on a number written with a `.` or an exponent (`2.0`), which JavaScript cannot tell from `2` once parsed. */
+  | { kind: "literal"; value: string | number | boolean | null; float?: true }
   | { kind: "atom"; value: string }
   /** `self`, `input`, `actor`, `context`, `before`, or a quantifier's parameter. */
   | { kind: "var"; name: string }

@@ -5,6 +5,7 @@ The entity files in `src/domain/` hold what Mesh builds today: attributes, keys,
 Each line names the entity, the construct left out, its code in the [gap analysis](../../apps/docs/docs/architecture/research/hyper-port-gap-analysis.md) (`G` for a gap, `D` for a draft finding), and the milestone of [roadmap revision 5](../../apps/docs/docs/architecture/roadmap/roadmap.md) that delivers it. "No gap code" marks a limit the analysis does not list.
 
 - All entities: `check`s and the stable rule names Hyper reports (G22): M5.
+- All entities: an update's `set &x=({ input }) => input.x` must be skipped when the caller omits `x`, or an omitted member input erases the stored value (no gap code): M5.
 - All entities: the `version` bump and the `expectedVersion` check on every update (G02): M5.
 - All entities: one rule reused by name across actions and entities, so each check is repeated (G04): after 1.0.
 - All entities: policies, with the actor's role read through `tx` inside the transaction (G21): M8.
