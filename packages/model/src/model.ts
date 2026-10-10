@@ -39,11 +39,19 @@ export interface Import {
 export interface Expression {
   source: string;
   params: string[];
+  /** The parameter pattern has a rest element (`{ context, ...rest }`), which can reach any name in the scope. */
+  rest?: true;
   position: SourcePosition;
   /** Present when Mesh translated the function: the tree the evaluators run (M4). */
   tree?: ExprNode;
   /** Present when it did not: the function stays authored TypeScript with JavaScript semantics. Exactly one of `tree` and `plain`. */
   plain?: PlainReason;
+  /**
+   * What an action runs before this function (M5): dotted paths of relationships and computed fields on `self`,
+   * such as `owner` or `owner.todoCount`, that the function reads, so the action loads them first. Sorted, without
+   * duplicates. Set on the functions of actions and `always` blocks that read any; absent when they read none.
+   */
+  needs?: string[];
 }
 
 export interface Attribute {
@@ -108,6 +116,8 @@ export interface Check {
   code: string;
   message: string;
   when?: Expression;
+  /** A function returning data the caller receives on the failed check's issue (`details`, G22). */
+  details?: Expression;
   position: SourcePosition;
 }
 export type Step = (

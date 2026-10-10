@@ -4,37 +4,45 @@
 
 import {
   parseInput,
+  type BindOptions as $BindOptions,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type Row as $Row,
 } from "@meshfw/runtime";
 import type { Run, StartRunInput, ReadRunInput } from "./run.types";
 import { startRunInput, readRunInput } from "./run.validators";
 import { tables } from "../schema";
 
-export function bindRun(layer: $DataLayer) {
+export function bindRun(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
     async start(input: StartRunInput, ...[_context]: $ContextArgument): Promise<Run> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(startRunInput, input);
       return layer.transaction(async (tx) => {
-        const now = new Date();
-        const row = await tx.insert(tables.run, {
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $now = options.clock?.() ?? new Date();
+        // plan: a create is one insert; nothing is read first
+        const $changes: $Row = {
           inputs: parsed.inputs === undefined ? {} : parsed.inputs,
           outcome: null,
           state: "running",
           cancelReason: null,
           endedAt: null,
           version: 1,
-          startedAt: now,
+          startedAt: $now,
           taskId: parsed.task,
           responsibleId: parsed.responsible,
           startedById: parsed.startedBy,
           parentRunId: parsed.parentRun === undefined ? null : parsed.parentRun,
-        });
-        return row as Run;
+        };
+        // data layer
+        const $stored = await tx.insert(tables.run, $changes);
+        return $stored as Run;
       });
     },
 
     async read(input: ReadRunInput, ...[_context]: $ContextArgument): Promise<Run[]> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(readRunInput, input);
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.run, {

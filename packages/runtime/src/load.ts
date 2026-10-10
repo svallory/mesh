@@ -62,7 +62,7 @@ export interface LoadOptions {
   /** Read by a computed body as `context`. */
   context?: unknown;
   /** The clock `now()` reads, as everywhere an expression runs. */
-  clock?: Clock;
+  clock?: Clock | undefined;
 }
 
 /** Keys named by one query: SQLite allows 32,766 variables, older builds 999; 500 is under both. */
@@ -139,23 +139,114 @@ async function ensureField(
  * A record handed to a body that runs as plain code. Mesh cannot see everything such a body reads (a read through a
  * variable, a deeper chain than the text shows), so a read of a relationship or computed field that is not loaded
  * throws instead of coming back as `undefined`, which the body would turn into a wrong answer. Related rows are guarded the same way.
+ *
+ * `in` on such a name throws too. `Object.keys`, spreading and `Object.entries` list what is loaded and nothing else (an
+ * unloaded name is not a property of the record), and what they hand back for a related row is guarded like the row itself.
+ *
+ * A guard is made once per row, and a loaded list is guarded once, so a body that reads the same list many times
+ * (`for (let i = 0; i < list.length; i++) list[i]`) costs one pass over it, not one per read.
  */
-function guarded(plan: LoadPlan, entity: string, row: Work): Work {
+const guards = new WeakMap<object, { plan: LoadPlan; what: string; guard: Work }>();
+const guardedLists = new WeakMap<object, { plan: LoadPlan; what: string; list: Work[] }>();
+
+/**
+ * `what` names the plain code in the error ("computed body" for a computed field; an action's functions say "action function").
+ * Exported for the generated actions, which guard the `self` of every function they run (M5).
+ */
+export function guarded(plan: LoadPlan, entity: string, row: Work, what = "computed body"): Work {
+  const known = guards.get(row);
+  if (known?.plan === plan && known.what === what) return known.guard;
   const entityPlan = planOf(plan, entity);
-  return new Proxy(row, {
+  const names = (key: string) => Object.hasOwn(entityPlan.relations, key) || Object.hasOwn(entityPlan.computed, key);
+  const unloaded = (key: string) =>
+    what === "before"
+      ? new FrameworkError(`\`before\` holds the stored columns of ${entity} only, so ${entity}.${key} is not on it: Mesh never loads a relationship or computed field onto \`before\`. Compare the stored key (\`before.${key}Id\` for a relationship), or read the proposed record's in an expression Mesh can see (\`&${key}\`)`)
+      : new FrameworkError(`A plain ${what} read ${entity}.${key}, which was not loaded: Mesh could not tell from the body that it reads it. Write it as one expression (an arrow with comparisons, ?., ?? and the list methods) so Mesh loads what it reads`);
+  const wrap = (key: string, value: unknown): unknown => {
+    const relation = Object.hasOwn(entityPlan.relations, key) ? entityPlan.relations[key] : undefined;
+    if (!relation || value === null || typeof value !== "object") return value;
+    if (!Array.isArray(value)) return guarded(plan, relation.target, value as Work, what);
+    const list = guardedLists.get(value);
+    if (list?.plan === plan && list.what === what) return list.list;
+    const made = value.map((item) => guarded(plan, relation.target, item as Work, what));
+    guardedLists.set(value, { plan, what, list: made });
+    return made;
+  };
+  const guard: Work = new Proxy(row, {
     get(target, key, receiver) {
       if (typeof key !== "string") return Reflect.get(target, key, receiver);
       if (!(key in target)) {
-        if (Object.hasOwn(entityPlan.relations, key) || Object.hasOwn(entityPlan.computed, key))
-          throw new FrameworkError(`A plain computed body read ${entity}.${key}, which was not loaded: Mesh could not tell from the body that it reads it. Write the body as one expression (an arrow with comparisons, ?., ?? and the list methods) so Mesh loads what it reads`);
+        if (names(key)) throw unloaded(key);
         return undefined;
       }
-      const value = target[key];
-      const relation = Object.hasOwn(entityPlan.relations, key) ? entityPlan.relations[key] : undefined;
-      if (!relation || value === null || typeof value !== "object") return value;
-      return Array.isArray(value) ? value.map((item) => guarded(plan, relation.target, item as Work)) : guarded(plan, relation.target, value as Work);
+      return wrap(key, target[key]);
+    },
+    has(target, key) {
+      if (typeof key === "string" && !(key in target) && names(key)) throw unloaded(key);
+      return Reflect.has(target, key);
+    },
+    getOwnPropertyDescriptor(target, key) {
+      const descriptor = Reflect.getOwnPropertyDescriptor(target, key);
+      if (descriptor && typeof key === "string" && "value" in descriptor) return { ...descriptor, value: wrap(key, descriptor.value) };
+      return descriptor;
     },
   });
+  guards.set(row, { plan, what, guard });
+  return guard;
+}
+
+/** `T` with every property, element and nested object read-only; a `Date` loses its setters. `any` stays `any`. */
+export type DeepReadonly<T> = 0 extends 1 & T ? T
+  : T extends Date ? Readonly<Omit<Date, `set${string}`>>
+    : T extends (...args: never[]) => unknown ? T
+      : T extends readonly (infer U)[] ? readonly DeepReadonly<U>[]
+        : T extends object ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+          : T;
+
+const readOnlyViews = new WeakMap<object, { where: string; view: object }>();
+
+/**
+ * A read-only view of a record (or of a value reached through one) that a plain action function is handed as `self` or
+ * `before`. The work of an action is its `set` steps, so a change made inside a function is never persisted, and Mesh says
+ * so wherever JavaScript lets it: `set`, `deleteProperty`, `defineProperty`, `preventExtensions` and `setPrototypeOf` throw
+ * on the record and on every object, array and related record reached through it. A `Date` is handed out as a copy whose
+ * setters throw, so nothing written through a path a proxy cannot trap reaches the stored row.
+ */
+export function readOnlyRecord(row: Work, where: string): Work {
+  const refuse = (): never => {
+    throw new FrameworkError(`${where}: a function cannot change the record. Use a \`set\` step (\`set &field=...\`) to change a field; \`run\` is for work outside the record`);
+  };
+  const wrap = (value: unknown): unknown => {
+    if (value === null || typeof value !== "object") return value;
+    if (value instanceof Date) {
+      const copy = new Date(value.getTime());
+      return new Proxy(copy, {
+        get(target, key) {
+          const found = Reflect.get(target, key, target);
+          if (typeof found !== "function") return found;
+          return typeof key === "string" && key.startsWith("set") ? refuse : (found as (...args: unknown[]) => unknown).bind(target);
+        },
+        set: refuse, defineProperty: refuse, deleteProperty: refuse, preventExtensions: refuse, setPrototypeOf: refuse,
+      });
+    }
+    return readOnlyRecord(value as Work, where);
+  };
+  const known = readOnlyViews.get(row);
+  if (known?.where === where) return known.view as Work;
+  const view: Work = new Proxy(row, {
+    get(target, key, receiver) {
+      const value = Reflect.get(target, key, receiver);
+      return typeof key === "string" ? wrap(value) : value;
+    },
+    getOwnPropertyDescriptor(target, key) {
+      const descriptor = Reflect.getOwnPropertyDescriptor(target, key);
+      if (descriptor && typeof key === "string" && "value" in descriptor && descriptor.configurable) return { ...descriptor, value: wrap(descriptor.value) };
+      return descriptor;
+    },
+    set: refuse, defineProperty: refuse, deleteProperty: refuse, preventExtensions: refuse, setPrototypeOf: refuse,
+  });
+  readOnlyViews.set(row, { where, view });
+  return view;
 }
 
 /** Load the first segment on `rows`, then the rest of the path on the rows it brought in. */
@@ -208,7 +299,8 @@ async function loadRelation(
   }
   if (relation.column === null)
     throw new FrameworkError(`${describe(entity, name, relation)} cannot be loaded: :${relation.target} has no belongs-to back to :${entity}. Declare one in :${relation.target}, and name it with via=:name if there are several`);
-  const keys = [...new Set(rows.map((row) => row[entityPlan.key]))];
+  // A row with no key yet (a create's pending record) has nothing pointing at it.
+  const keys = [...new Set(rows.map((row) => row[entityPlan.key]).filter((key) => key !== null && key !== undefined))];
   const grouped = new Map<unknown, Work[]>();
   for (const chunk of chunks(keys))
     for (const row of await tx.select(target.table, { filter: { [relation.column]: { in: chunk as never } } })) {
@@ -250,6 +342,7 @@ async function rollup(
     const rank = (value: unknown) => (value instanceof Date ? value.getTime() : (value as number | string));
     return values.reduce<unknown>((best, value) => (best === undefined || rank(value) > rank(best) ? value : best), undefined) ?? null;
   }
+  if (row[entityPlan.key] === null || row[entityPlan.key] === undefined) return computed.fn === "count" ? 0 : null;
   const filter: Filter = { [relation.column]: { eq: row[entityPlan.key] as never } };
   return computed.fn === "count" ? tx.count(target.table, column, filter) : tx.max(target.table, column, filter);
 }
@@ -276,4 +369,24 @@ export function rejectComputedQuery(entity: string, computed: readonly string[],
       const name = typeof key === "string" && key.startsWith("-") ? key.slice(1) : key;
       if (typeof name === "string" && computed.includes(name)) fail(name, "sort");
     }
+}
+
+/**
+ * Load the relationships and computed fields a function reads onto one record, in place (M5). Each path is dotted,
+ * `owner` or `owner.todoCount`; a path that is already loaded costs nothing, so an action calls this before
+ * each function that reads the record and pays for what is not there yet. `record` must be the plain row, not its guard.
+ */
+export async function loadInto(
+  plan: LoadPlan, entity: string, tx: DataOperations, record: Row, paths: readonly string[], options: LoadOptions = {},
+): Promise<void> {
+  for (const path of paths) await ensurePath(plan, entity, tx, [record], path.split("."), options, 0);
+}
+
+/**
+ * Drop everything `loadInto` attached to a record. A `set` changes the columns a loaded relationship or
+ * computed field was worked out from, so an action calls this after one and the next function reloads what it reads.
+ */
+export function unloadFrom(plan: LoadPlan, entity: string, record: Row): void {
+  const entityPlan = planOf(plan, entity);
+  for (const name of [...Object.keys(entityPlan.relations), ...Object.keys(entityPlan.computed)]) delete record[name];
 }

@@ -23,6 +23,8 @@ export interface Issue {
   path: (string | number)[];
   message: string;
   source: IssueSource | null;
+  /** What the failed `check` returned from its `details` function (G22), or `null`: a check without one, or a rule of an attribute line. */
+  details: unknown;
 }
 
 /** One evaluated policy check, as reported by a denial or a can-action query. */
@@ -48,7 +50,8 @@ export class InvalidInputError extends MeshError {
     if (issues.length === 0) {
       throw new FrameworkError("InvalidInputError requires at least one issue", options);
     }
-    super(issues.map(({ path, message }) => `${path.length ? path.join(".") : "(input)"}: ${message}`).join("\n"), options);
+    // A rule you declared is named by its label; a field's own rule by the path to the field.
+    super(issues.map(({ path, label, message }) => `${path.length ? path.join(".") : (label ?? "(input)")}: ${message}`).join("\n"), options);
     this.issues = Object.freeze([...issues]);
   }
 }

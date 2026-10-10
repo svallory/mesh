@@ -176,7 +176,7 @@ await completeTodo({ id: "00000000-0000-4000-8000-0000000000aa" }, { actor: alic
 await disconnect();
 ```
 
-**One statement or two.** A create is always one `INSERT`. An update or a destroy is one statement when its checks and `when` conditions read only `input`, `actor` and `context`, and its `set` values translate. A check or a `when` that reads `self` makes the action read the row first, locked, in the same transaction, and then write it. `completeTodo` is in the second case, because `check :notDoneYet` reads `&done`; `renameTodo`, which has no check, is in the first. `mesh explain` prints which one an action is, so you never get a read-then-write where you expected one statement, or the other way round.
+**One statement or two.** A create is always one `INSERT`. An update is a read followed by a write: the action reads the row under the write lock, runs the checks on it, applies the steps, and writes the result, all in one transaction. Because a transaction holds the lock until it commits, two callers cannot both pass a check on the same stored row, which is what makes the [version recipe](./entities.md#a-version-number-that-refuses-a-stale-update) safe. A destroy reads the row only when its checks or steps can see it; `renameTodo` is one read and one write, and a destroy with no `validate` or `do` is one `DELETE`. `mesh explain` prints which one an action is.
 
 ### Destroy
 

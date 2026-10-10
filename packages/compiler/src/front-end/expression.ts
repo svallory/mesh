@@ -297,12 +297,32 @@ export const rememberEdits = (expression: object, edits: SourceEdit[]): void => 
 export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd: number }, ctx: ConvertContext): { tree?: ExprNode; plain?: PlainReason; edits?: SourceEdit[] } {
   const f = fn as N;
   freeVariables(f, ctx);
-  const plain = (e: Plain): { plain: PlainReason } => ({
-    plain: { why: e.why, detail: e.detail, position: ctx.at(start(e.node) || span.sourceStart), edits: editsFor(f, span.sourceStart), ...(hasDifferingOperator(f.body) ? { operators: true as const } : {}), ...(f.type === "FunctionExpression" ? { method: true as const } : {}) },
-  });
+  const roots = new Map<string, string>();
+  /**
+   * A body that is an object literal (a check's `details`) is plain only because of the literal. Each property value that Mesh can
+   * translate on its own is kept as a tree, so the type pass can tell a comparison that cannot differ (non-null operands) from one that can.
+   */
+  const objectParts = (): { parts: ExprNode[]; rest: unknown[] } | undefined => {
+    const body = f.body as N;
+    if (body?.type !== "ObjectExpression") return undefined;
+    const parts: ExprNode[] = [];
+    const rest: unknown[] = [];
+    for (const property of (body.properties ?? []) as N[]) {
+      const value = property.value as N | undefined;
+      if (property.type !== "ObjectProperty" || property.computed || !value) { rest.push(property); continue; }
+      try { parts.push(convert(value, { roots, locals: new Set(), reads: { record: false } }, ctx)); }
+      catch (error) { if (error instanceof Plain) rest.push(value); else throw error; }
+    }
+    return { parts, rest };
+  };
+  const plain = (e: Plain): { plain: PlainReason } => {
+    const object = objectParts();
+    return {
+      plain: { why: e.why, detail: e.detail, position: ctx.at(start(e.node) || span.sourceStart), edits: editsFor(f, span.sourceStart), ...((object ? hasDifferingOperator(object.rest) : hasDifferingOperator(f.body)) ? { operators: true as const } : {}), ...(object?.parts.length ? { parts: object.parts } : {}), ...(f.type === "FunctionExpression" ? { method: true as const } : {}) },
+    };
+  };
   try {
     if (ctx.runStep) throw new Plain("run-step", "a run step is plain code", f);
-    const roots = new Map<string, string>();
     const params = (f.params ?? []) as N[];
     if (params.length > 1) throw PARAMETER_ERROR(f);
     if (params[0]) {

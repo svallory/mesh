@@ -39,6 +39,8 @@ interface Ty {
   /** A literal, so `a === b` does not warn about null equality. */
   literal?: boolean;
   atom?: string;
+  /** The stored record (`before`): columns only, nothing is loaded for it. */
+  stored?: boolean;
 }
 
 class Demote extends Error {
@@ -57,6 +59,10 @@ interface Scope {
   entity: Entity;
   /** Nullability of `before`: false for update and destroy. */
   beforeNullable: boolean;
+  /** True when every action the function runs for is a create: there is no stored record, so `before` is always null. */
+  noBefore?: boolean;
+  /** Names of the action's typed arguments: one that shares a member's name is not the member input. */
+  args?: Set<string>;
   inputs: Map<string, Ty> | null;
   locals: Map<string, Ty>;
 }
@@ -105,7 +111,12 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       case "atom": return { c: "enum", nullable: false, literal: true, atom: n.value };
       case "var": {
         if (n.name === "self") return { c: "record", nullable: false, entity: scope.entity };
-        if (n.name === "before") return { c: "record", nullable: scope.beforeNullable, entity: scope.entity };
+        if (n.name === "before" && scope.noBefore) {
+          report("error", "MESH_BEFORE_IN_CREATE", "`before` is the stored record, and a create has none, so it is always null here", n.position,
+            "Remove it. Compare with `self` or `input`, or move the rule to an update");
+          return { c: "any", nullable: false };
+        }
+        if (n.name === "before") return { c: "record", nullable: scope.beforeNullable, entity: scope.entity, stored: true };
         if (n.name === "input") return { c: "input", nullable: false };
         if (n.name === "actor" || n.name === "context") return { c: "any", nullable: false };
         return scope.locals.get(n.name) ?? { c: "any", nullable: false };
@@ -116,6 +127,12 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
           report("error", "MESH_EXPR_NULLABLE_ACCESS",
             `\`.${n.name}\` is read through a value that may be null`, n.position,
             `write \`?.${n.name}\`, which gives null when the value is null`);
+        }
+        if (owner.stored && owner.entity && !owner.entity.attributes.some((a) => a.name === n.name)
+          && (owner.entity.relationships.some((r) => r.name === n.name) || owner.entity.computed.some((x) => x.name === n.name))) {
+          report("error", "MESH_BEFORE_NOT_LOADED",
+            `\`before.${n.name}\` is a ${owner.entity.relationships.some((r) => r.name === n.name) ? "relationship" : "computed field"}, and \`before\` holds only the stored columns`, n.position,
+            `read \`&${n.name}\` for the proposed record's (Mesh loads it), or compare the stored key (for a relationship, \`before.${n.name}Id\`)`);
         }
         let result: Ty;
         try { result = memberTy(scope, owner, n.name); }
@@ -236,14 +253,25 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     const tree = e.tree!;
     delete e.tree;
     e.plain = { why: "unsupported-construct", detail: d.detail, position: d.position, edits: options.editsOf(e), ...(/^\s*\(.*\)\s*\{/s.test(e.source) && !e.source.includes("=>") ? { method: true as const } : {}) };
-    if (d.always || hasOperator(tree)) warnPlain(e, d.detail, d.position);
+    if ((d.always || hasOperator(tree))) warnPlain(e, d.detail, d.position);
   }
 
   /** Check one expression; `boolean` says the result must be a boolean (a check, a condition, a filter). Returns the result type. */
   function visit(e: Expression, scope: Scope, boolean: boolean): Ty | null {
     if (e.plain) {
+      const parts = e.plain.parts;
+      delete e.plain.parts;
       if ((e.plain.why === "unsupported-construct" || e.plain.why === "reads-record-in-helper") && e.plain.operators)
         warnPlain(e, e.plain.detail, e.plain.position);
+      else if (parts && !e.plain.operators) {
+        // An object literal whose values Mesh can translate: JavaScript's null rule differs only when an operand can be null.
+        for (const part of parts) {
+          try {
+            const t = infer(part, scope);
+            if (t.nullable && hasOperator(part)) warnPlain(e, "a comparison or operator that can see a null", part.position);
+          } catch (x) { if (!(x instanceof Demote)) throw x; if (hasOperator(part)) warnPlain(e, x.detail, x.position); }
+        }
+      }
       return null;
     }
     if (!e.tree) return null;
@@ -275,10 +303,12 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
           if (typeof value === "object" && value !== null && "source" in value) {
             const t = visit(value as Expression, scope, false);
             const attr = entity.attributes.find((a) => a.name === member.name);
+            const relation = attr ? undefined : entity.relationships.find((r) => r.name === member.name && r.kind === "belongs-to");
             // `set &x=({ input }) => input.x` is "unchanged" when the caller omits x (M5 skips it): not an error.
             const tree = (value as Expression).tree;
-            const passthrough = tree?.kind === "member" && tree.object.kind === "var" && tree.object.name === "input" && tree.name === member.name;
-            if (t?.nullable && attr && !attr.nullable && !attr.primaryKey && !passthrough)
+            const passthrough = !scope.args?.has(member.name) && tree?.kind === "member" && tree.object.kind === "var" && tree.object.name === "input" && tree.name === member.name;
+            const required = attr ? !attr.nullable && !attr.primaryKey : relation ? !relation.nullable : false;
+            if (t?.nullable && required && !passthrough)
               report("error", "MESH_EXPR_NULL_TO_REQUIRED",
                 `\`${member.name}\` is required, and this value can be null`, (value as Expression).position,
                 "give it a default with `?? value`, or check it first");
@@ -290,10 +320,11 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       } else if (step.kind === "run") visit(step.fn, scope, false);
     }
   }
-  function blocks(entity: Entity, validate: { that: Expression; when?: Expression }[], list: Step[], scope: Scope): void {
+  function blocks(entity: Entity, validate: { that: Expression; when?: Expression; details?: Expression }[], list: Step[], scope: Scope): void {
     for (const check of validate) {
       visit(check.that, scope, true);
       if (check.when) visit(check.when, scope, true);
+      if (check.details) visit(check.details, scope, false);
     }
     steps(list, entity, scope);
   }
@@ -306,14 +337,14 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       computed.nullable = t ? t.nullable : false;
     }
     for (const action of entity.actions) {
-      const scope: Scope = { ...base, beforeNullable: action.kind === "create", inputs: inputsOf(entity, action) };
+      const scope: Scope = { ...base, beforeNullable: action.kind === "create", noBefore: action.kind === "create", args: new Set(action.input.flatMap((field) => (field.kind === "argument" ? [field.name] : []))), inputs: inputsOf(entity, action) };
       if (action.filter) visit(action.filter, scope, true);
       blocks(entity, action.validate, action.do, scope);
     }
     for (const block of entity.always) {
       const named = block.actions?.map((ref) => entity.actions.find((a) => a.name === ref.name)?.kind);
       const covers: (string | undefined)[] = block.types ?? named ?? ["create"];
-      blocks(entity, block.validate, block.do, { ...base, beforeNullable: covers.includes("create") || covers.includes(undefined), inputs: null });
+      blocks(entity, block.validate, block.do, { ...base, beforeNullable: covers.includes("create") || covers.includes(undefined), noBefore: (block.types !== undefined || named !== undefined) && covers.every((kind) => kind === "create"), inputs: null });
     }
     for (const policy of entity.policies) {
       const scope = { ...base, inputs: null };

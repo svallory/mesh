@@ -289,6 +289,8 @@ Paths are checked at build time. Inside the entity, checks, steps, filters and p
 
 A computed body that cannot be translated runs in memory after the rows load, at the cost of an extra pass. `label` above is one of those, and that is not a mistake. An error arises only where SQL is required: a filter, a sort key, a policy, a rollup's path or another translated expression. `mesh explain` says which computed fields translate.
 
+A body that runs in memory reads a record in which only what it names is loaded. Reading a relationship or computed field it did not load throws an error that names the field, and so does asking whether one is there (`"lines" in self`). Spreading a record or calling `Object.keys` on it lists the stored fields and whatever was loaded, never the rest, so write the names you need as `&name` and Mesh loads them.
+
 ## actions
 
 `actions auto=[:read, :destroy]` generates the plain actions of those types, named after the type. You may list `:create`, `:read`, `:update` or `:destroy`, with no repeats. Every action you write yourself is `type :name`.
@@ -360,6 +362,8 @@ The atom after `check` names the rule and is the label the caller sees. Name wha
 
 A failed check throws `InvalidInputError`, whose own code is always `invalid_input`. Each failure has its own entry in `error.issues`, with the label, code, message, `details` (when the check declares them) and source position of the check. Several checks may fail in one call.
 
+**An unknown result.** A comparison with a null is neither true nor false but unknown ([ADR-0012](../architecture/decisions/0012-expression-semantics.md)). An unknown `that` fails the check, so a rule never passes because a value was missing; an unknown `when` skips the check, so a condition that cannot be decided does not apply the rule. Write `?? value` or an explicit null test when you want the other outcome.
+
 ```text "src/domain/work/claim.mesh.mx (excerpt)"
 check :taskReady [
   that=({ tx }) => taskIsReady(&task, tx)
@@ -371,7 +375,7 @@ check :taskReady [
 
 #### A check that compares with the stored record
 
-In `validate`, `&name` is the record with the member inputs applied, so a check that compares the new value with the old one cannot read the old one from `self`. `before` is the stored record, beside `self`; on a create there is none and `before` is `null`:
+In `validate`, `&name` is the record with the member inputs applied, so a check that compares the new value with the old one cannot read the old one from `self`. `before` is the stored record, beside `self`; on a create there is none and `before` is `null`. `before` holds the stored columns only: reading a relationship or a computed field on it (`before.owner`) is a build error, because nothing loads it. Read `&owner` for the related record, or compare the stored key (`before.ownerId`):
 
 ```mx "src/domain/team/membership.mesh.mx"
 entity :Membership
@@ -390,6 +394,36 @@ entity :Membership
           message="the role is already set"
         ]
 ```
+
+#### A version number that refuses a stale update
+
+Mesh has no version construct. A `version` attribute, one `check` and one `set` give an update that refuses to overwrite what the caller has not seen:
+
+```mx "src/domain/notes/note.mesh.mx"
+entity :Note
+  attributes
+    uuid :id primary-key
+    string :body
+    integer :version default=1
+
+  actions
+    update :edit
+      input
+        &body
+        integer :expectedVersion nullable
+      validate
+        check :versionMatches [
+          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
+          code="expected-version"
+          message="the note changed since you read it"
+          details=({ before }) => ({ currentVersion: before.version })
+        ]
+      do
+        set
+          &version=() => &version + 1
+```
+
+`expectedVersion` is an argument, so it is checked and never stored. A caller that sends it and has fallen behind gets an `InvalidInputError` whose issue has the code `expected-version` and `details.currentVersion`, and nothing is written; a caller that leaves it out always wins. `&version` in the check is the stored version because `version` is not an input of the action. The step runs after every check has passed, so a refused update does not bump the version. Every update reads the row under the write lock before it writes it, so two callers that send the same `expectedVersion` cannot both succeed.
 
 #### A check that reads a related record
 
@@ -458,7 +492,7 @@ Steps run top to bottom after validation. Each sees the record as earlier steps 
 | `set` | Assigns fields with `&field=value` lines; a value is a literal or a one-expression arrow. A line may name a relationship, `&creator=({ actor }) => actor.id`, and stores its key |
 | `when=cond` | Runs the nested steps only when the condition holds |
 | `load=[&customer]` | Loads relationships or computed fields onto the returned record; writes nothing |
-| `run(…) { }` | Plain code inside the transaction; forces a read before the write; it can call other actions |
+| `run(…) { }` | Plain code inside the transaction; `self`, `before`, `input` and the records reached through them are read-only in it (a change throws, so use `set`); it can call other actions |
 
 The larger example below shows `set`, `when` and `load`. For the work a field assignment cannot express, use `run`:
 
@@ -477,7 +511,7 @@ entity :Invoice
         }
 ```
 
-A `run` body may call anything, including logging or messaging code. The pure-helper rule applies to translated expressions, not `run`. Reach for it only when the work is not a field assignment. A `run`, or an untranslatable check, `when` or `set` expression, makes the action read first and write second. [Using your domain](./using-your-domain.md#update) explains one statement versus two.
+A `run` body may call anything, including logging or messaging code. The pure-helper rule applies to translated expressions, not `run`. Reach for it only when the work is not a field assignment. A change made inside a `run` is never stored. `self`, `before`, `input`, related records and the objects and arrays inside a `json` field are read-only (in a `check`, `when` or `set` function too, not only a `run`), so assigning, deleting or defining a property on any of them throws an error that points at `set`; the types are deep `readonly`, so most such changes are type errors before they run. A `Date` is handed out as a copy: calling a setter such as `setFullYear` throws, and changing it in place would have no effect either way, so build the new value and assign it with `set`. A `destroy` refuses `set` and `load` steps (build error `MESH_DESTROY_STEP`): it returns nothing and writes nothing, so use `check` and `run` there. Every update reads the row first and writes second, whether or not it has a `run`; [Using your domain](./using-your-domain.md#update) explains the one statement versus two.
 
 ### Calling other actions
 

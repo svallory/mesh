@@ -20,6 +20,7 @@ export async function parseInput<T>(schema: StandardSchemaV1<unknown, T>, input:
       label: null,
       code: null,
       source: null,
+      details: null,
     })));
   }
   if (!("value" in result)) {

@@ -5,6 +5,7 @@
 
 import {
   FrameworkError as $FrameworkError,
+  type BindOptions as $BindOptions,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
 } from "@meshfw/runtime";
@@ -65,10 +66,10 @@ export { loadCommentFields, loadPostFields } from "./load";
  * Every action function, bound to `layer`. Opens nothing and creates no table:
  * the caller owns the layer and closes it.
  */
-export function bind(layer: $DataLayer) {
-  const commentActions = bindComment(layer);
-  const postActions = bindPost(layer);
-  const userActions = bindUser(layer);
+export function bind(layer: $DataLayer, options: $BindOptions = {}) {
+  const commentActions = bindComment(layer, options);
+  const postActions = bindPost(layer, options);
+  const userActions = bindUser(layer, options);
   return Object.freeze({
     readComment: commentActions.read,
     createPost: postActions.create,
@@ -185,7 +186,7 @@ export async function createPost(
 export async function publishPost(
   input: PublishPostInput,
   ...context: $ContextArgument
-): Promise<Post> {
+): Promise<PostWith<"comments" | "excerpt">> {
   return $delegate("publishPost", (binding) => binding.publishPost(input, ...context));
 }
 

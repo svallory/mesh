@@ -1,6 +1,6 @@
 import { parseArgs } from "node:util";
 import { join } from "node:path";
-import { EmitError, RESERVED_COMMAND_WORDS, buildEmitters, generatedImportDiagnostics, generateFiles, loadAdapterBuild, loadConfig, loadProject, stableJsonStringify, writeGeneratedFiles, type AdapterBuild, type ResolvedConfig } from "@meshfw/compiler";
+import { EmitError, explainAction, RESERVED_COMMAND_WORDS, buildEmitters, generatedImportDiagnostics, generateFiles, loadAdapterBuild, loadConfig, loadProject, stableJsonStringify, writeGeneratedFiles, type AdapterBuild, type ResolvedConfig } from "@meshfw/compiler";
 import type { Diagnostic } from "@meshfw/model";
 import { compareText, diagnostic, printDiagnostics } from "./diagnostics.ts";
 import { exportGenerators } from "./export.ts";
@@ -14,6 +14,8 @@ Commands:
   build               Read entity files and write .mesh/
   build --check       Rebuild in memory; write nothing; fail on any difference
   inspect [entity]    Print the model as JSON with source positions
+  explain <entity> <action>
+                      Print the plan the action's handler follows
   export generators   Copy Mesh's generator templates into .mesh-generators/
 
 The data adapter can add its own commands; they are listed below
@@ -23,24 +25,25 @@ Options:
   --help              Show this help
 `;
 
-interface Command { kind: "build" | "inspect" | "export" | "help"; check: boolean; entity?: string }
+interface Command { kind: "build" | "inspect" | "explain" | "export" | "help"; check: boolean; entity?: string; action?: string }
 function parseCommand(args: string[]): Command {
   const [first] = args;
-  const pending: Record<string, string> = { init: "not scheduled", explain: "M5", migrate: "M9" };
+  const pending: Record<string, string> = { init: "not scheduled", migrate: "M9" };
   if (first && Object.hasOwn(pending, first)) {
     throw new Error(`mesh ${first} is not available yet (${pending[first]})`);
   }
   const { values, positionals } = parseArgs({ args, strict: true, allowPositionals: true,
     options: { help: { type: "boolean" }, check: { type: "boolean" } } });
-  const [command, entity] = positionals;
+  const [command, entity, action] = positionals;
   if (command === undefined && values.help && !values.check) return { kind: "help", check: false };
-  if (command !== "build" && command !== "inspect" && command !== "export") throw new Error(command ? `Unknown command "${command}"; use mesh --help` : "Missing command; use mesh --help");
+  if (command !== "build" && command !== "inspect" && command !== "explain" && command !== "export") throw new Error(command ? `Unknown command "${command}"; use mesh --help` : "Missing command; use mesh --help");
   if (command === "export" && entity !== "generators") throw new Error(entity === undefined ? "Missing what to export; use mesh export generators" : `Cannot export "${entity}"; use mesh export generators`);
-  if (positionals.length > (command === "build" ? 1 : 2)) throw new Error(`Extra argument for mesh ${command}; use mesh --help`);
+  if (command === "explain" && (entity === undefined || action === undefined) && !values.help) throw new Error("Missing argument for mesh explain; use mesh explain <entity> <action>");
+  if (positionals.length > (command === "build" ? 1 : command === "explain" ? 3 : 2)) throw new Error(`Extra argument for mesh ${command}; use mesh --help`);
   if (values.check && command !== "build") throw new Error("--check is only valid for mesh build");
   if (values.help) return { kind: "help", check: false };
   if (command === "export") return { kind: "export", check: false };
-  return { kind: command, check: values.check ?? false, ...(entity === undefined ? {} : { entity }) };
+  return { kind: command, check: values.check ?? false, ...(entity === undefined ? {} : { entity }), ...(action === undefined ? {} : { action }) };
 }
 
 /** The shell owns argument/stream policy; the compiler owns the build. */
@@ -82,7 +85,15 @@ export async function runCli(args: string[], root = process.cwd(), io = {
           }
         }
         const files = await generateFiles({ config, document: built.document }, adapter.build);
-        if (command.kind === "inspect") {
+        if (command.kind === "explain") {
+          const entity = built.document.entities.find((candidate) => candidate.name === command.entity);
+          if (!entity) diagnostics.push(diagnostic("mesh.config.ts", `Unknown entity "${command.entity}"; known entities: ${built.document.entities.map((candidate) => candidate.name).sort(compareText).join(", ")}`));
+          else {
+            const plan = explainAction(entity, command.action!);
+            if (plan) json = `${plan.join("\n")}\n`;
+            else diagnostics.push(diagnostic("mesh.config.ts", `Unknown action "${command.action}" of ${entity.name}; known actions: ${effectiveNames(entity).join(", ")}`));
+          }
+        } else if (command.kind === "inspect") {
           if (command.entity === undefined) {
             const modelPath = projectPath(root, join(config.output, "model.json"));
             const modelFile = files.find((file) => file.path === modelPath);
@@ -116,6 +127,10 @@ export async function runCli(args: string[], root = process.cwd(), io = {
   if (diagnostics.some((d) => d.severity === "error")) return 1;
   if (json !== undefined) io.stdout(json);
   return 0;
+}
+
+function effectiveNames(entity: { actions: { name: string }[]; auto: string[] }): string[] {
+  return [...entity.actions.map((action) => action.name), ...entity.auto].sort(compareText);
 }
 
 async function runExport(root: string, io: { stdout: (text: string) => void; stderr: (text: string) => void }): Promise<number> {

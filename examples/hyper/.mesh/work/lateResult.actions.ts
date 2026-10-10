@@ -4,35 +4,43 @@
 
 import {
   parseInput,
+  type BindOptions as $BindOptions,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type Row as $Row,
 } from "@meshfw/runtime";
 import type { LateResult, RecordLateResultInput, ReadLateResultInput } from "./lateResult.types";
 import { recordLateResultInput, readLateResultInput } from "./lateResult.validators";
 import { tables } from "../schema";
 
-export function bindLateResult(layer: $DataLayer) {
+export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
     async record(
       input: RecordLateResultInput,
       ...[_context]: $ContextArgument
     ): Promise<LateResult> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(recordLateResultInput, input);
       return layer.transaction(async (tx) => {
-        const now = new Date();
-        const row = await tx.insert(tables.lateResult, {
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $now = options.clock?.() ?? new Date();
+        // plan: a create is one insert; nothing is read first
+        const $changes: $Row = {
           fence: parsed.fence,
           summary: parsed.summary === undefined ? null : parsed.summary,
           evidence: parsed.evidence === undefined ? [] : parsed.evidence,
-          recordedAt: now,
+          recordedAt: $now,
           taskId: parsed.task,
           submitterId: parsed.submitter,
-        });
-        return row as LateResult;
+        };
+        // data layer
+        const $stored = await tx.insert(tables.lateResult, $changes);
+        return $stored as LateResult;
       });
     },
 
     async read(input: ReadLateResultInput, ...[_context]: $ContextArgument): Promise<LateResult[]> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(readLateResultInput, input);
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.lateResult, {

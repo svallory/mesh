@@ -21,3 +21,19 @@ entity :Machine table="machines"
     update :update
       input
         &platform
+        integer :expectedVersion nullable
+      validate
+        check :machineActive [
+          that=() => &state === :active
+          code="machine.active"
+          message="the machine is retired"
+        ]
+        check :versionMatches [
+          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
+          code="expected-version"
+          message="the record is at another version; read it again and retry"
+          details=({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })
+        ]
+      do
+        set
+          &version=() => &version + 1

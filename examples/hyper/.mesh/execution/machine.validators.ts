@@ -91,6 +91,7 @@ export type RegisterMachineInputShape = Assert<
 export const updateMachineInput = z.strictObject({
   id: z.uuid(),
   platform: z.string().nullable().optional(),
+  expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<UpdateMachineInput>;
 
 export type UpdateMachineInputShape = Assert<

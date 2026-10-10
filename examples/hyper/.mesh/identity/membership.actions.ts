@@ -3,10 +3,19 @@
 // Mesh's own imports carry a `$` so that no entity name can shadow them.
 
 import {
+  FrameworkError as $FrameworkError,
+  InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
+  guarded as $guarded,
   parseInput,
+  readOnlyRecord as $readOnlyRecord,
+  runCheck as $runCheck,
+  scope as $scope,
+  type BindOptions as $BindOptions,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type Issue as $Issue,
+  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   Membership,
@@ -20,13 +29,21 @@ import {
   readMembershipInput,
 } from "./membership.validators";
 import { tables } from "../schema";
+import {
+  expressions as $expressions,
+  type MembershipStoredScope as $StoredScope,
+} from "./membership.expressions";
+import { loadPlan as $loadPlan } from "../load";
 
-export function bindMembership(layer: $DataLayer) {
+export function bindMembership(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
     async grant(input: GrantMembershipInput, ...[_context]: $ContextArgument): Promise<Membership> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(grantMembershipInput, input);
       return layer.transaction(async (tx) => {
-        const row = await tx.insert(tables.membership, {
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        // plan: a create is one insert; nothing is read first
+        const $changes: $Row = {
           role: parsed.role,
           state: "active",
           grantedAt: parsed.grantedAt,
@@ -35,27 +52,91 @@ export function bindMembership(layer: $DataLayer) {
           collaboratorId: parsed.collaborator,
           grantedById: parsed.grantedBy,
           revokedById: null,
-        });
-        return row as Membership;
+        };
+        // data layer
+        const $stored = await tx.insert(tables.membership, $changes);
+        return $stored as Membership;
       });
     },
 
     async changeRole(
       input: ChangeRoleMembershipInput,
-      ...[_context]: $ContextArgument
+      ...[context]: $ContextArgument
     ): Promise<Membership> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(changeRoleMembershipInput, input);
       return layer.transaction(async (tx) => {
-        const key = { id: parsed.id };
-        const changes: Partial<Membership> = {};
-        if (parsed.role !== undefined) changes.role = parsed.role;
-        const row = await tx.updateByKey(tables.membership, key, changes);
-        if (row === undefined) throw new $NotFoundError("Membership", key);
-        return row as Membership;
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $actor = $context.actor;
+        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        const $key = { id: parsed.id };
+        const $before = await tx.selectByKeyForUpdate(tables.membership, $key);
+        if ($before === undefined) throw new $NotFoundError("Membership", $key);
+        const $changes: $Row = {};
+        const $record: $Row = { ...$before };
+        if (parsed.role !== undefined) $changes.role = $record.role = parsed.role;
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Membership", $record, "action function"),
+          "Membership.changeRole",
+        );
+        const $s = $scope(
+          {
+            self: $self,
+            input: $readOnlyRecord(parsed, "Membership.changeRole"),
+            actor: $actor,
+            context: $context,
+            before: $readOnlyRecord(
+              $guarded($loadPlan, "Membership", $before, "before"),
+              "Membership.changeRole",
+            ) as unknown as Membership,
+            tx: undefined,
+          },
+          options,
+        ) as unknown as $StoredScope;
+        // validate: every check runs, and every failed check is reported together
+        const $issues: $Issue[] = [];
+        await $runCheck($issues, $s, {
+          label: "membershipActive",
+          code: "membership.active",
+          message: "the membership is revoked",
+          source: { file: "src/domain/identity/membership.mesh.mx", line: 27, column: 9 },
+          that: $expressions["changeRole.check.membershipActive.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "roleChanges",
+          code: "membership.unchanged",
+          message: "the member already has that role",
+          source: { file: "src/domain/identity/membership.mesh.mx", line: 32, column: 9 },
+          that: $expressions["changeRole.check.roleChanges.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "versionMatches",
+          code: "expected-version",
+          message: "the record is at another version; read it again and retry",
+          source: { file: "src/domain/identity/membership.mesh.mx", line: 37, column: 9 },
+          that: $expressions["changeRole.check.versionMatches.that"],
+          details: $expressions["changeRole.check.versionMatches.details"],
+        });
+        if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // do: the steps run in written order, each seeing the record as the ones before it left it
+        {
+          const $value = await $expressions["changeRole.step.0.set.version"]($s);
+          if ($value === undefined || $value === null)
+            throw new $FrameworkError(
+              "set &version (src/domain/identity/membership.mesh.mx:45:20) produced no value, and version is required",
+            );
+          $changes.version = $record.version = $value;
+        }
+        // data layer
+        const $stored = await tx.updateByKey(tables.membership, $key, $changes);
+        if ($stored === undefined) throw new $NotFoundError("Membership", $key);
+        return $stored as Membership;
       });
     },
 
     async read(input: ReadMembershipInput, ...[_context]: $ContextArgument): Promise<Membership[]> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(readMembershipInput, input);
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.membership, {

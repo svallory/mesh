@@ -3,72 +3,394 @@
 // Mesh's own imports carry a `$` so that no entity name can shadow them.
 
 import {
+  FrameworkError as $FrameworkError,
+  InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
+  guarded as $guarded,
+  loadInto as $loadInto,
   parseInput,
+  readOnlyRecord as $readOnlyRecord,
   rejectComputedQuery,
+  runCheck as $runCheck,
+  scope as $scope,
+  unloadFrom as $unloadFrom,
+  type BindOptions as $BindOptions,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type Issue as $Issue,
+  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   Task,
   CreateTaskInput,
+  UpdateTaskInput,
   SetPriorityTaskInput,
   MoveTaskInput,
+  ReopenTaskInput,
   ReadTaskInput,
 } from "./task.types";
 import {
   createTaskInput,
+  updateTaskInput,
   setPriorityTaskInput,
   moveTaskInput,
+  reopenTaskInput,
   readTaskInput,
 } from "./task.validators";
 import { tables } from "../schema";
+import {
+  expressions as $expressions,
+  type TaskScope as $Scope,
+  type TaskStoredScope as $StoredScope,
+} from "./task.expressions";
+import { loadPlan as $loadPlan } from "../load";
 
-export function bindTask(layer: $DataLayer) {
+export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async create(input: CreateTaskInput, ...[_context]: $ContextArgument): Promise<Task> {
+    async create(input: CreateTaskInput, ...[context]: $ContextArgument): Promise<Task> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(createTaskInput, input);
       return layer.transaction(async (tx) => {
-        const now = new Date();
-        const row = await tx.insert(tables.task, {
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $actor = $context.actor;
+        const $now = options.clock?.() ?? new Date();
+        // plan: a create is one insert; nothing is read first
+        const $changes: $Row = {
           title: parsed.title,
           intent: parsed.intent === undefined ? null : parsed.intent,
           priority: parsed.priority === undefined ? null : parsed.priority,
           state: "open",
           version: 1,
-          createdAt: now,
+          createdAt: $now,
           parentId: parsed.parent === undefined ? null : parsed.parent,
           creatorId: parsed.creator,
+        };
+        const $record: $Row = { ...$changes };
+        const $load = { actor: $actor, context: $context, clock: options.clock };
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Task", $record, "action function"),
+          "Task.create",
+        );
+        const $s = $scope(
+          {
+            self: $self,
+            input: $readOnlyRecord(parsed, "Task.create"),
+            actor: $actor,
+            context: $context,
+            before: null,
+            tx: undefined,
+          },
+          options,
+        ) as unknown as $Scope;
+        // validate: every check runs, and every failed check is reported together
+        const $issues: $Issue[] = [];
+        await $loadInto($loadPlan, "Task", tx, $record, ["parent"], $load);
+        await $runCheck($issues, $s, {
+          label: "parentOpen",
+          code: "task.parent-open",
+          message: "the parent task is not open",
+          source: { file: "src/domain/work/task.mesh.mx", line: 47, column: 9 },
+          that: $expressions["create.check.parentOpen.that"],
         });
-        return row as Task;
+        if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // data layer
+        const $stored = await tx.insert(tables.task, $changes);
+        return $stored as Task;
       });
     },
 
-    async setPriority(input: SetPriorityTaskInput, ...[_context]: $ContextArgument): Promise<Task> {
+    async update(input: UpdateTaskInput, ...[context]: $ContextArgument): Promise<Task> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
+      const parsed = await parseInput(updateTaskInput, input);
+      return layer.transaction(async (tx) => {
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $actor = $context.actor;
+        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        const $key = { id: parsed.id };
+        const $before = await tx.selectByKeyForUpdate(tables.task, $key);
+        if ($before === undefined) throw new $NotFoundError("Task", $key);
+        const $changes: $Row = {};
+        const $record: $Row = { ...$before };
+        if (parsed.title !== undefined) $changes.title = $record.title = parsed.title;
+        if (parsed.intent !== undefined) $changes.intent = $record.intent = parsed.intent;
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Task", $record, "action function"),
+          "Task.update",
+        );
+        const $s = $scope(
+          {
+            self: $self,
+            input: $readOnlyRecord(parsed, "Task.update"),
+            actor: $actor,
+            context: $context,
+            before: $readOnlyRecord(
+              $guarded($loadPlan, "Task", $before, "before"),
+              "Task.update",
+            ) as unknown as Task,
+            tx: undefined,
+          },
+          options,
+        ) as unknown as $StoredScope;
+        // validate: every check runs, and every failed check is reported together
+        const $issues: $Issue[] = [];
+        await $runCheck($issues, $s, {
+          label: "taskOpen",
+          code: "task.open",
+          message: "the task is not open; reopen it first",
+          source: { file: "src/domain/work/task.mesh.mx", line: 58, column: 9 },
+          that: $expressions["update.check.taskOpen.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "taskChanges",
+          code: "task.unchanged",
+          message: "nothing to change: every field already has that value",
+          source: { file: "src/domain/work/task.mesh.mx", line: 63, column: 9 },
+          that: $expressions["update.check.taskChanges.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "versionMatches",
+          code: "expected-version",
+          message: "the record is at another version; read it again and retry",
+          source: { file: "src/domain/work/task.mesh.mx", line: 68, column: 9 },
+          that: $expressions["update.check.versionMatches.that"],
+          details: $expressions["update.check.versionMatches.details"],
+        });
+        if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // do: the steps run in written order, each seeing the record as the ones before it left it
+        {
+          const $value = await $expressions["update.step.0.set.version"]($s);
+          if ($value === undefined || $value === null)
+            throw new $FrameworkError(
+              "set &version (src/domain/work/task.mesh.mx:76:20) produced no value, and version is required",
+            );
+          $changes.version = $record.version = $value;
+        }
+        // data layer
+        const $stored = await tx.updateByKey(tables.task, $key, $changes);
+        if ($stored === undefined) throw new $NotFoundError("Task", $key);
+        return $stored as Task;
+      });
+    },
+
+    async setPriority(input: SetPriorityTaskInput, ...[context]: $ContextArgument): Promise<Task> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(setPriorityTaskInput, input);
       return layer.transaction(async (tx) => {
-        const key = { id: parsed.id };
-        const changes: Partial<Task> = {};
-        if (parsed.priority !== undefined) changes.priority = parsed.priority;
-        const row = await tx.updateByKey(tables.task, key, changes);
-        if (row === undefined) throw new $NotFoundError("Task", key);
-        return row as Task;
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $actor = $context.actor;
+        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        const $key = { id: parsed.id };
+        const $before = await tx.selectByKeyForUpdate(tables.task, $key);
+        if ($before === undefined) throw new $NotFoundError("Task", $key);
+        const $changes: $Row = {};
+        const $record: $Row = { ...$before };
+        if (parsed.priority !== undefined) $changes.priority = $record.priority = parsed.priority;
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Task", $record, "action function"),
+          "Task.setPriority",
+        );
+        const $s = $scope(
+          {
+            self: $self,
+            input: $readOnlyRecord(parsed, "Task.setPriority"),
+            actor: $actor,
+            context: $context,
+            before: $readOnlyRecord(
+              $guarded($loadPlan, "Task", $before, "before"),
+              "Task.setPriority",
+            ) as unknown as Task,
+            tx: undefined,
+          },
+          options,
+        ) as unknown as $StoredScope;
+        // validate: every check runs, and every failed check is reported together
+        const $issues: $Issue[] = [];
+        await $runCheck($issues, $s, {
+          label: "taskOpen",
+          code: "task.open",
+          message: "the task is not open; reopen it first",
+          source: { file: "src/domain/work/task.mesh.mx", line: 82, column: 9 },
+          that: $expressions["setPriority.check.taskOpen.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "versionMatches",
+          code: "expected-version",
+          message: "the record is at another version; read it again and retry",
+          source: { file: "src/domain/work/task.mesh.mx", line: 87, column: 9 },
+          that: $expressions["setPriority.check.versionMatches.that"],
+          details: $expressions["setPriority.check.versionMatches.details"],
+        });
+        if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // do: the steps run in written order, each seeing the record as the ones before it left it
+        {
+          const $value = await $expressions["setPriority.step.0.set.version"]($s);
+          if ($value === undefined || $value === null)
+            throw new $FrameworkError(
+              "set &version (src/domain/work/task.mesh.mx:95:20) produced no value, and version is required",
+            );
+          $changes.version = $record.version = $value;
+        }
+        // data layer
+        const $stored = await tx.updateByKey(tables.task, $key, $changes);
+        if ($stored === undefined) throw new $NotFoundError("Task", $key);
+        return $stored as Task;
       });
     },
 
-    async move(input: MoveTaskInput, ...[_context]: $ContextArgument): Promise<Task> {
+    async move(input: MoveTaskInput, ...[context]: $ContextArgument): Promise<Task> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(moveTaskInput, input);
       return layer.transaction(async (tx) => {
-        const key = { id: parsed.id };
-        const changes: Partial<Task> = {};
-        if (parsed.parent !== undefined) changes.parentId = parsed.parent;
-        const row = await tx.updateByKey(tables.task, key, changes);
-        if (row === undefined) throw new $NotFoundError("Task", key);
-        return row as Task;
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $actor = $context.actor;
+        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        const $key = { id: parsed.id };
+        const $before = await tx.selectByKeyForUpdate(tables.task, $key);
+        if ($before === undefined) throw new $NotFoundError("Task", $key);
+        const $changes: $Row = {};
+        const $record: $Row = { ...$before };
+        if (parsed.parent !== undefined) $changes.parentId = $record.parentId = parsed.parent;
+        const $load = { actor: $actor, context: $context, clock: options.clock };
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Task", $record, "action function"),
+          "Task.move",
+        );
+        const $s = $scope(
+          {
+            self: $self,
+            input: $readOnlyRecord(parsed, "Task.move"),
+            actor: $actor,
+            context: $context,
+            before: $readOnlyRecord(
+              $guarded($loadPlan, "Task", $before, "before"),
+              "Task.move",
+            ) as unknown as Task,
+            tx: undefined,
+          },
+          options,
+        ) as unknown as $StoredScope;
+        // validate: every check runs, and every failed check is reported together
+        const $issues: $Issue[] = [];
+        await $loadInto($loadPlan, "Task", tx, $record, ["claimed", "parent"], $load);
+        await $runCheck($issues, $s, {
+          label: "taskOpen",
+          code: "task.open",
+          message: "the task is not open; reopen it first",
+          source: { file: "src/domain/work/task.mesh.mx", line: 101, column: 9 },
+          that: $expressions["move.check.taskOpen.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "parentOpen",
+          code: "task.parent-open",
+          message: "the parent task is not open",
+          source: { file: "src/domain/work/task.mesh.mx", line: 106, column: 9 },
+          that: $expressions["move.check.parentOpen.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "noActiveClaim",
+          code: "task.no-active-claim",
+          message: "release or revoke the active claim first",
+          source: { file: "src/domain/work/task.mesh.mx", line: 111, column: 9 },
+          that: $expressions["move.check.noActiveClaim.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "versionMatches",
+          code: "expected-version",
+          message: "the record is at another version; read it again and retry",
+          source: { file: "src/domain/work/task.mesh.mx", line: 116, column: 9 },
+          that: $expressions["move.check.versionMatches.that"],
+          details: $expressions["move.check.versionMatches.details"],
+        });
+        if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // do: the steps run in written order, each seeing the record as the ones before it left it
+        {
+          const $value = await $expressions["move.step.0.set.version"]($s);
+          if ($value === undefined || $value === null)
+            throw new $FrameworkError(
+              "set &version (src/domain/work/task.mesh.mx:124:20) produced no value, and version is required",
+            );
+          $changes.version = $record.version = $value;
+        }
+        $unloadFrom($loadPlan, "Task", $record);
+        // data layer
+        const $stored = await tx.updateByKey(tables.task, $key, $changes);
+        if ($stored === undefined) throw new $NotFoundError("Task", $key);
+        return $stored as Task;
+      });
+    },
+
+    async reopen(input: ReopenTaskInput, ...[context]: $ContextArgument): Promise<Task> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
+      const parsed = await parseInput(reopenTaskInput, input);
+      return layer.transaction(async (tx) => {
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $actor = $context.actor;
+        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        const $key = { id: parsed.id };
+        const $before = await tx.selectByKeyForUpdate(tables.task, $key);
+        if ($before === undefined) throw new $NotFoundError("Task", $key);
+        const $changes: $Row = {};
+        const $record: $Row = { ...$before };
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Task", $record, "action function"),
+          "Task.reopen",
+        );
+        const $s = $scope(
+          {
+            self: $self,
+            input: $readOnlyRecord(parsed, "Task.reopen"),
+            actor: $actor,
+            context: $context,
+            before: $readOnlyRecord(
+              $guarded($loadPlan, "Task", $before, "before"),
+              "Task.reopen",
+            ) as unknown as Task,
+            tx: undefined,
+          },
+          options,
+        ) as unknown as $StoredScope;
+        // validate: every check runs, and every failed check is reported together
+        const $issues: $Issue[] = [];
+        await $runCheck($issues, $s, {
+          label: "taskSettled",
+          code: "task.settled",
+          message: "the task is already open",
+          source: { file: "src/domain/work/task.mesh.mx", line: 130, column: 9 },
+          that: $expressions["reopen.check.taskSettled.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "versionMatches",
+          code: "expected-version",
+          message: "the record is at another version; read it again and retry",
+          source: { file: "src/domain/work/task.mesh.mx", line: 135, column: 9 },
+          that: $expressions["reopen.check.versionMatches.that"],
+          details: $expressions["reopen.check.versionMatches.details"],
+        });
+        if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // do: the steps run in written order, each seeing the record as the ones before it left it
+        $changes.state = $record.state = "open";
+        {
+          const $value = await $expressions["reopen.step.0.set.version"]($s);
+          if ($value === undefined || $value === null)
+            throw new $FrameworkError(
+              "set &version (src/domain/work/task.mesh.mx:144:20) produced no value, and version is required",
+            );
+          $changes.version = $record.version = $value;
+        }
+        // data layer
+        const $stored = await tx.updateByKey(tables.task, $key, $changes);
+        if ($stored === undefined) throw new $NotFoundError("Task", $key);
+        return $stored as Task;
       });
     },
 
     async read(input: ReadTaskInput, ...[_context]: $ContextArgument): Promise<Task[]> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(readTaskInput, input);
       return layer.transaction(async (tx) => {
         rejectComputedQuery(

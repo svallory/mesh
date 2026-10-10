@@ -26,6 +26,7 @@ export type RegisterMachineInput = {
 export type UpdateMachineInput = {
   id: string;
   platform?: string | null | undefined;
+  expectedVersion?: number | null | undefined;
 };
 
 export type ReadMachineInput = {

@@ -6,6 +6,7 @@ import { z } from "zod";
 import type {
   RecordSessionReferenceInput,
   SetAvailabilitySessionReferenceInput,
+  RedactSessionReferenceInput,
   ReadSessionReferenceInput,
   SessionReferenceFilter,
 } from "./sessionReference.types";
@@ -106,6 +107,7 @@ export type RecordSessionReferenceInputShape = Assert<
 export const setAvailabilitySessionReferenceInput = z.strictObject({
   id: z.uuid(),
   availability: z.enum(["complete", "partial", "unavailable", "redacted"]).optional(),
+  expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<SetAvailabilitySessionReferenceInput>;
 
 export type SetAvailabilitySessionReferenceInputShape = Assert<
@@ -113,6 +115,15 @@ export type SetAvailabilitySessionReferenceInputShape = Assert<
     z.output<typeof setAvailabilitySessionReferenceInput>,
     SetAvailabilitySessionReferenceInput
   >
+>;
+
+export const redactSessionReferenceInput = z.strictObject({
+  id: z.uuid(),
+  expectedVersion: z.int().nullable().optional(),
+}) satisfies z.ZodType<RedactSessionReferenceInput>;
+
+export type RedactSessionReferenceInputShape = Assert<
+  SameShape<z.output<typeof redactSessionReferenceInput>, RedactSessionReferenceInput>
 >;
 
 export const readSessionReferenceInput = z.strictObject({

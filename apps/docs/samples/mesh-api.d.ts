@@ -74,6 +74,8 @@ declare module "@meshfw/runtime" {
     path: (string | number)[];
     message: string;
     source: { file: string; line: number; column: number } | null;
+    /** What the failing `check` returned from `details=`, or `null`. */
+    details: unknown;
   }
 
   /** One check from a policy's breakdown, as `can` returns it. */
@@ -138,11 +140,6 @@ declare module "@meshfw/runtime" {
   interface ActionContext {
     /** Reserved: the application marks a call it makes on its own behalf. Mesh skips no policy for it. */
     system?: boolean;
-  }
-
-  interface Issue {
-    /** What the failing `check` returned from `details=`, or `null`. */
-    details: unknown;
   }
 }
 
@@ -288,7 +285,7 @@ declare module "#mesh" {
 
   export function connect(): Promise<void>;
   export function disconnect(): Promise<void>;
-  export function bind(dataLayer: DataLayer, options?: { seams?: import("@meshfw/runtime").Seams }): Bound;
+  export function bind(dataLayer: DataLayer, options?: { seams?: import("@meshfw/runtime").Seams; clock?: () => Date }): Bound;
 
   /** The emitted schema's tables, for `createSchema(db, tables)`. */
   export const tables: { readonly list: object; readonly todo: object };

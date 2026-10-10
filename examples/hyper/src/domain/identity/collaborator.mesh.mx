@@ -17,3 +17,25 @@ entity :Collaborator table="collaborators"
     update :update
       input
         &name
+        enum :kind values=[:human, :agent] nullable
+        integer :expectedVersion nullable
+      validate
+        check :collaboratorActive [
+          that=() => &state === :active
+          code="collaborator.active"
+          message="the collaborator is retired"
+        ]
+        check :kindImmutable [
+          that=({ input }) => input.kind == null || input.kind === &kind
+          code="collaborator.kind-immutable"
+          message="a collaborator keeps its kind"
+        ]
+        check :versionMatches [
+          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
+          code="expected-version"
+          message="the record is at another version; read it again and retry"
+          details=({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })
+        ]
+      do
+        set
+          &version=() => &version + 1

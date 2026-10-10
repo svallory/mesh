@@ -76,6 +76,7 @@ const ops = {
   async insert(_table, row) { const stored = { ...row, id: row.id ?? crypto.randomUUID() }; rows.set(stored.id, stored); return { ...stored }; },
   async select() { return [...rows.values()]; },
   async selectByKey(_table, key) { return rows.get(key.id); },
+  async selectByKeyForUpdate(_table, key) { return rows.get(key.id); },
   async updateByKey(_table, key, changes) {
     const row = rows.get(key.id);
     if (!row) return undefined;

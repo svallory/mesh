@@ -1,5 +1,7 @@
 import { dirname, resolve } from "node:path";
-import type { Diagnostic, Entity, ExprNode, ModelDocument } from "@meshfw/model";
+import type { Diagnostic, Entity, Expression, ExprNode, ModelDocument, SourcePosition } from "@meshfw/model";
+import { actionExpressions } from "./action-expressions.ts";
+import { inverseProblem } from "./inverse.ts";
 import { error } from "./diagnostics.ts";
 
 /**
@@ -20,67 +22,77 @@ export function computeNeeds(document: ModelDocument, diagnostics: Diagnostic[])
     byFile.get(resolve(dirname(from.file), relation.entity.from));
 
   const noInverse = new Set<object>();
+  /** The dotted paths on `self` that `body` reads; `what` names the reader in a message about a relationship nothing points back at. */
+  const needsOf = (entity: Entity, body: Expression, what: string, position: SourcePosition): string[] => {
+    const needs = new Set<string>();
+    const record = (path: readonly string[]) => {
+      let owner: Entity | undefined = entity;
+      const prefix: string[] = [];
+      for (const segment of path) {
+        if (!owner) return;
+        const relation = owner.relationships.find((r) => r.name === segment);
+        if (relation) {
+          if (relation.kind !== "belongs-to" && relation.via === undefined && !noInverse.has(relation)) {
+            noInverse.add(relation);
+            const problem = inverseProblem(document, owner, relation);
+            diagnostics.push(error(problem.code,
+              `${what} reads ${relation.kind} :${relation.name}, which cannot be loaded: ${problem.because}`,
+              position, problem.fix));
+          }
+          prefix.push(segment);
+          needs.add(prefix.join("."));
+          owner = targetOf(owner, relation);
+          continue;
+        }
+        if (owner.computed.some((c) => c.name === segment)) needs.add([...prefix, segment].join("."));
+        return;
+      }
+    };
+    const pathOf = (n: ExprNode, env: ReadonlyMap<string, readonly string[]>): readonly string[] | undefined => {
+      if (n.kind === "var") return n.name === "self" ? [] : env.get(n.name);
+      if (n.kind === "member") {
+        const parent = pathOf(n.object, env);
+        return parent ? [...parent, n.name] : undefined;
+      }
+      // The element `find` returns, and the elements `filter` keeps, are rows of the source list.
+      if (n.kind === "quantify" && (n.op === "find" || n.op === "filter")) return pathOf(n.source, env);
+      return undefined;
+    };
+    const visit = (n: ExprNode, env: ReadonlyMap<string, readonly string[]>): void => {
+      if (n.kind === "member") {
+        const path = pathOf(n, env);
+        if (path) record(path);
+        visit(n.object, env);
+      } else if (n.kind === "call" || n.kind === "helper") n.args.forEach((arg) => visit(arg, env));
+      else if (n.kind === "quantify") {
+        visit(n.source, env);
+        const source = pathOf(n.source, env);
+        visit(n.body, source ? new Map([...env, [n.param, source]]) : env);
+      }
+    };
+    if (body.tree) visit(body.tree, new Map());
+    else if (body.plain)
+      for (const edit of body.plain.edits) {
+        const name = /^self\.(.+)$/.exec(edit.text)?.[1];
+        if (!name) continue;
+        // Follow the chain written right after `&name`: `&parent?.parent?.leaf` reads parent, parent.parent and parent.parent.leaf.
+        // A read through a variable (`const p = &parent; p.leaf`) cannot be followed here; the loader guards plain bodies at run time.
+        const path = [name];
+        const rest = body.source.slice(edit.to);
+        for (const link of rest.matchAll(/\s*\??\.\s*([A-Za-z_$][\w$]*)/gy)) path.push(link[1]!);
+        record(path);
+      }
+    return [...needs].sort();
+  };
   for (const entity of document.entities) {
     for (const computed of entity.computed) {
       if (!computed.body) continue;
-      const needs = new Set<string>();
-      const record = (path: readonly string[]) => {
-        let owner: Entity | undefined = entity;
-        const prefix: string[] = [];
-        for (const segment of path) {
-          if (!owner) return;
-          const relation = owner.relationships.find((r) => r.name === segment);
-          if (relation) {
-            if (relation.kind !== "belongs-to" && relation.via === undefined && !noInverse.has(relation)) {
-              noInverse.add(relation);
-              diagnostics.push(error("MESH_NO_INVERSE",
-                `&${computed.name} reads ${relation.kind} :${relation.name}, which cannot be loaded: :${targetOf(owner, relation)?.name ?? relation.entity.identifier} has no belongs-to back to :${owner.name}`,
-                computed.position, `Declare a belongs-to to :${owner.name} in the other entity's file, and name it with via=:name if there are several`));
-            }
-            prefix.push(segment);
-            needs.add(prefix.join("."));
-            owner = targetOf(owner, relation);
-            continue;
-          }
-          if (owner.computed.some((c) => c.name === segment)) needs.add([...prefix, segment].join("."));
-          return;
-        }
-      };
-      const pathOf = (n: ExprNode, env: ReadonlyMap<string, readonly string[]>): readonly string[] | undefined => {
-        if (n.kind === "var") return n.name === "self" ? [] : env.get(n.name);
-        if (n.kind === "member") {
-          const parent = pathOf(n.object, env);
-          return parent ? [...parent, n.name] : undefined;
-        }
-        // The element `find` returns, and the elements `filter` keeps, are rows of the source list.
-        if (n.kind === "quantify" && (n.op === "find" || n.op === "filter")) return pathOf(n.source, env);
-        return undefined;
-      };
-      const visit = (n: ExprNode, env: ReadonlyMap<string, readonly string[]>): void => {
-        if (n.kind === "member") {
-          const path = pathOf(n, env);
-          if (path) record(path);
-          visit(n.object, env);
-        } else if (n.kind === "call" || n.kind === "helper") n.args.forEach((arg) => visit(arg, env));
-        else if (n.kind === "quantify") {
-          visit(n.source, env);
-          const source = pathOf(n.source, env);
-          visit(n.body, source ? new Map([...env, [n.param, source]]) : env);
-        }
-      };
-      if (computed.body.tree) visit(computed.body.tree, new Map());
-      else if (computed.body.plain)
-        for (const edit of computed.body.plain.edits) {
-          const name = /^self\.(.+)$/.exec(edit.text)?.[1];
-          if (!name) continue;
-          // Follow the chain written right after `&name`: `&parent?.parent?.leaf` reads parent, parent.parent and parent.parent.leaf.
-          // A read through a variable (`const p = &parent; p.leaf`) cannot be followed here; the loader guards plain bodies at run time.
-          const path = [name];
-          const rest = computed.body.source.slice(edit.to);
-          for (const link of rest.matchAll(/\s*\??\.\s*([A-Za-z_$][\w$]*)/gy)) path.push(link[1]!);
-          record(path);
-        }
-      computed.needs = [...needs].sort();
+      computed.needs = needsOf(entity, computed.body, `&${computed.name}`, computed.position);
+    }
+    // The functions of actions read the record too (M5): the action loads what they read before it runs them.
+    for (const { expression, what } of actionExpressions(entity)) {
+      const needs = needsOf(entity, expression, what, expression.position);
+      if (needs.length) expression.needs = needs;
     }
     // Two computed fields that read each other can never be loaded.
     const edges = new Map(entity.computed.map((c) => [c.name, (c.needs ?? []).filter((n) => entity.computed.some((o) => o.name === n))]));

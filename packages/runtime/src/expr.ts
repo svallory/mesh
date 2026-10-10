@@ -18,7 +18,7 @@ export type Scope<T extends object = Record<string, unknown>> = T & { readonly c
 const instants = new WeakMap<object, Date>();
 
 /** A scope for one evaluation run: `now()` is read from `clock` once and then fixed. */
-export function scope<T extends object>(roots: T, options: { clock?: Clock } = {}): Scope<T> {
+export function scope<T extends object>(roots: T, options: { clock?: Clock | undefined } = {}): Scope<T> {
   return { ...roots, clock: options.clock ?? systemClock };
 }
 

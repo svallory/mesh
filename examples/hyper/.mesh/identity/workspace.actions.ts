@@ -3,10 +3,18 @@
 // Mesh's own imports carry a `$` so that no entity name can shadow them.
 
 import {
+  FrameworkError as $FrameworkError,
+  InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
   parseInput,
+  readOnlyRecord as $readOnlyRecord,
+  runCheck as $runCheck,
+  scope as $scope,
+  type BindOptions as $BindOptions,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type Issue as $Issue,
+  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   Workspace,
@@ -20,35 +28,93 @@ import {
   readWorkspaceInput,
 } from "./workspace.validators";
 import { tables } from "../schema";
+import {
+  expressions as $expressions,
+  type WorkspaceStoredScope as $StoredScope,
+} from "./workspace.expressions";
 
-export function bindWorkspace(layer: $DataLayer) {
+export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
     async create(input: CreateWorkspaceInput, ...[_context]: $ContextArgument): Promise<Workspace> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(createWorkspaceInput, input);
       return layer.transaction(async (tx) => {
-        const row = await tx.insert(tables.workspace, {
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        // plan: a create is one insert; nothing is read first
+        const $changes: $Row = {
           name: parsed.name === undefined ? null : parsed.name,
           location: parsed.location === undefined ? "local" : parsed.location,
           state: "active",
           version: 1,
-        });
-        return row as Workspace;
+        };
+        // data layer
+        const $stored = await tx.insert(tables.workspace, $changes);
+        return $stored as Workspace;
       });
     },
 
-    async rename(input: RenameWorkspaceInput, ...[_context]: $ContextArgument): Promise<Workspace> {
+    async rename(input: RenameWorkspaceInput, ...[context]: $ContextArgument): Promise<Workspace> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(renameWorkspaceInput, input);
       return layer.transaction(async (tx) => {
-        const key = { id: parsed.id };
-        const changes: Partial<Workspace> = {};
-        if (parsed.name !== undefined) changes.name = parsed.name;
-        const row = await tx.updateByKey(tables.workspace, key, changes);
-        if (row === undefined) throw new $NotFoundError("Workspace", key);
-        return row as Workspace;
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $actor = $context.actor;
+        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        const $key = { id: parsed.id };
+        const $before = await tx.selectByKeyForUpdate(tables.workspace, $key);
+        if ($before === undefined) throw new $NotFoundError("Workspace", $key);
+        const $changes: $Row = {};
+        const $record: $Row = { ...$before };
+        if (parsed.name !== undefined) $changes.name = $record.name = parsed.name;
+        const $self = $readOnlyRecord($record, "Workspace.rename");
+        const $s = $scope(
+          {
+            self: $self,
+            input: $readOnlyRecord(parsed, "Workspace.rename"),
+            actor: $actor,
+            context: $context,
+            before: $readOnlyRecord($before, "Workspace.rename") as unknown as Workspace,
+            tx: undefined,
+          },
+          options,
+        ) as unknown as $StoredScope;
+        // validate: every check runs, and every failed check is reported together
+        const $issues: $Issue[] = [];
+        await $runCheck($issues, $s, {
+          label: "workspaceActive",
+          code: "workspace.active",
+          message: "the workspace has moved; it can no longer be changed",
+          source: { file: "src/domain/identity/workspace.mesh.mx", line: 18, column: 9 },
+          that: $expressions["rename.check.workspaceActive.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "versionMatches",
+          code: "expected-version",
+          message: "the record is at another version; read it again and retry",
+          source: { file: "src/domain/identity/workspace.mesh.mx", line: 23, column: 9 },
+          that: $expressions["rename.check.versionMatches.that"],
+          details: $expressions["rename.check.versionMatches.details"],
+        });
+        if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // do: the steps run in written order, each seeing the record as the ones before it left it
+        {
+          const $value = await $expressions["rename.step.0.set.version"]($s);
+          if ($value === undefined || $value === null)
+            throw new $FrameworkError(
+              "set &version (src/domain/identity/workspace.mesh.mx:31:20) produced no value, and version is required",
+            );
+          $changes.version = $record.version = $value;
+        }
+        // data layer
+        const $stored = await tx.updateByKey(tables.workspace, $key, $changes);
+        if ($stored === undefined) throw new $NotFoundError("Workspace", $key);
+        return $stored as Workspace;
       });
     },
 
     async read(input: ReadWorkspaceInput, ...[_context]: $ContextArgument): Promise<Workspace[]> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(readWorkspaceInput, input);
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.workspace, {

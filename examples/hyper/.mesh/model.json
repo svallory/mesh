@@ -1646,7 +1646,83 @@
           "validate": []
         },
         {
-          "do": [],
+          "do": [
+            {
+              "assignments": [
+                {
+                  "member": {
+                    "name": "version",
+                    "position": {
+                      "column": 10,
+                      "file": "src/domain/execution/machine.mesh.mx",
+                      "line": 39,
+                      "offset": 1253
+                    }
+                  },
+                  "value": {
+                    "params": [],
+                    "position": {
+                      "column": 19,
+                      "file": "src/domain/execution/machine.mesh.mx",
+                      "line": 39,
+                      "offset": 1262
+                    },
+                    "source": "() => &version + 1",
+                    "tree": {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "version",
+                          "object": {
+                            "kind": "var",
+                            "name": "self",
+                            "position": {
+                              "column": 25,
+                              "file": "src/domain/execution/machine.mesh.mx",
+                              "line": 39,
+                              "offset": 1268
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 25,
+                            "file": "src/domain/execution/machine.mesh.mx",
+                            "line": 39,
+                            "offset": 1268
+                          }
+                        },
+                        {
+                          "kind": "literal",
+                          "position": {
+                            "column": 36,
+                            "file": "src/domain/execution/machine.mesh.mx",
+                            "line": 39,
+                            "offset": 1279
+                          },
+                          "value": 1
+                        }
+                      ],
+                      "fn": "add",
+                      "kind": "call",
+                      "position": {
+                        "column": 25,
+                        "file": "src/domain/execution/machine.mesh.mx",
+                        "line": 39,
+                        "offset": 1268
+                      }
+                    }
+                  }
+                }
+              ],
+              "kind": "set",
+              "position": {
+                "column": 8,
+                "file": "src/domain/execution/machine.mesh.mx",
+                "line": 38,
+                "offset": 1239
+              }
+            }
+          ],
           "input": [
             {
               "kind": "member",
@@ -1659,6 +1735,18 @@
                   "offset": 630
                 }
               }
+            },
+            {
+              "kind": "argument",
+              "name": "expectedVersion",
+              "nullable": true,
+              "position": {
+                "column": 8,
+                "file": "src/domain/execution/machine.mesh.mx",
+                "line": 24,
+                "offset": 648
+              },
+              "type": "integer"
             }
           ],
           "kind": "update",
@@ -1669,7 +1757,218 @@
             "line": 21,
             "offset": 595
           },
-          "validate": []
+          "validate": [
+            {
+              "code": "machine.active",
+              "label": "machineActive",
+              "message": "the machine is retired",
+              "position": {
+                "column": 8,
+                "file": "src/domain/execution/machine.mesh.mx",
+                "line": 26,
+                "offset": 705
+              },
+              "that": {
+                "params": [],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/execution/machine.mesh.mx",
+                  "line": 27,
+                  "offset": 743
+                },
+                "source": "() => &state === :active",
+                "tree": {
+                  "args": [
+                    {
+                      "kind": "member",
+                      "name": "state",
+                      "object": {
+                        "kind": "var",
+                        "name": "self",
+                        "position": {
+                          "column": 21,
+                          "file": "src/domain/execution/machine.mesh.mx",
+                          "line": 27,
+                          "offset": 749
+                        }
+                      },
+                      "optional": false,
+                      "position": {
+                        "column": 21,
+                        "file": "src/domain/execution/machine.mesh.mx",
+                        "line": 27,
+                        "offset": 749
+                      }
+                    },
+                    {
+                      "kind": "atom",
+                      "position": {
+                        "column": 32,
+                        "file": "src/domain/execution/machine.mesh.mx",
+                        "line": 27,
+                        "offset": 760
+                      },
+                      "value": "active"
+                    }
+                  ],
+                  "fn": "eq",
+                  "kind": "call",
+                  "position": {
+                    "column": 21,
+                    "file": "src/domain/execution/machine.mesh.mx",
+                    "line": 27,
+                    "offset": 749
+                  }
+                }
+              }
+            },
+            {
+              "code": "expected-version",
+              "details": {
+                "params": [
+                  "input",
+                  "before"
+                ],
+                "plain": {
+                  "detail": "object",
+                  "edits": [],
+                  "position": {
+                    "column": 42,
+                    "file": "src/domain/execution/machine.mesh.mx",
+                    "line": 35,
+                    "offset": 1137
+                  },
+                  "why": "unsupported-construct"
+                },
+                "position": {
+                  "column": 18,
+                  "file": "src/domain/execution/machine.mesh.mx",
+                  "line": 35,
+                  "offset": 1113
+                },
+                "source": "({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })"
+              },
+              "label": "versionMatches",
+              "message": "the record is at another version; read it again and retry",
+              "position": {
+                "column": 8,
+                "file": "src/domain/execution/machine.mesh.mx",
+                "line": 31,
+                "offset": 861
+              },
+              "that": {
+                "params": [
+                  "input"
+                ],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/execution/machine.mesh.mx",
+                  "line": 32,
+                  "offset": 900
+                },
+                "source": "({ input }) => input.expectedVersion == null || input.expectedVersion === &version",
+                "tree": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "expectedVersion",
+                          "object": {
+                            "kind": "var",
+                            "name": "input",
+                            "position": {
+                              "column": 30,
+                              "file": "src/domain/execution/machine.mesh.mx",
+                              "line": 32,
+                              "offset": 915
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 30,
+                            "file": "src/domain/execution/machine.mesh.mx",
+                            "line": 32,
+                            "offset": 915
+                          }
+                        }
+                      ],
+                      "fn": "isNull",
+                      "kind": "call",
+                      "position": {
+                        "column": 30,
+                        "file": "src/domain/execution/machine.mesh.mx",
+                        "line": 32,
+                        "offset": 915
+                      }
+                    },
+                    {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "expectedVersion",
+                          "object": {
+                            "kind": "var",
+                            "name": "input",
+                            "position": {
+                              "column": 63,
+                              "file": "src/domain/execution/machine.mesh.mx",
+                              "line": 32,
+                              "offset": 948
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 63,
+                            "file": "src/domain/execution/machine.mesh.mx",
+                            "line": 32,
+                            "offset": 948
+                          }
+                        },
+                        {
+                          "kind": "member",
+                          "name": "version",
+                          "object": {
+                            "kind": "var",
+                            "name": "self",
+                            "position": {
+                              "column": 89,
+                              "file": "src/domain/execution/machine.mesh.mx",
+                              "line": 32,
+                              "offset": 974
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 89,
+                            "file": "src/domain/execution/machine.mesh.mx",
+                            "line": 32,
+                            "offset": 974
+                          }
+                        }
+                      ],
+                      "fn": "eq",
+                      "kind": "call",
+                      "position": {
+                        "column": 63,
+                        "file": "src/domain/execution/machine.mesh.mx",
+                        "line": 32,
+                        "offset": 948
+                      }
+                    }
+                  ],
+                  "fn": "or",
+                  "kind": "call",
+                  "position": {
+                    "column": 30,
+                    "file": "src/domain/execution/machine.mesh.mx",
+                    "line": 32,
+                    "offset": 915
+                  }
+                }
+              }
+            }
+          ]
         }
       ],
       "always": [],
@@ -2288,7 +2587,83 @@
           "validate": []
         },
         {
-          "do": [],
+          "do": [
+            {
+              "assignments": [
+                {
+                  "member": {
+                    "name": "version",
+                    "position": {
+                      "column": 10,
+                      "file": "src/domain/execution/session-reference.mesh.mx",
+                      "line": 50,
+                      "offset": 1713
+                    }
+                  },
+                  "value": {
+                    "params": [],
+                    "position": {
+                      "column": 19,
+                      "file": "src/domain/execution/session-reference.mesh.mx",
+                      "line": 50,
+                      "offset": 1722
+                    },
+                    "source": "() => &version + 1",
+                    "tree": {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "version",
+                          "object": {
+                            "kind": "var",
+                            "name": "self",
+                            "position": {
+                              "column": 25,
+                              "file": "src/domain/execution/session-reference.mesh.mx",
+                              "line": 50,
+                              "offset": 1728
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 25,
+                            "file": "src/domain/execution/session-reference.mesh.mx",
+                            "line": 50,
+                            "offset": 1728
+                          }
+                        },
+                        {
+                          "kind": "literal",
+                          "position": {
+                            "column": 36,
+                            "file": "src/domain/execution/session-reference.mesh.mx",
+                            "line": 50,
+                            "offset": 1739
+                          },
+                          "value": 1
+                        }
+                      ],
+                      "fn": "add",
+                      "kind": "call",
+                      "position": {
+                        "column": 25,
+                        "file": "src/domain/execution/session-reference.mesh.mx",
+                        "line": 50,
+                        "offset": 1728
+                      }
+                    }
+                  }
+                }
+              ],
+              "kind": "set",
+              "position": {
+                "column": 8,
+                "file": "src/domain/execution/session-reference.mesh.mx",
+                "line": 49,
+                "offset": 1699
+              }
+            }
+          ],
           "input": [
             {
               "kind": "member",
@@ -2301,6 +2676,18 @@
                   "offset": 818
                 }
               }
+            },
+            {
+              "kind": "argument",
+              "name": "expectedVersion",
+              "nullable": true,
+              "position": {
+                "column": 8,
+                "file": "src/domain/execution/session-reference.mesh.mx",
+                "line": 30,
+                "offset": 840
+              },
+              "type": "integer"
             }
           ],
           "kind": "update",
@@ -2311,7 +2698,638 @@
             "line": 27,
             "offset": 774
           },
-          "validate": []
+          "validate": [
+            {
+              "code": "session.not-redacted",
+              "label": "notRedacted",
+              "message": "the session is redacted and cannot be changed",
+              "position": {
+                "column": 8,
+                "file": "src/domain/execution/session-reference.mesh.mx",
+                "line": 32,
+                "offset": 897
+              },
+              "that": {
+                "params": [
+                  "before"
+                ],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/execution/session-reference.mesh.mx",
+                  "line": 33,
+                  "offset": 933
+                },
+                "source": "({ before }) => before.availability !== :redacted",
+                "tree": {
+                  "args": [
+                    {
+                      "kind": "member",
+                      "name": "availability",
+                      "object": {
+                        "kind": "var",
+                        "name": "before",
+                        "position": {
+                          "column": 31,
+                          "file": "src/domain/execution/session-reference.mesh.mx",
+                          "line": 33,
+                          "offset": 949
+                        }
+                      },
+                      "optional": false,
+                      "position": {
+                        "column": 31,
+                        "file": "src/domain/execution/session-reference.mesh.mx",
+                        "line": 33,
+                        "offset": 949
+                      }
+                    },
+                    {
+                      "kind": "atom",
+                      "position": {
+                        "column": 55,
+                        "file": "src/domain/execution/session-reference.mesh.mx",
+                        "line": 33,
+                        "offset": 973
+                      },
+                      "value": "redacted"
+                    }
+                  ],
+                  "fn": "ne",
+                  "kind": "call",
+                  "position": {
+                    "column": 31,
+                    "file": "src/domain/execution/session-reference.mesh.mx",
+                    "line": 33,
+                    "offset": 949
+                  }
+                }
+              }
+            },
+            {
+              "code": "session.availability",
+              "label": "availabilityChanges",
+              "message": "the session already has that availability",
+              "position": {
+                "column": 8,
+                "file": "src/domain/execution/session-reference.mesh.mx",
+                "line": 37,
+                "offset": 1105
+              },
+              "that": {
+                "params": [
+                  "before"
+                ],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/execution/session-reference.mesh.mx",
+                  "line": 38,
+                  "offset": 1149
+                },
+                "source": "({ before }) => &availability !== before.availability",
+                "tree": {
+                  "args": [
+                    {
+                      "kind": "member",
+                      "name": "availability",
+                      "object": {
+                        "kind": "var",
+                        "name": "self",
+                        "position": {
+                          "column": 31,
+                          "file": "src/domain/execution/session-reference.mesh.mx",
+                          "line": 38,
+                          "offset": 1165
+                        }
+                      },
+                      "optional": false,
+                      "position": {
+                        "column": 31,
+                        "file": "src/domain/execution/session-reference.mesh.mx",
+                        "line": 38,
+                        "offset": 1165
+                      }
+                    },
+                    {
+                      "kind": "member",
+                      "name": "availability",
+                      "object": {
+                        "kind": "var",
+                        "name": "before",
+                        "position": {
+                          "column": 49,
+                          "file": "src/domain/execution/session-reference.mesh.mx",
+                          "line": 38,
+                          "offset": 1183
+                        }
+                      },
+                      "optional": false,
+                      "position": {
+                        "column": 49,
+                        "file": "src/domain/execution/session-reference.mesh.mx",
+                        "line": 38,
+                        "offset": 1183
+                      }
+                    }
+                  ],
+                  "fn": "ne",
+                  "kind": "call",
+                  "position": {
+                    "column": 31,
+                    "file": "src/domain/execution/session-reference.mesh.mx",
+                    "line": 38,
+                    "offset": 1165
+                  }
+                }
+              }
+            },
+            {
+              "code": "expected-version",
+              "details": {
+                "params": [
+                  "input",
+                  "before"
+                ],
+                "plain": {
+                  "detail": "object",
+                  "edits": [],
+                  "position": {
+                    "column": 42,
+                    "file": "src/domain/execution/session-reference.mesh.mx",
+                    "line": 46,
+                    "offset": 1597
+                  },
+                  "why": "unsupported-construct"
+                },
+                "position": {
+                  "column": 18,
+                  "file": "src/domain/execution/session-reference.mesh.mx",
+                  "line": 46,
+                  "offset": 1573
+                },
+                "source": "({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })"
+              },
+              "label": "versionMatches",
+              "message": "the record is at another version; read it again and retry",
+              "position": {
+                "column": 8,
+                "file": "src/domain/execution/session-reference.mesh.mx",
+                "line": 42,
+                "offset": 1321
+              },
+              "that": {
+                "params": [
+                  "input"
+                ],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/execution/session-reference.mesh.mx",
+                  "line": 43,
+                  "offset": 1360
+                },
+                "source": "({ input }) => input.expectedVersion == null || input.expectedVersion === &version",
+                "tree": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "expectedVersion",
+                          "object": {
+                            "kind": "var",
+                            "name": "input",
+                            "position": {
+                              "column": 30,
+                              "file": "src/domain/execution/session-reference.mesh.mx",
+                              "line": 43,
+                              "offset": 1375
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 30,
+                            "file": "src/domain/execution/session-reference.mesh.mx",
+                            "line": 43,
+                            "offset": 1375
+                          }
+                        }
+                      ],
+                      "fn": "isNull",
+                      "kind": "call",
+                      "position": {
+                        "column": 30,
+                        "file": "src/domain/execution/session-reference.mesh.mx",
+                        "line": 43,
+                        "offset": 1375
+                      }
+                    },
+                    {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "expectedVersion",
+                          "object": {
+                            "kind": "var",
+                            "name": "input",
+                            "position": {
+                              "column": 63,
+                              "file": "src/domain/execution/session-reference.mesh.mx",
+                              "line": 43,
+                              "offset": 1408
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 63,
+                            "file": "src/domain/execution/session-reference.mesh.mx",
+                            "line": 43,
+                            "offset": 1408
+                          }
+                        },
+                        {
+                          "kind": "member",
+                          "name": "version",
+                          "object": {
+                            "kind": "var",
+                            "name": "self",
+                            "position": {
+                              "column": 89,
+                              "file": "src/domain/execution/session-reference.mesh.mx",
+                              "line": 43,
+                              "offset": 1434
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 89,
+                            "file": "src/domain/execution/session-reference.mesh.mx",
+                            "line": 43,
+                            "offset": 1434
+                          }
+                        }
+                      ],
+                      "fn": "eq",
+                      "kind": "call",
+                      "position": {
+                        "column": 63,
+                        "file": "src/domain/execution/session-reference.mesh.mx",
+                        "line": 43,
+                        "offset": 1408
+                      }
+                    }
+                  ],
+                  "fn": "or",
+                  "kind": "call",
+                  "position": {
+                    "column": 30,
+                    "file": "src/domain/execution/session-reference.mesh.mx",
+                    "line": 43,
+                    "offset": 1375
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "do": [
+            {
+              "assignments": [
+                {
+                  "member": {
+                    "name": "availability",
+                    "position": {
+                      "column": 10,
+                      "file": "src/domain/execution/session-reference.mesh.mx",
+                      "line": 68,
+                      "offset": 2437
+                    }
+                  },
+                  "value": {
+                    "value": "redacted"
+                  }
+                },
+                {
+                  "member": {
+                    "name": "location",
+                    "position": {
+                      "column": 10,
+                      "file": "src/domain/execution/session-reference.mesh.mx",
+                      "line": 69,
+                      "offset": 2471
+                    }
+                  },
+                  "value": null
+                },
+                {
+                  "member": {
+                    "name": "version",
+                    "position": {
+                      "column": 10,
+                      "file": "src/domain/execution/session-reference.mesh.mx",
+                      "line": 70,
+                      "offset": 2496
+                    }
+                  },
+                  "value": {
+                    "params": [],
+                    "position": {
+                      "column": 19,
+                      "file": "src/domain/execution/session-reference.mesh.mx",
+                      "line": 70,
+                      "offset": 2505
+                    },
+                    "source": "() => &version + 1",
+                    "tree": {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "version",
+                          "object": {
+                            "kind": "var",
+                            "name": "self",
+                            "position": {
+                              "column": 25,
+                              "file": "src/domain/execution/session-reference.mesh.mx",
+                              "line": 70,
+                              "offset": 2511
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 25,
+                            "file": "src/domain/execution/session-reference.mesh.mx",
+                            "line": 70,
+                            "offset": 2511
+                          }
+                        },
+                        {
+                          "kind": "literal",
+                          "position": {
+                            "column": 36,
+                            "file": "src/domain/execution/session-reference.mesh.mx",
+                            "line": 70,
+                            "offset": 2522
+                          },
+                          "value": 1
+                        }
+                      ],
+                      "fn": "add",
+                      "kind": "call",
+                      "position": {
+                        "column": 25,
+                        "file": "src/domain/execution/session-reference.mesh.mx",
+                        "line": 70,
+                        "offset": 2511
+                      }
+                    }
+                  }
+                }
+              ],
+              "kind": "set",
+              "position": {
+                "column": 8,
+                "file": "src/domain/execution/session-reference.mesh.mx",
+                "line": 67,
+                "offset": 2423
+              }
+            }
+          ],
+          "input": [
+            {
+              "kind": "argument",
+              "name": "expectedVersion",
+              "nullable": true,
+              "position": {
+                "column": 8,
+                "file": "src/domain/execution/session-reference.mesh.mx",
+                "line": 53,
+                "offset": 1780
+              },
+              "type": "integer"
+            }
+          ],
+          "kind": "update",
+          "name": "redact",
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/session-reference.mesh.mx",
+            "line": 51,
+            "offset": 1745
+          },
+          "validate": [
+            {
+              "code": "session.not-redacted",
+              "label": "notRedacted",
+              "message": "the session is redacted and cannot be changed",
+              "position": {
+                "column": 8,
+                "file": "src/domain/execution/session-reference.mesh.mx",
+                "line": 55,
+                "offset": 1837
+              },
+              "that": {
+                "params": [
+                  "before"
+                ],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/execution/session-reference.mesh.mx",
+                  "line": 56,
+                  "offset": 1873
+                },
+                "source": "({ before }) => before.availability !== :redacted",
+                "tree": {
+                  "args": [
+                    {
+                      "kind": "member",
+                      "name": "availability",
+                      "object": {
+                        "kind": "var",
+                        "name": "before",
+                        "position": {
+                          "column": 31,
+                          "file": "src/domain/execution/session-reference.mesh.mx",
+                          "line": 56,
+                          "offset": 1889
+                        }
+                      },
+                      "optional": false,
+                      "position": {
+                        "column": 31,
+                        "file": "src/domain/execution/session-reference.mesh.mx",
+                        "line": 56,
+                        "offset": 1889
+                      }
+                    },
+                    {
+                      "kind": "atom",
+                      "position": {
+                        "column": 55,
+                        "file": "src/domain/execution/session-reference.mesh.mx",
+                        "line": 56,
+                        "offset": 1913
+                      },
+                      "value": "redacted"
+                    }
+                  ],
+                  "fn": "ne",
+                  "kind": "call",
+                  "position": {
+                    "column": 31,
+                    "file": "src/domain/execution/session-reference.mesh.mx",
+                    "line": 56,
+                    "offset": 1889
+                  }
+                }
+              }
+            },
+            {
+              "code": "expected-version",
+              "details": {
+                "params": [
+                  "input",
+                  "before"
+                ],
+                "plain": {
+                  "detail": "object",
+                  "edits": [],
+                  "position": {
+                    "column": 42,
+                    "file": "src/domain/execution/session-reference.mesh.mx",
+                    "line": 64,
+                    "offset": 2321
+                  },
+                  "why": "unsupported-construct"
+                },
+                "position": {
+                  "column": 18,
+                  "file": "src/domain/execution/session-reference.mesh.mx",
+                  "line": 64,
+                  "offset": 2297
+                },
+                "source": "({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })"
+              },
+              "label": "versionMatches",
+              "message": "the record is at another version; read it again and retry",
+              "position": {
+                "column": 8,
+                "file": "src/domain/execution/session-reference.mesh.mx",
+                "line": 60,
+                "offset": 2045
+              },
+              "that": {
+                "params": [
+                  "input"
+                ],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/execution/session-reference.mesh.mx",
+                  "line": 61,
+                  "offset": 2084
+                },
+                "source": "({ input }) => input.expectedVersion == null || input.expectedVersion === &version",
+                "tree": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "expectedVersion",
+                          "object": {
+                            "kind": "var",
+                            "name": "input",
+                            "position": {
+                              "column": 30,
+                              "file": "src/domain/execution/session-reference.mesh.mx",
+                              "line": 61,
+                              "offset": 2099
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 30,
+                            "file": "src/domain/execution/session-reference.mesh.mx",
+                            "line": 61,
+                            "offset": 2099
+                          }
+                        }
+                      ],
+                      "fn": "isNull",
+                      "kind": "call",
+                      "position": {
+                        "column": 30,
+                        "file": "src/domain/execution/session-reference.mesh.mx",
+                        "line": 61,
+                        "offset": 2099
+                      }
+                    },
+                    {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "expectedVersion",
+                          "object": {
+                            "kind": "var",
+                            "name": "input",
+                            "position": {
+                              "column": 63,
+                              "file": "src/domain/execution/session-reference.mesh.mx",
+                              "line": 61,
+                              "offset": 2132
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 63,
+                            "file": "src/domain/execution/session-reference.mesh.mx",
+                            "line": 61,
+                            "offset": 2132
+                          }
+                        },
+                        {
+                          "kind": "member",
+                          "name": "version",
+                          "object": {
+                            "kind": "var",
+                            "name": "self",
+                            "position": {
+                              "column": 89,
+                              "file": "src/domain/execution/session-reference.mesh.mx",
+                              "line": 61,
+                              "offset": 2158
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 89,
+                            "file": "src/domain/execution/session-reference.mesh.mx",
+                            "line": 61,
+                            "offset": 2158
+                          }
+                        }
+                      ],
+                      "fn": "eq",
+                      "kind": "call",
+                      "position": {
+                        "column": 63,
+                        "file": "src/domain/execution/session-reference.mesh.mx",
+                        "line": 61,
+                        "offset": 2132
+                      }
+                    }
+                  ],
+                  "fn": "or",
+                  "kind": "call",
+                  "position": {
+                    "column": 30,
+                    "file": "src/domain/execution/session-reference.mesh.mx",
+                    "line": 61,
+                    "offset": 2099
+                  }
+                }
+              }
+            }
+          ]
         }
       ],
       "always": [],
@@ -2560,7 +3578,83 @@
           "validate": []
         },
         {
-          "do": [],
+          "do": [
+            {
+              "assignments": [
+                {
+                  "member": {
+                    "name": "version",
+                    "position": {
+                      "column": 10,
+                      "file": "src/domain/identity/collaborator.mesh.mx",
+                      "line": 41,
+                      "offset": 1374
+                    }
+                  },
+                  "value": {
+                    "params": [],
+                    "position": {
+                      "column": 19,
+                      "file": "src/domain/identity/collaborator.mesh.mx",
+                      "line": 41,
+                      "offset": 1383
+                    },
+                    "source": "() => &version + 1",
+                    "tree": {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "version",
+                          "object": {
+                            "kind": "var",
+                            "name": "self",
+                            "position": {
+                              "column": 25,
+                              "file": "src/domain/identity/collaborator.mesh.mx",
+                              "line": 41,
+                              "offset": 1389
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 25,
+                            "file": "src/domain/identity/collaborator.mesh.mx",
+                            "line": 41,
+                            "offset": 1389
+                          }
+                        },
+                        {
+                          "kind": "literal",
+                          "position": {
+                            "column": 36,
+                            "file": "src/domain/identity/collaborator.mesh.mx",
+                            "line": 41,
+                            "offset": 1400
+                          },
+                          "value": 1
+                        }
+                      ],
+                      "fn": "add",
+                      "kind": "call",
+                      "position": {
+                        "column": 25,
+                        "file": "src/domain/identity/collaborator.mesh.mx",
+                        "line": 41,
+                        "offset": 1389
+                      }
+                    }
+                  }
+                }
+              ],
+              "kind": "set",
+              "position": {
+                "column": 8,
+                "file": "src/domain/identity/collaborator.mesh.mx",
+                "line": 40,
+                "offset": 1360
+              }
+            }
+          ],
           "input": [
             {
               "kind": "member",
@@ -2573,6 +3667,38 @@
                   "offset": 479
                 }
               }
+            },
+            {
+              "kind": "argument",
+              "name": "kind",
+              "nullable": true,
+              "position": {
+                "column": 8,
+                "file": "src/domain/identity/collaborator.mesh.mx",
+                "line": 20,
+                "offset": 493
+              },
+              "type": "enum",
+              "values": [
+                {
+                  "value": "human"
+                },
+                {
+                  "value": "agent"
+                }
+              ]
+            },
+            {
+              "kind": "argument",
+              "name": "expectedVersion",
+              "nullable": true,
+              "position": {
+                "column": 8,
+                "file": "src/domain/identity/collaborator.mesh.mx",
+                "line": 21,
+                "offset": 545
+              },
+              "type": "integer"
             }
           ],
           "kind": "update",
@@ -2583,7 +3709,340 @@
             "line": 17,
             "offset": 444
           },
-          "validate": []
+          "validate": [
+            {
+              "code": "collaborator.active",
+              "label": "collaboratorActive",
+              "message": "the collaborator is retired",
+              "position": {
+                "column": 8,
+                "file": "src/domain/identity/collaborator.mesh.mx",
+                "line": 23,
+                "offset": 602
+              },
+              "that": {
+                "params": [],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/identity/collaborator.mesh.mx",
+                  "line": 24,
+                  "offset": 645
+                },
+                "source": "() => &state === :active",
+                "tree": {
+                  "args": [
+                    {
+                      "kind": "member",
+                      "name": "state",
+                      "object": {
+                        "kind": "var",
+                        "name": "self",
+                        "position": {
+                          "column": 21,
+                          "file": "src/domain/identity/collaborator.mesh.mx",
+                          "line": 24,
+                          "offset": 651
+                        }
+                      },
+                      "optional": false,
+                      "position": {
+                        "column": 21,
+                        "file": "src/domain/identity/collaborator.mesh.mx",
+                        "line": 24,
+                        "offset": 651
+                      }
+                    },
+                    {
+                      "kind": "atom",
+                      "position": {
+                        "column": 32,
+                        "file": "src/domain/identity/collaborator.mesh.mx",
+                        "line": 24,
+                        "offset": 662
+                      },
+                      "value": "active"
+                    }
+                  ],
+                  "fn": "eq",
+                  "kind": "call",
+                  "position": {
+                    "column": 21,
+                    "file": "src/domain/identity/collaborator.mesh.mx",
+                    "line": 24,
+                    "offset": 651
+                  }
+                }
+              }
+            },
+            {
+              "code": "collaborator.kind-immutable",
+              "label": "kindImmutable",
+              "message": "a collaborator keeps its kind",
+              "position": {
+                "column": 8,
+                "file": "src/domain/identity/collaborator.mesh.mx",
+                "line": 28,
+                "offset": 773
+              },
+              "that": {
+                "params": [
+                  "input"
+                ],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/identity/collaborator.mesh.mx",
+                  "line": 29,
+                  "offset": 811
+                },
+                "source": "({ input }) => input.kind == null || input.kind === &kind",
+                "tree": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "kind",
+                          "object": {
+                            "kind": "var",
+                            "name": "input",
+                            "position": {
+                              "column": 30,
+                              "file": "src/domain/identity/collaborator.mesh.mx",
+                              "line": 29,
+                              "offset": 826
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 30,
+                            "file": "src/domain/identity/collaborator.mesh.mx",
+                            "line": 29,
+                            "offset": 826
+                          }
+                        }
+                      ],
+                      "fn": "isNull",
+                      "kind": "call",
+                      "position": {
+                        "column": 30,
+                        "file": "src/domain/identity/collaborator.mesh.mx",
+                        "line": 29,
+                        "offset": 826
+                      }
+                    },
+                    {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "kind",
+                          "object": {
+                            "kind": "var",
+                            "name": "input",
+                            "position": {
+                              "column": 52,
+                              "file": "src/domain/identity/collaborator.mesh.mx",
+                              "line": 29,
+                              "offset": 848
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 52,
+                            "file": "src/domain/identity/collaborator.mesh.mx",
+                            "line": 29,
+                            "offset": 848
+                          }
+                        },
+                        {
+                          "kind": "member",
+                          "name": "kind",
+                          "object": {
+                            "kind": "var",
+                            "name": "self",
+                            "position": {
+                              "column": 67,
+                              "file": "src/domain/identity/collaborator.mesh.mx",
+                              "line": 29,
+                              "offset": 863
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 67,
+                            "file": "src/domain/identity/collaborator.mesh.mx",
+                            "line": 29,
+                            "offset": 863
+                          }
+                        }
+                      ],
+                      "fn": "eq",
+                      "kind": "call",
+                      "position": {
+                        "column": 52,
+                        "file": "src/domain/identity/collaborator.mesh.mx",
+                        "line": 29,
+                        "offset": 848
+                      }
+                    }
+                  ],
+                  "fn": "or",
+                  "kind": "call",
+                  "position": {
+                    "column": 30,
+                    "file": "src/domain/identity/collaborator.mesh.mx",
+                    "line": 29,
+                    "offset": 826
+                  }
+                }
+              }
+            },
+            {
+              "code": "expected-version",
+              "details": {
+                "params": [
+                  "input",
+                  "before"
+                ],
+                "plain": {
+                  "detail": "object",
+                  "edits": [],
+                  "position": {
+                    "column": 42,
+                    "file": "src/domain/identity/collaborator.mesh.mx",
+                    "line": 37,
+                    "offset": 1258
+                  },
+                  "why": "unsupported-construct"
+                },
+                "position": {
+                  "column": 18,
+                  "file": "src/domain/identity/collaborator.mesh.mx",
+                  "line": 37,
+                  "offset": 1234
+                },
+                "source": "({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })"
+              },
+              "label": "versionMatches",
+              "message": "the record is at another version; read it again and retry",
+              "position": {
+                "column": 8,
+                "file": "src/domain/identity/collaborator.mesh.mx",
+                "line": 33,
+                "offset": 982
+              },
+              "that": {
+                "params": [
+                  "input"
+                ],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/identity/collaborator.mesh.mx",
+                  "line": 34,
+                  "offset": 1021
+                },
+                "source": "({ input }) => input.expectedVersion == null || input.expectedVersion === &version",
+                "tree": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "expectedVersion",
+                          "object": {
+                            "kind": "var",
+                            "name": "input",
+                            "position": {
+                              "column": 30,
+                              "file": "src/domain/identity/collaborator.mesh.mx",
+                              "line": 34,
+                              "offset": 1036
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 30,
+                            "file": "src/domain/identity/collaborator.mesh.mx",
+                            "line": 34,
+                            "offset": 1036
+                          }
+                        }
+                      ],
+                      "fn": "isNull",
+                      "kind": "call",
+                      "position": {
+                        "column": 30,
+                        "file": "src/domain/identity/collaborator.mesh.mx",
+                        "line": 34,
+                        "offset": 1036
+                      }
+                    },
+                    {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "expectedVersion",
+                          "object": {
+                            "kind": "var",
+                            "name": "input",
+                            "position": {
+                              "column": 63,
+                              "file": "src/domain/identity/collaborator.mesh.mx",
+                              "line": 34,
+                              "offset": 1069
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 63,
+                            "file": "src/domain/identity/collaborator.mesh.mx",
+                            "line": 34,
+                            "offset": 1069
+                          }
+                        },
+                        {
+                          "kind": "member",
+                          "name": "version",
+                          "object": {
+                            "kind": "var",
+                            "name": "self",
+                            "position": {
+                              "column": 89,
+                              "file": "src/domain/identity/collaborator.mesh.mx",
+                              "line": 34,
+                              "offset": 1095
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 89,
+                            "file": "src/domain/identity/collaborator.mesh.mx",
+                            "line": 34,
+                            "offset": 1095
+                          }
+                        }
+                      ],
+                      "fn": "eq",
+                      "kind": "call",
+                      "position": {
+                        "column": 63,
+                        "file": "src/domain/identity/collaborator.mesh.mx",
+                        "line": 34,
+                        "offset": 1069
+                      }
+                    }
+                  ],
+                  "fn": "or",
+                  "kind": "call",
+                  "position": {
+                    "column": 30,
+                    "file": "src/domain/identity/collaborator.mesh.mx",
+                    "line": 34,
+                    "offset": 1036
+                  }
+                }
+              }
+            }
+          ]
         }
       ],
       "always": [],
@@ -2787,7 +4246,83 @@
           "validate": []
         },
         {
-          "do": [],
+          "do": [
+            {
+              "assignments": [
+                {
+                  "member": {
+                    "name": "version",
+                    "position": {
+                      "column": 10,
+                      "file": "src/domain/identity/membership.mesh.mx",
+                      "line": 45,
+                      "offset": 1476
+                    }
+                  },
+                  "value": {
+                    "params": [],
+                    "position": {
+                      "column": 19,
+                      "file": "src/domain/identity/membership.mesh.mx",
+                      "line": 45,
+                      "offset": 1485
+                    },
+                    "source": "() => &version + 1",
+                    "tree": {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "version",
+                          "object": {
+                            "kind": "var",
+                            "name": "self",
+                            "position": {
+                              "column": 25,
+                              "file": "src/domain/identity/membership.mesh.mx",
+                              "line": 45,
+                              "offset": 1491
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 25,
+                            "file": "src/domain/identity/membership.mesh.mx",
+                            "line": 45,
+                            "offset": 1491
+                          }
+                        },
+                        {
+                          "kind": "literal",
+                          "position": {
+                            "column": 36,
+                            "file": "src/domain/identity/membership.mesh.mx",
+                            "line": 45,
+                            "offset": 1502
+                          },
+                          "value": 1
+                        }
+                      ],
+                      "fn": "add",
+                      "kind": "call",
+                      "position": {
+                        "column": 25,
+                        "file": "src/domain/identity/membership.mesh.mx",
+                        "line": 45,
+                        "offset": 1491
+                      }
+                    }
+                  }
+                }
+              ],
+              "kind": "set",
+              "position": {
+                "column": 8,
+                "file": "src/domain/identity/membership.mesh.mx",
+                "line": 44,
+                "offset": 1462
+              }
+            }
+          ],
           "input": [
             {
               "kind": "member",
@@ -2800,6 +4335,18 @@
                   "offset": 665
                 }
               }
+            },
+            {
+              "kind": "argument",
+              "name": "expectedVersion",
+              "nullable": true,
+              "position": {
+                "column": 8,
+                "file": "src/domain/identity/membership.mesh.mx",
+                "line": 25,
+                "offset": 679
+              },
+              "type": "integer"
             }
           ],
           "kind": "update",
@@ -2810,7 +4357,295 @@
             "line": 22,
             "offset": 626
           },
-          "validate": []
+          "validate": [
+            {
+              "code": "membership.active",
+              "label": "membershipActive",
+              "message": "the membership is revoked",
+              "position": {
+                "column": 8,
+                "file": "src/domain/identity/membership.mesh.mx",
+                "line": 27,
+                "offset": 736
+              },
+              "that": {
+                "params": [],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/identity/membership.mesh.mx",
+                  "line": 28,
+                  "offset": 777
+                },
+                "source": "() => &state === :active",
+                "tree": {
+                  "args": [
+                    {
+                      "kind": "member",
+                      "name": "state",
+                      "object": {
+                        "kind": "var",
+                        "name": "self",
+                        "position": {
+                          "column": 21,
+                          "file": "src/domain/identity/membership.mesh.mx",
+                          "line": 28,
+                          "offset": 783
+                        }
+                      },
+                      "optional": false,
+                      "position": {
+                        "column": 21,
+                        "file": "src/domain/identity/membership.mesh.mx",
+                        "line": 28,
+                        "offset": 783
+                      }
+                    },
+                    {
+                      "kind": "atom",
+                      "position": {
+                        "column": 32,
+                        "file": "src/domain/identity/membership.mesh.mx",
+                        "line": 28,
+                        "offset": 794
+                      },
+                      "value": "active"
+                    }
+                  ],
+                  "fn": "eq",
+                  "kind": "call",
+                  "position": {
+                    "column": 21,
+                    "file": "src/domain/identity/membership.mesh.mx",
+                    "line": 28,
+                    "offset": 783
+                  }
+                }
+              }
+            },
+            {
+              "code": "membership.unchanged",
+              "label": "roleChanges",
+              "message": "the member already has that role",
+              "position": {
+                "column": 8,
+                "file": "src/domain/identity/membership.mesh.mx",
+                "line": 32,
+                "offset": 901
+              },
+              "that": {
+                "params": [
+                  "before"
+                ],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/identity/membership.mesh.mx",
+                  "line": 33,
+                  "offset": 937
+                },
+                "source": "({ before }) => &role !== before.role",
+                "tree": {
+                  "args": [
+                    {
+                      "kind": "member",
+                      "name": "role",
+                      "object": {
+                        "kind": "var",
+                        "name": "self",
+                        "position": {
+                          "column": 31,
+                          "file": "src/domain/identity/membership.mesh.mx",
+                          "line": 33,
+                          "offset": 953
+                        }
+                      },
+                      "optional": false,
+                      "position": {
+                        "column": 31,
+                        "file": "src/domain/identity/membership.mesh.mx",
+                        "line": 33,
+                        "offset": 953
+                      }
+                    },
+                    {
+                      "kind": "member",
+                      "name": "role",
+                      "object": {
+                        "kind": "var",
+                        "name": "before",
+                        "position": {
+                          "column": 41,
+                          "file": "src/domain/identity/membership.mesh.mx",
+                          "line": 33,
+                          "offset": 963
+                        }
+                      },
+                      "optional": false,
+                      "position": {
+                        "column": 41,
+                        "file": "src/domain/identity/membership.mesh.mx",
+                        "line": 33,
+                        "offset": 963
+                      }
+                    }
+                  ],
+                  "fn": "ne",
+                  "kind": "call",
+                  "position": {
+                    "column": 31,
+                    "file": "src/domain/identity/membership.mesh.mx",
+                    "line": 33,
+                    "offset": 953
+                  }
+                }
+              }
+            },
+            {
+              "code": "expected-version",
+              "details": {
+                "params": [
+                  "input",
+                  "before"
+                ],
+                "plain": {
+                  "detail": "object",
+                  "edits": [],
+                  "position": {
+                    "column": 42,
+                    "file": "src/domain/identity/membership.mesh.mx",
+                    "line": 41,
+                    "offset": 1360
+                  },
+                  "why": "unsupported-construct"
+                },
+                "position": {
+                  "column": 18,
+                  "file": "src/domain/identity/membership.mesh.mx",
+                  "line": 41,
+                  "offset": 1336
+                },
+                "source": "({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })"
+              },
+              "label": "versionMatches",
+              "message": "the record is at another version; read it again and retry",
+              "position": {
+                "column": 8,
+                "file": "src/domain/identity/membership.mesh.mx",
+                "line": 37,
+                "offset": 1084
+              },
+              "that": {
+                "params": [
+                  "input"
+                ],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/identity/membership.mesh.mx",
+                  "line": 38,
+                  "offset": 1123
+                },
+                "source": "({ input }) => input.expectedVersion == null || input.expectedVersion === &version",
+                "tree": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "expectedVersion",
+                          "object": {
+                            "kind": "var",
+                            "name": "input",
+                            "position": {
+                              "column": 30,
+                              "file": "src/domain/identity/membership.mesh.mx",
+                              "line": 38,
+                              "offset": 1138
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 30,
+                            "file": "src/domain/identity/membership.mesh.mx",
+                            "line": 38,
+                            "offset": 1138
+                          }
+                        }
+                      ],
+                      "fn": "isNull",
+                      "kind": "call",
+                      "position": {
+                        "column": 30,
+                        "file": "src/domain/identity/membership.mesh.mx",
+                        "line": 38,
+                        "offset": 1138
+                      }
+                    },
+                    {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "expectedVersion",
+                          "object": {
+                            "kind": "var",
+                            "name": "input",
+                            "position": {
+                              "column": 63,
+                              "file": "src/domain/identity/membership.mesh.mx",
+                              "line": 38,
+                              "offset": 1171
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 63,
+                            "file": "src/domain/identity/membership.mesh.mx",
+                            "line": 38,
+                            "offset": 1171
+                          }
+                        },
+                        {
+                          "kind": "member",
+                          "name": "version",
+                          "object": {
+                            "kind": "var",
+                            "name": "self",
+                            "position": {
+                              "column": 89,
+                              "file": "src/domain/identity/membership.mesh.mx",
+                              "line": 38,
+                              "offset": 1197
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 89,
+                            "file": "src/domain/identity/membership.mesh.mx",
+                            "line": 38,
+                            "offset": 1197
+                          }
+                        }
+                      ],
+                      "fn": "eq",
+                      "kind": "call",
+                      "position": {
+                        "column": 63,
+                        "file": "src/domain/identity/membership.mesh.mx",
+                        "line": 38,
+                        "offset": 1171
+                      }
+                    }
+                  ],
+                  "fn": "or",
+                  "kind": "call",
+                  "position": {
+                    "column": 30,
+                    "file": "src/domain/identity/membership.mesh.mx",
+                    "line": 38,
+                    "offset": 1138
+                  }
+                }
+              }
+            }
+          ]
         }
       ],
       "always": [],
@@ -3041,7 +4876,83 @@
           "validate": []
         },
         {
-          "do": [],
+          "do": [
+            {
+              "assignments": [
+                {
+                  "member": {
+                    "name": "version",
+                    "position": {
+                      "column": 10,
+                      "file": "src/domain/identity/workspace.mesh.mx",
+                      "line": 31,
+                      "offset": 1026
+                    }
+                  },
+                  "value": {
+                    "params": [],
+                    "position": {
+                      "column": 19,
+                      "file": "src/domain/identity/workspace.mesh.mx",
+                      "line": 31,
+                      "offset": 1035
+                    },
+                    "source": "() => &version + 1",
+                    "tree": {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "version",
+                          "object": {
+                            "kind": "var",
+                            "name": "self",
+                            "position": {
+                              "column": 25,
+                              "file": "src/domain/identity/workspace.mesh.mx",
+                              "line": 31,
+                              "offset": 1041
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 25,
+                            "file": "src/domain/identity/workspace.mesh.mx",
+                            "line": 31,
+                            "offset": 1041
+                          }
+                        },
+                        {
+                          "kind": "literal",
+                          "position": {
+                            "column": 36,
+                            "file": "src/domain/identity/workspace.mesh.mx",
+                            "line": 31,
+                            "offset": 1052
+                          },
+                          "value": 1
+                        }
+                      ],
+                      "fn": "add",
+                      "kind": "call",
+                      "position": {
+                        "column": 25,
+                        "file": "src/domain/identity/workspace.mesh.mx",
+                        "line": 31,
+                        "offset": 1041
+                      }
+                    }
+                  }
+                }
+              ],
+              "kind": "set",
+              "position": {
+                "column": 8,
+                "file": "src/domain/identity/workspace.mesh.mx",
+                "line": 30,
+                "offset": 1012
+              }
+            }
+          ],
           "input": [
             {
               "kind": "member",
@@ -3054,6 +4965,18 @@
                   "offset": 373
                 }
               }
+            },
+            {
+              "kind": "argument",
+              "name": "expectedVersion",
+              "nullable": true,
+              "position": {
+                "column": 8,
+                "file": "src/domain/identity/workspace.mesh.mx",
+                "line": 16,
+                "offset": 387
+              },
+              "type": "integer"
             }
           ],
           "kind": "update",
@@ -3064,7 +4987,218 @@
             "line": 13,
             "offset": 338
           },
-          "validate": []
+          "validate": [
+            {
+              "code": "workspace.active",
+              "label": "workspaceActive",
+              "message": "the workspace has moved; it can no longer be changed",
+              "position": {
+                "column": 8,
+                "file": "src/domain/identity/workspace.mesh.mx",
+                "line": 18,
+                "offset": 444
+              },
+              "that": {
+                "params": [],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/identity/workspace.mesh.mx",
+                  "line": 19,
+                  "offset": 484
+                },
+                "source": "() => &state === :active",
+                "tree": {
+                  "args": [
+                    {
+                      "kind": "member",
+                      "name": "state",
+                      "object": {
+                        "kind": "var",
+                        "name": "self",
+                        "position": {
+                          "column": 21,
+                          "file": "src/domain/identity/workspace.mesh.mx",
+                          "line": 19,
+                          "offset": 490
+                        }
+                      },
+                      "optional": false,
+                      "position": {
+                        "column": 21,
+                        "file": "src/domain/identity/workspace.mesh.mx",
+                        "line": 19,
+                        "offset": 490
+                      }
+                    },
+                    {
+                      "kind": "atom",
+                      "position": {
+                        "column": 32,
+                        "file": "src/domain/identity/workspace.mesh.mx",
+                        "line": 19,
+                        "offset": 501
+                      },
+                      "value": "active"
+                    }
+                  ],
+                  "fn": "eq",
+                  "kind": "call",
+                  "position": {
+                    "column": 21,
+                    "file": "src/domain/identity/workspace.mesh.mx",
+                    "line": 19,
+                    "offset": 490
+                  }
+                }
+              }
+            },
+            {
+              "code": "expected-version",
+              "details": {
+                "params": [
+                  "input",
+                  "before"
+                ],
+                "plain": {
+                  "detail": "object",
+                  "edits": [],
+                  "position": {
+                    "column": 42,
+                    "file": "src/domain/identity/workspace.mesh.mx",
+                    "line": 27,
+                    "offset": 910
+                  },
+                  "why": "unsupported-construct"
+                },
+                "position": {
+                  "column": 18,
+                  "file": "src/domain/identity/workspace.mesh.mx",
+                  "line": 27,
+                  "offset": 886
+                },
+                "source": "({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })"
+              },
+              "label": "versionMatches",
+              "message": "the record is at another version; read it again and retry",
+              "position": {
+                "column": 8,
+                "file": "src/domain/identity/workspace.mesh.mx",
+                "line": 23,
+                "offset": 634
+              },
+              "that": {
+                "params": [
+                  "input"
+                ],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/identity/workspace.mesh.mx",
+                  "line": 24,
+                  "offset": 673
+                },
+                "source": "({ input }) => input.expectedVersion == null || input.expectedVersion === &version",
+                "tree": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "expectedVersion",
+                          "object": {
+                            "kind": "var",
+                            "name": "input",
+                            "position": {
+                              "column": 30,
+                              "file": "src/domain/identity/workspace.mesh.mx",
+                              "line": 24,
+                              "offset": 688
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 30,
+                            "file": "src/domain/identity/workspace.mesh.mx",
+                            "line": 24,
+                            "offset": 688
+                          }
+                        }
+                      ],
+                      "fn": "isNull",
+                      "kind": "call",
+                      "position": {
+                        "column": 30,
+                        "file": "src/domain/identity/workspace.mesh.mx",
+                        "line": 24,
+                        "offset": 688
+                      }
+                    },
+                    {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "expectedVersion",
+                          "object": {
+                            "kind": "var",
+                            "name": "input",
+                            "position": {
+                              "column": 63,
+                              "file": "src/domain/identity/workspace.mesh.mx",
+                              "line": 24,
+                              "offset": 721
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 63,
+                            "file": "src/domain/identity/workspace.mesh.mx",
+                            "line": 24,
+                            "offset": 721
+                          }
+                        },
+                        {
+                          "kind": "member",
+                          "name": "version",
+                          "object": {
+                            "kind": "var",
+                            "name": "self",
+                            "position": {
+                              "column": 89,
+                              "file": "src/domain/identity/workspace.mesh.mx",
+                              "line": 24,
+                              "offset": 747
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 89,
+                            "file": "src/domain/identity/workspace.mesh.mx",
+                            "line": 24,
+                            "offset": 747
+                          }
+                        }
+                      ],
+                      "fn": "eq",
+                      "kind": "call",
+                      "position": {
+                        "column": 63,
+                        "file": "src/domain/identity/workspace.mesh.mx",
+                        "line": 24,
+                        "offset": 721
+                      }
+                    }
+                  ],
+                  "fn": "or",
+                  "kind": "call",
+                  "position": {
+                    "column": 30,
+                    "file": "src/domain/identity/workspace.mesh.mx",
+                    "line": 24,
+                    "offset": 688
+                  }
+                }
+              }
+            }
+          ]
         }
       ],
       "always": [],
@@ -3500,6 +5634,939 @@
             "offset": 588
           },
           "validate": []
+        },
+        {
+          "do": [
+            {
+              "assignments": [
+                {
+                  "member": {
+                    "name": "expiresAt",
+                    "position": {
+                      "column": 10,
+                      "file": "src/domain/work/claim.mesh.mx",
+                      "line": 49,
+                      "offset": 1447
+                    }
+                  },
+                  "value": {
+                    "params": [
+                      "input"
+                    ],
+                    "position": {
+                      "column": 21,
+                      "file": "src/domain/work/claim.mesh.mx",
+                      "line": 49,
+                      "offset": 1458
+                    },
+                    "source": "({ input }) => input.newExpiresAt",
+                    "tree": {
+                      "kind": "member",
+                      "name": "newExpiresAt",
+                      "object": {
+                        "kind": "var",
+                        "name": "input",
+                        "position": {
+                          "column": 36,
+                          "file": "src/domain/work/claim.mesh.mx",
+                          "line": 49,
+                          "offset": 1473
+                        }
+                      },
+                      "optional": false,
+                      "position": {
+                        "column": 36,
+                        "file": "src/domain/work/claim.mesh.mx",
+                        "line": 49,
+                        "offset": 1473
+                      }
+                    }
+                  }
+                }
+              ],
+              "kind": "set",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/claim.mesh.mx",
+                "line": 48,
+                "offset": 1433
+              }
+            }
+          ],
+          "input": [
+            {
+              "kind": "argument",
+              "name": "fence",
+              "nullable": false,
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/claim.mesh.mx",
+                "line": 28,
+                "offset": 738
+              },
+              "type": "integer"
+            },
+            {
+              "kind": "argument",
+              "name": "newExpiresAt",
+              "nullable": false,
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/claim.mesh.mx",
+                "line": 29,
+                "offset": 761
+              },
+              "type": "timestamp"
+            }
+          ],
+          "kind": "update",
+          "name": "renew",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/claim.mesh.mx",
+            "line": 26,
+            "offset": 704
+          },
+          "validate": [
+            {
+              "code": "claim.current-fence",
+              "details": {
+                "params": [
+                  "input",
+                  "before"
+                ],
+                "plain": {
+                  "detail": "object",
+                  "edits": [],
+                  "position": {
+                    "column": 42,
+                    "file": "src/domain/work/claim.mesh.mx",
+                    "line": 35,
+                    "offset": 1034
+                  },
+                  "why": "unsupported-construct"
+                },
+                "position": {
+                  "column": 18,
+                  "file": "src/domain/work/claim.mesh.mx",
+                  "line": 35,
+                  "offset": 1010
+                },
+                "source": "({ input, before }) => ({ currentFence: before.fence, stale: input.fence < before.fence })"
+              },
+              "label": "currentFence",
+              "message": "the fence is not this claim's; read the claim again",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/claim.mesh.mx",
+                "line": 31,
+                "offset": 808
+              },
+              "that": {
+                "params": [
+                  "input"
+                ],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/work/claim.mesh.mx",
+                  "line": 32,
+                  "offset": 845
+                },
+                "source": "({ input }) => input.fence === &fence",
+                "tree": {
+                  "args": [
+                    {
+                      "kind": "member",
+                      "name": "fence",
+                      "object": {
+                        "kind": "var",
+                        "name": "input",
+                        "position": {
+                          "column": 30,
+                          "file": "src/domain/work/claim.mesh.mx",
+                          "line": 32,
+                          "offset": 860
+                        }
+                      },
+                      "optional": false,
+                      "position": {
+                        "column": 30,
+                        "file": "src/domain/work/claim.mesh.mx",
+                        "line": 32,
+                        "offset": 860
+                      }
+                    },
+                    {
+                      "kind": "member",
+                      "name": "fence",
+                      "object": {
+                        "kind": "var",
+                        "name": "self",
+                        "position": {
+                          "column": 46,
+                          "file": "src/domain/work/claim.mesh.mx",
+                          "line": 32,
+                          "offset": 876
+                        }
+                      },
+                      "optional": false,
+                      "position": {
+                        "column": 46,
+                        "file": "src/domain/work/claim.mesh.mx",
+                        "line": 32,
+                        "offset": 876
+                      }
+                    }
+                  ],
+                  "fn": "eq",
+                  "kind": "call",
+                  "position": {
+                    "column": 30,
+                    "file": "src/domain/work/claim.mesh.mx",
+                    "line": 32,
+                    "offset": 860
+                  }
+                }
+              }
+            },
+            {
+              "code": "claim.active",
+              "label": "claimActive",
+              "message": "the claim has ended",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/claim.mesh.mx",
+                "line": 37,
+                "offset": 1119
+              },
+              "that": {
+                "params": [],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/work/claim.mesh.mx",
+                  "line": 38,
+                  "offset": 1155
+                },
+                "source": "() => &state === :active",
+                "tree": {
+                  "args": [
+                    {
+                      "kind": "member",
+                      "name": "state",
+                      "object": {
+                        "kind": "var",
+                        "name": "self",
+                        "position": {
+                          "column": 21,
+                          "file": "src/domain/work/claim.mesh.mx",
+                          "line": 38,
+                          "offset": 1161
+                        }
+                      },
+                      "optional": false,
+                      "position": {
+                        "column": 21,
+                        "file": "src/domain/work/claim.mesh.mx",
+                        "line": 38,
+                        "offset": 1161
+                      }
+                    },
+                    {
+                      "kind": "atom",
+                      "position": {
+                        "column": 32,
+                        "file": "src/domain/work/claim.mesh.mx",
+                        "line": 38,
+                        "offset": 1172
+                      },
+                      "value": "active"
+                    }
+                  ],
+                  "fn": "eq",
+                  "kind": "call",
+                  "position": {
+                    "column": 21,
+                    "file": "src/domain/work/claim.mesh.mx",
+                    "line": 38,
+                    "offset": 1161
+                  }
+                }
+              }
+            },
+            {
+              "code": "claim.expired",
+              "label": "claimNotExpired",
+              "message": "the lease has expired",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/claim.mesh.mx",
+                "line": 42,
+                "offset": 1268
+              },
+              "that": {
+                "params": [],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/work/claim.mesh.mx",
+                  "line": 43,
+                  "offset": 1308
+                },
+                "source": "() => &expiresAt > now()",
+                "tree": {
+                  "args": [
+                    {
+                      "kind": "member",
+                      "name": "expiresAt",
+                      "object": {
+                        "kind": "var",
+                        "name": "self",
+                        "position": {
+                          "column": 21,
+                          "file": "src/domain/work/claim.mesh.mx",
+                          "line": 43,
+                          "offset": 1314
+                        }
+                      },
+                      "optional": false,
+                      "position": {
+                        "column": 21,
+                        "file": "src/domain/work/claim.mesh.mx",
+                        "line": 43,
+                        "offset": 1314
+                      }
+                    },
+                    {
+                      "args": [],
+                      "fn": "now",
+                      "kind": "call",
+                      "position": {
+                        "column": 34,
+                        "file": "src/domain/work/claim.mesh.mx",
+                        "line": 43,
+                        "offset": 1327
+                      }
+                    }
+                  ],
+                  "fn": "gt",
+                  "kind": "call",
+                  "position": {
+                    "column": 21,
+                    "file": "src/domain/work/claim.mesh.mx",
+                    "line": 43,
+                    "offset": 1314
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "do": [
+            {
+              "assignments": [
+                {
+                  "member": {
+                    "name": "state",
+                    "position": {
+                      "column": 10,
+                      "file": "src/domain/work/claim.mesh.mx",
+                      "line": 73,
+                      "offset": 2241
+                    }
+                  },
+                  "value": {
+                    "value": "released"
+                  }
+                },
+                {
+                  "member": {
+                    "name": "endedAt",
+                    "position": {
+                      "column": 10,
+                      "file": "src/domain/work/claim.mesh.mx",
+                      "line": 74,
+                      "offset": 2268
+                    }
+                  },
+                  "value": {
+                    "params": [],
+                    "position": {
+                      "column": 19,
+                      "file": "src/domain/work/claim.mesh.mx",
+                      "line": 74,
+                      "offset": 2277
+                    },
+                    "source": "() => now()",
+                    "tree": {
+                      "args": [],
+                      "fn": "now",
+                      "kind": "call",
+                      "position": {
+                        "column": 25,
+                        "file": "src/domain/work/claim.mesh.mx",
+                        "line": 74,
+                        "offset": 2283
+                      }
+                    }
+                  }
+                },
+                {
+                  "member": {
+                    "name": "endReason",
+                    "position": {
+                      "column": 10,
+                      "file": "src/domain/work/claim.mesh.mx",
+                      "line": 75,
+                      "offset": 2299
+                    }
+                  },
+                  "value": {
+                    "params": [
+                      "input"
+                    ],
+                    "position": {
+                      "column": 21,
+                      "file": "src/domain/work/claim.mesh.mx",
+                      "line": 75,
+                      "offset": 2310
+                    },
+                    "source": "({ input }) => input.reason ?? null",
+                    "tree": {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "reason",
+                          "object": {
+                            "kind": "var",
+                            "name": "input",
+                            "position": {
+                              "column": 36,
+                              "file": "src/domain/work/claim.mesh.mx",
+                              "line": 75,
+                              "offset": 2325
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 36,
+                            "file": "src/domain/work/claim.mesh.mx",
+                            "line": 75,
+                            "offset": 2325
+                          }
+                        },
+                        {
+                          "kind": "literal",
+                          "position": {
+                            "column": 52,
+                            "file": "src/domain/work/claim.mesh.mx",
+                            "line": 75,
+                            "offset": 2341
+                          },
+                          "value": null
+                        }
+                      ],
+                      "fn": "coalesce",
+                      "kind": "call",
+                      "position": {
+                        "column": 36,
+                        "file": "src/domain/work/claim.mesh.mx",
+                        "line": 75,
+                        "offset": 2325
+                      }
+                    }
+                  }
+                }
+              ],
+              "kind": "set",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/claim.mesh.mx",
+                "line": 72,
+                "offset": 2227
+              }
+            }
+          ],
+          "input": [
+            {
+              "kind": "argument",
+              "name": "fence",
+              "nullable": false,
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/claim.mesh.mx",
+                "line": 52,
+                "offset": 1532
+              },
+              "type": "integer"
+            },
+            {
+              "kind": "argument",
+              "name": "reason",
+              "nullable": true,
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/claim.mesh.mx",
+                "line": 53,
+                "offset": 1555
+              },
+              "type": "string"
+            }
+          ],
+          "kind": "update",
+          "name": "release",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/claim.mesh.mx",
+            "line": 50,
+            "offset": 1496
+          },
+          "validate": [
+            {
+              "code": "claim.current-fence",
+              "details": {
+                "params": [
+                  "input",
+                  "before"
+                ],
+                "plain": {
+                  "detail": "object",
+                  "edits": [],
+                  "position": {
+                    "column": 42,
+                    "file": "src/domain/work/claim.mesh.mx",
+                    "line": 59,
+                    "offset": 1828
+                  },
+                  "why": "unsupported-construct"
+                },
+                "position": {
+                  "column": 18,
+                  "file": "src/domain/work/claim.mesh.mx",
+                  "line": 59,
+                  "offset": 1804
+                },
+                "source": "({ input, before }) => ({ currentFence: before.fence, stale: input.fence < before.fence })"
+              },
+              "label": "currentFence",
+              "message": "the fence is not this claim's; read the claim again",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/claim.mesh.mx",
+                "line": 55,
+                "offset": 1602
+              },
+              "that": {
+                "params": [
+                  "input"
+                ],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/work/claim.mesh.mx",
+                  "line": 56,
+                  "offset": 1639
+                },
+                "source": "({ input }) => input.fence === &fence",
+                "tree": {
+                  "args": [
+                    {
+                      "kind": "member",
+                      "name": "fence",
+                      "object": {
+                        "kind": "var",
+                        "name": "input",
+                        "position": {
+                          "column": 30,
+                          "file": "src/domain/work/claim.mesh.mx",
+                          "line": 56,
+                          "offset": 1654
+                        }
+                      },
+                      "optional": false,
+                      "position": {
+                        "column": 30,
+                        "file": "src/domain/work/claim.mesh.mx",
+                        "line": 56,
+                        "offset": 1654
+                      }
+                    },
+                    {
+                      "kind": "member",
+                      "name": "fence",
+                      "object": {
+                        "kind": "var",
+                        "name": "self",
+                        "position": {
+                          "column": 46,
+                          "file": "src/domain/work/claim.mesh.mx",
+                          "line": 56,
+                          "offset": 1670
+                        }
+                      },
+                      "optional": false,
+                      "position": {
+                        "column": 46,
+                        "file": "src/domain/work/claim.mesh.mx",
+                        "line": 56,
+                        "offset": 1670
+                      }
+                    }
+                  ],
+                  "fn": "eq",
+                  "kind": "call",
+                  "position": {
+                    "column": 30,
+                    "file": "src/domain/work/claim.mesh.mx",
+                    "line": 56,
+                    "offset": 1654
+                  }
+                }
+              }
+            },
+            {
+              "code": "claim.active",
+              "label": "claimActive",
+              "message": "the claim has ended",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/claim.mesh.mx",
+                "line": 61,
+                "offset": 1913
+              },
+              "that": {
+                "params": [],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/work/claim.mesh.mx",
+                  "line": 62,
+                  "offset": 1949
+                },
+                "source": "() => &state === :active",
+                "tree": {
+                  "args": [
+                    {
+                      "kind": "member",
+                      "name": "state",
+                      "object": {
+                        "kind": "var",
+                        "name": "self",
+                        "position": {
+                          "column": 21,
+                          "file": "src/domain/work/claim.mesh.mx",
+                          "line": 62,
+                          "offset": 1955
+                        }
+                      },
+                      "optional": false,
+                      "position": {
+                        "column": 21,
+                        "file": "src/domain/work/claim.mesh.mx",
+                        "line": 62,
+                        "offset": 1955
+                      }
+                    },
+                    {
+                      "kind": "atom",
+                      "position": {
+                        "column": 32,
+                        "file": "src/domain/work/claim.mesh.mx",
+                        "line": 62,
+                        "offset": 1966
+                      },
+                      "value": "active"
+                    }
+                  ],
+                  "fn": "eq",
+                  "kind": "call",
+                  "position": {
+                    "column": 21,
+                    "file": "src/domain/work/claim.mesh.mx",
+                    "line": 62,
+                    "offset": 1955
+                  }
+                }
+              }
+            },
+            {
+              "code": "claim.expired",
+              "label": "claimNotExpired",
+              "message": "the lease has expired",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/claim.mesh.mx",
+                "line": 66,
+                "offset": 2062
+              },
+              "that": {
+                "params": [],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/work/claim.mesh.mx",
+                  "line": 67,
+                  "offset": 2102
+                },
+                "source": "() => &expiresAt > now()",
+                "tree": {
+                  "args": [
+                    {
+                      "kind": "member",
+                      "name": "expiresAt",
+                      "object": {
+                        "kind": "var",
+                        "name": "self",
+                        "position": {
+                          "column": 21,
+                          "file": "src/domain/work/claim.mesh.mx",
+                          "line": 67,
+                          "offset": 2108
+                        }
+                      },
+                      "optional": false,
+                      "position": {
+                        "column": 21,
+                        "file": "src/domain/work/claim.mesh.mx",
+                        "line": 67,
+                        "offset": 2108
+                      }
+                    },
+                    {
+                      "args": [],
+                      "fn": "now",
+                      "kind": "call",
+                      "position": {
+                        "column": 34,
+                        "file": "src/domain/work/claim.mesh.mx",
+                        "line": 67,
+                        "offset": 2121
+                      }
+                    }
+                  ],
+                  "fn": "gt",
+                  "kind": "call",
+                  "position": {
+                    "column": 21,
+                    "file": "src/domain/work/claim.mesh.mx",
+                    "line": 67,
+                    "offset": 2108
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "do": [
+            {
+              "assignments": [
+                {
+                  "member": {
+                    "name": "state",
+                    "position": {
+                      "column": 10,
+                      "file": "src/domain/work/claim.mesh.mx",
+                      "line": 87,
+                      "offset": 2604
+                    }
+                  },
+                  "value": {
+                    "value": "revoked"
+                  }
+                },
+                {
+                  "member": {
+                    "name": "endedAt",
+                    "position": {
+                      "column": 10,
+                      "file": "src/domain/work/claim.mesh.mx",
+                      "line": 88,
+                      "offset": 2630
+                    }
+                  },
+                  "value": {
+                    "params": [],
+                    "position": {
+                      "column": 19,
+                      "file": "src/domain/work/claim.mesh.mx",
+                      "line": 88,
+                      "offset": 2639
+                    },
+                    "source": "() => now()",
+                    "tree": {
+                      "args": [],
+                      "fn": "now",
+                      "kind": "call",
+                      "position": {
+                        "column": 25,
+                        "file": "src/domain/work/claim.mesh.mx",
+                        "line": 88,
+                        "offset": 2645
+                      }
+                    }
+                  }
+                },
+                {
+                  "member": {
+                    "name": "endReason",
+                    "position": {
+                      "column": 10,
+                      "file": "src/domain/work/claim.mesh.mx",
+                      "line": 89,
+                      "offset": 2661
+                    }
+                  },
+                  "value": {
+                    "params": [
+                      "input"
+                    ],
+                    "position": {
+                      "column": 21,
+                      "file": "src/domain/work/claim.mesh.mx",
+                      "line": 89,
+                      "offset": 2672
+                    },
+                    "source": "({ input }) => input.reason ?? null",
+                    "tree": {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "reason",
+                          "object": {
+                            "kind": "var",
+                            "name": "input",
+                            "position": {
+                              "column": 36,
+                              "file": "src/domain/work/claim.mesh.mx",
+                              "line": 89,
+                              "offset": 2687
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 36,
+                            "file": "src/domain/work/claim.mesh.mx",
+                            "line": 89,
+                            "offset": 2687
+                          }
+                        },
+                        {
+                          "kind": "literal",
+                          "position": {
+                            "column": 52,
+                            "file": "src/domain/work/claim.mesh.mx",
+                            "line": 89,
+                            "offset": 2703
+                          },
+                          "value": null
+                        }
+                      ],
+                      "fn": "coalesce",
+                      "kind": "call",
+                      "position": {
+                        "column": 36,
+                        "file": "src/domain/work/claim.mesh.mx",
+                        "line": 89,
+                        "offset": 2687
+                      }
+                    }
+                  }
+                }
+              ],
+              "kind": "set",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/claim.mesh.mx",
+                "line": 86,
+                "offset": 2590
+              }
+            }
+          ],
+          "input": [
+            {
+              "kind": "argument",
+              "name": "reason",
+              "nullable": true,
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/claim.mesh.mx",
+                "line": 78,
+                "offset": 2385
+              },
+              "type": "string"
+            }
+          ],
+          "kind": "update",
+          "name": "revoke",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/claim.mesh.mx",
+            "line": 76,
+            "offset": 2350
+          },
+          "validate": [
+            {
+              "code": "claim.active",
+              "label": "claimActive",
+              "message": "the claim has ended",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/claim.mesh.mx",
+                "line": 80,
+                "offset": 2432
+              },
+              "that": {
+                "params": [],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/work/claim.mesh.mx",
+                  "line": 81,
+                  "offset": 2468
+                },
+                "source": "() => &state === :active",
+                "tree": {
+                  "args": [
+                    {
+                      "kind": "member",
+                      "name": "state",
+                      "object": {
+                        "kind": "var",
+                        "name": "self",
+                        "position": {
+                          "column": 21,
+                          "file": "src/domain/work/claim.mesh.mx",
+                          "line": 81,
+                          "offset": 2474
+                        }
+                      },
+                      "optional": false,
+                      "position": {
+                        "column": 21,
+                        "file": "src/domain/work/claim.mesh.mx",
+                        "line": 81,
+                        "offset": 2474
+                      }
+                    },
+                    {
+                      "kind": "atom",
+                      "position": {
+                        "column": 32,
+                        "file": "src/domain/work/claim.mesh.mx",
+                        "line": 81,
+                        "offset": 2485
+                      },
+                      "value": "active"
+                    }
+                  ],
+                  "fn": "eq",
+                  "kind": "call",
+                  "position": {
+                    "column": 21,
+                    "file": "src/domain/work/claim.mesh.mx",
+                    "line": 81,
+                    "offset": 2474
+                  }
+                }
+              }
+            }
+          ]
         }
       ],
       "always": [],
@@ -4089,7 +7156,109 @@
             "line": 13,
             "offset": 385
           },
-          "validate": []
+          "validate": [
+            {
+              "code": "dependency.distinct",
+              "label": "distinct",
+              "message": "a task cannot depend on itself",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/dependency.mesh.mx",
+                "line": 19,
+                "offset": 492
+              },
+              "that": {
+                "needs": [
+                  "dependent",
+                  "prerequisite"
+                ],
+                "params": [],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/work/dependency.mesh.mx",
+                  "line": 20,
+                  "offset": 525
+                },
+                "source": "() => &dependent.id !== &prerequisite.id",
+                "tree": {
+                  "args": [
+                    {
+                      "kind": "member",
+                      "name": "id",
+                      "object": {
+                        "kind": "member",
+                        "name": "dependent",
+                        "object": {
+                          "kind": "var",
+                          "name": "self",
+                          "position": {
+                            "column": 21,
+                            "file": "src/domain/work/dependency.mesh.mx",
+                            "line": 20,
+                            "offset": 531
+                          }
+                        },
+                        "optional": false,
+                        "position": {
+                          "column": 21,
+                          "file": "src/domain/work/dependency.mesh.mx",
+                          "line": 20,
+                          "offset": 531
+                        }
+                      },
+                      "optional": false,
+                      "position": {
+                        "column": 21,
+                        "file": "src/domain/work/dependency.mesh.mx",
+                        "line": 20,
+                        "offset": 531
+                      }
+                    },
+                    {
+                      "kind": "member",
+                      "name": "id",
+                      "object": {
+                        "kind": "member",
+                        "name": "prerequisite",
+                        "object": {
+                          "kind": "var",
+                          "name": "self",
+                          "position": {
+                            "column": 39,
+                            "file": "src/domain/work/dependency.mesh.mx",
+                            "line": 20,
+                            "offset": 549
+                          }
+                        },
+                        "optional": false,
+                        "position": {
+                          "column": 39,
+                          "file": "src/domain/work/dependency.mesh.mx",
+                          "line": 20,
+                          "offset": 549
+                        }
+                      },
+                      "optional": false,
+                      "position": {
+                        "column": 39,
+                        "file": "src/domain/work/dependency.mesh.mx",
+                        "line": 20,
+                        "offset": 549
+                      }
+                    }
+                  ],
+                  "fn": "ne",
+                  "kind": "call",
+                  "position": {
+                    "column": 21,
+                    "file": "src/domain/work/dependency.mesh.mx",
+                    "line": 20,
+                    "offset": 531
+                  }
+                }
+              }
+            }
+          ]
         },
         {
           "do": [],
@@ -4099,8 +7268,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/work/dependency.mesh.mx",
-            "line": 18,
-            "offset": 473
+            "line": 24,
+            "offset": 668
           },
           "validate": []
         }
@@ -5351,10 +8520,824 @@
             "line": 39,
             "offset": 1936
           },
-          "validate": []
+          "validate": [
+            {
+              "code": "task.parent-open",
+              "label": "parentOpen",
+              "message": "the parent task is not open",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/task.mesh.mx",
+                "line": 47,
+                "offset": 2068
+              },
+              "that": {
+                "needs": [
+                  "parent"
+                ],
+                "params": [],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 48,
+                  "offset": 2103
+                },
+                "source": "() => &parent === null || &parent?.state === :open",
+                "tree": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "parent",
+                          "object": {
+                            "kind": "var",
+                            "name": "self",
+                            "position": {
+                              "column": 21,
+                              "file": "src/domain/work/task.mesh.mx",
+                              "line": 48,
+                              "offset": 2109
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 21,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 48,
+                            "offset": 2109
+                          }
+                        }
+                      ],
+                      "fn": "isNull",
+                      "kind": "call",
+                      "position": {
+                        "column": 21,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 48,
+                        "offset": 2109
+                      }
+                    },
+                    {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "state",
+                          "object": {
+                            "kind": "member",
+                            "name": "parent",
+                            "object": {
+                              "kind": "var",
+                              "name": "self",
+                              "position": {
+                                "column": 41,
+                                "file": "src/domain/work/task.mesh.mx",
+                                "line": 48,
+                                "offset": 2129
+                              }
+                            },
+                            "optional": false,
+                            "position": {
+                              "column": 41,
+                              "file": "src/domain/work/task.mesh.mx",
+                              "line": 48,
+                              "offset": 2129
+                            }
+                          },
+                          "optional": true,
+                          "position": {
+                            "column": 41,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 48,
+                            "offset": 2129
+                          }
+                        },
+                        {
+                          "kind": "atom",
+                          "position": {
+                            "column": 60,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 48,
+                            "offset": 2148
+                          },
+                          "value": "open"
+                        }
+                      ],
+                      "fn": "eq",
+                      "kind": "call",
+                      "position": {
+                        "column": 41,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 48,
+                        "offset": 2129
+                      }
+                    }
+                  ],
+                  "fn": "or",
+                  "kind": "call",
+                  "position": {
+                    "column": 21,
+                    "file": "src/domain/work/task.mesh.mx",
+                    "line": 48,
+                    "offset": 2109
+                  }
+                }
+              }
+            }
+          ]
         },
         {
-          "do": [],
+          "do": [
+            {
+              "assignments": [
+                {
+                  "member": {
+                    "name": "version",
+                    "position": {
+                      "column": 10,
+                      "file": "src/domain/work/task.mesh.mx",
+                      "line": 76,
+                      "offset": 3220
+                    }
+                  },
+                  "value": {
+                    "params": [],
+                    "position": {
+                      "column": 19,
+                      "file": "src/domain/work/task.mesh.mx",
+                      "line": 76,
+                      "offset": 3229
+                    },
+                    "source": "() => &version + 1",
+                    "tree": {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "version",
+                          "object": {
+                            "kind": "var",
+                            "name": "self",
+                            "position": {
+                              "column": 25,
+                              "file": "src/domain/work/task.mesh.mx",
+                              "line": 76,
+                              "offset": 3235
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 25,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 76,
+                            "offset": 3235
+                          }
+                        },
+                        {
+                          "kind": "literal",
+                          "position": {
+                            "column": 36,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 76,
+                            "offset": 3246
+                          },
+                          "value": 1
+                        }
+                      ],
+                      "fn": "add",
+                      "kind": "call",
+                      "position": {
+                        "column": 25,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 76,
+                        "offset": 3235
+                      }
+                    }
+                  }
+                }
+              ],
+              "kind": "set",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/task.mesh.mx",
+                "line": 75,
+                "offset": 3206
+              }
+            }
+          ],
+          "input": [
+            {
+              "kind": "member",
+              "ref": {
+                "name": "title",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 54,
+                  "offset": 2285
+                }
+              }
+            },
+            {
+              "kind": "member",
+              "ref": {
+                "name": "intent",
+                "position": {
+                  "column": 8,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 55,
+                  "offset": 2300
+                }
+              }
+            },
+            {
+              "kind": "argument",
+              "name": "expectedVersion",
+              "nullable": true,
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/task.mesh.mx",
+                "line": 56,
+                "offset": 2316
+              },
+              "type": "integer"
+            }
+          ],
+          "kind": "update",
+          "name": "update",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 52,
+            "offset": 2250
+          },
+          "validate": [
+            {
+              "code": "task.open",
+              "label": "taskOpen",
+              "message": "the task is not open; reopen it first",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/task.mesh.mx",
+                "line": 58,
+                "offset": 2373
+              },
+              "that": {
+                "params": [],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 59,
+                  "offset": 2406
+                },
+                "source": "() => &state === :open",
+                "tree": {
+                  "args": [
+                    {
+                      "kind": "member",
+                      "name": "state",
+                      "object": {
+                        "kind": "var",
+                        "name": "self",
+                        "position": {
+                          "column": 21,
+                          "file": "src/domain/work/task.mesh.mx",
+                          "line": 59,
+                          "offset": 2412
+                        }
+                      },
+                      "optional": false,
+                      "position": {
+                        "column": 21,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 59,
+                        "offset": 2412
+                      }
+                    },
+                    {
+                      "kind": "atom",
+                      "position": {
+                        "column": 32,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 59,
+                        "offset": 2423
+                      },
+                      "value": "open"
+                    }
+                  ],
+                  "fn": "eq",
+                  "kind": "call",
+                  "position": {
+                    "column": 21,
+                    "file": "src/domain/work/task.mesh.mx",
+                    "line": 59,
+                    "offset": 2412
+                  }
+                }
+              }
+            },
+            {
+              "code": "task.unchanged",
+              "label": "taskChanges",
+              "message": "nothing to change: every field already has that value",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/task.mesh.mx",
+                "line": 63,
+                "offset": 2532
+              },
+              "that": {
+                "params": [
+                  "before"
+                ],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 64,
+                  "offset": 2568
+                },
+                "source": "({ before }) => &title !== before.title || (&intent === null) !== (before.intent === null) || (&intent ?? \"\") !== (before.intent ?? \"\")",
+                "tree": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "kind": "member",
+                              "name": "title",
+                              "object": {
+                                "kind": "var",
+                                "name": "self",
+                                "position": {
+                                  "column": 31,
+                                  "file": "src/domain/work/task.mesh.mx",
+                                  "line": 64,
+                                  "offset": 2584
+                                }
+                              },
+                              "optional": false,
+                              "position": {
+                                "column": 31,
+                                "file": "src/domain/work/task.mesh.mx",
+                                "line": 64,
+                                "offset": 2584
+                              }
+                            },
+                            {
+                              "kind": "member",
+                              "name": "title",
+                              "object": {
+                                "kind": "var",
+                                "name": "before",
+                                "position": {
+                                  "column": 42,
+                                  "file": "src/domain/work/task.mesh.mx",
+                                  "line": 64,
+                                  "offset": 2595
+                                }
+                              },
+                              "optional": false,
+                              "position": {
+                                "column": 42,
+                                "file": "src/domain/work/task.mesh.mx",
+                                "line": 64,
+                                "offset": 2595
+                              }
+                            }
+                          ],
+                          "fn": "ne",
+                          "kind": "call",
+                          "position": {
+                            "column": 31,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 64,
+                            "offset": 2584
+                          }
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "kind": "member",
+                                  "name": "intent",
+                                  "object": {
+                                    "kind": "var",
+                                    "name": "self",
+                                    "position": {
+                                      "column": 59,
+                                      "file": "src/domain/work/task.mesh.mx",
+                                      "line": 64,
+                                      "offset": 2612
+                                    }
+                                  },
+                                  "optional": false,
+                                  "position": {
+                                    "column": 59,
+                                    "file": "src/domain/work/task.mesh.mx",
+                                    "line": 64,
+                                    "offset": 2612
+                                  }
+                                }
+                              ],
+                              "fn": "isNull",
+                              "kind": "call",
+                              "position": {
+                                "column": 59,
+                                "file": "src/domain/work/task.mesh.mx",
+                                "line": 64,
+                                "offset": 2612
+                              }
+                            },
+                            {
+                              "args": [
+                                {
+                                  "kind": "member",
+                                  "name": "intent",
+                                  "object": {
+                                    "kind": "var",
+                                    "name": "before",
+                                    "position": {
+                                      "column": 82,
+                                      "file": "src/domain/work/task.mesh.mx",
+                                      "line": 64,
+                                      "offset": 2635
+                                    }
+                                  },
+                                  "optional": false,
+                                  "position": {
+                                    "column": 82,
+                                    "file": "src/domain/work/task.mesh.mx",
+                                    "line": 64,
+                                    "offset": 2635
+                                  }
+                                }
+                              ],
+                              "fn": "isNull",
+                              "kind": "call",
+                              "position": {
+                                "column": 82,
+                                "file": "src/domain/work/task.mesh.mx",
+                                "line": 64,
+                                "offset": 2635
+                              }
+                            }
+                          ],
+                          "fn": "ne",
+                          "kind": "call",
+                          "position": {
+                            "column": 58,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 64,
+                            "offset": 2611
+                          }
+                        }
+                      ],
+                      "fn": "or",
+                      "kind": "call",
+                      "position": {
+                        "column": 31,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 64,
+                        "offset": 2584
+                      }
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "kind": "member",
+                              "name": "intent",
+                              "object": {
+                                "kind": "var",
+                                "name": "self",
+                                "position": {
+                                  "column": 110,
+                                  "file": "src/domain/work/task.mesh.mx",
+                                  "line": 64,
+                                  "offset": 2663
+                                }
+                              },
+                              "optional": false,
+                              "position": {
+                                "column": 110,
+                                "file": "src/domain/work/task.mesh.mx",
+                                "line": 64,
+                                "offset": 2663
+                              }
+                            },
+                            {
+                              "kind": "literal",
+                              "position": {
+                                "column": 121,
+                                "file": "src/domain/work/task.mesh.mx",
+                                "line": 64,
+                                "offset": 2674
+                              },
+                              "value": ""
+                            }
+                          ],
+                          "fn": "coalesce",
+                          "kind": "call",
+                          "position": {
+                            "column": 110,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 64,
+                            "offset": 2663
+                          }
+                        },
+                        {
+                          "args": [
+                            {
+                              "kind": "member",
+                              "name": "intent",
+                              "object": {
+                                "kind": "var",
+                                "name": "before",
+                                "position": {
+                                  "column": 130,
+                                  "file": "src/domain/work/task.mesh.mx",
+                                  "line": 64,
+                                  "offset": 2683
+                                }
+                              },
+                              "optional": false,
+                              "position": {
+                                "column": 130,
+                                "file": "src/domain/work/task.mesh.mx",
+                                "line": 64,
+                                "offset": 2683
+                              }
+                            },
+                            {
+                              "kind": "literal",
+                              "position": {
+                                "column": 147,
+                                "file": "src/domain/work/task.mesh.mx",
+                                "line": 64,
+                                "offset": 2700
+                              },
+                              "value": ""
+                            }
+                          ],
+                          "fn": "coalesce",
+                          "kind": "call",
+                          "position": {
+                            "column": 130,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 64,
+                            "offset": 2683
+                          }
+                        }
+                      ],
+                      "fn": "ne",
+                      "kind": "call",
+                      "position": {
+                        "column": 109,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 64,
+                        "offset": 2662
+                      }
+                    }
+                  ],
+                  "fn": "or",
+                  "kind": "call",
+                  "position": {
+                    "column": 31,
+                    "file": "src/domain/work/task.mesh.mx",
+                    "line": 64,
+                    "offset": 2584
+                  }
+                }
+              }
+            },
+            {
+              "code": "expected-version",
+              "details": {
+                "params": [
+                  "input",
+                  "before"
+                ],
+                "plain": {
+                  "detail": "object",
+                  "edits": [],
+                  "position": {
+                    "column": 42,
+                    "file": "src/domain/work/task.mesh.mx",
+                    "line": 72,
+                    "offset": 3104
+                  },
+                  "why": "unsupported-construct"
+                },
+                "position": {
+                  "column": 18,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 72,
+                  "offset": 3080
+                },
+                "source": "({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })"
+              },
+              "label": "versionMatches",
+              "message": "the record is at another version; read it again and retry",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/task.mesh.mx",
+                "line": 68,
+                "offset": 2828
+              },
+              "that": {
+                "params": [
+                  "input"
+                ],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 69,
+                  "offset": 2867
+                },
+                "source": "({ input }) => input.expectedVersion == null || input.expectedVersion === &version",
+                "tree": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "expectedVersion",
+                          "object": {
+                            "kind": "var",
+                            "name": "input",
+                            "position": {
+                              "column": 30,
+                              "file": "src/domain/work/task.mesh.mx",
+                              "line": 69,
+                              "offset": 2882
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 30,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 69,
+                            "offset": 2882
+                          }
+                        }
+                      ],
+                      "fn": "isNull",
+                      "kind": "call",
+                      "position": {
+                        "column": 30,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 69,
+                        "offset": 2882
+                      }
+                    },
+                    {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "expectedVersion",
+                          "object": {
+                            "kind": "var",
+                            "name": "input",
+                            "position": {
+                              "column": 63,
+                              "file": "src/domain/work/task.mesh.mx",
+                              "line": 69,
+                              "offset": 2915
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 63,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 69,
+                            "offset": 2915
+                          }
+                        },
+                        {
+                          "kind": "member",
+                          "name": "version",
+                          "object": {
+                            "kind": "var",
+                            "name": "self",
+                            "position": {
+                              "column": 89,
+                              "file": "src/domain/work/task.mesh.mx",
+                              "line": 69,
+                              "offset": 2941
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 89,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 69,
+                            "offset": 2941
+                          }
+                        }
+                      ],
+                      "fn": "eq",
+                      "kind": "call",
+                      "position": {
+                        "column": 63,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 69,
+                        "offset": 2915
+                      }
+                    }
+                  ],
+                  "fn": "or",
+                  "kind": "call",
+                  "position": {
+                    "column": 30,
+                    "file": "src/domain/work/task.mesh.mx",
+                    "line": 69,
+                    "offset": 2882
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "do": [
+            {
+              "assignments": [
+                {
+                  "member": {
+                    "name": "version",
+                    "position": {
+                      "column": 10,
+                      "file": "src/domain/work/task.mesh.mx",
+                      "line": 95,
+                      "offset": 3918
+                    }
+                  },
+                  "value": {
+                    "params": [],
+                    "position": {
+                      "column": 19,
+                      "file": "src/domain/work/task.mesh.mx",
+                      "line": 95,
+                      "offset": 3927
+                    },
+                    "source": "() => &version + 1",
+                    "tree": {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "version",
+                          "object": {
+                            "kind": "var",
+                            "name": "self",
+                            "position": {
+                              "column": 25,
+                              "file": "src/domain/work/task.mesh.mx",
+                              "line": 95,
+                              "offset": 3933
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 25,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 95,
+                            "offset": 3933
+                          }
+                        },
+                        {
+                          "kind": "literal",
+                          "position": {
+                            "column": 36,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 95,
+                            "offset": 3944
+                          },
+                          "value": 1
+                        }
+                      ],
+                      "fn": "add",
+                      "kind": "call",
+                      "position": {
+                        "column": 25,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 95,
+                        "offset": 3933
+                      }
+                    }
+                  }
+                }
+              ],
+              "kind": "set",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/task.mesh.mx",
+                "line": 94,
+                "offset": 3904
+              }
+            }
+          ],
           "input": [
             {
               "kind": "member",
@@ -5363,10 +9346,22 @@
                 "position": {
                   "column": 8,
                   "file": "src/domain/work/task.mesh.mx",
-                  "line": 48,
-                  "offset": 2089
+                  "line": 79,
+                  "offset": 3292
                 }
               }
+            },
+            {
+              "kind": "argument",
+              "name": "expectedVersion",
+              "nullable": true,
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/task.mesh.mx",
+                "line": 80,
+                "offset": 3310
+              },
+              "type": "integer"
             }
           ],
           "kind": "update",
@@ -5374,13 +9369,300 @@
           "position": {
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
-            "line": 46,
-            "offset": 2049
+            "line": 77,
+            "offset": 3252
           },
-          "validate": []
+          "validate": [
+            {
+              "code": "task.open",
+              "label": "taskOpen",
+              "message": "the task is not open; reopen it first",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/task.mesh.mx",
+                "line": 82,
+                "offset": 3367
+              },
+              "that": {
+                "params": [],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 83,
+                  "offset": 3400
+                },
+                "source": "() => &state === :open",
+                "tree": {
+                  "args": [
+                    {
+                      "kind": "member",
+                      "name": "state",
+                      "object": {
+                        "kind": "var",
+                        "name": "self",
+                        "position": {
+                          "column": 21,
+                          "file": "src/domain/work/task.mesh.mx",
+                          "line": 83,
+                          "offset": 3406
+                        }
+                      },
+                      "optional": false,
+                      "position": {
+                        "column": 21,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 83,
+                        "offset": 3406
+                      }
+                    },
+                    {
+                      "kind": "atom",
+                      "position": {
+                        "column": 32,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 83,
+                        "offset": 3417
+                      },
+                      "value": "open"
+                    }
+                  ],
+                  "fn": "eq",
+                  "kind": "call",
+                  "position": {
+                    "column": 21,
+                    "file": "src/domain/work/task.mesh.mx",
+                    "line": 83,
+                    "offset": 3406
+                  }
+                }
+              }
+            },
+            {
+              "code": "expected-version",
+              "details": {
+                "params": [
+                  "input",
+                  "before"
+                ],
+                "plain": {
+                  "detail": "object",
+                  "edits": [],
+                  "position": {
+                    "column": 42,
+                    "file": "src/domain/work/task.mesh.mx",
+                    "line": 91,
+                    "offset": 3802
+                  },
+                  "why": "unsupported-construct"
+                },
+                "position": {
+                  "column": 18,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 91,
+                  "offset": 3778
+                },
+                "source": "({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })"
+              },
+              "label": "versionMatches",
+              "message": "the record is at another version; read it again and retry",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/task.mesh.mx",
+                "line": 87,
+                "offset": 3526
+              },
+              "that": {
+                "params": [
+                  "input"
+                ],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 88,
+                  "offset": 3565
+                },
+                "source": "({ input }) => input.expectedVersion == null || input.expectedVersion === &version",
+                "tree": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "expectedVersion",
+                          "object": {
+                            "kind": "var",
+                            "name": "input",
+                            "position": {
+                              "column": 30,
+                              "file": "src/domain/work/task.mesh.mx",
+                              "line": 88,
+                              "offset": 3580
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 30,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 88,
+                            "offset": 3580
+                          }
+                        }
+                      ],
+                      "fn": "isNull",
+                      "kind": "call",
+                      "position": {
+                        "column": 30,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 88,
+                        "offset": 3580
+                      }
+                    },
+                    {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "expectedVersion",
+                          "object": {
+                            "kind": "var",
+                            "name": "input",
+                            "position": {
+                              "column": 63,
+                              "file": "src/domain/work/task.mesh.mx",
+                              "line": 88,
+                              "offset": 3613
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 63,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 88,
+                            "offset": 3613
+                          }
+                        },
+                        {
+                          "kind": "member",
+                          "name": "version",
+                          "object": {
+                            "kind": "var",
+                            "name": "self",
+                            "position": {
+                              "column": 89,
+                              "file": "src/domain/work/task.mesh.mx",
+                              "line": 88,
+                              "offset": 3639
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 89,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 88,
+                            "offset": 3639
+                          }
+                        }
+                      ],
+                      "fn": "eq",
+                      "kind": "call",
+                      "position": {
+                        "column": 63,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 88,
+                        "offset": 3613
+                      }
+                    }
+                  ],
+                  "fn": "or",
+                  "kind": "call",
+                  "position": {
+                    "column": 30,
+                    "file": "src/domain/work/task.mesh.mx",
+                    "line": 88,
+                    "offset": 3580
+                  }
+                }
+              }
+            }
+          ]
         },
         {
-          "do": [],
+          "do": [
+            {
+              "assignments": [
+                {
+                  "member": {
+                    "name": "version",
+                    "position": {
+                      "column": 10,
+                      "file": "src/domain/work/task.mesh.mx",
+                      "line": 124,
+                      "offset": 4964
+                    }
+                  },
+                  "value": {
+                    "params": [],
+                    "position": {
+                      "column": 19,
+                      "file": "src/domain/work/task.mesh.mx",
+                      "line": 124,
+                      "offset": 4973
+                    },
+                    "source": "() => &version + 1",
+                    "tree": {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "version",
+                          "object": {
+                            "kind": "var",
+                            "name": "self",
+                            "position": {
+                              "column": 25,
+                              "file": "src/domain/work/task.mesh.mx",
+                              "line": 124,
+                              "offset": 4979
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 25,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 124,
+                            "offset": 4979
+                          }
+                        },
+                        {
+                          "kind": "literal",
+                          "position": {
+                            "column": 36,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 124,
+                            "offset": 4990
+                          },
+                          "value": 1
+                        }
+                      ],
+                      "fn": "add",
+                      "kind": "call",
+                      "position": {
+                        "column": 25,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 124,
+                        "offset": 4979
+                      }
+                    }
+                  }
+                }
+              ],
+              "kind": "set",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/task.mesh.mx",
+                "line": 123,
+                "offset": 4950
+              }
+            }
+          ],
           "input": [
             {
               "kind": "member",
@@ -5389,10 +9671,22 @@
                 "position": {
                   "column": 8,
                   "file": "src/domain/work/task.mesh.mx",
-                  "line": 51,
-                  "offset": 2136
+                  "line": 98,
+                  "offset": 3983
                 }
               }
+            },
+            {
+              "kind": "argument",
+              "name": "expectedVersion",
+              "nullable": true,
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/task.mesh.mx",
+                "line": 99,
+                "offset": 3999
+              },
+              "type": "integer"
             }
           ],
           "kind": "update",
@@ -5400,10 +9694,740 @@
           "position": {
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
-            "line": 49,
-            "offset": 2103
+            "line": 96,
+            "offset": 3950
           },
-          "validate": []
+          "validate": [
+            {
+              "code": "task.open",
+              "label": "taskOpen",
+              "message": "the task is not open; reopen it first",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/task.mesh.mx",
+                "line": 101,
+                "offset": 4056
+              },
+              "that": {
+                "params": [],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 102,
+                  "offset": 4089
+                },
+                "source": "() => &state === :open",
+                "tree": {
+                  "args": [
+                    {
+                      "kind": "member",
+                      "name": "state",
+                      "object": {
+                        "kind": "var",
+                        "name": "self",
+                        "position": {
+                          "column": 21,
+                          "file": "src/domain/work/task.mesh.mx",
+                          "line": 102,
+                          "offset": 4095
+                        }
+                      },
+                      "optional": false,
+                      "position": {
+                        "column": 21,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 102,
+                        "offset": 4095
+                      }
+                    },
+                    {
+                      "kind": "atom",
+                      "position": {
+                        "column": 32,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 102,
+                        "offset": 4106
+                      },
+                      "value": "open"
+                    }
+                  ],
+                  "fn": "eq",
+                  "kind": "call",
+                  "position": {
+                    "column": 21,
+                    "file": "src/domain/work/task.mesh.mx",
+                    "line": 102,
+                    "offset": 4095
+                  }
+                }
+              }
+            },
+            {
+              "code": "task.parent-open",
+              "label": "parentOpen",
+              "message": "the parent task is not open",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/task.mesh.mx",
+                "line": 106,
+                "offset": 4215
+              },
+              "that": {
+                "needs": [
+                  "parent"
+                ],
+                "params": [],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 107,
+                  "offset": 4250
+                },
+                "source": "() => &parent === null || &parent?.state === :open",
+                "tree": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "parent",
+                          "object": {
+                            "kind": "var",
+                            "name": "self",
+                            "position": {
+                              "column": 21,
+                              "file": "src/domain/work/task.mesh.mx",
+                              "line": 107,
+                              "offset": 4256
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 21,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 107,
+                            "offset": 4256
+                          }
+                        }
+                      ],
+                      "fn": "isNull",
+                      "kind": "call",
+                      "position": {
+                        "column": 21,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 107,
+                        "offset": 4256
+                      }
+                    },
+                    {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "state",
+                          "object": {
+                            "kind": "member",
+                            "name": "parent",
+                            "object": {
+                              "kind": "var",
+                              "name": "self",
+                              "position": {
+                                "column": 41,
+                                "file": "src/domain/work/task.mesh.mx",
+                                "line": 107,
+                                "offset": 4276
+                              }
+                            },
+                            "optional": false,
+                            "position": {
+                              "column": 41,
+                              "file": "src/domain/work/task.mesh.mx",
+                              "line": 107,
+                              "offset": 4276
+                            }
+                          },
+                          "optional": true,
+                          "position": {
+                            "column": 41,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 107,
+                            "offset": 4276
+                          }
+                        },
+                        {
+                          "kind": "atom",
+                          "position": {
+                            "column": 60,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 107,
+                            "offset": 4295
+                          },
+                          "value": "open"
+                        }
+                      ],
+                      "fn": "eq",
+                      "kind": "call",
+                      "position": {
+                        "column": 41,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 107,
+                        "offset": 4276
+                      }
+                    }
+                  ],
+                  "fn": "or",
+                  "kind": "call",
+                  "position": {
+                    "column": 21,
+                    "file": "src/domain/work/task.mesh.mx",
+                    "line": 107,
+                    "offset": 4256
+                  }
+                }
+              }
+            },
+            {
+              "code": "task.no-active-claim",
+              "label": "noActiveClaim",
+              "message": "release or revoke the active claim first",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/task.mesh.mx",
+                "line": 111,
+                "offset": 4401
+              },
+              "that": {
+                "needs": [
+                  "claimed"
+                ],
+                "params": [],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 112,
+                  "offset": 4439
+                },
+                "source": "() => !&claimed",
+                "tree": {
+                  "args": [
+                    {
+                      "kind": "member",
+                      "name": "claimed",
+                      "object": {
+                        "kind": "var",
+                        "name": "self",
+                        "position": {
+                          "column": 22,
+                          "file": "src/domain/work/task.mesh.mx",
+                          "line": 112,
+                          "offset": 4446
+                        }
+                      },
+                      "optional": false,
+                      "position": {
+                        "column": 22,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 112,
+                        "offset": 4446
+                      }
+                    }
+                  ],
+                  "fn": "not",
+                  "kind": "call",
+                  "position": {
+                    "column": 21,
+                    "file": "src/domain/work/task.mesh.mx",
+                    "line": 112,
+                    "offset": 4445
+                  }
+                }
+              }
+            },
+            {
+              "code": "expected-version",
+              "details": {
+                "params": [
+                  "input",
+                  "before"
+                ],
+                "plain": {
+                  "detail": "object",
+                  "edits": [],
+                  "position": {
+                    "column": 42,
+                    "file": "src/domain/work/task.mesh.mx",
+                    "line": 120,
+                    "offset": 4848
+                  },
+                  "why": "unsupported-construct"
+                },
+                "position": {
+                  "column": 18,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 120,
+                  "offset": 4824
+                },
+                "source": "({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })"
+              },
+              "label": "versionMatches",
+              "message": "the record is at another version; read it again and retry",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/task.mesh.mx",
+                "line": 116,
+                "offset": 4572
+              },
+              "that": {
+                "params": [
+                  "input"
+                ],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 117,
+                  "offset": 4611
+                },
+                "source": "({ input }) => input.expectedVersion == null || input.expectedVersion === &version",
+                "tree": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "expectedVersion",
+                          "object": {
+                            "kind": "var",
+                            "name": "input",
+                            "position": {
+                              "column": 30,
+                              "file": "src/domain/work/task.mesh.mx",
+                              "line": 117,
+                              "offset": 4626
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 30,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 117,
+                            "offset": 4626
+                          }
+                        }
+                      ],
+                      "fn": "isNull",
+                      "kind": "call",
+                      "position": {
+                        "column": 30,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 117,
+                        "offset": 4626
+                      }
+                    },
+                    {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "expectedVersion",
+                          "object": {
+                            "kind": "var",
+                            "name": "input",
+                            "position": {
+                              "column": 63,
+                              "file": "src/domain/work/task.mesh.mx",
+                              "line": 117,
+                              "offset": 4659
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 63,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 117,
+                            "offset": 4659
+                          }
+                        },
+                        {
+                          "kind": "member",
+                          "name": "version",
+                          "object": {
+                            "kind": "var",
+                            "name": "self",
+                            "position": {
+                              "column": 89,
+                              "file": "src/domain/work/task.mesh.mx",
+                              "line": 117,
+                              "offset": 4685
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 89,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 117,
+                            "offset": 4685
+                          }
+                        }
+                      ],
+                      "fn": "eq",
+                      "kind": "call",
+                      "position": {
+                        "column": 63,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 117,
+                        "offset": 4659
+                      }
+                    }
+                  ],
+                  "fn": "or",
+                  "kind": "call",
+                  "position": {
+                    "column": 30,
+                    "file": "src/domain/work/task.mesh.mx",
+                    "line": 117,
+                    "offset": 4626
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "do": [
+            {
+              "assignments": [
+                {
+                  "member": {
+                    "name": "state",
+                    "position": {
+                      "column": 10,
+                      "file": "src/domain/work/task.mesh.mx",
+                      "line": 143,
+                      "offset": 5655
+                    }
+                  },
+                  "value": {
+                    "value": "open"
+                  }
+                },
+                {
+                  "member": {
+                    "name": "version",
+                    "position": {
+                      "column": 10,
+                      "file": "src/domain/work/task.mesh.mx",
+                      "line": 144,
+                      "offset": 5678
+                    }
+                  },
+                  "value": {
+                    "params": [],
+                    "position": {
+                      "column": 19,
+                      "file": "src/domain/work/task.mesh.mx",
+                      "line": 144,
+                      "offset": 5687
+                    },
+                    "source": "() => &version + 1",
+                    "tree": {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "version",
+                          "object": {
+                            "kind": "var",
+                            "name": "self",
+                            "position": {
+                              "column": 25,
+                              "file": "src/domain/work/task.mesh.mx",
+                              "line": 144,
+                              "offset": 5693
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 25,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 144,
+                            "offset": 5693
+                          }
+                        },
+                        {
+                          "kind": "literal",
+                          "position": {
+                            "column": 36,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 144,
+                            "offset": 5704
+                          },
+                          "value": 1
+                        }
+                      ],
+                      "fn": "add",
+                      "kind": "call",
+                      "position": {
+                        "column": 25,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 144,
+                        "offset": 5693
+                      }
+                    }
+                  }
+                }
+              ],
+              "kind": "set",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/task.mesh.mx",
+                "line": 142,
+                "offset": 5641
+              }
+            }
+          ],
+          "input": [
+            {
+              "kind": "argument",
+              "name": "reason",
+              "nullable": false,
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/task.mesh.mx",
+                "line": 127,
+                "offset": 5031
+              },
+              "type": "string"
+            },
+            {
+              "kind": "argument",
+              "name": "expectedVersion",
+              "nullable": true,
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/task.mesh.mx",
+                "line": 128,
+                "offset": 5054
+              },
+              "type": "integer"
+            }
+          ],
+          "kind": "update",
+          "name": "reopen",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 125,
+            "offset": 4996
+          },
+          "validate": [
+            {
+              "code": "task.settled",
+              "label": "taskSettled",
+              "message": "the task is already open",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/task.mesh.mx",
+                "line": 130,
+                "offset": 5111
+              },
+              "that": {
+                "params": [],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 131,
+                  "offset": 5147
+                },
+                "source": "() => &state !== :open",
+                "tree": {
+                  "args": [
+                    {
+                      "kind": "member",
+                      "name": "state",
+                      "object": {
+                        "kind": "var",
+                        "name": "self",
+                        "position": {
+                          "column": 21,
+                          "file": "src/domain/work/task.mesh.mx",
+                          "line": 131,
+                          "offset": 5153
+                        }
+                      },
+                      "optional": false,
+                      "position": {
+                        "column": 21,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 131,
+                        "offset": 5153
+                      }
+                    },
+                    {
+                      "kind": "atom",
+                      "position": {
+                        "column": 32,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 131,
+                        "offset": 5164
+                      },
+                      "value": "open"
+                    }
+                  ],
+                  "fn": "ne",
+                  "kind": "call",
+                  "position": {
+                    "column": 21,
+                    "file": "src/domain/work/task.mesh.mx",
+                    "line": 131,
+                    "offset": 5153
+                  }
+                }
+              }
+            },
+            {
+              "code": "expected-version",
+              "details": {
+                "params": [
+                  "input",
+                  "before"
+                ],
+                "plain": {
+                  "detail": "object",
+                  "edits": [],
+                  "position": {
+                    "column": 42,
+                    "file": "src/domain/work/task.mesh.mx",
+                    "line": 139,
+                    "offset": 5539
+                  },
+                  "why": "unsupported-construct"
+                },
+                "position": {
+                  "column": 18,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 139,
+                  "offset": 5515
+                },
+                "source": "({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })"
+              },
+              "label": "versionMatches",
+              "message": "the record is at another version; read it again and retry",
+              "position": {
+                "column": 8,
+                "file": "src/domain/work/task.mesh.mx",
+                "line": 135,
+                "offset": 5263
+              },
+              "that": {
+                "params": [
+                  "input"
+                ],
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 136,
+                  "offset": 5302
+                },
+                "source": "({ input }) => input.expectedVersion == null || input.expectedVersion === &version",
+                "tree": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "expectedVersion",
+                          "object": {
+                            "kind": "var",
+                            "name": "input",
+                            "position": {
+                              "column": 30,
+                              "file": "src/domain/work/task.mesh.mx",
+                              "line": 136,
+                              "offset": 5317
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 30,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 136,
+                            "offset": 5317
+                          }
+                        }
+                      ],
+                      "fn": "isNull",
+                      "kind": "call",
+                      "position": {
+                        "column": 30,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 136,
+                        "offset": 5317
+                      }
+                    },
+                    {
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "expectedVersion",
+                          "object": {
+                            "kind": "var",
+                            "name": "input",
+                            "position": {
+                              "column": 63,
+                              "file": "src/domain/work/task.mesh.mx",
+                              "line": 136,
+                              "offset": 5350
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 63,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 136,
+                            "offset": 5350
+                          }
+                        },
+                        {
+                          "kind": "member",
+                          "name": "version",
+                          "object": {
+                            "kind": "var",
+                            "name": "self",
+                            "position": {
+                              "column": 89,
+                              "file": "src/domain/work/task.mesh.mx",
+                              "line": 136,
+                              "offset": 5376
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 89,
+                            "file": "src/domain/work/task.mesh.mx",
+                            "line": 136,
+                            "offset": 5376
+                          }
+                        }
+                      ],
+                      "fn": "eq",
+                      "kind": "call",
+                      "position": {
+                        "column": 63,
+                        "file": "src/domain/work/task.mesh.mx",
+                        "line": 136,
+                        "offset": 5350
+                      }
+                    }
+                  ],
+                  "fn": "or",
+                  "kind": "call",
+                  "position": {
+                    "column": 30,
+                    "file": "src/domain/work/task.mesh.mx",
+                    "line": 136,
+                    "offset": 5317
+                  }
+                }
+              }
+            }
+          ]
         }
       ],
       "always": [],

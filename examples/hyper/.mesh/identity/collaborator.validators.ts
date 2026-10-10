@@ -84,6 +84,8 @@ export type RegisterCollaboratorInputShape = Assert<
 export const updateCollaboratorInput = z.strictObject({
   id: z.uuid(),
   name: z.string().optional(),
+  kind: z.enum(["human", "agent"]).nullable().optional(),
+  expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<UpdateCollaboratorInput>;
 
 export type UpdateCollaboratorInputShape = Assert<

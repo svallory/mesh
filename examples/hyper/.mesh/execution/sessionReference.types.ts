@@ -33,6 +33,12 @@ export type RecordSessionReferenceInput = {
 export type SetAvailabilitySessionReferenceInput = {
   id: string;
   availability?: "complete" | "partial" | "unavailable" | "redacted" | undefined;
+  expectedVersion?: number | null | undefined;
+};
+
+export type RedactSessionReferenceInput = {
+  id: string;
+  expectedVersion?: number | null | undefined;
 };
 
 export type ReadSessionReferenceInput = {

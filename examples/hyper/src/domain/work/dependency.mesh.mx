@@ -15,4 +15,10 @@ entity :Dependency table="dependencies"
         &dependent
         &prerequisite
         &createdBy
+      validate
+        check :distinct [
+          that=() => &dependent.id !== &prerequisite.id
+          code="dependency.distinct"
+          message="a task cannot depend on itself"
+        ]
     destroy :remove

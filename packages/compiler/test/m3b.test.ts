@@ -181,7 +181,8 @@ describe("the key of a create", () => {
   test.each(["uuid :id primary-key", "string :code primary-key", "integer :seq primary-key"])("%s is left to the data layer", async (key) => {
     const { document } = await generated({ "m/item.mesh.mx": items(key) });
     const statements = actionsView({ document, config: configOf("/p") }, document.entities[0]!).methods.find((m) => m.name === "create")!.statements;
-    expect(statements).toEqual(["const row = await tx.insert(tables.item, {", "  name: parsed.name,", "});", "return row as Item;"]);
+    // The key is not in the proposed record: the data layer fills it inside the write transaction.
+    expect(statements.slice(2)).toEqual(["const $changes: $Row = {", "name: parsed.name,", "};", "// data layer", "const $stored = await tx.insert(tables.item, $changes);", "return $stored as Item;"]);
   });
 
   test("no generated file writes a random id", async () => {
@@ -382,7 +383,7 @@ describe("hyphens in enum values", () => {
     expect(readRuleInput.safeParse({ filter: { kind: { eq: "review-accepted" } } }).success).toBe(true);
     expect(readRuleInput.safeParse({ filter: { kind: { eq: "review_accepted" } } }).success).toBe(false);
     const actions = actionsView({ document, config: configOf("/p") }, entity);
-    expect(actions.methods.find((m) => m.name === "waive")!.statements.join("\n")).toContain('changes.kind = "performer-is-reviewer";');
+    expect(actions.methods.find((m) => m.name === "waive")!.statements.join("\n")).toContain('$changes.kind = $record.kind = "performer-is-reviewer";');
     expect(actions.methods.find((m) => m.name === "make")!.statements.join("\n")).toContain('kind: parsed.kind === undefined ? "review-accepted" : parsed.kind');
   });
 });

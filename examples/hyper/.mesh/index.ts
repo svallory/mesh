@@ -5,6 +5,7 @@
 
 import {
   FrameworkError as $FrameworkError,
+  type BindOptions as $BindOptions,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
 } from "@meshfw/runtime";
@@ -65,6 +66,7 @@ import type {
   SessionReference,
   RecordSessionReferenceInput,
   SetAvailabilitySessionReferenceInput,
+  RedactSessionReferenceInput,
   ReadSessionReferenceInput,
   SessionReferenceFilter,
   SessionReferenceSort,
@@ -116,6 +118,9 @@ import { bindClaim } from "./work/claim.actions";
 import type {
   Claim,
   AcquireClaimInput,
+  RenewClaimInput,
+  ReleaseClaimInput,
+  RevokeClaimInput,
   ReadClaimInput,
   ClaimFilter,
   ClaimSort,
@@ -188,8 +193,10 @@ import { bindTask } from "./work/task.actions";
 import type {
   Task,
   CreateTaskInput,
+  UpdateTaskInput,
   SetPriorityTaskInput,
   MoveTaskInput,
+  ReopenTaskInput,
   ReadTaskInput,
   TaskFilter,
   TaskSort,
@@ -238,6 +245,7 @@ export type {
   SessionReference,
   RecordSessionReferenceInput,
   SetAvailabilitySessionReferenceInput,
+  RedactSessionReferenceInput,
   ReadSessionReferenceInput,
   SessionReferenceFilter,
   SessionReferenceSort,
@@ -274,6 +282,9 @@ export type {
   AssignmentWith,
   Claim,
   AcquireClaimInput,
+  RenewClaimInput,
+  ReleaseClaimInput,
+  RevokeClaimInput,
   ReadClaimInput,
   ClaimFilter,
   ClaimSort,
@@ -325,8 +336,10 @@ export type {
   SubmissionWith,
   Task,
   CreateTaskInput,
+  UpdateTaskInput,
   SetPriorityTaskInput,
   MoveTaskInput,
+  ReopenTaskInput,
   ReadTaskInput,
   TaskFilter,
   TaskSort,
@@ -378,25 +391,25 @@ export {
  * Every action function, bound to `layer`. Opens nothing and creates no table:
  * the caller owns the layer and closes it.
  */
-export function bind(layer: $DataLayer) {
-  const eventActions = bindEvent(layer);
-  const attemptActions = bindAttempt(layer);
-  const invocationActions = bindInvocation(layer);
-  const machineActions = bindMachine(layer);
-  const runActions = bindRun(layer);
-  const sessionReferenceActions = bindSessionReference(layer);
-  const collaboratorActions = bindCollaborator(layer);
-  const membershipActions = bindMembership(layer);
-  const workspaceActions = bindWorkspace(layer);
-  const assignmentActions = bindAssignment(layer);
-  const claimActions = bindClaim(layer);
-  const completionActions = bindCompletion(layer);
-  const dependencyActions = bindDependency(layer);
-  const evidenceReferenceActions = bindEvidenceReference(layer);
-  const lateResultActions = bindLateResult(layer);
-  const reviewActions = bindReview(layer);
-  const submissionActions = bindSubmission(layer);
-  const taskActions = bindTask(layer);
+export function bind(layer: $DataLayer, options: $BindOptions = {}) {
+  const eventActions = bindEvent(layer, options);
+  const attemptActions = bindAttempt(layer, options);
+  const invocationActions = bindInvocation(layer, options);
+  const machineActions = bindMachine(layer, options);
+  const runActions = bindRun(layer, options);
+  const sessionReferenceActions = bindSessionReference(layer, options);
+  const collaboratorActions = bindCollaborator(layer, options);
+  const membershipActions = bindMembership(layer, options);
+  const workspaceActions = bindWorkspace(layer, options);
+  const assignmentActions = bindAssignment(layer, options);
+  const claimActions = bindClaim(layer, options);
+  const completionActions = bindCompletion(layer, options);
+  const dependencyActions = bindDependency(layer, options);
+  const evidenceReferenceActions = bindEvidenceReference(layer, options);
+  const lateResultActions = bindLateResult(layer, options);
+  const reviewActions = bindReview(layer, options);
+  const submissionActions = bindSubmission(layer, options);
+  const taskActions = bindTask(layer, options);
   return Object.freeze({
     recordEvent: eventActions.record,
     readEvent: eventActions.read,
@@ -412,6 +425,7 @@ export function bind(layer: $DataLayer) {
     readRun: runActions.read,
     recordSessionReference: sessionReferenceActions.record,
     setAvailabilitySessionReference: sessionReferenceActions.setAvailability,
+    redactSessionReference: sessionReferenceActions.redact,
     readSessionReference: sessionReferenceActions.read,
     registerCollaborator: collaboratorActions.register,
     updateCollaborator: collaboratorActions.update,
@@ -425,6 +439,9 @@ export function bind(layer: $DataLayer) {
     startAssignment: assignmentActions.start,
     readAssignment: assignmentActions.read,
     acquireClaim: claimActions.acquire,
+    renewClaim: claimActions.renew,
+    releaseClaim: claimActions.release,
+    revokeClaim: claimActions.revoke,
     readClaim: claimActions.read,
     recordCompletion: completionActions.record,
     readCompletion: completionActions.read,
@@ -441,8 +458,10 @@ export function bind(layer: $DataLayer) {
     submitSubmission: submissionActions.submit,
     readSubmission: submissionActions.read,
     createTask: taskActions.create,
+    updateTask: taskActions.update,
     setPriorityTask: taskActions.setPriority,
     moveTask: taskActions.move,
+    reopenTask: taskActions.reopen,
     readTask: taskActions.read,
   });
 }
@@ -629,6 +648,15 @@ export async function setAvailabilitySessionReference(
   );
 }
 
+export async function redactSessionReference(
+  input: RedactSessionReferenceInput,
+  ...context: $ContextArgument
+): Promise<SessionReference> {
+  return $delegate("redactSessionReference", (binding) =>
+    binding.redactSessionReference(input, ...context),
+  );
+}
+
 export async function readSessionReference(
   input: ReadSessionReferenceInput,
   ...context: $ContextArgument
@@ -726,6 +754,27 @@ export async function acquireClaim(
   ...context: $ContextArgument
 ): Promise<Claim> {
   return $delegate("acquireClaim", (binding) => binding.acquireClaim(input, ...context));
+}
+
+export async function renewClaim(
+  input: RenewClaimInput,
+  ...context: $ContextArgument
+): Promise<Claim> {
+  return $delegate("renewClaim", (binding) => binding.renewClaim(input, ...context));
+}
+
+export async function releaseClaim(
+  input: ReleaseClaimInput,
+  ...context: $ContextArgument
+): Promise<Claim> {
+  return $delegate("releaseClaim", (binding) => binding.releaseClaim(input, ...context));
+}
+
+export async function revokeClaim(
+  input: RevokeClaimInput,
+  ...context: $ContextArgument
+): Promise<Claim> {
+  return $delegate("revokeClaim", (binding) => binding.revokeClaim(input, ...context));
 }
 
 export async function readClaim(
@@ -844,6 +893,13 @@ export async function createTask(
   return $delegate("createTask", (binding) => binding.createTask(input, ...context));
 }
 
+export async function updateTask(
+  input: UpdateTaskInput,
+  ...context: $ContextArgument
+): Promise<Task> {
+  return $delegate("updateTask", (binding) => binding.updateTask(input, ...context));
+}
+
 export async function setPriorityTask(
   input: SetPriorityTaskInput,
   ...context: $ContextArgument
@@ -853,6 +909,13 @@ export async function setPriorityTask(
 
 export async function moveTask(input: MoveTaskInput, ...context: $ContextArgument): Promise<Task> {
   return $delegate("moveTask", (binding) => binding.moveTask(input, ...context));
+}
+
+export async function reopenTask(
+  input: ReopenTaskInput,
+  ...context: $ContextArgument
+): Promise<Task> {
+  return $delegate("reopenTask", (binding) => binding.reopenTask(input, ...context));
 }
 
 export async function readTask(

@@ -4,6 +4,7 @@
 
 import {
   parseInput,
+  type BindOptions as $BindOptions,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
 } from "@meshfw/runtime";
@@ -11,9 +12,10 @@ import type { Comment, ReadCommentInput } from "./comment.types";
 import { readCommentInput } from "./comment.validators";
 import { tables } from "../schema";
 
-export function bindComment(layer: $DataLayer) {
+export function bindComment(layer: $DataLayer, _options: $BindOptions = {}) {
   return Object.freeze({
     async read(input: ReadCommentInput, ...[_context]: $ContextArgument): Promise<Comment[]> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(readCommentInput, input);
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.comment, {

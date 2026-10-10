@@ -4,26 +4,34 @@
 
 import {
   parseInput,
+  type BindOptions as $BindOptions,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type Row as $Row,
 } from "@meshfw/runtime";
 import type { User, CreateUserInput, ReadUserInput } from "./user.types";
 import { createUserInput, readUserInput } from "./user.validators";
 import { tables } from "../schema";
 
-export function bindUser(layer: $DataLayer) {
+export function bindUser(layer: $DataLayer, _options: $BindOptions = {}) {
   return Object.freeze({
     async create(input: CreateUserInput, ...[_context]: $ContextArgument): Promise<User> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(createUserInput, input);
       return layer.transaction(async (tx) => {
-        const row = await tx.insert(tables.user, {
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        // plan: a create is one insert; nothing is read first
+        const $changes: $Row = {
           name: parsed.name,
-        });
-        return row as User;
+        };
+        // data layer
+        const $stored = await tx.insert(tables.user, $changes);
+        return $stored as User;
       });
     },
 
     async read(input: ReadUserInput, ...[_context]: $ContextArgument): Promise<User[]> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(readUserInput, input);
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.user, {
