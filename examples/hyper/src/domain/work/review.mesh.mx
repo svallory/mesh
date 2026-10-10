@@ -6,7 +6,7 @@ entity :Review table="reviews"
     uuid :id primary-key
     enum :decision values=[:accept, :return]
     string :reasons nullable
-    string :ruleApplied
+    enum :ruleApplied values=[:parent-assignee, :parent-creator, :task-creator]
     timestamp :decidedAt on=:create
   relationships
     belongs-to :submission entity=Submission

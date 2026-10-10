@@ -28,7 +28,7 @@ Three spellings tell you what a name means: **`:name` declares**, **`&name` refe
 | A path through relationships | a string | `of="lines.amount"`, `of="lines"` |
 | A pattern, a number, a boolean | as in TypeScript | `match=/^INV-\d+$/`, `min=0`, `default=false` |
 
-An **atom** is a name that stands for itself, not a string. It names a declaration or a value from a fixed set. At run time it is its name as a string: `values=[:draft, :sent]` gives TypeScript the union `"draft" | "sent"`, and your program compares with `invoice.status === "sent"`.
+An **atom** is a name that stands for itself, not a string. It names a declaration or a value from a fixed set. The name of an entity, attribute, relationship, action, check or policy is an atom made of letters, digits and underscores, because it becomes a TypeScript identifier. An enum value may also contain hyphens: `values=[:review-accepted, :review-waived]` gives the union `"review-accepted" | "review-waived"`, and `default=:review-accepted` and `&rule=:review-waived` refer to them. At run time an atom is its name as a string: `values=[:draft, :sent]` gives TypeScript the union `"draft" | "sent"`, and your program compares with `invoice.status === "sent"`.
 
 A **member reference** points at something declared in this entity: an attribute, relationship, computed field, action, check or policy. Inside a function, `&status` reads the record's status. A name that is not a member is a build error at that position, with a suggestion: `&titel` suggests `&title`. Strings cannot stand in for member references, and an atom cannot stand in for text: `message=:oops` is an error.
 

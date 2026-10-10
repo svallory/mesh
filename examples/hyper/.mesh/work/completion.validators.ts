@@ -46,7 +46,9 @@ export const completionFilter: z.ZodType<CompletionFilter> = z.lazy(
       z.strictObject({ or: z.array(completionFilter).readonly() }),
       z.strictObject({
         id: comparison(z.uuid()).exactOptional(),
-        rule: comparison(z.string()).exactOptional(),
+        rule: comparison(
+          z.enum(["review-accepted", "performer-is-reviewer", "review-waived"]),
+        ).exactOptional(),
         completedAt: comparison(z.date()).exactOptional(),
         taskId: comparison(z.string()).exactOptional(),
         submissionId: comparison(z.string()).exactOptional(),
@@ -75,7 +77,7 @@ export const completionSort = z
   .readonly();
 
 export const recordCompletionInput = z.strictObject({
-  rule: z.string(),
+  rule: z.enum(["review-accepted", "performer-is-reviewer", "review-waived"]),
   task: z.uuid(),
   submission: z.uuid().nullable().optional(),
   completedBy: z.uuid(),

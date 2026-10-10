@@ -23,6 +23,7 @@ entity :Sample table="samples"
     decimal :amount
     boolean :active
     enum :state values=[:draft, :live]
+    enum :rule values=[:review-accepted, :performer-is-reviewer]
     date :dueOn
     datetime :seenAt
     timestamp :insertedAt on=:create
@@ -86,7 +87,7 @@ test("the emitted schema is usable as-is: createSchema, then every type round-tr
     await createSchema(db, tables);
     const row = {
       id: "00000000-0000-4000-8000-000000000001", name: "first", slug: "one", count: 3, ratio: 0.5, amount: 12.25, active: true,
-      state: "live", dueOn: new Date("2026-10-09T00:00:00.000Z"), seenAt: new Date("2026-10-09T10:11:12.345Z"),
+      state: "live", rule: "performer-is-reviewer", dueOn: new Date("2026-10-09T00:00:00.000Z"), seenAt: new Date("2026-10-09T10:11:12.345Z"),
       insertedAt: new Date("2026-10-09T10:11:12.346Z"), note: null, maybeCount: null, maybeActive: false, maybeState: null,
       maybeAt: null, payload: { list: [1, "two", { three: null }], flag: true }, extra: null, ownerId: "00000000-0000-4000-8000-0000000000aa", reviewerId: null,
     };
@@ -100,6 +101,10 @@ test("the emitted schema is usable as-is: createSchema, then every type round-tr
       expect(stored!.dueOn).toBeInstanceOf(Date);
       expect(stored!.active).toBe(true);
       expect(stored!.maybeActive).toBe(false);
+      // An enum value with hyphens is stored as written and filtered by the same text.
+      expect(stored!.rule).toBe("performer-is-reviewer");
+      expect(await tx.select(sampleTable!, { filter: { rule: { eq: "performer-is-reviewer" } } })).toHaveLength(1);
+      expect(await tx.select(sampleTable!, { filter: { rule: { eq: "review-accepted" } } })).toEqual([]);
       // A json column returns the value, not its text: an object here, an array and a scalar below.
       expect(stored!.payload).toEqual({ list: [1, "two", { three: null }], flag: true });
       expect(stored!.extra).toBeNull();
@@ -124,7 +129,7 @@ test("an attribute declared unique is a UNIQUE column: a second row with the val
   try {
     await createSchema(db, tables);
     const row = {
-      id: "00000000-0000-4000-8000-000000000001", name: "n", slug: "same", count: 1, ratio: 0.5, amount: 1, active: true, state: "live",
+      id: "00000000-0000-4000-8000-000000000001", name: "n", slug: "same", count: 1, ratio: 0.5, amount: 1, active: true, state: "live", rule: "performer-is-reviewer",
       dueOn: new Date(0), seenAt: new Date(0), insertedAt: new Date(0), note: null, maybeCount: null, maybeActive: null, maybeState: null,
       maybeAt: null, payload: {}, extra: null, ownerId: "o", reviewerId: null,
     };

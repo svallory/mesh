@@ -46,7 +46,7 @@ async function populate(hyper: Hyper) {
   const claim = await hyper.acquireClaim({ fence: 1, acquiredAt: at, expiresAt: later, task: task.id, holder: bot.id }, context);
   const submission = await hyper.submitSubmission({ summary: "done", evidence: [{ kind: "file", id: 1 }], fence: 1, taskVersion: 1, task: task.id, submitter: bot.id }, context);
   const review = await hyper.acceptReview({ ruleApplied: "task-creator", submission: submission.id, reviewer: alice.id }, context);
-  const completion = await hyper.recordCompletion({ rule: "reviewer", task: task.id, submission: submission.id, completedBy: alice.id }, context);
+  const completion = await hyper.recordCompletion({ rule: "review-accepted", task: task.id, submission: submission.id, completedBy: alice.id }, context);
   const lateResult = await hyper.recordLateResult({ fence: 1, evidence: ["a", "b"], task: task.id, submitter: bot.id }, context);
   const evidence = await hyper.recordEvidenceReference({ kind: "file", locator: "notes.md", recordedBy: bot.id }, context);
   const machine = await hyper.registerMachine({ name: "laptop", platform: "linux" }, context);
@@ -109,6 +109,19 @@ describe("one row of every entity round-trips through its generated functions", 
       expect(await reads.Task!()).toEqual([rows.task, rows.child]);
       expect(rows.review).toMatchObject({ decision: "accept" });
       expect((await hyper.returnReview({ reasons: "more tests", ruleApplied: "task-creator", submission: rows.submission.id, reviewer: rows.alice.id }, context))).toMatchObject({ decision: "return", reasons: "more tests" });
+    } finally { await db.close(); }
+  });
+
+  test("enum values with hyphens are stored and validated as the spec spells them", async () => {
+    const { db, hyper } = await fresh();
+    try {
+      const { task, submission, alice, completion, review } = await populate(hyper);
+      expect(completion.rule).toBe("review-accepted");
+      expect(review.ruleApplied).toBe("task-creator");
+      const second = await hyper.recordCompletion({ rule: "performer-is-reviewer", task: task.id, completedBy: alice.id }, context);
+      expect((await hyper.readCompletion({ filter: { rule: { in: ["performer-is-reviewer", "review-waived"] } } }, context)).map((c) => c.id)).toEqual([second.id]);
+      // @ts-expect-error "reviewer" is not one of the spec's completion rules
+      await expect(hyper.recordCompletion({ rule: "reviewer", task: task.id, submission: submission.id, completedBy: alice.id }, context)).rejects.toBeInstanceOf(InvalidInputError);
     } finally { await db.close(); }
   });
 

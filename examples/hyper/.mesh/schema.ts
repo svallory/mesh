@@ -57,7 +57,9 @@ export const collaboratorTable = _meshSqlite("collaborators", {
 
 export const completionTable = _meshSqlite("completions", {
   id: text("id").notNull().primaryKey(),
-  rule: text("rule").notNull(),
+  rule: text("rule", {
+    enum: ["review-accepted", "performer-is-reviewer", "review-waived"],
+  }).notNull(),
   completedAt: integer("completedAt", { mode: "timestamp_ms" }).notNull(),
   taskId: text("taskId").notNull(),
   submissionId: text("submissionId"),
@@ -77,7 +79,9 @@ export const eventTable = _meshSqlite("events", {
   type: text("type").notNull(),
   schemaVersion: integer("schemaVersion").notNull(),
   workspaceId: text("workspaceId").notNull(),
-  recordType: text("recordType").notNull(),
+  recordType: text("recordType", {
+    enum: ["workspace", "collaborator", "membership", "task", "evidence-reference"],
+  }).notNull(),
   recordId: text("recordId").notNull(),
   recordVersion: integer("recordVersion").notNull(),
   actor: text("actor").notNull(),
@@ -160,7 +164,9 @@ export const reviewTable = _meshSqlite("reviews", {
   id: text("id").notNull().primaryKey(),
   decision: text("decision", { enum: ["accept", "return"] }).notNull(),
   reasons: text("reasons"),
-  ruleApplied: text("ruleApplied").notNull(),
+  ruleApplied: text("ruleApplied", {
+    enum: ["parent-assignee", "parent-creator", "task-creator"],
+  }).notNull(),
   decidedAt: integer("decidedAt", { mode: "timestamp_ms" }).notNull(),
   submissionId: text("submissionId").notNull(),
   reviewerId: text("reviewerId").notNull(),

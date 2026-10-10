@@ -10,7 +10,7 @@ export type Event = {
   type: string;
   schemaVersion: number;
   workspaceId: string;
-  recordType: string;
+  recordType: "workspace" | "collaborator" | "membership" | "task" | "evidence-reference";
   recordId: string;
   recordVersion: number;
   actor: string;
@@ -27,7 +27,7 @@ export type RecordEventInput = {
   type: string;
   schemaVersion?: number | undefined;
   workspaceId: string;
-  recordType: string;
+  recordType: "workspace" | "collaborator" | "membership" | "task" | "evidence-reference";
   recordId: string;
   recordVersion: number;
   actor: string;
@@ -54,7 +54,9 @@ export type EventFilter =
       type?: $Comparison<string>;
       schemaVersion?: $Comparison<number>;
       workspaceId?: $Comparison<string>;
-      recordType?: $Comparison<string>;
+      recordType?: $Comparison<
+        "workspace" | "collaborator" | "membership" | "task" | "evidence-reference"
+      >;
       recordId?: $Comparison<string>;
       recordVersion?: $Comparison<number>;
       actor?: $Comparison<string>;

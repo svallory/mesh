@@ -11,7 +11,7 @@ import type { Collaborator } from "../identity/collaborator.types";
 
 export type Completion = {
   id: string;
-  rule: string;
+  rule: "review-accepted" | "performer-is-reviewer" | "review-waived";
   completedAt: Date;
   taskId: string;
   submissionId: string | null;
@@ -19,7 +19,7 @@ export type Completion = {
 };
 
 export type RecordCompletionInput = {
-  rule: string;
+  rule: "review-accepted" | "performer-is-reviewer" | "review-waived";
   task: Task["id"];
   submission?: Submission["id"] | null | undefined;
   completedBy: Collaborator["id"];
@@ -37,7 +37,7 @@ export type CompletionFilter =
   | { or: readonly CompletionFilter[] }
   | {
       id?: $Comparison<string>;
-      rule?: $Comparison<string>;
+      rule?: $Comparison<"review-accepted" | "performer-is-reviewer" | "review-waived">;
       completedAt?: $Comparison<Date>;
       taskId?: $Comparison<string>;
       submissionId?: $Comparison<string>;

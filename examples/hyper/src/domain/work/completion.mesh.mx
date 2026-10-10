@@ -5,7 +5,7 @@ import { Collaborator } from "../identity/collaborator.mesh.mx"
 entity :Completion table="completions"
   attributes
     uuid :id primary-key
-    string :rule
+    enum :rule values=[:review-accepted, :performer-is-reviewer, :review-waived]
     timestamp :completedAt on=:create
   relationships
     belongs-to :task entity=Task

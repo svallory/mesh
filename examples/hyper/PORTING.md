@@ -16,10 +16,10 @@ Each line names the entity, the construct left out, its code in the [gap analysi
 - Claim, Membership, Assignment: engine-set timestamps (`acquiredAt`, `expiresAt`, `grantedAt`, `startedAt`, `endedAt`, `revokedAt`) are client inputs or left null, for want of `now()` (G23, D04): M4.
 - Claim, Attempt, Submission: engine-computed values (`fence` as the highest plus one, `number`, `taskVersion`) are client inputs (D04): M5.
 - Review: `ruleApplied` and `reviewer` are client inputs; Hyper derives both from the reviewer rule (G07, D04): after 1.0.
-- Review, Completion, Event: the spec's enums with hyphenated values (`parent-assignee`, `review-accepted`, the event `type` and `record.type`) are strings, because atoms cannot hold a hyphen (no gap code): not scheduled.
 - Task: the filtered has-ones (`currentAssignment`, `activeClaim`, `pendingSubmission`) and the `exists` computed fields built on them (`claimed`, `inReview`, `assigned`) (G07): after 1.0.
 - Task: the `reviewer` and `derivedState` computed fields, and `blocked_reasons` as a list of maps (G07, G29): M7.
-- Task: the `maxFence` and `lastSettledAt` rollups over a filtered subset (G07): after 1.0.
+- Task: the `maxFence` rollup, an unfiltered `max` over the claims (G07): M7.
+- Task: the `lastSettledAt` rollup over a filtered subset of events (G07): after 1.0.
 - Task, Collaborator: the `dependencies` and `memberships` has-manys, because Dependency has two keys to Task and Membership three to Collaborator (G28): M7.
 - Task: `complete`, `cancel`, `assign` and `unassign`, which write the claim, submission, completion and assignment in one transaction (G05): M5.
 - Task: `reopen`, whose preconditions are checks (G22): M5.
@@ -31,7 +31,8 @@ Each line names the entity, the construct left out, its code in the [gap analysi
 - Membership: `revoke`, the none-active and last-owner rules (G05, G06, G35): M5.
 - Membership, SessionReference: the "unchanged" and availability rules on `changeRole` and `setAvailability` (G35): M5.
 - Claim: `renew`, `release`, `revoke` and `expire` (G05): M5.
-- Claim: the `claim.task-ready` and `claim.current-fence` rules over the has-many of claims (G07): after 1.0.
+- Claim: the `claim.task-ready` rule over the has-many of claims (G07): after 1.0.
+- Claim: the `claim.current-fence` rule, plain code over the transaction handle (G05): M5.
 - Claim, Dependency, Review, SessionReference, Attempt: the composite and partial unique indexes and the identity on a relationship key (`(task, fence)`, the dependency edge, one review per submission, `(runtime, runtimeSessionId)`, `(run, step, number)`, the active-only partials) (G08): after 1.0.
 - Submission, Review: `withdraw`, `settle`, and the cascade to the task and the claim (G05): M5.
 - Submission, Review, LateResult: the `warnings` and `late-result-recorded` outcomes (G25): M5.
@@ -44,7 +45,8 @@ Each line names the entity, the construct left out, its code in the [gap analysi
 - Invocation: the `invocation.not-corrected` rule (G06): M5.
 - Invocation: an exact `estimatedCost`; `decimal` is a number, so it round-trips as a double (G38): not scheduled.
 - Machine: `retire` (G22): M5.
-- SessionReference: `record` as an upsert, and `redact` (G09, G35): after 1.0.
+- SessionReference: `record` as an upsert (G09): after 1.0.
+- SessionReference: `redact` and its not-redacted rule (G35): M5.
 - Event: the event written in the same transaction as every change, with a gap-free sequence (G12): M6.
 - Event: the spec's `id` beside `seq`; Mesh fills one key, so `seq` is the key and the wire `id` and the nested `record` object are assembled by the application (G12): application code.
 - Event: the `subtree` read, a walk over descendants (G36): M5.

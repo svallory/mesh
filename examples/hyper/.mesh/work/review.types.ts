@@ -11,21 +11,21 @@ export type Review = {
   id: string;
   decision: "accept" | "return";
   reasons: string | null;
-  ruleApplied: string;
+  ruleApplied: "parent-assignee" | "parent-creator" | "task-creator";
   decidedAt: Date;
   submissionId: string;
   reviewerId: string;
 };
 
 export type AcceptReviewInput = {
-  ruleApplied: string;
+  ruleApplied: "parent-assignee" | "parent-creator" | "task-creator";
   submission: Submission["id"];
   reviewer: Collaborator["id"];
 };
 
 export type ReturnReviewInput = {
   reasons?: string | null | undefined;
-  ruleApplied: string;
+  ruleApplied: "parent-assignee" | "parent-creator" | "task-creator";
   submission: Submission["id"];
   reviewer: Collaborator["id"];
 };
@@ -44,7 +44,7 @@ export type ReviewFilter =
       id?: $Comparison<string>;
       decision?: $Comparison<"accept" | "return">;
       reasons?: $Comparison<string>;
-      ruleApplied?: $Comparison<string>;
+      ruleApplied?: $Comparison<"parent-assignee" | "parent-creator" | "task-creator">;
       decidedAt?: $Comparison<Date>;
       submissionId?: $Comparison<string>;
       reviewerId?: $Comparison<string>;

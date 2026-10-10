@@ -22,6 +22,11 @@ const atom = (required = false): CustomTagAttribute => ({
   required,
   pattern: "^[A-Za-z_][A-Za-z0-9_]*$",
 });
+/** An enum value is a fixed-set atom, written into string literals only, so it may contain hyphens (`:review-accepted`). */
+const valueAtom = (): CustomTagAttribute => ({
+  type: "atom",
+  pattern: "^[A-Za-z_][A-Za-z0-9_-]*$",
+});
 const text = (required = false): CustomTagAttribute => ({
   type: "string",
   literalOnly: true,
@@ -86,7 +91,7 @@ const scope = () => ({
 const options = (type: string) => ({
   nullable: flag(),
   default: { literalOnly: true },
-  ...(type === "enum" ? { values: atom() } : {}),
+  ...(type === "enum" ? { values: valueAtom() } : {}),
   ...(["string", "integer", "float", "decimal"].includes(type) ? { min: number(), max: number() } : {}),
   ...(type === "string" ? { match: { type: "expression" as const } } : {}),
 });

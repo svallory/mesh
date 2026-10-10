@@ -49,7 +49,9 @@ export const reviewFilter: z.ZodType<ReviewFilter> = z.lazy(
         id: comparison(z.uuid()).exactOptional(),
         decision: comparison(z.enum(["accept", "return"])).exactOptional(),
         reasons: comparison(z.string()).exactOptional(),
-        ruleApplied: comparison(z.string()).exactOptional(),
+        ruleApplied: comparison(
+          z.enum(["parent-assignee", "parent-creator", "task-creator"]),
+        ).exactOptional(),
         decidedAt: comparison(z.date()).exactOptional(),
         submissionId: comparison(z.string()).exactOptional(),
         reviewerId: comparison(z.string()).exactOptional(),
@@ -79,7 +81,7 @@ export const reviewSort = z
   .readonly();
 
 export const acceptReviewInput = z.strictObject({
-  ruleApplied: z.string(),
+  ruleApplied: z.enum(["parent-assignee", "parent-creator", "task-creator"]),
   submission: z.uuid(),
   reviewer: z.uuid(),
 }) satisfies z.ZodType<AcceptReviewInput>;
@@ -90,7 +92,7 @@ export type AcceptReviewInputShape = Assert<
 
 export const returnReviewInput = z.strictObject({
   reasons: z.string().nullable().optional(),
-  ruleApplied: z.string(),
+  ruleApplied: z.enum(["parent-assignee", "parent-creator", "task-creator"]),
   submission: z.uuid(),
   reviewer: z.uuid(),
 }) satisfies z.ZodType<ReturnReviewInput>;

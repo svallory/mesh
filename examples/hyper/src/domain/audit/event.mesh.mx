@@ -6,7 +6,7 @@ entity :Event table="events"
     string :type
     integer :schemaVersion default=1 min=1
     uuid :workspaceId
-    string :recordType
+    enum :recordType values=[:workspace, :collaborator, :membership, :task, :evidence-reference]
     uuid :recordId
     integer :recordVersion min=1
     string :actor

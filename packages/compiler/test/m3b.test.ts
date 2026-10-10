@@ -105,7 +105,7 @@ async function generated(sources: Record<string, string>) {
   const config = configOf(root);
   const files = await generateFiles({ document: built.document!, config });
   await writeGeneratedFiles(files, config);
-  await writeFile(resolve(root, "generated/schema.ts"), "export const tables = { note: {}, item: {} };\n");
+  await writeFile(resolve(root, "generated/schema.ts"), "export const tables = { note: {}, item: {}, rule: {} };\n");
   return { root, files, document: built.document!, config };
 }
 
@@ -296,5 +296,63 @@ describe("the data adapter's capabilities", () => {
     const wrongShape = await loadConfig(await project("capabilities: [],"));
     expect(wrongShape.config).toBeNull();
     expect(wrongShape.diagnostics[0]!.message).toContain("adapter must be a non-empty string");
+  });
+});
+
+describe("hyphens in enum values", () => {
+  const rule = `entity :Rule table="rules"
+  attributes
+    uuid :id primary-key
+    enum :kind values=[:review-accepted, :performer-is-reviewer, :plain] default=:review-accepted
+  actions auto=[:read]
+    create :make
+      input
+        &kind
+    update :waive
+      do
+        set
+          &kind=:performer-is-reviewer
+`;
+
+  test("the model holds the value as written, a default and a set included", () => {
+    const result = build(rule);
+    expect(result.diagnostics).toEqual([]);
+    const entity = result.document!.entities[0]!;
+    expect(entity.attributes[1]!.values).toEqual([{ value: "review-accepted" }, { value: "performer-is-reviewer" }, { value: "plain" }]);
+    expect(entity.attributes[1]!.default).toEqual({ value: "review-accepted" });
+  });
+
+  test.each([
+    ["a default that is not a value", rule.replace("default=:review-accepted", "default=:review-waived"), "MESH_DEFAULT"],
+    ["a repeated value", rule.replace(":plain]", ":review-accepted]"), "MESH_ATOM_LIST"],
+  ])("%s is a build error", (_name, source, code) => {
+    expect(codes(source)).toContain(code);
+  });
+
+  test.each([
+    ["an entity", "entity :Review-Rule\n  attributes\n    uuid :id primary-key\n"],
+    ["an attribute", "entity :Rule\n  attributes\n    uuid :id primary-key\n    string :first-name\n"],
+    ["an action", rule + "    update :re-open\n"],
+    ["a relationship", "import { Rule } from \"./rule.mesh.mx\"\nentity :Other\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :the-rule entity=Rule\n"],
+  ])("a hyphen in the name of %s is still refused: names become identifiers", (_name, source) => {
+    expect(build(source.replaceAll("\\n", "\n")).diagnostics.length).toBeGreaterThan(0);
+  });
+
+  test("the TypeScript literal type, the Zod enum and the stored value all carry the hyphen", async () => {
+    const { document, root, files } = await generated({ "m/rule.mesh.mx": rule });
+    const entity = document.entities[0]!;
+    const view = typesView({ document, config: configOf("/p") }, entity);
+    expect(view.record.members[1]!.type).toBe('"review-accepted" | "performer-is-reviewer" | "plain"');
+    expect(view.query!.filterMembers[1]!.type).toBe('$Comparison<"review-accepted" | "performer-is-reviewer" | "plain">');
+    expect(checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts") && !f.path.endsWith("index.ts")).map((f) => f.path), "generated/schema.ts"])).toEqual({ code: 0, output: "" });
+    const { makeRuleInput, readRuleInput } = await import(resolve(root, "generated/m/rule.validators.ts"));
+    expect(makeRuleInput.safeParse({ kind: "performer-is-reviewer" }).success).toBe(true);
+    expect(makeRuleInput.safeParse({}).success).toBe(true);
+    for (const kind of ["performer_is_reviewer", "performer-is-reviewer ", "review accepted", "", null]) expect(makeRuleInput.safeParse({ kind }).success).toBe(false);
+    expect(readRuleInput.safeParse({ filter: { kind: { eq: "review-accepted" } } }).success).toBe(true);
+    expect(readRuleInput.safeParse({ filter: { kind: { eq: "review_accepted" } } }).success).toBe(false);
+    const actions = actionsView({ document, config: configOf("/p") }, entity);
+    expect(actions.methods.find((m) => m.name === "waive")!.statements.join("\n")).toContain('changes.kind = "performer-is-reviewer";');
+    expect(actions.methods.find((m) => m.name === "make")!.statements.join("\n")).toContain('kind: parsed.kind === undefined ? "review-accepted" : parsed.kind');
   });
 });
