@@ -4,37 +4,45 @@
 
 import {
   parseInput,
+  type BindOptions as $BindOptions,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type Row as $Row,
 } from "@meshfw/runtime";
 import type { Submission, SubmitSubmissionInput, ReadSubmissionInput } from "./submission.types";
 import { submitSubmissionInput, readSubmissionInput } from "./submission.validators";
 import { tables } from "../schema";
 
-export function bindSubmission(layer: $DataLayer) {
+export function bindSubmission(layer: $DataLayer, _options: $BindOptions = {}) {
   return Object.freeze({
     async submit(
       input: SubmitSubmissionInput,
       ...[_context]: $ContextArgument
     ): Promise<Submission> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(submitSubmissionInput, input);
       return layer.transaction(async (tx) => {
-        const now = new Date();
-        const row = await tx.insert(tables.submission, {
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $now = new Date();
+        // plan: a create is one insert; nothing is read first
+        const $changes: $Row = {
           summary: parsed.summary === undefined ? null : parsed.summary,
           evidence: parsed.evidence === undefined ? [] : parsed.evidence,
           fence: parsed.fence === undefined ? null : parsed.fence,
           taskVersion: parsed.taskVersion,
           state: "pending",
-          submittedAt: now,
+          submittedAt: $now,
           taskId: parsed.task,
           submitterId: parsed.submitter,
-        });
-        return row as Submission;
+        };
+        // data layer
+        const $stored = await tx.insert(tables.submission, $changes);
+        return $stored as Submission;
       });
     },
 
     async read(input: ReadSubmissionInput, ...[_context]: $ContextArgument): Promise<Submission[]> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(readSubmissionInput, input);
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.submission, {

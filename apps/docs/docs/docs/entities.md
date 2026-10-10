@@ -393,6 +393,36 @@ entity :Membership
         ]
 ```
 
+#### A version number that refuses a stale update
+
+Mesh has no version construct. A `version` attribute, one `check` and one `set` give an update that refuses to overwrite what the caller has not seen:
+
+```mx "src/domain/notes/note.mesh.mx"
+entity :Note
+  attributes
+    uuid :id primary-key
+    string :body
+    integer :version default=1
+
+  actions
+    update :edit
+      input
+        &body
+        integer :expectedVersion nullable
+      validate
+        check :versionMatches [
+          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
+          code="expected-version"
+          message="the note changed since you read it"
+          details=({ before }) => ({ currentVersion: before.version })
+        ]
+      do
+        set
+          &version=() => &version + 1
+```
+
+`expectedVersion` is an argument, so it is checked and never stored. A caller that sends it and has fallen behind gets an `InvalidInputError` whose issue has the code `expected-version` and `details.currentVersion`, and nothing is written; a caller that leaves it out always wins. `&version` in the check is the stored version because `version` is not an input of the action. The step runs after every check has passed, so a refused update does not bump the version. Every update reads the row under the write lock before it writes it, so two callers that send the same `expectedVersion` cannot both succeed.
+
 #### A check that reads a related record
 
 A check may read through a `belongs-to`, including a rollup on the related entity. This one limits a free-plan owner to 20 todos:

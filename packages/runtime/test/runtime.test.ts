@@ -4,7 +4,7 @@ import { ForbiddenError, FrameworkError, InvalidInputError, MeshError, NotFoundE
 import type { Issue, PolicyCheck, StandardSchemaV1 } from "@meshfw/runtime";
 
 const cause = new Error("original");
-const issue = (path: (string | number)[], message: string): Issue => ({ path, message, label: null, code: null, source: null });
+const issue = (path: (string | number)[], message: string): Issue => ({ path, message, label: null, code: null, source: null, details: null });
 test.each([
   [new FrameworkError("misconfigured", { cause }), "FrameworkError", "framework", "misconfigured"],
   [new InvalidInputError([issue(["items", 0, "name"], "required"), issue([], "bad input")], { cause }), "InvalidInputError", "invalid_input", "items.0.name: required\n(input): bad input"],

@@ -27,6 +27,23 @@ export type AcquireClaimInput = {
   holder: Collaborator["id"];
 };
 
+export type RenewClaimInput = {
+  id: string;
+  fence: number;
+  newExpiresAt: Date;
+};
+
+export type ReleaseClaimInput = {
+  id: string;
+  fence: number;
+  reason?: string | null | undefined;
+};
+
+export type RevokeClaimInput = {
+  id: string;
+  reason?: string | null | undefined;
+};
+
 export type ReadClaimInput = {
   filter?: ClaimFilter | undefined;
   sort?: ClaimSort | undefined;

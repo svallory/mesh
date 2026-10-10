@@ -4,34 +4,42 @@
 
 import {
   parseInput,
+  type BindOptions as $BindOptions,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type Row as $Row,
 } from "@meshfw/runtime";
 import type { Completion, RecordCompletionInput, ReadCompletionInput } from "./completion.types";
 import { recordCompletionInput, readCompletionInput } from "./completion.validators";
 import { tables } from "../schema";
 
-export function bindCompletion(layer: $DataLayer) {
+export function bindCompletion(layer: $DataLayer, _options: $BindOptions = {}) {
   return Object.freeze({
     async record(
       input: RecordCompletionInput,
       ...[_context]: $ContextArgument
     ): Promise<Completion> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(recordCompletionInput, input);
       return layer.transaction(async (tx) => {
-        const now = new Date();
-        const row = await tx.insert(tables.completion, {
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $now = new Date();
+        // plan: a create is one insert; nothing is read first
+        const $changes: $Row = {
           rule: parsed.rule,
-          completedAt: now,
+          completedAt: $now,
           taskId: parsed.task,
           submissionId: parsed.submission === undefined ? null : parsed.submission,
           completedById: parsed.completedBy,
-        });
-        return row as Completion;
+        };
+        // data layer
+        const $stored = await tx.insert(tables.completion, $changes);
+        return $stored as Completion;
       });
     },
 
     async read(input: ReadCompletionInput, ...[_context]: $ContextArgument): Promise<Completion[]> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(readCompletionInput, input);
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.completion, {

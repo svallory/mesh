@@ -102,6 +102,7 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `check.code` | `check :valid that=() => true code="invalid" message="Invalid input"` | `check.code` | on main |
 | `check.message` | `check :valid that=() => true code="invalid" message="Invalid input"` | `check.message` | on main |
 | `check.when` | `check :valid that=() => true code="invalid" message="Invalid input" when=() => true` | `check.when` | on main |
+| `check.details` | `check :valid that=() => true code="invalid" message="Invalid input" details=() => ({ reason: "none" })` | `check.details` | on main |
 | `computed` | `computed` | `computed` | on main |
 | `count` | `count :total of="lines"` | `count` | on main |
 | `count.name` | `count :total of="lines"` | `count.name` | on main |

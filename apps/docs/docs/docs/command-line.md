@@ -96,16 +96,19 @@ Prints the plan the generated handler follows. The plan is chosen at build time;
 
 ```text
 Todo.complete (update)
-  strategy     read-then-write: check notDoneYet reads &done
-  steps        &done = true
-  policy       &list.ownerId === actor.id   folded into the statement as a filter
-  checks       notDoneYet
+  strategy     read-then-write: every update reads the row under the write lock, checks it, changes it, then writes it
+  input        none
+  checks       notDoneYet (todo.done)
+  steps        set &done = true
+  policy       none
 ```
 
-Two lines are worth learning:
+Each line names a phase of the generated handler:
 
-- **`strategy`** is one statement (`atomic`) or `read-then-write`, and `explain` says why: a `check` or `when` that reads `self`, a `run` step, or an expression Mesh cannot translate. `Todo.complete` reads then writes because `check :notDoneYet` reads `&done`; `Todo.rename` is one statement because it has no check.
-- **`folded into the statement`** means the rule costs no extra query. A rule that cannot fold runs in memory on the row read inside the transaction instead.
+- **`strategy`** says how many statements the action runs. A create is one insert. Every update reads the row first, under the write lock, and then writes it; a destroy reads only when a check or step can see the record. The plan is fixed at build time.
+- **`input`** lists what the caller may send: members, and arguments marked `(argument, not stored)`.
+- **`checks`** are the `check`s that run, in order, with each one's `code`. A check from an `always` block is marked `always:` and runs first. A `when` or `details` is shown beside the check that carries it.
+- **`steps`** are the `set`, `when`, `load` and `run` steps in written order; a nested step is indented under its `when`.
 
 `explain` prints a plan, not SQL. Queries are assembled at run time from the entity's filter, the caller's filter and the policies, because which of those apply is only known when the call arrives.
 

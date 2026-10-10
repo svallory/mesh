@@ -23,3 +23,62 @@ entity :Claim table="claims"
         &expiresAt
         &task
         &holder
+    update :renew
+      input
+        integer :fence
+        timestamp :newExpiresAt
+      validate
+        check :currentFence [
+          that=({ input }) => input.fence === &fence
+          code="claim.current-fence"
+          message="the fence is not this claim's; read the claim again"
+          details=({ input, before }) => ({ currentFence: before.fence, stale: input.fence < before.fence })
+        ]
+        check :claimActive [
+          that=() => &state === :active
+          code="claim.active"
+          message="the claim has ended"
+        ]
+        check :claimNotExpired [
+          that=({ before }) => before.expiresAt > now()
+          code="claim.expired"
+          message="the lease has expired"
+        ]
+      do
+        set
+          &expiresAt=({ input }) => input.newExpiresAt
+    update :release
+      input
+        integer :fence
+        string :reason nullable
+      validate
+        check :currentFence [
+          that=({ input }) => input.fence === &fence
+          code="claim.current-fence"
+          message="the fence is not this claim's; read the claim again"
+          details=({ input, before }) => ({ currentFence: before.fence, stale: input.fence < before.fence })
+        ]
+        check :claimActive [
+          that=() => &state === :active
+          code="claim.active"
+          message="the claim has ended"
+        ]
+      do
+        set
+          &state=:released
+          &endedAt=() => now()
+          &endReason=({ input }) => input.reason ?? null
+    update :revoke
+      input
+        string :reason nullable
+      validate
+        check :claimActive [
+          that=() => &state === :active
+          code="claim.active"
+          message="the claim has ended"
+        ]
+      do
+        set
+          &state=:revoked
+          &endedAt=() => now()
+          &endReason=({ input }) => input.reason ?? null

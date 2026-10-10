@@ -37,14 +37,29 @@ export type CreateTaskInput = {
   creator: Collaborator["id"];
 };
 
+export type UpdateTaskInput = {
+  id: string;
+  title?: string | undefined;
+  intent?: string | null | undefined;
+  expectedVersion?: number | null | undefined;
+};
+
 export type SetPriorityTaskInput = {
   id: string;
   priority?: number | null | undefined;
+  expectedVersion?: number | null | undefined;
 };
 
 export type MoveTaskInput = {
   id: string;
   parent?: Task["id"] | null | undefined;
+  expectedVersion?: number | null | undefined;
+};
+
+export type ReopenTaskInput = {
+  id: string;
+  reason: string;
+  expectedVersion?: number | null | undefined;
 };
 
 export type ReadTaskInput = {

@@ -27,3 +27,44 @@ entity :SessionReference table="session_references"
     update :setAvailability
       input
         &availability
+        integer :expectedVersion nullable
+      validate
+        check :notRedacted [
+          that=({ before }) => before.availability !== :redacted
+          code="session.not-redacted"
+          message="the session is redacted and cannot be changed"
+        ]
+        check :availabilityChanges [
+          that=({ before }) => &availability !== before.availability
+          code="session.availability"
+          message="the session already has that availability"
+        ]
+        check :versionMatches [
+          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
+          code="expected-version"
+          message="the record is at another version; read it again and retry"
+          details=({ before }) => ({ currentVersion: before.version })
+        ]
+      do
+        set
+          &version=() => &version + 1
+    update :redact
+      input
+        integer :expectedVersion nullable
+      validate
+        check :notRedacted [
+          that=({ before }) => before.availability !== :redacted
+          code="session.not-redacted"
+          message="the session is redacted and cannot be changed"
+        ]
+        check :versionMatches [
+          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
+          code="expected-version"
+          message="the record is at another version; read it again and retry"
+          details=({ before }) => ({ currentVersion: before.version })
+        ]
+      do
+        set
+          &availability=:redacted
+          &location=null
+          &version=() => &version + 1

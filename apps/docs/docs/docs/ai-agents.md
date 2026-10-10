@@ -55,7 +55,7 @@ The file is an addition to whatever guidance you already give your agent, not a 
 mesh inspect Todo
 ```
 
-**`mesh explain`** prints the plan a call will follow, and which rules fold into the statement:
+**`mesh explain`** prints the plan a call will follow: its checks, its steps and whether it reads before it writes:
 
 ```bash
 mesh explain Todo complete
@@ -63,13 +63,14 @@ mesh explain Todo complete
 
 ```text
 Todo.complete (update)
-  strategy     read-then-write: check notDoneYet reads &done
-  steps        &done = true
-  policy       &list.ownerId === actor.id   folded into the statement as a filter
-  checks       notDoneYet
+  strategy     read-then-write: every update reads the row under the write lock, checks it, changes it, then writes it
+  input        none
+  checks       notDoneYet (todo.done)
+  steps        set &done = true
+  policy       none
 ```
 
-That turns "why did this update run two queries" into a build-time answer rather than an investigation: Mesh prints the check that made it read first.
+That turns "what does this call do, and in what order" into a build-time answer rather than an investigation.
 
 **`bun test`** runs the suite against a real database in memory, which is the check that catches a change that builds and does the wrong thing. See [Testing](./testing.md).
 

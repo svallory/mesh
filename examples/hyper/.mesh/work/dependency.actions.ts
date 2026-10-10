@@ -3,10 +3,18 @@
 // Mesh's own imports carry a `$` so that no entity name can shadow them.
 
 import {
+  InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
+  guarded as $guarded,
+  loadInto as $loadInto,
   parseInput,
+  runCheck as $runCheck,
+  scope as $scope,
+  type BindOptions as $BindOptions,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type Issue as $Issue,
+  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   Dependency,
@@ -20,33 +28,75 @@ import {
   readDependencyInput,
 } from "./dependency.validators";
 import { tables } from "../schema";
+import {
+  expressions as $expressions,
+  type DependencyScope as $Scope,
+} from "./dependency.expressions";
+import { loadPlan as $loadPlan } from "../load";
 
-export function bindDependency(layer: $DataLayer) {
+export function bindDependency(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async add(input: AddDependencyInput, ...[_context]: $ContextArgument): Promise<Dependency> {
+    async add(input: AddDependencyInput, ...[context]: $ContextArgument): Promise<Dependency> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(addDependencyInput, input);
       return layer.transaction(async (tx) => {
-        const now = new Date();
-        const row = await tx.insert(tables.dependency, {
-          createdAt: now,
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $actor = $context.actor;
+        const $now = new Date();
+        // plan: a create is one insert; nothing is read first
+        const $changes: $Row = {
+          createdAt: $now,
           dependentId: parsed.dependent,
           prerequisiteId: parsed.prerequisite,
           createdById: parsed.createdBy,
+        };
+        const $record: $Row = { ...$changes };
+        const $load = { actor: $actor, context: $context, clock: options.clock };
+        const $self = $guarded($loadPlan, "Dependency", $record, "action function");
+        const $s = $scope(
+          {
+            self: $self,
+            input: parsed,
+            actor: $actor,
+            context: $context,
+            before: null,
+            tx: undefined,
+          },
+          options,
+        ) as unknown as $Scope;
+        // validate: every check runs, and every failed check is reported together
+        const $issues: $Issue[] = [];
+        await $loadInto($loadPlan, "Dependency", tx, $record, ["dependent", "prerequisite"], $load);
+        await $runCheck($issues, $s, {
+          label: "distinct",
+          code: "dependency.distinct",
+          message: "a task cannot depend on itself",
+          source: { file: "src/domain/work/dependency.mesh.mx", line: 19, column: 9 },
+          that: $expressions["add.check.distinct.that"],
         });
-        return row as Dependency;
+        if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // data layer
+        const $stored = await tx.insert(tables.dependency, $changes);
+        return $stored as Dependency;
       });
     },
 
     async remove(input: RemoveDependencyInput, ...[_context]: $ContextArgument): Promise<void> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(removeDependencyInput, input);
       return layer.transaction(async (tx) => {
-        const key = { id: parsed.id };
-        if (!(await tx.deleteByKey(tables.dependency, key)))
-          throw new $NotFoundError("Dependency", key);
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        // plan: nothing in the body can see the record, so the row is deleted without being read
+        const $key = { id: parsed.id };
+        // data layer
+        if (!(await tx.deleteByKey(tables.dependency, $key)))
+          throw new $NotFoundError("Dependency", $key);
       });
     },
 
     async read(input: ReadDependencyInput, ...[_context]: $ContextArgument): Promise<Dependency[]> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(readDependencyInput, input);
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.dependency, {

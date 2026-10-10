@@ -43,9 +43,102 @@ entity :Task table="tasks"
         &parent
         &priority
         &creator
+      validate
+        check :parentOpen [
+          that=() => &parent === null || &parent?.state === :open
+          code="task.parent-open"
+          message="the parent task is not open"
+        ]
+    update :update
+      input
+        &title
+        &intent
+        integer :expectedVersion nullable
+      validate
+        check :taskOpen [
+          that=() => &state === :open
+          code="task.open"
+          message="the task is not open; reopen it first"
+        ]
+        check :taskChanges [
+          that=({ before }) => &title !== before.title || (&intent === null) !== (before.intent === null) || (&intent ?? "") !== (before.intent ?? "")
+          code="task.unchanged"
+          message="nothing to change: every field already has that value"
+        ]
+        check :versionMatches [
+          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
+          code="expected-version"
+          message="the record is at another version; read it again and retry"
+          details=({ before }) => ({ currentVersion: before.version })
+        ]
+      do
+        set
+          &version=() => &version + 1
     update :setPriority
       input
         &priority
+        integer :expectedVersion nullable
+      validate
+        check :taskOpen [
+          that=() => &state === :open
+          code="task.open"
+          message="the task is not open; reopen it first"
+        ]
+        check :versionMatches [
+          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
+          code="expected-version"
+          message="the record is at another version; read it again and retry"
+          details=({ before }) => ({ currentVersion: before.version })
+        ]
+      do
+        set
+          &version=() => &version + 1
     update :move
       input
         &parent
+        integer :expectedVersion nullable
+      validate
+        check :taskOpen [
+          that=() => &state === :open
+          code="task.open"
+          message="the task is not open; reopen it first"
+        ]
+        check :parentOpen [
+          that=() => &parent === null || &parent?.state === :open
+          code="task.parent-open"
+          message="the parent task is not open"
+        ]
+        check :noActiveClaim [
+          that=() => !&claimed
+          code="task.no-active-claim"
+          message="release or revoke the active claim first"
+        ]
+        check :versionMatches [
+          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
+          code="expected-version"
+          message="the record is at another version; read it again and retry"
+          details=({ before }) => ({ currentVersion: before.version })
+        ]
+      do
+        set
+          &version=() => &version + 1
+    update :reopen
+      input
+        string :reason
+        integer :expectedVersion nullable
+      validate
+        check :taskSettled [
+          that=() => &state !== :open
+          code="task.settled"
+          message="the task is already open"
+        ]
+        check :versionMatches [
+          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
+          code="expected-version"
+          message="the record is at another version; read it again and retry"
+          details=({ before }) => ({ currentVersion: before.version })
+        ]
+      do
+        set
+          &state=:open
+          &version=() => &version + 1

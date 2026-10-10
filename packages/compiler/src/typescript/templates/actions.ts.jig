@@ -7,8 +7,12 @@ import {
   @each(name in runtimeValues)
   {{ name }},
   @end
+  type BindOptions as $BindOptions,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  @each(name in runtimeTypes)
+  type {{ name }},
+  @end
 } from "@meshfw/runtime";
 import type {
   @each(name in typeImports)
@@ -21,11 +25,22 @@ import {
   @end
 } from {{ validatorsFromLiteral }};
 import { tables } from {{ schemaFromLiteral }};
+@if(expressionsFromLiteral)
+import {
+  expressions as $expressions,
+  @each(name in scopeImports)
+  type {{ name }},
+  @end
+} from {{ expressionsFromLiteral }};
+@end
+@if(loadFromLiteral)
+import { loadPlan as $loadPlan } from {{ loadFromLiteral }};
+@end
 
-export function {{ bindName }}(layer: $DataLayer) {
+export function {{ bindName }}(layer: $DataLayer, {{ optionsName }}: $BindOptions = {}) {
   return Object.freeze({
     @each(method in methods)
-    async {{ method.name }}(input: {{ method.inputType }}, ...[_context]: $ContextArgument): Promise<{{ method.returnType }}> {
+    async {{ method.name }}(input: {{ method.inputType }}, ...[{{ method.contextName }}]: $ContextArgument): Promise<{{ method.returnType }}> {
       @if(method.notRun)
       // {{ method.notRun }}
       @end
@@ -34,8 +49,10 @@ export function {{ bindName }}(layer: $DataLayer) {
       throw new $FrameworkError({{ method.unsupported }});
       @else
       @if(method.usesParsed)~
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput({{ method.validator }}, input);
       @else~
+      // enter, cast: the call arrives with its context, and only the declared input passes
       await parseInput({{ method.validator }}, input);
       @end~
       return layer.transaction(async (tx) => {
@@ -50,9 +67,9 @@ export function {{ bindName }}(layer: $DataLayer) {
   });
 }
 @else
-import type { DataLayer as $DataLayer } from "@meshfw/runtime";
+import type { BindOptions as $BindOptions, DataLayer as $DataLayer } from "@meshfw/runtime";
 
-export function {{ bindName }}(_layer: $DataLayer) {
+export function {{ bindName }}(_layer: $DataLayer, _options: $BindOptions = {}) {
   return Object.freeze({});
 }
 @end

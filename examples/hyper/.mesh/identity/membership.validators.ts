@@ -98,6 +98,7 @@ export type GrantMembershipInputShape = Assert<
 export const changeRoleMembershipInput = z.strictObject({
   id: z.uuid(),
   role: z.enum(["owner", "member", "guest"]).optional(),
+  expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<ChangeRoleMembershipInput>;
 
 export type ChangeRoleMembershipInputShape = Assert<

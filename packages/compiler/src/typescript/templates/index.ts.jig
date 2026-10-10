@@ -5,6 +5,7 @@
 
 import {
   FrameworkError as $FrameworkError,
+  type BindOptions as $BindOptions,
   @if(hasFunctions)~
   type ContextArgument as $ContextArgument,
   @end~
@@ -44,10 +45,10 @@ export {
  * the caller owns the layer and closes it.
  */
 @if(hasFunctions)
-export function bind(layer: $DataLayer) {
+export function bind(layer: $DataLayer, options: $BindOptions = {}) {
   @each(entity in entities)
   @if(entity.hasActions)~
-  const {{ entity.local }} = {{ entity.bindName }}(layer);
+  const {{ entity.local }} = {{ entity.bindName }}(layer, options);
   @end~
   @end
   return Object.freeze({
@@ -57,7 +58,7 @@ export function bind(layer: $DataLayer) {
   });
 }
 @else
-export function bind(_layer: $DataLayer) {
+export function bind(_layer: $DataLayer, _options: $BindOptions = {}) {
   return Object.freeze({});
 }
 @end

@@ -19,6 +19,7 @@ export type CreateWorkspaceInput = {
 export type RenameWorkspaceInput = {
   id: string;
   name?: string | null | undefined;
+  expectedVersion?: number | null | undefined;
 };
 
 export type ReadWorkspaceInput = {

@@ -46,6 +46,7 @@ import {
   type PendingRollup,
 } from "./rollups.ts";
 import { resolveRelationships } from "./relationships.ts";
+import { checkLifecycleLimits } from "../model/lifecycle-limits.ts";
 import { computeNeeds } from "../model/needs.ts";
 import {
   atomList,
@@ -489,7 +490,7 @@ function buildEntity(
       const label = declaredName(tag);
       if (names.has(label)) fail("MESH_DUPLICATE_MEMBER", `Duplicate member :${label}`, tag);
       names.add(label);
-      return { label, that: expr(attr(tag, "that")), code: String(opt(tag, "code")), message: String(opt(tag, "message")), ...(attr(tag, "when") ? { when: expr(attr(tag, "when")) } : {}), position: pos(tag) };
+      return { label, that: expr(attr(tag, "that")), code: String(opt(tag, "code")), message: String(opt(tag, "message")), ...(attr(tag, "when") ? { when: expr(attr(tag, "when")) } : {}), ...(attr(tag, "details") ? { details: expr(attr(tag, "details")) } : {}), position: pos(tag) };
     });
   };
   const steps = (holder: Tag): Step[] =>
@@ -523,6 +524,10 @@ function buildEntity(
                 fail("MESH_SET_VALUE", `\`&${member.ref.name}=\` is json, and an atom is not JSON: write a string`, member.ref.position);
               if (field && (!literalFits(literal, field) || (n?.type === "ObjectExpression" && field.type !== "json")))
                 fail("MESH_SET_VALUE", `\`&${member.ref.name}=\` needs a literal that fits ${field.type}${field.type === "enum" ? ` (${field.values?.map((atom) => `:${atom.value}`).join(", ")})` : ""}`, member.ref.position);
+              // A belongs-to stores its target's key: a literal is that key (or null on a nullable one). Its type is checked at the call, by the key column.
+              const relation = field ? undefined : entity.relationships.find((r) => r.name === member.ref.name);
+              if (relation && (literal === null ? !relation.nullable : typeof literal !== "string" && typeof literal !== "number"))
+                fail("MESH_SET_VALUE", `\`&${member.ref.name}=\` stores the key of :${relation.entity.identifier}: write its id${relation.nullable ? ", null" : ""} or a function`, member.ref.position);
               return literal;
             });
             if (value.diagnostic) { diagnostics.push(value.diagnostic); return []; }
@@ -716,7 +721,7 @@ function buildEntity(
               ...entity.relationships.filter((r) => r.kind === "belongs-to"),
             ]
           : scope === "set"
-            ? entity.attributes
+            ? [...entity.attributes, ...entity.relationships.filter((r) => r.kind === "belongs-to")]
             : scope === "load"
               ? [...entity.relationships, ...entity.computed]
               : scope === "sort"
@@ -934,6 +939,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
   resolveRollups(document, rollups, diagnostics);
   checkExpressions(document, diagnostics, { editsOf });
   computeNeeds(document, diagnostics);
+  checkLifecycleLimits(document, diagnostics);
   const invalid = findNonJsonValue(document);
   if (invalid)
     diagnostics.push(

@@ -3,10 +3,18 @@
 // Mesh's own imports carry a `$` so that no entity name can shadow them.
 
 import {
+  FrameworkError as $FrameworkError,
+  InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
+  guarded as $guarded,
   parseInput,
+  runCheck as $runCheck,
+  scope as $scope,
+  type BindOptions as $BindOptions,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type Issue as $Issue,
+  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   Machine,
@@ -16,38 +24,97 @@ import type {
 } from "./machine.types";
 import { registerMachineInput, updateMachineInput, readMachineInput } from "./machine.validators";
 import { tables } from "../schema";
+import {
+  expressions as $expressions,
+  type MachineStoredScope as $StoredScope,
+} from "./machine.expressions";
+import { loadPlan as $loadPlan } from "../load";
 
-export function bindMachine(layer: $DataLayer) {
+export function bindMachine(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
     async register(input: RegisterMachineInput, ...[_context]: $ContextArgument): Promise<Machine> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(registerMachineInput, input);
       return layer.transaction(async (tx) => {
-        const now = new Date();
-        const row = await tx.insert(tables.machine, {
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $now = new Date();
+        // plan: a create is one insert; nothing is read first
+        const $changes: $Row = {
           name: parsed.name,
           platform: parsed.platform === undefined ? null : parsed.platform,
           state: "active",
           version: 1,
-          registeredAt: now,
+          registeredAt: $now,
           firstReportedById: parsed.firstReportedBy === undefined ? null : parsed.firstReportedBy,
-        });
-        return row as Machine;
+        };
+        // data layer
+        const $stored = await tx.insert(tables.machine, $changes);
+        return $stored as Machine;
       });
     },
 
-    async update(input: UpdateMachineInput, ...[_context]: $ContextArgument): Promise<Machine> {
+    async update(input: UpdateMachineInput, ...[context]: $ContextArgument): Promise<Machine> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(updateMachineInput, input);
       return layer.transaction(async (tx) => {
-        const key = { id: parsed.id };
-        const changes: Partial<Machine> = {};
-        if (parsed.platform !== undefined) changes.platform = parsed.platform;
-        const row = await tx.updateByKey(tables.machine, key, changes);
-        if (row === undefined) throw new $NotFoundError("Machine", key);
-        return row as Machine;
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $actor = $context.actor;
+        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        const $key = { id: parsed.id };
+        const $before = await tx.selectByKeyForUpdate(tables.machine, $key);
+        if ($before === undefined) throw new $NotFoundError("Machine", $key);
+        const $changes: $Row = {};
+        const $record: $Row = { ...$before };
+        if (parsed.platform !== undefined) $changes.platform = $record.platform = parsed.platform;
+        const $self = $guarded($loadPlan, "Machine", $record, "action function");
+        const $s = $scope(
+          {
+            self: $self,
+            input: parsed,
+            actor: $actor,
+            context: $context,
+            before: $before as unknown as Machine,
+            tx: undefined,
+          },
+          options,
+        ) as unknown as $StoredScope;
+        // validate: every check runs, and every failed check is reported together
+        const $issues: $Issue[] = [];
+        await $runCheck($issues, $s, {
+          label: "machineActive",
+          code: "machine.active",
+          message: "the machine is retired",
+          source: { file: "src/domain/execution/machine.mesh.mx", line: 26, column: 9 },
+          that: $expressions["update.check.machineActive.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "versionMatches",
+          code: "expected-version",
+          message: "the record is at another version; read it again and retry",
+          source: { file: "src/domain/execution/machine.mesh.mx", line: 31, column: 9 },
+          that: $expressions["update.check.versionMatches.that"],
+          details: $expressions["update.check.versionMatches.details"],
+        });
+        if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // do: the steps run in written order, each seeing the record as the ones before it left it
+        {
+          const $value = await $expressions["update.step.0.set.version"]($s);
+          if ($value === undefined || $value === null)
+            throw new $FrameworkError(
+              "set &version (src/domain/execution/machine.mesh.mx:39:20) produced no value, and version is required",
+            );
+          $changes.version = $record.version = $value;
+        }
+        // data layer
+        const $stored = await tx.updateByKey(tables.machine, $key, $changes);
+        if ($stored === undefined) throw new $NotFoundError("Machine", $key);
+        return $stored as Machine;
       });
     },
 
     async read(input: ReadMachineInput, ...[_context]: $ContextArgument): Promise<Machine[]> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(readMachineInput, input);
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.machine, {

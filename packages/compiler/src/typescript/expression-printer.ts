@@ -44,14 +44,16 @@ export function printTree(n: ExprNode, bool = false): string {
 }
 
 /** The whole function of one expression: `(s: Scope) => ...`. */
-export function printExpression(e: Expression, scopeType: string, boolean: boolean): string {
+export function printExpression(e: Expression, scopeType: string, boolean: boolean, async = false): string {
   const withScope = (body: string) => `(${/\$s(?![A-Za-z0-9_$])/.test(body) ? SCOPE : `_${SCOPE}`}: ${scopeType}) => ${body}`;
   if (e.tree) return withScope(printTree(e.tree, boolean));
   const plain = e.plain!;
   let text = e.source;
   for (const edit of [...plain.edits].sort((a, b) => b.from - a.from))
     text = text.slice(0, edit.from) + edit.text + text.slice(edit.to);
-  const fn = plain.method ? `function ${text}` : text;
+  // A `run` body may await: it is the one plain function that is async (a returned promise is awaited by the action).
+  const authored = plain.method ? `function ${text}` : text;
+  const fn = async && !/^\s*async\b/.test(authored) ? `async ${authored}` : authored;
   // Roots the authored parameters destructure are bound by the function itself; the rest it reads from the scope.
   const used = ROOTS.filter((root) => !e.params.includes(root) && new RegExp(`(?<![A-Za-z0-9_$.])${root}\\b`).test(text));
   const declare = used.length ? `const { ${used.join(", ")} } = ${SCOPE}; ` : "";

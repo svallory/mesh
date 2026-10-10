@@ -3,7 +3,14 @@
 
 import { z } from "zod";
 
-import type { AcquireClaimInput, ReadClaimInput, ClaimFilter } from "./claim.types";
+import type {
+  AcquireClaimInput,
+  RenewClaimInput,
+  ReleaseClaimInput,
+  RevokeClaimInput,
+  ReadClaimInput,
+  ClaimFilter,
+} from "./claim.types";
 
 type Keys<T> = T extends Record<string, never> ? never : keyof T;
 
@@ -92,6 +99,35 @@ export const acquireClaimInput = z.strictObject({
 
 export type AcquireClaimInputShape = Assert<
   SameShape<z.output<typeof acquireClaimInput>, AcquireClaimInput>
+>;
+
+export const renewClaimInput = z.strictObject({
+  id: z.uuid(),
+  fence: z.int(),
+  newExpiresAt: z.date(),
+}) satisfies z.ZodType<RenewClaimInput>;
+
+export type RenewClaimInputShape = Assert<
+  SameShape<z.output<typeof renewClaimInput>, RenewClaimInput>
+>;
+
+export const releaseClaimInput = z.strictObject({
+  id: z.uuid(),
+  fence: z.int(),
+  reason: z.string().nullable().optional(),
+}) satisfies z.ZodType<ReleaseClaimInput>;
+
+export type ReleaseClaimInputShape = Assert<
+  SameShape<z.output<typeof releaseClaimInput>, ReleaseClaimInput>
+>;
+
+export const revokeClaimInput = z.strictObject({
+  id: z.uuid(),
+  reason: z.string().nullable().optional(),
+}) satisfies z.ZodType<RevokeClaimInput>;
+
+export type RevokeClaimInputShape = Assert<
+  SameShape<z.output<typeof revokeClaimInput>, RevokeClaimInput>
 >;
 
 export const readClaimInput = z.strictObject({

@@ -4,14 +4,23 @@
 
 import {
   FrameworkError as $FrameworkError,
+  InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
+  guarded as $guarded,
+  loadRows as $loadRows,
   parseInput,
   rejectComputedQuery,
+  runCheck as $runCheck,
+  scope as $scope,
+  type BindOptions as $BindOptions,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type Issue as $Issue,
+  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   Post,
+  PostWith,
   CreatePostInput,
   PublishPostInput,
   ArchivePostInput,
@@ -28,15 +37,23 @@ import {
   destroyPostInput,
 } from "./post.validators";
 import { tables } from "../schema";
+import {
+  expressions as $expressions,
+  type PostStoredScope as $StoredScope,
+} from "./post.expressions";
+import { loadPlan as $loadPlan } from "../load";
 
-export function bindPost(layer: $DataLayer) {
+export function bindPost(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
     async create(input: CreatePostInput, ...[_context]: $ContextArgument): Promise<Post> {
       // Not run in this version: on:load published
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(createPostInput, input);
       return layer.transaction(async (tx) => {
-        const now = new Date();
-        const row = await tx.insert(tables.post, {
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $now = new Date();
+        // plan: a create is one insert; nothing is read first
+        const $changes: $Row = {
           title: parsed.title,
           body: parsed.body === undefined ? null : parsed.body,
           views: 0,
@@ -47,35 +64,83 @@ export function bindPost(layer: $DataLayer) {
           publishedAt: null,
           state: "draft",
           metadata: parsed.metadata === undefined ? {} : parsed.metadata,
-          insertedAt: now,
-          updatedAt: now,
+          insertedAt: $now,
+          updatedAt: $now,
           authorId: parsed.author,
-        });
-        return row as Post;
+        };
+        // data layer
+        const $stored = await tx.insert(tables.post, $changes);
+        return $stored as Post;
       });
     },
 
-    async publish(input: PublishPostInput, ...[_context]: $ContextArgument): Promise<Post> {
-      // Not run in this version: validate titlePresent; load comments, excerpt; on:load published; policies owner
+    async publish(
+      input: PublishPostInput,
+      ...[context]: $ContextArgument
+    ): Promise<PostWith<"comments" | "excerpt">> {
+      // Not run in this version: on:load published; policies owner
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(publishPostInput, input);
       return layer.transaction(async (tx) => {
-        const key = { id: parsed.id };
-        const changes: Partial<Post> = {};
-        changes.state = "published";
-        const now = new Date();
-        changes.updatedAt = now;
-        const row = await tx.updateByKey(tables.post, key, changes);
-        if (row === undefined) throw new $NotFoundError("Post", key);
-        return row as Post;
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $actor = $context.actor;
+        const $now = new Date();
+        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        const $key = { id: parsed.id };
+        const $before = await tx.selectByKeyForUpdate(tables.post, $key);
+        if ($before === undefined) throw new $NotFoundError("Post", $key);
+        const $changes: $Row = {};
+        const $record: $Row = { ...$before };
+        const $load = { actor: $actor, context: $context, clock: options.clock };
+        const $self = $guarded($loadPlan, "Post", $record, "action function");
+        const $s = $scope(
+          {
+            self: $self,
+            input: parsed,
+            actor: $actor,
+            context: $context,
+            before: $before as unknown as Post,
+            tx: undefined,
+          },
+          options,
+        ) as unknown as $StoredScope;
+        // validate: every check runs, and every failed check is reported together
+        const $issues: $Issue[] = [];
+        await $runCheck($issues, $s, {
+          label: "titlePresent",
+          code: "title_required",
+          message: "Title is required",
+          source: { file: "src/domain/blog/post.mesh.mx", line: 34, column: 9 },
+          that: $expressions["publish.check.titlePresent.that"],
+        });
+        if ($issues.length > 0) throw new $InvalidInputError($issues);
+        const $loads = new Set<string>();
+        // do: the steps run in written order, each seeing the record as the ones before it left it
+        $changes.state = $record.state = "published";
+        $loads.add("comments");
+        $loads.add("excerpt");
+        // data layer
+        $changes.updatedAt = $now;
+        const $stored = await tx.updateByKey(tables.post, $key, $changes);
+        if ($stored === undefined) throw new $NotFoundError("Post", $key);
+        // after commit: the result, with what a load step named
+        return (
+          await $loadRows($loadPlan, "Post", tx, [$stored], [...$loads], $load)
+        )[0] as unknown as PostWith<"comments" | "excerpt">;
       });
     },
 
     async archive(input: ArchivePostInput, ...[_context]: $ContextArgument): Promise<void> {
       // Not run in this version: policies owner
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(archivePostInput, input);
       return layer.transaction(async (tx) => {
-        const key = { id: parsed.id };
-        if (!(await tx.deleteByKey(tables.post, key))) throw new $NotFoundError("Post", key);
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        // plan: nothing in the body can see the record, so the row is deleted without being read
+        const $key = { id: parsed.id };
+        // data layer
+        if (!(await tx.deleteByKey(tables.post, $key))) throw new $NotFoundError("Post", $key);
       });
     },
 
@@ -89,6 +154,7 @@ export function bindPost(layer: $DataLayer) {
 
     async read(input: ReadPostInput, ...[_context]: $ContextArgument): Promise<Post[]> {
       // Not run in this version: on:load published; policies public
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(readPostInput, input);
       return layer.transaction(async (tx) => {
         rejectComputedQuery("Post", ["excerpt", "commentCount"], parsed);
@@ -102,10 +168,14 @@ export function bindPost(layer: $DataLayer) {
     },
 
     async destroy(input: DestroyPostInput, ...[_context]: $ContextArgument): Promise<void> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(destroyPostInput, input);
       return layer.transaction(async (tx) => {
-        const key = { id: parsed.id };
-        if (!(await tx.deleteByKey(tables.post, key))) throw new $NotFoundError("Post", key);
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        // plan: nothing in the body can see the record, so the row is deleted without being read
+        const $key = { id: parsed.id };
+        // data layer
+        if (!(await tx.deleteByKey(tables.post, $key))) throw new $NotFoundError("Post", $key);
       });
     },
   });

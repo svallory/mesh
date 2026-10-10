@@ -4,8 +4,10 @@
 
 import {
   parseInput,
+  type BindOptions as $BindOptions,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   Invocation,
@@ -20,16 +22,19 @@ import {
 } from "./invocation.validators";
 import { tables } from "../schema";
 
-export function bindInvocation(layer: $DataLayer) {
+export function bindInvocation(layer: $DataLayer, _options: $BindOptions = {}) {
   return Object.freeze({
     async record(
       input: RecordInvocationInput,
       ...[_context]: $ContextArgument
     ): Promise<Invocation> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(recordInvocationInput, input);
       return layer.transaction(async (tx) => {
-        const now = new Date();
-        const row = await tx.insert(tables.invocation, {
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $now = new Date();
+        // plan: a create is one insert; nothing is read first
+        const $changes: $Row = {
           requestedProvider:
             parsed.requestedProvider === undefined ? null : parsed.requestedProvider,
           requestedModel: parsed.requestedModel === undefined ? null : parsed.requestedModel,
@@ -45,14 +50,16 @@ export function bindInvocation(layer: $DataLayer) {
           startedAt: parsed.startedAt === undefined ? null : parsed.startedAt,
           endedAt: parsed.endedAt === undefined ? null : parsed.endedAt,
           reason: null,
-          recordedAt: now,
+          recordedAt: $now,
           attemptId: parsed.attempt,
           taskId: parsed.task,
           sessionId: parsed.session === undefined ? null : parsed.session,
           correctsId: null,
           recordedById: parsed.recordedBy,
-        });
-        return row as Invocation;
+        };
+        // data layer
+        const $stored = await tx.insert(tables.invocation, $changes);
+        return $stored as Invocation;
       });
     },
 
@@ -60,10 +67,13 @@ export function bindInvocation(layer: $DataLayer) {
       input: CorrectInvocationInput,
       ...[_context]: $ContextArgument
     ): Promise<Invocation> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(correctInvocationInput, input);
       return layer.transaction(async (tx) => {
-        const now = new Date();
-        const row = await tx.insert(tables.invocation, {
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $now = new Date();
+        // plan: a create is one insert; nothing is read first
+        const $changes: $Row = {
           requestedProvider: null,
           requestedModel: null,
           actualProvider: null,
@@ -78,18 +88,21 @@ export function bindInvocation(layer: $DataLayer) {
           startedAt: null,
           endedAt: null,
           reason: parsed.reason === undefined ? null : parsed.reason,
-          recordedAt: now,
+          recordedAt: $now,
           attemptId: parsed.attempt,
           taskId: parsed.task,
           sessionId: null,
           correctsId: parsed.corrects === undefined ? null : parsed.corrects,
           recordedById: parsed.recordedBy,
-        });
-        return row as Invocation;
+        };
+        // data layer
+        const $stored = await tx.insert(tables.invocation, $changes);
+        return $stored as Invocation;
       });
     },
 
     async read(input: ReadInvocationInput, ...[_context]: $ContextArgument): Promise<Invocation[]> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(readInvocationInput, input);
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.invocation, {

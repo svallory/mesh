@@ -165,6 +165,16 @@ test("invalid config is exit 1 with exact position", async () => {
   expect(run(root, "build")).toEqual({ code: 1, stdout: "", stderr: "mesh.config.ts:1:36 error Configuration field `output` must be a non-empty relative directory path\n  fix: Fix the output field in mesh.config.ts\n1 error, 0 warnings\n" });
 });
 
+test("explain prints the plan: a create is one insert; usage and unknown names fail", async () => {
+  const root = await builtProject();
+  expect(run(root, "explain", "Todo", "create")).toEqual({ code: 0, stderr: "0 errors, 0 warnings\n", stdout:
+    "Todo.create (create)\n  strategy     one insert; nothing is read first\n  input        &title\n  checks       none\n  steps        none\n  policy       none\n" });
+  expect(run(root, "explain", "Todo", "nope")).toEqual({ code: 1, stdout: "", stderr: 'mesh.config.ts:1:1 error Unknown action "nope" of Todo; known actions: create\n1 error, 0 warnings\n' });
+  expect(run(root, "explain", "Nope", "create").code).toBe(1);
+  expect(run(root, "explain", "Todo").code).toBe(2);
+  expect(run(root, "explain", "Todo", "create", "extra").code).toBe(2);
+}, 20_000);
+
 // Six `mesh` processes, each lowering entity files, so the cost is MX's per-process start-up (the
 // first `lowerSource` call; a second call takes about 2 ms), not something Mesh rebuilds per call.
 // Measured on alpha.16 (2026-10-10, 8 cores, load average about 6, five runs of this test alone):
@@ -193,7 +203,6 @@ test.each([[], ["unknown"], ["build", "--unknown"], ["build", "extra"], ["inspec
 
 test.each([
   { args: ["init"], milestone: "not scheduled" },
-  { args: ["explain", "todo", "create"], milestone: "M5" },
   { args: ["migrate", "generate", "--allow", "drop:todo.title"], milestone: "M9" },
   { args: ["migrate", "apply"], milestone: "M9" },
 ])("unavailable command names its milestone: $args", async ({ args, milestone }) => {
@@ -371,7 +380,8 @@ test("help lists only implemented commands and needs no config", async () => {
   expect(result.stderr).toBe("");
   expect(result.stdout).toContain("build --check");
   expect(result.stdout).toContain("inspect [entity]");
-  for (const pending of ["init", "explain", "db push", "migrate"]) expect(result.stdout).not.toContain(pending);
+  expect(result.stdout).toContain("explain <entity> <action>");
+  for (const pending of ["init", "db push", "migrate"]) expect(result.stdout).not.toContain(pending);
 });
 
 describe("data adapter commands (mesh db push)", () => {

@@ -13,6 +13,8 @@ export type PostScope = $Scope<{
   before: Post | null;
   tx: any;
 }>;
+/** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
+export type PostStoredScope = PostScope & { before: Post };
 
 export const expressions = {
   // computed excerpt, plain (unsupported-construct) (src/domain/blog/post.mesh.mx:23:20)
@@ -23,7 +25,7 @@ export const expressions = {
     })();
   },
   // check :titlePresent that, translated (src/domain/blog/post.mesh.mx:34:34)
-  "publish.check.titlePresent.that": ($s: PostScope) => $.gt($.length($s.self.title), 0),
+  "publish.check.titlePresent.that": ($s: PostStoredScope) => $.gt($.length($s.self.title), 0),
   // published filter, translated (src/domain/blog/post.mesh.mx:41:14)
   "published.filter": ($s: PostScope) => $.eq($s.self.state, "published"),
   // policy :public authorize-if, translated (src/domain/blog/post.mesh.mx:46:20)

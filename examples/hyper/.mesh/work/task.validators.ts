@@ -5,8 +5,10 @@ import { z } from "zod";
 
 import type {
   CreateTaskInput,
+  UpdateTaskInput,
   SetPriorityTaskInput,
   MoveTaskInput,
+  ReopenTaskInput,
   ReadTaskInput,
   TaskFilter,
 } from "./task.types";
@@ -123,9 +125,21 @@ export type CreateTaskInputShape = Assert<
   SameShape<z.output<typeof createTaskInput>, CreateTaskInput>
 >;
 
+export const updateTaskInput = z.strictObject({
+  id: z.uuid(),
+  title: z.string().optional(),
+  intent: z.string().nullable().optional(),
+  expectedVersion: z.int().nullable().optional(),
+}) satisfies z.ZodType<UpdateTaskInput>;
+
+export type UpdateTaskInputShape = Assert<
+  SameShape<z.output<typeof updateTaskInput>, UpdateTaskInput>
+>;
+
 export const setPriorityTaskInput = z.strictObject({
   id: z.uuid(),
   priority: z.int().nullable().optional(),
+  expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<SetPriorityTaskInput>;
 
 export type SetPriorityTaskInputShape = Assert<
@@ -135,9 +149,20 @@ export type SetPriorityTaskInputShape = Assert<
 export const moveTaskInput = z.strictObject({
   id: z.uuid(),
   parent: z.uuid().nullable().optional(),
+  expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<MoveTaskInput>;
 
 export type MoveTaskInputShape = Assert<SameShape<z.output<typeof moveTaskInput>, MoveTaskInput>>;
+
+export const reopenTaskInput = z.strictObject({
+  id: z.uuid(),
+  reason: z.string(),
+  expectedVersion: z.int().nullable().optional(),
+}) satisfies z.ZodType<ReopenTaskInput>;
+
+export type ReopenTaskInputShape = Assert<
+  SameShape<z.output<typeof reopenTaskInput>, ReopenTaskInput>
+>;
 
 export const readTaskInput = z.strictObject({
   filter: taskFilter.optional(),

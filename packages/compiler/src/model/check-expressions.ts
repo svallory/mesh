@@ -232,17 +232,17 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     void e;
   }
 
-  function demote(e: Expression, d: Demote): void {
+  function demote(e: Expression, d: Demote, quiet = false): void {
     const tree = e.tree!;
     delete e.tree;
     e.plain = { why: "unsupported-construct", detail: d.detail, position: d.position, edits: options.editsOf(e), ...(/^\s*\(.*\)\s*\{/s.test(e.source) && !e.source.includes("=>") ? { method: true as const } : {}) };
-    if (d.always || hasOperator(tree)) warnPlain(e, d.detail, d.position);
+    if (!quiet && (d.always || hasOperator(tree))) warnPlain(e, d.detail, d.position);
   }
 
   /** Check one expression; `boolean` says the result must be a boolean (a check, a condition, a filter). Returns the result type. */
-  function visit(e: Expression, scope: Scope, boolean: boolean): Ty | null {
+  function visit(e: Expression, scope: Scope, boolean: boolean, quiet = false): Ty | null {
     if (e.plain) {
-      if ((e.plain.why === "unsupported-construct" || e.plain.why === "reads-record-in-helper") && e.plain.operators)
+      if (!quiet && (e.plain.why === "unsupported-construct" || e.plain.why === "reads-record-in-helper") && e.plain.operators)
         warnPlain(e, e.plain.detail, e.plain.position);
       return null;
     }
@@ -252,7 +252,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       if (boolean && t.c !== "boolean" && t.c !== "any") throw new Demote("a result that is not a boolean (truthiness)", e.tree.position, true);
       return t;
     } catch (x) {
-      if (x instanceof Demote) { demote(e, x); return null; }
+      if (x instanceof Demote) { demote(e, x, quiet); return null; }
       throw x;
     }
   }
@@ -275,10 +275,12 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
           if (typeof value === "object" && value !== null && "source" in value) {
             const t = visit(value as Expression, scope, false);
             const attr = entity.attributes.find((a) => a.name === member.name);
+            const relation = attr ? undefined : entity.relationships.find((r) => r.name === member.name && r.kind === "belongs-to");
             // `set &x=({ input }) => input.x` is "unchanged" when the caller omits x (M5 skips it): not an error.
             const tree = (value as Expression).tree;
             const passthrough = tree?.kind === "member" && tree.object.kind === "var" && tree.object.name === "input" && tree.name === member.name;
-            if (t?.nullable && attr && !attr.nullable && !attr.primaryKey && !passthrough)
+            const required = attr ? !attr.nullable && !attr.primaryKey : relation ? !relation.nullable : false;
+            if (t?.nullable && required && !passthrough)
               report("error", "MESH_EXPR_NULL_TO_REQUIRED",
                 `\`${member.name}\` is required, and this value can be null`, (value as Expression).position,
                 "give it a default with `?? value`, or check it first");
@@ -290,10 +292,12 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       } else if (step.kind === "run") visit(step.fn, scope, false);
     }
   }
-  function blocks(entity: Entity, validate: { that: Expression; when?: Expression }[], list: Step[], scope: Scope): void {
+  function blocks(entity: Entity, validate: { that: Expression; when?: Expression; details?: Expression }[], list: Step[], scope: Scope): void {
     for (const check of validate) {
       visit(check.that, scope, true);
       if (check.when) visit(check.when, scope, true);
+      // `details` builds data (an object, a comparison for the caller to read); plain TypeScript is the expected form, so it earns no warning.
+      if (check.details) visit(check.details, scope, false, true);
     }
     steps(list, entity, scope);
   }

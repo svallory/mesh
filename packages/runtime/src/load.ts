@@ -62,7 +62,7 @@ export interface LoadOptions {
   /** Read by a computed body as `context`. */
   context?: unknown;
   /** The clock `now()` reads, as everywhere an expression runs. */
-  clock?: Clock;
+  clock?: Clock | undefined;
 }
 
 /** Keys named by one query: SQLite allows 32,766 variables, older builds 999; 500 is under both. */
@@ -146,24 +146,28 @@ async function ensureField(
  * A guard is made once per row, and a loaded list is guarded once, so a body that reads the same list many times
  * (`for (let i = 0; i < list.length; i++) list[i]`) costs one pass over it, not one per read.
  */
-const guards = new WeakMap<object, { plan: LoadPlan; guard: Work }>();
-const guardedLists = new WeakMap<object, { plan: LoadPlan; list: Work[] }>();
+const guards = new WeakMap<object, { plan: LoadPlan; what: string; guard: Work }>();
+const guardedLists = new WeakMap<object, { plan: LoadPlan; what: string; list: Work[] }>();
 
-function guarded(plan: LoadPlan, entity: string, row: Work): Work {
+/**
+ * `what` names the plain code in the error ("computed body" for a computed field; an action's functions say "action function").
+ * Exported for the generated actions, which guard the `self` of every function they run (M5).
+ */
+export function guarded(plan: LoadPlan, entity: string, row: Work, what = "computed body"): Work {
   const known = guards.get(row);
-  if (known?.plan === plan) return known.guard;
+  if (known?.plan === plan && known.what === what) return known.guard;
   const entityPlan = planOf(plan, entity);
   const names = (key: string) => Object.hasOwn(entityPlan.relations, key) || Object.hasOwn(entityPlan.computed, key);
   const unloaded = (key: string) =>
-    new FrameworkError(`A plain computed body read ${entity}.${key}, which was not loaded: Mesh could not tell from the body that it reads it. Write the body as one expression (an arrow with comparisons, ?., ?? and the list methods) so Mesh loads what it reads`);
+    new FrameworkError(`A plain ${what} read ${entity}.${key}, which was not loaded: Mesh could not tell from the body that it reads it. Write it as one expression (an arrow with comparisons, ?., ?? and the list methods) so Mesh loads what it reads`);
   const wrap = (key: string, value: unknown): unknown => {
     const relation = Object.hasOwn(entityPlan.relations, key) ? entityPlan.relations[key] : undefined;
     if (!relation || value === null || typeof value !== "object") return value;
-    if (!Array.isArray(value)) return guarded(plan, relation.target, value as Work);
+    if (!Array.isArray(value)) return guarded(plan, relation.target, value as Work, what);
     const list = guardedLists.get(value);
-    if (list?.plan === plan) return list.list;
-    const made = value.map((item) => guarded(plan, relation.target, item as Work));
-    guardedLists.set(value, { plan, list: made });
+    if (list?.plan === plan && list.what === what) return list.list;
+    const made = value.map((item) => guarded(plan, relation.target, item as Work, what));
+    guardedLists.set(value, { plan, what, list: made });
     return made;
   };
   const guard: Work = new Proxy(row, {
@@ -185,7 +189,7 @@ function guarded(plan: LoadPlan, entity: string, row: Work): Work {
       return descriptor;
     },
   });
-  guards.set(row, { plan, guard });
+  guards.set(row, { plan, what, guard });
   return guard;
 }
 
@@ -239,7 +243,8 @@ async function loadRelation(
   }
   if (relation.column === null)
     throw new FrameworkError(`${describe(entity, name, relation)} cannot be loaded: :${relation.target} has no belongs-to back to :${entity}. Declare one in :${relation.target}, and name it with via=:name if there are several`);
-  const keys = [...new Set(rows.map((row) => row[entityPlan.key]))];
+  // A row with no key yet (a create's pending record) has nothing pointing at it.
+  const keys = [...new Set(rows.map((row) => row[entityPlan.key]).filter((key) => key !== null && key !== undefined))];
   const grouped = new Map<unknown, Work[]>();
   for (const chunk of chunks(keys))
     for (const row of await tx.select(target.table, { filter: { [relation.column]: { in: chunk as never } } })) {
@@ -281,6 +286,7 @@ async function rollup(
     const rank = (value: unknown) => (value instanceof Date ? value.getTime() : (value as number | string));
     return values.reduce<unknown>((best, value) => (best === undefined || rank(value) > rank(best) ? value : best), undefined) ?? null;
   }
+  if (row[entityPlan.key] === null || row[entityPlan.key] === undefined) return computed.fn === "count" ? 0 : null;
   const filter: Filter = { [relation.column]: { eq: row[entityPlan.key] as never } };
   return computed.fn === "count" ? tx.count(target.table, column, filter) : tx.max(target.table, column, filter);
 }
@@ -307,4 +313,24 @@ export function rejectComputedQuery(entity: string, computed: readonly string[],
       const name = typeof key === "string" && key.startsWith("-") ? key.slice(1) : key;
       if (typeof name === "string" && computed.includes(name)) fail(name, "sort");
     }
+}
+
+/**
+ * Load the relationships and computed fields a function reads onto one record, in place (M5). Each path is dotted,
+ * `owner` or `owner.todoCount`; a path that is already loaded costs nothing, so an action calls this before
+ * each function that reads the record and pays for what is not there yet. `record` must be the plain row, not its guard.
+ */
+export async function loadInto(
+  plan: LoadPlan, entity: string, tx: DataOperations, record: Row, paths: readonly string[], options: LoadOptions = {},
+): Promise<void> {
+  for (const path of paths) await ensurePath(plan, entity, tx, [record], path.split("."), options, 0);
+}
+
+/**
+ * Drop everything `loadInto` attached to a record. A `set` changes the columns a loaded relationship or
+ * computed field was worked out from, so an action calls this after one and the next function reloads what it reads.
+ */
+export function unloadFrom(plan: LoadPlan, entity: string, record: Row): void {
+  const entityPlan = planOf(plan, entity);
+  for (const name of [...Object.keys(entityPlan.relations), ...Object.keys(entityPlan.computed)]) delete record[name];
 }

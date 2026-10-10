@@ -253,9 +253,9 @@ describe("type rules", () => {
     expect(codes(withAlways("go"))).toEqual([]);
     expect(codes(withAlways("make"))).toContain("error:MESH_EXPR_NULLABLE_ACCESS");
   });
-  test("a plain expression without operators does not warn; neither does tx", () => {
-    expect(codes(entity(check("({ tx }) => tx.ok(&n)")))).toEqual([]);
-    expect(exprOf(entity(check("({ tx }) => tx.ok(&n)"))).plain).toMatchObject({ why: "uses-tx" });
+  test("a plain expression without operators does not warn; tx is plain, and a function that reads it is not available before action composition", () => {
+    expect(codes(entity(check("({ tx }) => tx.ok(&n)")))).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
+    expect(build(entity(check("({ tx }) => tx.ok(&n)"))).diagnostics[0]!.message).toContain("check :c (that) reads `tx`, which belongs to action composition");
   });
   test("a helper that does not read the record is translated and imported; one given the record is plain", async () => {
     const root = await mkdtemp(resolve(import.meta.dir, "../mesh-helper-"));

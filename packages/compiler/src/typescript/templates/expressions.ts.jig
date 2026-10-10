@@ -14,6 +14,8 @@ import type { {{ recordName }} } from {{ typesFromLiteral }};
 
 /** What every expression of {{ recordName }} reads. */
 export type {{ scopeName }} = {{ scopeType }};
+/** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
+export type {{ storedScopeName }} = {{ scopeName }} & { before: {{ recordName }} };
 
 export const expressions = {
   @each(entry in entries)

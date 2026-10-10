@@ -4,48 +4,65 @@
 
 import {
   parseInput,
+  type BindOptions as $BindOptions,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type Row as $Row,
 } from "@meshfw/runtime";
 import type { Review, AcceptReviewInput, ReturnReviewInput, ReadReviewInput } from "./review.types";
 import { acceptReviewInput, returnReviewInput, readReviewInput } from "./review.validators";
 import { tables } from "../schema";
 
-export function bindReview(layer: $DataLayer) {
+export function bindReview(layer: $DataLayer, _options: $BindOptions = {}) {
   return Object.freeze({
     async accept(input: AcceptReviewInput, ...[_context]: $ContextArgument): Promise<Review> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(acceptReviewInput, input);
       return layer.transaction(async (tx) => {
-        const now = new Date();
-        const row = await tx.insert(tables.review, {
-          decision: "accept",
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $now = new Date();
+        // plan: a create is one insert; nothing is read first
+        const $changes: $Row = {
           reasons: null,
           ruleApplied: parsed.ruleApplied,
-          decidedAt: now,
+          decidedAt: $now,
           submissionId: parsed.submission,
           reviewerId: parsed.reviewer,
-        });
-        return row as Review;
+        };
+        const $record: $Row = { ...$changes };
+        // do: the steps run in written order, each seeing the record as the ones before it left it
+        $changes.decision = $record.decision = "accept";
+        // data layer
+        const $stored = await tx.insert(tables.review, $changes);
+        return $stored as Review;
       });
     },
 
     async return(input: ReturnReviewInput, ...[_context]: $ContextArgument): Promise<Review> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(returnReviewInput, input);
       return layer.transaction(async (tx) => {
-        const now = new Date();
-        const row = await tx.insert(tables.review, {
-          decision: "return",
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $now = new Date();
+        // plan: a create is one insert; nothing is read first
+        const $changes: $Row = {
           reasons: parsed.reasons === undefined ? null : parsed.reasons,
           ruleApplied: parsed.ruleApplied,
-          decidedAt: now,
+          decidedAt: $now,
           submissionId: parsed.submission,
           reviewerId: parsed.reviewer,
-        });
-        return row as Review;
+        };
+        const $record: $Row = { ...$changes };
+        // do: the steps run in written order, each seeing the record as the ones before it left it
+        $changes.decision = $record.decision = "return";
+        // data layer
+        const $stored = await tx.insert(tables.review, $changes);
+        return $stored as Review;
       });
     },
 
     async read(input: ReadReviewInput, ...[_context]: $ContextArgument): Promise<Review[]> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(readReviewInput, input);
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.review, {

@@ -22,3 +22,24 @@ entity :Membership table="memberships"
     update :changeRole
       input
         &role
+        integer :expectedVersion nullable
+      validate
+        check :membershipActive [
+          that=() => &state === :active
+          code="membership.active"
+          message="the membership is revoked"
+        ]
+        check :roleChanges [
+          that=({ before }) => &role !== before.role
+          code="membership.unchanged"
+          message="the member already has that role"
+        ]
+        check :versionMatches [
+          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
+          code="expected-version"
+          message="the record is at another version; read it again and retry"
+          details=({ before }) => ({ currentVersion: before.version })
+        ]
+      do
+        set
+          &version=() => &version + 1

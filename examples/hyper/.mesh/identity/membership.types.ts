@@ -27,6 +27,7 @@ export type GrantMembershipInput = {
 export type ChangeRoleMembershipInput = {
   id: string;
   role?: "owner" | "member" | "guest" | undefined;
+  expectedVersion?: number | null | undefined;
 };
 
 export type ReadMembershipInput = {

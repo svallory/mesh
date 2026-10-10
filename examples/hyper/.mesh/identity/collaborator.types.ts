@@ -21,6 +21,8 @@ export type RegisterCollaboratorInput = {
 export type UpdateCollaboratorInput = {
   id: string;
   name?: string | undefined;
+  kind?: "human" | "agent" | null | undefined;
+  expectedVersion?: number | null | undefined;
 };
 
 export type ReadCollaboratorInput = {

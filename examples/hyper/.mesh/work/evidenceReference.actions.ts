@@ -4,8 +4,10 @@
 
 import {
   parseInput,
+  type BindOptions as $BindOptions,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   EvidenceReference,
@@ -18,24 +20,29 @@ import {
 } from "./evidenceReference.validators";
 import { tables } from "../schema";
 
-export function bindEvidenceReference(layer: $DataLayer) {
+export function bindEvidenceReference(layer: $DataLayer, _options: $BindOptions = {}) {
   return Object.freeze({
     async record(
       input: RecordEvidenceReferenceInput,
       ...[_context]: $ContextArgument
     ): Promise<EvidenceReference> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(recordEvidenceReferenceInput, input);
       return layer.transaction(async (tx) => {
-        const now = new Date();
-        const row = await tx.insert(tables.evidenceReference, {
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $now = new Date();
+        // plan: a create is one insert; nothing is read first
+        const $changes: $Row = {
           kind: parsed.kind,
           locator: parsed.locator,
           contentHash: parsed.contentHash === undefined ? null : parsed.contentHash,
           description: parsed.description === undefined ? null : parsed.description,
-          recordedAt: now,
+          recordedAt: $now,
           recordedById: parsed.recordedBy,
-        });
-        return row as EvidenceReference;
+        };
+        // data layer
+        const $stored = await tx.insert(tables.evidenceReference, $changes);
+        return $stored as EvidenceReference;
       });
     },
 
@@ -43,6 +50,7 @@ export function bindEvidenceReference(layer: $DataLayer) {
       input: ReadEvidenceReferenceInput,
       ...[_context]: $ContextArgument
     ): Promise<EvidenceReference[]> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(readEvidenceReferenceInput, input);
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.evidenceReference, {

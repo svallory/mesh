@@ -3,60 +3,200 @@
 // Mesh's own imports carry a `$` so that no entity name can shadow them.
 
 import {
+  FrameworkError as $FrameworkError,
+  InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
+  guarded as $guarded,
   parseInput,
+  runCheck as $runCheck,
+  scope as $scope,
+  type BindOptions as $BindOptions,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type Issue as $Issue,
+  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   SessionReference,
   RecordSessionReferenceInput,
   SetAvailabilitySessionReferenceInput,
+  RedactSessionReferenceInput,
   ReadSessionReferenceInput,
 } from "./sessionReference.types";
 import {
   recordSessionReferenceInput,
   setAvailabilitySessionReferenceInput,
+  redactSessionReferenceInput,
   readSessionReferenceInput,
 } from "./sessionReference.validators";
 import { tables } from "../schema";
+import {
+  expressions as $expressions,
+  type SessionReferenceStoredScope as $StoredScope,
+} from "./sessionReference.expressions";
+import { loadPlan as $loadPlan } from "../load";
 
-export function bindSessionReference(layer: $DataLayer) {
+export function bindSessionReference(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
     async record(
       input: RecordSessionReferenceInput,
       ...[_context]: $ContextArgument
     ): Promise<SessionReference> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(recordSessionReferenceInput, input);
       return layer.transaction(async (tx) => {
-        const now = new Date();
-        const row = await tx.insert(tables.sessionReference, {
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $now = new Date();
+        // plan: a create is one insert; nothing is read first
+        const $changes: $Row = {
           runtime: parsed.runtime,
           runtimeSessionId: parsed.runtimeSessionId,
           availability: parsed.availability,
           location: parsed.location === undefined ? null : parsed.location,
           version: 1,
-          recordedAt: now,
+          recordedAt: $now,
           machineId: parsed.machine,
           agentProfileId: parsed.agentProfile,
           recordedById: parsed.recordedBy,
-        });
-        return row as SessionReference;
+        };
+        // data layer
+        const $stored = await tx.insert(tables.sessionReference, $changes);
+        return $stored as SessionReference;
       });
     },
 
     async setAvailability(
       input: SetAvailabilitySessionReferenceInput,
-      ...[_context]: $ContextArgument
+      ...[context]: $ContextArgument
     ): Promise<SessionReference> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(setAvailabilitySessionReferenceInput, input);
       return layer.transaction(async (tx) => {
-        const key = { id: parsed.id };
-        const changes: Partial<SessionReference> = {};
-        if (parsed.availability !== undefined) changes.availability = parsed.availability;
-        const row = await tx.updateByKey(tables.sessionReference, key, changes);
-        if (row === undefined) throw new $NotFoundError("SessionReference", key);
-        return row as SessionReference;
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $actor = $context.actor;
+        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        const $key = { id: parsed.id };
+        const $before = await tx.selectByKeyForUpdate(tables.sessionReference, $key);
+        if ($before === undefined) throw new $NotFoundError("SessionReference", $key);
+        const $changes: $Row = {};
+        const $record: $Row = { ...$before };
+        if (parsed.availability !== undefined)
+          $changes.availability = $record.availability = parsed.availability;
+        const $self = $guarded($loadPlan, "SessionReference", $record, "action function");
+        const $s = $scope(
+          {
+            self: $self,
+            input: parsed,
+            actor: $actor,
+            context: $context,
+            before: $before as unknown as SessionReference,
+            tx: undefined,
+          },
+          options,
+        ) as unknown as $StoredScope;
+        // validate: every check runs, and every failed check is reported together
+        const $issues: $Issue[] = [];
+        await $runCheck($issues, $s, {
+          label: "notRedacted",
+          code: "session.not-redacted",
+          message: "the session is redacted and cannot be changed",
+          source: { file: "src/domain/execution/session-reference.mesh.mx", line: 32, column: 9 },
+          that: $expressions["setAvailability.check.notRedacted.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "availabilityChanges",
+          code: "session.availability",
+          message: "the session already has that availability",
+          source: { file: "src/domain/execution/session-reference.mesh.mx", line: 37, column: 9 },
+          that: $expressions["setAvailability.check.availabilityChanges.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "versionMatches",
+          code: "expected-version",
+          message: "the record is at another version; read it again and retry",
+          source: { file: "src/domain/execution/session-reference.mesh.mx", line: 42, column: 9 },
+          that: $expressions["setAvailability.check.versionMatches.that"],
+          details: $expressions["setAvailability.check.versionMatches.details"],
+        });
+        if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // do: the steps run in written order, each seeing the record as the ones before it left it
+        {
+          const $value = await $expressions["setAvailability.step.0.set.version"]($s);
+          if ($value === undefined || $value === null)
+            throw new $FrameworkError(
+              "set &version (src/domain/execution/session-reference.mesh.mx:50:20) produced no value, and version is required",
+            );
+          $changes.version = $record.version = $value;
+        }
+        // data layer
+        const $stored = await tx.updateByKey(tables.sessionReference, $key, $changes);
+        if ($stored === undefined) throw new $NotFoundError("SessionReference", $key);
+        return $stored as SessionReference;
+      });
+    },
+
+    async redact(
+      input: RedactSessionReferenceInput,
+      ...[context]: $ContextArgument
+    ): Promise<SessionReference> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
+      const parsed = await parseInput(redactSessionReferenceInput, input);
+      return layer.transaction(async (tx) => {
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $actor = $context.actor;
+        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        const $key = { id: parsed.id };
+        const $before = await tx.selectByKeyForUpdate(tables.sessionReference, $key);
+        if ($before === undefined) throw new $NotFoundError("SessionReference", $key);
+        const $changes: $Row = {};
+        const $record: $Row = { ...$before };
+        const $self = $guarded($loadPlan, "SessionReference", $record, "action function");
+        const $s = $scope(
+          {
+            self: $self,
+            input: parsed,
+            actor: $actor,
+            context: $context,
+            before: $before as unknown as SessionReference,
+            tx: undefined,
+          },
+          options,
+        ) as unknown as $StoredScope;
+        // validate: every check runs, and every failed check is reported together
+        const $issues: $Issue[] = [];
+        await $runCheck($issues, $s, {
+          label: "notRedacted",
+          code: "session.not-redacted",
+          message: "the session is redacted and cannot be changed",
+          source: { file: "src/domain/execution/session-reference.mesh.mx", line: 55, column: 9 },
+          that: $expressions["redact.check.notRedacted.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "versionMatches",
+          code: "expected-version",
+          message: "the record is at another version; read it again and retry",
+          source: { file: "src/domain/execution/session-reference.mesh.mx", line: 60, column: 9 },
+          that: $expressions["redact.check.versionMatches.that"],
+          details: $expressions["redact.check.versionMatches.details"],
+        });
+        if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // do: the steps run in written order, each seeing the record as the ones before it left it
+        $changes.availability = $record.availability = "redacted";
+        $changes.location = $record.location = null;
+        {
+          const $value = await $expressions["redact.step.0.set.version"]($s);
+          if ($value === undefined || $value === null)
+            throw new $FrameworkError(
+              "set &version (src/domain/execution/session-reference.mesh.mx:70:20) produced no value, and version is required",
+            );
+          $changes.version = $record.version = $value;
+        }
+        // data layer
+        const $stored = await tx.updateByKey(tables.sessionReference, $key, $changes);
+        if ($stored === undefined) throw new $NotFoundError("SessionReference", $key);
+        return $stored as SessionReference;
       });
     },
 
@@ -64,6 +204,7 @@ export function bindSessionReference(layer: $DataLayer) {
       input: ReadSessionReferenceInput,
       ...[_context]: $ContextArgument
     ): Promise<SessionReference[]> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(readSessionReferenceInput, input);
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.sessionReference, {

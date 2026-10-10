@@ -4,20 +4,25 @@
 
 import {
   parseInput,
+  type BindOptions as $BindOptions,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type Row as $Row,
 } from "@meshfw/runtime";
 import type { Attempt, StartAttemptInput, ReadAttemptInput } from "./attempt.types";
 import { startAttemptInput, readAttemptInput } from "./attempt.validators";
 import { tables } from "../schema";
 
-export function bindAttempt(layer: $DataLayer) {
+export function bindAttempt(layer: $DataLayer, _options: $BindOptions = {}) {
   return Object.freeze({
     async start(input: StartAttemptInput, ...[_context]: $ContextArgument): Promise<Attempt> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(startAttemptInput, input);
       return layer.transaction(async (tx) => {
-        const now = new Date();
-        const row = await tx.insert(tables.attempt, {
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $now = new Date();
+        // plan: a create is one insert; nothing is read first
+        const $changes: $Row = {
           step: parsed.step === undefined ? "main" : parsed.step,
           number: parsed.number,
           claimFence: parsed.claimFence === undefined ? null : parsed.claimFence,
@@ -26,19 +31,22 @@ export function bindAttempt(layer: $DataLayer) {
           state: "running",
           endedAt: null,
           version: 1,
-          startedAt: now,
+          startedAt: $now,
           runId: parsed.run,
           taskId: parsed.task,
           performerId: parsed.performer,
           delegatorId: parsed.delegator,
           machineId: parsed.machine === undefined ? null : parsed.machine,
           sessionId: parsed.session === undefined ? null : parsed.session,
-        });
-        return row as Attempt;
+        };
+        // data layer
+        const $stored = await tx.insert(tables.attempt, $changes);
+        return $stored as Attempt;
       });
     },
 
     async read(input: ReadAttemptInput, ...[_context]: $ContextArgument): Promise<Attempt[]> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(readAttemptInput, input);
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.attempt, {

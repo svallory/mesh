@@ -4,20 +4,25 @@
 
 import {
   parseInput,
+  type BindOptions as $BindOptions,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type Row as $Row,
 } from "@meshfw/runtime";
 import type { Event, RecordEventInput, ReadEventInput } from "./event.types";
 import { recordEventInput, readEventInput } from "./event.validators";
 import { tables } from "../schema";
 
-export function bindEvent(layer: $DataLayer) {
+export function bindEvent(layer: $DataLayer, _options: $BindOptions = {}) {
   return Object.freeze({
     async record(input: RecordEventInput, ...[_context]: $ContextArgument): Promise<Event> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(recordEventInput, input);
       return layer.transaction(async (tx) => {
-        const now = new Date();
-        const row = await tx.insert(tables.event, {
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $now = new Date();
+        // plan: a create is one insert; nothing is read first
+        const $changes: $Row = {
           type: parsed.type,
           schemaVersion: parsed.schemaVersion === undefined ? 1 : parsed.schemaVersion,
           workspaceId: parsed.workspaceId,
@@ -27,17 +32,20 @@ export function bindEvent(layer: $DataLayer) {
           actor: parsed.actor,
           caller: parsed.caller,
           occurredAt: parsed.occurredAt,
-          recordedAt: now,
+          recordedAt: $now,
           cause: parsed.cause,
           checks: parsed.checks === undefined ? null : parsed.checks,
           payload: parsed.payload,
           taskId: parsed.task === undefined ? null : parsed.task,
-        });
-        return row as Event;
+        };
+        // data layer
+        const $stored = await tx.insert(tables.event, $changes);
+        return $stored as Event;
       });
     },
 
     async read(input: ReadEventInput, ...[_context]: $ContextArgument): Promise<Event[]> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(readEventInput, input);
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.event, {

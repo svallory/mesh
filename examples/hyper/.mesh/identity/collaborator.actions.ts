@@ -3,10 +3,18 @@
 // Mesh's own imports carry a `$` so that no entity name can shadow them.
 
 import {
+  FrameworkError as $FrameworkError,
+  InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
+  guarded as $guarded,
   parseInput,
+  runCheck as $runCheck,
+  scope as $scope,
+  type BindOptions as $BindOptions,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type Issue as $Issue,
+  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   Collaborator,
@@ -20,37 +28,102 @@ import {
   readCollaboratorInput,
 } from "./collaborator.validators";
 import { tables } from "../schema";
+import {
+  expressions as $expressions,
+  type CollaboratorStoredScope as $StoredScope,
+} from "./collaborator.expressions";
+import { loadPlan as $loadPlan } from "../load";
 
-export function bindCollaborator(layer: $DataLayer) {
+export function bindCollaborator(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
     async register(
       input: RegisterCollaboratorInput,
       ...[_context]: $ContextArgument
     ): Promise<Collaborator> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(registerCollaboratorInput, input);
       return layer.transaction(async (tx) => {
-        const row = await tx.insert(tables.collaborator, {
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        // plan: a create is one insert; nothing is read first
+        const $changes: $Row = {
           kind: parsed.kind,
           name: parsed.name,
           state: "active",
           version: 1,
-        });
-        return row as Collaborator;
+        };
+        // data layer
+        const $stored = await tx.insert(tables.collaborator, $changes);
+        return $stored as Collaborator;
       });
     },
 
     async update(
       input: UpdateCollaboratorInput,
-      ...[_context]: $ContextArgument
+      ...[context]: $ContextArgument
     ): Promise<Collaborator> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(updateCollaboratorInput, input);
       return layer.transaction(async (tx) => {
-        const key = { id: parsed.id };
-        const changes: Partial<Collaborator> = {};
-        if (parsed.name !== undefined) changes.name = parsed.name;
-        const row = await tx.updateByKey(tables.collaborator, key, changes);
-        if (row === undefined) throw new $NotFoundError("Collaborator", key);
-        return row as Collaborator;
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $actor = $context.actor;
+        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        const $key = { id: parsed.id };
+        const $before = await tx.selectByKeyForUpdate(tables.collaborator, $key);
+        if ($before === undefined) throw new $NotFoundError("Collaborator", $key);
+        const $changes: $Row = {};
+        const $record: $Row = { ...$before };
+        if (parsed.name !== undefined) $changes.name = $record.name = parsed.name;
+        const $self = $guarded($loadPlan, "Collaborator", $record, "action function");
+        const $s = $scope(
+          {
+            self: $self,
+            input: parsed,
+            actor: $actor,
+            context: $context,
+            before: $before as unknown as Collaborator,
+            tx: undefined,
+          },
+          options,
+        ) as unknown as $StoredScope;
+        // validate: every check runs, and every failed check is reported together
+        const $issues: $Issue[] = [];
+        await $runCheck($issues, $s, {
+          label: "collaboratorActive",
+          code: "collaborator.active",
+          message: "the collaborator is retired",
+          source: { file: "src/domain/identity/collaborator.mesh.mx", line: 23, column: 9 },
+          that: $expressions["update.check.collaboratorActive.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "kindImmutable",
+          code: "collaborator.kind-immutable",
+          message: "a collaborator keeps its kind",
+          source: { file: "src/domain/identity/collaborator.mesh.mx", line: 28, column: 9 },
+          that: $expressions["update.check.kindImmutable.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "versionMatches",
+          code: "expected-version",
+          message: "the record is at another version; read it again and retry",
+          source: { file: "src/domain/identity/collaborator.mesh.mx", line: 33, column: 9 },
+          that: $expressions["update.check.versionMatches.that"],
+          details: $expressions["update.check.versionMatches.details"],
+        });
+        if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // do: the steps run in written order, each seeing the record as the ones before it left it
+        {
+          const $value = await $expressions["update.step.0.set.version"]($s);
+          if ($value === undefined || $value === null)
+            throw new $FrameworkError(
+              "set &version (src/domain/identity/collaborator.mesh.mx:41:20) produced no value, and version is required",
+            );
+          $changes.version = $record.version = $value;
+        }
+        // data layer
+        const $stored = await tx.updateByKey(tables.collaborator, $key, $changes);
+        if ($stored === undefined) throw new $NotFoundError("Collaborator", $key);
+        return $stored as Collaborator;
       });
     },
 
@@ -58,6 +131,7 @@ export function bindCollaborator(layer: $DataLayer) {
       input: ReadCollaboratorInput,
       ...[_context]: $ContextArgument
     ): Promise<Collaborator[]> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(readCollaboratorInput, input);
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.collaborator, {

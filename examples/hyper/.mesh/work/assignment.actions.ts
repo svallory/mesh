@@ -4,19 +4,24 @@
 
 import {
   parseInput,
+  type BindOptions as $BindOptions,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type Row as $Row,
 } from "@meshfw/runtime";
 import type { Assignment, StartAssignmentInput, ReadAssignmentInput } from "./assignment.types";
 import { startAssignmentInput, readAssignmentInput } from "./assignment.validators";
 import { tables } from "../schema";
 
-export function bindAssignment(layer: $DataLayer) {
+export function bindAssignment(layer: $DataLayer, _options: $BindOptions = {}) {
   return Object.freeze({
     async start(input: StartAssignmentInput, ...[_context]: $ContextArgument): Promise<Assignment> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(startAssignmentInput, input);
       return layer.transaction(async (tx) => {
-        const row = await tx.insert(tables.assignment, {
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        // plan: a create is one insert; nothing is read first
+        const $changes: $Row = {
           reviewWaived: parsed.reviewWaived === undefined ? false : parsed.reviewWaived,
           startedAt: parsed.startedAt,
           endedAt: null,
@@ -24,12 +29,15 @@ export function bindAssignment(layer: $DataLayer) {
           taskId: parsed.task,
           assigneeId: parsed.assignee,
           delegatorId: parsed.delegator,
-        });
-        return row as Assignment;
+        };
+        // data layer
+        const $stored = await tx.insert(tables.assignment, $changes);
+        return $stored as Assignment;
       });
     },
 
     async read(input: ReadAssignmentInput, ...[_context]: $ContextArgument): Promise<Assignment[]> {
+      // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(readAssignmentInput, input);
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.assignment, {

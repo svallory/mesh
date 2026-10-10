@@ -164,6 +164,7 @@ const contracts: ContractMap = {
       code: text(true),
       message: text(true),
       when: fn(),
+      details: fn(),
     },
   }),
   do: closed({ parents: [...ACTION_TYPES, "always"], children: steps }),

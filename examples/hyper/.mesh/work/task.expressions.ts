@@ -32,6 +32,8 @@ export type TaskScope = $Scope<{
   before: Task | null;
   tx: any;
 }>;
+/** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
+export type TaskStoredScope = TaskScope & { before: Task };
 
 export const expressions = {
   // computed childrenSettled, translated (src/domain/work/task.mesh.mx:30:29)
@@ -71,4 +73,65 @@ export const expressions = {
         ),
       ),
     ),
+  // check :parentOpen that, translated (src/domain/work/task.mesh.mx:48:16)
+  "create.check.parentOpen.that": ($s: TaskScope) =>
+    $.or($.isNull($s.self.parent), $.eq($s.self.parent?.state, "open")),
+  // check :taskOpen that, translated (src/domain/work/task.mesh.mx:59:16)
+  "update.check.taskOpen.that": ($s: TaskStoredScope) => $.eq($s.self.state, "open"),
+  // check :taskChanges that, translated (src/domain/work/task.mesh.mx:64:16)
+  "update.check.taskChanges.that": ($s: TaskStoredScope) =>
+    $.or(
+      $.or(
+        $.ne($s.self.title, $s.before?.title),
+        $.ne($.isNull($s.self.intent), $.isNull($s.before?.intent)),
+      ),
+      $.ne($.coalesce($s.self.intent, ""), $.coalesce($s.before?.intent, "")),
+    ),
+  // check :versionMatches that, translated (src/domain/work/task.mesh.mx:69:16)
+  "update.check.versionMatches.that": ($s: TaskStoredScope) =>
+    $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:72:19)
+  "update.check.versionMatches.details": ($s: TaskStoredScope) => {
+    return (({ before }) => ({ currentVersion: before.version }))($s);
+  },
+  // set &version, translated (src/domain/work/task.mesh.mx:76:20)
+  "update.step.0.set.version": ($s: TaskStoredScope) => $.add($s.self.version, 1),
+  // check :taskOpen that, translated (src/domain/work/task.mesh.mx:83:16)
+  "setPriority.check.taskOpen.that": ($s: TaskStoredScope) => $.eq($s.self.state, "open"),
+  // check :versionMatches that, translated (src/domain/work/task.mesh.mx:88:16)
+  "setPriority.check.versionMatches.that": ($s: TaskStoredScope) =>
+    $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:91:19)
+  "setPriority.check.versionMatches.details": ($s: TaskStoredScope) => {
+    return (({ before }) => ({ currentVersion: before.version }))($s);
+  },
+  // set &version, translated (src/domain/work/task.mesh.mx:95:20)
+  "setPriority.step.0.set.version": ($s: TaskStoredScope) => $.add($s.self.version, 1),
+  // check :taskOpen that, translated (src/domain/work/task.mesh.mx:102:16)
+  "move.check.taskOpen.that": ($s: TaskStoredScope) => $.eq($s.self.state, "open"),
+  // check :parentOpen that, translated (src/domain/work/task.mesh.mx:107:16)
+  "move.check.parentOpen.that": ($s: TaskStoredScope) =>
+    $.or($.isNull($s.self.parent), $.eq($s.self.parent?.state, "open")),
+  // check :noActiveClaim that, translated (src/domain/work/task.mesh.mx:112:16)
+  "move.check.noActiveClaim.that": ($s: TaskStoredScope) => $.not($s.self.claimed),
+  // check :versionMatches that, translated (src/domain/work/task.mesh.mx:117:16)
+  "move.check.versionMatches.that": ($s: TaskStoredScope) =>
+    $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:120:19)
+  "move.check.versionMatches.details": ($s: TaskStoredScope) => {
+    return (({ before }) => ({ currentVersion: before.version }))($s);
+  },
+  // set &version, translated (src/domain/work/task.mesh.mx:124:20)
+  "move.step.0.set.version": ($s: TaskStoredScope) => $.add($s.self.version, 1),
+  // check :taskSettled that, translated (src/domain/work/task.mesh.mx:131:16)
+  "reopen.check.taskSettled.that": ($s: TaskStoredScope) => $.ne($s.self.state, "open"),
+  // check :versionMatches that, translated (src/domain/work/task.mesh.mx:136:16)
+  "reopen.check.versionMatches.that": ($s: TaskStoredScope) =>
+    $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:139:19)
+  "reopen.check.versionMatches.details": ($s: TaskStoredScope) => {
+    return (({ before }) => ({ currentVersion: before.version }))($s);
+  },
+  // set &version, translated (src/domain/work/task.mesh.mx:144:20)
+  "reopen.step.0.set.version": ($s: TaskStoredScope) => $.add($s.self.version, 1),
 } as const;
