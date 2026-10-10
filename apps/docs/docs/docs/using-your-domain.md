@@ -176,7 +176,7 @@ await completeTodo({ id: "00000000-0000-4000-8000-0000000000aa" }, { actor: alic
 await disconnect();
 ```
 
-**Every update reads first.** A create is one `INSERT`. An update or a destroy reads the row first, locked, in the same transaction, runs its `validate` and `do` on that row, and then writes it. Two concurrent calls on one row therefore run one after the other, and the second sees the first's write; a `check` on `self` such as `notDoneYet` in `completeTodo` always sees the row as it is now. `mesh explain` prints the plan an action follows.
+**One statement or two.** A create is always one `INSERT`. An update or a destroy is one statement when its checks and `when` conditions read only `input`, `actor` and `context`, and its `set` values translate. A check or a `when` that reads `self` makes the action read the row first, locked, in the same transaction, and then write it. `completeTodo` is in the second case, because `check :notDoneYet` reads `&done`; `renameTodo`, which has no check, is in the first. `mesh explain` prints which one an action is, so you never get a read-then-write where you expected one statement, or the other way round.
 
 ### Destroy
 
@@ -255,9 +255,9 @@ await disconnect();
 `load` takes relationship names (`load: ["list"]`) and computed names (`load: ["label"]` on a todo, `load: ["todoCount"]` on a list). Reading one that was not loaded is a **type error**, not `undefined`, and a load that cannot be served at run time is an error, never silently skipped.
 Three things meet in `load`, and they are not one thing:
 
-- A **relationship** is loaded with a second query for the related rows.
-- A **rollup** (`count`, `sum`) is computed from the related rows when you load it. It is a value on the loaded record; a filter or a sort cannot use it.
-- A **computed field with a body** is computed in memory after the rows load, one extra pass. `label` concatenates a string. `mesh explain` lists which fields are computed.
+- A **relationship** runs in the query, as a join or a second query.
+- A **rollup** (`count`, `sum`) always runs in SQL, so it can also be filtered on and sorted by.
+- A **computed field with a body** runs in SQL when its expression can be translated, and in memory when it cannot. `label` concatenates a string, so it is computed after the rows load, one extra pass. `mesh explain` says which one a field is.
 
 ## Errors
 
@@ -370,7 +370,7 @@ A **seam** is a place in every generated action where your application may run c
 | Seam | Runs | Receives | May |
 |:--|:--|:--|:--|
 | `beforeTransaction` | Before the transaction opens | `{ entity, action, input, context }` | Throw to refuse the call |
-| `afterWrite` | Inside the transaction, right after each row is written | `tx` and `{ entity, action, before, after, input, context }` | Write through `tx`; a throw rolls back the whole call |
+| `afterWrite` | Inside the transaction, right after each row is written | `db` and `{ entity, action, before, after, input, context }` | Write through `db`; a throw rolls back the whole call |
 | `afterCommit` | Once, after the outermost transaction commits | `{ changes }`, every row written, in order | Publish; it is not called when the call rolls back |
 
 Register them under `seams` in `mesh.config.ts`, and pass the same object to `bind` in a test:
@@ -387,7 +387,7 @@ export default defineConfig({
     beforeTransaction({ entity, action }) {
       console.log("about to run", entity, action);
     },
-    afterWrite(_tx, { entity, action, before, after }) {
+    afterWrite(_db, { entity, action, before, after }) {
       console.log("wrote", entity, action, before, after);
     },
     afterCommit({ changes }) {
@@ -397,11 +397,11 @@ export default defineConfig({
 });
 ```
 
-In `afterWrite`, `tx` is the transaction's data operations (`insert`, `selectByKey`, `updateByKey`, `deleteByKey`, with the tables exported as `tables` from `#mesh`), so a seam can write a row of its own, such as an event, without calling an action. A write through it does not run seams. `before` is the row as it was, or `null` for a create; `after` is the row as written, or `null` for a destroy.
+In `afterWrite`, `db` is the transaction's data operations (`insert`, `selectByKey`, `updateByKey`, `deleteByKey`, with the tables exported as `tables` from `#mesh`), so a seam can write a row of its own, such as an event, without calling an action. A write through it does not run seams. `before` is the row as it was, or `null` for a create; `after` is the row as written, or `null` for a destroy.
 
 ```ts "src/events.ts (excerpt)"
-async afterWrite(tx, { entity, action, after }) {
-  await tx.insert(tables.event, { type: `${entity}.${action}`, payload: after });
+async afterWrite(db, { entity, action, after }) {
+  await db.insert(tables.event, { type: `${entity}.${action}`, payload: after });
 },
 ```
 

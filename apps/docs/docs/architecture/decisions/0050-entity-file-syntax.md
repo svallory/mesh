@@ -9,8 +9,6 @@ Amended by [ADR-0066](./0066-names-and-references-are-atoms.md): a declaration i
 
 Amended by [ADR-0067](./0067-members-imports-input-static-files.md): members are `&name`, entities are imports, actions have one `input` section and files are static. The reference file and rules below use v4; the original decision and quotations remain historical.
 
-Reference file edited on 2026-10-10: `on:load=&visible` is removed from the Invoice, because `on:load` comes after Mesh 1.0 ([ADR-0072](./0072-mesh-1-0-is-the-port-gate.md)); rule 7 below and the original text still describe it and stay as history.
-
 ## Status
 
 Accepted. Amends [ADR-0002](./0002-resource-files-are-mx.md) (what the tree contains). Builds on [ADR-0049](./0049-vocabulary-is-meshs-own.md).
@@ -96,7 +94,7 @@ entity :Invoice table="invoices"
     count :lineCount of="lines"
     sum :total of="lines.amount"
 
-  actions auto=[:read, :destroy]
+  actions auto=[:read, :destroy] on:load=&visible
     always types=[:create, :update]
       validate
         check :dueAfterIssue [

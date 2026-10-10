@@ -23,11 +23,11 @@ This record merges six decisions of the draft because they are one cut: what Mes
 
 On 2026-10-07 the operator ruled (MX decision 185) that Mesh 1.0 is done when the Hyper engine can be ported to Mesh. [ADR-0019](./0019-v1-scope.md) predates that ruling: it ranks work by what a framework should have and ends v1 at M9, migrations and Postgres.
 
-The [Hyper gap analysis](../research/hyper-port-gap-analysis.md) ranks every Mesh feature by one question: does the port need it? Hyper's engine has two contracts. The specification repository holds v0 (`PROTOCOL.md` and a 126-case black-box conformance suite on its `protocol-phases` branch): newline-delimited JSON-RPC over a Unix socket, SQLite. The engine's own v2 replaced it with AshTypescript RPC over HTTP and Postgres, and does not pass the suite. The operator's ruling names the specification.
+The [Hyper gap analysis](../research/hyper-port-gap-analysis.md) ranks every Mesh feature by one question: does the port need it? Hyper's engine has two contracts. The specification repository holds v0 (`PROTOCOL.md` and a 126-case black-box conformance suite on its `feat/protocol-phases` branch): newline-delimited JSON-RPC over a Unix socket, SQLite. The engine's own v2 replaced it with AshTypescript RPC over HTTP and Postgres, and does not pass the suite. The operator's ruling names the specification. Choosing SQLite reverses, for the port only, the operator's earlier move of Hyper from SQLite to Postgres (embedded Postgres in local mode, "one data layer everywhere"); the specification pins SQLite and the single-writer hypothesis is tested by the suite.
 
 ## Decision
 
-1. **The gate (D1, D2, D8).** Mesh 1.0 is done when Hyper built on Mesh passes the spec's 126 conformance cases (`conformance/01..10-*.test.ts` on the `protocol-phases` branch of the Hyper specification repository), run as `ENGINE_CMD="bun <the port>/main.ts" bun test conformance`, with no case skipped.
+1. **The gate (D1, D2, D8).** Mesh 1.0 is done when Hyper built on Mesh passes the spec's 126 conformance cases (`conformance/01..10-*.test.ts` on the `feat/protocol-phases` branch of the Hyper specification repository (`svallory/hyper-engine-spec`, commit `ccc00f9`)), run as `ENGINE_CMD="bun <the port>/main.ts" bun test conformance`, with no case skipped.
    - The port follows the spec's v0 and nothing else; the engine's own TypeScript implementation is not a source.
    - It runs on SQLite, with one writer. Postgres comes after 1.0.
    - The gate covers the spec's twelve entities. Run, Attempt, Invocation, Machine, SessionReference and workspace export and import are ported after the gate.
@@ -45,7 +45,7 @@ The [Hyper gap analysis](../research/hyper-port-gap-analysis.md) ranks every Mes
    | `on:load` | M7 | after 1.0. A relationship load uses the auto read | D12 |
 
    Everything else in revision 4 that the port does not need (bulk actions, `lock`, `relate`, `after-commit`, `can` beyond `ForbiddenError.breakdown`, keyset pagination, `sum`, `avg` and `min` rollups) moves after 1.0 with them; the roadmap's section 6 lists each with the evidence.
-3. **The user docs follow.** Three sentences of the approved user docs change (ADR-0063): "One statement or two" in [Using your domain](../../docs/using-your-domain.md#update); the rollup sentence in the loading section; and "`filter=` ... must translate to SQL" in [Entities](../../docs/entities.md#reads-filter-and-sort). Tracing and `on:load` leave the user docs. Where other approved text assumes SQL translation, it stays until the lead rules.
+3. **The user docs do not change because of this cut.** They describe the target Mesh, and the roadmap gives the timing ([ADR-0063](./0063-user-docs-first-and-the-hold.md)). Everything in the table above stays documented; until it ships, a construct that is documented but not built fails with the not-implemented error naming its milestone ([ADR-0018](./0018-not-implemented-is-a-build-error.md)). The new constructs of revision 5 are documented in [Entities](../../docs/entities.md), [Using your domain](../../docs/using-your-domain.md) and [Configuration](../../docs/configuration.md).
 
 ## Options considered
 
@@ -56,7 +56,7 @@ The [Hyper gap analysis](../research/hyper-port-gap-analysis.md) ranks every Mes
 
 ## Trade-off analysis
 
-The gate is narrower than revision 4's v1: the two-evaluator promise of [ADR-0010](./0010-one-expression-tree-two-evaluators.md) is half delivered at 1.0, the atomic half of Ruling 3 is a later optimisation, and hosted mode (several engines on one Postgres, which an advisory lock exists to make correct in the Elixir engine) cannot be tested on SQLite. The port's own run of the suite's lease and race cases (groups 05, 07 and 10) tests the single-writer hypothesis. In exchange the critical path is six milestones, not nine, and the largest single saving is the SQL evaluator.
+The gate is narrower than revision 4's v1: the two-evaluator promise of [ADR-0010](./0010-one-expression-tree-two-evaluators.md) is half delivered at 1.0, the atomic half of Ruling 3 is a later optimisation, and hosted mode (several engines on one Postgres, which an advisory lock exists to make correct in the Elixir engine) cannot be tested on SQLite. The port's own run of the suite's lease and race cases (groups 05, 07 and 10) tests the single-writer hypothesis. In exchange the critical path is six milestones after M2 (M3 to M8), where revision 4's v1 had seven (M3 to M9), and the largest single saving is the SQL evaluator.
 
 [ADR-0054](./0054-write-strategy-is-inferred.md)'s inference stays as design: `mesh explain` prints "read-then-write" for every update, which is true at 1.0.
 
@@ -66,7 +66,7 @@ The gate is narrower than revision 4's v1: the two-evaluator promise of [ADR-001
 - Several records are amended; each carries a note at the top.
 - The "no silent fallback" principle holds: a construct that needs M10 fails loudly and names it.
 - `examples/hyper` is a Mesh-team deliverable; its plugin hook, events and error shapes follow v0 ([ADR-0073](./0073-plugins-follow-the-specs-single-hook.md)).
-- How `verify` obtains the suite (a pinned checkout of the spec's `protocol-phases` branch, or a vendored copy) is settled by the task that adds `examples/hyper`.
+- How `verify` obtains the suite (a pinned checkout of the spec's `feat/protocol-phases` branch, or a vendored copy) is settled by the task that adds `examples/hyper`.
 
 ## Action items
 

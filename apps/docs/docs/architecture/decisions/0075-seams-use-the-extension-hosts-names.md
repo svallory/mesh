@@ -27,13 +27,13 @@ Mesh builds the three points now, for the application, with the names and payloa
 
 | Seam | Runs | Receives | May |
 |:--|:--|:--|:--|
-| `beforeTransaction` | before the transaction opens and before the write queue is entered | `{ entity, action, input, context }` | throw to refuse |
-| `afterWrite` | inside the transaction, right after each row is written and before any `after=:write` step | `tx` and `{ entity, action, before, after, input, context }` | write through `tx`; throw to roll everything back |
+| `beforeTransaction` | before the transaction opens | `{ entity, action, input, context }` | throw to refuse |
+| `afterWrite` | inside the transaction, right after each row is written and before any `after=:write` step | `db` and `{ entity, action, before, after, input, context }` | write through `db`; throw to roll everything back |
 | `afterCommit` | once, after the outermost transaction commits | `{ changes }`, every row written in it, in order | nothing that can fail the call; not called on rollback |
 
 - They are registered when the application binds a data layer, `bind(layer, { seams })`, and `connect()` reads the same functions from the `seams` key of `mesh.config.ts`.
 - A nested call ([ADR-0068](./0068-actions-compose-through-actions-and-tx.md)) runs the seams of its own row writes with the caller's `context`, so `caller` and `commandId` reach every event.
-- Payloads are plain data. In `afterWrite`, `tx` is the transaction's data operations (the data layer's `insert`, `selectByKey`, `updateByKey` and `deleteByKey`, with the tables from `#mesh`), so a seam can write a row of its own, such as an event, without calling an action; writes through it run no seams. It is not the read handle that `run` steps receive ([ADR-0068](./0068-actions-compose-through-actions-and-tx.md)), which is the same transaction seen through the generated reads.
+- Payloads are plain data. In `afterWrite`, `db` is the transaction's data operations (the data layer's `insert`, `selectByKey`, `updateByKey` and `deleteByKey`, with the tables from `#mesh`), so a seam can write a row of its own, such as an event, without calling an action; writes through it run no seams. It is deliberately not named `tx`, the read handle that `run` steps receive ([ADR-0068](./0068-actions-compose-through-actions-and-tx.md)), which is the same transaction seen through the generated reads.
 
 ## Options considered
 

@@ -104,7 +104,7 @@ Todo.complete (update)
 
 Two lines are worth learning:
 
-- **`strategy`** is how the action writes. An update or destroy is `read-then-write`: it reads the row first, locked, in the same transaction, and `explain` names what needs the row, such as a `check` or `when` that reads `self` or a `run` step. `Todo.complete` is listed with `check :notDoneYet`, which reads `&done`.
+- **`strategy`** is one statement (`atomic`) or `read-then-write`, and `explain` says why: a `check` or `when` that reads `self`, a `run` step, or an expression Mesh cannot translate. `Todo.complete` reads then writes because `check :notDoneYet` reads `&done`; `Todo.rename` is one statement because it has no check.
 - **`folded into the statement`** means the rule costs no extra query. A rule that cannot fold runs in memory on the row read inside the transaction instead.
 
 `explain` prints a plan, not SQL. Queries are assembled at run time from the entity's filter, the caller's filter and the policies, because which of those apply is only known when the call arrives.

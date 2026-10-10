@@ -19,7 +19,7 @@ operator (Saulo Vallory), accepting [roadmap revision 5](../roadmap/roadmap.md) 
 
 ## Context
 
-Entity file syntax has ten attribute types ([ADR-0050](./0050-entity-file-syntax.md)); none holds a map or an array. The [vocabulary mapping](../roadmap/vocabulary-mapping.md) leaves arrays "not scheduled". Hyper stores six such attributes (`Submission.evidence`, `LateResult.evidence`, `Run.inputs`, `Run.outcome`, `Attempt.outcome`, `Event.changes`) and passes two argument shapes of the same kind ([gap G10](../research/hyper-port-gap-analysis.md)). The compiler rejects `json :data` today: `<json> is not a known tag` (probe P02).
+Entity file syntax has ten attribute types ([ADR-0050](./0050-entity-file-syntax.md)); none holds a map or an array. The [vocabulary mapping](../roadmap/vocabulary-mapping.md) leaves arrays "not scheduled". Hyper stores six such attributes (`Submission.evidence`, `LateResult.evidence`, `Run.inputs`, `Run.outcome`, `Attempt.outcome`, `Event.changes`) and passes two argument shapes of the same kind ([gap G10](../research/hyper-port-gap-analysis.md)). The compiler rejects `json :data` today: `<json> is not a known tag` (probe P02 of the [gap analysis](../research/hyper-port-gap-analysis.md#54-probes-what-the-contracts-reject)).
 
 [Revision 4](../roadmap/roadmap.md) would have delivered a new attribute type as an extension contribution (the extension host, M6). The host now comes after 1.0 ([ADR-0072](./0072-mesh-1-0-is-the-port-gate.md)), so the type has to be core.
 
@@ -48,7 +48,6 @@ Option 1 is the smallest change that keeps the data and gets validation. It give
 
 - The attribute-type registry, the contracts, the validators, the types and the adapters gain one case each (M3).
 - [Entities](../../docs/entities.md#the-types) lists it.
-- The `integer` primary key and UUIDv7 changes in the same milestone are separate and need no record of their own.
 
 ## Action items
 

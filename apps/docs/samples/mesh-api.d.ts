@@ -47,7 +47,7 @@ declare module "@meshfw/runtime" {
     /** Before the transaction opens; throw to refuse the call. */
     beforeTransaction?(call: { entity: string; action: string; input: unknown; context: ActionContext }): void | Promise<void>;
     /** Inside the transaction, right after each row is written; a throw rolls back the whole call. */
-    afterWrite?(tx: DataOperations, change: WriteChange): void | Promise<void>;
+    afterWrite?(db: DataOperations, change: WriteChange): void | Promise<void>;
     /** Once, after the outermost transaction commits; not called on rollback. */
     afterCommit?(commit: { changes: WriteChange[] }): void | Promise<void>;
   };

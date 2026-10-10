@@ -20,7 +20,7 @@ Three spellings tell you what a name means: **`:name` declares**, **`&name` refe
 | It is | Written | Examples |
 |:--|:--|:--|
 | A declaration | `kind :name` | `entity :Invoice`, `uuid :id`, `update :pay`, `check :invoiceIsSent` |
-| A member of this entity | `&name` | `&title` in `input`, `asc &dueOn`, `load=[&customer]`, `actions=[&pay]` |
+| A member of this entity | `&name` | `&title` in `input`, `asc &dueOn`, `load=[&customer]`, `actions=[&pay]`, `on:load=&visible` |
 | Another entity | an imported identifier | `import { Customer } from "./customer.mesh.mx"`, then `belongs-to :customer entity=Customer` |
 | One of a fixed set | an atom | `auto=[:read, :destroy]`, `types=[:create, :update]`, `on=:create` |
 | An enum value | an atom | `values=[:draft, :sent]`, `default=:draft`, `&status === :sent`, `&status=:paid` |
@@ -201,6 +201,8 @@ entity :Post
 | `match=` | A regular expression a string must match |
 | `on=:create`, `on=:update` | On a timestamp: fill on insert, or on insert and every later write; callers cannot set it |
 
+`on=:create` and `on=:update` are unrelated to `on:load` on `actions`, which chooses a read.
+
 A field name may not be one of JavaScript's built-in object property names: `__proto__`, `constructor`, `prototype`, `hasOwnProperty`, `isPrototypeOf`, `propertyIsEnumerable`, `toLocaleString`, `toString`, `valueOf`, `__defineGetter__`, `__defineSetter__`, `__lookupGetter__` or `__lookupSetter__`. Mesh cannot validate a value safely against those.
 
 ## relationships
@@ -291,7 +293,7 @@ A computed body that cannot be translated runs in memory after the rows load, at
 
 `actions auto=[:read, :destroy]` generates the plain actions of those types, named after the type. You may list `:create`, `:read`, `:update` or `:destroy`, with no repeats. Every action you write yourself is `type :name`.
 
-**A relationship loads through the other entity's `auto` read**, so that read's policies apply. Loading an entity that has no `auto` read is a build error.
+**`on:load=&visible`** chooses the read used when this entity is loaded through a relationship. That read's filter applies. Without it, Mesh uses the auto read. Naming a missing read is a build error, as is loading an entity that has neither choice.
 
 ### input
 
@@ -318,7 +320,7 @@ entity :Invoice
 
 Call `applyDiscountInvoice({ id, percent: 10 }, context)`. The percentage reaches the expression as `input.percent`; no field stores "10% off". A member line takes the declaration unchanged, while a typed line is a new argument. An action without `input` takes no declared fields; an update or destroy still takes its id.
 
-Options such as `auto=`, `types=` and `actions=` sit on the declaration line. Sections such as `input`, `validate`, `do` and `sort` have their own lines.
+Options such as `auto=`, `on:load=`, `types=` and `actions=` sit on the declaration line. Sections such as `input`, `validate`, `do` and `sort` have their own lines.
 
 ### validate
 
@@ -456,7 +458,7 @@ Steps run top to bottom after validation. Each sees the record as earlier steps 
 | `set` | Assigns fields with `&field=value` lines; a value is a literal or a one-expression arrow. A line may name a relationship, `&creator=({ actor }) => actor.id`, and stores its key |
 | `when=cond` | Runs the nested steps only when the condition holds |
 | `load=[&customer]` | Loads relationships or computed fields onto the returned record; writes nothing |
-| `run(…) { }` | Plain code inside the transaction; it can call other actions |
+| `run(…) { }` | Plain code inside the transaction; forces a read before the write; it can call other actions |
 
 The larger example below shows `set`, `when` and `load`. For the work a field assignment cannot express, use `run`:
 
@@ -475,7 +477,7 @@ entity :Invoice
         }
 ```
 
-A `run` body may call anything, including logging or messaging code. The pure-helper rule applies to translated expressions, not `run`. Reach for it only when the work is not a field assignment. An update or destroy reads the row first, locked, in the same transaction, and then writes it; [Using your domain](./using-your-domain.md#update) says more.
+A `run` body may call anything, including logging or messaging code. The pure-helper rule applies to translated expressions, not `run`. Reach for it only when the work is not a field assignment. A `run`, or an untranslatable check, `when` or `set` expression, makes the action read first and write second. [Using your domain](./using-your-domain.md#update) explains one statement versus two.
 
 ### Calling other actions
 
@@ -543,7 +545,7 @@ entity :Invoice
         desc &insertedAt
 ```
 
-`filter=` returns a boolean. The caller's filter and the policies narrow it further. `&customer.id` compares the related record's id, not the related record.
+`filter=` returns a boolean and must translate to SQL. The caller's filter and the policies narrow it further. `&customer.id` compares the related record's id without a join.
 
 `sort` has one line per field, in order: `asc &dueOn` for oldest first, `desc &insertedAt` for newest first. A sort key may be a translatable computed field. The caller uses strings instead: `sort: ["dueOn", "-insertedAt"]`. Paging belongs to the caller's `limit` and `offset`. See [Using your domain](./using-your-domain.md#filters-sort-and-paging).
 
@@ -595,7 +597,7 @@ When a check reads the stored row, Mesh folds it into the statement's filter. A 
 mesh build
 ```
 
-The build rejects unknown declarations, options and members, a member input with options, duplicate input names, two entities in one file, a check without `that`, an expression that cannot run in SQL where it must, and a capability the adapter does not declare. Each diagnostic names the file, line and column:
+The build rejects unknown declarations, options and members, a member input with options, duplicate input names, two entities in one file, a check without `that`, an `on:load` that does not name a read, an expression that cannot run in SQL where it must, and a capability the adapter does not declare. Each diagnostic names the file, line and column:
 
 ```text
 src/domain/todo/todo.mesh.mx:22:9 error &titel is not a member of :Todo. Did you mean &title?
@@ -668,7 +670,7 @@ entity :Invoice table="invoices"
     count :lineCount of="lines"
     sum :total of="lines.amount"
 
-  actions auto=[:read, :destroy]
+  actions auto=[:read, :destroy] on:load=&visible
     always types=[:create, :update]
       validate
         check :dueAfterIssue [

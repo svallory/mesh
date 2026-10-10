@@ -16,7 +16,7 @@ Mesh is not released yet. These pages describe Mesh 1.0.
 The [Quick start](./quick-start.md#install) covers CLI installation and the starter. When adding Mesh to an existing project, install the runtime and your chosen adapter alongside `meshfw`:
 
 ```bash
-bun add @meshfw/runtime @meshfw/data-sqlite zod drizzle-orm
+bun add @meshfw/runtime @meshfw/data-sqlite zod drizzle-orm @opentelemetry/api
 bun add -d drizzle-kit
 ```
 
@@ -25,7 +25,7 @@ bun add -d drizzle-kit
 | `meshfw` (dev) | The `mesh` command |
 | `@meshfw/runtime` | `defineConfig`, and what generated code imports: the action context's type, the error classes, the data-layer contract. `connect()` loads `mesh.config.ts` in the running program, so the config imports only run-time packages |
 | `@meshfw/data-sqlite` or `@meshfw/data-postgres` | Exactly one data adapter |
-| `zod`, `drizzle-orm` | Imported by generated code itself, so they are ordinary dependencies of your project, not hidden behind `@meshfw/runtime` |
+| `zod`, `drizzle-orm`, `@opentelemetry/api` | Imported by generated code itself, so they are ordinary dependencies of your project, not hidden behind `@meshfw/runtime` |
 | `drizzle-kit` (dev) | The schema and migration work behind `mesh db push` and `mesh migrate` |
 
 For Postgres, swap `@meshfw/data-sqlite` for `@meshfw/data-postgres` in the first command.
