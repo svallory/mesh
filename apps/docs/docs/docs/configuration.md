@@ -51,11 +51,26 @@ export default defineConfig({
 |:--|:--|:--|
 | `domain` | yes | The folder holding the `.mesh.mx` files, read recursively, relative to the project root |
 | `output` | yes | The folder generated code is written to, relative to the project root |
+| `ignore` | no | Globs, relative to the project root, of `.mesh.mx` files Mesh skips; see [Ignoring files](#ignoring-files) |
 | `data` | yes | The data adapter for this project. Exactly one |
 | `extensions` | no | The enabled extensions, each one a call that returns an extension |
 | `seams` | no | Code your application runs before a transaction, after each write and after a commit; see [Seams](#seams) |
 
 `domain` may also be a glob or a list of relative paths, when a project has entity files outside the main folder. A folder is read recursively and every `.mesh.mx` file beneath it is an entity file.
+
+### Ignoring files
+
+`ignore` takes one glob or a list of globs, relative to the project root. A `.mesh.mx` file that matches is not part of the project: it is not read, not built, and an error inside it is not reported.
+
+```ts "mesh.config.ts (excerpt)"
+export default defineConfig({
+  domain: "src/domain",
+  ignore: ["src/domain/**/drafts/**", "src/domain/legacy.mesh.mx"],
+  // ...
+});
+```
+
+Patterns match files, so write `src/legacy/**` rather than `src/legacy`. A pattern that matches no entity file produces a warning naming it, since it is usually a typo. `ignore` applies to a `domain` folder, glob or list alike. A glob that reaches outside the project, or one that excludes every entity file, is a configuration error. A file that a kept file imports must not be ignored. To organise files without excluding them, use a `_name/` folder; see [Project structure](./project-structure.md#the-domain).
 
 `connect()` reads this file, which is why the build, the commands and your application can never disagree about where the data is. There is nowhere else to configure a connection.
 

@@ -12,6 +12,8 @@ export interface MeshConfig {
   domain: string | string[];
   /** Output folder relative to mesh.config.ts, conventionally .mesh. */
   output: string;
+  /** Globs, relative to the project root, of entity files Mesh must skip. */
+  ignore?: string | string[];
   data: DataAdapter;
   /** Kept opaque beyond identity; extensions are not activated here. */
   extensions?: readonly ExtensionDescriptor[];

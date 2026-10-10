@@ -14,6 +14,8 @@ export interface ResolvedConfig {
   configFile: string;
   domainRoot: string;
   entityFiles: string[];
+  /** Discovered entity files that `ignore` excluded, with the pattern that matched. */
+  ignoredFiles?: { file: string; pattern: string }[];
   output: string;
   data: DataAdapter;
   extensions?: readonly ExtensionDescriptor[];
@@ -68,11 +70,17 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
     return { config: null, diagnostics };
   }
   const config = value;
-  const keys = new Set(["domain", "output", "data", "extensions"]);
+  const keys = new Set(["domain", "output", "data", "extensions", "ignore"]);
   for (const key of Object.keys(config)) if (!keys.has(key)) fail(key, `Unknown configuration field "${key}"`, key === "resources" ? "`resources` was renamed `domain`" : "Remove the unknown field");
   const domain = config.domain;
   if (!nonEmpty(domain) && !(Array.isArray(domain) && domain.length > 0 && domain.every(nonEmpty))) fail("domain", "Configuration field `domain` must be a non-empty relative folder, glob or list of relative file paths");
   if (!nonEmpty(config.output)) fail("output", "Configuration field `output` must be a non-empty relative directory path");
+  const ignoreInput = config.ignore;
+  const ignore: string[] = ignoreInput === undefined ? [] : Array.isArray(ignoreInput) ? ignoreInput as string[] : [ignoreInput as string];
+  if (ignoreInput !== undefined) {
+    if (!ignore.every(nonEmpty)) fail("ignore", "Configuration field `ignore` must be a glob or a list of globs, relative to the project root");
+    else if (!ignore.every((glob) => confinedGlob(normalizePath(glob)))) fail("ignore", "Configuration field `ignore` must stay inside the project");
+  }
   const data = config.data;
   if (!isDataAdapter(data)) fail("data", "Configuration field `data` must be a data adapter descriptor", 'Import `sqlite` from `@meshfw/data-sqlite` and set data: sqlite({ file: "app.db" })');
   const extensions = config.extensions;
@@ -139,12 +147,28 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
       else if (!hasMeshExtension(path.file)) fail("domain", `Entity files must end in ${meshExtensionsText}`);
       else files.push(path.absolute);
     }
-    if (files.length) {
-      domainRoot = dirname(files[0]!);
-      for (const file of files) while (!inside(domainRoot, file)) domainRoot = dirname(domainRoot);
-    }
   }
   files = [...new Set(files)].sort();
+  const ignoredFiles: { file: string; pattern: string }[] = [];
+  if (ignore.length && !diagnostics.length) {
+    const patterns = ignore.map((glob) => { const pattern = normalizePath(glob).replace(/^\.\//, ""); return { glob, matcher: new Bun.Glob(pattern) }; });
+    const used = new Set<string>();
+    const before = files.length;
+    files = files.filter((file) => {
+      const name = projectPath(root, file);
+      const hits = patterns.filter((p) => p.matcher.match(name));
+      for (const hit of hits) used.add(hit.glob);
+      if (hits[0]) ignoredFiles.push({ file, pattern: hits[0].glob });
+      return hits.length === 0;
+    });
+    for (const p of patterns) if (!used.has(p.glob))
+      diagnostics.push({ ...error("MESH_IGNORE_UNUSED", `\`ignore\` pattern ${JSON.stringify(p.glob)} matches no entity file; check it for a typo (patterns match files, such as "src/legacy/**")`, at("ignore"), "Fix or remove the pattern in mesh.config.ts"), severity: "warning" });
+    if (before > 0 && files.length === 0) fail("ignore", "Configuration field `ignore` excludes every entity file");
+  }
+  if (Array.isArray(domain) && files.length) {
+    domainRoot = dirname(files[0]!);
+    for (const file of files) while (!inside(domainRoot, file)) domainRoot = dirname(domainRoot);
+  }
   for (const file of files) {
     const name = projectPath(root, file);
     try {
@@ -153,8 +177,8 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
       if (!(await stat(file)).isFile()) fail("domain", `Entity file "${name}" is not a file`);
     } catch (cause) { fail("domain", `Cannot read entity file "${name}" (${errorCode(cause) ?? "UNKNOWN"})`); }
   }
-  return { config: diagnostics.length ? null : {
-    root, configFile, domainRoot, entityFiles: files, output, data: data as DataAdapter,
+  return { config: diagnostics.some((d) => d.severity === "error") ? null : {
+    root, configFile, domainRoot, entityFiles: files, ignoredFiles, output, data: data as DataAdapter,
     ...(Object.hasOwn(config, "extensions") ? { extensions: extensions as readonly ExtensionDescriptor[] } : {}),
   }, diagnostics };
 }
@@ -181,7 +205,10 @@ export async function loadProject(config: ResolvedConfig): Promise<BuildResult> 
       files.push({ file: path.absolute, source: await readFile(path.absolute, "utf8") });
     } catch (cause) { diagnostics.push(error("MESH_ENTITY_READ", `Cannot read entity file "${path.file}" (${errorCode(cause) ?? "UNKNOWN"})`, positionAt("", path.file, 0), "Restore the entity file or fix the domain list")); }
   }
-  const result = buildModel({ root: config.root, domainRoot: config.domainRoot, files });
+  const result = buildModel({
+    root: config.root, domainRoot: config.domainRoot, files,
+    ignored: (config.ignoredFiles ?? []).map(({ file, pattern }) => ({ file: projectPath(config.root, file), pattern })),
+  });
   if (result.document) result.document.data = { name: config.data.name };
   return { document: diagnostics.length ? null : result.document, diagnostics: [...diagnostics, ...result.diagnostics] };
 }

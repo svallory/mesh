@@ -93,7 +93,7 @@ The operator accepted [roadmap revision 5](../roadmap/roadmap.md), which ends Me
 | [0054](./0054-write-strategy-is-inferred.md) | Mesh infers the write strategy; no `require-atomic` | Accepted, amended by 0072 | lead, delegated |
 | [0055](./0055-policies-are-core.md) | Policies are core; every covering policy must pass; no policies means forbidden | Accepted, amended by 0071, 0072, 0074 | operator; lead, delegated |
 | [0056](./0056-translated-expressions-are-one-expression-arrows.md) | A function whose body is one expression is translated; Mesh builds its own translator | Accepted | operator; lead, delegated |
-| [0057](./0057-one-domain-modules-as-folders.md) | One domain at `src/domain/`; its folders are modules | Accepted | operator |
+| [0057](./0057-one-domain-modules-as-folders.md) | One domain at `src/domain/`; its folders are modules | Accepted, amended by operator ruling, 2026-10-10 | operator |
 | [0058](./0058-generated-code-in-mesh-imported-as-hash-mesh.md) | Generated code in `.mesh/`, committed, imported as `#mesh` | Accepted | operator; lead, delegated |
 | [0059](./0059-action-context.md) | The second argument is the flat `ActionContext`; tenancy is a user key | Accepted, amended by 0071 | operator |
 | [0060](./0060-meshfw-package-scope.md) | Packages are `@meshfw/*`; the command is `mesh` | Accepted | operator |

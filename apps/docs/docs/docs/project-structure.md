@@ -40,6 +40,15 @@ Mesh prescribes nothing under `src/`. `context.ts`, the starter's `demo.ts` and 
 
 The folder is the module, so nothing in the file repeats it. `todo.mesh.mx` does not carry a `module=` option, and the generated code for a folder lands in one place.
 
+Two folder rules decide a file's module:
+
+- **A nested folder is a submodule.** `src/domain/todo/reminders/reminder.mesh.mx` belongs to module `todo/reminders`, and its generated code goes to `.mesh/todo/reminders/`.
+- **A folder whose name starts with `_` only organises files.** A file's module is its folder path with every segment that starts with `_` removed (a segment that is only `_` is an error). `src/domain/todo/_scheduling/schedule.mesh.mx` belongs to module `todo`, and its generated code goes to `.mesh/todo/`. A group directly under `src/domain/`, such as `src/domain/_misc/`, belongs to the domain root. A group inside a submodule stays in that submodule: `todo/reminders/_x/` is module `todo/reminders`.
+
+`_name/` is the only folder marker; a folder named only `_` is a build error. A group changes the module, not the file: imports still use the real path (`import { List } from "../list.mesh.mx"`), and a name stays in one place, so `entity :Task` in `tasks/` and again in `tasks/_x/` is a duplicate-entity error.
+
+To keep files out of Mesh altogether, list them under `ignore` in `mesh.config.ts`. It takes globs relative to the project root, and ignored files are not read, so errors in them are not reported. See [Configuration](./configuration.md#ignoring-files).
+
 An entity file holds exactly one entity and ends in `.mesh.mx`. Two entities in one file is a build error. Another entity is imported by relative path: `import { List } from "./list.mesh.mx"`, then `belongs-to :list entity=List`. Each file exports its declared entity name. Two folders may each declare an `entity :List` without conflict; the import path distinguishes them. Those declarations do not conflict, but how the generated `#mesh` entry point exposes their same-named action exports is still open ([finding 21](../architecture/open-questions.md#dx-findings)).
 
 A hand-written helper next to the entity that uses it is the ordinary way to keep an entity file small. `todo.helpers.ts` is a normal TypeScript module; a `check` or a `do` step in `todo.mesh.mx` calls into it.
