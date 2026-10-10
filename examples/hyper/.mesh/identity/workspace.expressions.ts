@@ -24,7 +24,10 @@ export const expressions = {
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/identity/workspace.mesh.mx:27:19)
   "rename.check.versionMatches.details": ($s: WorkspaceStoredScope) => {
-    return (({ before }) => ({ currentVersion: before.version }))($s);
+    return (({ input, before }) => ({
+      expectedVersion: input.expectedVersion,
+      actualVersion: before.version,
+    }))($s);
   },
   // set &version, translated (src/domain/identity/workspace.mesh.mx:31:20)
   "rename.step.0.set.version": ($s: WorkspaceStoredScope) => $.add($s.self.version, 1),

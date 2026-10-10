@@ -22,7 +22,7 @@ import {
 } from "./invocation.validators";
 import { tables } from "../schema";
 
-export function bindInvocation(layer: $DataLayer, _options: $BindOptions = {}) {
+export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
     async record(
       input: RecordInvocationInput,
@@ -32,7 +32,7 @@ export function bindInvocation(layer: $DataLayer, _options: $BindOptions = {}) {
       const parsed = await parseInput(recordInvocationInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $now = new Date();
+        const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           requestedProvider:
@@ -71,7 +71,7 @@ export function bindInvocation(layer: $DataLayer, _options: $BindOptions = {}) {
       const parsed = await parseInput(correctInvocationInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $now = new Date();
+        const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           requestedProvider: null,

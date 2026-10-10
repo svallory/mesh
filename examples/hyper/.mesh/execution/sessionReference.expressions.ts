@@ -28,7 +28,10 @@ export const expressions = {
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/session-reference.mesh.mx:46:19)
   "setAvailability.check.versionMatches.details": ($s: SessionReferenceStoredScope) => {
-    return (({ before }) => ({ currentVersion: before.version }))($s);
+    return (({ input, before }) => ({
+      expectedVersion: input.expectedVersion,
+      actualVersion: before.version,
+    }))($s);
   },
   // set &version, translated (src/domain/execution/session-reference.mesh.mx:50:20)
   "setAvailability.step.0.set.version": ($s: SessionReferenceStoredScope) =>
@@ -41,7 +44,10 @@ export const expressions = {
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/session-reference.mesh.mx:64:19)
   "redact.check.versionMatches.details": ($s: SessionReferenceStoredScope) => {
-    return (({ before }) => ({ currentVersion: before.version }))($s);
+    return (({ input, before }) => ({
+      expectedVersion: input.expectedVersion,
+      actualVersion: before.version,
+    }))($s);
   },
   // set &version, translated (src/domain/execution/session-reference.mesh.mx:70:20)
   "redact.step.0.set.version": ($s: SessionReferenceStoredScope) => $.add($s.self.version, 1),

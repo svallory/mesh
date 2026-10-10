@@ -28,7 +28,10 @@ export const expressions = {
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/identity/collaborator.mesh.mx:37:19)
   "update.check.versionMatches.details": ($s: CollaboratorStoredScope) => {
-    return (({ before }) => ({ currentVersion: before.version }))($s);
+    return (({ input, before }) => ({
+      expectedVersion: input.expectedVersion,
+      actualVersion: before.version,
+    }))($s);
   },
   // set &version, translated (src/domain/identity/collaborator.mesh.mx:41:20)
   "update.step.0.set.version": ($s: CollaboratorStoredScope) => $.add($s.self.version, 1),

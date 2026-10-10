@@ -8,6 +8,7 @@ import {
   NotFoundError as $NotFoundError,
   guarded as $guarded,
   parseInput,
+  readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
   type BindOptions as $BindOptions,
@@ -75,14 +76,22 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}) {
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
         if (parsed.role !== undefined) $changes.role = $record.role = parsed.role;
-        const $self = $guarded($loadPlan, "Membership", $record, "action function");
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Membership", $record, "action function"),
+          "Membership.changeRole",
+        );
         const $s = $scope(
           {
             self: $self,
             input: parsed,
             actor: $actor,
             context: $context,
-            before: $before as unknown as Membership,
+            before: $guarded(
+              $loadPlan,
+              "Membership",
+              $before,
+              "action function",
+            ) as unknown as Membership,
             tx: undefined,
           },
           options,

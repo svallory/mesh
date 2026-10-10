@@ -1,4 +1,4 @@
-import type { ActionType, Diagnostic, ModelDocument } from "@meshfw/model";
+import type { ActionType, Diagnostic, ModelDocument, Step } from "@meshfw/model";
 import { actionExpressions } from "./action-expressions.ts";
 import { error } from "./diagnostics.ts";
 
@@ -23,6 +23,21 @@ export function checkLifecycleLimits(document: ModelDocument, diagnostics: Diagn
         diagnostics.push(error("MESH_NOT_IMPLEMENTED",
           `read :${action.name} of :${entity.name} declares ${action.validate.length ? "validate" : "do"}, which a read does not run: it has no record to check or change`,
           action.position, "A read narrows its rows with `filter`; its caller narrows them further with `filter`, `sort`, `limit` and `offset`"));
+    }
+    // A destroy returns nothing and writes nothing: a `set` or `load` in one would be dropped, so it is refused.
+    const refuseDestroyStep = (steps: Step[], where: string): void => {
+      for (const step of steps) {
+        if (step.kind === "set" || step.kind === "load")
+          diagnostics.push(error("MESH_DESTROY_STEP",
+            `${where} has a \`${step.kind}\` step, and a destroy returns nothing and writes nothing, so it would do nothing`,
+            step.position, step.kind === "set" ? "Remove it. A destroy can `check` the record, and `run` work that happens before the delete" : "Remove it. A destroy returns nothing for a loaded record to appear on"));
+        else if (step.kind === "when") refuseDestroyStep(step.steps, where);
+      }
+    };
+    for (const action of entity.actions) if (action.kind === "destroy") refuseDestroyStep(action.do, `destroy :${action.name} of :${entity.name}`);
+    for (const always of entity.always) {
+      const covers = always.types?.includes("destroy") || always.actions?.some((ref) => entity.actions.find((a) => a.name === ref.name)?.kind === "destroy");
+      if (covers) refuseDestroyStep(always.do, `an always block of :${entity.name} that covers a destroy`);
     }
     for (const always of entity.always) {
       if (!always.validate.length && !always.do.length) continue;

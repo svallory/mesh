@@ -8,6 +8,7 @@ import {
   NotFoundError as $NotFoundError,
   guarded as $guarded,
   parseInput,
+  readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
   type BindOptions as $BindOptions,
@@ -74,14 +75,22 @@ export function bindCollaborator(layer: $DataLayer, options: $BindOptions = {}) 
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
         if (parsed.name !== undefined) $changes.name = $record.name = parsed.name;
-        const $self = $guarded($loadPlan, "Collaborator", $record, "action function");
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Collaborator", $record, "action function"),
+          "Collaborator.update",
+        );
         const $s = $scope(
           {
             self: $self,
             input: parsed,
             actor: $actor,
             context: $context,
-            before: $before as unknown as Collaborator,
+            before: $guarded(
+              $loadPlan,
+              "Collaborator",
+              $before,
+              "action function",
+            ) as unknown as Collaborator,
             tx: undefined,
           },
           options,

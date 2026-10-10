@@ -13,14 +13,14 @@ import type { Event, RecordEventInput, ReadEventInput } from "./event.types";
 import { recordEventInput, readEventInput } from "./event.validators";
 import { tables } from "../schema";
 
-export function bindEvent(layer: $DataLayer, _options: $BindOptions = {}) {
+export function bindEvent(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
     async record(input: RecordEventInput, ...[_context]: $ContextArgument): Promise<Event> {
       // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(recordEventInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $now = new Date();
+        const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           type: parsed.type,

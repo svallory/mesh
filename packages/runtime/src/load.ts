@@ -193,6 +193,18 @@ export function guarded(plan: LoadPlan, entity: string, row: Work, what = "compu
   return guard;
 }
 
+/**
+ * A read-only view of the record a plain action function (`run`, `details`, an untranslated arrow) is handed as `self`.
+ * The work of an action is its `set` steps, so an assignment, a delete or a defineProperty inside a function is a mistake
+ * that would otherwise be dropped without a word.
+ */
+export function readOnlyRecord(row: Work, where: string): Work {
+  const refuse = (): never => {
+    throw new FrameworkError(`${where}: a function cannot change the record. Use a \`set\` step (\`set &field=...\`) to change a field; \`run\` is for work outside the record`);
+  };
+  return new Proxy(row, { set: refuse, defineProperty: refuse, deleteProperty: refuse });
+}
+
 /** Load the first segment on `rows`, then the rest of the path on the rows it brought in. */
 async function ensurePath(
   plan: LoadPlan, entity: string, tx: DataOperations, rows: Work[], path: readonly string[], options: LoadOptions, depth: number,

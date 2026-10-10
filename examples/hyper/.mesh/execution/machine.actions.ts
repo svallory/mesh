@@ -8,6 +8,7 @@ import {
   NotFoundError as $NotFoundError,
   guarded as $guarded,
   parseInput,
+  readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
   type BindOptions as $BindOptions,
@@ -37,7 +38,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}) {
       const parsed = await parseInput(registerMachineInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $now = new Date();
+        const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           name: parsed.name,
@@ -67,14 +68,22 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}) {
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
         if (parsed.platform !== undefined) $changes.platform = $record.platform = parsed.platform;
-        const $self = $guarded($loadPlan, "Machine", $record, "action function");
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Machine", $record, "action function"),
+          "Machine.update",
+        );
         const $s = $scope(
           {
             self: $self,
             input: parsed,
             actor: $actor,
             context: $context,
-            before: $before as unknown as Machine,
+            before: $guarded(
+              $loadPlan,
+              "Machine",
+              $before,
+              "action function",
+            ) as unknown as Machine,
             tx: undefined,
           },
           options,

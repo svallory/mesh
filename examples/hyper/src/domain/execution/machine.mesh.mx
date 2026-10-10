@@ -32,7 +32,7 @@ entity :Machine table="machines"
           that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
           code="expected-version"
           message="the record is at another version; read it again and retry"
-          details=({ before }) => ({ currentVersion: before.version })
+          details=({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })
         ]
       do
         set

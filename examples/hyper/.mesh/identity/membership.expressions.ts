@@ -28,7 +28,10 @@ export const expressions = {
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/identity/membership.mesh.mx:41:19)
   "changeRole.check.versionMatches.details": ($s: MembershipStoredScope) => {
-    return (({ before }) => ({ currentVersion: before.version }))($s);
+    return (({ input, before }) => ({
+      expectedVersion: input.expectedVersion,
+      actualVersion: before.version,
+    }))($s);
   },
   // set &version, translated (src/domain/identity/membership.mesh.mx:45:20)
   "changeRole.step.0.set.version": ($s: MembershipStoredScope) => $.add($s.self.version, 1),

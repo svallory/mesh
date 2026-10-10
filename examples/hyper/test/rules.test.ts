@@ -99,7 +99,7 @@ describe("expected-version and the version bump (a check and a set, G02)", () =>
     expect(first.version).toBe(2);
     const stale = await issuesOf(hyper.setPriorityTask({ id: task.id, priority: 2, expectedVersion: 1 }, context));
     expect(codes(stale)).toEqual(["expected-version"]);
-    expect(stale[0]!.details).toEqual({ currentVersion: 2 });
+    expect(stale[0]!.details).toEqual({ expectedVersion: 1, actualVersion: 2 });
     const [row] = await hyper.readTask({ filter: { id: { eq: task.id } } }, context);
     expect(row).toMatchObject({ priority: 1, version: 2 });
     expect((await hyper.setPriorityTask({ id: task.id, priority: 5 }, context)).version).toBe(3);
@@ -209,6 +209,12 @@ describe("Claim", () => {
   test("claim.expired: a lapsed lease cannot be renewed, judged by the stored expiry and not by the new one", () => within(async (w) => {
     const claim = await w.hyper.acquireClaim({ fence: 1, acquiredAt: minutes(-20), expiresAt: minutes(-5), task: w.task.id, holder: w.bot.id }, context);
     expect(codes(await issuesOf(w.hyper.renewClaim({ id: claim.id, fence: 1, newExpiresAt: minutes(30) }, context)))).toEqual(["claim.expired"]);
+  }));
+
+  test("claim.expired: a lapsed lease cannot be released either; a live one can", () => within(async (w) => {
+    const lapsed = await w.hyper.acquireClaim({ fence: 1, acquiredAt: minutes(-20), expiresAt: minutes(-5), task: w.task.id, holder: w.bot.id }, context);
+    expect(codes(await issuesOf(w.hyper.releaseClaim({ id: lapsed.id, fence: 1 }, context)))).toEqual(["claim.expired"]);
+    expect(await w.hyper.readClaim({ filter: { id: { eq: lapsed.id } } }, context)).toMatchObject([{ state: "active" }]);
   }));
 
   test("an unknown claim is NotFoundError, not an issue", () => within(async (w) => {

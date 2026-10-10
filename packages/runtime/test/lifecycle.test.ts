@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { runCheck, type CheckSpec, type Issue } from "../src/index.ts";
+import { FrameworkError, readOnlyRecord, runCheck, type CheckSpec, type Issue } from "../src/index.ts";
 
 const source = { file: "t.mesh.mx", line: 3, column: 7 };
 const spec = (over: Partial<CheckSpec>): CheckSpec => ({ label: "l", code: "c", message: "m", source, that: () => true, ...over });
@@ -36,5 +36,16 @@ describe("runCheck", () => {
     await runCheck(issues, {}, spec({ label: "a", that: () => false }));
     await runCheck(issues, {}, spec({ label: "b", that: () => false }));
     expect(issues.map((issue) => issue.label)).toEqual(["a", "b"]);
+  });
+});
+
+describe("readOnlyRecord", () => {
+  test("reads pass through; set, delete and defineProperty throw a FrameworkError that names the action and `set`", () => {
+    const row = readOnlyRecord({ title: "t" }, "Task.scribble") as Record<string, unknown>;
+    expect(row.title).toBe("t");
+    expect(() => { row.title = "x"; }).toThrow(FrameworkError);
+    expect(() => { delete row.title; }).toThrow("Task.scribble");
+    expect(() => Object.defineProperty(row, "title", { value: "x" })).toThrow("`set`");
+    expect(row.title).toBe("t");
   });
 });

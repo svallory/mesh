@@ -8,6 +8,7 @@ import {
   NotFoundError as $NotFoundError,
   guarded as $guarded,
   parseInput,
+  readOnlyRecord as $readOnlyRecord,
   rejectComputedQuery,
   runCheck as $runCheck,
   scope as $scope,
@@ -76,14 +77,17 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}) {
         if ($before === undefined) throw new $NotFoundError("Claim", $key);
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
-        const $self = $guarded($loadPlan, "Claim", $record, "action function");
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Claim", $record, "action function"),
+          "Claim.renew",
+        );
         const $s = $scope(
           {
             self: $self,
             input: parsed,
             actor: $actor,
             context: $context,
-            before: $before as unknown as Claim,
+            before: $guarded($loadPlan, "Claim", $before, "action function") as unknown as Claim,
             tx: undefined,
           },
           options,
@@ -142,14 +146,17 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}) {
         if ($before === undefined) throw new $NotFoundError("Claim", $key);
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
-        const $self = $guarded($loadPlan, "Claim", $record, "action function");
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Claim", $record, "action function"),
+          "Claim.release",
+        );
         const $s = $scope(
           {
             self: $self,
             input: parsed,
             actor: $actor,
             context: $context,
-            before: $before as unknown as Claim,
+            before: $guarded($loadPlan, "Claim", $before, "action function") as unknown as Claim,
             tx: undefined,
           },
           options,
@@ -170,6 +177,13 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}) {
           message: "the claim has ended",
           source: { file: "src/domain/work/claim.mesh.mx", line: 61, column: 9 },
           that: $expressions["release.check.claimActive.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "claimNotExpired",
+          code: "claim.expired",
+          message: "the lease has expired",
+          source: { file: "src/domain/work/claim.mesh.mx", line: 66, column: 9 },
+          that: $expressions["release.check.claimNotExpired.that"],
         });
         if ($issues.length > 0) throw new $InvalidInputError($issues);
         // do: the steps run in written order, each seeing the record as the ones before it left it
@@ -202,14 +216,17 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}) {
         if ($before === undefined) throw new $NotFoundError("Claim", $key);
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
-        const $self = $guarded($loadPlan, "Claim", $record, "action function");
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Claim", $record, "action function"),
+          "Claim.revoke",
+        );
         const $s = $scope(
           {
             self: $self,
             input: parsed,
             actor: $actor,
             context: $context,
-            before: $before as unknown as Claim,
+            before: $guarded($loadPlan, "Claim", $before, "action function") as unknown as Claim,
             tx: undefined,
           },
           options,
@@ -220,7 +237,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}) {
           label: "claimActive",
           code: "claim.active",
           message: "the claim has ended",
-          source: { file: "src/domain/work/claim.mesh.mx", line: 75, column: 9 },
+          source: { file: "src/domain/work/claim.mesh.mx", line: 80, column: 9 },
           that: $expressions["revoke.check.claimActive.that"],
         });
         if ($issues.length > 0) throw new $InvalidInputError($issues);

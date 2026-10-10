@@ -8,6 +8,7 @@ import {
   NotFoundError as $NotFoundError,
   guarded as $guarded,
   parseInput,
+  readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
   type BindOptions as $BindOptions,
@@ -46,7 +47,7 @@ export function bindSessionReference(layer: $DataLayer, options: $BindOptions = 
       const parsed = await parseInput(recordSessionReferenceInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $now = new Date();
+        const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           runtime: parsed.runtime,
@@ -83,14 +84,22 @@ export function bindSessionReference(layer: $DataLayer, options: $BindOptions = 
         const $record: $Row = { ...$before };
         if (parsed.availability !== undefined)
           $changes.availability = $record.availability = parsed.availability;
-        const $self = $guarded($loadPlan, "SessionReference", $record, "action function");
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "SessionReference", $record, "action function"),
+          "SessionReference.setAvailability",
+        );
         const $s = $scope(
           {
             self: $self,
             input: parsed,
             actor: $actor,
             context: $context,
-            before: $before as unknown as SessionReference,
+            before: $guarded(
+              $loadPlan,
+              "SessionReference",
+              $before,
+              "action function",
+            ) as unknown as SessionReference,
             tx: undefined,
           },
           options,
@@ -152,14 +161,22 @@ export function bindSessionReference(layer: $DataLayer, options: $BindOptions = 
         if ($before === undefined) throw new $NotFoundError("SessionReference", $key);
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
-        const $self = $guarded($loadPlan, "SessionReference", $record, "action function");
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "SessionReference", $record, "action function"),
+          "SessionReference.redact",
+        );
         const $s = $scope(
           {
             self: $self,
             input: parsed,
             actor: $actor,
             context: $context,
-            before: $before as unknown as SessionReference,
+            before: $guarded(
+              $loadPlan,
+              "SessionReference",
+              $before,
+              "action function",
+            ) as unknown as SessionReference,
             tx: undefined,
           },
           options,

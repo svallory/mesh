@@ -13,14 +13,14 @@ import type { Attempt, StartAttemptInput, ReadAttemptInput } from "./attempt.typ
 import { startAttemptInput, readAttemptInput } from "./attempt.validators";
 import { tables } from "../schema";
 
-export function bindAttempt(layer: $DataLayer, _options: $BindOptions = {}) {
+export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
     async start(input: StartAttemptInput, ...[_context]: $ContextArgument): Promise<Attempt> {
       // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(startAttemptInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $now = new Date();
+        const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           step: parsed.step === undefined ? "main" : parsed.step,

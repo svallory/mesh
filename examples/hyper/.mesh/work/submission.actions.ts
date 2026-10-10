@@ -13,7 +13,7 @@ import type { Submission, SubmitSubmissionInput, ReadSubmissionInput } from "./s
 import { submitSubmissionInput, readSubmissionInput } from "./submission.validators";
 import { tables } from "../schema";
 
-export function bindSubmission(layer: $DataLayer, _options: $BindOptions = {}) {
+export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
     async submit(
       input: SubmitSubmissionInput,
@@ -23,7 +23,7 @@ export function bindSubmission(layer: $DataLayer, _options: $BindOptions = {}) {
       const parsed = await parseInput(submitSubmissionInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $now = new Date();
+        const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           summary: parsed.summary === undefined ? null : parsed.summary,

@@ -1,5 +1,5 @@
 import type { Action, Check, Entity, Step } from "@meshfw/model";
-import { alwaysFor, policiesFor } from "./views/actions.ts";
+import { alwaysFor, policiesFor, stepsFor } from "./views/actions.ts";
 import { effectiveActions } from "./views/inputs.ts";
 
 const squash = (text: string) => text.replace(/\s+/g, " ").trim();
@@ -49,7 +49,7 @@ export function explainAction(entity: Entity, actionName: string): string[] | un
   const blocks = [...alwaysFor(entity, action).map((block) => ({ validate: block.validate, steps: block.do, always: true })), { validate: action.validate, steps: action.do, always: false }];
   const checks = blocks.flatMap((block) => block.validate.map((check) => (block.always ? `always: ${checkLine(check)}` : checkLine(check))));
   const steps: string[] = [];
-  for (const block of blocks) stepLines(block.steps, 0, steps);
+  stepLines(stepsFor(action, blocks.flatMap((block) => block.steps)), 0, steps);
   const reads = action.kind === "update" || checks.length > 0 || steps.length > 0;
   const strategy = action.kind === "create" ? "one insert; nothing is read first"
     : action.kind === "update" ? "read-then-write: every update reads the row under the write lock, checks it, changes it, then writes it"

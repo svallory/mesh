@@ -111,7 +111,7 @@ describe("actions view", () => {
     ]);
     expect(view.runtimeValues).toEqual([
       "FrameworkError as $FrameworkError", "InvalidInputError as $InvalidInputError", "NotFoundError as $NotFoundError", "guarded as $guarded",
-      "loadRows as $loadRows", "parseInput", "runCheck as $runCheck", "scope as $scope"]);
+      "loadRows as $loadRows", "parseInput", "readOnlyRecord as $readOnlyRecord", "runCheck as $runCheck", "scope as $scope"]);
     expect(view.runtimeTypes).toEqual(["Issue as $Issue", "Row as $Row"]);
     expect(view.typesFromLiteral).toBe('"./article.types"');
     expect(view.validatorsFromLiteral).toBe('"./article.validators"');
@@ -121,7 +121,7 @@ describe("actions view", () => {
   test("create builds the proposed record in declared order by the five rules; a set step runs after it", () => {
     const create = viewOf("Article").methods[0]!;
     expect(create.statements.slice(1)).toEqual([
-      "const $now = new Date();",
+      "const $now = options.clock?.() ?? new Date();",
       "// plan: a create is one insert; nothing is read first",
       "const $changes: $Row = {",
       "title: parsed.title,",
@@ -339,6 +339,17 @@ describe("explain", () => {
     expect(explainAction(article_(), "create")![1]).toBe("  strategy     one insert; nothing is read first");
     expect(explainAction(article_(), "purge")![1]).toContain("one delete by key");
     expect(explainAction(article_(), "live")![1]).toContain("one query");
+  });
+  test("explain agrees with the generated code on whether a destroy reads the row", () => {
+    const source = (body: string) => article.replace("    destroy :purge\n", `    destroy :purge\n${body}`);
+    for (const [body, reads] of [["", false], ["      do\n        run({ self }) { console.log(self.title) }\n", true]] as const) {
+      const files = { "blog/author.mesh.mx": author, "blog/article.mesh.mx": source(body) };
+      const doc = documentOf(files);
+      const entity = doc.entities.find((e) => e.name === "Article")!;
+      const code = viewOf("Article", inputOf(doc)).methods.find((m) => m.name === "purge")!.statements.join("\n");
+      expect(code.includes("selectByKeyForUpdate")).toBe(reads);
+      expect(explainAction(entity, "purge")![1]).toContain(reads ? "read-then-write" : "one delete by key");
+    }
   });
   test("an auto action is explained and an unknown action is undefined", () => {
     expect(explainAction(article_(), "destroy")![0]).toBe("Article.destroy (destroy)");

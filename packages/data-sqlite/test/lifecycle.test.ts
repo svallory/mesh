@@ -162,6 +162,16 @@ entity :Task table="tasks"
         run() {
           throw new Error("boom");
         }
+    update :peek
+      do
+        run({ before, context }) {
+          context.log.push(String((before as any).owner));
+        }
+    update :scribble
+      do
+        run({ self }) {
+          self.title = "changed by run";
+        }
     destroy :remove
       input
         string :reason
@@ -211,6 +221,7 @@ describe("the generated files", () => {
 });
 
 const NOW = new Date("2026-10-10T10:00:00.000Z");
+let clockNow = NOW;
 const alice = { id: "00000000-0000-4000-8000-0000000000a1" };
 
 async function fresh() {
@@ -218,7 +229,7 @@ async function fresh() {
   await createSchema(db, app.tables);
   const log: string[] = [];
   const ctx = { actor: alice, log };
-  const mesh = app.bind(db, { clock: () => NOW });
+  const mesh = app.bind(db, { clock: () => clockNow });
   const member = await mesh.joinMember({ name: "Ada", plan: "paid" }, ctx);
   const owner = await mesh.joinMember({ name: "Bo" }, ctx);
   return { db, mesh, ctx, log, member, owner };
@@ -459,9 +470,35 @@ describe("update", () => {
     const world = await fresh();
     try {
       const row = await openTask(world);
-      await new Promise((resolve) => setTimeout(resolve, 5));
+      clockNow = new Date(NOW.getTime() + 5000);
       const touched = await world.mesh.showTask({ id: row.id }, world.ctx);
       expect(touched.touchedAt.getTime()).toBeGreaterThan(row.touchedAt.getTime());
+      clockNow = NOW;
+    } finally { await world.db.close(); }
+  });
+});
+
+describe("a function cannot reach past what it was given", () => {
+  test("a plain function that reads a relationship on `before` throws, naming the field, instead of reading undefined", async () => {
+    const world = await fresh();
+    try {
+      const row = await openTask(world);
+      const error = await failure(world.mesh.peekTask({ id: row.id }, world.ctx));
+      expect(error).toBeInstanceOf(FrameworkError);
+      expect((error as Error).message).toContain("Task.owner");
+      expect((error as Error).message).toContain("not loaded");
+    } finally { await world.db.close(); }
+  });
+
+  test("a run that assigns to self throws a FrameworkError that points at `set`, and nothing is stored", async () => {
+    const world = await fresh();
+    try {
+      const row = await openTask(world, { title: "keep" });
+      const error = await failure(world.mesh.scribbleTask({ id: row.id }, world.ctx));
+      expect(error).toBeInstanceOf(FrameworkError);
+      expect((error as Error).message).toContain("Task.scribble");
+      expect((error as Error).message).toContain("`set`");
+      expect((await world.mesh.readTask({}, world.ctx))[0]).toMatchObject({ title: "keep" });
     } finally { await world.db.close(); }
   });
 });

@@ -39,6 +39,8 @@ interface Ty {
   /** A literal, so `a === b` does not warn about null equality. */
   literal?: boolean;
   atom?: string;
+  /** The stored record (`before`): columns only, nothing is loaded for it. */
+  stored?: boolean;
 }
 
 class Demote extends Error {
@@ -105,7 +107,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       case "atom": return { c: "enum", nullable: false, literal: true, atom: n.value };
       case "var": {
         if (n.name === "self") return { c: "record", nullable: false, entity: scope.entity };
-        if (n.name === "before") return { c: "record", nullable: scope.beforeNullable, entity: scope.entity };
+        if (n.name === "before") return { c: "record", nullable: scope.beforeNullable, entity: scope.entity, stored: true };
         if (n.name === "input") return { c: "input", nullable: false };
         if (n.name === "actor" || n.name === "context") return { c: "any", nullable: false };
         return scope.locals.get(n.name) ?? { c: "any", nullable: false };
@@ -116,6 +118,12 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
           report("error", "MESH_EXPR_NULLABLE_ACCESS",
             `\`.${n.name}\` is read through a value that may be null`, n.position,
             `write \`?.${n.name}\`, which gives null when the value is null`);
+        }
+        if (owner.stored && owner.entity && !owner.entity.attributes.some((a) => a.name === n.name)
+          && (owner.entity.relationships.some((r) => r.name === n.name) || owner.entity.computed.some((x) => x.name === n.name))) {
+          report("error", "MESH_BEFORE_NOT_LOADED",
+            `\`before.${n.name}\` is a ${owner.entity.relationships.some((r) => r.name === n.name) ? "relationship" : "computed field"}, and \`before\` holds only the stored columns`, n.position,
+            `read \`&${n.name}\` (or \`self.${n.name}\`) to get it loaded, or compare the stored key (for a relationship, \`before.${n.name}Id\`)`);
         }
         let result: Ty;
         try { result = memberTy(scope, owner, n.name); }
@@ -232,17 +240,17 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     void e;
   }
 
-  function demote(e: Expression, d: Demote, quiet = false): void {
+  function demote(e: Expression, d: Demote): void {
     const tree = e.tree!;
     delete e.tree;
     e.plain = { why: "unsupported-construct", detail: d.detail, position: d.position, edits: options.editsOf(e), ...(/^\s*\(.*\)\s*\{/s.test(e.source) && !e.source.includes("=>") ? { method: true as const } : {}) };
-    if (!quiet && (d.always || hasOperator(tree))) warnPlain(e, d.detail, d.position);
+    if ((d.always || hasOperator(tree))) warnPlain(e, d.detail, d.position);
   }
 
   /** Check one expression; `boolean` says the result must be a boolean (a check, a condition, a filter). Returns the result type. */
-  function visit(e: Expression, scope: Scope, boolean: boolean, quiet = false): Ty | null {
+  function visit(e: Expression, scope: Scope, boolean: boolean): Ty | null {
     if (e.plain) {
-      if (!quiet && (e.plain.why === "unsupported-construct" || e.plain.why === "reads-record-in-helper") && e.plain.operators)
+      if ((e.plain.why === "unsupported-construct" || e.plain.why === "reads-record-in-helper") && e.plain.operators)
         warnPlain(e, e.plain.detail, e.plain.position);
       return null;
     }
@@ -252,7 +260,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       if (boolean && t.c !== "boolean" && t.c !== "any") throw new Demote("a result that is not a boolean (truthiness)", e.tree.position, true);
       return t;
     } catch (x) {
-      if (x instanceof Demote) { demote(e, x, quiet); return null; }
+      if (x instanceof Demote) { demote(e, x); return null; }
       throw x;
     }
   }
@@ -296,8 +304,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     for (const check of validate) {
       visit(check.that, scope, true);
       if (check.when) visit(check.when, scope, true);
-      // `details` builds data (an object, a comparison for the caller to read); plain TypeScript is the expected form, so it earns no warning.
-      if (check.details) visit(check.details, scope, false, true);
+      if (check.details) visit(check.details, scope, false);
     }
     steps(list, entity, scope);
   }

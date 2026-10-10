@@ -7,6 +7,7 @@ import {
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
   parseInput,
+  readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
   type BindOptions as $BindOptions,
@@ -66,9 +67,10 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}) {
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
         if (parsed.name !== undefined) $changes.name = $record.name = parsed.name;
+        const $self = $readOnlyRecord($record, "Workspace.rename");
         const $s = $scope(
           {
-            self: $record,
+            self: $self,
             input: parsed,
             actor: $actor,
             context: $context,

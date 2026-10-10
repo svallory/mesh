@@ -8,6 +8,7 @@ import {
   guarded as $guarded,
   loadInto as $loadInto,
   parseInput,
+  readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
   type BindOptions as $BindOptions,
@@ -43,7 +44,7 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}) {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        const $now = new Date();
+        const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           createdAt: $now,
@@ -53,7 +54,10 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}) {
         };
         const $record: $Row = { ...$changes };
         const $load = { actor: $actor, context: $context, clock: options.clock };
-        const $self = $guarded($loadPlan, "Dependency", $record, "action function");
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Dependency", $record, "action function"),
+          "Dependency.add",
+        );
         const $s = $scope(
           {
             self: $self,

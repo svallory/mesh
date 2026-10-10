@@ -5,7 +5,7 @@ description: "One action call from start to finish: the eight phases, `validate`
 
 # Action lifecycle
 
-Status: design; built in milestone M5 ([roadmap](../roadmap/roadmap.md), M5). A first version (validate the input, open a transaction, call the data layer, commit) arrives in M2. Nothing on this page exists as code yet. Policies, which fill the authorizer slot, arrive in M8.
+Status: the phases are built (M5, first half; [roadmap](../roadmap/roadmap.md)); composition is design. The phases below run as described (M5, first half): cast, transaction, read under the lock, `validate`, `do`, write. Action composition (`actions`, `tx`) and `after=:write` are the second half of M5, and policies, which fill the authorizer slot, arrive in M8. Policies, which fill the authorizer slot, arrive in M8.
 
 ::: callout info "What the code does today"
 The run-time library on `main` (`@meshfw/runtime`) exports `ActionContext` for the second argument ([ADR-0059](../decisions/0059-action-context.md)), with `MeshError`, `InvalidInputError`, `NotFoundError(entity, key)` and `ForbiddenError` and `FrameworkError`. Since [PR #54](https://github.com/svallory/mesh/pull/54) the `actions` generator writes one function per action that validates its input, opens one transaction, applies a `set` whose values are literals or atoms, and calls the data layer; no other phase runs yet (checks and steps M4/M5, `load` M7, policies M8), and each generated method names what it skips in a comment. This page describes the lifecycle as designed, in the entity syntax ([ADR-0067](../decisions/0067-members-imports-input-static-files.md)).
@@ -62,7 +62,7 @@ enter -> cast -> plan -> pre-check ->
 
 ## The plan: chosen at build time
 
-The plan is chosen when the project is built, once, and printed by `mesh explain <entity> <action>` ([roadmap](../roadmap/roadmap.md), M5). `explain` output for the example is committed and guarded. At run time phase 3 does not choose anything; it runs the steps in the order the plan fixed, and it still gets its own tracing span once tracing returns. Until atomic updates return after Mesh 1.0, every update or destroy is read-then-write and `explain` says so ([ADR-0072](../decisions/0072-mesh-1-0-is-the-port-gate.md)).
+The plan is chosen when the project is built, once, and printed by `mesh explain <entity> <action>` ([roadmap](../roadmap/roadmap.md), M5). `explain` is tested in the compiler and the CLI; no example commits its output yet. At run time phase 3 does not choose anything; it runs the steps in the order the plan fixed, and it still gets its own tracing span once tracing returns. Until atomic updates return after Mesh 1.0, every update or destroy is read-then-write and `explain` says so ([ADR-0072](../decisions/0072-mesh-1-0-is-the-port-gate.md)).
 
 This is the answer to Ash's bug #2969, fixed the day it was reported. In Ash a single-record update runs `change/3` when the changeset is built, then builds a second changeset and runs `atomic/3`. The second keeps attribute values but drops hooks and filters, so a `change filter(...)` stopped working on the atomic path and a non-matching row was written ([Ash runtime internals](../research/ash-runtime-internals.md), section 1.2 and 12.B item 21; [research synthesis](../research/synthesis.md), section 2.2). Mesh picks one strategy before anything runs, and a step never runs twice ([ADR-0017](../decisions/0017-atomic-by-default-and-classification.md)).
 

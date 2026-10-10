@@ -128,6 +128,24 @@ export function alwaysFor(entity: Entity, action: Action): Always[] {
     || block.types?.includes(action.kind) || block.actions?.some((ref) => ref.name === action.name));
 }
 
+/**
+ * The steps a generated action runs. A destroy returns nothing and writes nothing, so a `set` or a `load` has nothing to
+ * act on: the build rejects one written for a destroy (`checkLifecycleLimits`), and the only ones left here come from an
+ * `always` block that covers every action, which a destroy skips. Shared with `mesh explain`, so the two agree.
+ */
+export function stepsFor(action: Action, steps: readonly Step[]): Step[] {
+  if (action.kind !== "destroy") return [...steps];
+  const out: Step[] = [];
+  for (const step of steps) {
+    if (step.kind === "set" || step.kind === "load") continue;
+    if (step.kind === "when") {
+      const inner = stepsFor(action, step.steps);
+      if (inner.length) out.push({ ...step, steps: inner });
+    } else out.push(step);
+  }
+  return out;
+}
+
 /** A policy applies when it names the action's type or the action; one that names neither applies to every action. */
 export function policiesFor(entity: Entity, action: Action): string[] {
   return entity.policies
@@ -225,8 +243,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     ];
     const checks = blocks.flatMap((block) => block.validate);
     const writes = action.kind !== "destroy";
-    // A destroy returns nothing, so a `load` step has nothing to load onto.
-    const steps = blocks.flatMap((block) => block.steps).filter((step) => writes || step.kind !== "load");
+    const steps = stepsFor(action, blocks.flatMap((block) => block.steps));
     const idOf = (expression: Expression): string => {
       const id = ids.get(expression);
       if (id === undefined) throw emitError("MESH_EMIT_NAME", "An expression has no id", expression.position);
@@ -241,7 +258,9 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     for (const step of steps)
       if (step.kind === "set")
         for (const { member } of step.assignments) setColumns.add(columnOf(entity, member.name, member.position).name);
-    const loadNames = [...new Set(steps.flatMap((step) => (step.kind === "load" ? step.members.map((member) => member.name) : [])))];
+    const loadNames = [...new Set(steps.flatMap(function namesOf(step): string[] {
+      return step.kind === "load" ? step.members.map((member) => member.name) : step.kind === "when" ? step.steps.flatMap(namesOf) : [];
+    }))];
     const anyLoad = steps.some(function hasLoad(step): boolean { return step.kind === "load" || (step.kind === "when" && step.steps.some(hasLoad)); });
     const stamped = entity.attributes.filter((a) => a.on === "update");
     // Does any function of the action read a relationship or computed field? Only then is something ever loaded onto the record.
@@ -420,7 +439,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         runtime.add("loadRows");
         used.load = true;
         used.plan = true;
-        emit("// after commit: the result, with what a load step named");
+        emit("// still inside the transaction: the result, with what a load step named");
         if (loadNames.length) {
           extraTypes.add(`${recordName}With`);
           returnType = `${recordName}With<${loadNames.map((name) => JSON.stringify(name)).join(" | ")}>`;
@@ -436,7 +455,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       used.options = true;
       prelude.push("const $context = (context ?? {}) as unknown as Record<string, unknown>;", "const $actor = $context.actor;");
     }
-    if (used.now) prelude.push("const $now = new Date();");
+    if (used.now) { used.options = true; prelude.push("const $now = options.clock?.() ?? new Date();"); }
     const afterHead: string[] = [];
     if (used.load) afterHead.push("const $load = { actor: $actor, context: $context, clock: options.clock };");
     if (used.scope) {
@@ -445,12 +464,18 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       const stored = action.kind !== "create";
       const scopeAlias = stored ? "$StoredScope" : "$Scope";
       scopes.add(stored ? `${recordName}StoredScope as $StoredScope` : `${recordName}Scope as $Scope`);
+      runtime.add("readOnlyRecord");
+      const where = JSON.stringify(`${entity.name}.${action.name}`);
       if (loader) {
         used.plan = true;
         runtime.add("guarded");
-        afterHead.push(`const $self = $guarded($loadPlan, ${JSON.stringify(entity.name)}, $record, "action function");`);
-      }
-      afterHead.push(`const $s = $scope({ self: ${SELF}, input: parsed, actor: $actor, context: $context, before: ${action.kind === "create" ? "null" : `$before as unknown as ${recordName}`}, tx: undefined }, options) as unknown as ${scopeAlias};`);
+        afterHead.push(`const $self = $readOnlyRecord($guarded($loadPlan, ${JSON.stringify(entity.name)}, $record, "action function"), ${where});`);
+      } else afterHead.push(`const $self = $readOnlyRecord($record, ${where});`);
+      // `before` holds the stored columns only: a relationship or computed field read on it throws instead of coming back undefined.
+      const beforeView = action.kind === "create" ? "null"
+        : loader ? `$guarded($loadPlan, ${JSON.stringify(entity.name)}, $before, "action function") as unknown as ${recordName}`
+          : `$before as unknown as ${recordName}`;
+      afterHead.push(`const $s = $scope({ self: $self, input: parsed, actor: $actor, context: $context, before: ${beforeView}, tx: undefined }, options) as unknown as ${scopeAlias};`);
     }
     if (used.plan) planUsed = true;
     if (used.options) optionsUsed = true;

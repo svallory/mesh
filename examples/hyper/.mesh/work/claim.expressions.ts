@@ -32,8 +32,7 @@ export const expressions = {
   // check :claimActive that, translated (src/domain/work/claim.mesh.mx:38:16)
   "renew.check.claimActive.that": ($s: ClaimStoredScope) => $.eq($s.self.state, "active"),
   // check :claimNotExpired that, translated (src/domain/work/claim.mesh.mx:43:16)
-  "renew.check.claimNotExpired.that": ($s: ClaimStoredScope) =>
-    $.gt($s.before?.expiresAt, $.now($s)),
+  "renew.check.claimNotExpired.that": ($s: ClaimStoredScope) => $.gt($s.self.expiresAt, $.now($s)),
   // set &expiresAt, translated (src/domain/work/claim.mesh.mx:49:22)
   "renew.step.0.set.expiresAt": ($s: ClaimStoredScope) => $s.input?.newExpiresAt,
   // check :currentFence that, translated (src/domain/work/claim.mesh.mx:56:16)
@@ -47,14 +46,17 @@ export const expressions = {
   },
   // check :claimActive that, translated (src/domain/work/claim.mesh.mx:62:16)
   "release.check.claimActive.that": ($s: ClaimStoredScope) => $.eq($s.self.state, "active"),
-  // set &endedAt, translated (src/domain/work/claim.mesh.mx:69:20)
+  // check :claimNotExpired that, translated (src/domain/work/claim.mesh.mx:67:16)
+  "release.check.claimNotExpired.that": ($s: ClaimStoredScope) =>
+    $.gt($s.self.expiresAt, $.now($s)),
+  // set &endedAt, translated (src/domain/work/claim.mesh.mx:74:20)
   "release.step.0.set.endedAt": ($s: ClaimStoredScope) => $.now($s),
-  // set &endReason, translated (src/domain/work/claim.mesh.mx:70:22)
+  // set &endReason, translated (src/domain/work/claim.mesh.mx:75:22)
   "release.step.0.set.endReason": ($s: ClaimStoredScope) => $.coalesce($s.input?.reason, null),
-  // check :claimActive that, translated (src/domain/work/claim.mesh.mx:76:16)
+  // check :claimActive that, translated (src/domain/work/claim.mesh.mx:81:16)
   "revoke.check.claimActive.that": ($s: ClaimStoredScope) => $.eq($s.self.state, "active"),
-  // set &endedAt, translated (src/domain/work/claim.mesh.mx:83:20)
+  // set &endedAt, translated (src/domain/work/claim.mesh.mx:88:20)
   "revoke.step.0.set.endedAt": ($s: ClaimStoredScope) => $.now($s),
-  // set &endReason, translated (src/domain/work/claim.mesh.mx:84:22)
+  // set &endReason, translated (src/domain/work/claim.mesh.mx:89:22)
   "revoke.step.0.set.endReason": ($s: ClaimStoredScope) => $.coalesce($s.input?.reason, null),
 } as const;

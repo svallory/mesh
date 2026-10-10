@@ -9,6 +9,7 @@ import {
   guarded as $guarded,
   loadInto as $loadInto,
   parseInput,
+  readOnlyRecord as $readOnlyRecord,
   rejectComputedQuery,
   runCheck as $runCheck,
   scope as $scope,
@@ -53,7 +54,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        const $now = new Date();
+        const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           title: parsed.title,
@@ -67,7 +68,10 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
         };
         const $record: $Row = { ...$changes };
         const $load = { actor: $actor, context: $context, clock: options.clock };
-        const $self = $guarded($loadPlan, "Task", $record, "action function");
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Task", $record, "action function"),
+          "Task.create",
+        );
         const $s = $scope(
           {
             self: $self,
@@ -111,14 +115,17 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
         const $record: $Row = { ...$before };
         if (parsed.title !== undefined) $changes.title = $record.title = parsed.title;
         if (parsed.intent !== undefined) $changes.intent = $record.intent = parsed.intent;
-        const $self = $guarded($loadPlan, "Task", $record, "action function");
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Task", $record, "action function"),
+          "Task.update",
+        );
         const $s = $scope(
           {
             self: $self,
             input: parsed,
             actor: $actor,
             context: $context,
-            before: $before as unknown as Task,
+            before: $guarded($loadPlan, "Task", $before, "action function") as unknown as Task,
             tx: undefined,
           },
           options,
@@ -178,14 +185,17 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
         if (parsed.priority !== undefined) $changes.priority = $record.priority = parsed.priority;
-        const $self = $guarded($loadPlan, "Task", $record, "action function");
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Task", $record, "action function"),
+          "Task.setPriority",
+        );
         const $s = $scope(
           {
             self: $self,
             input: parsed,
             actor: $actor,
             context: $context,
-            before: $before as unknown as Task,
+            before: $guarded($loadPlan, "Task", $before, "action function") as unknown as Task,
             tx: undefined,
           },
           options,
@@ -239,14 +249,17 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
         const $record: $Row = { ...$before };
         if (parsed.parent !== undefined) $changes.parentId = $record.parentId = parsed.parent;
         const $load = { actor: $actor, context: $context, clock: options.clock };
-        const $self = $guarded($loadPlan, "Task", $record, "action function");
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Task", $record, "action function"),
+          "Task.move",
+        );
         const $s = $scope(
           {
             self: $self,
             input: parsed,
             actor: $actor,
             context: $context,
-            before: $before as unknown as Task,
+            before: $guarded($loadPlan, "Task", $before, "action function") as unknown as Task,
             tx: undefined,
           },
           options,
@@ -314,14 +327,17 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
         if ($before === undefined) throw new $NotFoundError("Task", $key);
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
-        const $self = $guarded($loadPlan, "Task", $record, "action function");
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Task", $record, "action function"),
+          "Task.reopen",
+        );
         const $s = $scope(
           {
             self: $self,
             input: parsed,
             actor: $actor,
             context: $context,
-            before: $before as unknown as Task,
+            before: $guarded($loadPlan, "Task", $before, "action function") as unknown as Task,
             tx: undefined,
           },
           options,

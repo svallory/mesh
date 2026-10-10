@@ -13,14 +13,14 @@ import type { Run, StartRunInput, ReadRunInput } from "./run.types";
 import { startRunInput, readRunInput } from "./run.validators";
 import { tables } from "../schema";
 
-export function bindRun(layer: $DataLayer, _options: $BindOptions = {}) {
+export function bindRun(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
     async start(input: StartRunInput, ...[_context]: $ContextArgument): Promise<Run> {
       // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(startRunInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $now = new Date();
+        const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           inputs: parsed.inputs === undefined ? {} : parsed.inputs,

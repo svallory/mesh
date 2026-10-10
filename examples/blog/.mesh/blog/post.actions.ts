@@ -9,6 +9,7 @@ import {
   guarded as $guarded,
   loadRows as $loadRows,
   parseInput,
+  readOnlyRecord as $readOnlyRecord,
   rejectComputedQuery,
   runCheck as $runCheck,
   scope as $scope,
@@ -51,7 +52,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}) {
       const parsed = await parseInput(createPostInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $now = new Date();
+        const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           title: parsed.title,
@@ -85,7 +86,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}) {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        const $now = new Date();
+        const $now = options.clock?.() ?? new Date();
         // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.post, $key);
@@ -93,14 +94,17 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}) {
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
         const $load = { actor: $actor, context: $context, clock: options.clock };
-        const $self = $guarded($loadPlan, "Post", $record, "action function");
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Post", $record, "action function"),
+          "Post.publish",
+        );
         const $s = $scope(
           {
             self: $self,
             input: parsed,
             actor: $actor,
             context: $context,
-            before: $before as unknown as Post,
+            before: $guarded($loadPlan, "Post", $before, "action function") as unknown as Post,
             tx: undefined,
           },
           options,
@@ -124,7 +128,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}) {
         $changes.updatedAt = $now;
         const $stored = await tx.updateByKey(tables.post, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Post", $key);
-        // after commit: the result, with what a load step named
+        // still inside the transaction: the result, with what a load step named
         return (
           await $loadRows($loadPlan, "Post", tx, [$stored], [...$loads], $load)
         )[0] as unknown as PostWith<"comments" | "excerpt">;

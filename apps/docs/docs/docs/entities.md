@@ -362,6 +362,8 @@ The atom after `check` names the rule and is the label the caller sees. Name wha
 
 A failed check throws `InvalidInputError`, whose own code is always `invalid_input`. Each failure has its own entry in `error.issues`, with the label, code, message, `details` (when the check declares them) and source position of the check. Several checks may fail in one call.
 
+**An unknown result.** A comparison with a null is neither true nor false but unknown ([ADR-0012](../architecture/decisions/0012-expression-semantics.md)). An unknown `that` fails the check, so a rule never passes because a value was missing; an unknown `when` skips the check, so a condition that cannot be decided does not apply the rule. Write `?? value` or an explicit null test when you want the other outcome.
+
 ```text "src/domain/work/claim.mesh.mx (excerpt)"
 check :taskReady [
   that=({ tx }) => taskIsReady(&task, tx)
@@ -373,7 +375,7 @@ check :taskReady [
 
 #### A check that compares with the stored record
 
-In `validate`, `&name` is the record with the member inputs applied, so a check that compares the new value with the old one cannot read the old one from `self`. `before` is the stored record, beside `self`; on a create there is none and `before` is `null`:
+In `validate`, `&name` is the record with the member inputs applied, so a check that compares the new value with the old one cannot read the old one from `self`. `before` is the stored record, beside `self`; on a create there is none and `before` is `null`. `before` holds the stored columns only: reading a relationship or a computed field on it (`before.owner`) is a build error, because nothing loads it. Read `&owner` for the related record, or compare the stored key (`before.ownerId`):
 
 ```mx "src/domain/team/membership.mesh.mx"
 entity :Membership
@@ -490,7 +492,7 @@ Steps run top to bottom after validation. Each sees the record as earlier steps 
 | `set` | Assigns fields with `&field=value` lines; a value is a literal or a one-expression arrow. A line may name a relationship, `&creator=({ actor }) => actor.id`, and stores its key |
 | `when=cond` | Runs the nested steps only when the condition holds |
 | `load=[&customer]` | Loads relationships or computed fields onto the returned record; writes nothing |
-| `run(…) { }` | Plain code inside the transaction; forces a read before the write; it can call other actions |
+| `run(…) { }` | Plain code inside the transaction; `self` is read-only in it (assigning to it throws, so use `set`); it can call other actions |
 
 The larger example below shows `set`, `when` and `load`. For the work a field assignment cannot express, use `run`:
 
@@ -509,7 +511,7 @@ entity :Invoice
         }
 ```
 
-A `run` body may call anything, including logging or messaging code. The pure-helper rule applies to translated expressions, not `run`. Reach for it only when the work is not a field assignment. A `run`, or an untranslatable check, `when` or `set` expression, makes the action read first and write second. [Using your domain](./using-your-domain.md#update) explains one statement versus two.
+A `run` body may call anything, including logging or messaging code. The pure-helper rule applies to translated expressions, not `run`. Reach for it only when the work is not a field assignment: `self` is read-only inside a `run`, and assigning to it throws an error that points at `set`. Every update reads the row first and writes second, whether or not it has a `run`; [Using your domain](./using-your-domain.md#update) explains the one statement versus two.
 
 ### Calling other actions
 

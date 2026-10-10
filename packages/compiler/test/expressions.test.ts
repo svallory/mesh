@@ -353,3 +353,36 @@ describe("the reference page", () => {
     expect(await Bun.file(PAGE_PATH).text()).toBe(renderExpressionPage());
   });
 });
+
+describe("review fixes (PR #63, round 1)", () => {
+  test("before.<relationship> and before.<computed> are build errors at the node; before.<attribute> is fine", () => {
+    for (const where of ["that", "when"]) {
+      const body = where === "that"
+        ? check("({ before }) => before.parent?.n > 1")
+        : check("() => true", "").replace("          code=", "          when=({ before }) => before.parent?.n > 1\n          code=");
+      const found = build(entity(body)).diagnostics.filter((d) => d.code === "MESH_BEFORE_NOT_LOADED");
+      expect(found, where).toHaveLength(1);
+      expect(found[0]!.severity).toBe("error");
+      expect(found[0]!.message).toContain("before.parent");
+      expect(found[0]!.fix).toContain("&parent");
+    }
+    const computed = entity(check("({ before }) => before.late"), "").replace("  actions auto", "  computed\n    boolean :late() { return &dueAt < today() }\n  actions auto");
+    expect(codes(computed)).toContain("error:MESH_BEFORE_NOT_LOADED");
+    expect(codes(entity(check("({ before }) => before.n > 1")))).not.toContain("error:MESH_BEFORE_NOT_LOADED");
+  });
+  test("plain code in details warns when it has an operator, and stays silent without one", () => {
+    const withDetails = (details: string) => entity(check("() => &n > 0").replace("          message=", `          details=${details}\n          message=`));
+    expect(codes(withDetails("({ before }) => ({ low: &title < \"b\", n: before.n })"))).toContain("warning:MESH_EXPR_PLAIN");
+    expect(codes(withDetails("({ before }) => ({ v: before.n })"))).not.toContain("warning:MESH_EXPR_PLAIN");
+  });
+  test("a destroy with a set or load step is a build error, nested or from an always block; a destroy with a run is fine", () => {
+    const base = entity("").replace("    update :go\n      validate\n", "");
+    const destroy = (body: string) => base + `    destroy :drop\n      do\n${body}`;
+    expect(codes(destroy("        set\n          &n=1\n"))).toContain("error:MESH_DESTROY_STEP");
+    expect(codes(destroy("        load=[&parent]\n"))).toContain("error:MESH_DESTROY_STEP");
+    expect(codes(destroy("        when=() => true\n          set\n            &n=1\n"))).toContain("error:MESH_DESTROY_STEP");
+    expect(codes(destroy("        run({ self }) { console.log(self.n) }\n"))).not.toContain("error:MESH_DESTROY_STEP");
+    const always = base.replace("  actions auto=[:read]\n", "  actions auto=[:read]\n    always types=[:destroy]\n      do\n        set\n          &n=1\n") + "    destroy :drop\n";
+    expect(codes(always)).toContain("error:MESH_DESTROY_STEP");
+  });
+});

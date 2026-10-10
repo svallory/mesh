@@ -92,7 +92,10 @@ export const expressions = {
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:72:19)
   "update.check.versionMatches.details": ($s: TaskStoredScope) => {
-    return (({ before }) => ({ currentVersion: before.version }))($s);
+    return (({ input, before }) => ({
+      expectedVersion: input.expectedVersion,
+      actualVersion: before.version,
+    }))($s);
   },
   // set &version, translated (src/domain/work/task.mesh.mx:76:20)
   "update.step.0.set.version": ($s: TaskStoredScope) => $.add($s.self.version, 1),
@@ -103,7 +106,10 @@ export const expressions = {
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:91:19)
   "setPriority.check.versionMatches.details": ($s: TaskStoredScope) => {
-    return (({ before }) => ({ currentVersion: before.version }))($s);
+    return (({ input, before }) => ({
+      expectedVersion: input.expectedVersion,
+      actualVersion: before.version,
+    }))($s);
   },
   // set &version, translated (src/domain/work/task.mesh.mx:95:20)
   "setPriority.step.0.set.version": ($s: TaskStoredScope) => $.add($s.self.version, 1),
@@ -119,7 +125,10 @@ export const expressions = {
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:120:19)
   "move.check.versionMatches.details": ($s: TaskStoredScope) => {
-    return (({ before }) => ({ currentVersion: before.version }))($s);
+    return (({ input, before }) => ({
+      expectedVersion: input.expectedVersion,
+      actualVersion: before.version,
+    }))($s);
   },
   // set &version, translated (src/domain/work/task.mesh.mx:124:20)
   "move.step.0.set.version": ($s: TaskStoredScope) => $.add($s.self.version, 1),
@@ -130,7 +139,10 @@ export const expressions = {
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:139:19)
   "reopen.check.versionMatches.details": ($s: TaskStoredScope) => {
-    return (({ before }) => ({ currentVersion: before.version }))($s);
+    return (({ input, before }) => ({
+      expectedVersion: input.expectedVersion,
+      actualVersion: before.version,
+    }))($s);
   },
   // set &version, translated (src/domain/work/task.mesh.mx:144:20)
   "reopen.step.0.set.version": ($s: TaskStoredScope) => $.add($s.self.version, 1),
