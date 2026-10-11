@@ -59,8 +59,9 @@ Ash examples follow [Ash features](../research/ash-features.md), section 12; the
 
 Grouped by why. Row numbers refer to section 3.
 
+- **Ash's aggregates are Mesh's rollups.** Mesh's `aggregate` is the domain-driven design one, a file naming a root entity and its parts ([ADR-0080](../decisions/0080-aggregates-and-concepts.md)).
 - **Not planned**: generic actions (55), manual actions (61), many-to-many and join resources (40), `NewType` and embedded resources (35), `bypass` and policy groups (97, rejected because a passing bypass fails open and depends on order), a policy solver.
-- **After v1**: identities beyond `unique` on one attribute (78, 79), upserts (62), bulk actions (63), multitenancy as an extension (12, 109), `relate` for managing related records (47), `after-commit` and other hooks (71), a raw-SQL `fragment` (103, 104).
+- **After v1**: identities beyond `unique` on one attribute (78, 79), upserts (62), bulk actions (63), multitenancy as an extension (12, 109), `relate` for managing related records (47), other hooks (71; there is no `after-commit` step, [ADR-0079](../decisions/0079-commands-events-and-the-outbox.md)), a raw-SQL `fragment` (103, 104).
 - **Not scheduled**: the resource options of row 6, preparations (9, 70, 72), pipelines (11, 76), temporal resources (13), `uuid_v7` and integer keys (16, 17), `update_default` (24), `description`, `sensitive`, `source` (26), selection and filterability options (28, 29), arrays (34), relationship options (42 to 46), action options (50, 58, 64, 65, 77), field policies (98), access types (99), `authorize_unless` and `forbid_unless` (94), calculation options and arguments (83, 84), aggregate options (88), `^ref` (108).
 - **Replaced by something different**: `public?` (22, open in [ADR-0035](../decisions/0035-meaning-of-public.md)), `require_atomic?` (59, inferred), `code_interface` (7, generated functions), `data_layer` and `authorizers` (3, 5, configuration or core).
 

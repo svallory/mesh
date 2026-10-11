@@ -42,6 +42,8 @@ The code on `main` uses these records' names since the realignment task (PR #47,
 
 ## What changed on 2026-10-10
 
+Records 0077 to 0085 hold the rulings of the [domain concepts study](../research/domain-concepts.md): the `surface` file ([0077](./0077-surfaces-and-file-kinds.md)), where effects go and what a service is ([0078](./0078-services-and-where-effects-go.md)), commands, events and the core outbox ([0079](./0079-commands-events-and-the-outbox.md)), aggregates and concepts ([0080](./0080-aggregates-and-concepts.md)), event sourcing and CQRS as extensions ([0081](./0081-event-sourcing-and-cqrs-are-extensions.md)), named checks and mixins ([0082](./0082-named-checks-and-mixins.md)), names ([0083](./0083-names-for-the-new-constructs.md)), architecture rules ([0084](./0084-architecture-rules-are-core.md)) and tag discovery ([0085](./0085-tag-discovery-for-dialect-tags.md)). They supersede 0035 and amend 0023, 0027, 0050, 0051, 0053, 0068, 0072 and 0075.
+
 The operator accepted [roadmap revision 5](../roadmap/roadmap.md), which ends Mesh 1.0 at the point where the Hyper engine can be ported to Mesh. Records 0068 to 0075 hold it: the gate and the cut it makes ([0072](./0072-mesh-1-0-is-the-port-gate.md), which merges six decisions of the draft: the contract, SQLite, the gate's scope, SQL translation, the extension host, and tracing with `on:load`), actions that call actions ([0068](./0068-actions-compose-through-actions-and-tx.md)), the `json` type ([0069](./0069-json-attribute-type.md)), `inverse=` ([0070](./0070-has-many-via.md)), the `system` context key ([0071](./0071-system-key-on-the-action-context.md)), plugins ([0073](./0073-plugins-follow-the-specs-single-hook.md)), write policies that read ([0074](./0074-write-policies-may-read-through-tx.md)) and the lifecycle seams ([0075](./0075-seams-use-the-extension-hosts-names.md)). Fourteen earlier records carry a note at the top and a new status: 0010, 0017, 0019, 0020, 0021, 0022, 0029, 0052, 0053, 0054, 0055, 0059, 0062 and 0063. The evidence is the [Hyper gap analysis](../research/hyper-port-gap-analysis.md).
 
 ## Current records
@@ -64,16 +66,15 @@ The operator accepted [roadmap revision 5](../roadmap/roadmap.md), which ends Me
 | [0020](./0020-extension-contributions-through-declared-points.md) | Extensions contribute to each other only through declared points | Accepted, amended by 0072, 0075 | operator |
 | [0021](./0021-composed-contracts-module.md) | Mesh generates one self-contained MX contracts module | Accepted, amended by 0072 | lead |
 | [0022](./0022-policies-simple-tier-as-extension.md) | Policies: a simple tier, solver-ready | Accepted, amended by 0055, 0072, 0074 | operator |
-| [0023](./0023-workflows-and-jobs-deferred.md) | Workflows and jobs come after v1; the adapter interface stays a design document | Accepted | operator |
+| [0023](./0023-workflows-and-jobs-deferred.md) | Workflows and jobs come after v1; the adapter interface stays a design document | Accepted, amended 2026-10-11: the outbox is core, in M6 (0079) | operator |
 | [0025](./0025-bun-only.md) | Mesh runs on Bun only | Accepted | operator |
-| [0027](./0027-no-mcp-agent-surface.md) | No MCP server; the agent surface is a rules file, later a generated CLI | Accepted | operator |
+| [0027](./0027-no-mcp-agent-surface.md) | No MCP server; the agent surface is a rules file, later a generated CLI | Accepted, amended 2026-10-11: the CLI reads a surface (0077) | operator |
 | [0028](./0028-validation-zod-behind-standard-schema.md) | Input validation is Zod behind Standard Schema (confirmed by 0062) | Accepted | lead |
 | [0029](./0029-tracing-opentelemetry-api.md) | Tracing calls the OpenTelemetry API directly | Accepted, amended by 0072 | lead |
 | [0030](./0030-established-tools-first.md) | Established tools first, behind Mesh contracts | Accepted | operator |
 | [0031](./0031-no-ci-until-mx-is-published.md) | No CI until the MX packages are published | Accepted | operator |
 | [0032](./0032-docs-site-and-decision-records.md) | Docs site in the repo; decisions as ADRs; the repo is the source of truth | Accepted | operator |
 | [0033](./0033-core-split-build-time-run-time.md) | Core packages are split by when the code runs | Accepted | roadmap author |
-| [0035](./0035-meaning-of-public.md) | What `public` on an attribute means (syntax v2 has no `public`) | Proposed | operator |
 | [0037](./0037-vocabulary-source-of-truth.md) | Contracts or registries as the source of truth for the vocabulary | Proposed | operator or lead |
 | [0038](./0038-elysia-is-not-core.md) | Elysia is not core; a candidate HTTP adapter | Accepted | operator |
 | [0039](./0039-run-time-error-positions.md) | Run-time errors: embedded positions or source maps | Proposed | operator or lead |
@@ -86,10 +87,10 @@ The operator accepted [roadmap revision 5](../roadmap/roadmap.md), which ends Me
 | [0047](./0047-actions-are-bound-to-a-data-layer.md) | Actions are bound to a data layer: `bind` and `connect` | Accepted, amended by 0059 | operator |
 | [0048](./0048-schema-inside-the-process-for-tests.md) | Schema inside the process for tests; the stable Drizzle pin | Accepted | lead |
 | [0049](./0049-vocabulary-is-meshs-own.md) | The vocabulary is Mesh's own; `resource` becomes `entity` | Accepted | operator |
-| [0050](./0050-entity-file-syntax.md) | Entity file syntax: `kind #name options`, with the reference file | Accepted | operator |
-| [0051](./0051-mesh-mx-files-and-the-mesh-host.md) | Entity files end in `.mesh.mx`; Mesh ships an MX host named `mesh` | Accepted | operator; lead, delegated |
+| [0050](./0050-entity-file-syntax.md) | Entity file syntax: `kind #name options`, with the reference file | Accepted, amended 2026-10-11: reusable steps and `after-commit` dropped (0082) | operator |
+| [0051](./0051-mesh-mx-files-and-the-mesh-host.md) | Entity files end in `.mesh.mx`; Mesh ships an MX host named `mesh` | Accepted, amended 2026-10-11: the root tag decides a file's kind (0077) | operator; lead, delegated |
 | [0052](./0052-actions-auto-and-on-load.md) | Actions are always named; `auto`; `on:load`; `arguments` | Accepted, amended by 0067, 0072 | operator |
-| [0053](./0053-validate-then-do.md) | `validate`, then `do`; steps `set`, `when`, `load`, `run`; `always`; reusable steps planned | Accepted, amended by 0067, 0068, and 2026-10-11: a check sees `self` before the input; `before` leaves `validate` | operator; lead, delegated |
+| [0053](./0053-validate-then-do.md) | `validate`, then `do`; steps `set`, `when`, `load`, `run`; `always`; reusable steps planned | Accepted, amended by 0067, 0068, and 2026-10-11: a check sees `self` before the input; `before` leaves `validate`; step files and `after-commit` dropped (0082, 0079) | operator; lead, delegated |
 | [0054](./0054-write-strategy-is-inferred.md) | Mesh infers the write strategy; no `require-atomic` | Accepted, amended by 0072 | lead, delegated |
 | [0055](./0055-policies-are-core.md) | Policies are core; every covering policy must pass; no policies means forbidden | Accepted, amended by 0071, 0072, 0074, and 2026-10-11: a policy sees `self` before the input | operator; lead, delegated |
 | [0056](./0056-translated-expressions-are-one-expression-arrows.md) | A function whose body is one expression is translated; Mesh builds its own translator | Accepted | operator; lead, delegated |
@@ -104,15 +105,24 @@ The operator accepted [roadmap revision 5](../roadmap/roadmap.md), which ends Me
 | [0065](./0065-mx-highlighting-on-the-docs-site.md) | The docs site highlights `mx` code with MX's tree-sitter highlighter | Accepted | lead, delegated, with the MX lead |
 | [0066](./0066-names-and-references-are-atoms.md) | Names and references are atoms: `kind :name options` | Accepted, amended by 0067 | operator (three points by the lead) |
 | [0067](./0067-members-imports-input-static-files.md) | Members are `&name`, entities are imports, one `input` section, static files | Accepted | operator; marked choices by the lead |
-| [0068](./0068-actions-compose-through-actions-and-tx.md) | Steps and checks receive bound `actions` and `tx`; a `run` step may run `after=:write` | Accepted, amended 2026-10-11: `before` leaves `validate` | operator |
+| [0068](./0068-actions-compose-through-actions-and-tx.md) | Steps and checks receive bound `actions` and `tx`; a `run` step may run `after=:write` | Accepted, amended 2026-10-11: `before` leaves `validate`; an effect across aggregates is a service (0078) | operator |
 | [0069](./0069-json-attribute-type.md) | `json` is an attribute type | Accepted | operator |
 | [0070](./0070-has-many-via.md) | A `has-many` names the inverse it follows with `inverse=` | Accepted | operator |
 | [0071](./0071-system-key-on-the-action-context.md) | `system` is a reserved key of the `ActionContext`; policies decide what it admits | Accepted | operator |
-| [0072](./0072-mesh-1-0-is-the-port-gate.md) | Mesh 1.0 is the Hyper port gate: the spec's v0 on SQLite, the 126-case suite; what leaves the 1.0 line | Accepted | operator |
+| [0072](./0072-mesh-1-0-is-the-port-gate.md) | Mesh 1.0 is the Hyper port gate: the spec's v0 on SQLite, the 126-case suite; what leaves the 1.0 line | Accepted, amended 2026-10-11: M6 builds domain events and the outbox; HA keeps `@meshfw/jsonrpc` (0077, 0079) | operator |
 | [0073](./0073-plugins-follow-the-specs-single-hook.md) | Plugins follow the spec: one `task.claim` hook, before the transaction | Accepted | operator |
 | [0074](./0074-write-policies-may-read-through-tx.md) | A write policy may read other entities through `tx` | Accepted | operator |
-| [0075](./0075-seams-use-the-extension-hosts-names.md) | Three lifecycle seams, named and shaped as the extension host's run-time points | Accepted | operator |
+| [0075](./0075-seams-use-the-extension-hosts-names.md) | Three lifecycle seams, named and shaped as the extension host's run-time points | Accepted, amended 2026-10-11: domain events replace the application's event table (0079) | operator |
 | [0076](./0076-compiler-front-end-and-back-end-are-separate.md) | The compiler's front end and its TypeScript back end are separate folders | Accepted | operator |
+| [0077](./0077-surfaces-and-file-kinds.md) | A `surface` file lists what an audience may reach; the root tag decides a file's kind; fields fail closed | Accepted | operator |
+| [0078](./0078-services-and-where-effects-go.md) | Effects are split three ways; services follow Vernon's definition; `uses`; the service shape and general publish-subscribe are open | Accepted, two items open | operator |
+| [0079](./0079-commands-events-and-the-outbox.md) | Commands and events are files; `publish` writes to a core outbox built in M6; no `after-commit` step | Accepted | operator |
+| [0080](./0080-aggregates-and-concepts.md) | An aggregate is a file; `concept` is a value object; a repository is a pattern | Accepted | operator; lead reading for DOM-31 |
+| [0081](./0081-event-sourcing-and-cqrs-are-extensions.md) | Event sourcing and CQRS are two extensions | Accepted | operator |
+| [0082](./0082-named-checks-and-mixins.md) | Named checks in a `checks` section; `mixin` files with `use`; step files dropped | Accepted | operator; lead reading for DOM-33 |
+| [0083](./0083-names-for-the-new-constructs.md) | The name-clash table is accepted for the port | Accepted | operator |
+| [0084](./0084-architecture-rules-are-core.md) | Architecture rules are core, in `architecture.mesh.mx`; when they are built is open | Accepted, one item open | operator |
+| [0085](./0085-tag-discovery-for-dialect-tags.md) | MX discovers a dialect's tags from declared folders (target design) | Accepted | operator with MX |
 
 ## Superseded records
 
@@ -128,8 +138,9 @@ The operator accepted [roadmap revision 5](../roadmap/roadmap.md), which ends Me
 | [0026](./0026-node-parity.md) | Mesh runs on Bun and Node | [0025](./0025-bun-only.md) | operator |
 | [0034](./0034-vocabulary-copies-ash-dsl.md) | The vocabulary copies Ash's DSL for v1 | [0049](./0049-vocabulary-is-meshs-own.md) | operator; lead for the spelling |
 | [0036](./0036-deny-by-default-arrives-with-policies.md) | Deny by default arrives with the policies extension | [0055](./0055-policies-are-core.md) | lead |
+| [0035](./0035-meaning-of-public.md) | What `public` on an attribute means (was Proposed) | [0077](./0077-surfaces-and-file-kinds.md) | operator |
 | [0040](./0040-package-and-command-names.md) | Package scope and command name (was Proposed) | [0060](./0060-meshfw-package-scope.md) | operator |
 
 ## Open decisions at a glance
 
-Six records are Proposed. [ADR-0012](./0012-expression-semantics.md) (expression semantics) was ruled by the lead on 2026-10-10 and awaits the operator's review. [ADR-0037](./0037-vocabulary-source-of-truth.md) now also decides where attribute-type tag names come from ([ADR-0050](./0050-entity-file-syntax.md)) and should be ruled in the realignment task. [ADR-0039](./0039-run-time-error-positions.md) (before M5), [ADR-0045](./0045-has-one-uniqueness.md) (before M7) and [ADR-0046](./0046-denied-atomic-write-outcome.md) (before M8) have a working assumption in the roadmap. [ADR-0044](./0044-folding-record-reading-validations.md) is for after v1. [ADR-0035](./0035-meaning-of-public.md) blocks nothing in v1.
+Five records are Proposed. [ADR-0012](./0012-expression-semantics.md) (expression semantics) was ruled by the lead on 2026-10-10 and awaits the operator's review. [ADR-0037](./0037-vocabulary-source-of-truth.md) now also decides where attribute-type tag names come from ([ADR-0050](./0050-entity-file-syntax.md)) and should be ruled in the realignment task. [ADR-0039](./0039-run-time-error-positions.md) (before M5), [ADR-0045](./0045-has-one-uniqueness.md) (before M7) and [ADR-0046](./0046-denied-atomic-write-outcome.md) (before M8) have a working assumption in the roadmap. [ADR-0044](./0044-folding-record-reading-validations.md) is for after v1. [ADR-0078](./0078-services-and-where-effects-go.md) leaves two items open (the service construct and general publish-subscribe) and [ADR-0084](./0084-architecture-rules-are-core.md) one (when the architecture rules are built).

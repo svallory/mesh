@@ -32,7 +32,7 @@ An extension declares itself through one typed manifest ([roadmap](../roadmap/ro
 | Tooling hooks | A `mesh` subcommand. |
 | Adapter requirements | What the extension requires from adapters. |
 | Contribution points | Points the extension publishes for others and points it uses in others. |
-| Run-time points | Named, reusable checks, computed fields and policy helpers an entity file refers to by name. |
+| Run-time points | Computed fields and policy helpers an entity file refers to by name. Named checks are core, an entity-level `checks` section ([ADR-0082](../decisions/0082-named-checks-and-mixins.md)). |
 
 The roadmap lists the kinds, not the manifest's exact shape: not decided. Core's own emitters and the data adapters' emitters register through the same interface, and the contracts of M2 to M5 are declared stable at that point.
 

@@ -1,9 +1,11 @@
 ---
 title: "0053. An action body is `validate`, then `do`; steps are `set`, `when`, `load` and `run`"
-description: "Decision record 0053: validations, the steps of an action, the shared `always` body and reusable steps. Status: Accepted, amended by ADR-0067, ADR-0068, and on 2026-10-11 (a check sees `self` before the input)."
+description: "Decision record 0053: validations, the steps of an action, the shared `always` body and reusable steps. Status: Accepted, amended by ADR-0067, ADR-0068, and on 2026-10-11 (a check sees `self` before the input). Amended 2026-10-11 (DOM-25, DOM-28)."
 ---
 
 # 0053. An action body is `validate`, then `do`; steps are `set`, `when`, `load` and `run`
+
+> **Amendment, 2026-10-11 (DOM-25, DOM-28).** Step files and reusable steps are dropped: reuse is a TypeScript helper or a `mixin` ([ADR-0082](./0082-named-checks-and-mixins.md)), and named checks are an entity-level `checks` section. There is no `after-commit` step either; an effect after commit is a `publish` plus a listener ([ADR-0079](./0079-commands-events-and-the-outbox.md)). Read the "reusable steps" paragraph and the planned `after-commit` line below as history.
 
 > **Amended** by [ADR-0068](./0068-actions-compose-through-actions-and-tx.md) on 2026-10-10: A `run` body and a function-valued check, `when` or `set` value also receive bound `actions` and `tx`, and a `run` step may be `after=:write`. The body below is kept as history.
 >

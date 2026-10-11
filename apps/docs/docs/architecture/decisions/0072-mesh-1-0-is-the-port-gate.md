@@ -1,9 +1,11 @@
 ---
 title: "0072. Mesh 1.0 is the Hyper port gate: the spec's v0 on SQLite, the 126-case suite"
-description: "Decision record 0072: what Mesh 1.0 is, which contract the port follows, what the gate covers, and what leaves the 1.0 line (SQL translation, atomic updates, the extension host, Postgres, tracing, on:load). Status: Accepted."
+description: "Decision record 0072: what Mesh 1.0 is, which contract the port follows, what the gate covers, and what leaves the 1.0 line (SQL translation, atomic updates, the extension host, Postgres, tracing, on:load). Status: Accepted. Amended 2026-10-11 (DOM-18, DOM-20, DOM-25)."
 ---
 
 # 0072. Mesh 1.0 is the Hyper port gate: the spec's v0 on SQLite, the 126-case suite
+
+> **Amendment, 2026-10-11 (DOM-18, DOM-20, DOM-25).** M6 builds domain events and the outbox ([ADR-0079](./0079-commands-events-and-the-outbox.md)), and HA drops its hand-written event table and keeps `@meshfw/jsonrpc` with a hand-written method table ([ADR-0077](./0077-surfaces-and-file-kinds.md)). The `after-commit` step is no longer planned for after 1.0: it is dropped. Surfaces generate the method table after 1.0.
 
 ## Status
 

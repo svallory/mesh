@@ -395,7 +395,7 @@ A **seam** is a place in every generated action where your application may run c
 |:--|:--|:--|:--|
 | `beforeTransaction` | Before the transaction opens | `{ entity, action, input, context }` | Throw to refuse the call |
 | `afterWrite` | Inside the transaction, right after each row is written | `db` and `{ entity, action, before, after, input, context }` | Write through `db`; a throw rolls back the whole call |
-| `afterCommit` | Once, after the outermost transaction commits | `{ changes }`, every row written, in order | Publish; it is not called when the call rolls back |
+| `afterCommit` | Once, after the outermost transaction commits | `{ changes }`, every row written, in order | Broadcast to subscribers; it is not called when the call rolls back |
 
 Register them under `seams` in `mesh.config.ts`, and pass the same object to `bind` in a test:
 

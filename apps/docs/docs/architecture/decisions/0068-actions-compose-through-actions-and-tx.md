@@ -1,9 +1,11 @@
 ---
 title: "0068. Steps and checks receive bound `actions` and `tx`; a `run` step may run `after=:write`"
-description: "Decision record 0068: how an action calls other actions in its own transaction, what the called action checks, and how a step runs after the row is written. Status: Accepted, amended 2026-10-11 (`before` leaves `validate`)."
+description: "Decision record 0068: how an action calls other actions in its own transaction, what the called action checks, and how a step runs after the row is written. Status: Accepted, amended 2026-10-11 (`before` leaves `validate`). Amended 2026-10-11 (DOM-15)."
 ---
 
 # 0068. Steps and checks receive bound `actions` and `tx`; a `run` step may run `after=:write`
+
+> **Amendment, 2026-10-11 (DOM-15).** `actions` in an entity file is for the root writing its own parts. An effect across aggregates is a service, or until services exist plain code over `transaction` from `#mesh`; an effect that may happen later is a `publish` and a listener. A core architecture rule warns (it does not forbid) when an entity action calls another aggregate's action, and `architecture.mesh.mx` can switch the warning off. See [ADR-0078](./0078-services-and-where-effects-go.md) and [ADR-0084](./0084-architecture-rules-are-core.md). The mechanism below is unchanged.
 
 ## Status
 

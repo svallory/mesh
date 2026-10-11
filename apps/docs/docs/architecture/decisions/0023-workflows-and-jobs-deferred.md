@@ -1,9 +1,11 @@
 ---
 title: "0023. Workflows, jobs and the outbox are deferred; the adapter interface stays a design document"
-description: "Decision record 0023: Workflows, jobs and the outbox are deferred; the adapter interface stays a design document. Status: Accepted."
+description: "Decision record 0023: Workflows, jobs and the outbox are deferred; the adapter interface stays a design document. Status: Accepted. Amended 2026-10-11 (DOM-06)."
 ---
 
 # 0023. Workflows, jobs and the outbox are deferred; the adapter interface stays a design document
+
+> **Amendment, 2026-10-11 (DOM-06).** The outbox is not deferred. It is core and comes with domain events in M6: `publish` writes to it and an event bus delivers from it ([ADR-0079](./0079-commands-events-and-the-outbox.md)). Jobs and workflows stay after 1.0, and the workflow adapter interface stays a design document. Read the provisional outbox line and the "after v1" text below with that exception.
 
 ## Status
 
