@@ -22,8 +22,8 @@ import type {
  * registry cannot define (D4, D3): the expression keeps JavaScript's meaning and warns.
  */
 export interface CheckOptions {
-  /** The edits that turn an authored function into TypeScript, kept by the front end for demotion. */
-  editsOf: (expression: Expression) => SourceEdit[];
+  /** What printing a translated function as plain code needs, kept by the front end for demotion: the edits that turn it into TypeScript and the scope names it reads. */
+  demotionOf: (expression: Expression) => { edits: SourceEdit[]; roots: string[] };
 }
 
 interface Ty {
@@ -252,7 +252,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
   function demote(e: Expression, d: Demote): void {
     const tree = e.tree!;
     delete e.tree;
-    e.plain = { why: "unsupported-construct", detail: d.detail, position: d.position, edits: options.editsOf(e), ...(/^\s*\(.*\)\s*\{/s.test(e.source) && !e.source.includes("=>") ? { method: true as const } : {}) };
+    e.plain = { why: "unsupported-construct", detail: d.detail, position: d.position, ...options.demotionOf(e), ...(/^\s*\(.*\)\s*\{/s.test(e.source) && !e.source.includes("=>") ? { method: true as const } : {}) };
     if ((d.always || hasOperator(tree))) warnPlain(e, d.detail, d.position);
   }
 

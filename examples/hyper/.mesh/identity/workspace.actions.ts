@@ -6,11 +6,13 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
+  composed as $composed,
   parseInput,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
   type BindOptions as $BindOptions,
+  type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
   type Issue as $Issue,
@@ -33,7 +35,33 @@ import {
   type WorkspaceStoredScope as $StoredScope,
 } from "./workspace.expressions";
 
-export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}) {
+/**
+ * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
+ * The read actions below run the slot, then these.
+ */
+export function bindWorkspaceReads(layer: $DataLayer) {
+  return Object.freeze({
+    async read(input: ReadWorkspaceInput): Promise<Workspace[]> {
+      // enter, cast: only the declared input passes
+      const parsed = await parseInput(readWorkspaceInput, input);
+      return layer.transaction(async (tx) => {
+        return (await tx.select(tables.workspace, {
+          filter: parsed.filter,
+          sort: parsed.sort,
+          limit: parsed.limit,
+          offset: parsed.offset,
+        })) as Workspace[];
+      });
+    },
+  });
+}
+
+/**
+ * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
+ * `actions` and `tx`; the project's `bind` in the index passes it.
+ */
+export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
+  const $reads = bindWorkspaceReads(layer);
   return Object.freeze({
     async create(input: CreateWorkspaceInput, ...[_context]: $ContextArgument): Promise<Workspace> {
       // enter, cast: the call arrives with its context, and only the declared input passes
@@ -75,10 +103,10 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}) {
             actor: $actor,
             context: $context,
             before: $readOnlyRecord($before, "Workspace.rename") as unknown as Workspace,
-            tx: undefined,
+            ...$composed(compose, tx, context, "Workspace.rename"),
           },
           options,
-        ) as unknown as $StoredScope;
+        ) as unknown as $StoredScope<RenameWorkspaceInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
         await $runCheck($issues, $s, {
@@ -114,16 +142,8 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}) {
     },
 
     async read(input: ReadWorkspaceInput, ...[_context]: $ContextArgument): Promise<Workspace[]> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(readWorkspaceInput, input);
-      return layer.transaction(async (tx) => {
-        return (await tx.select(tables.workspace, {
-          filter: parsed.filter,
-          sort: parsed.sort,
-          limit: parsed.limit,
-          offset: parsed.offset,
-        })) as Workspace[];
-      });
+      // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
+      return $reads.read(input);
     },
   });
 }

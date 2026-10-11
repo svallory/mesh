@@ -3,9 +3,9 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Task } from "./task.types";
+import type { Task, TaskLoaded } from "./task.types";
 
-import type { Collaborator } from "../identity/collaborator.types";
+import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
 
 export type Submission = {
   id: string;
@@ -44,6 +44,12 @@ export type SubmissionLoadable = {
 /** A Submission with the relationships and computed fields named in N loaded. */
 export type SubmissionWith<N extends keyof SubmissionLoadable> = Submission &
   Pick<SubmissionLoadable, N>;
+
+/** A Submission as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
+export type SubmissionLoaded = Submission & {
+  task: TaskLoaded;
+  submitter: CollaboratorLoaded;
+};
 
 export type SubmissionFilter =
   | { and: readonly SubmissionFilter[] }

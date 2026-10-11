@@ -4,12 +4,14 @@
 // Mesh's own imports and internal names carry a `$` so that no entity or action name can collide with them.
 
 import {
+  composer as $makeComposer,
   FrameworkError as $FrameworkError,
   type BindOptions as $BindOptions,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
 } from "@meshfw/runtime";
-import { bindComment } from "./blog/comment.actions";
+import type { Actions, Reads } from "./composition";
+import { bindComment, bindCommentReads } from "./blog/comment.actions";
 import type {
   Comment,
   ReadCommentInput,
@@ -18,7 +20,7 @@ import type {
   CommentLoadable,
   CommentWith,
 } from "./blog/comment.types";
-import { bindPost } from "./blog/post.actions";
+import { bindPost, bindPostReads } from "./blog/post.actions";
 import type {
   Post,
   CreatePostInput,
@@ -32,7 +34,7 @@ import type {
   PostLoadable,
   PostWith,
 } from "./blog/post.types";
-import { bindUser } from "./blog/user.actions";
+import { bindUser, bindUserReads } from "./blog/user.actions";
 import type { User, CreateUserInput, ReadUserInput, UserFilter, UserSort } from "./blog/user.types";
 
 export type {
@@ -59,18 +61,23 @@ export type {
   UserFilter,
   UserSort,
 };
+export type { Actions, Reads } from "./composition";
 export { tables, commentTable, postTable, userTable } from "./schema";
 export { loadCommentFields, loadPostFields } from "./load";
 
 /**
- * Every action function, bound to `layer`. Opens nothing and creates no table:
+ * Every action function, bound to `layer`, and `transaction`. Opens nothing and creates no table:
  * the caller owns the layer and closes it.
- */
-export function bind(layer: $DataLayer, options: $BindOptions = {}) {
-  const commentActions = bindComment(layer, options);
-  const postActions = bindPost(layer, options);
-  const userActions = bindUser(layer, options);
-  return Object.freeze({
+ */ export function bind(layer: $DataLayer, options: $BindOptions = {}) {
+  // `actions` and `tx` in a function of an entity file come from this composer, which holds this binding's functions.
+  const $composer = $makeComposer(layer);
+  const commentActions = bindComment(layer, options, $composer);
+  const commentReads = bindCommentReads(layer);
+  const postActions = bindPost(layer, options, $composer);
+  const postReads = bindPostReads(layer);
+  const userActions = bindUser(layer, options, $composer);
+  const userReads = bindUserReads(layer);
+  const $functions = Object.freeze({
     readComment: commentActions.read,
     createPost: postActions.create,
     publishPost: postActions.publish,
@@ -80,6 +87,29 @@ export function bind(layer: $DataLayer, options: $BindOptions = {}) {
     destroyPost: postActions.destroy,
     createUser: userActions.create,
     readUser: userActions.read,
+  });
+  $composer.provide($functions, {
+    readComment: commentReads.read,
+    publishedPost: postReads.published,
+    readPost: postReads.read,
+    readUser: userReads.read,
+  });
+  return Object.freeze({
+    ...$functions,
+    /**
+     * Open a transaction, or join the running one, and call `fn` with every action function and every read bound to it.
+     * Resolves with what `fn` resolves with. A call through them that fails fails the transaction, even when `fn` catches it.
+     */
+    transaction<T>(
+      fn: (composition: { readonly actions: Actions; readonly tx: Reads }) => Promise<T>,
+      ...[context]: $ContextArgument
+    ): Promise<T> {
+      return $composer.transaction(
+        (composition) =>
+          fn(composition as unknown as { readonly actions: Actions; readonly tx: Reads }),
+        context,
+      );
+    },
   });
 }
 
@@ -167,6 +197,18 @@ async function $delegate<T>(
     $inFlight--;
     if ($inFlight === 0) for (const resolve of $idle.splice(0)) resolve();
   }
+}
+
+/**
+ * Open a transaction on the connected layer, or join the running one, and call `fn({ actions, tx })`: every action
+ * function and every read, bound to it, carrying `context` unless a call passes its own. Resolves with what `fn`
+ * resolves with. A call through `actions` or `tx` that fails fails the whole transaction, even when `fn` catches it.
+ */
+export async function transaction<T>(
+  fn: (composition: { readonly actions: Actions; readonly tx: Reads }) => Promise<T>,
+  ...context: $ContextArgument
+): Promise<T> {
+  return $delegate("transaction", (binding) => binding.transaction(fn, ...context));
 }
 
 export async function readComment(

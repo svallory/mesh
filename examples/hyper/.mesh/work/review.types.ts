@@ -3,9 +3,9 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Submission } from "./submission.types";
+import type { Submission, SubmissionLoaded } from "./submission.types";
 
-import type { Collaborator } from "../identity/collaborator.types";
+import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
 
 export type Review = {
   id: string;
@@ -45,6 +45,12 @@ export type ReviewLoadable = {
 
 /** A Review with the relationships and computed fields named in N loaded. */
 export type ReviewWith<N extends keyof ReviewLoadable> = Review & Pick<ReviewLoadable, N>;
+
+/** A Review as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
+export type ReviewLoaded = Review & {
+  submission: SubmissionLoaded;
+  reviewer: CollaboratorLoaded;
+};
 
 export type ReviewFilter =
   | { and: readonly ReviewFilter[] }

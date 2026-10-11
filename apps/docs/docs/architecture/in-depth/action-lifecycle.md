@@ -5,10 +5,10 @@ description: "One action call from start to finish: the eight phases, `validate`
 
 # Action lifecycle
 
-Status: the phases are built (M5, first half; [roadmap](../roadmap/roadmap.md)): cast, transaction, read under the lock, `validate`, `do`, write. Action composition (`actions`, `tx`) and `after=:write` are the second half of M5, and policies, which fill the authorizer slot, arrive in M8.
+Status: the phases are built (M5; [roadmap](../roadmap/roadmap.md)): cast, transaction, read under the lock, `validate`, `do`, write, the steps after the write, and action composition (`actions`, `tx`, the application's `transaction`). Policies, which fill the authorizer slot, arrive in M8.
 
 ::: callout info "What the code does today"
-The run-time library (`@meshfw/runtime`) exports `ActionContext` for the second argument ([ADR-0059](../decisions/0059-action-context.md)), with `MeshError`, `InvalidInputError`, `NotFoundError(entity, key)`, `ForbiddenError` and `FrameworkError`. The `actions` generator writes one function per action that casts its input, opens one transaction, reads the stored row under the lock, runs every `check` (all failures are collected into one `InvalidInputError`), runs the `do` steps (`set`, `when`, `load`, `run`), and writes through the data layer. `mesh explain <entity> <action>` prints the plan. Not built yet: `actions`/`tx` composition and `after=:write` (the second half of M5) and policies (M8); a build that uses them fails with a message that names the milestone. This page describes the lifecycle in the entity syntax ([ADR-0067](../decisions/0067-members-imports-input-static-files.md)).
+The run-time library (`@meshfw/runtime`) exports `ActionContext` for the second argument ([ADR-0059](../decisions/0059-action-context.md)), with `MeshError`, `InvalidInputError`, `NotFoundError(entity, key)`, `ForbiddenError` and `FrameworkError`. The `actions` generator writes one function per action that casts its input, opens one transaction, reads the stored row under the lock, runs every `check` (all failures are collected into one `InvalidInputError`), runs the `do` steps (`set`, `when`, `load`, `run`), writes through the data layer, then runs the `run [after=:write]` steps. A function of the entity file receives `actions` and `tx` beside `self` and `input` (see [Composition](#composition) below). `mesh explain <entity> <action>` prints the plan. Not built yet: policies (M8); the authorizer slot is in place and empty. This page describes the lifecycle in the entity syntax ([ADR-0067](../decisions/0067-members-imports-input-static-files.md)).
 :::
 
 This page follows one action call from the caller to the result. Related: [overview](../overview/architecture.md), [three rings](./three-rings.md), [build pipeline](./build-pipeline.md), [generated code and the guard](./generated-code-and-guard.md), [expressions](./expressions.md), [data layer](./data-layer.md).
@@ -59,6 +59,23 @@ enter -> cast -> plan -> pre-check ->
 | 8 | After commit | The typed result, with anything named by `load`, or a classed error. | Tracer |
 
 ([research synthesis](../research/synthesis.md), section 17; [roadmap](../roadmap/roadmap.md), M2 and M5.) The `after-commit` step is planned, not in v1 ([ADR-0053](../decisions/0053-validate-then-do.md)).
+
+## Composition
+
+An action can call other actions in its own transaction ([ADR-0068](../decisions/0068-actions-compose-through-actions-and-tx.md)). A `run` body, and a `check`, `when` or `set` value written as a function, receive two more names beside `self`, `input`, `actor`, `context` and `before`:
+
+- `actions`: every generated action function of the project. A call joins the running transaction and runs the called action's whole lifecycle, its authorizer slot included. It carries the caller's context unless it passes its own as the second argument.
+- `tx`: one function per read action, with the caller's `filter`, `sort`, `limit` and `offset`. It reads inside the transaction, so it sees the rows written earlier in it, and it skips the read authorizer.
+
+An application gets the same two from `transaction(fn, context)`, which `#mesh` exports beside `bind`. It opens a transaction, or joins the running one, and resolves with what `fn` resolves with.
+
+How it is wired. Each entity's actions file stays importable on its own, and no actions file imports another, so there is no import cycle. The generated index's `bind(layer)` makes one composer (`composer` in `@meshfw/runtime`) and passes it to every entity's bind function. Once every entity is bound, it hands the composer the bound functions and the read bodies. An action asks the composer for `{ actions, tx }` when it builds a function's scope. The types come from `composition.ts` (the `Actions` and `Reads` interfaces), which imports only the entity types files. An entity bound alone, with its own `bind<Entity>`, has no composer. Its functions get stand-ins that throw a `FrameworkError` when read, so its actions that never compose still run.
+
+A call that fails fails the transaction. A nested call joins through the data layer's re-entrant `transaction`. When a joined call fails, the layer marks the transaction for rollback. The outermost call then rejects with a `FrameworkError` whose `cause` is the nested error, even when the caller caught it. The call joins before the called action casts its input, so a cast failure counts too. An uncaught nested error reaches the caller as itself.
+
+What is handed over is read-only. A record from `actions` or `tx` follows the same rule as `self` and `before`: it is a read-only view, and a change made in place never reaches storage. In an entity file, `structuredClone` returns a plain copy the function can change. The application's `transaction` callback gets plain records.
+
+**After the write.** A `run [after=:write]` step runs once the action's own row is written, inside the transaction, with the stored record as `self`. On a create, that record carries the key the data layer filled. On a destroy, `self` is the deleted row as it was. The other steps run before the write. A `when` around an after-write step is evaluated once, before the write, with the record as the earlier steps left it. `explain` lists these steps under "after write". Use `after=:write` for a nested call that must see the row, or that changes the caller's own row: the caller's write would overwrite a change made before it.
 
 ## The plan: chosen at build time
 

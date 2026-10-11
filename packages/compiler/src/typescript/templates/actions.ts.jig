@@ -8,6 +8,7 @@ import {
   {{ name }},
   @end
   type BindOptions as $BindOptions,
+  type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
   @each(name in runtimeTypes)
@@ -37,13 +38,57 @@ import {
 import { loadPlan as $loadPlan } from {{ loadFromLiteral }};
 @end
 
-export function {{ bindName }}(layer: $DataLayer, {{ optionsName }}: $BindOptions = {}) {
+@if(readsBindName)
+/**
+ * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
+ * The read actions below run the slot, then these.
+ */
+export function {{ readsBindName }}(layer: $DataLayer) {
+  return Object.freeze({
+    @each(body in reads)
+    async {{ body.name }}(input: {{ body.inputType }}): Promise<{{ body.returnType }}> {
+      @if(body.unsupported)
+      await parseInput({{ body.validator }}, input);
+      throw new $FrameworkError({{ body.unsupported }});
+      @else
+      @if(body.usesParsed)~
+      // enter, cast: only the declared input passes
+      const parsed = await parseInput({{ body.validator }}, input);
+      @else~
+      // enter, cast: only the declared input passes
+      await parseInput({{ body.validator }}, input);
+      @end~
+      return layer.transaction(async (tx) => {
+        @each(statement in body.statements)
+        {{ statement }}
+        @end
+      });
+      @end
+    },
+
+    @end
+  });
+}
+
+@end
+/**
+ * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
+ * `actions` and `tx`; the project's `bind` in the index passes it.
+ */
+export function {{ bindName }}(layer: $DataLayer, {{ optionsName }}: $BindOptions = {}, {{ composeName }}?: $Composer) {
+  @if(readsBindName)
+  const $reads = {{ readsBindName }}(layer);
+  @end
   return Object.freeze({
     @each(method in methods)
     async {{ method.name }}(input: {{ method.inputType }}, ...[{{ method.contextName }}]: $ContextArgument): Promise<{{ method.returnType }}> {
       @if(method.notRun)
       // {{ method.notRun }}
       @end
+      @if(method.readsCall)
+      // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
+      return {{ method.readsCall }};
+      @else
       @if(method.unsupported)
       await parseInput({{ method.validator }}, input);
       throw new $FrameworkError({{ method.unsupported }});
@@ -61,15 +106,16 @@ export function {{ bindName }}(layer: $DataLayer, {{ optionsName }}: $BindOption
         @end
       });
       @end
+      @end
     },
 
     @end
   });
 }
 @else
-import type { BindOptions as $BindOptions, DataLayer as $DataLayer } from "@meshfw/runtime";
+import type { BindOptions as $BindOptions, Composer as $Composer, DataLayer as $DataLayer } from "@meshfw/runtime";
 
-export function {{ bindName }}(_layer: $DataLayer, _options: $BindOptions = {}) {
+export function {{ bindName }}(_layer: $DataLayer, _options: $BindOptions = {}, _compose?: $Composer) {
   return Object.freeze({});
 }
 @end

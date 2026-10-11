@@ -6,6 +6,7 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
+  composed as $composed,
   guarded as $guarded,
   loadRows as $loadRows,
   parseInput,
@@ -14,6 +15,7 @@ import {
   runCheck as $runCheck,
   scope as $scope,
   type BindOptions as $BindOptions,
+  type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
   type Issue as $Issue,
@@ -44,10 +46,45 @@ import {
 } from "./post.expressions";
 import { loadPlan as $loadPlan } from "../load";
 
-export function bindPost(layer: $DataLayer, options: $BindOptions = {}) {
+/**
+ * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
+ * The read actions below run the slot, then these.
+ */
+export function bindPostReads(layer: $DataLayer) {
+  return Object.freeze({
+    async published(input: PublishedPostInput): Promise<Post[]> {
+      await parseInput(publishedPostInput, input);
+      throw new $FrameworkError(
+        "publishedPost cannot run in this version: its filter and sort are evaluated by the SQL evaluator, which arrives in M10",
+      );
+    },
+
+    async read(input: ReadPostInput): Promise<Post[]> {
+      // enter, cast: only the declared input passes
+      const parsed = await parseInput(readPostInput, input);
+      return layer.transaction(async (tx) => {
+        rejectComputedQuery("Post", ["excerpt", "commentCount"], parsed);
+        return (await tx.select(tables.post, {
+          filter: parsed.filter,
+          sort: parsed.sort,
+          limit: parsed.limit,
+          offset: parsed.offset,
+        })) as Post[];
+      });
+    },
+  });
+}
+
+/**
+ * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
+ * `actions` and `tx`; the project's `bind` in the index passes it.
+ */
+export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
+  const $reads = bindPostReads(layer);
   return Object.freeze({
     async create(input: CreatePostInput, ...[_context]: $ContextArgument): Promise<Post> {
       // Not run in this version: on:load published
+
       // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(createPostInput, input);
       return layer.transaction(async (tx) => {
@@ -80,6 +117,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}) {
       ...[context]: $ContextArgument
     ): Promise<PostWith<"comments" | "excerpt">> {
       // Not run in this version: on:load published; policies owner
+
       // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(publishPostInput, input);
       return layer.transaction(async (tx) => {
@@ -108,10 +146,10 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}) {
               $guarded($loadPlan, "Post", $before, "before"),
               "Post.publish",
             ) as unknown as Post,
-            tx: undefined,
+            ...$composed(compose, tx, context, "Post.publish"),
           },
           options,
-        ) as unknown as $StoredScope;
+        ) as unknown as $StoredScope<PublishPostInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
         await $runCheck($issues, $s, {
@@ -140,6 +178,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}) {
 
     async archive(input: ArchivePostInput, ...[_context]: $ContextArgument): Promise<void> {
       // Not run in this version: policies owner
+
       // enter, cast: the call arrives with its context, and only the declared input passes
       const parsed = await parseInput(archivePostInput, input);
       return layer.transaction(async (tx) => {
@@ -153,25 +192,14 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}) {
 
     async published(input: PublishedPostInput, ...[_context]: $ContextArgument): Promise<Post[]> {
       // Not run in this version: on:load published; policies public
-      await parseInput(publishedPostInput, input);
-      throw new $FrameworkError(
-        "publishedPost cannot run in this version: its filter and sort are evaluated by the SQL evaluator, which arrives in M10",
-      );
+      // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
+      return $reads.published(input);
     },
 
     async read(input: ReadPostInput, ...[_context]: $ContextArgument): Promise<Post[]> {
       // Not run in this version: on:load published; policies public
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(readPostInput, input);
-      return layer.transaction(async (tx) => {
-        rejectComputedQuery("Post", ["excerpt", "commentCount"], parsed);
-        return (await tx.select(tables.post, {
-          filter: parsed.filter,
-          sort: parsed.sort,
-          limit: parsed.limit,
-          offset: parsed.offset,
-        })) as Post[];
-      });
+      // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
+      return $reads.read(input);
     },
 
     async destroy(input: DestroyPostInput, ...[_context]: $ContextArgument): Promise<void> {

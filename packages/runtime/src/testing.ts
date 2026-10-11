@@ -154,6 +154,8 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
       const value = await layer.transaction(async (outer) => {
         await outer.insert(table, sampleRow);
         const inner = await layer.transaction(async (tx) => {
+          // Action composition tells a call that joins from one made after its transaction ended by this identity.
+          assert(tx === outer, "a joined call must receive the same operations as the transaction it joins");
           rowEquals(await tx.selectByKey(table, key), sampleRow, "a joined call must see the outer transaction's uncommitted write");
           await tx.insert(table, secondRow);
           return "inner";

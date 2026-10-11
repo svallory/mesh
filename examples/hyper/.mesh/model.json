@@ -1838,6 +1838,7 @@
                     "line": 35,
                     "offset": 1137
                   },
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -2858,6 +2859,7 @@
                     "line": 46,
                     "offset": 1597
                   },
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -3199,6 +3201,7 @@
                     "line": 64,
                     "offset": 2321
                   },
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -3912,6 +3915,7 @@
                     "line": 37,
                     "offset": 1258
                   },
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -4515,6 +4519,7 @@
                     "line": 41,
                     "offset": 1360
                   },
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -5068,6 +5073,7 @@
                     "line": 27,
                     "offset": 910
                   },
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -5744,6 +5750,7 @@
                     "line": 35,
                     "offset": 1034
                   },
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -6137,6 +6144,7 @@
                     "line": 59,
                     "offset": 1828
                   },
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -9128,6 +9136,7 @@
                     "line": 72,
                     "offset": 3104
                   },
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -9453,6 +9462,7 @@
                     "line": 91,
                     "offset": 3802
                   },
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -9958,6 +9968,7 @@
                     "line": 120,
                     "offset": 4848
                   },
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -10297,6 +10308,7 @@
                     "line": 139,
                     "offset": 5539
                   },
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {

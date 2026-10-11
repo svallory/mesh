@@ -5,7 +5,7 @@ import { dataLayerConformance } from "@meshfw/runtime/testing";
 import type { DataLayerFixture } from "@meshfw/runtime/testing";
 
 // Only a test double for the suite: never shipped as an adapter.
-function fake(mode: "correct" | "no rollback" | "wrong error" | "no commit" | "bad update" | "ignores keys" | "ignores select key" | "ignores update key" | "ignores delete key" | "interleaves" | "closes while busy" | "nests separately" | "rejects nesting" | "poisoned queue" | "stays closed" = "correct"): DataLayerFixture & { closed: () => boolean } {
+function fake(mode: "correct" | "no rollback" | "wrong error" | "no commit" | "bad update" | "ignores keys" | "ignores select key" | "ignores update key" | "ignores delete key" | "interleaves" | "closes while busy" | "nests separately" | "copies operations" | "rejects nesting" | "poisoned queue" | "stays closed" = "correct"): DataLayerFixture & { closed: () => boolean } {
   let rows = new Map<unknown, Row>();
   let closed = false;
   const table = {};
@@ -52,6 +52,8 @@ function fake(mode: "correct" | "no rollback" | "wrong error" | "no commit" | "b
       if (current?.active) {
         if (mode === "nests separately") return execute(run);
         if (mode === "rejects nesting") throw new FrameworkError("nested transactions are not supported");
+        // Joins the transaction, but hands the call a copy of its operations: composition could not tell it from a new one.
+        if (mode === "copies operations") return run({ ...current.tx! });
         return run(current.tx!);
       }
       pendingCount++;
@@ -91,7 +93,8 @@ test.each([
   ["interleaves", "concurrent transactions never interleave statements", "transactions must not interleave statements"],
   ["closes while busy", "close with a transaction in flight rejects and leaves the layer open", "close with an in-flight transaction must reject with FrameworkError"],
   ["rejects nesting", "nested transaction joins the running one", "nested transactions are not supported"],
-  ["nests separately", "nested transaction joins the running one", "a joined call must see the outer transaction's uncommitted write"],
+  ["nests separately", "nested transaction joins the running one", "a joined call must receive the same operations as the transaction it joins"],
+  ["copies operations", "nested transaction joins the running one", "a joined call must receive the same operations as the transaction it joins"],
   ["nests separately", "a throw after a joined call rolls back both", "a throw after a joined call must roll back"],
   ["no rollback", "rejected run rolls back every write and rethrows the same error", "rejected insert must roll back"],
   ["wrong error", "rejected run rolls back every write and rethrows the same error", "transaction must rethrow the same error"],

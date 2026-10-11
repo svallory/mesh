@@ -3,13 +3,13 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Attempt } from "./attempt.types";
+import type { Attempt, AttemptLoaded } from "./attempt.types";
 
-import type { Task } from "../work/task.types";
+import type { Task, TaskLoaded } from "../work/task.types";
 
-import type { SessionReference } from "./sessionReference.types";
+import type { SessionReference, SessionReferenceLoaded } from "./sessionReference.types";
 
-import type { Collaborator } from "../identity/collaborator.types";
+import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
 
 export type Invocation = {
   id: string;
@@ -83,6 +83,15 @@ export type InvocationLoadable = {
 /** A Invocation with the relationships and computed fields named in N loaded. */
 export type InvocationWith<N extends keyof InvocationLoadable> = Invocation &
   Pick<InvocationLoadable, N>;
+
+/** A Invocation as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
+export type InvocationLoaded = Invocation & {
+  attempt: AttemptLoaded;
+  task: TaskLoaded;
+  session: SessionReferenceLoaded | null;
+  corrects: InvocationLoaded | null;
+  recordedBy: CollaboratorLoaded;
+};
 
 export type InvocationFilter =
   | { and: readonly InvocationFilter[] }

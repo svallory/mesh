@@ -3,9 +3,9 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Machine } from "./machine.types";
+import type { Machine, MachineLoaded } from "./machine.types";
 
-import type { Collaborator } from "../identity/collaborator.types";
+import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
 
 export type SessionReference = {
   id: string;
@@ -58,6 +58,13 @@ export type SessionReferenceLoadable = {
 /** A SessionReference with the relationships and computed fields named in N loaded. */
 export type SessionReferenceWith<N extends keyof SessionReferenceLoadable> = SessionReference &
   Pick<SessionReferenceLoadable, N>;
+
+/** A SessionReference as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
+export type SessionReferenceLoaded = SessionReference & {
+  machine: MachineLoaded;
+  agentProfile: CollaboratorLoaded;
+  recordedBy: CollaboratorLoaded;
+};
 
 export type SessionReferenceFilter =
   | { and: readonly SessionReferenceFilter[] }

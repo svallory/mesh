@@ -5,6 +5,7 @@
 import {
   parseInput,
   type BindOptions as $BindOptions,
+  type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
   type Row as $Row,
@@ -13,7 +14,37 @@ import type { Assignment, StartAssignmentInput, ReadAssignmentInput } from "./as
 import { startAssignmentInput, readAssignmentInput } from "./assignment.validators";
 import { tables } from "../schema";
 
-export function bindAssignment(layer: $DataLayer, _options: $BindOptions = {}) {
+/**
+ * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
+ * The read actions below run the slot, then these.
+ */
+export function bindAssignmentReads(layer: $DataLayer) {
+  return Object.freeze({
+    async read(input: ReadAssignmentInput): Promise<Assignment[]> {
+      // enter, cast: only the declared input passes
+      const parsed = await parseInput(readAssignmentInput, input);
+      return layer.transaction(async (tx) => {
+        return (await tx.select(tables.assignment, {
+          filter: parsed.filter,
+          sort: parsed.sort,
+          limit: parsed.limit,
+          offset: parsed.offset,
+        })) as Assignment[];
+      });
+    },
+  });
+}
+
+/**
+ * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
+ * `actions` and `tx`; the project's `bind` in the index passes it.
+ */
+export function bindAssignment(
+  layer: $DataLayer,
+  _options: $BindOptions = {},
+  _compose?: $Composer,
+) {
+  const $reads = bindAssignmentReads(layer);
   return Object.freeze({
     async start(input: StartAssignmentInput, ...[_context]: $ContextArgument): Promise<Assignment> {
       // enter, cast: the call arrives with its context, and only the declared input passes
@@ -37,16 +68,8 @@ export function bindAssignment(layer: $DataLayer, _options: $BindOptions = {}) {
     },
 
     async read(input: ReadAssignmentInput, ...[_context]: $ContextArgument): Promise<Assignment[]> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(readAssignmentInput, input);
-      return layer.transaction(async (tx) => {
-        return (await tx.select(tables.assignment, {
-          filter: parsed.filter,
-          sort: parsed.sort,
-          limit: parsed.limit,
-          offset: parsed.offset,
-        })) as Assignment[];
-      });
+      // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
+      return $reads.read(input);
     },
   });
 }

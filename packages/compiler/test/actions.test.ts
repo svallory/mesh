@@ -110,7 +110,7 @@ describe("actions view", () => {
       ["destroy", "destroyArticle", "DestroyArticleInput", "destroyArticleInput", "void"],
     ]);
     expect(view.runtimeValues).toEqual([
-      "FrameworkError as $FrameworkError", "InvalidInputError as $InvalidInputError", "NotFoundError as $NotFoundError", "guarded as $guarded",
+      "FrameworkError as $FrameworkError", "InvalidInputError as $InvalidInputError", "NotFoundError as $NotFoundError", "composed as $composed", "guarded as $guarded",
       "loadRows as $loadRows", "parseInput", "readOnlyRecord as $readOnlyRecord", "runCheck as $runCheck", "scope as $scope"]);
     expect(view.runtimeTypes).toEqual(["Issue as $Issue", "Row as $Row"]);
     expect(view.typesFromLiteral).toBe('"./article.types"');
@@ -162,13 +162,17 @@ describe("actions view", () => {
   });
 
   test("a read selects every row; a read with filter or sort validates, then throws naming M10", () => {
-    const methods = viewOf("Article").methods;
-    const live = methods.find((m) => m.name === "live")!;
+    const view = viewOf("Article");
+    // The body lives in the reads table (`bindArticleReads`), which `tx` uses; the method passes through the read authorizer slot to it.
+    expect(view.readsBindName).toBe("bindArticleReads");
+    const live = view.reads.find((m) => m.name === "live")!;
     expect(live.unsupported).toBe('"liveArticle cannot run in this version: its filter is evaluated by the SQL evaluator, which arrives in M10"');
     expect(live.statements).toEqual([]);
-    const read = methods.find((m) => m.name === "read")!;
+    const read = view.reads.find((m) => m.name === "read")!;
     expect(read).toMatchObject({ unsupported: null, usesParsed: true, statements: [
       "return (await tx.select(tables.article, { filter: parsed.filter, sort: parsed.sort, limit: parsed.limit, offset: parsed.offset })) as Article[];"] });
+    expect(view.methods.filter((m) => m.isRead).map((m) => [m.name, m.readsCall, m.statements])).toEqual([
+      ["live", "$reads.live(input)", []], ["load", "$reads.load(input)", []], ["read", "$reads.read(input)", []]]);
   });
 
   test("a destroy whose body cannot see the record deletes by key and turns a missing row into NotFoundError", () => {
@@ -350,6 +354,29 @@ describe("explain", () => {
       expect(code.includes("selectByKeyForUpdate")).toBe(reads);
       expect(explainAction(entity, "purge")![1]).toContain(reads ? "read-then-write" : "one delete by key");
     }
+  });
+  test("after-write steps are listed after the write, in their place; a when keeps its condition, read before the write", () => {
+    const source = article.replace("    destroy :purge\n", "    destroy :purge\n      do\n        run [after=:write] ({ self }) { console.log(self.title) }\n        run () { }\n")
+      .replace("    update :rename\n", "    update :rename\n      do\n        run [after=:write] ({ self }) { console.log(self.id) }\n        when=() => true\n          set\n            &views=2\n          run [after=:write] () { }\n        run () { }\n");
+    const entity = documentOf({ "blog/author.mesh.mx": author, "blog/article.mesh.mx": source }).entities.find((e) => e.name === "Article")!;
+    const rename = explainAction(entity, "rename")!;
+    expect(rename.slice(rename.findIndex((line) => line.startsWith("  steps")), rename.findIndex((line) => line.startsWith("  policy")))).toEqual([
+      "  steps        when () => true",
+      "                 set &views = 2",
+      "               run () { }",
+      "  after write  self is the stored record",
+      "               run ({ self }) { console.log(self.id) }",
+      "               when () => true (as it held before the write)",
+      "                 run () { }",
+    ]);
+    const purge = explainAction(entity, "purge")!;
+    expect(purge[1]).toContain("read-then-write");
+    expect(purge.slice(purge.findIndex((line) => line.startsWith("  after write")), purge.findIndex((line) => line.startsWith("  policy")))).toEqual([
+      "  after write  self is the deleted row as it was",
+      "               run ({ self }) { console.log(self.title) }",
+    ]);
+    // An action without one has no such section.
+    expect(explainAction(article_(), "publish")!.some((line) => line.includes("after write"))).toBe(false);
   });
   test("an auto action is explained and an unknown action is undefined", () => {
     expect(explainAction(article_(), "destroy")![0]).toBe("Article.destroy (destroy)");

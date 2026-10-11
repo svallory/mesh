@@ -35,7 +35,7 @@ import {
 import contracts from "./contracts.ts";
 import { MESH_DIALECT } from "./dialect.ts";
 import { hasMeshExtension } from "./extensions.ts";
-import { editsOf } from "./expression.ts";
+import { demotionOf } from "./expression.ts";
 import { checkExpressions } from "../model/index.ts";
 import { error, positionAt, type BuildResult, type ProjectDescription } from "../model/index.ts";
 import { nearestName } from "./nearest-name.ts";
@@ -550,8 +550,11 @@ function buildEntity(
           ),
           position,
         };
-      if (tag.name === "run")
-        return { kind: "run", fn: expr(attr(tag, "value"), "expression", true), position };
+      if (tag.name === "run") {
+        // The contract admits `:write` only (ADR-0068 decision 2); MX reports any other value at the attribute.
+        const after = atomOf(attr(tag, "after"))?.name === "write";
+        return { kind: "run", fn: expr(attr(tag, "value"), "expression", true), ...(after ? { after: "write" as const } : {}), position };
+      }
       throw new Error(`Unexpected step ${tag.name}`);
     });
   const body = (holder: Tag) => {
@@ -767,13 +770,26 @@ function buildEntity(
  * its tag rules) and rejection on. It never throws; every problem is a positioned diagnostic.
  */
 export function parseEntitySource(source: string, file: string) {
-  return lowerSource(source, file, {
+  const lowered = lowerSource(source, file, {
     dialect: MESH_DIALECT,
     customTags: contracts,
     structural: "reject",
     unknownTags: "reject",
     imports: "pass",
   });
+  return { ...lowered, diagnostics: lowered.diagnostics.filter((d) => !selfDuplicate(d)) };
+}
+
+/**
+ * MX 0.1.0-alpha.16 reads a method after an attribute group (`run [after=:write] ({ self }) { ... }`, the form
+ * ADR-0068 documents) as two `value` attributes at one position, and warns that the first is dropped. Both are the one
+ * function the author wrote, so that warning is dropped. A duplicate the author wrote sits at another position and is
+ * still reported. The match is on MX's message text, like the unknown-tag match in `buildModel`, and stands until MX
+ * stops producing the second attribute.
+ */
+function selfDuplicate(d: IrDiagnostic): boolean {
+  const duplicate = /^duplicate attribute `[^`]+`: the later one at (\d+):(\d+) wins/.exec(d.message);
+  return !!duplicate && Number(duplicate[1]) === d.line && Number(duplicate[2]) - 1 === d.column;
 }
 
 /** Parse with closed MX contracts, then project the static tree without executing it. */
@@ -837,15 +853,6 @@ export function buildModel(project: ProjectDescription): BuildResult {
         // stands until MX fills diagnostic codes for contracts and returns them
         // on the diagnostic.
         const coded = /\b(MESH_[A-Z_]+): (.*)/s.exec(d.message);
-        // `run [after=:write]` is documented but not built: say which milestone owns it, not just "unknown attribute".
-        if (!coded && /^`<run>`: unknown attribute `after`/.test(d.message))
-          return {
-            severity: "error",
-            code: "MESH_NOT_IMPLEMENTED",
-            message: "`run [after=:write]` places a function after the write, which belongs to action composition: it arrives in the second half of M5 (m5b)",
-            position: { file, line: d.line, column: d.column, offset: d.offset },
-            fix: "Remove `after=:write` for now; a plain `run` runs before the write",
-          };
         return {
           severity: d.severity,
           code: coded?.[1] ?? "MESH_SYNTAX",
@@ -946,7 +953,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
   }
   resolveRelationships(document, viaPositions, diagnostics);
   resolveRollups(document, rollups, diagnostics);
-  checkExpressions(document, diagnostics, { editsOf });
+  checkExpressions(document, diagnostics, { demotionOf });
   computeNeeds(document, diagnostics);
   checkLifecycleLimits(document, diagnostics);
   const invalid = findNonJsonValue(document);

@@ -6,6 +6,7 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
+  composed as $composed,
   guarded as $guarded,
   loadInto as $loadInto,
   parseInput,
@@ -15,6 +16,7 @@ import {
   scope as $scope,
   unloadFrom as $unloadFrom,
   type BindOptions as $BindOptions,
+  type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
   type Issue as $Issue,
@@ -45,7 +47,47 @@ import {
 } from "./task.expressions";
 import { loadPlan as $loadPlan } from "../load";
 
-export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
+/**
+ * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
+ * The read actions below run the slot, then these.
+ */
+export function bindTaskReads(layer: $DataLayer) {
+  return Object.freeze({
+    async read(input: ReadTaskInput): Promise<Task[]> {
+      // enter, cast: only the declared input passes
+      const parsed = await parseInput(readTaskInput, input);
+      return layer.transaction(async (tx) => {
+        rejectComputedQuery(
+          "Task",
+          [
+            "childrenSettled",
+            "claimed",
+            "lapsedClaim",
+            "inReview",
+            "assigned",
+            "blocked",
+            "maxFence",
+            "derivedState",
+          ],
+          parsed,
+        );
+        return (await tx.select(tables.task, {
+          filter: parsed.filter,
+          sort: parsed.sort,
+          limit: parsed.limit,
+          offset: parsed.offset,
+        })) as Task[];
+      });
+    },
+  });
+}
+
+/**
+ * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
+ * `actions` and `tx`; the project's `bind` in the index passes it.
+ */
+export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
+  const $reads = bindTaskReads(layer);
   return Object.freeze({
     async create(input: CreateTaskInput, ...[context]: $ContextArgument): Promise<Task> {
       // enter, cast: the call arrives with its context, and only the declared input passes
@@ -79,10 +121,10 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
             actor: $actor,
             context: $context,
             before: null,
-            tx: undefined,
+            ...$composed(compose, tx, context, "Task.create"),
           },
           options,
-        ) as unknown as $Scope;
+        ) as unknown as $Scope<CreateTaskInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
         await $loadInto($loadPlan, "Task", tx, $record, ["parent"], $load);
@@ -129,10 +171,10 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
               $guarded($loadPlan, "Task", $before, "before"),
               "Task.update",
             ) as unknown as Task,
-            tx: undefined,
+            ...$composed(compose, tx, context, "Task.update"),
           },
           options,
-        ) as unknown as $StoredScope;
+        ) as unknown as $StoredScope<UpdateTaskInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
         await $runCheck($issues, $s, {
@@ -202,10 +244,10 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
               $guarded($loadPlan, "Task", $before, "before"),
               "Task.setPriority",
             ) as unknown as Task,
-            tx: undefined,
+            ...$composed(compose, tx, context, "Task.setPriority"),
           },
           options,
-        ) as unknown as $StoredScope;
+        ) as unknown as $StoredScope<SetPriorityTaskInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
         await $runCheck($issues, $s, {
@@ -269,10 +311,10 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
               $guarded($loadPlan, "Task", $before, "before"),
               "Task.move",
             ) as unknown as Task,
-            tx: undefined,
+            ...$composed(compose, tx, context, "Task.move"),
           },
           options,
-        ) as unknown as $StoredScope;
+        ) as unknown as $StoredScope<MoveTaskInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
         await $loadInto($loadPlan, "Task", tx, $record, ["claimed", "parent"], $load);
@@ -350,10 +392,10 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
               $guarded($loadPlan, "Task", $before, "before"),
               "Task.reopen",
             ) as unknown as Task,
-            tx: undefined,
+            ...$composed(compose, tx, context, "Task.reopen"),
           },
           options,
-        ) as unknown as $StoredScope;
+        ) as unknown as $StoredScope<ReopenTaskInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
         await $runCheck($issues, $s, {
@@ -390,30 +432,8 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
     },
 
     async read(input: ReadTaskInput, ...[_context]: $ContextArgument): Promise<Task[]> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(readTaskInput, input);
-      return layer.transaction(async (tx) => {
-        rejectComputedQuery(
-          "Task",
-          [
-            "childrenSettled",
-            "claimed",
-            "lapsedClaim",
-            "inReview",
-            "assigned",
-            "blocked",
-            "maxFence",
-            "derivedState",
-          ],
-          parsed,
-        );
-        return (await tx.select(tables.task, {
-          filter: parsed.filter,
-          sort: parsed.sort,
-          limit: parsed.limit,
-          offset: parsed.offset,
-        })) as Task[];
-      });
+      // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
+      return $reads.read(input);
     },
   });
 }

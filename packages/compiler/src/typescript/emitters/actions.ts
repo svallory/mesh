@@ -30,7 +30,7 @@ export const actionsGenerator: Generator<ActionsView> = {
  * function ends in an entity's PascalCase name, so these lower-case words cannot be reached
  * today; the check keeps it so if the naming rule changes.
  */
-export const INDEX_NAMES: readonly string[] = Object.freeze(["bind", "connect", "disconnect", "tables"]);
+export const INDEX_NAMES: readonly string[] = Object.freeze(["bind", "connect", "disconnect", "tables", "transaction"]);
 
 const at = ({ file, line, column }: SourcePosition) => `${file}:${line}:${column + 1}`;
 
@@ -54,6 +54,7 @@ function checkNames({ document }: EmitInput, views: readonly ActionsView[]): voi
   views.forEach((view, index) => {
     const entity = entities[index]!;
     claim(view.bindName, `Entity :${entity.name}'s binding`, entity.position);
+    if (view.readsBindName) claim(view.readsBindName, `Entity :${entity.name}'s reads binding`, entity.position);
     claim(`${tableKey(entity)}Table`, `Entity :${entity.name}'s table handle`, entity.position);
     if (hasLoader(entity)) claim(loaderName(entity), `Entity :${entity.name}'s load function`, entity.position);
     view.methods.forEach((method, position) => {

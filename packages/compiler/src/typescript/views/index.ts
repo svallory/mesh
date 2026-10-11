@@ -24,8 +24,18 @@ export interface IndexView {
   readonly loaders: readonly string[];
   /** The schema exports re-exported from `./schema`: `tables`, then each entity's table handle. */
   readonly schemaExports: readonly string[];
-  /** True when at least one action exists; when false, `bind` returns an empty object. */
+  /** True when at least one action exists; when false, `bind` returns only `transaction`. */
   readonly hasFunctions: boolean;
+  /** Every read action's body without the authorizer slot, by its top-level name: what `tx` holds (ADR-0068). */
+  readonly reads: readonly IndexRead[];
+}
+
+/** One entry of the table `tx` is built from: `readPost: postReads.read`. */
+export interface IndexRead {
+  /** The read's top-level name, e.g. `readPost`. */
+  readonly name: string;
+  /** The bound read body, e.g. `postReads.read`. */
+  readonly method: string;
 }
 
 /** The imports for one entity, and its binding inside `bind`. */
@@ -42,6 +52,10 @@ export interface IndexEntity {
   readonly actionsFromLiteral: string;
   /** The local name of the entity's bound object inside `bind`: the entity name, camelCase, plus `Actions`, e.g. `postActions`. A fixed suffix, so no entity name becomes a reserved word or `bind`'s `layer`. */
   readonly local: string;
+  /** The entity's reads binding, e.g. `bindPostReads`, or null when it has no read action. */
+  readonly readsBindName: string | null;
+  /** The local name of its bound reads inside `bind`, e.g. `postReads`. */
+  readonly readsLocal: string;
 }
 
 /** One top-level action function and its entry in `bind`'s object. */
@@ -68,10 +82,12 @@ export function indexView(input: EmitInput): IndexView {
   const types: string[] = [];
   const handles: string[] = [];
   const loaders: string[] = [];
+  const reads: IndexRead[] = [];
   for (const entity of orderedEntities(document)) {
     const actions = actionsView(input, entity);
     const key = camelCase(entity.name);
     const local = `${key}Actions`;
+    const readsLocal = `${key}Reads`;
     const entityTypes = [
       typeName(entity.name, entity.position),
       ...entityInputs(entity, document).map((i) => i.name),
@@ -88,8 +104,11 @@ export function indexView(input: EmitInput): IndexView {
       bindName: actions.bindName,
       actionsFromLiteral: quote(`${entityPath(entity)}.actions`),
       local,
+      readsBindName: actions.readsBindName,
+      readsLocal,
     });
-    for (const method of actions.methods)
+    for (const method of actions.methods) {
+      if (method.isRead) reads.push({ name: method.functionName, method: `${readsLocal}.${method.name}` });
       functions.push({
         name: method.functionName,
         nameLiteral: JSON.stringify(method.functionName),
@@ -97,6 +116,7 @@ export function indexView(input: EmitInput): IndexView {
         returnType: method.returnType,
         method: `${local}.${method.name}`,
       });
+    }
   }
   const configModule = relative(config.output, config.configFile).replace(/\\/g, "/").replace(/\.ts$/, "");
   return {
@@ -107,5 +127,6 @@ export function indexView(input: EmitInput): IndexView {
     loaders,
     schemaExports: ["tables", ...handles.sort()],
     hasFunctions: functions.length > 0,
+    reads,
   };
 }

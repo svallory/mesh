@@ -34,6 +34,7 @@ describe("template lookup", () => {
       ["expressions.ts.jig", join(MESH_TEMPLATES_DIR, "expressions.ts.jig")],
       ["load.ts.jig", join(MESH_TEMPLATES_DIR, "load.ts.jig")],
       ["actions.ts.jig", join(MESH_TEMPLATES_DIR, "actions.ts.jig")],
+      ["composition.ts.jig", join(MESH_TEMPLATES_DIR, "composition.ts.jig")],
       ["index.ts.jig", join(MESH_TEMPLATES_DIR, "index.ts.jig")],
     ]);
   });

@@ -200,6 +200,7 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `read.filter` | `read :work filter=() => true` | `read.filter` | on main |
 | `relationships` | `relationships` | `relationships` | on main |
 | `run` | `run({ self }) { audit(self) }` | `run` | on main |
+| `run.after` | `run [after=:write] ({ self }) { audit(self) }` | `run.after` | on main |
 | `run.value` | `run({ self }) { audit(self) }` | `run.value` | on main |
 | `set` | `set` | `set` | on main |
 | `set` assignment line | `&title="new"` | `set.member.value` | on main |

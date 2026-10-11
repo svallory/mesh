@@ -161,15 +161,26 @@ describe("the types and the read views name what is loadable", () => {
         { name: "tier", optional: false, key: "tier", type: '"small" | "large"' },
         { name: "extra", optional: false, key: "extra", type: "unknown" },
       ],
+      // `self` in a function of the entity file: the same members, a related record typed as loaded too.
+      loadedName: "AuthorLoaded",
+      loadedMembers: [
+        { name: "posts", optional: false, key: "posts", type: "PostLoaded[]" },
+        { name: "postCount", optional: false, key: "postCount", type: "number" },
+        { name: "lastPostedAt", optional: false, key: "lastPostedAt", type: "Date | null" },
+        { name: "prolific", optional: false, key: "prolific", type: "boolean" },
+        { name: "tier", optional: false, key: "tier", type: '"small" | "large"' },
+        { name: "extra", optional: false, key: "extra", type: "unknown" },
+      ],
     });
-    expect(authorView.imports).toEqual([{ name: "Post", fromLiteral: '"./post.types"' }]);
+    expect(authorView.imports).toEqual([{ name: "Post", names: "Post, PostLoaded", fromLiteral: '"./post.types"' }]);
   });
 
   test("a nullable belongs-to is nullable, a self-reference imports nothing for itself", () => {
     const document = documentOf();
     const postView = typesView(input(document), document.entities.find((e) => e.name === "Post")!);
     expect(postView.loadable!.members.map((m) => [m.name, m.type])).toEqual([["author", "Author"], ["replyTo", "Post | null"], ["replies", "Post[]"]]);
-    expect(postView.imports).toEqual([{ name: "Author", fromLiteral: '"./author.types"' }]);
+    expect(postView.loadable!.loadedMembers.map((m) => [m.name, m.type])).toEqual([["author", "AuthorLoaded"], ["replyTo", "PostLoaded | null"], ["replies", "PostLoaded[]"]]);
+    expect(postView.imports).toEqual([{ name: "Author", names: "Author, AuthorLoaded", fromLiteral: '"./author.types"' }]);
   });
 
   test("an entity with neither has no loadable declaration", () => {

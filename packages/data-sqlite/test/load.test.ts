@@ -63,7 +63,7 @@ entity :Post table="posts"
     boolean :parentHasTitle() { return "title" in (&replyTo ?? {}) }
     string :parentOwnDescriptor() { return JSON.stringify(Object.getOwnPropertyDescriptors(&replyTo ?? {})["title"]?.value) }
     boolean :keyOfSelf() { return "comments" in self }
-    integer :walk() { let total = 0; for (let i = 0; i < &comments.length; i++) total += &comments[i].body.length; return total }
+    integer :walk() { let total = 0; for (let i = 0; i < &comments.length; i++) total += &comments[i]?.body.length ?? 0; return total }
   actions auto=[:read]
 `;
 const comment = `import { Post } from "./post.mesh.mx"

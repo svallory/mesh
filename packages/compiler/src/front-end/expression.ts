@@ -30,10 +30,17 @@ export interface ConvertContext {
 }
 
 const ROOTS = new Set(["self", "input", "actor", "context", "before"]);
-const SCOPE_NAMES = new Set([...ROOTS, "tx"]);
+/** The roots a translated expression reads, plus the two that only plain code can use: `actions` and `tx` (ADR-0068). */
+const SCOPE_NAMES = new Set([...ROOTS, "tx", "actions"]);
+/** A function that reaches the transaction is plain code: what it calls or reads is not an expression over the record. */
+const composing = (root: string, n: N): Plain | undefined =>
+  root === "tx" ? new Plain("uses-tx", "reads the transaction", n)
+    : root === "actions" ? new Plain("uses-actions", "calls other actions", n) : undefined;
+/** The globals a function may use. `structuredClone` is one: the expressions file binds it to `cloneValue`, which copies a read-only record. */
 const GLOBALS = new Set([
   "Math", "Number", "String", "Boolean", "Date", "JSON", "Array", "Object", "Map", "Set", "Promise",
   "Error", "RegExp", "Symbol", "console", "undefined", "NaN", "Infinity", "isNaN", "isFinite", "parseInt", "parseFloat",
+  "structuredClone",
 ]);
 const REGISTERED_CALLS: Record<string, { fn: FunctionId; arity: number }> = {
   now: { fn: "now", arity: 0 },
@@ -82,9 +89,15 @@ function bindings(root: N): Set<string> {
   return names;
 }
 
-/** Free-variable errors for one function, at the identifier. */
-function freeVariables(fn: N, ctx: ConvertContext): void {
+/**
+ * Free-variable errors for one function, at the identifier. Returns the scope names the function reads as variables
+ * that its parameters do not bind (`&name` is `self.name`, so it reads `self`), in a fixed order: what the printed
+ * function takes from the scope. A name a nested binding shadows still counts, so the function is never short of one.
+ */
+function freeVariables(fn: N, ctx: ConvertContext): string[] {
   const bound = bindings(fn);
+  const parameters = bindings({ type: "ArrowFunctionExpression", params: fn.params ?? [], body: null } as unknown as N);
+  const roots = new Set<string>();
   const known = (name: string) =>
     bound.has(name) || ctx.imported.has(name) || SCOPE_NAMES.has(name) || GLOBALS.has(name) || name in REGISTERED_CALLS;
   const walk = (value: unknown, parent?: N, key?: string): void => {
@@ -96,6 +109,7 @@ function freeVariables(fn: N, ctx: ConvertContext): void {
       const property = parent && (parent.type === "MemberExpression" || parent.type === "OptionalMemberExpression") && key === "property" && !parent.computed;
       const objectKey = parent && (parent.type === "ObjectProperty" || parent.type === "ObjectMethod" || parent.type === "ClassMethod" || parent.type === "ClassProperty") && key === "key" && !parent.computed;
       const label = parent && /^(LabeledStatement|BreakStatement|ContinueStatement)$/.test(parent.type) && key === "label";
+      if (!property && !objectKey && !label && SCOPE_NAMES.has(n.name!) && !parameters.has(n.name!)) roots.add(n.name!);
       if (!property && !objectKey && !label && !known(n.name!) && n.start !== undefined) {
         ctx.report({
           severity: "error",
@@ -111,6 +125,7 @@ function freeVariables(fn: N, ctx: ConvertContext): void {
   };
   walk(fn.body);
   for (const p of fn.params ?? []) walk(p);
+  return [...SCOPE_NAMES].filter((name) => roots.has(name));
 }
 
 /** Whether the code uses an operator whose null rule differs between JavaScript and Mesh (`??` and `?.` do not). */
@@ -184,7 +199,8 @@ function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode 
       const name = n.name!;
       const root = env.roots.get(name);
       if (root) {
-        if (root === "tx") throw new Plain("uses-tx", "reads the transaction", n);
+        const composes = composing(root, n);
+        if (composes) throw composes;
         if (root === "self" || root === "before") env.reads.record = true;
         return { kind: "var", name: root, position };
       }
@@ -289,14 +305,15 @@ function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode 
 const PARAMETER_ERROR = (n: N) => new Plain("unsupported-parameter", "this parameter form is not translated; destructure { self, input, actor, context, before }", n);
 
 /** Translate one function (`fn` is its Babel node, `span` its authored extent). */
-/** The edits of every translated expression, for the checker if it later demotes one to plain code. */
-const demotionEdits = new WeakMap<object, SourceEdit[]>();
-export const editsOf = (expression: object): SourceEdit[] => demotionEdits.get(expression) ?? [];
-export const rememberEdits = (expression: object, edits: SourceEdit[]): void => { demotionEdits.set(expression, edits); };
+/** What printing a translated expression as plain code needs, for the checker if it later demotes one: its edits and the scope names it reads. */
+export interface Demotion { edits: SourceEdit[]; roots: string[] }
+const demotions = new WeakMap<object, Demotion>();
+export const demotionOf = (expression: object): Demotion => demotions.get(expression) ?? { edits: [], roots: [] };
+export const rememberDemotion = (expression: object, demotion: Demotion): void => { demotions.set(expression, demotion); };
 
-export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd: number }, ctx: ConvertContext): { tree?: ExprNode; plain?: PlainReason; edits?: SourceEdit[] } {
+export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd: number }, ctx: ConvertContext): { tree?: ExprNode; plain?: PlainReason; demotion?: Demotion } {
   const f = fn as N;
-  freeVariables(f, ctx);
+  const free = freeVariables(f, ctx);
   const roots = new Map<string, string>();
   /**
    * A body that is an object literal (a check's `details`) is plain only because of the literal. Each property value that Mesh can
@@ -318,7 +335,7 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
   const plain = (e: Plain): { plain: PlainReason } => {
     const object = objectParts();
     return {
-      plain: { why: e.why, detail: e.detail, position: ctx.at(start(e.node) || span.sourceStart), edits: editsFor(f, span.sourceStart), ...((object ? hasDifferingOperator(object.rest) : hasDifferingOperator(f.body)) ? { operators: true as const } : {}), ...(object?.parts.length ? { parts: object.parts } : {}), ...(f.type === "FunctionExpression" ? { method: true as const } : {}) },
+      plain: { why: e.why, detail: e.detail, position: ctx.at(start(e.node) || span.sourceStart), edits: editsFor(f, span.sourceStart), roots: free, ...((object ? hasDifferingOperator(object.rest) : hasDifferingOperator(f.body)) ? { operators: true as const } : {}), ...(object?.parts.length ? { parts: object.parts } : {}), ...(f.type === "FunctionExpression" ? { method: true as const } : {}) },
     };
   };
   try {
@@ -332,7 +349,8 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
         const value = (p as N).value as N | undefined;
         if ((p as N).type !== "ObjectProperty" || (p as N).computed || !key || value?.type !== "Identifier") throw PARAMETER_ERROR(f);
         const root = key.name!;
-        if (root === "tx") throw new Plain("uses-tx", "reads the transaction", f);
+        const composes = composing(root, f);
+        if (composes) throw composes;
         if (!ROOTS.has(root)) throw PARAMETER_ERROR(f);
         roots.set(value.name!, root);
       }
@@ -345,7 +363,7 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
       body = statements[0]!.argument as N;
     }
     const tree = convert(body, { roots, locals: new Set(), reads: { record: false } }, ctx);
-    return { tree, edits: editsFor(f, span.sourceStart) };
+    return { tree, demotion: { edits: editsFor(f, span.sourceStart), roots: free } };
   } catch (e) {
     if (e instanceof Plain) return plain(e);
     throw e;

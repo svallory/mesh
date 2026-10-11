@@ -4,39 +4,48 @@
 import {
   expr as $,
   type DeepReadonly as $DeepReadonly,
+  type ReadOnlyResults as $ReadOnlyResults,
   type Scope as $Scope,
 } from "@meshfw/runtime";
-import type { Membership } from "./membership.types";
+import type { Actions as $Actions, Reads as $Reads } from "../composition";
+import type { Membership, MembershipLoaded, ChangeRoleMembershipInput } from "./membership.types";
 
-/** What every expression of Membership reads. */
-export type MembershipScope = $Scope<{
-  self: $DeepReadonly<Membership & { collaborator: any; grantedBy: any; revokedBy: any }>;
-  input: any;
+/** What every expression of Membership reads; `I` is the input of the action it runs in. */
+export type MembershipScope<I = unknown> = $Scope<{
+  self: $DeepReadonly<MembershipLoaded>;
+  input: $DeepReadonly<I>;
   actor: any;
   context: any;
   before: $DeepReadonly<Membership> | null;
-  tx: any;
+  actions: $ReadOnlyResults<$Actions>;
+  tx: $ReadOnlyResults<$Reads>;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
-export type MembershipStoredScope = MembershipScope & { before: $DeepReadonly<Membership> };
+export type MembershipStoredScope<I = unknown> = MembershipScope<I> & {
+  before: $DeepReadonly<Membership>;
+};
 
 export const expressions = {
   // check :membershipActive that, translated (src/domain/identity/membership.mesh.mx:28:16)
-  "changeRole.check.membershipActive.that": ($s: MembershipStoredScope) =>
-    $.eq($s.self.state, "active"),
+  "changeRole.check.membershipActive.that": (
+    $s: MembershipStoredScope<ChangeRoleMembershipInput>,
+  ) => $.eq($s.self.state, "active"),
   // check :roleChanges that, translated (src/domain/identity/membership.mesh.mx:33:16)
-  "changeRole.check.roleChanges.that": ($s: MembershipStoredScope) =>
+  "changeRole.check.roleChanges.that": ($s: MembershipStoredScope<ChangeRoleMembershipInput>) =>
     $.ne($s.self.role, $s.before?.role),
   // check :versionMatches that, translated (src/domain/identity/membership.mesh.mx:38:16)
-  "changeRole.check.versionMatches.that": ($s: MembershipStoredScope) =>
+  "changeRole.check.versionMatches.that": ($s: MembershipStoredScope<ChangeRoleMembershipInput>) =>
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/identity/membership.mesh.mx:41:19)
-  "changeRole.check.versionMatches.details": ($s: MembershipStoredScope) => {
+  "changeRole.check.versionMatches.details": (
+    $s: MembershipStoredScope<ChangeRoleMembershipInput>,
+  ) => {
     return (({ input, before }) => ({
       expectedVersion: input.expectedVersion,
       actualVersion: before.version,
     }))($s);
   },
   // set &version, translated (src/domain/identity/membership.mesh.mx:45:20)
-  "changeRole.step.0.set.version": ($s: MembershipStoredScope) => $.add($s.self.version, 1),
+  "changeRole.step.0.set.version": ($s: MembershipStoredScope<ChangeRoleMembershipInput>) =>
+    $.add($s.self.version, 1),
 } as const;

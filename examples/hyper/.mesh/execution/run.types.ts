@@ -3,11 +3,11 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Task } from "../work/task.types";
+import type { Task, TaskLoaded } from "../work/task.types";
 
-import type { Collaborator } from "../identity/collaborator.types";
+import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
 
-import type { Attempt } from "./attempt.types";
+import type { Attempt, AttemptLoaded } from "./attempt.types";
 
 export type Run = {
   id: string;
@@ -50,6 +50,15 @@ export type RunLoadable = {
 
 /** A Run with the relationships and computed fields named in N loaded. */
 export type RunWith<N extends keyof RunLoadable> = Run & Pick<RunLoadable, N>;
+
+/** A Run as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
+export type RunLoaded = Run & {
+  task: TaskLoaded;
+  responsible: CollaboratorLoaded;
+  startedBy: CollaboratorLoaded;
+  parentRun: RunLoaded | null;
+  attempts: AttemptLoaded[];
+};
 
 export type RunFilter =
   | { and: readonly RunFilter[] }

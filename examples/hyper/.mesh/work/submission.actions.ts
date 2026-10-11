@@ -5,6 +5,7 @@
 import {
   parseInput,
   type BindOptions as $BindOptions,
+  type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
   type Row as $Row,
@@ -13,7 +14,37 @@ import type { Submission, SubmitSubmissionInput, ReadSubmissionInput } from "./s
 import { submitSubmissionInput, readSubmissionInput } from "./submission.validators";
 import { tables } from "../schema";
 
-export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}) {
+/**
+ * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
+ * The read actions below run the slot, then these.
+ */
+export function bindSubmissionReads(layer: $DataLayer) {
+  return Object.freeze({
+    async read(input: ReadSubmissionInput): Promise<Submission[]> {
+      // enter, cast: only the declared input passes
+      const parsed = await parseInput(readSubmissionInput, input);
+      return layer.transaction(async (tx) => {
+        return (await tx.select(tables.submission, {
+          filter: parsed.filter,
+          sort: parsed.sort,
+          limit: parsed.limit,
+          offset: parsed.offset,
+        })) as Submission[];
+      });
+    },
+  });
+}
+
+/**
+ * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
+ * `actions` and `tx`; the project's `bind` in the index passes it.
+ */
+export function bindSubmission(
+  layer: $DataLayer,
+  options: $BindOptions = {},
+  _compose?: $Composer,
+) {
+  const $reads = bindSubmissionReads(layer);
   return Object.freeze({
     async submit(
       input: SubmitSubmissionInput,
@@ -42,16 +73,8 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}) {
     },
 
     async read(input: ReadSubmissionInput, ...[_context]: $ContextArgument): Promise<Submission[]> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(readSubmissionInput, input);
-      return layer.transaction(async (tx) => {
-        return (await tx.select(tables.submission, {
-          filter: parsed.filter,
-          sort: parsed.sort,
-          limit: parsed.limit,
-          offset: parsed.offset,
-        })) as Submission[];
-      });
+      // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
+      return $reads.read(input);
     },
   });
 }

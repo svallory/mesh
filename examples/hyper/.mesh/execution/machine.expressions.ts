@@ -4,35 +4,40 @@
 import {
   expr as $,
   type DeepReadonly as $DeepReadonly,
+  type ReadOnlyResults as $ReadOnlyResults,
   type Scope as $Scope,
 } from "@meshfw/runtime";
-import type { Machine } from "./machine.types";
+import type { Actions as $Actions, Reads as $Reads } from "../composition";
+import type { Machine, MachineLoaded, UpdateMachineInput } from "./machine.types";
 
-/** What every expression of Machine reads. */
-export type MachineScope = $Scope<{
-  self: $DeepReadonly<Machine & { firstReportedBy: any; attempts: any[] }>;
-  input: any;
+/** What every expression of Machine reads; `I` is the input of the action it runs in. */
+export type MachineScope<I = unknown> = $Scope<{
+  self: $DeepReadonly<MachineLoaded>;
+  input: $DeepReadonly<I>;
   actor: any;
   context: any;
   before: $DeepReadonly<Machine> | null;
-  tx: any;
+  actions: $ReadOnlyResults<$Actions>;
+  tx: $ReadOnlyResults<$Reads>;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
-export type MachineStoredScope = MachineScope & { before: $DeepReadonly<Machine> };
+export type MachineStoredScope<I = unknown> = MachineScope<I> & { before: $DeepReadonly<Machine> };
 
 export const expressions = {
   // check :machineActive that, translated (src/domain/execution/machine.mesh.mx:27:16)
-  "update.check.machineActive.that": ($s: MachineStoredScope) => $.eq($s.self.state, "active"),
+  "update.check.machineActive.that": ($s: MachineStoredScope<UpdateMachineInput>) =>
+    $.eq($s.self.state, "active"),
   // check :versionMatches that, translated (src/domain/execution/machine.mesh.mx:32:16)
-  "update.check.versionMatches.that": ($s: MachineStoredScope) =>
+  "update.check.versionMatches.that": ($s: MachineStoredScope<UpdateMachineInput>) =>
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/machine.mesh.mx:35:19)
-  "update.check.versionMatches.details": ($s: MachineStoredScope) => {
+  "update.check.versionMatches.details": ($s: MachineStoredScope<UpdateMachineInput>) => {
     return (({ input, before }) => ({
       expectedVersion: input.expectedVersion,
       actualVersion: before.version,
     }))($s);
   },
   // set &version, translated (src/domain/execution/machine.mesh.mx:39:20)
-  "update.step.0.set.version": ($s: MachineStoredScope) => $.add($s.self.version, 1),
+  "update.step.0.set.version": ($s: MachineStoredScope<UpdateMachineInput>) =>
+    $.add($s.self.version, 1),
 } as const;

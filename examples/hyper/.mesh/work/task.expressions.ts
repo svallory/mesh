@@ -4,68 +4,58 @@
 import {
   expr as $,
   type DeepReadonly as $DeepReadonly,
+  type ReadOnlyResults as $ReadOnlyResults,
   type Scope as $Scope,
 } from "@meshfw/runtime";
-import type { Task } from "./task.types";
+import type { Actions as $Actions, Reads as $Reads } from "../composition";
+import type {
+  Task,
+  TaskLoaded,
+  CreateTaskInput,
+  MoveTaskInput,
+  ReopenTaskInput,
+  SetPriorityTaskInput,
+  UpdateTaskInput,
+} from "./task.types";
 
-/** What every expression of Task reads. */
-export type TaskScope = $Scope<{
-  self: $DeepReadonly<
-    Task & {
-      parent: any;
-      creator: any;
-      children: any[];
-      dependencies: any[];
-      dependents: any[];
-      assignments: any[];
-      claims: any[];
-      submissions: any[];
-      completions: any[];
-      events: any[];
-      childrenSettled: any;
-      claimed: any;
-      lapsedClaim: any;
-      inReview: any;
-      assigned: any;
-      blocked: any;
-      maxFence: any;
-      derivedState: any;
-    }
-  >;
-  input: any;
+/** What every expression of Task reads; `I` is the input of the action it runs in. */
+export type TaskScope<I = unknown> = $Scope<{
+  self: $DeepReadonly<TaskLoaded>;
+  input: $DeepReadonly<I>;
   actor: any;
   context: any;
   before: $DeepReadonly<Task> | null;
-  tx: any;
+  actions: $ReadOnlyResults<$Actions>;
+  tx: $ReadOnlyResults<$Reads>;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
-export type TaskStoredScope = TaskScope & { before: $DeepReadonly<Task> };
+export type TaskStoredScope<I = unknown> = TaskScope<I> & { before: $DeepReadonly<Task> };
 
 export const expressions = {
   // computed childrenSettled, translated (src/domain/work/task.mesh.mx:30:29)
-  "computed.childrenSettled": ($s: TaskScope) =>
+  "computed.childrenSettled": ($s: TaskScope<unknown>) =>
     $.every($s.self.children, (l$c: any) => $.ne(l$c.state, "open")),
   // computed claimed, translated (src/domain/work/task.mesh.mx:31:21)
-  "computed.claimed": ($s: TaskScope) =>
+  "computed.claimed": ($s: TaskScope<unknown>) =>
     $.some($s.self.claims, (l$c: any) =>
       $.and($.eq(l$c.state, "active"), $.gt(l$c.expiresAt, $.now($s))),
     ),
   // computed lapsedClaim, translated (src/domain/work/task.mesh.mx:32:25)
-  "computed.lapsedClaim": ($s: TaskScope) =>
+  "computed.lapsedClaim": ($s: TaskScope<unknown>) =>
     $.some($s.self.claims, (l$c: any) =>
       $.and($.eq(l$c.state, "active"), $.lte(l$c.expiresAt, $.now($s))),
     ),
   // computed inReview, translated (src/domain/work/task.mesh.mx:33:22)
-  "computed.inReview": ($s: TaskScope) =>
+  "computed.inReview": ($s: TaskScope<unknown>) =>
     $.some($s.self.submissions, (l$s: any) => $.eq(l$s.state, "pending")),
   // computed assigned, translated (src/domain/work/task.mesh.mx:34:22)
-  "computed.assigned": ($s: TaskScope) =>
+  "computed.assigned": ($s: TaskScope<unknown>) =>
     $.some($s.self.assignments, (l$a: any) => $.isNull(l$a.endedAt)),
   // computed blocked, translated (src/domain/work/task.mesh.mx:35:21)
-  "computed.blocked": ($s: TaskScope) =>
+  "computed.blocked": ($s: TaskScope<unknown>) =>
     $.some($s.self.dependencies, (l$d: any) => $.ne(l$d.prerequisite?.state, "done")),
   // computed derivedState, translated (src/domain/work/task.mesh.mx:37:96)
-  "computed.derivedState": ($s: TaskScope) =>
+  "computed.derivedState": ($s: TaskScope<unknown>) =>
     $.cond(
       $.eq($s.self.state, "done"),
       "done",
@@ -80,12 +70,13 @@ export const expressions = {
       ),
     ),
   // check :parentOpen that, translated (src/domain/work/task.mesh.mx:48:16)
-  "create.check.parentOpen.that": ($s: TaskScope) =>
+  "create.check.parentOpen.that": ($s: TaskScope<CreateTaskInput>) =>
     $.or($.isNull($s.self.parent), $.eq($s.self.parent?.state, "open")),
   // check :taskOpen that, translated (src/domain/work/task.mesh.mx:59:16)
-  "update.check.taskOpen.that": ($s: TaskStoredScope) => $.eq($s.self.state, "open"),
+  "update.check.taskOpen.that": ($s: TaskStoredScope<UpdateTaskInput>) =>
+    $.eq($s.self.state, "open"),
   // check :taskChanges that, translated (src/domain/work/task.mesh.mx:64:16)
-  "update.check.taskChanges.that": ($s: TaskStoredScope) =>
+  "update.check.taskChanges.that": ($s: TaskStoredScope<UpdateTaskInput>) =>
     $.or(
       $.or(
         $.ne($s.self.title, $s.before?.title),
@@ -94,62 +85,65 @@ export const expressions = {
       $.ne($.coalesce($s.self.intent, ""), $.coalesce($s.before?.intent, "")),
     ),
   // check :versionMatches that, translated (src/domain/work/task.mesh.mx:69:16)
-  "update.check.versionMatches.that": ($s: TaskStoredScope) =>
+  "update.check.versionMatches.that": ($s: TaskStoredScope<UpdateTaskInput>) =>
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:72:19)
-  "update.check.versionMatches.details": ($s: TaskStoredScope) => {
+  "update.check.versionMatches.details": ($s: TaskStoredScope<UpdateTaskInput>) => {
     return (({ input, before }) => ({
       expectedVersion: input.expectedVersion,
       actualVersion: before.version,
     }))($s);
   },
   // set &version, translated (src/domain/work/task.mesh.mx:76:20)
-  "update.step.0.set.version": ($s: TaskStoredScope) => $.add($s.self.version, 1),
+  "update.step.0.set.version": ($s: TaskStoredScope<UpdateTaskInput>) => $.add($s.self.version, 1),
   // check :taskOpen that, translated (src/domain/work/task.mesh.mx:83:16)
-  "setPriority.check.taskOpen.that": ($s: TaskStoredScope) => $.eq($s.self.state, "open"),
+  "setPriority.check.taskOpen.that": ($s: TaskStoredScope<SetPriorityTaskInput>) =>
+    $.eq($s.self.state, "open"),
   // check :versionMatches that, translated (src/domain/work/task.mesh.mx:88:16)
-  "setPriority.check.versionMatches.that": ($s: TaskStoredScope) =>
+  "setPriority.check.versionMatches.that": ($s: TaskStoredScope<SetPriorityTaskInput>) =>
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:91:19)
-  "setPriority.check.versionMatches.details": ($s: TaskStoredScope) => {
+  "setPriority.check.versionMatches.details": ($s: TaskStoredScope<SetPriorityTaskInput>) => {
     return (({ input, before }) => ({
       expectedVersion: input.expectedVersion,
       actualVersion: before.version,
     }))($s);
   },
   // set &version, translated (src/domain/work/task.mesh.mx:95:20)
-  "setPriority.step.0.set.version": ($s: TaskStoredScope) => $.add($s.self.version, 1),
+  "setPriority.step.0.set.version": ($s: TaskStoredScope<SetPriorityTaskInput>) =>
+    $.add($s.self.version, 1),
   // check :taskOpen that, translated (src/domain/work/task.mesh.mx:102:16)
-  "move.check.taskOpen.that": ($s: TaskStoredScope) => $.eq($s.self.state, "open"),
+  "move.check.taskOpen.that": ($s: TaskStoredScope<MoveTaskInput>) => $.eq($s.self.state, "open"),
   // check :parentOpen that, translated (src/domain/work/task.mesh.mx:107:16)
-  "move.check.parentOpen.that": ($s: TaskStoredScope) =>
+  "move.check.parentOpen.that": ($s: TaskStoredScope<MoveTaskInput>) =>
     $.or($.isNull($s.self.parent), $.eq($s.self.parent?.state, "open")),
   // check :noActiveClaim that, translated (src/domain/work/task.mesh.mx:112:16)
-  "move.check.noActiveClaim.that": ($s: TaskStoredScope) => $.not($s.self.claimed),
+  "move.check.noActiveClaim.that": ($s: TaskStoredScope<MoveTaskInput>) => $.not($s.self.claimed),
   // check :versionMatches that, translated (src/domain/work/task.mesh.mx:117:16)
-  "move.check.versionMatches.that": ($s: TaskStoredScope) =>
+  "move.check.versionMatches.that": ($s: TaskStoredScope<MoveTaskInput>) =>
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:120:19)
-  "move.check.versionMatches.details": ($s: TaskStoredScope) => {
+  "move.check.versionMatches.details": ($s: TaskStoredScope<MoveTaskInput>) => {
     return (({ input, before }) => ({
       expectedVersion: input.expectedVersion,
       actualVersion: before.version,
     }))($s);
   },
   // set &version, translated (src/domain/work/task.mesh.mx:124:20)
-  "move.step.0.set.version": ($s: TaskStoredScope) => $.add($s.self.version, 1),
+  "move.step.0.set.version": ($s: TaskStoredScope<MoveTaskInput>) => $.add($s.self.version, 1),
   // check :taskSettled that, translated (src/domain/work/task.mesh.mx:131:16)
-  "reopen.check.taskSettled.that": ($s: TaskStoredScope) => $.ne($s.self.state, "open"),
+  "reopen.check.taskSettled.that": ($s: TaskStoredScope<ReopenTaskInput>) =>
+    $.ne($s.self.state, "open"),
   // check :versionMatches that, translated (src/domain/work/task.mesh.mx:136:16)
-  "reopen.check.versionMatches.that": ($s: TaskStoredScope) =>
+  "reopen.check.versionMatches.that": ($s: TaskStoredScope<ReopenTaskInput>) =>
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:139:19)
-  "reopen.check.versionMatches.details": ($s: TaskStoredScope) => {
+  "reopen.check.versionMatches.details": ($s: TaskStoredScope<ReopenTaskInput>) => {
     return (({ input, before }) => ({
       expectedVersion: input.expectedVersion,
       actualVersion: before.version,
     }))($s);
   },
   // set &version, translated (src/domain/work/task.mesh.mx:144:20)
-  "reopen.step.0.set.version": ($s: TaskStoredScope) => $.add($s.self.version, 1),
+  "reopen.step.0.set.version": ($s: TaskStoredScope<ReopenTaskInput>) => $.add($s.self.version, 1),
 } as const;

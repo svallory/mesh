@@ -12,7 +12,7 @@ import type { ExprNode, Expression } from "@meshfw/model";
 const SCOPE = "$s";
 const local = (name: string) => `l$${name}`;
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
-const ROOTS = ["self", "input", "actor", "context", "before", "tx"] as const;
+const ROOTS = ["self", "input", "actor", "context", "before", "tx", "actions"] as const;
 
 function access(name: string, optional: boolean): string {
   return IDENTIFIER.test(name) ? `${optional ? "?." : "."}${name}` : `${optional ? "?." : ""}[${JSON.stringify(name)}]`;
@@ -54,9 +54,8 @@ export function printExpression(e: Expression, scopeType: string, boolean: boole
   // A `run` body may await: it is the one plain function that is async (a returned promise is awaited by the action).
   const authored = plain.method ? `function ${text}` : text;
   const fn = async && !/^\s*async\b/.test(authored) ? `async ${authored}` : authored;
-  // Roots the authored parameters destructure are bound by the function itself; the rest it reads from the scope.
-  const used = ROOTS.filter((root) => !e.params.includes(root) && new RegExp(`(?<![A-Za-z0-9_$.])${root}\\b`).test(text));
-  const declare = used.length ? `const { ${used.join(", ")} } = ${SCOPE}; ` : "";
+  // The scope names the function reads without its parameters binding them (the front end found them in the syntax tree).
+  const declare = plain.roots.length ? `const { ${plain.roots.join(", ")} } = ${SCOPE}; ` : "";
   return withScope(`{ ${declare}return (${fn})(${e.params.length ? SCOPE : ""}); }`);
 }
 

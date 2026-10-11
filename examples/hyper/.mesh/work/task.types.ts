@@ -3,19 +3,19 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Collaborator } from "../identity/collaborator.types";
+import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
 
-import type { Dependency } from "./dependency.types";
+import type { Dependency, DependencyLoaded } from "./dependency.types";
 
-import type { Assignment } from "./assignment.types";
+import type { Assignment, AssignmentLoaded } from "./assignment.types";
 
-import type { Claim } from "./claim.types";
+import type { Claim, ClaimLoaded } from "./claim.types";
 
-import type { Submission } from "./submission.types";
+import type { Submission, SubmissionLoaded } from "./submission.types";
 
-import type { Completion } from "./completion.types";
+import type { Completion, CompletionLoaded } from "./completion.types";
 
-import type { Event } from "../audit/event.types";
+import type { Event, EventLoaded } from "../audit/event.types";
 
 export type Task = {
   id: string;
@@ -93,6 +93,28 @@ export type TaskLoadable = {
 
 /** A Task with the relationships and computed fields named in N loaded. */
 export type TaskWith<N extends keyof TaskLoadable> = Task & Pick<TaskLoadable, N>;
+
+/** A Task as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
+export type TaskLoaded = Task & {
+  parent: TaskLoaded | null;
+  creator: CollaboratorLoaded;
+  children: TaskLoaded[];
+  dependencies: DependencyLoaded[];
+  dependents: DependencyLoaded[];
+  assignments: AssignmentLoaded[];
+  claims: ClaimLoaded[];
+  submissions: SubmissionLoaded[];
+  completions: CompletionLoaded[];
+  events: EventLoaded[];
+  childrenSettled: boolean;
+  claimed: boolean;
+  lapsedClaim: boolean;
+  inReview: boolean;
+  assigned: boolean;
+  blocked: boolean;
+  maxFence: number | null;
+  derivedState: "ready" | "blocked" | "claimed" | "in-review" | "done" | "canceled";
+};
 
 export type TaskFilter =
   | { and: readonly TaskFilter[] }
