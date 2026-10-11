@@ -7,6 +7,8 @@ description: "Decision record 0075: code the application may run before the tran
 
 > **Amendment, 2026-10-11 (DOM-18, DOM-25).** Hyper's typed events are no longer an application table over the seams: domain events and an outbox are built in M6 ([ADR-0079](./0079-commands-events-and-the-outbox.md)). The `afterCommit` seam stays as built; it is not the route for effects after commit (DOM-25): a `publish` plus a listener is.
 
+> **Amendment, 2026-10-11 (idempotency record).** The Context paragraph below says Hyper's idempotency record is code at the seams. The `afterWrite` seam cannot write it: the record stores the command's whole result ([PROTOCOL section 4.3](https://github.com/svallory/hyper-engine-spec/blob/ccc00f9/PROTOCOL.md), in the Hyper specification repository), which exists only when the command ends, and `afterWrite` runs after each row. HA (the Hyper application) writes the record in the application `transaction`, after the action returns, in the same transaction. The decisions below do not change; `afterWrite` still serves per-row work.
+
 ## Status
 
 Accepted. Amends [ADR-0020](./0020-extension-contributions-through-declared-points.md) (the first run-time points are built before the host).
@@ -21,7 +23,7 @@ operator (Saulo Vallory), accepting [roadmap revision 5](../roadmap/roadmap.md) 
 
 ## Context
 
-Hyper's event log, plugin hooks, idempotency record and broadcast are code at three points of every write: before the transaction opens, inside it after the row is written, and after it commits ([gaps G11, G12, G13 and G31](../research/hyper-port-gap-analysis.md)). The [action lifecycle](../in-depth/action-lifecycle.md) page gives each phase an extension point but names none for the commit and none "after the write". The extension host that would offer them to extensions comes after 1.0 ([ADR-0072](./0072-mesh-1-0-is-the-port-gate.md)); the port cannot wait for it.
+Hyper's event log, plugin hooks, idempotency record and broadcast are code at three points of every write, except the idempotency record, which HA writes in its application `transaction` (see the amendment above): before the transaction opens, inside it after the row is written, and after it commits ([gaps G11, G12, G13 and G31](../research/hyper-port-gap-analysis.md)). The [action lifecycle](../in-depth/action-lifecycle.md) page gives each phase an extension point but names none for the commit and none "after the write". The extension host that would offer them to extensions comes after 1.0 ([ADR-0072](./0072-mesh-1-0-is-the-port-gate.md)); the port cannot wait for it.
 
 ## Decision
 
