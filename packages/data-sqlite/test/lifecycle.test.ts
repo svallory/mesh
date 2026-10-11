@@ -38,7 +38,7 @@ entity :Task table="tasks"
     enum :state values=[:open, :doing, :done] default=:open
     timestamp :openedAt
     timestamp :doneAt nullable
-    json :meta nullable
+    json :meta
     timestamp :createdAt on=:create
     timestamp :touchedAt on=:update
   relationships

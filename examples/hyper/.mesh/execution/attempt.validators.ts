@@ -121,33 +121,9 @@ export type StartAttemptInputShape = Assert<
 export const finishAttemptInput = z.strictObject({
   id: z.uuid(),
   result: z.enum(["succeeded", "failed"]),
-  outputs: (
-    z
-      .json()
-      .refine((value) => value !== null, {
-        message: "null is only allowed on a nullable attribute",
-      }) as z.ZodType<unknown>
-  )
-    .nullable()
-    .optional(),
-  evidence: (
-    z
-      .json()
-      .refine((value) => value !== null, {
-        message: "null is only allowed on a nullable attribute",
-      }) as z.ZodType<unknown>
-  )
-    .nullable()
-    .optional(),
-  error: (
-    z
-      .json()
-      .refine((value) => value !== null, {
-        message: "null is only allowed on a nullable attribute",
-      }) as z.ZodType<unknown>
-  )
-    .nullable()
-    .optional(),
+  outputs: (z.json() as z.ZodType<unknown>).nullable().optional(),
+  evidence: (z.json() as z.ZodType<unknown>).nullable().optional(),
+  error: (z.json() as z.ZodType<unknown>).nullable().optional(),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<FinishAttemptInput>;
 

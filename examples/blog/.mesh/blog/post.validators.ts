@@ -108,13 +108,7 @@ export const postSort = z
 export const createPostInput = z.strictObject({
   title: z.string().min(1).max(200),
   body: z.string().nullable().optional(),
-  metadata: (
-    z
-      .json()
-      .refine((value) => value !== null, {
-        message: "null is only allowed on a nullable attribute",
-      }) as z.ZodType<unknown>
-  ).optional(),
+  metadata: (z.json() as z.ZodType<unknown>).nullable().optional(),
   author: z.uuid(),
 }) satisfies z.ZodType<CreatePostInput>;
 

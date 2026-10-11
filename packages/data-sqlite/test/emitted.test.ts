@@ -33,7 +33,7 @@ entity :Sample table="samples"
     enum :maybeState values=[:on, :off] nullable
     timestamp :maybeAt nullable
     json :payload
-    json :extra nullable
+    json :extra
   relationships
     belongs-to :owner entity=Owner
     belongs-to :reviewer entity=Owner nullable

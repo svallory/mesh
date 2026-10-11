@@ -21,7 +21,6 @@ const codes = (source: string) => build(source).diagnostics.map((d) => d.code);
 describe("json in an entity file (ADR-0069)", () => {
   test.each([
     ["json :data", undefined],
-    ["json :data nullable", undefined],
     ["json :data default={}", {}],
     ["json :data default=[]", []],
     ["json :data default=[1, \"two\", null, { three: [3] }]", [1, "two", null, { three: [3] }]],
@@ -29,13 +28,14 @@ describe("json in an entity file (ADR-0069)", () => {
     ["json :data default=\"text\"", "text"],
     ["json :data default=0", 0],
     ["json :data default=false", false],
-    ["json :data nullable default=null", null],
+    ["json :data default=null", null],
     ["json :data default={ value: \"looks like an atom\" }", { value: "looks like an atom" }],
   ] as [string, unknown][])("%s builds", (line, expected) => {
     const result = build(withJson(line));
     expect(result.diagnostics).toEqual([]);
     const attribute = result.document!.entities[0]!.attributes.find((a) => a.name === "data")!;
     expect(attribute.type).toBe("json");
+    expect(attribute.nullable).toBe(true);
     if (expected === undefined) expect(attribute.default).toBeUndefined();
     else expect(attribute.default).toEqual(expected as never);
   });
@@ -58,7 +58,6 @@ describe("json in an entity file (ADR-0069)", () => {
     ["an atom", "json :data default=:draft"],
     ["an atom inside a list", "json :data default=[:draft]"],
     ["an atom inside an object", "json :data default={ a: :draft }"],
-    ["null on a json that is not nullable", "json :data default=null"],
   ])("a default of %s is MESH_DEFAULT", (_name, line) => {
     expect(codes(withJson(line))).toEqual(["MESH_DEFAULT"]);
   });
@@ -71,7 +70,7 @@ describe("json in an entity file (ADR-0069)", () => {
   });
 
   test("a json attribute cannot be used in a declared filter, in either spelling", () => {
-    for (const filter of ["    read :byData filter=() => &data === 1\n", "    read :byData\n      filter=() => &data.size > 1\n"]) {
+    for (const filter of ["    read :byData filter=() => &data === 1\n", "    read :byData\n      filter=() => &data?.size > 1\n"]) {
       const result = build(withJson("json :data", "  actions\n" + filter));
       expect(result.document).toBeNull();
       expect(result.diagnostics).toEqual([expect.objectContaining({ code: "MESH_FILTER_TYPE", message: expect.stringContaining("&data is :json, which a filter cannot use") })]);
@@ -87,7 +86,7 @@ describe("json in an entity file (ADR-0069)", () => {
   });
 
   test("json is a type of an argument and of a set value that is an array, but a set value cannot hold an atom", () => {
-    const argument = withJson("json :data nullable", "  actions\n    update :change\n      input\n        json :patch\n        &data\n");
+    const argument = withJson("json :data", "  actions\n    update :change\n      input\n        json :patch\n        &data\n");
     expect(build(argument).diagnostics).toEqual([]);
     const set = (value: string) => withJson("json :data", `  actions\n    update :change\n      do\n        set\n          &data=${value}\n`);
     expect(build(set("[1, 2]")).diagnostics).toEqual([]);
@@ -114,7 +113,7 @@ describe("json in the generated code", () => {
   attributes
     uuid :id primary-key
     json :payload default={}
-    json :extra nullable
+    json :extra
     string :title
   actions auto=[:read]
     create :create
@@ -144,19 +143,19 @@ describe("json in the generated code", () => {
     expect(checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts") && !f.path.endsWith("index.ts")).map((f) => f.path), "generated/schema.ts"])).toEqual({ code: 0, output: "" });
   });
 
-  test("the validator accepts any JSON value and nothing else; null only when nullable", async () => {
+  test("the validator accepts any JSON value and null, and nothing else", async () => {
     const { root } = await generated({ "m/note.mesh.mx": note });
     const { createNoteInput, changeNoteInput } = await import(resolve(root, "generated/m/note.validators.ts"));
     const ok = (payload: unknown, extra: unknown = undefined) => createNoteInput.safeParse({ title: "t", payload, ...(extra === undefined ? {} : { extra }) }).success;
-    for (const value of [{}, [], "s", 0, 1.5, true, false, { a: [1, { b: null }] }, [null, [[]]], ""]) expect(ok(value)).toBe(true);
-    for (const value of [() => 1, new Date(), new Map(), Symbol("s"), 1n, Number.NaN, Number.POSITIVE_INFINITY, { a: undefined }, { a: () => 1 }, new (class X {})(), null])
+    for (const value of [{}, [], "s", 0, 1.5, true, false, { a: [1, { b: null }] }, [null, [[]]], "", null, -0, 1e21]) expect(ok(value)).toBe(true);
+    for (const value of [() => 1, new Date(), new Map(), Symbol("s"), 1n, Number.NaN, Number.POSITIVE_INFINITY, { a: undefined }, { a: () => 1 }, new (class X {})()])
       expect(ok(value)).toBe(false);
     expect(createNoteInput.safeParse({ title: "t" }).success).toBe(true);
     expect(ok({}, null)).toBe(true);
     expect(ok({}, [1])).toBe(true);
     expect(createNoteInput.safeParse({ title: "t", payload: {}, extra: undefined }).success).toBe(true);
     expect(changeNoteInput.safeParse({ id: "00000000-0000-4000-8000-000000000000", extra: null }).success).toBe(true);
-    expect(changeNoteInput.safeParse({ id: "00000000-0000-4000-8000-000000000000", payload: null }).success).toBe(false);
+    expect(changeNoteInput.safeParse({ id: "00000000-0000-4000-8000-000000000000", payload: null }).success).toBe(true);
   });
 
   test("a create writes the default of a json attribute as data, even when it looks like an atom", async () => {

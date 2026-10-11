@@ -90,13 +90,7 @@ export const runSort = z
 
 export const startRunInput = z.strictObject({
   task: z.uuid(),
-  inputs: (
-    z
-      .json()
-      .refine((value) => value !== null, {
-        message: "null is only allowed on a nullable attribute",
-      }) as z.ZodType<unknown>
-  ).optional(),
+  inputs: (z.json() as z.ZodType<unknown>).nullable().optional(),
   parentRun: z.uuid().nullable().optional(),
 }) satisfies z.ZodType<StartRunInput>;
 
@@ -115,15 +109,7 @@ export type CancelRunInputShape = Assert<
 export const settleRunInput = z.strictObject({
   id: z.uuid(),
   result: z.enum(["succeeded", "failed"]),
-  outcome: (
-    z
-      .json()
-      .refine((value) => value !== null, {
-        message: "null is only allowed on a nullable attribute",
-      }) as z.ZodType<unknown>
-  )
-    .nullable()
-    .optional(),
+  outcome: (z.json() as z.ZodType<unknown>).nullable().optional(),
 }) satisfies z.ZodType<SettleRunInput>;
 
 export type SettleRunInputShape = Assert<

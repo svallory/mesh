@@ -56,7 +56,7 @@ entity :Task
     timestamp :dueAt nullable
     boolean :ok default=false
     boolean :maybe nullable
-    json :meta nullable
+    json :meta
   relationships
     has-many :children entity=Task
     belongs-to :parent entity=Task nullable

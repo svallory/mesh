@@ -193,15 +193,7 @@ export const completeTaskInput = z.strictObject({
   id: z.uuid(),
   fence: z.int().min(1).nullable().optional(),
   summary: z.string().min(1).nullable().optional(),
-  evidence: (
-    z
-      .json()
-      .refine((value) => value !== null, {
-        message: "null is only allowed on a nullable attribute",
-      }) as z.ZodType<unknown>
-  )
-    .nullable()
-    .optional(),
+  evidence: (z.json() as z.ZodType<unknown>).nullable().optional(),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<CompleteTaskInput>;
 

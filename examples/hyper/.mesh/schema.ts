@@ -88,9 +88,9 @@ export const eventTable = _meshSqlite("events", {
   caller: text("caller").notNull(),
   occurredAt: integer("occurredAt", { mode: "timestamp_ms" }).notNull(),
   recordedAt: integer("recordedAt", { mode: "timestamp_ms" }).notNull(),
-  cause: text("cause", { mode: "json" }).notNull(),
+  cause: text("cause", { mode: "json" }),
   checks: text("checks", { mode: "json" }),
-  payload: text("payload", { mode: "json" }).notNull(),
+  payload: text("payload", { mode: "json" }),
   taskId: text("taskId"),
 });
 
@@ -132,7 +132,7 @@ export const lateResultTable = _meshSqlite("late_results", {
   id: text("id").notNull().primaryKey(),
   fence: integer("fence").notNull(),
   summary: text("summary"),
-  evidence: text("evidence", { mode: "json" }).notNull(),
+  evidence: text("evidence", { mode: "json" }),
   recordedAt: integer("recordedAt", { mode: "timestamp_ms" }).notNull(),
   taskId: text("taskId").notNull(),
   submitterId: text("submitterId").notNull(),
@@ -174,7 +174,7 @@ export const reviewTable = _meshSqlite("reviews", {
 
 export const runTable = _meshSqlite("runs", {
   id: text("id").notNull().primaryKey(),
-  inputs: text("inputs", { mode: "json" }).notNull(),
+  inputs: text("inputs", { mode: "json" }),
   outcome: text("outcome", { mode: "json" }),
   state: text("state", { enum: ["running", "succeeded", "failed", "canceled"] }).notNull(),
   cancelReason: text("cancelReason"),
@@ -205,7 +205,7 @@ export const sessionReferenceTable = _meshSqlite("session_references", {
 export const submissionTable = _meshSqlite("submissions", {
   id: text("id").notNull().primaryKey(),
   summary: text("summary"),
-  evidence: text("evidence", { mode: "json" }).notNull(),
+  evidence: text("evidence", { mode: "json" }),
   fence: integer("fence"),
   taskVersion: integer("taskVersion").notNull(),
   state: text("state", { enum: ["pending", "accepted", "returned", "withdrawn"] }).notNull(),
