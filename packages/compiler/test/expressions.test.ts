@@ -871,6 +871,30 @@ export const state: "open" | "done" = fresh.self.state;
       const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
       expect(checkTypes(root, [...paths, "generated/schema.ts", "check.ts"])).toEqual({ code: 0, output: "" });
     });
+    test("a computed field that reads a member the new instance has not filled is null there, in the type: directly, through another computed field or through a relationship; the others keep their type", async () => {
+      const computed = "  computed\n    integer :double() { return &n * 2 }\n    integer :twice() { return &double + 1 }\n    integer :viaOwner() { return &owner.n }\n    boolean :isOpen() { return &state === :open }\n    integer :plain({ self }) { const q = self.n; return q + 1 }\n  actions auto=[:read]";
+      const source = item(make(checkOf("() => &double > 0")) + go("")).replace("  actions auto=[:read]", computed);
+      const { root, text, files } = await generated(source);
+      expect(squash(text)).toContain(squash('self: $DeepReadonly<Omit<ItemLoaded, "n" | "ownerId" | "owner" | "double" | "twice" | "viaOwner"> & { [K in "n" | "ownerId" | "owner" | "double" | "twice" | "viaOwner"]: ItemLoaded[K] | null }>'));
+      await writeFile(resolve(root, "check.ts"), `import type { ItemNewScope, ItemScope } from "./generated/domain/item.expressions";
+declare const fresh: ItemNewScope<unknown>;
+declare const stored: ItemScope<unknown>;
+export const nullDouble: number | null = fresh.self.double;
+export const nullTwice: number | null = fresh.self.twice;
+export const nullViaOwner: number | null = fresh.self.viaOwner;
+// @ts-expect-error double reads n, which is null until the input is applied
+export const notYet: number = fresh.self.double;
+// @ts-expect-error twice reads double
+export const notYetTwice: number = fresh.self.twice;
+// @ts-expect-error viaOwner reads owner
+export const notYetOwner: number = fresh.self.viaOwner;
+export const open: boolean = fresh.self.isOpen;
+export const plain: number = fresh.self.plain;
+export const set: number = stored.self.double;
+`);
+      const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
+      expect(checkTypes(root, [...paths, "generated/schema.ts", "check.ts"])).toEqual({ code: 0, output: "" });
+    });
     test("an integer key: a create's steps before the write get ItemCreateScope, where the key may be null", async () => {
       const source = item(make(checkOf("() => &seq === null") + "      do\n        set\n          &m=() => &seq ?? 0\n        run [after=:write] ({ self }) { console.log(self.seq + 1) }\n"), "integer :seq primary-key");
       const { root, text, files } = await generated(source);

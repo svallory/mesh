@@ -1,4 +1,4 @@
-import type { Entity } from "@meshfw/model";
+import type { Entity, ExprNode } from "@meshfw/model";
 
 /**
  * What a create's new instance lacks before the input is applied (ACT-27). Mesh builds the instance with a `uuid` or
@@ -40,4 +40,35 @@ export function newInstanceMembers(gaps: NewInstanceGaps, withRelationships: boo
     ...gaps.attributes,
     ...gaps.relationships.flatMap((relation) => (withRelationships ? [relation.keyColumn, relation.name] : [relation.keyColumn])),
   ];
+}
+
+/**
+ * The computed fields that are null on a create's new instance (ACT-27): the ones whose translated body reads a member
+ * that is null there (`unfilled`, as `newInstanceMembers` lists them) or another such computed field. The check loads
+ * a computed field onto the new instance and evaluates its body over the nulls, and a translated body follows the null
+ * rule, so `&qty * 2` is null while `qty` is. A plain body is the author's TypeScript: whatever it returns for the nulls
+ * is its own result, so it keeps its declared type (the reads it makes through `self.x` are not visible here either).
+ */
+export function newInstanceComputed(entity: Entity, unfilled: ReadonlySet<string>): string[] {
+  const reads = (n: ExprNode, into: Set<string>): void => {
+    if (n.kind === "member") {
+      if (n.object.kind === "var" && n.object.name === "self") into.add(n.name);
+      reads(n.object, into);
+    } else if (n.kind === "call" || n.kind === "helper") n.args.forEach((arg) => reads(arg, into));
+    else if (n.kind === "quantify") { reads(n.source, into); reads(n.body, into); }
+  };
+  const readBy = new Map<string, Set<string>>();
+  for (const computed of entity.computed) {
+    const names = new Set<string>();
+    if (computed.body?.tree) reads(computed.body.tree, names);
+    readBy.set(computed.name, names);
+  }
+  // Grow the set until no computed field reads one more: a computed field that reads another one that is null is null.
+  const tainted = new Set<string>();
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const [name, names] of readBy)
+      if (!tainted.has(name) && [...names].some((read) => unfilled.has(read) || tainted.has(read))) { tainted.add(name); grew = true; }
+  }
+  return entity.computed.map((c) => c.name).filter((name) => tainted.has(name));
 }

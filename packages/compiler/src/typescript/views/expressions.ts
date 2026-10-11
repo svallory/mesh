@@ -1,7 +1,7 @@
 import { dirname, posix, relative } from "node:path";
 import type { Action, Entity, Expression, ExprNode, Step } from "@meshfw/model";
 import type { EmitInput } from "../emit.ts";
-import { newInstanceGaps, newInstanceMembers } from "../../model/new-instance.ts";
+import { newInstanceComputed, newInstanceGaps, newInstanceMembers } from "../../model/new-instance.ts";
 import { mentioned, printExpression } from "../expression-printer.ts";
 import { hasLoader } from "./load.ts";
 import { entityFileComment } from "./types.ts";
@@ -175,6 +175,8 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     return `$DeepReadonly<Omit<${selfType}, ${names}> & { [K in ${names}]: ${selfType}[K] | null }>`;
   };
   const unfilled = newInstanceMembers(gaps, selfType !== recordName);
+  // A computed field that reads one of them is evaluated over the nulls: null too, whatever its stored type says.
+  const nullOnNew = [...unfilled, ...newInstanceComputed(entity, new Set(unfilled))];
   const scopeOf = (kind: ScopeKind): string =>
     kind === "new" ? (unfilled.length ? `${recordName}NewScope` : `${recordName}CheckScope`)
       : kind === "check" ? `${recordName}CheckScope`
@@ -184,7 +186,7 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
   const checkScope = usedScopes.has(`${recordName}CheckScope`) || usedScopes.has(`${recordName}NewScope`)
     ? { name: `${recordName}CheckScope`, type: `Omit<${scopeName}<I>, "before">` } : null;
   const newScope = usedScopes.has(`${recordName}NewScope`)
-    ? { name: `${recordName}NewScope`, type: `Omit<${recordName}CheckScope<I>, "self"> & { self: ${withNulls(unfilled)} }` } : null;
+    ? { name: `${recordName}NewScope`, type: `Omit<${recordName}CheckScope<I>, "self"> & { self: ${withNulls(nullOnNew)} }` } : null;
   const createScope = usedScopes.has(`${recordName}CreateScope`) && gaps.key
     ? { name: `${recordName}CreateScope`, type: `Omit<${scopeName}<I>, "self"> & { self: ${withNulls([gaps.key])} }` } : null;
   // The input an expression reads: its action's, the fields the covered actions share for an `always` block or a policy, none for a computed field.
