@@ -89,9 +89,9 @@ The operator accepted [roadmap revision 5](../roadmap/roadmap.md), which ends Me
 | [0050](./0050-entity-file-syntax.md) | Entity file syntax: `kind #name options`, with the reference file | Accepted | operator |
 | [0051](./0051-mesh-mx-files-and-the-mesh-host.md) | Entity files end in `.mesh.mx`; Mesh ships an MX host named `mesh` | Accepted | operator; lead, delegated |
 | [0052](./0052-actions-auto-and-on-load.md) | Actions are always named; `auto`; `on:load`; `arguments` | Accepted, amended by 0067, 0072 | operator |
-| [0053](./0053-validate-then-do.md) | `validate`, then `do`; steps `set`, `when`, `load`, `run`; `always`; reusable steps planned | Accepted, amended by 0067, 0068 | operator; lead, delegated |
+| [0053](./0053-validate-then-do.md) | `validate`, then `do`; steps `set`, `when`, `load`, `run`; `always`; reusable steps planned | Accepted, amended by 0067, 0068, and 2026-10-11: a check sees `self` before the input; `before` leaves `validate` | operator; lead, delegated |
 | [0054](./0054-write-strategy-is-inferred.md) | Mesh infers the write strategy; no `require-atomic` | Accepted, amended by 0072 | lead, delegated |
-| [0055](./0055-policies-are-core.md) | Policies are core; every covering policy must pass; no policies means forbidden | Accepted, amended by 0071, 0072, 0074 | operator; lead, delegated |
+| [0055](./0055-policies-are-core.md) | Policies are core; every covering policy must pass; no policies means forbidden | Accepted, amended by 0071, 0072, 0074, and 2026-10-11: a policy sees `self` before the input | operator; lead, delegated |
 | [0056](./0056-translated-expressions-are-one-expression-arrows.md) | A function whose body is one expression is translated; Mesh builds its own translator | Accepted | operator; lead, delegated |
 | [0057](./0057-one-domain-modules-as-folders.md) | One domain at `src/domain/`; its folders are modules | Accepted, amended by operator ruling, 2026-10-10 | operator |
 | [0058](./0058-generated-code-in-mesh-imported-as-hash-mesh.md) | Generated code in `.mesh/`, committed, imported as `#mesh` | Accepted, amended 2026-10-11: imports follow folder modules (`#mesh/domain/<module>`) | operator; lead, delegated |
@@ -104,7 +104,7 @@ The operator accepted [roadmap revision 5](../roadmap/roadmap.md), which ends Me
 | [0065](./0065-mx-highlighting-on-the-docs-site.md) | The docs site highlights `mx` code with MX's tree-sitter highlighter | Accepted | lead, delegated, with the MX lead |
 | [0066](./0066-names-and-references-are-atoms.md) | Names and references are atoms: `kind :name options` | Accepted, amended by 0067 | operator (three points by the lead) |
 | [0067](./0067-members-imports-input-static-files.md) | Members are `&name`, entities are imports, one `input` section, static files | Accepted | operator; marked choices by the lead |
-| [0068](./0068-actions-compose-through-actions-and-tx.md) | Steps and checks receive bound `actions` and `tx`; a `run` step may run `after=:write` | Accepted | operator |
+| [0068](./0068-actions-compose-through-actions-and-tx.md) | Steps and checks receive bound `actions` and `tx`; a `run` step may run `after=:write` | Accepted, amended 2026-10-11: `before` leaves `validate` | operator |
 | [0069](./0069-json-attribute-type.md) | `json` is an attribute type | Accepted | operator |
 | [0070](./0070-has-many-via.md) | A `has-many` names the inverse it follows with `via=` | Accepted | operator |
 | [0071](./0071-system-key-on-the-action-context.md) | `system` is a reserved key of the `ActionContext`; policies decide what it admits | Accepted | operator |

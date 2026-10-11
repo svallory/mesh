@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { FrameworkError, readOnlyRecord, runCheck, type CheckSpec, type Issue } from "../src/index.ts";
+import { checkScope, expr, FrameworkError, readOnlyRecord, runCheck, scope, type CheckSpec, type Issue } from "../src/index.ts";
 
 const source = { file: "t.mesh.mx", line: 3, column: 7 };
 const spec = (over: Partial<CheckSpec>): CheckSpec => ({ label: "l", code: "c", message: "m", source, that: () => true, ...over });
@@ -36,6 +36,34 @@ describe("runCheck", () => {
     await runCheck(issues, {}, spec({ label: "a", that: () => false }));
     await runCheck(issues, {}, spec({ label: "b", that: () => false }));
     expect(issues.map((issue) => issue.label)).toEqual(["a", "b"]);
+  });
+});
+
+describe("checkScope", () => {
+  test("the checks' scope is the action's without before, null or not; the rest is the same values, and the action's scope is untouched", () => {
+    const self = { id: "1" };
+    for (const before of [{ id: "1" }, null]) {
+      const action = scope({ self, input: { id: "1" }, actor: null, context: {}, before }, { clock: () => new Date(0) });
+      const checks = checkScope(action);
+      expect("before" in checks).toBe(false);
+      expect(Object.keys(checks).sort()).toEqual(["actor", "clock", "context", "input", "self"]);
+      expect(checks.self).toBe(self);
+      expect(checks.input).toBe(action.input);
+      expect(checks.context).toBe(action.context);
+      expect(action.before).toBe(before);
+    }
+  });
+  test("a check and a step read the action's one instant: the clock is read once, whichever reads first", () => {
+    for (const checkFirst of [true, false]) {
+      let reads = 0;
+      // A clock that jumps two hours on every read.
+      const action = scope({ self: {}, before: null }, { clock: () => new Date(Date.UTC(2026, 9, 11, 2 * reads++)) });
+      const checks = checkScope(action);
+      const [first, second] = checkFirst ? [expr.now(checks), expr.now(action)] : [expr.now(action), expr.now(checks)];
+      expect(second.getTime(), String(checkFirst)).toBe(first.getTime());
+      expect(expr.now(checks).getTime()).toBe(first.getTime());
+      expect(reads).toBe(1);
+    }
   });
 });
 

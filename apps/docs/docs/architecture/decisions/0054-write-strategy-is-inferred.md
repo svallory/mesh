@@ -1,6 +1,6 @@
 ---
 title: "0054. Mesh infers the write strategy from the action body; there is no `require-atomic`"
-description: "Decision record 0054: an update or destroy is atomic when its body allows it, read-then-write otherwise, chosen at build time and printed by `mesh explain`. Status: Accepted, amended by ADR-0072."
+description: "Decision record 0054: an update or destroy is atomic when its body allows it, read-then-write otherwise, chosen at build time and printed by `mesh explain`. Status: Accepted, amended by ADR-0072; ADR-0053 amended 2026-10-11."
 ---
 
 # 0054. Mesh infers the write strategy from the action body; there is no `require-atomic`
@@ -12,6 +12,8 @@ description: "Decision record 0054: an update or destroy is atomic when its body
 Accepted. Amends [ADR-0017](./0017-atomic-by-default-and-classification.md) (the opt-out attribute).
 
 Amended by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) (2026-10-10): Every update reads the row first until atomic updates return after Mesh 1.0; the inference stays as design.
+
+**Note 2026-10-11.** [ADR-0053](./0053-validate-then-do.md) was amended: in `validate`, `self` is now the stored record before the input is applied, not the record with the accepted input applied, as the reasoning below says. The conclusion holds unchanged: a check that reads `self` on an update reads the stored row, so the action reads it first.
 
 ## Date
 

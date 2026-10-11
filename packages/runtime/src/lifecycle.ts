@@ -1,5 +1,5 @@
 import type { Issue, IssueSource } from "./errors.ts";
-import type { Clock } from "./expr.ts";
+import { now, type Clock, type Scope } from "./expr.ts";
 
 /** What `bind(layer, options)` takes. The clock is what `now()` reads in a function of an entity file (ADR-0012, M4 D6). */
 export interface BindOptions {
@@ -8,7 +8,8 @@ export interface BindOptions {
 
 /**
  * One `check` of an action, as the generated code declares it (M5, ADR-0053). The functions are the compiled
- * expressions of the entity (`<entity>.expressions.ts`); the scope is `{ self, input, actor, context, before }`.
+ * expressions of the entity (`<entity>.expressions.ts`); the scope is `{ self, input, actor, context }` with no
+ * `before` (ACT-01, ACT-27): `self` is the record before the input is applied (see `checkScope`).
  */
 export interface CheckSpec {
   label: string;
@@ -19,6 +20,19 @@ export interface CheckSpec {
   that: (scope: never) => unknown;
   when?: (scope: never) => unknown;
   details?: (scope: never) => unknown;
+}
+
+/**
+ * The scope the checks get: the action's scope without `before` (ACT-01, ACT-27). There `self` is already the record
+ * before the input, so `before` would only repeat it. The build reports a check that names `before` as
+ * `MESH_VALIDATE_BEFORE`; one that hands the rest of its scope to a helper (`({ context, ...rest }) => helper(rest)`)
+ * passes the build, and finds nothing there rather than a value the rule forbids. The copy reads the action's one
+ * instant (`now`), as `rescope` does, so a check and a step of the same action see the same time.
+ */
+export function checkScope<S extends Scope<object>>(scope: S): Omit<S, "before"> {
+  const copy: { before?: unknown; clock: Clock } = { ...scope, clock: () => now(scope) };
+  delete copy.before;
+  return copy as unknown as Omit<S, "before">;
 }
 
 /**

@@ -6,14 +6,14 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   castInput as $castInput,
+  checkScope as $checkScope,
   composed as $composed,
   guarded as $guarded,
-  loadInto as $loadInto,
   noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
-  unloadFrom as $unloadFrom,
+  uuidv7 as $uuidv7,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
@@ -71,14 +71,12 @@ export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, co
         const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
-          fence: parsed.fence,
-          summary: parsed.summary === undefined ? null : parsed.summary,
-          evidence: parsed.evidence === undefined ? [] : parsed.evidence,
+          id: $uuidv7(),
+          summary: null,
+          evidence: [],
           recordedAt: $now,
-          taskId: parsed.task,
         };
-        const $record: $Row = { ...$changes };
-        const $load = { actor: $actor, context: $context, clock: options.clock };
+        const $record: $Row = { ...$changes, fence: null, taskId: null, submitterId: null };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "LateResult", $record, "action function"),
           "LateResult.record",
@@ -96,15 +94,15 @@ export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, co
         ) as unknown as $Scope<RecordLateResultInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $loadInto($loadPlan, "LateResult", tx, $record, ["task", "task.claims"], $load);
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "staleFence",
           code: "claim.stale-fence",
           message: "only a fence you held that expired or was revoked records a late result",
           source: { file: "src/domain/work/late-result.mesh.mx", line: 23, column: 9 },
           that: $expressions["record.check.staleFence.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "evidenceExists",
           code: "evidence.exists",
           message: "an evidence reference does not exist",
@@ -113,6 +111,11 @@ export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, co
           details: $expressions["record.check.evidenceExists.details"],
         });
         if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // the input: the member inputs the caller sent, applied now that the checks have passed
+        if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
+        if (parsed.fence !== undefined) $changes.fence = $record.fence = parsed.fence;
+        if (parsed.summary !== undefined) $changes.summary = $record.summary = parsed.summary;
+        if (parsed.evidence !== undefined) $changes.evidence = $record.evidence = parsed.evidence;
         // do: the steps run in written order, each seeing the record as the ones before it left it
         {
           const $value = await $expressions["record.step.0.set.submitter"]($s);
@@ -122,7 +125,6 @@ export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, co
             );
           $changes.submitterId = $record.submitterId = $value;
         }
-        $unloadFrom($loadPlan, "LateResult", $record);
         // data layer
         const $stored = await tx.insert(tables.lateResult, $changes);
         $noteWrite(tx);

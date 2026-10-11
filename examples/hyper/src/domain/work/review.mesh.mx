@@ -1,6 +1,6 @@
 import { Submission } from "./submission.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
-import { reviewerRuleOf } from "./work.helpers"
+import { reviewerRuleOf, submittedVersionsOf, taskUnchangedSinceSubmit } from "./work.helpers"
 
 entity :Review table="reviews"
   attributes
@@ -19,21 +19,21 @@ entity :Review table="reviews"
         integer :expectedVersion nullable
       validate
         check :pending [
-          that=() => &submission.state === :pending
+          that=async ({ input, tx }) => (await submittedVersionsOf(tx, input.submission)).state === :pending
           code="submission.pending"
           message="the submission is not pending"
         ]
         check :taskVersion [
-          that=() => &submission.state !== :pending || &submission.task.version === &submission.taskVersion + 1
+          that=async ({ input, tx }) => taskUnchangedSinceSubmit(await submittedVersionsOf(tx, input.submission))
           code="submission.task-version"
           message="the task changed since this was submitted; return it for rework"
-          details=() => ({ submitted: &submission.taskVersion, current: &submission.task.version })
+          details=async ({ input, tx }) => { const { submitted, current } = await submittedVersionsOf(tx, input.submission); return { submitted, current }; }
         ]
         check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &submission.task.version
+          that=async ({ input, tx }) => input.expectedVersion == null || input.expectedVersion === (await submittedVersionsOf(tx, input.submission)).current
           code="expected-version"
           message="the task is at another version; read it again and retry"
-          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &submission.task.version })
+          details=async ({ input, tx }) => ({ expectedVersion: input.expectedVersion, actualVersion: (await submittedVersionsOf(tx, input.submission)).current })
         ]
       do
         set
@@ -51,15 +51,15 @@ entity :Review table="reviews"
         integer :expectedVersion nullable
       validate
         check :pending [
-          that=() => &submission.state === :pending
+          that=async ({ input, tx }) => (await submittedVersionsOf(tx, input.submission)).state === :pending
           code="submission.pending"
           message="the submission is not pending"
         ]
         check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &submission.task.version
+          that=async ({ input, tx }) => input.expectedVersion == null || input.expectedVersion === (await submittedVersionsOf(tx, input.submission)).current
           code="expected-version"
           message="the task is at another version; read it again and retry"
-          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &submission.task.version })
+          details=async ({ input, tx }) => ({ expectedVersion: input.expectedVersion, actualVersion: (await submittedVersionsOf(tx, input.submission)).current })
         ]
       do
         set

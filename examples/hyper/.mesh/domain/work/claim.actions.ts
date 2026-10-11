@@ -7,6 +7,7 @@ import {
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
   castInput as $castInput,
+  checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
   composed as $composed,
   guarded as $guarded,
@@ -18,6 +19,7 @@ import {
   runCheck as $runCheck,
   scope as $scope,
   unloadFrom as $unloadFrom,
+  uuidv7 as $uuidv7,
   writeCount as $writeCount,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
@@ -91,12 +93,19 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         const $actor = $context.actor;
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
+          id: $uuidv7(),
           endedAt: null,
           endReason: null,
           state: "active",
-          taskId: parsed.task,
         };
-        const $record: $Row = { ...$changes };
+        const $record: $Row = {
+          ...$changes,
+          fence: null,
+          acquiredAt: null,
+          expiresAt: null,
+          taskId: null,
+          holderId: null,
+        };
         const $load = { actor: $actor, context: $context, clock: options.clock };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Claim", $record, "action function"),
@@ -115,8 +124,8 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         ) as unknown as $Scope<AcquireClaimInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $loadInto($loadPlan, "Claim", tx, $record, ["task", "task.derivedState"], $load);
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "taskReady",
           code: "claim.task-ready",
           message: "the task is not ready to claim",
@@ -124,7 +133,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           that: $expressions["acquire.check.taskReady.that"],
           details: $expressions["acquire.check.taskReady.details"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the task is at another version; read it again and retry",
@@ -133,6 +142,8 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           details: $expressions["acquire.check.versionMatches.details"],
         });
         if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // the input: the member inputs the caller sent, applied now that the checks have passed
+        if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
         // do: the steps run in written order, each seeing the record as the ones before it left it
         await $expressions["acquire.step.0.run"]($s);
         {
@@ -198,7 +209,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.claim, $key);
         if ($before === undefined) throw new $NotFoundError("Claim", $key);
@@ -226,8 +237,9 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         ) as unknown as $StoredScope<RenewClaimInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
+        const $checks = $checkScope($s);
         await $loadInto($loadPlan, "Claim", tx, $record, ["task", "task.maxFence"], $load);
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "currentFence",
           code: "claim.current-fence",
           message: "the fence is not the current claim's; claim the task again",
@@ -235,21 +247,21 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           that: $expressions["renew.check.currentFence.that"],
           details: $expressions["renew.check.currentFence.details"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "claimActive",
           code: "claim.active",
           message: "the claim has ended; claim the task again",
           source: { file: "src/domain/work/claim.mesh.mx", line: 63, column: 9 },
           that: $expressions["renew.check.claimActive.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "claimNotExpired",
           code: "claim.expired",
           message: "the lease has expired; claim the task again",
           source: { file: "src/domain/work/claim.mesh.mx", line: 68, column: 9 },
           that: $expressions["renew.check.claimNotExpired.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the task is at another version; read it again and retry",
@@ -300,7 +312,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.claim, $key);
         if ($before === undefined) throw new $NotFoundError("Claim", $key);
@@ -328,8 +340,9 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         ) as unknown as $StoredScope<ReleaseClaimInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
+        const $checks = $checkScope($s);
         await $loadInto($loadPlan, "Claim", tx, $record, ["task", "task.maxFence"], $load);
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "currentFence",
           code: "claim.current-fence",
           message: "the fence is not the current claim's; claim the task again",
@@ -337,21 +350,21 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           that: $expressions["release.check.currentFence.that"],
           details: $expressions["release.check.currentFence.details"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "claimActive",
           code: "claim.active",
           message: "the claim has ended; claim the task again",
           source: { file: "src/domain/work/claim.mesh.mx", line: 97, column: 9 },
           that: $expressions["release.check.claimActive.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "claimNotExpired",
           code: "claim.expired",
           message: "the lease has expired; claim the task again",
           source: { file: "src/domain/work/claim.mesh.mx", line: 102, column: 9 },
           that: $expressions["release.check.claimNotExpired.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the task is at another version; read it again and retry",
@@ -403,7 +416,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.claim, $key);
         if ($before === undefined) throw new $NotFoundError("Claim", $key);
@@ -431,15 +444,16 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         ) as unknown as $StoredScope<RevokeClaimInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
+        const $checks = $checkScope($s);
         await $loadInto($loadPlan, "Claim", tx, $record, ["task"], $load);
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "claimActive",
           code: "claim.active",
           message: "the claim has ended; claim the task again",
           source: { file: "src/domain/work/claim.mesh.mx", line: 126, column: 9 },
           that: $expressions["revoke.check.claimActive.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the task is at another version; read it again and retry",
@@ -491,7 +505,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.claim, $key);
         if ($before === undefined) throw new $NotFoundError("Claim", $key);
@@ -518,7 +532,8 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         ) as unknown as $StoredScope<ExpireClaimInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "claimActive",
           code: "claim.active",
           message: "the claim has ended; claim the task again",
@@ -568,7 +583,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.claim, $key);
         if ($before === undefined) throw new $NotFoundError("Claim", $key);
@@ -595,7 +610,8 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         ) as unknown as $StoredScope<EndClaimInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "claimActive",
           code: "claim.active",
           message: "the claim has ended; claim the task again",

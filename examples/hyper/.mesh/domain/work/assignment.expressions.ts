@@ -29,6 +29,8 @@ export type AssignmentScope<I = unknown> = $Scope<{
 export type AssignmentStoredScope<I = unknown> = AssignmentScope<I> & {
   before: $DeepReadonly<Assignment>;
 };
+/** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
+export type AssignmentCheckScope<I = unknown> = Omit<AssignmentScope<I>, "before">;
 
 export const expressions = {
   // set &delegator, translated (src/domain/work/assignment.mesh.mx:23:22)
@@ -36,7 +38,7 @@ export const expressions = {
   // set &startedAt, translated (src/domain/work/assignment.mesh.mx:24:22)
   "start.step.0.set.startedAt": ($s: AssignmentScope<StartAssignmentInput>) => $.now($s),
   // check :current that, translated (src/domain/work/assignment.mesh.mx:30:16)
-  "finish.check.current.that": ($s: AssignmentStoredScope<FinishAssignmentInput>) =>
+  "finish.check.current.that": ($s: AssignmentCheckScope<FinishAssignmentInput>) =>
     $.isNull($s.self.endedAt),
   // set &endedAt, translated (src/domain/work/assignment.mesh.mx:36:20)
   "finish.step.0.set.endedAt": ($s: AssignmentStoredScope<FinishAssignmentInput>) => $.now($s),

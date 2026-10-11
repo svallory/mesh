@@ -40,6 +40,8 @@ export interface SourceEdit {
   from: number;
   to: number;
   text: string;
+  /** For `&x` to `self.x`: it is the right side of `input.x ?? &x`, read only when the caller did not send `x`. */
+  fallback?: true;
 }
 
 export interface PlainReason {

@@ -9,9 +9,13 @@ import {
 } from "@meshfw/runtime";
 import {
   claimToRelease,
-  fenceDetails,
+  claimsOf,
+  fenceDetailsOf,
   fenceIsCurrent,
+  inReviewOf,
   missingEvidenceOf,
+  taskOpenOf,
+  taskVersionOf,
 } from "../../../src/domain/work/work.helpers";
 import type { Actions as $Actions, Reads as $Reads } from "../../composition";
 import type {
@@ -37,51 +41,65 @@ export type SubmissionScope<I = unknown> = $Scope<{
 export type SubmissionStoredScope<I = unknown> = SubmissionScope<I> & {
   before: $DeepReadonly<Submission>;
 };
+/** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
+export type SubmissionCheckScope<I = unknown> = Omit<SubmissionScope<I>, "before">;
+/** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
+export type SubmissionNewScope<I = unknown> = Omit<SubmissionCheckScope<I>, "self"> & {
+  self: $DeepReadonly<
+    Omit<SubmissionLoaded, "taskVersion" | "taskId" | "task" | "submitterId" | "submitter"> & {
+      [K in "taskVersion" | "taskId" | "task" | "submitterId" | "submitter"]:
+        | SubmissionLoaded[K]
+        | null;
+    }
+  >;
+};
 
 export const expressions = {
-  // check :taskOpen that, translated (src/domain/work/submission.mesh.mx:27:16)
-  "submit.check.taskOpen.that": ($s: SubmissionScope<SubmitSubmissionInput>) =>
-    $.eq($s.self.task?.state, "open"),
-  // check :currentFence that, plain (reads-record-in-helper) (src/domain/work/submission.mesh.mx:32:16)
-  "submit.check.currentFence.that": ($s: SubmissionScope<SubmitSubmissionInput>) => {
-    const { self } = $s;
+  // check :taskOpen that, plain (uses-tx) (src/domain/work/submission.mesh.mx:27:16)
+  "submit.check.taskOpen.that": ($s: SubmissionNewScope<SubmitSubmissionInput>) => {
+    return (({ input, tx }) => taskOpenOf(tx, input.task))($s);
+  },
+  // check :currentFence that, plain (uses-tx) (src/domain/work/submission.mesh.mx:32:16)
+  "submit.check.currentFence.that": ($s: SubmissionNewScope<SubmitSubmissionInput>) => {
     const now = () => $.now($s);
-    return (({ input, actor }) => fenceIsCurrent(self.task.claims, input.fence, actor.id, now()))(
+    return (async ({ input, actor, tx }) =>
+      fenceIsCurrent(await claimsOf(tx, input.task), input.fence, actor.id, now()))($s);
+  },
+  // check :currentFence details, plain (uses-tx) (src/domain/work/submission.mesh.mx:35:19)
+  "submit.check.currentFence.details": ($s: SubmissionNewScope<SubmitSubmissionInput>) => {
+    const now = () => $.now($s);
+    return (({ input, actor, tx }) => fenceDetailsOf(tx, input.task, input.fence, actor.id, now()))(
       $s,
     );
   },
-  // check :currentFence details, plain (reads-record-in-helper) (src/domain/work/submission.mesh.mx:35:19)
-  "submit.check.currentFence.details": ($s: SubmissionScope<SubmitSubmissionInput>) => {
-    const { self } = $s;
-    const now = () => $.now($s);
-    return (({ input, actor }) =>
-      fenceDetails(self.task.maxFence, self.task.claims, input.fence, actor.id, now()))($s);
+  // check :nonePending that, plain (uses-tx) (src/domain/work/submission.mesh.mx:38:16)
+  "submit.check.nonePending.that": ($s: SubmissionNewScope<SubmitSubmissionInput>) => {
+    return (async ({ input, tx }) => !(await inReviewOf(tx, input.task)))($s);
   },
-  // check :nonePending that, translated (src/domain/work/submission.mesh.mx:38:16)
-  "submit.check.nonePending.that": ($s: SubmissionScope<SubmitSubmissionInput>) =>
-    $.not($s.self.task?.inReview),
   // check :evidenceExists that, plain (uses-tx) (src/domain/work/submission.mesh.mx:43:16)
-  "submit.check.evidenceExists.that": ($s: SubmissionScope<SubmitSubmissionInput>) => {
+  "submit.check.evidenceExists.that": ($s: SubmissionNewScope<SubmitSubmissionInput>) => {
     const { self } = $s;
-    return (async ({ tx }) => (await missingEvidenceOf(tx, self.evidence)).length === 0)($s);
+    return (async ({ input, tx }) =>
+      (await missingEvidenceOf(tx, input.evidence ?? self.evidence)).length === 0)($s);
   },
   // check :evidenceExists details, plain (uses-tx) (src/domain/work/submission.mesh.mx:46:19)
-  "submit.check.evidenceExists.details": ($s: SubmissionScope<SubmitSubmissionInput>) => {
+  "submit.check.evidenceExists.details": ($s: SubmissionNewScope<SubmitSubmissionInput>) => {
     const { self } = $s;
-    return (async ({ tx }) => ({ missing: await missingEvidenceOf(tx, self.evidence) }))($s);
+    return (async ({ input, tx }) => ({
+      missing: await missingEvidenceOf(tx, input.evidence ?? self.evidence),
+    }))($s);
   },
-  // check :versionMatches that, translated (src/domain/work/submission.mesh.mx:49:16)
-  "submit.check.versionMatches.that": ($s: SubmissionScope<SubmitSubmissionInput>) =>
-    $.or(
-      $.isNull($s.input?.expectedVersion),
-      $.eq($s.input?.expectedVersion, $s.self.task?.version),
-    ),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/work/submission.mesh.mx:52:19)
-  "submit.check.versionMatches.details": ($s: SubmissionScope<SubmitSubmissionInput>) => {
-    const { self } = $s;
-    return (({ input }) => ({
+  // check :versionMatches that, plain (uses-tx) (src/domain/work/submission.mesh.mx:49:16)
+  "submit.check.versionMatches.that": ($s: SubmissionNewScope<SubmitSubmissionInput>) => {
+    return (async ({ input, tx }) =>
+      input.expectedVersion == null ||
+      input.expectedVersion === (await taskVersionOf(tx, input.task)))($s);
+  },
+  // check :versionMatches details, plain (uses-tx) (src/domain/work/submission.mesh.mx:52:19)
+  "submit.check.versionMatches.details": ($s: SubmissionNewScope<SubmitSubmissionInput>) => {
+    return (async ({ input, tx }) => ({
       expectedVersion: input.expectedVersion,
-      actualVersion: self.task.version,
+      actualVersion: await taskVersionOf(tx, input.task),
     }))($s);
   },
   // set &submitter, translated (src/domain/work/submission.mesh.mx:56:22)
@@ -106,16 +124,16 @@ export const expressions = {
     })($s);
   },
   // check :pending that, translated (src/domain/work/submission.mesh.mx:71:16)
-  "withdraw.check.pending.that": ($s: SubmissionStoredScope<WithdrawSubmissionInput>) =>
+  "withdraw.check.pending.that": ($s: SubmissionCheckScope<WithdrawSubmissionInput>) =>
     $.eq($s.self.state, "pending"),
   // check :versionMatches that, translated (src/domain/work/submission.mesh.mx:76:16)
-  "withdraw.check.versionMatches.that": ($s: SubmissionStoredScope<WithdrawSubmissionInput>) =>
+  "withdraw.check.versionMatches.that": ($s: SubmissionCheckScope<WithdrawSubmissionInput>) =>
     $.or(
       $.isNull($s.input?.expectedVersion),
       $.eq($s.input?.expectedVersion, $s.self.task?.version),
     ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/work/submission.mesh.mx:79:19)
-  "withdraw.check.versionMatches.details": ($s: SubmissionStoredScope<WithdrawSubmissionInput>) => {
+  "withdraw.check.versionMatches.details": ($s: SubmissionCheckScope<WithdrawSubmissionInput>) => {
     const { self } = $s;
     return (({ input }) => ({
       expectedVersion: input.expectedVersion,
@@ -129,7 +147,7 @@ export const expressions = {
     })($s);
   },
   // check :pending that, translated (src/domain/work/submission.mesh.mx:92:16)
-  "settle.check.pending.that": ($s: SubmissionStoredScope<SettleSubmissionInput>) =>
+  "settle.check.pending.that": ($s: SubmissionCheckScope<SettleSubmissionInput>) =>
     $.eq($s.self.state, "pending"),
   // set &state, translated (src/domain/work/submission.mesh.mx:98:18)
   "settle.step.0.set.state": ($s: SubmissionStoredScope<SettleSubmissionInput>) =>

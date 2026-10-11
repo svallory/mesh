@@ -7,6 +7,7 @@ import {
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
   castInput as $castInput,
+  checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
   composed as $composed,
   guarded as $guarded,
@@ -16,6 +17,7 @@ import {
   runCheck as $runCheck,
   scope as $scope,
   unloadFrom as $unloadFrom,
+  uuidv7 as $uuidv7,
   writeCount as $writeCount,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
@@ -72,17 +74,17 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
         const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
-          inputs: parsed.inputs === undefined ? {} : parsed.inputs,
+          id: $uuidv7(),
+          inputs: {},
           outcome: null,
           state: "running",
           cancelReason: null,
           endedAt: null,
           version: 1,
           startedAt: $now,
-          taskId: parsed.task,
-          parentRunId: parsed.parentRun === undefined ? null : parsed.parentRun,
+          parentRunId: null,
         };
-        const $record: $Row = { ...$changes };
+        const $record: $Row = { ...$changes, taskId: null, responsibleId: null, startedById: null };
         const $load = { actor: $actor, context: $context, clock: options.clock };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Run", $record, "action function"),
@@ -101,28 +103,33 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
         ) as unknown as $Scope<StartRunInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $loadInto($loadPlan, "Run", tx, $record, ["parentRun", "task"], $load);
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "taskOpen",
           code: "run.task-open",
           message: "runs serve open tasks",
-          source: { file: "src/domain/execution/run.mesh.mx", line: 29, column: 9 },
+          source: { file: "src/domain/execution/run.mesh.mx", line: 30, column: 9 },
           that: $expressions["start.check.taskOpen.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "parentRunning",
           code: "run.parent-running",
           message: "the parent run is not running",
-          source: { file: "src/domain/execution/run.mesh.mx", line: 34, column: 9 },
+          source: { file: "src/domain/execution/run.mesh.mx", line: 35, column: 9 },
           that: $expressions["start.check.parentRunning.that"],
         });
         if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // the input: the member inputs the caller sent, applied now that the checks have passed
+        if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
+        if (parsed.inputs !== undefined) $changes.inputs = $record.inputs = parsed.inputs;
+        if (parsed.parentRun !== undefined)
+          $changes.parentRunId = $record.parentRunId = parsed.parentRun;
         // do: the steps run in written order, each seeing the record as the ones before it left it
         {
           const $value = await $expressions["start.step.0.set.startedBy"]($s);
           if ($value === undefined || $value === null)
             throw new $FrameworkError(
-              "set &startedBy (src/domain/execution/run.mesh.mx:41:22) produced no value, and the relationship startedBy is required",
+              "set &startedBy (src/domain/execution/run.mesh.mx:42:22) produced no value, and the relationship startedBy is required",
             );
           $changes.startedById = $record.startedById = $value;
         }
@@ -131,7 +138,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
           const $value = await $expressions["start.step.0.set.responsible"]($s);
           if ($value === undefined || $value === null)
             throw new $FrameworkError(
-              "set &responsible (src/domain/execution/run.mesh.mx:42:24) produced no value, and the relationship responsible is required",
+              "set &responsible (src/domain/execution/run.mesh.mx:43:24) produced no value, and the relationship responsible is required",
             );
           $changes.responsibleId = $record.responsibleId = $value;
         }
@@ -150,7 +157,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.run, $key);
         if ($before === undefined) throw new $NotFoundError("Run", $key);
@@ -177,18 +184,19 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
         ) as unknown as $StoredScope<CancelRunInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "cancelable",
           code: "run.cancelable",
           message: "the run is not running",
-          source: { file: "src/domain/execution/run.mesh.mx", line: 48, column: 9 },
+          source: { file: "src/domain/execution/run.mesh.mx", line: 49, column: 9 },
           that: $expressions["cancel.check.cancelable.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the record is at another version; read it again and retry",
-          source: { file: "src/domain/execution/run.mesh.mx", line: 53, column: 9 },
+          source: { file: "src/domain/execution/run.mesh.mx", line: 54, column: 9 },
           that: $expressions["cancel.check.versionMatches.that"],
           details: $expressions["cancel.check.versionMatches.details"],
         });
@@ -207,7 +215,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
           const $value = await $expressions["cancel.step.0.set.version"]($s);
           if ($value === undefined || $value === null)
             throw new $FrameworkError(
-              "set &version (src/domain/execution/run.mesh.mx:64:20) produced no value, and version is required",
+              "set &version (src/domain/execution/run.mesh.mx:65:20) produced no value, and version is required",
             );
           $changes.version = $record.version = $value;
         }
@@ -228,13 +236,12 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.run, $key);
         if ($before === undefined) throw new $NotFoundError("Run", $key);
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
-        if (parsed.outcome !== undefined) $changes.outcome = $record.outcome = parsed.outcome;
         const $writes = $writeCount(tx);
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Run", $record, "action function"),
@@ -254,12 +261,14 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
           },
           options,
         ) as unknown as $StoredScope<SettleRunInput>;
+        // the input: the member inputs the caller sent, applied now that the checks have passed
+        if (parsed.outcome !== undefined) $changes.outcome = $record.outcome = parsed.outcome;
         // do: the steps run in written order, each seeing the record as the ones before it left it
         {
           const $value = await $expressions["settle.step.0.set.state"]($s);
           if ($value === undefined || $value === null)
             throw new $FrameworkError(
-              "set &state (src/domain/execution/run.mesh.mx:71:18) produced no value, and state is required",
+              "set &state (src/domain/execution/run.mesh.mx:72:18) produced no value, and state is required",
             );
           $changes.state = $record.state = $value;
         }
@@ -271,7 +280,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
           const $value = await $expressions["settle.step.0.set.version"]($s);
           if ($value === undefined || $value === null)
             throw new $FrameworkError(
-              "set &version (src/domain/execution/run.mesh.mx:73:20) produced no value, and version is required",
+              "set &version (src/domain/execution/run.mesh.mx:74:20) produced no value, and version is required",
             );
           $changes.version = $record.version = $value;
         }

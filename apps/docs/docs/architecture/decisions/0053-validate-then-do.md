@@ -1,11 +1,13 @@
 ---
 title: "0053. An action body is `validate`, then `do`; steps are `set`, `when`, `load` and `run`"
-description: "Decision record 0053: validations, the steps of an action, the shared `always` body and reusable steps. Status: Accepted, amended by ADR-0067, ADR-0068."
+description: "Decision record 0053: validations, the steps of an action, the shared `always` body and reusable steps. Status: Accepted, amended by ADR-0067, ADR-0068, and on 2026-10-11 (a check sees `self` before the input)."
 ---
 
 # 0053. An action body is `validate`, then `do`; steps are `set`, `when`, `load` and `run`
 
 > **Amended** by [ADR-0068](./0068-actions-compose-through-actions-and-tx.md) on 2026-10-10: A `run` body and a function-valued check, `when` or `set` value also receive bound `actions` and `tx`, and a `run` step may be `after=:write`. The body below is kept as history.
+>
+> **Amended 2026-10-11** (operator): a check sees `self` before the input is applied, and `before` leaves `validate`. See the Status section. Point 1 and the `validate` and create-policy rows of "What `self` holds" below are history.
 
 ## Status
 
@@ -14,6 +16,8 @@ Accepted. Amends [ADR-0017](./0017-atomic-by-default-and-classification.md) (wha
 Amended by [ADR-0067](./0067-members-imports-input-static-files.md): unified action input removes `require`; member references, including assignments under `set`, use `&name`.
 
 Amended by [ADR-0068](./0068-actions-compose-through-actions-and-tx.md) (2026-10-10): A `run` body and a function-valued check, `when` or `set` value also receive bound `actions` and `tx`, and a `run` step may be `after=:write`.
+
+**Amended 2026-10-11 (operator, ACT-01/ACT-27/POL-08).** A check receives `{ self, input }`, and `self` is the record before the input is applied: on an update or destroy the stored record, read under the lock; on a create the new instance Mesh builds, with its defaults, its stamped timestamps and a `uuid` or `string` key, before the member inputs. The caller's values are in `input`, where a member input the caller did not send is `undefined`. This is the operator's wording of 2026-10-05 below, "sees the stored record plus `input`", and it replaces the lead's point 1. `before` leaves `validate`: `self` already is the record before the input, and reading `before` in a check is the build error `MESH_VALIDATE_BEFORE`. The member inputs are applied once every check has passed, so the `do` steps and `run` see `self` with them, and keep `before`: the stored record, `null` on a create. A check that wants the value the action will store writes `input.x ?? &x`, an `always` over creates and updates above all. A translated expression reads a value sent as `null` like one left out, so a rule that must tell the two apart is plain code, where the second is `undefined`. A policy sees `self` as a check does ([ADR-0055](./0055-policies-are-core.md), amended the same day). The order inside the transaction is: the row read under the lock, the policy checks that read the record (the lead's reading, open), `validate`, the inputs applied, `do`, the write, `run [after=:write]`. An `integer` key stays `null` until the write. See [Entities: what `self` holds](../../docs/entities.md#what-self-holds) and [the action lifecycle](../in-depth/action-lifecycle.md#the-eight-phases). The operator ruled it on 2026-10-11, recorded in the project's decision log. The rest of this record is unchanged and kept as history.
 
 ## Date
 

@@ -83,6 +83,8 @@ Easier: reading why a call was denied. Harder: users needing bypasses or field p
 
 ## Amendment — 2026-10-04: create policies see the proposed record
 
+> **Replaced 2026-10-11** (operator): a create policy sees the new instance before the member inputs, as `validate` does, and reads the caller's values from `input` ([ADR-0055](./0055-policies-are-core.md), amended 2026-10-11). This amendment is kept as history.
+
 **Status: Proposed. Deciders: lead; the operator may overrule.** Source: [rulings before M2](./rulings-2026-10-04.md).
 
 A create policy sees the proposed record after the action's changes, not a stored row that does not exist yet. Reading a related record, such as `todo.list.ownerId`, is a query **inside the transaction, before the insert**. The generated action obtains the related data there and checks the policy before writing. It does not insert first and authorise afterwards, or query outside the transaction.

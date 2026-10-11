@@ -7,7 +7,7 @@ import {
   type ReadOnlyResults as $ReadOnlyResults,
   type Scope as $Scope,
 } from "@meshfw/runtime";
-import { isStale, missingEvidenceOf } from "../../../src/domain/work/work.helpers";
+import { claimsOf, isStale, missingEvidenceOf } from "../../../src/domain/work/work.helpers";
 import type { Actions as $Actions, Reads as $Reads } from "../../composition";
 import type { LateResult, LateResultLoaded, RecordLateResultInput } from "./lateResult.types";
 
@@ -25,23 +25,36 @@ export type LateResultScope<I = unknown> = $Scope<{
 export type LateResultStoredScope<I = unknown> = LateResultScope<I> & {
   before: $DeepReadonly<LateResult>;
 };
+/** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
+export type LateResultCheckScope<I = unknown> = Omit<LateResultScope<I>, "before">;
+/** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
+export type LateResultNewScope<I = unknown> = Omit<LateResultCheckScope<I>, "self"> & {
+  self: $DeepReadonly<
+    Omit<LateResultLoaded, "fence" | "taskId" | "task" | "submitterId" | "submitter"> & {
+      [K in "fence" | "taskId" | "task" | "submitterId" | "submitter"]: LateResultLoaded[K] | null;
+    }
+  >;
+};
 
 export const expressions = {
-  // check :staleFence that, plain (reads-record-in-helper) (src/domain/work/late-result.mesh.mx:24:16)
-  "record.check.staleFence.that": ($s: LateResultScope<RecordLateResultInput>) => {
-    const { self } = $s;
+  // check :staleFence that, plain (uses-tx) (src/domain/work/late-result.mesh.mx:24:16)
+  "record.check.staleFence.that": ($s: LateResultNewScope<RecordLateResultInput>) => {
     const now = () => $.now($s);
-    return (({ actor }) => isStale(self.task.claims, self.fence, actor.id, now()))($s);
+    return (async ({ input, actor, tx }) =>
+      isStale(await claimsOf(tx, input.task), input.fence, actor.id, now()))($s);
   },
   // check :evidenceExists that, plain (uses-tx) (src/domain/work/late-result.mesh.mx:29:16)
-  "record.check.evidenceExists.that": ($s: LateResultScope<RecordLateResultInput>) => {
+  "record.check.evidenceExists.that": ($s: LateResultNewScope<RecordLateResultInput>) => {
     const { self } = $s;
-    return (async ({ tx }) => (await missingEvidenceOf(tx, self.evidence)).length === 0)($s);
+    return (async ({ input, tx }) =>
+      (await missingEvidenceOf(tx, input.evidence ?? self.evidence)).length === 0)($s);
   },
   // check :evidenceExists details, plain (uses-tx) (src/domain/work/late-result.mesh.mx:32:19)
-  "record.check.evidenceExists.details": ($s: LateResultScope<RecordLateResultInput>) => {
+  "record.check.evidenceExists.details": ($s: LateResultNewScope<RecordLateResultInput>) => {
     const { self } = $s;
-    return (async ({ tx }) => ({ missing: await missingEvidenceOf(tx, self.evidence) }))($s);
+    return (async ({ input, tx }) => ({
+      missing: await missingEvidenceOf(tx, input.evidence ?? self.evidence),
+    }))($s);
   },
   // set &submitter, translated (src/domain/work/late-result.mesh.mx:36:22)
   "record.step.0.set.submitter": ($s: LateResultScope<RecordLateResultInput>) => $s.actor?.id,

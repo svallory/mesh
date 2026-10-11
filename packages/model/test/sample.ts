@@ -190,7 +190,7 @@ export const postDocument: ModelDocument = {
           validate: [
             {
               label: "dueAfterIssue",
-              that: expr("() => &dueOn >= &issuedOn"),
+              that: expr("({ input }) => (input.dueOn ?? &dueOn) >= (input.issuedOn ?? &issuedOn)", ["input"]),
               code: "invalid_dates",
               message: "the due date cannot be before the issue date",
               position: at("check :dueAfterIssue"),
@@ -209,8 +209,7 @@ export const postDocument: ModelDocument = {
             "issuedOn",
             "dueOn",
             "notes",
-          // `&issuedOn\n` also ends the always check's `that` line, above the input.
-          ].map((name) => ({ kind: "member", ref: ref(name, `&${name}\n`, name === "issuedOn" ? 1 : 0) })),
+          ].map((name) => ({ kind: "member", ref: ref(name, `&${name}\n`) })),
         }),
         action("update", "send", {
           validate: [

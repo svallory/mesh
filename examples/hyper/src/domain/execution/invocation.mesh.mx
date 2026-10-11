@@ -2,6 +2,7 @@ import { Attempt } from "./attempt.mesh.mx"
 import { Task } from "../work/task.mesh.mx"
 import { SessionReference } from "./session-reference.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
+import { attemptSessionOf } from "./execution.helpers"
 
 entity :Invocation table="invocations"
   attributes
@@ -47,12 +48,12 @@ entity :Invocation table="invocations"
         &session
       validate
         check :session [
-          that=() => &session === null || &session?.id === &attempt.sessionId
+          that=async ({ input, tx }) => input.session == null || input.session === await attemptSessionOf(tx, input.attempt)
           code="invocation.session"
           message="the session is not the attempt's session"
         ]
         check :costUnknown [
-          that=() => (&inputTokens !== null && &outputTokens !== null) || &estimatedCost === null
+          that=({ input }) => (input.inputTokens !== null && input.outputTokens !== null) || input.estimatedCost === null
           code="invocation.cost-unknown"
           message="the cost is unknown while a token count it needs is unknown"
         ]
@@ -85,12 +86,12 @@ entity :Invocation table="invocations"
           message="the invocation is already corrected"
         ]
         check :reason [
-          that=() => (&reason ?? "") !== ""
+          that=({ input }) => (input.reason ?? "") !== ""
           code="invocation.reason"
           message="a correction gives a reason"
         ]
         check :costUnknown [
-          that=() => (&inputTokens !== null && &outputTokens !== null) || &estimatedCost === null
+          that=({ input }) => (input.inputTokens !== null && input.outputTokens !== null) || input.estimatedCost === null
           code="invocation.cost-unknown"
           message="the cost is unknown while a token count it needs is unknown"
         ]

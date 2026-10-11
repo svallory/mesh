@@ -34,6 +34,18 @@ const structuredClone = $cloneValue;
 export type {{ scopeName }}<I = unknown> = {{ scopeType }};
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
 export type {{ storedScopeName }}<I = unknown> = {{ scopeName }}<I> & { before: $DeepReadonly<{{ recordName }}> };
+@if(checkScope)
+/** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
+export type {{ checkScope.name }}<I = unknown> = {{ checkScope.type }};
+@end
+@if(newScope)
+/** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
+export type {{ newScope.name }}<I = unknown> = {{ newScope.type }};
+@end
+@if(createScope)
+/** What a step that can run on a create reads before the write: the key is null until the data layer writes the row. */
+export type {{ createScope.name }}<I = unknown> = {{ createScope.type }};
+@end
 
 export const expressions = {
   @each(entry in entries)

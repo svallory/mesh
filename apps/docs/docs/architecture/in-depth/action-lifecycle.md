@@ -8,7 +8,7 @@ description: "One action call from start to finish: the eight phases, `validate`
 Status: the phases are built (M5; [roadmap](../roadmap/roadmap.md)): cast, transaction, read under the lock, `validate`, `do`, write, the steps after the write, and action composition (`actions`, `tx`, the application's `transaction`). Policies, which fill the authorizer slot, arrive in M8.
 
 ::: callout info "What the code does today"
-The run-time library (`@meshfw/runtime`) exports `ActionContext` for the second argument ([ADR-0059](../decisions/0059-action-context.md)), with `MeshError`, `InvalidInputError`, `NotFoundError(entity, key)`, `ForbiddenError` and `FrameworkError`. The `actions` generator writes one function per action that casts its input, opens one transaction, reads the stored row under the lock, runs every `check` (all failures are collected into one `InvalidInputError`), runs the `do` steps (`set`, `when`, `load`, `run`), writes through the data layer, then runs the `run [after=:write]` steps. A function of the entity file receives `actions` and `tx` beside `self` and `input` (see [Composition](#composition) below). `mesh explain <entity> <action>` prints the plan. Not built yet: policies (M8); the authorizer slot is in place and empty. This page describes the lifecycle in the entity syntax ([ADR-0067](../decisions/0067-members-imports-input-static-files.md)).
+The run-time library (`@meshfw/runtime`) exports `ActionContext` for the second argument ([ADR-0059](../decisions/0059-action-context.md)), with `MeshError`, `InvalidInputError`, `NotFoundError(entity, key)`, `ForbiddenError` and `FrameworkError`. The `actions` generator writes one function per action that casts its input, opens one transaction, reads the stored row under the lock, runs every `check` on the record before the input (all failures are collected into one `InvalidInputError`), applies the member inputs, runs the `do` steps (`set`, `when`, `load`, `run`), writes through the data layer, then runs the `run [after=:write]` steps. A function of the entity file receives `actions` and `tx` beside `self` and `input` (see [Composition](#composition) below). `mesh explain <entity> <action>` prints the plan. Not built yet: policies (M8); the authorizer slot is in place and empty. This page describes the lifecycle in the entity syntax ([ADR-0067](../decisions/0067-members-imports-input-static-files.md)).
 :::
 
 This page follows one action call from the caller to the result. Related: [overview](../overview/architecture.md), [three rings](./three-rings.md), [build pipeline](./build-pipeline.md), [generated code and the guard](./generated-code-and-guard.md), [expressions](./expressions.md), [data layer](./data-layer.md).
@@ -22,28 +22,30 @@ The function body lists the phases in order, written out for that action, not a 
 An action has one `input` section and two execution blocks ([ADR-0053](../decisions/0053-validate-then-do.md), amended by [ADR-0067](../decisions/0067-members-imports-input-static-files.md)):
 
 - **`input`**: member lines such as `&paidAt` take declarations unchanged; typed lines such as `decimal :percent` declare arguments. Duplicate names and options on member lines fail the build.
-- **`validate`**: `check :label [ that code message ]`, with `when=` on the check for a condition. It is for rules across fields or about stored state; a rule about one field goes on its line (`decimal :amount min=0`) and is checked in phase 2. It runs first. `self` is the record with the caller's accepted input applied: the sent value for each accepted field, the stored value for the rest (on a create, the defaults); nothing from `do` has run. `input` carries the arguments.
-- **`do`**: steps, run in written order. v1 steps are `set` (`&field=value` lines), `when=cond` with nested steps, `load=[...]` and `run(...) { }` for one-off plain code.
+- **`validate`**: `check :label [ that code message ]`, with `when=` on the check for a condition. It is for rules across fields or about stored state; a rule about one field goes on its line (`decimal :amount min=0`) and is checked in phase 2. It runs first, before the input is applied. `self` is the record as it is stored (on a create, the new record Mesh builds, with its defaults), and `input` carries what the caller sent, member inputs and arguments alike; a check that wants the value the action will store reads `input.x ?? &x`. `before` is not available: reading it in a check is the build error `MESH_VALIDATE_BEFORE`.
+- **`do`**: steps, run in written order once the member inputs are applied, so `self` holds the caller's values and `before` the stored record (`null` on a create). v1 steps are `set` (`&field=value` lines), `when=cond` with nested steps, `load=[...]` and `run(...) { }` for one-off plain code.
 
 `always` blocks under `actions` (scoped with `types=` and `actions=`) add a shared `validate` and `do` to every action in their scope; their checks run before the action's own, and their steps before the action's own.
 
-What `self` holds depends on where a function runs ([ADR-0053](../decisions/0053-validate-then-do.md)):
+What `self` holds depends on where a function runs ([ADR-0053](../decisions/0053-validate-then-do.md) and [ADR-0055](../decisions/0055-policies-are-core.md), both amended 2026-10-11):
 
 | Where | `self` is |
 |---|---|
-| `validate` | The record with the accepted input applied; stored values (on a create, defaults) for fields not sent; nothing from `do` has run |
-| A `do` step | The record as the earlier steps left it |
+| `validate` | The record before the input is applied: on an update or destroy the stored record, read under the lock; on a create the new record Mesh builds, with its defaults and a `uuid` or `string` key. The caller's values are in `input`; `before` is not available |
+| A `do` step | The record with the member inputs applied, as the earlier steps left it; `before` is the stored record (`null` on a create) |
+| A `run [after=:write]` step | The record as written, with an `integer` key filled |
 | A policy on a read | The row |
-| A policy on an update or destroy | The stored record |
-| A policy on a create | The proposed record |
+| A policy on an update or destroy | The stored record, before the input; the caller's values are in `input` |
+| A policy on a create | The new record before the input, as `validate` sees it; the caller's values are in `input` |
 | A computed field | The loaded record |
 
 ## The eight phases
 
 ```text
 enter -> cast -> plan -> pre-check ->
-  [ transaction opens -> (read with lock) -> validate -> do
-    -> data layer ]
+  [ transaction opens -> read with lock (or build the new record)
+    -> policy checks that read the record -> validate -> apply the input
+    -> do -> data layer -> run [after=:write] ]
   -> commit -> after commit
 ```
 
@@ -53,16 +55,26 @@ enter -> cast -> plan -> pre-check ->
 | 2 | Cast | Only members and arguments listed in `input` pass, in one input object; values are cast and checked against their line's rules (`min`, `max`, `match`). On a create every accepted field that is required and has no default must be sent; on an update none must. An unknown field is an error, not dropped. | Attribute types |
 | 3 | Plan | The generated function follows the plan fixed at build time (below). | Steps |
 | 4 | Pre-check | Policy checks that need no stored record run first. | Authorizer slot |
-| 5 | Transaction | Opens. A read-then-write action reads the row with a write lock. `validate` runs, then the `do` steps. Policy checks that read the record run inside it. | Policy checks |
+| 5 | Transaction | Opens, and runs in the order below: the row read with a write lock (a create builds its new record instead), the policy checks that read the record, `validate`, the member inputs applied, the `do` steps. | Policy checks |
 | 6 | Data layer | Calls go through the one data-layer contract; an atomic update is one statement. | Data layer |
 | 7 | Commit | The transaction closes. | none in v1 |
 | 8 | After commit | The typed result, with anything named by `load`, or a classed error. | Tracer |
 
 ([research synthesis](../research/synthesis.md), section 17; [roadmap](../roadmap/roadmap.md), M2 and M5.) The `after-commit` step is planned, not in v1 ([ADR-0053](../decisions/0053-validate-then-do.md)).
 
+Inside the transaction the order is fixed ([ADR-0053](../decisions/0053-validate-then-do.md), amended 2026-10-11):
+
+1. **Read with lock.** An update or destroy reads its row under a write lock; a missing row is not found. A create builds its new record instead: the defaults, the stamped timestamps, a `uuid` or `string` key, and `null` in every member nothing has filled yet. An `integer` key stays `null` until the write.
+2. **Policy checks that read the record.** They see that record, before the input, and read the caller's values from `input`. A caller who may not run the action is told forbidden, never which checks their input fails.
+3. **`validate`.** Every check runs on the same record and `input`, and every failure is collected.
+4. **Apply the input.** The member inputs the caller sent are applied to the record; one the caller left out keeps the stored value (on a create, the default).
+5. **`do`.** The steps run in written order, with `before` holding the stored record (`null` on a create).
+6. **Write.** The data layer writes the row (phase 6).
+7. **`run [after=:write]`.** The steps after the write run with the record as written, inside the same transaction.
+
 ## Composition
 
-An action can call other actions in its own transaction ([ADR-0068](../decisions/0068-actions-compose-through-actions-and-tx.md)). A `run` body, and a `check`, `when` or `set` value written as a function, receive two more names beside `self`, `input`, `actor`, `context` and `before`:
+An action can call other actions in its own transaction ([ADR-0068](../decisions/0068-actions-compose-through-actions-and-tx.md)). A `run` body, and a `check`, `when` or `set` value written as a function, receive two more names beside `self`, `input`, `actor` and `context` (and `before`, outside `validate`):
 
 - `actions`: every generated action function of the project. A call joins the running transaction and runs the called action's whole lifecycle, its authorizer slot included. It carries the caller's context unless it passes its own as the second argument.
 - `tx`: one function per read action, with the caller's `filter`, `sort`, `limit` and `offset`. It reads inside the transaction, so it sees the rows written earlier in it, and it skips the read authorizer.
@@ -79,7 +91,7 @@ Calls joined to one transaction run one at a time. Siblings started together, as
 
 What is handed over is read-only. A record from `actions` or `tx` follows the same rule as `self` and `before`: it is a read-only view, and a change made in place never reaches storage. In an entity file, `structuredClone` returns a plain copy the function can change. A helper module the entity file imports gets the platform's own `structuredClone`, which throws a `DataCloneError` on a read-only view; it copies with `cloneValue` from `@meshfw/runtime`, which is what the entity file's `structuredClone` is. The application's `transaction` callback gets plain records.
 
-**After the write.** A `run [after=:write]` step runs once the action's own row is written, inside the transaction, with the stored record as `self`. On a create, that record carries the key the data layer filled. On a destroy, `self` is the deleted row as it was. The other steps run before the write. A `when` around an after-write step is evaluated once, before the write, with the record as the earlier steps left it. `explain` lists these steps under "after write". An action that has an after-write step returns the row read again by key once those steps ran, so a step that changed the action's own row through `actions` is in the result; only these actions pay for the extra read.
+**After the write.** A `run [after=:write]` step runs once the action's own row is written, inside the transaction, with the stored record as `self`. On a create, that record carries its key: a `uuid` or `string` key Mesh filled when it built the record, or an `integer` key the data layer filled at the write, which is `null` in every function that runs before it, and typed so. On a destroy, `self` is the deleted row as it was. The other steps run before the write. A `when` around an after-write step is evaluated once, before the write, with the record as the earlier steps left it. `explain` lists these steps under "after write". An action that has an after-write step returns the row read again by key once those steps ran, so a step that changed the action's own row through `actions` is in the result; only these actions pay for the extra read.
 
 A nested call that changes the caller's own row must come after the caller's write. Before an update writes, if any call made during its earlier phases wrote anything, the update reads its row again by key and compares it with the copy it read under the lock. A difference means a nested call changed or deleted this very row, so the update's checks and steps decided on a stale row, and the update rejects with a `FrameworkError` that says so and says to move the call to a `run [after=:write]` step. A nested write to another row passes.
 
@@ -107,13 +119,13 @@ In Ash the decision is a ladder of `{:not_atomic, reason}` results scattered acr
 
 ## Creates
 
-A create has no stored record. `validate` sees, as `self`, the accepted input applied over the declared defaults; `do` then edits that proposed record; the row is inserted ([ADR-0053](../decisions/0053-validate-then-do.md)). A create policy sees the proposed record; reading a related record (`&list.ownerId`) is a query inside the transaction, before the insert ([ADR-0055](../decisions/0055-policies-are-core.md)).
+A create has no stored record, so Mesh builds a new one: the declared defaults, the stamped timestamps, a `uuid` or `string` key (a time-ordered UUID, the same value the data layer would have given), and `null` in every member nothing has filled yet. A create's policy checks and `validate` see that record as `self`, before the input, and read the caller's values from `input`: `input.list`, not `&list`, which is still empty. Reading in a create's check a member the create takes as input draws a build warning (`MESH_VALIDATE_NOT_APPLIED`), and so does an operator over a required member nothing has filled (`MESH_VALIDATE_UNFILLED`), since its result is unknown on every create: a check whose `that` is unknown fails, one whose `when` is unknown is skipped. They are warnings, not errors, because a check that also runs on updates can mean the stored value. Reading a related record is a query inside the transaction, through `tx`, before the insert ([ADR-0055](../decisions/0055-policies-are-core.md)). The member inputs are then applied, `do` edits that record, and the row is inserted ([ADR-0053](../decisions/0053-validate-then-do.md)). An `integer` key is filled by the data layer at the insert: it is `null` in the checks and the steps before the write, and the generated types say so; a `run [after=:write]` step reads it.
 
 ## Where policies run
 
 Policies are core ([ADR-0055](../decisions/0055-policies-are-core.md)). A policy passes when none of its `forbid-if` holds and, if it has any `authorize-if`, at least one holds; nothing depends on the order of checks or of policies. An action passes only if every policy covering it passes; an action no policy covers, and every action of an entity without a `policies` section, is forbidden. Until M8 the authorizer slot is empty and nothing checks who calls.
 
-The slot has two places: one before the transaction for checks that need no stored record (`isStaff(actor)`), one inside it for checks that read the record. A read policy becomes a filter on the query, so a row the caller may not see is not found. On an atomic update or destroy, the working assumption until [ADR-0046](../decisions/0046-denied-atomic-write-outcome.md) is ruled: a policy check that reads the record is folded into the statement as a filter, so a row the caller may not change is also reported as not found. (Ash compiles the check into the statement as an expression that raises instead.) On a read-then-write action the check is evaluated in memory on the locked row and a denial is reported as forbidden, with the breakdown. A record-reading check written as plain code cannot run on an atomic action or a read; that is a build error.
+The slot has two places: one before the transaction for checks that need no stored record (`isStaff(actor)`), one inside it for checks that read the record. A policy sees `self` as `validate` does, before the input is applied: the stored record on an update or destroy, the new record Mesh builds on a create; it reads what the caller sent from `input`. A policy check that reads the record runs right after the locked read and before `validate`, so a caller who may not run the action is told forbidden, never which checks their input fails. A read policy becomes a filter on the query, so a row the caller may not see is not found. On an atomic update or destroy, the working assumption until [ADR-0046](../decisions/0046-denied-atomic-write-outcome.md) is ruled: a policy check that reads the record is folded into the statement as a filter, so a row the caller may not change is also reported as not found. (Ash compiles the check into the statement as an expression that raises instead.) On a read-then-write action the check is evaluated in memory on the locked row and a denial is reported as forbidden, with the breakdown. A record-reading check written as plain code cannot run on an atomic action or a read; that is a build error.
 
 Ash authorizes writes in six places ([Ash runtime internals](../research/ash-runtime-internals.md), Summary), one of which (filter checks on non-atomic update and destroy as a SELECT before the transaction) is a check-then-act gap. Mesh keeps the pre-transaction place only for checks that read nothing stored.
 
@@ -162,7 +174,7 @@ update :pay
     load=[&customer]
 ```
 
-and the `always` block that adds `check :dueAfterIssue` (`&dueOn >= &issuedOn`) to every create and update, and the policy `:staffWrites types=[:create, :update, :destroy]` with `authorize-if=({ actor }) => isStaff(actor)`.
+and the `always` block that adds `check :dueAfterIssue` (`(input.dueOn ?? &dueOn) >= (input.issuedOn ?? &issuedOn)`) to every create and update, and the policy `:staffWrites types=[:create, :update, :destroy]` with `authorize-if=({ actor }) => isStaff(actor)`.
 
 The checks read `&status` and `&lineCount`, so the build makes `pay` **read-then-write**; `explain` names those checks.
 
@@ -170,7 +182,7 @@ The checks read `&status` and `&lineCount`, so the build makes `pay` **read-then
 2. **Cast.** `id` and the member input `paidAt` pass; anything else is an error.
 3. **Plan.** Read with lock, then write.
 4. **Pre-check.** `isStaff(actor)` reads nothing stored, so `:staffWrites` runs here. A non-staff caller is forbidden before the transaction opens.
-5. **Transaction.** Opens; the invoice is read with a write lock; a missing invoice is not found. `validate` runs on the stored invoice with the supplied `paidAt` applied: the `always` check `dueAfterIssue`, then `invoiceIsSent` and `invoiceHasLines`. If any fails, the call raises `InvalidInputError` (`code` `invalid_input`) with one issue per failed check and writes nothing. Then `do`: the `set` assigns status and payer; `when` sees the record as the `set` left it and, for an amount above 10000, sets `needsReview`.
-6. **Data layer.** The proposed row is written inside the locked transaction.
+5. **Transaction.** Opens; the invoice is read with a write lock; a missing invoice is not found. No policy reads the record, so `validate` runs next, on the stored invoice, with the supplied `paidAt` still in `input`: the `always` check `dueAfterIssue` (`pay` sends no dates, so it compares the stored ones), then `invoiceIsSent` and `invoiceHasLines`. If any fails, the call raises `InvalidInputError` (`code` `invalid_input`) with one issue per failed check and writes nothing. Then `paidAt` is applied, and `do` runs: the `set` assigns status and payer; `when` sees the record as the `set` left it and, for an amount above 10000, sets `needsReview`.
+6. **Data layer.** The row, with `paidAt` and the steps' changes, is written inside the locked transaction.
 7. **Commit.** The transaction closes.
 8. **After commit.** `customer` is loaded onto the returned record, which comes back typed.

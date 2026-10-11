@@ -5,7 +5,7 @@ import { Claim } from "./claim.mesh.mx"
 import { Submission } from "./submission.mesh.mx"
 import { Completion } from "./completion.mesh.mx"
 import { Event } from "../audit/event.mesh.mx"
-import { acceptedSubmissionOf, assignmentChanges, claimNotInvalidated, claimToRelease, completionRule, currentAssignment, fenceDetails, fenceIsCurrent, invalidatedFences, missingEvidenceOf, noContainmentCycleOf, openChildren, openClaims, ownPending, reviewerFor, reviewNotRequiredOf } from "./work.helpers"
+import { acceptedSubmissionOf, assignmentChanges, claimNotInvalidated, claimToRelease, completionRule, currentAssignment, fenceDetails, fenceIsCurrent, invalidatedFences, missingEvidenceOf, movedParent, noContainmentCycleOf, openChildren, openClaims, ownPending, parentOpenOf, reviewerFor, reviewNotRequiredOf, taskChanges } from "./work.helpers"
 import { assignableOf, collaboratorActiveOf } from "../identity/identity.helpers"
 
 entity :Task table="tasks"
@@ -47,7 +47,7 @@ entity :Task table="tasks"
         &priority
       validate
         check :parentOpen [
-          that=() => &parent === null || &parent?.state === :open
+          that=({ input, tx }) => parentOpenOf(tx, input.parent ?? null)
           code="task.parent-open"
           message="the parent task is not open"
         ]
@@ -66,7 +66,7 @@ entity :Task table="tasks"
           message="the task is not open; reopen it first"
         ]
         check :taskChanges [
-          that=({ before }) => &title !== before.title || (&intent === null) !== (before.intent === null) || (&intent ?? "") !== (before.intent ?? "")
+          that=({ self, input }) => taskChanges(self, input)
           code="task.unchanged"
           message="nothing to change: every field already has that value"
         ]
@@ -74,7 +74,7 @@ entity :Task table="tasks"
           that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
           code="expected-version"
           message="the record is at another version; read it again and retry"
-          details=({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })
+          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
         ]
       do
         set
@@ -93,7 +93,7 @@ entity :Task table="tasks"
           that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
           code="expected-version"
           message="the record is at another version; read it again and retry"
-          details=({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })
+          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
         ]
       do
         set
@@ -109,7 +109,7 @@ entity :Task table="tasks"
           message="the task is not open; reopen it first"
         ]
         check :parentOpen [
-          that=() => &parent === null || &parent?.state === :open
+          that=({ self, input, tx }) => parentOpenOf(tx, movedParent(self, input.parent))
           code="task.parent-open"
           message="the parent task is not open"
         ]
@@ -127,7 +127,7 @@ entity :Task table="tasks"
           that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
           code="expected-version"
           message="the record is at another version; read it again and retry"
-          details=({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })
+          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
         ]
       do
         set
@@ -146,7 +146,7 @@ entity :Task table="tasks"
           that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
           code="expected-version"
           message="the record is at another version; read it again and retry"
-          details=({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })
+          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
         ]
       do
         set
@@ -171,7 +171,7 @@ entity :Task table="tasks"
           that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
           code="expected-version"
           message="the record is at another version; read it again and retry"
-          details=({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })
+          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
         ]
       do
         set
@@ -239,7 +239,7 @@ entity :Task table="tasks"
           that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
           code="expected-version"
           message="the record is at another version; read it again and retry"
-          details=({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })
+          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
         ]
       do
         set
@@ -296,7 +296,7 @@ entity :Task table="tasks"
           that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
           code="expected-version"
           message="the record is at another version; read it again and retry"
-          details=({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })
+          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
         ]
       do
         set
@@ -325,7 +325,7 @@ entity :Task table="tasks"
           that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
           code="expected-version"
           message="the record is at another version; read it again and retry"
-          details=({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })
+          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
         ]
       do
         set

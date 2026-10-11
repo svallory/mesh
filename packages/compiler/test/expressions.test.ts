@@ -249,7 +249,7 @@ describe("type rules", () => {
     expect(codes(passthrough)).toEqual([]);
   });
   test("always actions=[...] resolves the named actions' kinds for `before`", () => {
-    const withAlways = (target: string) => entity("").replace("      validate\n", "").replace("  actions auto=[:read]\n", `  actions auto=[:read]\n    always actions=[&${target}]\n      validate\n        check :c that=({ before }) => before.n > 0 code="c" message="m"\n`) + "    create :make\n      input\n        &n\n";
+    const withAlways = (target: string) => entity("").replace("      validate\n", "").replace("  actions auto=[:read]\n", `  actions auto=[:read]\n    always actions=[&${target}]\n      do\n        when=({ before }) => before.n > 0\n          set\n            &m=1\n`) + "    create :make\n      input\n        &n\n";
     expect(codes(withAlways("go"))).toEqual([]);
     expect(codes(withAlways("make"))).toContain("error:MESH_BEFORE_IN_CREATE");
   });
@@ -450,24 +450,23 @@ describe("the reference page", () => {
 
 describe("review fixes (PR #63, round 1)", () => {
   test("before.<relationship> and before.<computed> are build errors at the node; before.<attribute> is fine", () => {
-    for (const where of ["that", "when"]) {
-      const body = where === "that"
-        ? check("({ before }) => before.parent?.n > 1")
-        : check("() => true", "").replace("          code=", "          when=({ before }) => before.parent?.n > 1\n          code=");
-      const found = build(entity(body)).diagnostics.filter((d) => d.code === "MESH_BEFORE_NOT_LOADED");
-      expect(found, where).toHaveLength(1);
+    // `before` lives in the steps (ACT-01): a `when` and a `set` value of an update.
+    const steps = (body: string) => entity("").replace("      validate\n", "      do\n" + body);
+    for (const body of ["        when=({ before }) => before.parent?.n > 1\n          set\n            &m=1\n", "        set\n          &m=({ before }) => before.parent?.n\n"]) {
+      const found = build(steps(body)).diagnostics.filter((d) => d.code === "MESH_BEFORE_NOT_LOADED");
+      expect(found, body).toHaveLength(1);
       expect(found[0]!.severity).toBe("error");
       expect(found[0]!.message).toContain("before.parent");
       expect(found[0]!.fix).toContain("&parent");
     }
-    const computed = entity(check("({ before }) => before.late"), "").replace("  actions auto", "  computed\n    boolean :late() { return &dueAt < today() }\n  actions auto");
+    const computed = steps("        when=({ before }) => before.late\n          set\n            &m=1\n").replace("  actions auto", "  computed\n    boolean :late() { return &dueAt < today() }\n  actions auto");
     expect(codes(computed)).toContain("error:MESH_BEFORE_NOT_LOADED");
-    expect(codes(entity(check("({ before }) => before.n > 1")))).not.toContain("error:MESH_BEFORE_NOT_LOADED");
+    expect(codes(steps("        when=({ before }) => before.n > 1\n          set\n            &m=1\n"))).toEqual([]);
   });
   test("plain code in details warns when it has an operator, and stays silent without one", () => {
     const withDetails = (details: string) => entity(check("() => &n > 0").replace("          message=", `          details=${details}\n          message=`));
-    expect(codes(withDetails("({ before }) => ({ low: &title < \"b\", n: before.n })"))).toContain("warning:MESH_EXPR_PLAIN");
-    expect(codes(withDetails("({ before }) => ({ v: before.n })"))).not.toContain("warning:MESH_EXPR_PLAIN");
+    expect(codes(withDetails("({ input }) => ({ low: &title < \"b\", n: input.n })"))).toContain("warning:MESH_EXPR_PLAIN");
+    expect(codes(withDetails("({ input }) => ({ v: input.n })"))).not.toContain("warning:MESH_EXPR_PLAIN");
   });
   test("a destroy with a set or load step is a build error, nested or from an always block; a destroy with a run is fine", () => {
     const base = entity("").replace("    update :go\n      validate\n", "");
@@ -486,12 +485,15 @@ describe("review fixes (PR #63, round 1)", () => {
       expect(codes(source)).toContain("error:MESH_DESTROY_STEP");
     }
   });
-  test("before in a create is a build error at the node: in that, in details, in a run parameter, and in an always for creates", () => {
+  test("before in a create's steps is a build error at the node: in a when, in a set value, in a run parameter", () => {
     const create = (extra: string) => entity("").replace("      validate\n", "").replace("  actions auto=[:read]\n", `  actions auto=[:read]\n    create :make\n      input\n        &n\n${extra}`);
-    expect(codes(create("      validate\n        check :c that=({ before }) => before.n > 0 code=\"c\" message=\"m\"\n"))).toContain("error:MESH_BEFORE_IN_CREATE");
-    expect(codes(create("      validate\n        check :c [\n          that=() => &n > 0\n          code=\"c\"\n          message=\"m\"\n          details=({ before }) => ({ v: before.n })\n        ]\n"))).toContain("error:MESH_BEFORE_IN_CREATE");
+    expect(codes(create("      do\n        when=({ before }) => before.n > 0\n          set\n            &m=1\n"))).toContain("error:MESH_BEFORE_IN_CREATE");
+    expect(codes(create("      do\n        set\n          &m=({ before }) => before.n\n"))).toContain("error:MESH_BEFORE_IN_CREATE");
     expect(codes(create("      do\n        run({ before }) { console.log(before) }\n"))).toContain("error:MESH_BEFORE_IN_CREATE");
-    expect(codes(entity(check("({ before }) => before.n > 0")))).not.toContain("error:MESH_BEFORE_IN_CREATE");
+    // In a check, `before` is gone altogether, and that is the error (not the create's).
+    const inCheck = codes(create("      validate\n        check :c that=({ before }) => before.n > 0 code=\"c\" message=\"m\"\n"));
+    expect(inCheck).toContain("error:MESH_VALIDATE_BEFORE");
+    expect(inCheck).not.toContain("error:MESH_BEFORE_IN_CREATE");
   });
   test("before in a plain function of an always block that covers only creates is a build error; one that also covers an update is clean", () => {
     const withAlways = (head: string, body: string) => entity("").replace("      validate\n", "").replace("  actions auto=[:read]\n", `  actions auto=[:read]\n    always ${head}\n      do\n        ${body}\n`) + "    create :make\n      input\n        &n\n    update :go\n";
@@ -507,10 +509,13 @@ describe("review fixes (PR #63, round 1)", () => {
     expect(codes(create("run({ context, ...rest }) { console.log(rest.before) }"))).toContain("error:MESH_BEFORE_IN_CREATE");
     expect(codes(create("run({ context, ...rest }) { console.log(rest.self) }"))).not.toContain("error:MESH_BEFORE_IN_CREATE");
   });
-  test("a details that reads before in a create reports MESH_BEFORE_IN_CREATE once", () => {
-    const create = (details: string) => entity("").replace("      validate\n", "").replace("  actions auto=[:read]\n", `  actions auto=[:read]\n    create :make\n      input\n        &n\n      validate\n        check :c [\n          that=() => &n > 0\n          code="c"\n          message="m"\n          details=${details}\n        ]\n`);
-    for (const details of ["({ before }) => ({ v: before.n })", "({ before }) => { return { v: before.n } }"])
-      expect(build(create(details)).diagnostics.filter((d) => d.code === "MESH_BEFORE_IN_CREATE"), details).toHaveLength(1);
+  test("a details that reads before in a create reports MESH_VALIDATE_BEFORE once, and no MESH_BEFORE_IN_CREATE", () => {
+    const create = (details: string) => entity("").replace("      validate\n", "").replace("  actions auto=[:read]\n", `  actions auto=[:read]\n    create :make\n      input\n        &n\n      validate\n        check :c [\n          that=({ input }) => input.n > 0\n          code="c"\n          message="m"\n          details=${details}\n        ]\n`);
+    for (const details of ["({ before }) => ({ v: before.n })", "({ before }) => { return { v: before.n } }"]) {
+      const found = build(create(details)).diagnostics;
+      expect(found.filter((d) => d.code === "MESH_VALIDATE_BEFORE"), details).toHaveLength(1);
+      expect(found.filter((d) => d.code === "MESH_BEFORE_IN_CREATE"), details).toHaveLength(0);
+    }
   });
   describe("run after=:write (ADR-0068 decision 2)", () => {
     const make = (steps: string) => entity("").replace("      validate\n", "").replace("  actions auto=[:read]\n", `  actions auto=[:read]\n    create :make\n      input\n        &n\n      do\n${steps}`);
@@ -573,5 +578,264 @@ describe("review fixes (PR #63, round 1)", () => {
   test("a typed argument that shares a member's name is not the member passthrough: a nullable one set onto a required column is a build error", () => {
     const source = entity("").replace("      validate\n", "      input\n        integer :n nullable\n") + "      do\n        set\n          &n=({ input }) => input.n\n";
     expect(codes(source)).toContain("error:MESH_EXPR_NULL_TO_REQUIRED");
+  });
+});
+
+describe("validate sees self before the input (ACT-01, ACT-27, POL-08)", () => {
+  // A required attribute with no default (`n`), one with a default (`state`), a nullable one (`m`) and a required belongs-to (`owner`).
+  const item = (actions: string, key = "uuid :id primary-key") => `entity :Item
+  attributes
+    ${key}
+    integer :n
+    integer :m nullable
+    enum :state values=[:open, :done] default=:open
+  relationships
+    belongs-to :owner entity=Item
+  actions auto=[:read]
+${actions}`;
+  const make = (body: string, input = "        &n\n        &owner\n") => `    create :make\n      input\n${input}${body}`;
+  const go = (body: string) => `    update :go\n      input\n        &n\n        &m\n${body}`;
+  const checkOf = (that: string, extra = "") => `      validate\n        check :c [\n          that=${that}\n          code="c"\n          message="m"\n${extra}        ]\n`;
+  const all = (source: string) => buildModel({ root: "/p", files: [{ file: "item.mesh.mx", source }] }).diagnostics;
+  const codesOf = (source: string) => all(source).map((d) => `${d.severity}:${d.code}`);
+
+  describe("before in a check is MESH_VALIDATE_BEFORE", () => {
+    test("in that, when and details, on an update, a create, a destroy and an always block, at the node", () => {
+      const cases: [string, string][] = [
+        ["update that", item(go(checkOf("({ before }) => before.n > 0")))],
+        ["update when", item(go(checkOf("() => &n > 0", "          when=({ before }) => before.n > 0\n")))],
+        ["update details", item(go(checkOf("() => &n > 0", "          details=({ before }) => ({ was: before.n })\n")))],
+        ["create that", item(make(checkOf("({ before }) => before === null")))],
+        ["destroy that", item(`    destroy :drop\n${checkOf("({ before }) => before.n > 0")}`)],
+        ["always", item(`    always types=[:update]\n${checkOf("({ before }) => before.n > 0")}${go("")}`)],
+      ];
+      for (const [name, source] of cases) {
+        const found = all(source).filter((d) => d.code === "MESH_VALIDATE_BEFORE");
+        expect(found, name).toHaveLength(1);
+        expect(found[0]!.severity).toBe("error");
+        // At the `before` that is read, not at the whole function.
+        expect(source.slice(found[0]!.position.offset, found[0]!.position.offset + 6), name).toBe("before");
+        expect(source.slice(found[0]!.position.offset - 4, found[0]!.position.offset), name).not.toBe("({ ");
+      }
+    });
+    test("the message says before is gone, what self is, and where the caller's values are", () => {
+      const [found] = all(item(go(checkOf("({ before }) => before.n > 0")))).filter((d) => d.code === "MESH_VALIDATE_BEFORE");
+      expect(found!.message).toContain("`before` is gone from `validate`");
+      expect(found!.message).toContain("`self` is the record before the input is applied");
+      expect(found!.message).toContain("`input.x`");
+      expect(found!.fix).toContain("`input.x ?? &x`");
+    });
+    test("a plain check, one that only destructures it, and one that reaches it through a rest are errors too, once each", () => {
+      for (const that of ["({ before }) => { return before.n > 0 }", "({ before }) => true", "({ input, ...rest }) => { return rest.before.n > input.n }"]) {
+        const found = all(item(go(checkOf(that)))).filter((d) => d.code === "MESH_VALIDATE_BEFORE");
+        expect(found, that).toHaveLength(1);
+        expect(found[0]!.message, that).toContain("check :c (that) reads `before`");
+      }
+    });
+    test("before in the steps of an update, a destroy or an always block over updates is still fine", () => {
+      expect(codesOf(item(go("      do\n        when=({ before }) => before.n > 0\n          set\n            &m=({ before }) => before.n\n        run [after=:write] ({ before }) { console.log(before.n) }\n")))).toEqual([]);
+      expect(codesOf(item(`    destroy :drop\n      do\n        run({ before }) { console.log(before.n) }\n`))).toEqual([]);
+      expect(codesOf(item(`    always types=[:update]\n      do\n        when=({ before }) => before.n > 0\n          set\n            &m=1\n${go("")}`))).toEqual([]);
+    });
+  });
+
+  describe("on a create, self in a check is the new instance", () => {
+    const only = (code: string) => (source: string) => all(source).filter((d) => d.code === code);
+    const notApplied = only("MESH_VALIDATE_NOT_APPLIED");
+    const unfilled = only("MESH_VALIDATE_UNFILLED");
+    // A create that takes `&n` (required, no default), `&m` (nullable), `&state` (with a default) and `&owner`.
+    const takesAll = "        &n\n        &m\n        &state\n        &owner\n";
+    // A create that takes only `&owner`, and fills `n` with a step.
+    const setsN = (body: string) => make(body + "      do\n        set\n          &n=1\n", "        &owner\n");
+
+    test("&x the create takes is a MESH_VALIDATE_NOT_APPLIED warning at the member, whatever x is: required, nullable, defaulted or a relationship", () => {
+      const cases: [string, string][] = [
+        ["() => &n > 0", "&n"], ["() => &n !== 5", "&n"], ["() => &m === null", "&m"], ["() => &state === :open", "&state"],
+        ["() => &owner.n > 0", "&owner"], ["() => &owner?.n === null", "&owner"], ["({ input }) => (input.m ?? &n) > 0", "&n"],
+      ];
+      for (const [that, member] of cases) {
+        const source = item(make(checkOf(that), takesAll));
+        const found = notApplied(source);
+        expect(found, that).toHaveLength(1);
+        expect(found[0]!.severity, that).toBe("warning");
+        expect(source.slice(found[0]!.position.offset, found[0]!.position.offset + member.length), that).toBe(member);
+        // One warning for one mistake: not also the null rules that follow from it, and no error.
+        expect(codesOf(source), that).toEqual(["warning:MESH_VALIDATE_NOT_APPLIED"]);
+      }
+      const [found] = notApplied(item(make(checkOf("() => &m === null"), takesAll)));
+      expect(found!.message).toBe("on a create, `&m` here is the new instance's value before the input is applied (its default, or null), not the caller's: `validate` sees `self` before the input");
+      expect(found!.fix).toBe("write `input.m` for the caller's value, or `input.m ?? &m` for the value the action will store; on an update this changes the meaning (`input.m ?? &m` is the value being sent, `&m` the stored one), so in a check that also runs on updates and means the stored value, keep `&m`");
+      // In `when` and in `details` too.
+      expect(codesOf(item(make(checkOf("() => true", "          when=() => &n > 0\n"), takesAll)))).toEqual(["warning:MESH_VALIDATE_NOT_APPLIED"]);
+      expect(codesOf(item(make(checkOf("() => true", "          details=() => ({ n: &n })\n"), takesAll)))).toEqual(["warning:MESH_VALIDATE_NOT_APPLIED"]);
+    });
+
+    test("a check Mesh runs as plain code is held to the same rule, through the `&x` its text reads", () => {
+      const cases: [string, string][] = [
+        ["({ input }) => { return &n === input.n }", "&n"],
+        ["({ input }) => { return (input.m ?? &n) > 0 }", "&n"],
+        ["({ input }) => {\n            const n = input.n;\n            return &owner === null || n > 0;\n          }", "&owner"],
+      ];
+      for (const [that, member] of cases) {
+        const source = item(make(checkOf(that), takesAll));
+        const found = notApplied(source);
+        expect(found, that).toHaveLength(1);
+        expect(source.slice(found[0]!.position.offset, found[0]!.position.offset + member.length), that).toBe(member);
+        const line = source.slice(0, found[0]!.position.offset).split("\n");
+        expect([found[0]!.position.line, found[0]!.position.column], that).toEqual([line.length, line.at(-1)!.length]);
+      }
+      for (const that of ["({ input }) => { return (input.n ?? &n) > 0 }", "({ input, self }) => { return input.n > 0 && self.id !== \"\" }", "({ input }) => { return &id !== input.state }"])
+        expect(notApplied(item(make(checkOf(that), takesAll))), that).toEqual([]);
+      expect(notApplied(item(go(checkOf("({ input }) => { return &n === input.n }"))))).toEqual([]);
+    });
+
+    test("input.x, input.x ?? &x, a member the create does not take, an update and a step are fine", () => {
+      for (const that of ["({ input }) => input.n > 0", "({ input }) => (input.n ?? &n) > 0", "({ input }) => (input.m ?? &m) === null", "({ input }) => (input.state ?? &state) === :open", "() => &id !== \"\""])
+        expect(codesOf(item(make(checkOf(that), takesAll))), that).toEqual([]);
+      expect(codesOf(item(make(checkOf("() => &state === :open"))))).toEqual([]);
+      expect(codesOf(item(go(checkOf("() => &n > 0 && &m === null"))))).toEqual([]);
+      expect(codesOf(item(make("      do\n        when=() => &n > 0 && &owner.n > 0\n          set\n            &m=1\n", takesAll)))).toEqual([]);
+    });
+
+    test("an operator over a required member no input fills yet is a MESH_VALIDATE_UNFILLED warning at the member: in that the check fails on every create, in when it is skipped on every create", () => {
+      for (const that of ["() => &n !== 5", "() => &n > 0", "() => &n === 5", "() => &n + 1 > 0", "({ input }) => input.owner !== \"\" && &n > 0", "() => (&n > 0 ? 1 : 2) > 0"]) {
+        const source = item(setsN(checkOf(that)));
+        const found = unfilled(source);
+        expect(found, that).toHaveLength(1);
+        expect(found[0]!.severity, that).toBe("warning");
+        expect(source.slice(found[0]!.position.offset, found[0]!.position.offset + 2), that).toBe("&n");
+        expect(all(source).filter((d) => d.severity === "error"), that).toEqual([]);
+      }
+      // A bare read of a boolean no input fills is the same.
+      expect(codesOf(item(make(checkOf("() => &b"), "        &n\n        &owner\n")).replace("integer :n\n", "integer :n\n    boolean :b\n"))).toEqual(["warning:MESH_VALIDATE_UNFILLED"]);
+      const [found] = unfilled(item(setsN(checkOf("() => &n > 0"))));
+      expect(found!.message).toBe("`&n` is null here on a create: `validate` sees the new instance before the input is applied, so this is unknown and the check fails on every create");
+      expect(found!.fix).toBe("write `input.n ?? &n` for the value the action will store, or `input.n` for the caller's");
+      // In `when` the condition is unknown, and an unknown `when` skips the check (`runCheck`): it never runs on a create.
+      for (const when of ["() => &n > 0", "() => &b"]) {
+        const source = item(setsN(checkOf("() => true", `          when=${when}\n`))).replace("integer :n\n", "integer :n\n    boolean :b\n");
+        const [inWhen] = unfilled(source);
+        expect(codesOf(source), when).toEqual(["warning:MESH_VALIDATE_UNFILLED"]);
+        expect(inWhen!.message, when).toBe(`\`${when.slice(6, 8)}\` is null here on a create: \`validate\` sees the new instance before the input is applied, so this condition is unknown on every create and the check is skipped on every create`);
+      }
+      // In `details` it is only a null value.
+      expect(unfilled(item(setsN(checkOf("() => true", "          details=() => ({ more: &n + 1 })\n"))))[0]!.message).toEndWith("so this value is null on every create");
+      // A null test, `??`, `?:` branches, an update and a member with a default are fine.
+      for (const that of ["() => &n === null", "() => &n !== null", "() => (&n ?? 0) > 0", "({ input }) => (input.owner === \"\" ? &n : 1) === 1"])
+        expect(unfilled(item(setsN(checkOf(that)))), that).toEqual([]);
+      expect(codesOf(item(go(checkOf("() => &n > 0"))))).toEqual([]);
+      expect(codesOf(item(setsN(checkOf("() => &state === :open"))))).toEqual([]);
+    });
+
+    test("a required relationship no input fills is not there yet: reading through it is an error that says so, ?. is fine, and a step can read it", () => {
+      const setsOwner = (body: string) => make(body + "      do\n        set\n          &owner=({ actor }) => actor.id\n", "        &n\n");
+      const source = item(setsOwner(checkOf("() => &owner.n > 0")));
+      const found = all(source).filter((d) => d.code === "MESH_EXPR_NULLABLE_ACCESS");
+      expect(found).toHaveLength(1);
+      expect(found[0]!.message).toContain("`&owner`, which is null on a create here");
+      expect(found[0]!.fix).toContain("`input.owner`");
+      expect(found[0]!.position.offset).toBe(source.indexOf("&owner.n > 0"));
+      expect(codesOf(item(setsOwner(checkOf("() => &owner?.n === null"))))).toEqual([]);
+      expect(codesOf(item(setsOwner("") + "      do\n        when=() => &owner.n > 0\n          set\n            &m=1\n").replace("      do\n        when", "        when"))).toEqual([]);
+      expect(codesOf(item(go(checkOf("() => &owner.n > 0"))))).toEqual([]);
+    });
+
+    test("an always block over creates and updates: &x a create takes is a warning, input.x ?? &x is not when every create takes &x", () => {
+      const always = (that: string, makeInput = "        &n\n        &owner\n", makeBody = "") =>
+        item(`    always types=[:create, :update]\n${checkOf(that)}${make(makeBody, makeInput)}${go("")}`);
+      expect(codesOf(always("() => &n !== 5"))).toEqual(["warning:MESH_VALIDATE_NOT_APPLIED"]);
+      expect(codesOf(always("({ input }) => (input.n ?? &n) !== 5"))).toEqual([]);
+      // A create that fills n with a step, not from the input: there the check sees null, so the value may be unknown...
+      expect(codesOf(always("({ input }) => (input.n ?? &n) !== 5", "        &owner\n", "      do\n        set\n          &n=1\n"))).toEqual(["warning:MESH_EXPR_NEGATED_UNKNOWN"]);
+      // ...and reading &n alone fails every create.
+      expect(codesOf(always("() => &n > 5", "        &owner\n", "      do\n        set\n          &n=1\n"))).toEqual(["warning:MESH_VALIDATE_UNFILLED"]);
+      // An always block over updates only sees stored records.
+      expect(codesOf(item(`    always types=[:update]\n${checkOf("() => &n !== 5")}${make("")}${go("")}`))).toEqual([]);
+    });
+
+    test("a check over creates and updates that means the stored value builds with the warning and no error: the fix says `??` changes the meaning on an update", () => {
+      // On a create `&state` is the default (`:open`), on an update the stored state: refusing an edit of a done item is correct code.
+      const source = item(`    always types=[:create, :update]\n${checkOf("() => &state !== :done")}${make("", "        &n\n        &state\n        &owner\n")}    update :go\n      input\n        &state\n`);
+      const built = buildModel({ root: "/p", files: [{ file: "item.mesh.mx", source }] });
+      expect(built.diagnostics.map((d) => `${d.severity}:${d.code}`)).toEqual(["warning:MESH_VALIDATE_NOT_APPLIED"]);
+      expect(built.document).toBeDefined();
+      expect(built.diagnostics[0]!.fix).toContain("on an update this changes the meaning (`input.state ?? &state` is the value being sent, `&state` the stored one)");
+    });
+  });
+
+  describe("an integer key is null on a create until the write", () => {
+    const counter = (actions: string) => item(actions, "integer :seq primary-key");
+    test("a step before the write sees it null; a step after the write and an update's step see it set", () => {
+      expect(codesOf(counter(make("      do\n        set\n          &n=() => &seq\n", "        &owner\n")))).toContain("error:MESH_EXPR_NULL_TO_REQUIRED");
+      expect(codesOf(counter(make("      do\n        set\n          &n=() => &seq ?? 0\n", "        &owner\n")))).toEqual([]);
+      expect(codesOf(counter(go("      do\n        set\n          &n=() => &seq\n")))).toEqual([]);
+      expect(codesOf(counter(make("      do\n        run [after=:write] ({ self }) { console.log(self.seq) }\n")))).toEqual([]);
+    });
+    test("a uuid key is filled when the instance is built, so it is never null", () => {
+      expect(codesOf(item(make(checkOf("() => &id !== \"\""))))).toEqual([]);
+    });
+  });
+
+  describe("the generated scope types", () => {
+    async function generated(source: string) {
+      const root = await mkdtemp(resolve(import.meta.dir, "../mesh-act27-"));
+      roots.push(root);
+      const built = buildModel({ root, files: [{ file: "item.mesh.mx", source }] });
+      expect(built.diagnostics).toEqual([]);
+      const config = configOf(root);
+      const files = await generateFiles({ document: built.document!, config });
+      await writeGeneratedFiles(files, config);
+      await writeFile(resolve(root, "generated/schema.ts"), "export const tables = { item: {} };\n");
+      return { root, files, text: files.find((f) => f.path.endsWith("item.expressions.ts"))!.contents };
+    }
+    // Prettier lays the types out over several lines; compare them without whitespace or semicolons.
+    const squash = (text: string) => text.replace(/[\s;]+/g, "");
+    const signature = (text: string, id: string) => new RegExp(`"${id.replaceAll(".", "\\.")}": (?:async )?\\(\\$s: (\\w+)<`).exec(text)?.[1];
+    test("checks, steps and runs after the write each get the scope that says what self is there; the files type-check", async () => {
+      const source = item(`    always types=[:create, :update]\n${checkOf("({ input }) => (input.n ?? &n) > 0")}`
+        + make(checkOf("({ input }) => input.n > 0") + "      do\n        set\n          &m=() => &n\n        run [after=:write] ({ self }) { console.log(self.id) }\n")
+        + go(checkOf("() => &n > 0") + "      do\n        set\n          &m=({ before }) => before.n\n"));
+      const { root, text, files } = await generated(source);
+      expect(signature(text, "always.0.check.c.that")).toBe("ItemNewScope");
+      expect(signature(text, "make.check.c.that")).toBe("ItemNewScope");
+      expect(signature(text, "go.check.c.that")).toBe("ItemCheckScope");
+      expect(signature(text, "make.step.0.set.m")).toBe("ItemScope");
+      expect(signature(text, "make.step.1.run")).toBe("ItemScope");
+      expect(signature(text, "go.step.0.set.m")).toBe("ItemStoredScope");
+      expect(squash(text)).toContain(squash('export type ItemCheckScope<I = unknown> = Omit<ItemScope<I>, "before">;'));
+      expect(squash(text)).toContain(squash('export type ItemNewScope<I = unknown> = Omit<ItemCheckScope<I>, "self"> & { self: $DeepReadonly<Omit<ItemLoaded, "n" | "ownerId" | "owner"> & { [K in "n" | "ownerId" | "owner"]: ItemLoaded[K] | null }> };'));
+      expect(text).not.toContain("ItemCreateScope");
+      await writeFile(resolve(root, "check.ts"), `import type { ItemCheckScope, ItemNewScope } from "./generated/domain/item.expressions";
+declare const check: ItemCheckScope<unknown>;
+declare const fresh: ItemNewScope<unknown>;
+export const stored: number = check.self.n;
+// @ts-expect-error a check has no before
+export const gone = check.before;
+// @ts-expect-error on a create, n is null until the input is applied
+export const notYet: number = fresh.self.n;
+export const maybe: number | null = fresh.self.n;
+export const id: string = fresh.self.id;
+export const state: "open" | "done" = fresh.self.state;
+`);
+      const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
+      expect(checkTypes(root, [...paths, "generated/schema.ts", "check.ts"])).toEqual({ code: 0, output: "" });
+    });
+    test("an integer key: a create's steps before the write get ItemCreateScope, where the key may be null", async () => {
+      const source = item(make(checkOf("() => &seq === null") + "      do\n        set\n          &m=() => &seq ?? 0\n        run [after=:write] ({ self }) { console.log(self.seq + 1) }\n"), "integer :seq primary-key");
+      const { root, text, files } = await generated(source);
+      expect(signature(text, "make.check.c.that")).toBe("ItemNewScope");
+      expect(signature(text, "make.step.0.set.m")).toBe("ItemCreateScope");
+      expect(signature(text, "make.step.1.run")).toBe("ItemScope");
+      expect(squash(text)).toContain(squash('export type ItemCreateScope<I = unknown> = Omit<ItemScope<I>, "self"> & { self: $DeepReadonly<Omit<ItemLoaded, "seq"> & { [K in "seq"]: ItemLoaded[K] | null }> };'));
+      await writeFile(resolve(root, "check.ts"), `import type { ItemCreateScope, ItemScope } from "./generated/domain/item.expressions";
+declare const creating: ItemCreateScope<unknown>;
+declare const written: ItemScope<unknown>;
+// @ts-expect-error the integer key is null until the data layer writes the row
+export const notYet: number = creating.self.seq;
+export const after: number = written.self.seq;
+`);
+      const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
+      expect(checkTypes(root, [...paths, "generated/schema.ts", "check.ts"])).toEqual({ code: 0, output: "" });
+    });
   });
 });

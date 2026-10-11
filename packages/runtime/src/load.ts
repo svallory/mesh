@@ -63,7 +63,14 @@ export interface LoadOptions {
   context?: unknown;
   /** The clock `now()` reads, as everywhere an expression runs. */
   clock?: Clock | undefined;
+  /**
+   * `loadInto` only: the record is a create's new instance before the input is applied (ACT-27), so a required
+   * `belongs-to` whose key the input has not filled yet is null on it instead of an error.
+   */
+  newInstance?: boolean | undefined;
 }
+/** The options as loading passes them down: with the new instance whose required relationships may have no key yet. */
+type Options = LoadOptions & { readonly pending?: object };
 
 /** Keys named by one query: SQLite allows 32,766 variables, older builds 999; 500 is under both. */
 export const CHUNK = 500;
@@ -117,7 +124,7 @@ async function ensureField(
   if (todo.length === 0) return;
   const entityPlan = planOf(plan, entity);
   if (Object.hasOwn(entityPlan.relations, name)) {
-    await loadRelation(plan, entity, entityPlan, name, entityPlan.relations[name]!, tx, todo);
+    await loadRelation(plan, entity, entityPlan, name, entityPlan.relations[name]!, tx, todo, (options as Options).pending);
     return;
   }
   const computed = Object.hasOwn(entityPlan.computed, name) ? entityPlan.computed[name] : undefined;
@@ -320,7 +327,7 @@ function chunks<T>(list: readonly T[]): T[][] {
 }
 
 async function loadRelation(
-  plan: LoadPlan, entity: string, entityPlan: EntityPlan, name: string, relation: RelationPlan, tx: DataOperations, rows: Work[],
+  plan: LoadPlan, entity: string, entityPlan: EntityPlan, name: string, relation: RelationPlan, tx: DataOperations, rows: Work[], pending?: object,
 ): Promise<void> {
   const target = planOf(plan, relation.target);
   if (relation.kind === "belongs-to") {
@@ -331,7 +338,7 @@ async function loadRelation(
     for (const row of rows) {
       const key = row[relation.column];
       if (key === null || key === undefined) {
-        if (!relation.nullable) throw new FrameworkError(`${describe(entity, name, relation)} has no key in ${relation.column}, and it is not nullable`);
+        if (!relation.nullable && row !== pending) throw new FrameworkError(`${describe(entity, name, relation)} has no key in ${relation.column}, and it is not nullable`);
         row[name] = null;
         continue;
       }
@@ -423,7 +430,8 @@ export function rejectComputedQuery(entity: string, computed: readonly string[],
 export async function loadInto(
   plan: LoadPlan, entity: string, tx: DataOperations, record: Row, paths: readonly string[], options: LoadOptions = {},
 ): Promise<void> {
-  for (const path of paths) await ensurePath(plan, entity, tx, [record], path.split("."), options, 0);
+  const passed: Options = options.newInstance ? { ...options, pending: record } : options;
+  for (const path of paths) await ensurePath(plan, entity, tx, [record], path.split("."), passed, 0);
 }
 
 /**

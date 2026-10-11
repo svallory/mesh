@@ -83,6 +83,8 @@ A declaration name and atom value still have separate colours (`ts-name`, `ts-at
 
 Two consequences for records that predate v2: [ADR-0034](./decisions/0034-vocabulary-copies-ash-dsl.md) ("copy Ash's DSL") is superseded for entity files, and [ADR-0022](./decisions/0022-policies-simple-tier-as-extension.md) is superseded on packaging, since `policies` is now a section of the entity file rather than an extension. [ADR-0017](./decisions/0017-atomic-by-default-and-classification.md) is amended again: `validate` sees the record with the accepted input applied, not the record after the changes, and `require-atomic` does not appear in v2 — a `run(…) { }` step, or any expression Mesh cannot translate to SQL, is what makes an action read-then-write.
 
+**Changed 2026-10-11 (operator, ACT-27, POL-08).** `validate` no longer sees the record with the accepted input applied: a check and a policy see `self` before the input is applied (the stored record on an update or destroy, a create's new instance with its defaults), and the caller's values are in `input`. See the amendment of [ADR-0053](./decisions/0053-validate-then-do.md). The paragraph above is kept as history.
+
 ## What the Docs pages invented
 
 Nothing on this list is decided. Each entry is a design made while writing, because a page could not be written without it. The alternative is the one that was rejected.

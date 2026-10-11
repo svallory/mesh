@@ -130,7 +130,7 @@ What this gives you:
 
 - **`&list` takes the related list's id.** The imported `List` is the destination of `belongs-to :list entity=List`. The relationship reads that list, and `todo.list` is there when you ask for it.
 - **`min=1` is the whole of "a todo needs a title"**, and it is checked twice: the input validator refuses it before the call, and the column refuses it.
-- **`check :notDoneYet` is about state, not about one field**, which is what a `check` is for. It runs on the record with the caller's input applied, so it fails with the message you wrote before anything is written.
+- **`check :notDoneYet` is about state, not about one field**, which is what a `check` is for. It runs on the stored todo, before anything the caller sent is applied, so it fails with the message you wrote before anything is written.
 - **`complete` accepts nothing.** It takes an id and a context, and its check reads the todo it was given, so Mesh reads that row, locked, and writes it in the same transaction rather than running one blind `UPDATE`. Two callers completing the same todo cannot both win on a stale copy. `rename`, which has no check, is the one that runs as a single `UPDATE`.
 - **`pending` is a query, not a filter you remember to apply.** The filter runs in SQL, combined with whatever the caller passed.
 - **`label` is computed, not stored.** It concatenates a string, so Mesh cannot run it in SQL and computes it after the rows load. Ask for it by name, or the property does not exist on the result.

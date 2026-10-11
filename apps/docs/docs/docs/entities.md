@@ -192,7 +192,7 @@ entity :Post
 
 | Option | Meaning |
 |:--|:--|
-| `primary-key` | The entity's one primary key, filled by Mesh on create: a time-ordered UUID for a `uuid` or `string` key, and the next whole number, counting from 1 with no gaps, for an `integer` key. A caller cannot send it, and an `integer` key needs a data adapter that fills it |
+| `primary-key` | The entity's one primary key, filled by Mesh on create. A `uuid` or `string` key gets a time-ordered UUID when Mesh builds the new record, so a policy, a check and a step already read it. An `integer` key gets the next whole number, counting from 1 with no gaps, when the row is written: it is `null` before that, in the generated types too, and a `run [after=:write]` step reads it. A caller cannot send it, and an `integer` key needs a data adapter that fills it |
 | `nullable` | The field may be absent or null; every other attribute is required |
 | `default=` | A literal that fits the type |
 | `values=` | An enum's allowed atoms; an empty list, blank or repeat is a build error |
@@ -326,7 +326,7 @@ Options such as `auto=`, `on:load=`, `types=` and `actions=` sit on the declarat
 
 ### validate
 
-Checks run before anything is written, on the record with the member inputs applied. A rule about one field goes on its declaration: `decimal :amount min=0` says the whole of "the amount cannot be negative". A `check` is for a cross-field or stored-state rule:
+Checks run before anything is written, and before the input is applied: `&name` is the record as it is stored (on a create, the new record with its defaults), and the caller's values are in `input`. A rule about one field goes on its declaration: `decimal :amount min=0` says the whole of "the amount cannot be negative". A `check` is for a cross-field or stored-state rule:
 
 ```mx "src/domain/billing/invoice.mesh.mx"
 entity :Invoice
@@ -342,7 +342,7 @@ entity :Invoice
         &dueOn
       validate
         check :dueAfterIssue [
-          that=() => &dueOn >= &issuedOn
+          that=({ input }) => input.dueOn >= input.issuedOn
           code="invalid_dates"
           message="the due date cannot be before the issue date"
         ]
@@ -366,16 +366,16 @@ A failed check throws `InvalidInputError`, whose own code is always `invalid_inp
 
 ```text "src/domain/work/claim.mesh.mx (excerpt)"
 check :taskReady [
-  that=({ tx }) => taskIsReady(&task, tx)
+  that=({ input, tx }) => taskIsReady(input.task, tx)
   code="claim.task-ready"
   message="the task is not ready"
-  details=({ tx }) => taskReasons(&task, tx)
+  details=({ input, tx }) => taskReasons(input.task, tx)
 ]
 ```
 
 #### A check that compares with the stored record
 
-In `validate`, `&name` is the record with the member inputs applied, so a check that compares the new value with the old one cannot read the old one from `self`. `before` is the stored record, beside `self`; on a create there is none and `before` is `null`. `before` holds the stored columns only: reading a relationship or a computed field on it (`before.owner`) is a build error, because nothing loads it. Read `&owner` for the related record, or compare the stored key (`before.ownerId`):
+In `validate`, `self` is the record before the input is applied: the stored record on an update or destroy, and on a create the new record Mesh builds, with its defaults and a `uuid` or `string` key. The caller's values are in `input`, and a member input the caller did not send is `undefined` there. So a check that compares the new value with the old one reads each where it is: `input.role` is the role the caller sends and `&role` the stored one.
 
 ```mx "src/domain/team/membership.mesh.mx"
 entity :Membership
@@ -389,11 +389,17 @@ entity :Membership
         &role
       validate
         check :roleChanged [
-          that=({ before }) => &role !== before.role
+          that=({ input }) => (input.role ?? &role) !== &role
           code="membership.unchanged"
           message="the role is already set"
         ]
 ```
+
+**The value the action will store** is `input.x ?? &x`: what the caller sent, or the stored value when they sent nothing. A check that holds whatever the caller sends, such as `dueAfterIssue` in an `always` over creates and updates, is written with it: `(input.dueOn ?? &dueOn) >= (input.issuedOn ?? &issuedOn)`. On a create `&x` is the default, or `null` when there is none, so a check there reads `input.x`. Reading `&x` in a create's check for a member the create takes as input draws a warning (`MESH_VALIDATE_NOT_APPLIED`), because it is never the caller's value. It stays a warning because the stored value can be what a rule means: in an `always` over creates and updates, `&status !== :archived` refuses an edit of an archived row and sees the default on a create, and `input.status ?? &status` would change its meaning on an update. An operator over a required member that nothing has filled yet draws one too (`MESH_VALIDATE_UNFILLED`), because its result is unknown on every create: in `that` the check fails on every create, and in `when` the check is skipped on every create.
+
+**A value sent as `null` is not a value left out**, but a translated expression reads both as `null`, so `input.x ?? &x` gives the stored value for either. When a `nullable` field can be cleared and the rule must tell the two apart, write the check as plain code, where a field left out is `undefined` and a cleared one is `null`: `that=({ input }) => { return input.intent === undefined || isAllowed(input.intent) }`.
+
+**`before` is not in `validate`**: `self` already is the record before the input, and reading `before` in a check is a build error (`MESH_VALIDATE_BEFORE`). The member inputs are applied once every check has passed, so the `do` steps and `run` see `self` with them, and keep `before`: the stored record, `null` on a create. `before` holds the stored columns only: reading a relationship or a computed field on it (`before.owner`) is a build error, because nothing loads it. Read `&owner` for the related record, or compare the stored key (`before.ownerId`).
 
 #### A version number that refuses a stale update
 
@@ -416,18 +422,18 @@ entity :Note
           that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
           code="expected-version"
           message="the note changed since you read it"
-          details=({ before }) => ({ currentVersion: before.version })
+          details=() => ({ currentVersion: &version })
         ]
       do
         set
           &version=() => &version + 1
 ```
 
-`expectedVersion` is an argument, so it is checked and never stored. A caller that sends it and has fallen behind gets an `InvalidInputError` whose issue has the code `expected-version` and `details.currentVersion`, and nothing is written; a caller that leaves it out always wins. `&version` in the check is the stored version because `version` is not an input of the action. The step runs after every check has passed, so a refused update does not bump the version. Every update reads the row under the write lock before it writes it, so two callers that send the same `expectedVersion` cannot both succeed.
+`expectedVersion` is an argument, so it is checked and never stored. A caller that sends it and has fallen behind gets an `InvalidInputError` whose issue has the code `expected-version` and `details.currentVersion`, and nothing is written; a caller that leaves it out always wins. `&version` in the check is the stored version, because a check sees the record before the input. The step runs after every check has passed, so a refused update does not bump the version. Every update reads the row under the write lock before it writes it, so two callers that send the same `expectedVersion` cannot both succeed.
 
 #### A check that reads a related record
 
-A check may read through a `belongs-to`, including a rollup on the related entity. This one limits a free-plan owner to 20 todos:
+A check may read a related record, including a rollup on it. This one limits a free-plan owner to 20 todos:
 
 ```mx "src/domain/todo/todo.mesh.mx"
 import { User } from "./user.mesh.mx"
@@ -447,14 +453,16 @@ entity :Todo
         &owner
       validate
         check :underQuota [
-          that=() => &owner.todoCount < 20
-          when=() => &owner.plan === :free
+          that=async ({ input, tx }) => {
+            const [owner] = await tx.readUser({ filter: { id: { eq: input.owner } }, load: ["todoCount"] });
+            return owner.plan !== :free || owner.todoCount < 20;
+          }
           code="quota_exceeded"
           message="free plan allows 20 todos"
         ]
 ```
 
-`&owner.todoCount` is a related read. It runs inside the transaction, as a policy's related-row read does. The rollup lives on `User`, which also holds the `plan` that `when` compares with an atom. That comparison works because `plan` is an [`enum`](#the-types).
+A check sees the record before the input, and on a create that record has no owner yet: the caller names the owner in `input.owner`, and Mesh stores it once the checks pass. So the check reads that user through `tx`, inside the transaction, as a policy's related-row read does, and asks `load` for the rollup. On an update or destroy the stored record has its owner, and a check reads it through the relationship: `&owner.todoCount < 20`, with `when=() => &owner.plan === :free`. That is the stored owner, so an update that changes the owner (one that takes `&owner`) must read the new one as the create does, from `input.owner` through `tx`. Reading `&owner` in a create's check draws a warning (`MESH_VALIDATE_NOT_APPLIED`), because it is never the owner the caller sent. The rollup lives on `User`, which also holds the `plan` the check compares with an atom. That comparison works because `plan` is an [`enum`](#the-types).
 
 ```mx "src/domain/todo/user.mesh.mx"
 import { Todo } from "./todo.mesh.mx"
@@ -485,7 +493,7 @@ entity :User
 
 ### do
 
-Steps run top to bottom after validation. Each sees the record as earlier steps left it.
+Steps run top to bottom after validation, on the record with the member inputs applied: the caller's value for each member input it sent, the stored value (on a create, the default) for one it left out. Each step sees the record as earlier steps left it, and `before` is the stored record, `null` on a create.
 
 | Step | What it does |
 |:--|:--|
@@ -623,7 +631,7 @@ entity :Task
 
 A read policy has no `tx`: it is a filter on the query.
 
-When a check reads the stored row, Mesh folds it into the statement's filter. A row the caller cannot see is reported as not found rather than forbidden; `can<Action>` asks for the reason instead. A create policy sees the proposed record, and a related-row read there is a query inside the transaction before the insert.
+When a check reads the stored row, Mesh folds it into the statement's filter. A row the caller cannot see is reported as not found rather than forbidden; `can<Action>` asks for the reason instead. A policy sees `self` as a check does, before the input is applied: on an update or destroy the stored record, on a create the new record with its defaults and a `uuid` or `string` key, and the caller's values in `input`. So a create policy on a list's todos reads `input.list`, not `&list`, and a related-row read there is a query inside the transaction before the insert. A policy check that reads the record runs inside the transaction, after the row is read under the lock and before `validate`, so a caller who may not run the action is told forbidden, never that their input is invalid.
 
 ## Building one
 
@@ -645,12 +653,13 @@ Run `mesh inspect Todo` to see the declarations with source positions, and `mesh
 
 | Where | The record is |
 |:--|:--|
-| a check in `validate` | The record with member inputs applied: caller values for supplied fields, stored values for omitted ones, defaults on create; nothing from `do` yet. `before` is the stored record (`null` on a create). Related records (`&owner.todoCount`) are read on demand |
-| a step in `do` | The record as earlier steps left it |
+| a check in `validate` | The record before the input is applied: on an update or destroy the stored record, read under the lock; on a create the new record Mesh builds, with its defaults and a `uuid` or `string` key, and `null` in a member nothing has filled yet. The caller's values are in `input`; `before` is not available. Related records (`&owner.todoCount`) are read on demand |
+| a step in `do` | The record with the member inputs applied, as earlier steps left it. `before` is the stored record (`null` on a create) |
+| a `run [after=:write]` step | The record as written, with an `integer` key filled |
 | a filter on a read | Each row the query considers |
 | a policy on a read | The row |
-| a policy on an update or destroy | The stored record |
-| a policy on a create | The proposed record: member inputs and defaults |
+| a policy on an update or destroy | The stored record, before the input; the caller's values are in `input` |
+| a policy on a create | The new record before the input: defaults and a `uuid` or `string` key; the caller's values are in `input` |
 | a computed field | The loaded record |
 
 ## In short
@@ -708,7 +717,7 @@ entity :Invoice table="invoices"
     always types=[:create, :update]
       validate
         check :dueAfterIssue [
-          that=() => &dueOn >= &issuedOn
+          that=({ input }) => (input.dueOn ?? &dueOn) >= (input.issuedOn ?? &issuedOn)
           code="invalid_dates"
           message="the due date cannot be before the issue date"
         ]

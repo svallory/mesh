@@ -1,6 +1,6 @@
 ---
 title: "0068. Steps and checks receive bound `actions` and `tx`; a `run` step may run `after=:write`"
-description: "Decision record 0068: how an action calls other actions in its own transaction, what the called action checks, and how a step runs after the row is written. Status: Accepted."
+description: "Decision record 0068: how an action calls other actions in its own transaction, what the called action checks, and how a step runs after the row is written. Status: Accepted, amended 2026-10-11 (`before` leaves `validate`)."
 ---
 
 # 0068. Steps and checks receive bound `actions` and `tx`; a `run` step may run `after=:write`
@@ -8,6 +8,8 @@ description: "Decision record 0068: how an action calls other actions in its own
 ## Status
 
 Accepted. Amends [ADR-0053](./0053-validate-then-do.md) (what a `run` body and a function-valued check, `when` or `set` value receive).
+
+**Amended 2026-10-11 (operator, ACT-27).** Point 4's "`validate` sees `before`, the stored record, beside `self`, the record with the inputs applied" no longer holds: in `validate`, `self` is the record before the input is applied, the stored record on an update or destroy, and `before` is not available there (reading it is the build error `MESH_VALIDATE_BEFORE`). The `do` steps and `run`, including `run [after=:write]`, keep `before`: the stored record, `null` on a create ([ADR-0053](./0053-validate-then-do.md), amended the same day). The rest of this record is unchanged and kept as history.
 
 ## Date
 

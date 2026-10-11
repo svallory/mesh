@@ -29,54 +29,60 @@ export type MachineScope<I = unknown> = $Scope<{
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
 export type MachineStoredScope<I = unknown> = MachineScope<I> & { before: $DeepReadonly<Machine> };
+/** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
+export type MachineCheckScope<I = unknown> = Omit<MachineScope<I>, "before">;
+/** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
+export type MachineNewScope<I = unknown> = Omit<MachineCheckScope<I>, "self"> & {
+  self: $DeepReadonly<Omit<MachineLoaded, "name"> & { [K in "name"]: MachineLoaded[K] | null }>;
+};
 
 export const expressions = {
   // check :nameFree that, plain (uses-tx) (src/domain/execution/machine.mesh.mx:22:16)
-  "register.check.nameFree.that": ($s: MachineScope<RegisterMachineInput>) => {
-    const { self } = $s;
-    return (async ({ tx }) =>
-      (await tx.readMachine({ filter: { name: { eq: self.name } }, limit: 1 })).length === 0)($s);
+  "register.check.nameFree.that": ($s: MachineNewScope<RegisterMachineInput>) => {
+    return (async ({ input, tx }) =>
+      (await tx.readMachine({ filter: { name: { eq: input.name } }, limit: 1 })).length === 0)($s);
   },
   // set &firstReportedBy, translated (src/domain/execution/machine.mesh.mx:28:28)
   "register.step.0.set.firstReportedBy": ($s: MachineScope<RegisterMachineInput>) => $s.actor?.id,
   // check :nameFree that, plain (uses-tx) (src/domain/execution/machine.mesh.mx:34:16)
-  "report.check.nameFree.that": ($s: MachineScope<ReportMachineInput>) => {
-    const { self } = $s;
-    return (async ({ tx }) =>
-      (await tx.readMachine({ filter: { name: { eq: self.name } }, limit: 1 })).length === 0)($s);
+  "report.check.nameFree.that": ($s: MachineNewScope<ReportMachineInput>) => {
+    return (async ({ input, tx }) =>
+      (await tx.readMachine({ filter: { name: { eq: input.name } }, limit: 1 })).length === 0)($s);
   },
   // set &firstReportedBy, translated (src/domain/execution/machine.mesh.mx:40:28)
   "report.step.0.set.firstReportedBy": ($s: MachineScope<ReportMachineInput>) => $s.actor?.id,
   // check :machineActive that, translated (src/domain/execution/machine.mesh.mx:47:16)
-  "update.check.machineActive.that": ($s: MachineStoredScope<UpdateMachineInput>) =>
+  "update.check.machineActive.that": ($s: MachineCheckScope<UpdateMachineInput>) =>
     $.eq($s.self.state, "active"),
   // check :versionMatches that, translated (src/domain/execution/machine.mesh.mx:52:16)
-  "update.check.versionMatches.that": ($s: MachineStoredScope<UpdateMachineInput>) =>
+  "update.check.versionMatches.that": ($s: MachineCheckScope<UpdateMachineInput>) =>
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/machine.mesh.mx:55:19)
-  "update.check.versionMatches.details": ($s: MachineStoredScope<UpdateMachineInput>) => {
-    return (({ input, before }) => ({
+  "update.check.versionMatches.details": ($s: MachineCheckScope<UpdateMachineInput>) => {
+    const { self } = $s;
+    return (({ input }) => ({
       expectedVersion: input.expectedVersion,
-      actualVersion: before.version,
+      actualVersion: self.version,
     }))($s);
   },
   // set &version, translated (src/domain/execution/machine.mesh.mx:59:20)
   "update.step.0.set.version": ($s: MachineStoredScope<UpdateMachineInput>) =>
     $.add($s.self.version, 1),
   // check :machineActive that, translated (src/domain/execution/machine.mesh.mx:66:16)
-  "retire.check.machineActive.that": ($s: MachineStoredScope<RetireMachineInput>) =>
+  "retire.check.machineActive.that": ($s: MachineCheckScope<RetireMachineInput>) =>
     $.eq($s.self.state, "active"),
   // check :machineIdle that, translated (src/domain/execution/machine.mesh.mx:71:16)
-  "retire.check.machineIdle.that": ($s: MachineStoredScope<RetireMachineInput>) =>
+  "retire.check.machineIdle.that": ($s: MachineCheckScope<RetireMachineInput>) =>
     $.not($.some($s.self.attempts, (l$a: any) => $.eq(l$a.state, "running"))),
   // check :versionMatches that, translated (src/domain/execution/machine.mesh.mx:76:16)
-  "retire.check.versionMatches.that": ($s: MachineStoredScope<RetireMachineInput>) =>
+  "retire.check.versionMatches.that": ($s: MachineCheckScope<RetireMachineInput>) =>
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/machine.mesh.mx:79:19)
-  "retire.check.versionMatches.details": ($s: MachineStoredScope<RetireMachineInput>) => {
-    return (({ input, before }) => ({
+  "retire.check.versionMatches.details": ($s: MachineCheckScope<RetireMachineInput>) => {
+    const { self } = $s;
+    return (({ input }) => ({
       expectedVersion: input.expectedVersion,
-      actualVersion: before.version,
+      actualVersion: self.version,
     }))($s);
   },
   // set &version, translated (src/domain/execution/machine.mesh.mx:84:20)

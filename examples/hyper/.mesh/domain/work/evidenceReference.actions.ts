@@ -10,6 +10,7 @@ import {
   noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
   scope as $scope,
+  uuidv7 as $uuidv7,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
@@ -77,13 +78,12 @@ export function bindEvidenceReference(
         const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
-          kind: parsed.kind,
-          locator: parsed.locator,
-          contentHash: parsed.contentHash === undefined ? null : parsed.contentHash,
-          description: parsed.description === undefined ? null : parsed.description,
+          id: $uuidv7(),
+          contentHash: null,
+          description: null,
           recordedAt: $now,
         };
-        const $record: $Row = { ...$changes };
+        const $record: $Row = { ...$changes, kind: null, locator: null, recordedById: null };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "EvidenceReference", $record, "action function"),
           "EvidenceReference.record",
@@ -99,6 +99,13 @@ export function bindEvidenceReference(
           },
           options,
         ) as unknown as $Scope<RecordEvidenceReferenceInput>;
+        // the input: the member inputs the caller sent, applied now that the checks have passed
+        if (parsed.kind !== undefined) $changes.kind = $record.kind = parsed.kind;
+        if (parsed.locator !== undefined) $changes.locator = $record.locator = parsed.locator;
+        if (parsed.contentHash !== undefined)
+          $changes.contentHash = $record.contentHash = parsed.contentHash;
+        if (parsed.description !== undefined)
+          $changes.description = $record.description = parsed.description;
         // do: the steps run in written order, each seeing the record as the ones before it left it
         {
           const $value = await $expressions["record.step.0.set.recordedBy"]($s);

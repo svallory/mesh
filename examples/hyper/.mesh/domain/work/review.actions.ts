@@ -6,6 +6,7 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   castInput as $castInput,
+  checkScope as $checkScope,
   composed as $composed,
   guarded as $guarded,
   loadInto as $loadInto,
@@ -15,6 +16,7 @@ import {
   runCheck as $runCheck,
   scope as $scope,
   unloadFrom as $unloadFrom,
+  uuidv7 as $uuidv7,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
@@ -66,11 +68,17 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
         const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
+          id: $uuidv7(),
           reasons: null,
           decidedAt: $now,
-          submissionId: parsed.submission,
         };
-        const $record: $Row = { ...$changes };
+        const $record: $Row = {
+          ...$changes,
+          decision: null,
+          ruleApplied: null,
+          submissionId: null,
+          reviewerId: null,
+        };
         const $load = { actor: $actor, context: $context, clock: options.clock };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Review", $record, "action function"),
@@ -89,15 +97,15 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
         ) as unknown as $Scope<AcceptReviewInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $loadInto($loadPlan, "Review", tx, $record, ["submission", "submission.task"], $load);
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "pending",
           code: "submission.pending",
           message: "the submission is not pending",
           source: { file: "src/domain/work/review.mesh.mx", line: 21, column: 9 },
           that: $expressions["accept.check.pending.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "taskVersion",
           code: "submission.task-version",
           message: "the task changed since this was submitted; return it for rework",
@@ -105,7 +113,7 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
           that: $expressions["accept.check.taskVersion.that"],
           details: $expressions["accept.check.taskVersion.details"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the task is at another version; read it again and retry",
@@ -114,6 +122,9 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
           details: $expressions["accept.check.versionMatches.details"],
         });
         if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // the input: the member inputs the caller sent, applied now that the checks have passed
+        if (parsed.submission !== undefined)
+          $changes.submissionId = $record.submissionId = parsed.submission;
         // do: the steps run in written order, each seeing the record as the ones before it left it
         $changes.decision = $record.decision = "accept";
         {
@@ -166,11 +177,17 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
         const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
+          id: $uuidv7(),
           reasons: null,
           decidedAt: $now,
-          submissionId: parsed.submission,
         };
-        const $record: $Row = { ...$changes };
+        const $record: $Row = {
+          ...$changes,
+          decision: null,
+          ruleApplied: null,
+          submissionId: null,
+          reviewerId: null,
+        };
         const $load = { actor: $actor, context: $context, clock: options.clock };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Review", $record, "action function"),
@@ -189,15 +206,15 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
         ) as unknown as $Scope<ReturnReviewInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $loadInto($loadPlan, "Review", tx, $record, ["submission", "submission.task"], $load);
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "pending",
           code: "submission.pending",
           message: "the submission is not pending",
           source: { file: "src/domain/work/review.mesh.mx", line: 53, column: 9 },
           that: $expressions["return.check.pending.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the task is at another version; read it again and retry",
@@ -206,6 +223,9 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
           details: $expressions["return.check.versionMatches.details"],
         });
         if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // the input: the member inputs the caller sent, applied now that the checks have passed
+        if (parsed.submission !== undefined)
+          $changes.submissionId = $record.submissionId = parsed.submission;
         // do: the steps run in written order, each seeing the record as the ones before it left it
         $changes.decision = $record.decision = "return";
         {

@@ -24,19 +24,22 @@ export type WorkspaceScope<I = unknown> = $Scope<{
 export type WorkspaceStoredScope<I = unknown> = WorkspaceScope<I> & {
   before: $DeepReadonly<Workspace>;
 };
+/** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
+export type WorkspaceCheckScope<I = unknown> = Omit<WorkspaceScope<I>, "before">;
 
 export const expressions = {
   // check :workspaceActive that, translated (src/domain/identity/workspace.mesh.mx:19:16)
-  "rename.check.workspaceActive.that": ($s: WorkspaceStoredScope<RenameWorkspaceInput>) =>
+  "rename.check.workspaceActive.that": ($s: WorkspaceCheckScope<RenameWorkspaceInput>) =>
     $.eq($s.self.state, "active"),
   // check :versionMatches that, translated (src/domain/identity/workspace.mesh.mx:24:16)
-  "rename.check.versionMatches.that": ($s: WorkspaceStoredScope<RenameWorkspaceInput>) =>
+  "rename.check.versionMatches.that": ($s: WorkspaceCheckScope<RenameWorkspaceInput>) =>
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/identity/workspace.mesh.mx:27:19)
-  "rename.check.versionMatches.details": ($s: WorkspaceStoredScope<RenameWorkspaceInput>) => {
-    return (({ input, before }) => ({
+  "rename.check.versionMatches.details": ($s: WorkspaceCheckScope<RenameWorkspaceInput>) => {
+    const { self } = $s;
+    return (({ input }) => ({
       expectedVersion: input.expectedVersion,
-      actualVersion: before.version,
+      actualVersion: self.version,
     }))($s);
   },
   // set &version, translated (src/domain/identity/workspace.mesh.mx:31:20)

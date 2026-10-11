@@ -35,40 +35,59 @@ export type DependencyScope<I = unknown> = $Scope<{
 export type DependencyStoredScope<I = unknown> = DependencyScope<I> & {
   before: $DeepReadonly<Dependency>;
 };
+/** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
+export type DependencyCheckScope<I = unknown> = Omit<DependencyScope<I>, "before">;
+/** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
+export type DependencyNewScope<I = unknown> = Omit<DependencyCheckScope<I>, "self"> & {
+  self: $DeepReadonly<
+    Omit<
+      DependencyLoaded,
+      "dependentId" | "dependent" | "prerequisiteId" | "prerequisite" | "createdById" | "createdBy"
+    > & {
+      [K in
+        | "dependentId"
+        | "dependent"
+        | "prerequisiteId"
+        | "prerequisite"
+        | "createdById"
+        | "createdBy"]: DependencyLoaded[K] | null;
+    }
+  >;
+};
 
 export const expressions = {
   // check :exists that, plain (uses-tx) (src/domain/work/dependency.mesh.mx:21:16)
-  "add.check.exists.that": ($s: DependencyScope<AddDependencyInput>) => {
+  "add.check.exists.that": ($s: DependencyNewScope<AddDependencyInput>) => {
     return (async ({ input, tx }) =>
       (await missingTasksOf(tx, [input.dependent, input.prerequisite])).length === 0)($s);
   },
   // check :exists details, plain (uses-tx) (src/domain/work/dependency.mesh.mx:24:19)
-  "add.check.exists.details": ($s: DependencyScope<AddDependencyInput>) => {
+  "add.check.exists.details": ($s: DependencyNewScope<AddDependencyInput>) => {
     return (async ({ input, tx }) => ({
       missing: await missingTasksOf(tx, [input.dependent, input.prerequisite]),
     }))($s);
   },
   // check :distinct that, translated (src/domain/work/dependency.mesh.mx:27:16)
-  "add.check.distinct.that": ($s: DependencyScope<AddDependencyInput>) =>
+  "add.check.distinct.that": ($s: DependencyNewScope<AddDependencyInput>) =>
     $.ne($s.input?.dependent, $s.input?.prerequisite),
   // check :duplicate that, plain (uses-tx) (src/domain/work/dependency.mesh.mx:32:16)
-  "add.check.duplicate.that": ($s: DependencyScope<AddDependencyInput>) => {
+  "add.check.duplicate.that": ($s: DependencyNewScope<AddDependencyInput>) => {
     return (async ({ input, tx }) =>
       !(await dependencyExistsOf(tx, input.dependent, input.prerequisite)))($s);
   },
   // check :noCycle that, plain (uses-tx) (src/domain/work/dependency.mesh.mx:37:16)
-  "add.check.noCycle.that": ($s: DependencyScope<AddDependencyInput>) => {
+  "add.check.noCycle.that": ($s: DependencyNewScope<AddDependencyInput>) => {
     return (async ({ input, tx }) =>
       !(await prerequisiteReachesOf(tx, input.prerequisite, input.dependent)))($s);
   },
   // check :versionMatches that, plain (uses-tx) (src/domain/work/dependency.mesh.mx:42:16)
-  "add.check.versionMatches.that": ($s: DependencyScope<AddDependencyInput>) => {
+  "add.check.versionMatches.that": ($s: DependencyNewScope<AddDependencyInput>) => {
     return (async ({ input, tx }) =>
       input.expectedVersion == null ||
       [input.expectedVersion, null].includes(await taskVersionOf(tx, input.dependent)))($s);
   },
   // check :versionMatches details, plain (uses-tx) (src/domain/work/dependency.mesh.mx:45:19)
-  "add.check.versionMatches.details": ($s: DependencyScope<AddDependencyInput>) => {
+  "add.check.versionMatches.details": ($s: DependencyNewScope<AddDependencyInput>) => {
     return (async ({ input, tx }) => ({
       expectedVersion: input.expectedVersion,
       actualVersion: await taskVersionOf(tx, input.dependent),
@@ -83,13 +102,13 @@ export const expressions = {
     })($s);
   },
   // check :versionMatches that, translated (src/domain/work/dependency.mesh.mx:59:16)
-  "remove.check.versionMatches.that": ($s: DependencyStoredScope<RemoveDependencyInput>) =>
+  "remove.check.versionMatches.that": ($s: DependencyCheckScope<RemoveDependencyInput>) =>
     $.or(
       $.isNull($s.input?.expectedVersion),
       $.eq($s.input?.expectedVersion, $s.self.dependent?.version),
     ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/work/dependency.mesh.mx:62:19)
-  "remove.check.versionMatches.details": ($s: DependencyStoredScope<RemoveDependencyInput>) => {
+  "remove.check.versionMatches.details": ($s: DependencyCheckScope<RemoveDependencyInput>) => {
     const { self } = $s;
     return (({ input }) => ({
       expectedVersion: input.expectedVersion,

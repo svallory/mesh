@@ -1,5 +1,6 @@
 import { dirname, relative } from "node:path";
 import type { Action, Always, Atom, Attribute, Check, Entity, Expression, Literal, SourcePosition, Step } from "@meshfw/model";
+import { filledKey } from "../../model/new-instance.ts";
 import { emitError } from "../emit-error.ts";
 import type { EmitInput } from "../emit.ts";
 import { expressionIds } from "./expressions.ts";
@@ -294,6 +295,8 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       return `$expressions[${JSON.stringify(id)}]`;
     };
 
+    // What the checks read through a relationship or a computed field, loaded onto the record before they run.
+    const checkNeeds = [...new Set(checks.flatMap((check) => [check.that, check.when, check.details].flatMap((e) => e?.needs ?? [])))].sort();
     // Does the call need the stored row? An update always reads it (every update is read then write, ADR-0072);
     // a destroy reads it only when something in its body can see it.
     const reads = action.kind === "update" || checks.length > 0 || steps.length > 0;
@@ -323,12 +326,12 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     const emit = (...lines: string[]) => body.push(...lines);
     /** `$expressions["id"]($s)`, or with the scope after the write. */
     const call = (expression: Expression, scope = "$s") => { used.scope = true; usesExpressions = true; return `${idOf(expression)}(${scope})`; };
-    const loadFor = (paths: readonly string[], record = "$record") => {
+    const loadFor = (paths: readonly string[], record = "$record", options = "$load") => {
       if (!paths.length) return;
       used.load = true;
       used.plan = true;
       runtime.add("loadInto");
-      emit(`await $loadInto($loadPlan, ${JSON.stringify(entity.name)}, tx, ${record}, ${JSON.stringify(paths)}, $load);`);
+      emit(`await $loadInto($loadPlan, ${JSON.stringify(entity.name)}, tx, ${record}, ${JSON.stringify(paths)}, ${options});`);
     };
     // A `when` that holds a step after the write keeps what its condition gave, so that step runs after the write only if it held.
     const whenFlags = new Map<Step, string>();
@@ -341,49 +344,59 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     };
     flagWhens(steps);
 
+    // The member inputs (`&x`), applied to the record once the checks have passed (ACT-27): the checks see `self` as it is.
+    const applied: string[] = [];
     if (action.kind === "create") {
-      // the proposed record: the accepted input over the declared defaults
+      // the new instance: its key, the defaults, the stamped timestamps and null where nothing fills it yet (ACT-27)
       head.push("// plan: a create is one insert; nothing is read first");
+      // With no check or step, nothing sees the instance before the input, so the row is built with the input in it.
+      const seen = checks.length > 0 || steps.length > 0;
       const accepted = new Map<string, string>();
-      for (const field of input.fields)
-        if (!inputArgument(action, field.attribute.name))
-          accepted.set(columnOf(entity, field.attribute.name, field.attribute.position).name, read("parsed", field.attribute.name));
+      for (const field of input.fields) {
+        if (inputArgument(action, field.attribute.name)) continue;
+        const column = columnOf(entity, field.attribute.name, field.attribute.position).name;
+        const value = read("parsed", field.attribute.name);
+        accepted.set(column, value);
+        if (seen) applied.push(`if (${value} !== undefined) ${read("$changes", column)} = ${read("$record", column)} = ${value};`);
+      }
       const lines: string[] = [];
+      // What the record type says is set but the instance does not hold yet: null on `$record`, absent from the row to insert.
+      const pending: string[] = [];
       const fill = (column: string, position: SourcePosition, rules: {
-        key: boolean; stamped: boolean; fallback: string | undefined; nullable: boolean }) => {
-        // The primary key is not written here: the data layer fills a key the row lacks (a UUIDv7
-        // for a text key, the next integer for an integer key) inside the write transaction.
-        if (rules.key && !setColumns.has(column)) return;
+        key: "filled" | "written" | null; stamped: boolean; fallback: string | undefined; nullable: boolean }) => {
+        // A `uuid` or `string` key is filled now, so `self.id` is known to the checks and the steps; the data layer gives
+        // an `integer` key (the next one) when it writes the row, so until then it is null.
+        if (rules.key === "filled") { runtime.add("uuidv7"); lines.push(`${propertyName(column)}: $uuidv7(),`); return; }
+        if (rules.key === "written") { pending.push(column); return; }
         let fallback: string | undefined;
         if (rules.stamped) { fallback = "$now"; used.now = true; }
         else if (rules.fallback !== undefined) fallback = rules.fallback;
         else if (rules.nullable) fallback = "null";
-        const provided = accepted.get(column);
-        let value: string;
-        if (provided !== undefined) value = fallback === undefined ? provided : `${provided} === undefined ? ${fallback} : ${provided}`;
-        else if (fallback !== undefined) value = fallback;
-        // A column a `set` step fills is not known yet: the step writes it before the row is inserted.
-        else if (setColumns.has(column)) return;
+        const provided = seen ? undefined : accepted.get(column);
+        if (provided !== undefined) lines.push(`${propertyName(column)}: ${fallback === undefined ? provided : `${provided} === undefined ? ${fallback} : ${provided}`},`);
+        else if (fallback !== undefined) lines.push(`${propertyName(column)}: ${fallback},`);
+        // The input fills it after the checks, or a `set` step does before the row is inserted.
+        else if (accepted.has(column) || setColumns.has(column)) pending.push(column);
         else throw emitError("MESH_EMIT_UNFILLABLE",
           `Create action :${action.name} of :${entity.name} cannot fill \`${column}\`: it is not accepted, has no default and is not nullable`,
           position, `Accept &${column} in the action's input, give it a default, make it nullable or fill it with a \`set\` step`);
-        lines.push(`${propertyName(column)}: ${value},`);
       };
       for (const attribute of entity.attributes)
         fill(attribute.name, attribute.position, {
-          key: attribute.primaryKey,
+          key: attribute.primaryKey ? (filledKey(attribute.type) ? "filled" : "written") : null,
           stamped: attribute.on !== undefined,
           fallback: attribute.default === undefined ? undefined : printValue(attribute.default, attribute.type),
           nullable: attribute.nullable,
         });
       for (const relation of entity.relationships)
         if (relation.keyColumn)
-          fill(relation.keyColumn, relation.position, { key: false, stamped: false, fallback: undefined, nullable: relation.nullable });
+          fill(relation.keyColumn, relation.position, { key: null, stamped: false, fallback: undefined, nullable: relation.nullable });
       runtimeTypes.add("Row");
-      head.push("const $changes: $Row = {", ...lines, "};", "const $record: $Row = { ...$changes };");
+      head.push("const $changes: $Row = {", ...lines, "};",
+        pending.length ? `const $record: $Row = { ...$changes, ${pending.map((column) => `${propertyName(column)}: null`).join(", ")} };` : "const $record: $Row = { ...$changes };");
     } else {
       head.push(reads
-        ? "// plan: read the row under the write lock, check, change it, write it (every update is a read then a write)"
+        ? "// plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)"
         : "// plan: nothing in the body can see the record, so the row is deleted without being read");
       head.push(`const ${KEY} = ${keyObject};`);
       runtime.add("NotFoundError");
@@ -391,13 +404,13 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         runtimeTypes.add("Row");
         head.push(`const $before = await tx.selectByKeyForUpdate(${table}, ${KEY});`);
         head.push(`if ($before === undefined) throw new $NotFoundError(${JSON.stringify(entity.name)}, ${KEY});`);
-        // the record with the accepted input applied: stored values for the fields the caller did not send
+        // the stored record, as the checks see it; the accepted input is applied after them
         head.push(...(writes ? ["const $changes: $Row = {};"] : []), "const $record: $Row = { ...$before };");
         for (const field of input.fields.slice(1)) {
           if (field.query || inputArgument(action, field.attribute.name)) continue;
           const column = columnOf(entity, field.attribute.name, field.attribute.position);
           const value = read("parsed", field.attribute.name);
-          head.push(`if (${value} !== undefined) ${writes ? `${read("$changes", column.name)} = ` : ""}${read("$record", column.name)} = ${value};`);
+          applied.push(`if (${value} !== undefined) ${writes ? `${read("$changes", column.name)} = ` : ""}${read("$record", column.name)} = ${value};`);
         }
       }
     }
@@ -407,9 +420,13 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       emit("// validate: every check runs, and every failed check is reported together");
       runtime.add("InvalidInputError");
       runtime.add("runCheck");
+      runtime.add("checkScope");
       runtimeTypes.add("Issue");
       emit("const $issues: $Issue[] = [];");
-      loadFor([...new Set(checks.flatMap((check) => [check.that, check.when, check.details].flatMap((e) => e?.needs ?? [])))].sort());
+      // A check sees no `before` (ACT-01, ACT-27): `self` there is the record before the input.
+      emit("const $checks = $checkScope($s);");
+      // On a create the record is the new instance: a required relationship the input has not filled yet is null on it.
+      loadFor(checkNeeds, "$record", action.kind === "create" ? "{ ...$load, newInstance: true }" : "$load");
       for (const check of checks) {
         used.scope = true;
         usesExpressions = true;
@@ -423,9 +440,20 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
           ...(check.when ? [`when: ${idOf(check.when)}`] : []),
           ...(check.details ? [`details: ${idOf(check.details)}`] : []),
         ];
-        emit(`await $runCheck($issues, $s, { ${parts.join(", ")} });`);
+        emit(`await $runCheck($issues, $checks, { ${parts.join(", ")} });`);
       }
       emit("if ($issues.length > 0) throw new $InvalidInputError($issues);");
+    }
+
+    // apply the input: the caller's values over the record the checks saw; a field the caller did not send keeps its value
+    if (applied.length > 0) {
+      emit("// the input: the member inputs the caller sent, applied now that the checks have passed", ...applied);
+      // What the checks loaded was worked out from the record before the input.
+      if (checkNeeds.length > 0) {
+        used.plan = true;
+        runtime.add("unloadFrom");
+        emit(`$unloadFrom($loadPlan, ${JSON.stringify(entity.name)}, $record);`);
+      }
     }
 
     // do

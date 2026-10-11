@@ -7,6 +7,7 @@ import {
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
   castInput as $castInput,
+  checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
   composed as $composed,
   guarded as $guarded,
@@ -14,6 +15,7 @@ import {
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
+  uuidv7 as $uuidv7,
   writeCount as $writeCount,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
@@ -87,12 +89,11 @@ export function bindCollaborator(
         const $actor = $context.actor;
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
-          kind: parsed.kind,
-          name: parsed.name,
+          id: $uuidv7(),
           state: "active",
           version: 1,
         };
-        const $record: $Row = { ...$changes };
+        const $record: $Row = { ...$changes, kind: null, name: null };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Collaborator", $record, "action function"),
           "Collaborator.register",
@@ -110,7 +111,8 @@ export function bindCollaborator(
         ) as unknown as $Scope<RegisterCollaboratorInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "nameUnique",
           code: "collaborator.name-unique",
           message: "another active collaborator has that name",
@@ -118,6 +120,9 @@ export function bindCollaborator(
           that: $expressions["register.check.nameUnique.that"],
         });
         if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // the input: the member inputs the caller sent, applied now that the checks have passed
+        if (parsed.kind !== undefined) $changes.kind = $record.kind = parsed.kind;
+        if (parsed.name !== undefined) $changes.name = $record.name = parsed.name;
         // data layer
         const $stored = await tx.insert(tables.collaborator, $changes);
         $noteWrite(tx);
@@ -135,13 +140,12 @@ export function bindCollaborator(
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.collaborator, $key);
         if ($before === undefined) throw new $NotFoundError("Collaborator", $key);
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
-        if (parsed.name !== undefined) $changes.name = $record.name = parsed.name;
         const $writes = $writeCount(tx);
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Collaborator", $record, "action function"),
@@ -163,28 +167,29 @@ export function bindCollaborator(
         ) as unknown as $StoredScope<UpdateCollaboratorInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "collaboratorActive",
           code: "collaborator.active",
           message: "the collaborator is retired",
           source: { file: "src/domain/identity/collaborator.mesh.mx", line: 30, column: 9 },
           that: $expressions["update.check.collaboratorActive.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "kindImmutable",
           code: "collaborator.kind-immutable",
           message: "a collaborator keeps its kind",
           source: { file: "src/domain/identity/collaborator.mesh.mx", line: 35, column: 9 },
           that: $expressions["update.check.kindImmutable.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "nameUnique",
           code: "collaborator.name-unique",
           message: "another active collaborator has that name",
           source: { file: "src/domain/identity/collaborator.mesh.mx", line: 40, column: 9 },
           that: $expressions["update.check.nameUnique.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the record is at another version; read it again and retry",
@@ -193,6 +198,8 @@ export function bindCollaborator(
           details: $expressions["update.check.versionMatches.details"],
         });
         if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // the input: the member inputs the caller sent, applied now that the checks have passed
+        if (parsed.name !== undefined) $changes.name = $record.name = parsed.name;
         // do: the steps run in written order, each seeing the record as the ones before it left it
         {
           const $value = await $expressions["update.step.0.set.version"]($s);
@@ -229,7 +236,7 @@ export function bindCollaborator(
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.collaborator, $key);
         if ($before === undefined) throw new $NotFoundError("Collaborator", $key);
@@ -256,21 +263,22 @@ export function bindCollaborator(
         ) as unknown as $StoredScope<RetireCollaboratorInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "collaboratorActive",
           code: "collaborator.active",
           message: "the collaborator is retired",
           source: { file: "src/domain/identity/collaborator.mesh.mx", line: 59, column: 9 },
           that: $expressions["retire.check.collaboratorActive.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "lastOwner",
           code: "membership.last-owner",
           message: "the workspace would have no owner; grant another owner first",
           source: { file: "src/domain/identity/collaborator.mesh.mx", line: 64, column: 9 },
           that: $expressions["retire.check.lastOwner.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the record is at another version; read it again and retry",

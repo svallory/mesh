@@ -1,5 +1,5 @@
 import { Collaborator } from "./collaborator.mesh.mx"
-import { keepsAnOwnerOf, noActiveMembershipOf } from "./identity.helpers"
+import { collaboratorActiveOf, keepsAnOwnerOf, noActiveMembershipOf } from "./identity.helpers"
 
 entity :Membership table="memberships"
   attributes
@@ -20,7 +20,7 @@ entity :Membership table="memberships"
         &role
       validate
         check :collaboratorActive [
-          that=() => &collaborator.state === :active
+          that=({ input, tx }) => collaboratorActiveOf(tx, input.collaborator)
           code="collaborator.active"
           message="the collaborator is retired"
         ]
@@ -44,12 +44,12 @@ entity :Membership table="memberships"
           message="the membership is revoked"
         ]
         check :roleChanges [
-          that=({ before }) => &role !== before.role
+          that=({ input }) => (input.role ?? &role) !== &role
           code="membership.unchanged"
           message="the member already has that role"
         ]
         check :lastOwner [
-          that=({ before, tx }) => keepsAnOwnerOf(tx, before.state === :active && before.role === :owner && &role !== :owner)
+          that=({ input, tx }) => keepsAnOwnerOf(tx, &state === :active && &role === :owner && (input.role ?? &role) !== :owner)
           code="membership.last-owner"
           message="the workspace would have no owner; grant another owner first"
         ]
@@ -57,7 +57,7 @@ entity :Membership table="memberships"
           that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
           code="expected-version"
           message="the record is at another version; read it again and retry"
-          details=({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })
+          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
         ]
       do
         set
@@ -81,7 +81,7 @@ entity :Membership table="memberships"
           that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
           code="expected-version"
           message="the record is at another version; read it again and retry"
-          details=({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })
+          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
         ]
       do
         set

@@ -7,6 +7,7 @@ import {
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
   castInput as $castInput,
+  checkScope as $checkScope,
   composed as $composed,
   guarded as $guarded,
   loadInto as $loadInto,
@@ -15,6 +16,7 @@ import {
   rescope as $rescope,
   runCheck as $runCheck,
   scope as $scope,
+  uuidv7 as $uuidv7,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
@@ -79,11 +81,15 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
         const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
+          id: $uuidv7(),
           createdAt: $now,
-          dependentId: parsed.dependent,
-          prerequisiteId: parsed.prerequisite,
         };
-        const $record: $Row = { ...$changes };
+        const $record: $Row = {
+          ...$changes,
+          dependentId: null,
+          prerequisiteId: null,
+          createdById: null,
+        };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Dependency", $record, "action function"),
           "Dependency.add",
@@ -101,7 +107,8 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
         ) as unknown as $Scope<AddDependencyInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "exists",
           code: "dependency.exists",
           message: "a task of the dependency does not exist",
@@ -109,28 +116,28 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
           that: $expressions["add.check.exists.that"],
           details: $expressions["add.check.exists.details"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "distinct",
           code: "dependency.distinct",
           message: "a task cannot depend on itself",
           source: { file: "src/domain/work/dependency.mesh.mx", line: 26, column: 9 },
           that: $expressions["add.check.distinct.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "duplicate",
           code: "dependency.duplicate",
           message: "the dependency already exists",
           source: { file: "src/domain/work/dependency.mesh.mx", line: 31, column: 9 },
           that: $expressions["add.check.duplicate.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "noCycle",
           code: "dependency.no-cycle",
           message: "the prerequisite already waits for the dependent",
           source: { file: "src/domain/work/dependency.mesh.mx", line: 36, column: 9 },
           that: $expressions["add.check.noCycle.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the task is at another version; read it again and retry",
@@ -139,6 +146,11 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
           details: $expressions["add.check.versionMatches.details"],
         });
         if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // the input: the member inputs the caller sent, applied now that the checks have passed
+        if (parsed.dependent !== undefined)
+          $changes.dependentId = $record.dependentId = parsed.dependent;
+        if (parsed.prerequisite !== undefined)
+          $changes.prerequisiteId = $record.prerequisiteId = parsed.prerequisite;
         // do: the steps run in written order, each seeing the record as the ones before it left it
         {
           const $value = await $expressions["add.step.0.set.createdBy"]($s);
@@ -177,7 +189,7 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.dependency, $key);
         if ($before === undefined) throw new $NotFoundError("Dependency", $key);
@@ -203,8 +215,9 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
         ) as unknown as $StoredScope<RemoveDependencyInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
+        const $checks = $checkScope($s);
         await $loadInto($loadPlan, "Dependency", tx, $record, ["dependent"], $load);
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the task is at another version; read it again and retry",

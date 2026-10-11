@@ -177,11 +177,22 @@ describe("the key of a create", () => {
         &name
 `;
 
-  test.each(["uuid :id primary-key", "string :code primary-key", "integer :seq primary-key"])("%s is left to the data layer", async (key) => {
+  test.each([["uuid :id primary-key", "id"], ["string :code primary-key", "code"]])("%s is filled when the instance is built (ACT-27)", async (key, name) => {
     const { document } = await generated({ "m/item.mesh.mx": items(key) });
     const statements = actionsView({ document, config: configOf("/p") }, document.entities[0]!).methods.find((m) => m.name === "create")!.statements;
-    // The key is not in the proposed record: the data layer fills it inside the write transaction.
+    // A UUIDv7, the value the data layer would give, made before the checks so `self.${name}` is known to them and to the steps.
+    expect(statements.slice(2)).toEqual(["const $changes: $Row = {", `${name}: $uuidv7(),`, "name: parsed.name,", "};", "// data layer", "const $stored = await tx.insert(tables.item, $changes);", "$noteWrite(tx);", "return $stored as Item;"]);
+  });
+
+  test("integer :seq primary-key is left to the data layer, and is null on the instance until the write", async () => {
+    const plain = await generated({ "m/item.mesh.mx": items("integer :seq primary-key") });
+    const statements = actionsView({ document: plain.document, config: configOf("/p") }, plain.document.entities[0]!).methods.find((m) => m.name === "create")!.statements;
     expect(statements.slice(2)).toEqual(["const $changes: $Row = {", "name: parsed.name,", "};", "// data layer", "const $stored = await tx.insert(tables.item, $changes);", "$noteWrite(tx);", "return $stored as Item;"]);
+    // With a check, the instance the check sees holds the key as null; the row to insert has none, so the data layer gives it.
+    const checked = await generated({ "m/item.mesh.mx": items("integer :seq primary-key").replace("        &name\n", "        &name\n      validate\n        check :named that=({ input }) => input.name !== \"\" code=\"named\" message=\"a name\"\n") });
+    const lines = actionsView({ document: checked.document, config: configOf("/p") }, checked.document.entities[0]!).methods.find((m) => m.name === "create")!.statements;
+    expect(lines).toContain("const $record: $Row = { ...$changes, seq: null, name: null };");
+    expect(lines.join("\n")).not.toContain("uuidv7");
   });
 
   test("no generated file writes a random id", async () => {

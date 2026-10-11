@@ -8,6 +8,7 @@ import {
   type Scope as $Scope,
 } from "@meshfw/runtime";
 import {
+  collaboratorActiveOf,
   keepsAnOwnerOf,
   noActiveMembershipOf,
 } from "../../../src/domain/identity/identity.helpers";
@@ -34,13 +35,33 @@ export type MembershipScope<I = unknown> = $Scope<{
 export type MembershipStoredScope<I = unknown> = MembershipScope<I> & {
   before: $DeepReadonly<Membership>;
 };
+/** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
+export type MembershipCheckScope<I = unknown> = Omit<MembershipScope<I>, "before">;
+/** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
+export type MembershipNewScope<I = unknown> = Omit<MembershipCheckScope<I>, "self"> & {
+  self: $DeepReadonly<
+    Omit<
+      MembershipLoaded,
+      "role" | "grantedAt" | "collaboratorId" | "collaborator" | "grantedById" | "grantedBy"
+    > & {
+      [K in
+        | "role"
+        | "grantedAt"
+        | "collaboratorId"
+        | "collaborator"
+        | "grantedById"
+        | "grantedBy"]: MembershipLoaded[K] | null;
+    }
+  >;
+};
 
 export const expressions = {
-  // check :collaboratorActive that, translated (src/domain/identity/membership.mesh.mx:23:16)
-  "grant.check.collaboratorActive.that": ($s: MembershipScope<GrantMembershipInput>) =>
-    $.eq($s.self.collaborator?.state, "active"),
+  // check :collaboratorActive that, plain (uses-tx) (src/domain/identity/membership.mesh.mx:23:16)
+  "grant.check.collaboratorActive.that": ($s: MembershipNewScope<GrantMembershipInput>) => {
+    return (({ input, tx }) => collaboratorActiveOf(tx, input.collaborator))($s);
+  },
   // check :noneActive that, plain (uses-tx) (src/domain/identity/membership.mesh.mx:28:16)
-  "grant.check.noneActive.that": ($s: MembershipScope<GrantMembershipInput>) => {
+  "grant.check.noneActive.that": ($s: MembershipNewScope<GrantMembershipInput>) => {
     return (({ input, tx }) => noActiveMembershipOf(tx, input.collaborator))($s);
   },
   // set &grantedAt, translated (src/domain/identity/membership.mesh.mx:34:22)
@@ -48,52 +69,53 @@ export const expressions = {
   // set &grantedBy, translated (src/domain/identity/membership.mesh.mx:35:22)
   "grant.step.0.set.grantedBy": ($s: MembershipScope<GrantMembershipInput>) => $s.actor?.id,
   // check :membershipActive that, translated (src/domain/identity/membership.mesh.mx:42:16)
-  "changeRole.check.membershipActive.that": (
-    $s: MembershipStoredScope<ChangeRoleMembershipInput>,
-  ) => $.eq($s.self.state, "active"),
+  "changeRole.check.membershipActive.that": ($s: MembershipCheckScope<ChangeRoleMembershipInput>) =>
+    $.eq($s.self.state, "active"),
   // check :roleChanges that, translated (src/domain/identity/membership.mesh.mx:47:16)
-  "changeRole.check.roleChanges.that": ($s: MembershipStoredScope<ChangeRoleMembershipInput>) =>
-    $.ne($s.self.role, $s.before?.role),
+  "changeRole.check.roleChanges.that": ($s: MembershipCheckScope<ChangeRoleMembershipInput>) =>
+    $.ne($.coalesce($s.input?.role, $s.self.role), $s.self.role),
   // check :lastOwner that, plain (uses-tx) (src/domain/identity/membership.mesh.mx:52:16)
-  "changeRole.check.lastOwner.that": ($s: MembershipStoredScope<ChangeRoleMembershipInput>) => {
+  "changeRole.check.lastOwner.that": ($s: MembershipCheckScope<ChangeRoleMembershipInput>) => {
     const { self } = $s;
-    return (({ before, tx }) =>
+    return (({ input, tx }) =>
       keepsAnOwnerOf(
         tx,
-        before.state === "active" && before.role === "owner" && self.role !== "owner",
+        self.state === "active" && self.role === "owner" && (input.role ?? self.role) !== "owner",
       ))($s);
   },
   // check :versionMatches that, translated (src/domain/identity/membership.mesh.mx:57:16)
-  "changeRole.check.versionMatches.that": ($s: MembershipStoredScope<ChangeRoleMembershipInput>) =>
+  "changeRole.check.versionMatches.that": ($s: MembershipCheckScope<ChangeRoleMembershipInput>) =>
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/identity/membership.mesh.mx:60:19)
   "changeRole.check.versionMatches.details": (
-    $s: MembershipStoredScope<ChangeRoleMembershipInput>,
+    $s: MembershipCheckScope<ChangeRoleMembershipInput>,
   ) => {
-    return (({ input, before }) => ({
+    const { self } = $s;
+    return (({ input }) => ({
       expectedVersion: input.expectedVersion,
-      actualVersion: before.version,
+      actualVersion: self.version,
     }))($s);
   },
   // set &version, translated (src/domain/identity/membership.mesh.mx:64:20)
   "changeRole.step.0.set.version": ($s: MembershipStoredScope<ChangeRoleMembershipInput>) =>
     $.add($s.self.version, 1),
   // check :membershipActive that, translated (src/domain/identity/membership.mesh.mx:71:16)
-  "revoke.check.membershipActive.that": ($s: MembershipStoredScope<RevokeMembershipInput>) =>
+  "revoke.check.membershipActive.that": ($s: MembershipCheckScope<RevokeMembershipInput>) =>
     $.eq($s.self.state, "active"),
   // check :lastOwner that, plain (uses-tx) (src/domain/identity/membership.mesh.mx:76:16)
-  "revoke.check.lastOwner.that": ($s: MembershipStoredScope<RevokeMembershipInput>) => {
+  "revoke.check.lastOwner.that": ($s: MembershipCheckScope<RevokeMembershipInput>) => {
     const { self } = $s;
     return (({ tx }) => keepsAnOwnerOf(tx, self.state === "active" && self.role === "owner"))($s);
   },
   // check :versionMatches that, translated (src/domain/identity/membership.mesh.mx:81:16)
-  "revoke.check.versionMatches.that": ($s: MembershipStoredScope<RevokeMembershipInput>) =>
+  "revoke.check.versionMatches.that": ($s: MembershipCheckScope<RevokeMembershipInput>) =>
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/identity/membership.mesh.mx:84:19)
-  "revoke.check.versionMatches.details": ($s: MembershipStoredScope<RevokeMembershipInput>) => {
-    return (({ input, before }) => ({
+  "revoke.check.versionMatches.details": ($s: MembershipCheckScope<RevokeMembershipInput>) => {
+    const { self } = $s;
+    return (({ input }) => ({
       expectedVersion: input.expectedVersion,
-      actualVersion: before.version,
+      actualVersion: self.version,
     }))($s);
   },
   // set &revokedAt, translated (src/domain/identity/membership.mesh.mx:89:22)

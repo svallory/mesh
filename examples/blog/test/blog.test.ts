@@ -105,8 +105,8 @@ async function seeded(titles: string[]) {
 }
 const titlesOf = (posts: { title: string }[]) => posts.map((post) => post.title);
 
-describe("ids (UUIDv7, filled by the data layer)", () => {
-  test("a create writes no id of its own: the id is a UUIDv7, and ids sort in creation order", async () => {
+describe("ids (UUIDv7, filled when Mesh builds the new record, ACT-27)", () => {
+  test("a create's id is a UUIDv7, and ids sort in creation order", async () => {
     const { db, posts } = await seeded(Array.from({ length: 25 }, (_, index) => `post ${index}`));
     try {
       for (const post of posts) expect(post.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
@@ -115,8 +115,11 @@ describe("ids (UUIDv7, filled by the data layer)", () => {
     } finally { await db.close(); }
   });
 
-  test("the generated create does not mention the id, and a client cannot send one", async () => {
-    expect(readFileSync(resolve(import.meta.dir, "../.mesh/domain/blog/post.actions.ts"), "utf8")).not.toMatch(/randomUUID|^\s+id: /m);
+  test("the generated create fills the id itself, never from the input, and a client cannot send one", async () => {
+    // A uuid key is filled when Mesh builds the record, so a check or a step already reads `&id`; an integer key is left to the data layer.
+    const actions = readFileSync(resolve(import.meta.dir, "../.mesh/domain/blog/post.actions.ts"), "utf8");
+    expect(actions.match(/^\s+id: \$uuidv7\(\),$/gm)).toHaveLength(1);
+    expect(actions).not.toMatch(/randomUUID|^\s+id: (?!\$uuidv7\(\),$)/m);
     const { db, blog, author } = await seeded([]);
     try {
       // @ts-expect-error the id is not part of createPost's input

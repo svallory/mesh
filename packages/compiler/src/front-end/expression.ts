@@ -210,14 +210,22 @@ function hasDifferingOperator(root: unknown): boolean {
 /** The edits that turn the authored text into TypeScript: `&name` to `self.name`, `:atom` to a string. */
 function editsFor(fn: N, base: number): SourceEdit[] {
   const edits: SourceEdit[] = [];
+  // The `&x` of an `input.x ?? &x`.
+  const fallbacks = new Set<unknown>();
   const walk = (value: unknown): void => {
     if (!value || typeof value !== "object") return;
     if (Array.isArray(value)) { value.forEach(walk); return; }
     const n = value as N;
     const extra = n.extra as any;
     const member = extra?.mxMember;
+    if (n.type === "LogicalExpression" && n.operator === "??") {
+      const left = n.left as N, right = n.right as N;
+      const name = (right?.extra as any)?.mxMember?.name;
+      if (left?.type === "MemberExpression" && (left.object as N)?.type === "Identifier" && (left.object as N).name === "input"
+        && !left.computed && (left.property as N)?.name === name && name !== undefined) fallbacks.add(right);
+    }
     if (n.type === "MemberExpression" && member)
-      edits.push({ from: member.span.sourceStart - base, to: member.span.sourceEnd - base, text: `self.${member.name}` });
+      edits.push({ from: member.span.sourceStart - base, to: member.span.sourceEnd - base, text: `self.${member.name}`, ...(fallbacks.has(n) ? { fallback: true as const } : {}) });
     const atom = extra?.mxAtom;
     if (n.type === "StringLiteral" && atom)
       edits.push({ from: atom.span.sourceStart - base, to: atom.span.sourceEnd - base, text: JSON.stringify(String(n.value)) });

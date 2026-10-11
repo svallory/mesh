@@ -1,5 +1,6 @@
 import { Machine } from "./machine.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
+import { machineActiveOf } from "./execution.helpers"
 
 entity :SessionReference table="session_references"
   attributes
@@ -30,7 +31,7 @@ entity :SessionReference table="session_references"
           message="the agent profile is not a collaborator"
         ]
         check :machineRetired [
-          that=() => &machine?.state === :active
+          that=({ input, tx }) => machineActiveOf(tx, input.machine)
           code="machine.retired"
           message="the machine is retired; report the host by a new name"
         ]
@@ -45,12 +46,12 @@ entity :SessionReference table="session_references"
         integer :expectedVersion nullable
       validate
         check :notRedacted [
-          that=({ before }) => before.availability !== :redacted
+          that=() => &availability !== :redacted
           code="session.not-redacted"
           message="the session is redacted and cannot be changed"
         ]
         check :availabilityKept [
-          that=() => &availability !== :redacted
+          that=({ input }) => (input.availability ?? &availability) !== :redacted
           code="session.availability"
           message="availability is complete, partial or unavailable; redact with redact"
         ]
@@ -58,7 +59,7 @@ entity :SessionReference table="session_references"
           that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
           code="expected-version"
           message="the record is at another version; read it again and retry"
-          details=({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })
+          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
         ]
       do
         set
@@ -69,7 +70,7 @@ entity :SessionReference table="session_references"
         integer :expectedVersion nullable
       validate
         check :notRedacted [
-          that=({ before }) => before.availability !== :redacted
+          that=() => &availability !== :redacted
           code="session.not-redacted"
           message="the session is redacted and cannot be changed"
         ]
@@ -77,7 +78,7 @@ entity :SessionReference table="session_references"
           that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
           code="expected-version"
           message="the record is at another version; read it again and retry"
-          details=({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })
+          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
         ]
       do
         set

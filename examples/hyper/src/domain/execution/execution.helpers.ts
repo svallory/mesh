@@ -1,6 +1,35 @@
 // Helpers for the execution entity files and functions. They take values (rows already loaded, ids), never the
-// model; each names the Hyper change it follows.
-import { currentAssignment, type AssignmentFacts } from "../work/work.helpers";
+// model; each names the Hyper change it follows. The ones whose names end in `Of` read through `tx`: a create's check
+// sees its `self` before the input is applied (ACT-27), so it reads the run, the machine or the attempt the caller
+// names by the id in `input` (POL-08).
+import { claimsOf, currentAssignment, type AssignmentFacts, type Reads } from "../work/work.helpers";
+
+/** `attempt.claimer` (`runs/attempt/rules.ex:15-30`): the actor holds a live claim on the run's Task. */
+export async function claimerOf(tx: Reads, runId: string, actorId: string, now: Date): Promise<boolean> {
+  const [run] = await tx.readRun({ filter: { id: { eq: runId } }, limit: 1 });
+  if (!run) return false;
+  return (await claimsOf(tx, run.taskId)).some((claim) => claim.state === "active" && claim.expiresAt.getTime() > now.getTime() && claim.holderId === actorId);
+}
+
+/** `attempt.run-running` and `run.parent-running`: the run exists and is running. */
+export async function runRunningOf(tx: Reads, runId: string): Promise<boolean> {
+  return (await tx.readRun({ filter: { id: { eq: runId } }, limit: 1 }))[0]?.state === "running";
+}
+
+/** `attempt.step-idle`: no attempt of `step` is running on the run. */
+export async function stepIdleOf(tx: Reads, runId: string, step: string): Promise<boolean> {
+  return (await tx.readAttempt({ filter: { runId: { eq: runId }, step: { eq: step }, state: { eq: "running" } }, limit: 1 })).length === 0;
+}
+
+/** `machine.retired`: the machine exists and is active. */
+export async function machineActiveOf(tx: Reads, machineId: string): Promise<boolean> {
+  return (await tx.readMachine({ filter: { id: { eq: machineId } }, limit: 1 }))[0]?.state === "active";
+}
+
+/** `invocation.session`: the session the attempt `attemptId` ran in, or null (also when there is no such attempt). */
+export async function attemptSessionOf(tx: Reads, attemptId: string): Promise<string | null> {
+  return (await tx.readAttempt({ filter: { id: { eq: attemptId } }, limit: 1 }))[0]?.sessionId ?? null;
+}
 
 /** `run.start`'s responsible collaborator (`runs/run/changes/start_run.ex:9-23`): the Task's assignee, else the starter. */
 export function responsibleFor(assignments: readonly AssignmentFacts[], actorId: string): string {
