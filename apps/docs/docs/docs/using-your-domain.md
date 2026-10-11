@@ -96,7 +96,7 @@ await disconnect();
 
 An extension that needs a key of its own states which one it reads, and two extensions claiming the same key is a build error. Optionality is yours as well: declare `actor: User | null` and anonymous callers type-check. Declare nothing at all and the context is an empty object, and in your rules `actor` is `unknown` — which is Mesh saying it has nothing for you to compare it against.
 
-Inside an entity file, `&name` reads a member of the record; `self.x` is also legal and means the same as `&x`. Functions receive the whole record as `self`, the caller's object as `input`, the caller as `actor`, and everything else as `context`. `context` is what you declared above, and it does not carry `actor` again — the caller is `actor`, and only `actor`. Here a tenant-scoped policy reads the record's own tenant and the call's:
+Inside an entity file, `&name` reads a member of the record; `self.x` is also legal and means the same as `&x`. Functions receive the whole record as `self`, the caller's object as `input`, the caller as `actor`, and everything else as `context`. `context` is what you declared above, and it does not carry `actor` again — the caller is `actor`, and only `actor`. Here a tenant-scoped policy reads the record's own tenant and the call's (a policy sees the stored record, so on a create it would read the tenant the caller sends, `input.tenantId`):
 
 ```mx "src/domain/todo/todo.mesh.mx"
 entity :Todo table="todos"
@@ -106,7 +106,7 @@ entity :Todo table="todos"
     uuid :tenantId
 
   policies
-    policy :sameTenant types=[:create]
+    policy :sameTenant types=[:read, :update, :destroy]
       authorize-if=({ context }) => &tenantId === context.tenantId
 ```
 
