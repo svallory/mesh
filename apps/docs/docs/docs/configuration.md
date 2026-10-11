@@ -123,7 +123,7 @@ If your entity file uses something your adapter cannot do, the build fails and n
 
 ## Seams
 
-A seam is a place in every generated action where your application may run code: `beforeTransaction` (before the transaction opens; throw to refuse the call), `afterWrite` (inside the transaction, right after each row is written; a throw rolls back the call) and `afterCommit` (once, after the transaction commits; not called on rollback). List them under `seams`; `connect()` reads them from this file, so the build, your application and your tests configure them in one place. In a test, pass the same object to `bind(dataLayer, { seams })`.
+A seam is a place in every generated action where your application may run code: `beforeTransaction` (before the transaction opens, for the call that opens it; throw to refuse the call), `afterWrite` (inside the transaction, right after each row is written; a throw rolls back the whole call) and `afterCommit` (once, after the outermost transaction commits; not called on rollback; a throw there does not fail the call, which has committed, and is reported with `console.error`). List them under `seams`; `connect()` reads them from this file, so the build, your application and your tests configure them in one place. In a test, pass the same object to `bind(dataLayer, { seams })`.
 
 ```ts "mesh.config.ts (excerpt)"
 seams: {

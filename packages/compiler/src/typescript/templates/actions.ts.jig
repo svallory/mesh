@@ -100,7 +100,7 @@ export function {{ bindName }}(layer: $DataLayer, {{ optionsName }}: $BindOption
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       await $castInput(layer, {{ method.validator }}, input);
       @end~
-      return layer.transaction(async (tx) => {
+      return $runAction(layer, {{ optionsName }}.seams, {{ method.seamTarget }}, parsed, {{ method.contextName }}, async (tx) => {
         @each(statement in method.statements)
         {{ statement }}
         @end

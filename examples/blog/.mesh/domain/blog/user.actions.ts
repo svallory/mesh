@@ -5,6 +5,8 @@
 import {
   castInput as $castInput,
   noteWrite as $noteWrite,
+  recordWrite as $recordWrite,
+  runAction as $runAction,
   uuidv7 as $uuidv7,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
@@ -44,21 +46,38 @@ export function bindUserReads(layer: $DataLayer, _options: $BindOptions = {}) {
 export function bindUser(layer: $DataLayer, options: $BindOptions = {}, _compose?: $Composer) {
   const $reads = bindUserReads(layer, options);
   return Object.freeze({
-    async create(input: CreateUserInput, ...[_context]: $ContextArgument): Promise<User> {
+    async create(input: CreateUserInput, ...[context]: $ContextArgument): Promise<User> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, createUserInput, input);
-      return layer.transaction(async (tx) => {
-        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        // plan: a create is one insert; nothing is read first
-        const $changes: $Row = {
-          id: $uuidv7(),
-          name: parsed.name,
-        };
-        // data layer
-        const $stored = await tx.insert(tables.user, $changes);
-        $noteWrite(tx);
-        return $stored as User;
-      });
+      return $runAction(
+        layer,
+        options.seams,
+        { entity: "User", action: "create" },
+        parsed,
+        context,
+        async (tx) => {
+          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+          // plan: a create is one insert; nothing is read first
+          const $changes: $Row = {
+            id: $uuidv7(),
+            name: parsed.name,
+          };
+          // data layer
+          const $stored = await tx.insert(tables.user, $changes);
+          $noteWrite(tx);
+          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+          await $recordWrite(
+            tx,
+            options.seams,
+            { entity: "User", action: "create" },
+            null,
+            $stored,
+            parsed,
+            context,
+          );
+          return $stored as User;
+        },
+      );
     },
 
     async read(input: ReadUserInput, ...[_context]: $ContextArgument): Promise<User[]> {

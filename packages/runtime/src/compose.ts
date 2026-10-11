@@ -3,6 +3,7 @@ import { FrameworkError } from "./errors.ts";
 import type { Clock } from "./expr.ts";
 import { parseInput } from "./input.ts";
 import { readOnlyRecord } from "./load.ts";
+import { outermost, type Seams } from "./seams.ts";
 import type { StandardSchemaV1 } from "./standard-schema.ts";
 
 /**
@@ -47,13 +48,13 @@ export interface Composer {
 const ENDED = "`actions` and `tx` are bound to the transaction that handed them out, and it has ended: await every call before the function or the transaction callback returns";
 
 /**
- * The composer of one binding. Every call goes through the layer's `transaction`, so it joins the running one; a joined
+ * The composer of one binding; `seams` are the binding's, for the `afterCommit` of the application's `transaction`. Every call goes through the layer's `transaction`, so it joins the running one; a joined
  * call that fails marks that transaction, and the outermost call then rejects with a `FrameworkError` whose `cause` is
  * the failure, even when the caller caught it (the data layer's rollback-only rule), and any call that joins it later is
  * refused before it runs. Calls joined to one transaction run one at a time (the data layer's rule too). A call made after its transaction ended would open a new one; it is
  * refused instead.
  */
-export function composer(layer: DataLayer): Composer {
+export function composer(layer: DataLayer, seams?: Seams): Composer {
   let functions: Readonly<Record<string, ActionFunction>> | undefined;
   let reads: Readonly<Record<string, ReadFunction>> | undefined;
   const bound = (operations: DataOperations, context: unknown, where?: string, clock?: Clock): Composition => {
@@ -77,8 +78,11 @@ export function composer(layer: DataLayer): Composer {
       reads = given;
     },
     bound,
-    transaction<T>(fn: (composition: Composition) => Promise<T>, context?: unknown): Promise<T> {
-      return layer.transaction((operations) => fn(bound(operations, context)));
+    async transaction<T>(fn: (composition: Composition) => Promise<T>, context?: unknown): Promise<T> {
+      // The application's `transaction` is an outermost transaction like any action's: `afterCommit` runs once when it
+      // commits, with every change made inside it. A call that joins a running transaction leaves that to the outer one.
+      if (layer.refuseIfFailed()) return layer.transaction((current) => fn(bound(current, context)));
+      return outermost(layer, seams, (current) => fn(bound(current, context)));
     },
   });
 }

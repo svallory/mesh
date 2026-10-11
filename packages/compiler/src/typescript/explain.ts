@@ -60,6 +60,7 @@ export function explainAction(entity: Entity, actionName: string): string[] | un
   if (action.kind === "read") {
     section(lines, "strategy", ["one query: the caller's filter, sort, limit and offset over the table"]);
     section(lines, "policy", policyLines(entity, action));
+    section(lines, "seams", ["none: a read runs no seam"]);
     return lines;
   }
   const blocks = [...alwaysFor(entity, action).map((block) => ({ validate: block.validate, steps: block.do, always: true })), { validate: action.validate, steps: action.do, always: false }];
@@ -73,7 +74,7 @@ export function explainAction(entity: Entity, actionName: string): string[] | un
   const strategy = action.kind === "create" ? "one insert; nothing is read first"
     : action.kind === "update" ? "read-then-write: every update reads the row under the write lock, checks it, changes it, then writes it"
       : reads ? "read-then-write: the body can see the stored record, so the row is read under the lock before it is deleted"
-        : "one delete by key; nothing in the body can see the record, so the row is not read";
+        : "one delete by key; nothing in the body can see the record, so the row is not read (with an afterWrite or afterCommit seam registered it is read under the lock first, so the seam gets `before`)";
   section(lines, "strategy", [strategy]);
   section(lines, "input", action.input.map((field) => (field.kind === "argument" ? `${field.name} (argument, not stored)` : `&${field.ref.name}`)));
   section(lines, "checks", checks);
@@ -82,5 +83,10 @@ export function explainAction(entity: Entity, actionName: string): string[] | un
   if (afterWrite.length)
     section(lines, "after write", [action.kind === "destroy" ? "self is the deleted row as it was" : "self is the stored record", ...afterWrite]);
   section(lines, "policy", policyLines(entity, action));
+  section(lines, "seams", [
+    "beforeTransaction: before the transaction opens, for a top-level call only (a call through `actions` or inside `transaction` joins one and runs none)",
+    "afterWrite: inside the transaction, right after the row is written, before the steps after the write",
+    "afterCommit: once, after the outermost transaction commits, with every change it made",
+  ]);
   return lines;
 }

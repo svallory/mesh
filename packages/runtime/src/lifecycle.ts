@@ -1,9 +1,14 @@
 import type { Issue, IssueSource } from "./errors.ts";
 import { now, type Clock, type Scope } from "./expr.ts";
+import type { Seams } from "./seams.ts";
 
-/** What `bind(layer, options)` takes. The clock is what `now()` reads in a function of an entity file (ADR-0012, M4 D6). */
+/**
+ * What `bind(layer, options)` takes. The clock is what `now()` reads in a function of an entity file (ADR-0012, M4 D6);
+ * `seams` are the lifecycle seams of every action (ADR-0075).
+ */
 export interface BindOptions {
   clock?: Clock | undefined;
+  seams?: Seams | undefined;
 }
 
 /**

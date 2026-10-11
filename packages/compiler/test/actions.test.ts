@@ -112,7 +112,7 @@ describe("actions view", () => {
     expect(view.runtimeValues).toEqual([
       "FrameworkError as $FrameworkError", "InvalidInputError as $InvalidInputError", "NotFoundError as $NotFoundError", "castInput as $castInput", "checkScope as $checkScope",
       "checkUnchanged as $checkUnchanged", "composed as $composed", "failJoined as $failJoined", "guarded as $guarded", "loadRows as $loadRows",
-      "noteWrite as $noteWrite", "pinClock as $pinClock", "readOnlyRecord as $readOnlyRecord", "runCheck as $runCheck", "scope as $scope", "uuidv7 as $uuidv7", "writeCount as $writeCount"]);
+      "noteWrite as $noteWrite", "pinClock as $pinClock", "readOnlyRecord as $readOnlyRecord", "recordWrite as $recordWrite", "runAction as $runAction", "runCheck as $runCheck", "scope as $scope", "uuidv7 as $uuidv7", "wantsChanges as $wantsChanges", "writeCount as $writeCount"]);
     expect(view.runtimeTypes).toEqual(["Issue as $Issue", "Row as $Row"]);
     expect(view.typesFromLiteral).toBe('"./article.types"');
     expect(view.validatorsFromLiteral).toBe('"./article.validators"');
@@ -148,6 +148,8 @@ describe("actions view", () => {
       "// data layer",
       "const $stored = await tx.insert(tables.article, $changes);",
       "$noteWrite(tx);",
+      "// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write",
+      'await $recordWrite(tx, options.seams, { entity: "Article", action: "create" }, null, $stored, parsed, context);',
       "return $stored as Article;",
     ]);
     expect(create.notRun).toBe("Not run in this version: on:load load; policies everyone");
@@ -198,9 +200,14 @@ describe("actions view", () => {
     const destroy = viewOf("Article").methods.find((m) => m.name === "destroy")!;
     expect(destroy.statements.slice(2)).toEqual([
       "const $key = { id: parsed.id };",
+      // a seam that wants the changes reads the row first, so `before` is never null on a destroy (M6 ruling 4)
+      "const $before = $wantsChanges(options.seams) ? await tx.selectByKeyForUpdate(tables.article, $key) : undefined;",
+      'if ($wantsChanges(options.seams) && $before === undefined) throw new $NotFoundError("Article", $key);',
       "// data layer",
       'if (!(await tx.deleteByKey(tables.article, $key))) throw new $NotFoundError("Article", $key);',
       "$noteWrite(tx);",
+      "// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write",
+      'await $recordWrite(tx, options.seams, { entity: "Article", action: "destroy" }, $before ?? null, null, parsed, context);',
     ]);
     expect(destroy.notRun).toBe("Not run in this version: policies everyone");
   });
@@ -354,6 +361,9 @@ describe("explain", () => {
       "                 run () { }",
       "               load &author",
       "  policy       everyone: declared, not run in this version (M8)",
+      "  seams        beforeTransaction: before the transaction opens, for a top-level call only (a call through `actions` or inside `transaction` joins one and runs none)",
+      "               afterWrite: inside the transaction, right after the row is written, before the steps after the write",
+      "               afterCommit: once, after the outermost transaction commits, with every change it made",
     ].join("\n"));
   });
   test("an update with no check still reads first", () => {
@@ -371,7 +381,9 @@ describe("explain", () => {
       const doc = documentOf(files);
       const entity = doc.entities.find((e) => e.name === "Article")!;
       const code = viewOf("Article", inputOf(doc)).methods.find((m) => m.name === "purge")!.statements.join("\n");
-      expect(code.includes("selectByKeyForUpdate")).toBe(reads);
+      // With nothing to see the record the read is conditional: only a seam that wants the changes asks for it.
+      expect(code.includes("selectByKeyForUpdate")).toBe(true);
+      expect(code.includes("$wantsChanges")).toBe(!reads);
       expect(explainAction(entity, "purge")![1]).toContain(reads ? "read-then-write" : "one delete by key");
     }
   });

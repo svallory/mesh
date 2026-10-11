@@ -16,10 +16,13 @@ import {
   noteWrite as $noteWrite,
   pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
+  recordWrite as $recordWrite,
   rejectComputedQuery,
+  runAction as $runAction,
   runCheck as $runCheck,
   scope as $scope,
   uuidv7 as $uuidv7,
+  wantsChanges as $wantsChanges,
   writeCount as $writeCount,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
@@ -111,37 +114,54 @@ export function bindPostReads(layer: $DataLayer, options: $BindOptions = {}) {
 export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
   const $reads = bindPostReads(layer, options);
   return Object.freeze({
-    async create(input: CreatePostInput, ...[_context]: $ContextArgument): Promise<Post> {
+    async create(input: CreatePostInput, ...[context]: $ContextArgument): Promise<Post> {
       // Not run in this version: on:load published
 
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, createPostInput, input);
-      return layer.transaction(async (tx) => {
-        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $clock = $pinClock(options.clock);
-        const $now = $clock();
-        // plan: a create is one insert; nothing is read first
-        const $changes: $Row = {
-          id: $uuidv7(),
-          title: parsed.title,
-          body: parsed.body === undefined ? null : parsed.body,
-          views: 0,
-          rating: null,
-          price: 0,
-          featured: false,
-          publicationDate: null,
-          publishedAt: null,
-          state: "draft",
-          metadata: parsed.metadata === undefined ? {} : parsed.metadata,
-          insertedAt: $now,
-          updatedAt: $now,
-          authorId: parsed.author,
-        };
-        // data layer
-        const $stored = await tx.insert(tables.post, $changes);
-        $noteWrite(tx);
-        return $stored as Post;
-      });
+      return $runAction(
+        layer,
+        options.seams,
+        { entity: "Post", action: "create" },
+        parsed,
+        context,
+        async (tx) => {
+          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+          const $clock = $pinClock(options.clock);
+          const $now = $clock();
+          // plan: a create is one insert; nothing is read first
+          const $changes: $Row = {
+            id: $uuidv7(),
+            title: parsed.title,
+            body: parsed.body === undefined ? null : parsed.body,
+            views: 0,
+            rating: null,
+            price: 0,
+            featured: false,
+            publicationDate: null,
+            publishedAt: null,
+            state: "draft",
+            metadata: parsed.metadata === undefined ? {} : parsed.metadata,
+            insertedAt: $now,
+            updatedAt: $now,
+            authorId: parsed.author,
+          };
+          // data layer
+          const $stored = await tx.insert(tables.post, $changes);
+          $noteWrite(tx);
+          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+          await $recordWrite(
+            tx,
+            options.seams,
+            { entity: "Post", action: "create" },
+            null,
+            $stored,
+            parsed,
+            context,
+          );
+          return $stored as Post;
+        },
+      );
     },
 
     async publish(
@@ -152,81 +172,120 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
 
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, publishPostInput, input);
-      return layer.transaction(async (tx) => {
-        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $context = (context ?? {}) as unknown as Record<string, unknown>;
-        const $actor = $context.actor;
-        const $clock = $pinClock(options.clock);
-        const $now = $clock();
-        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-        const $key = { id: parsed.id };
-        const $before = await tx.selectByKeyForUpdate(tables.post, $key);
-        if ($before === undefined) throw new $NotFoundError("Post", $key);
-        const $changes: $Row = {};
-        const $record: $Row = { ...$before };
-        const $writes = $writeCount(tx);
-        const $load = { actor: $actor, context: $context, clock: $clock };
-        const $self = $readOnlyRecord(
-          $guarded($loadPlan, "Post", $record, "action function"),
-          "Post.publish",
-        );
-        const $s = $scope(
-          {
-            self: $self,
-            input: $readOnlyRecord(parsed, "Post.publish"),
-            actor: $actor,
-            context: $context,
-            before: $readOnlyRecord(
-              $guarded($loadPlan, "Post", $before, "before"),
-              "Post.publish",
-            ) as unknown as Post,
-            ...$composed(compose, tx, context, "Post.publish", $clock),
-          },
-          { clock: $clock },
-        ) as unknown as $StoredScope<PublishPostInput>;
-        // validate: every check runs, and every failed check is reported together
-        const $issues: $Issue[] = [];
-        const $checks = $checkScope($s);
-        await $runCheck($issues, $checks, {
-          label: "titlePresent",
-          code: "title_required",
-          message: "Title is required",
-          source: { file: "src/domain/blog/post.mesh.mx", line: 34, column: 9 },
-          that: $expressions["publish.check.titlePresent.that"],
-        });
-        if ($issues.length > 0) throw new $InvalidInputError($issues);
-        const $loads = new Set<string>();
-        // do: the steps run in written order, each seeing the record as the ones before it left it
-        $changes.state = $record.state = "published";
-        $loads.add("comments");
-        $loads.add("excerpt");
-        // data layer
-        $changes.updatedAt = $now;
-        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-        await $checkUnchanged(tx, $writes, tables.post, $key, $before, "Post.publish");
-        const $stored = await tx.updateByKey(tables.post, $key, $changes);
-        if ($stored === undefined) throw new $NotFoundError("Post", $key);
-        $noteWrite(tx);
-        // still inside the transaction: the result, with what a load step named
-        return (
-          await $loadRows($loadPlan, "Post", tx, [$stored], [...$loads], $load)
-        )[0] as unknown as PostWith<"comments" | "excerpt">;
-      });
+      return $runAction(
+        layer,
+        options.seams,
+        { entity: "Post", action: "publish" },
+        parsed,
+        context,
+        async (tx) => {
+          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+          const $context = (context ?? {}) as unknown as Record<string, unknown>;
+          const $actor = $context.actor;
+          const $clock = $pinClock(options.clock);
+          const $now = $clock();
+          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+          const $key = { id: parsed.id };
+          const $before = await tx.selectByKeyForUpdate(tables.post, $key);
+          if ($before === undefined) throw new $NotFoundError("Post", $key);
+          const $changes: $Row = {};
+          const $record: $Row = { ...$before };
+          const $writes = $writeCount(tx);
+          const $load = { actor: $actor, context: $context, clock: $clock };
+          const $self = $readOnlyRecord(
+            $guarded($loadPlan, "Post", $record, "action function"),
+            "Post.publish",
+          );
+          const $s = $scope(
+            {
+              self: $self,
+              input: $readOnlyRecord(parsed, "Post.publish"),
+              actor: $actor,
+              context: $context,
+              before: $readOnlyRecord(
+                $guarded($loadPlan, "Post", $before, "before"),
+                "Post.publish",
+              ) as unknown as Post,
+              ...$composed(compose, tx, context, "Post.publish", $clock),
+            },
+            { clock: $clock },
+          ) as unknown as $StoredScope<PublishPostInput>;
+          // validate: every check runs, and every failed check is reported together
+          const $issues: $Issue[] = [];
+          const $checks = $checkScope($s);
+          await $runCheck($issues, $checks, {
+            label: "titlePresent",
+            code: "title_required",
+            message: "Title is required",
+            source: { file: "src/domain/blog/post.mesh.mx", line: 34, column: 9 },
+            that: $expressions["publish.check.titlePresent.that"],
+          });
+          if ($issues.length > 0) throw new $InvalidInputError($issues);
+          const $loads = new Set<string>();
+          // do: the steps run in written order, each seeing the record as the ones before it left it
+          $changes.state = $record.state = "published";
+          $loads.add("comments");
+          $loads.add("excerpt");
+          // data layer
+          $changes.updatedAt = $now;
+          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+          await $checkUnchanged(tx, $writes, tables.post, $key, $before, "Post.publish");
+          const $stored = await tx.updateByKey(tables.post, $key, $changes);
+          if ($stored === undefined) throw new $NotFoundError("Post", $key);
+          $noteWrite(tx);
+          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+          await $recordWrite(
+            tx,
+            options.seams,
+            { entity: "Post", action: "publish" },
+            $before,
+            $stored,
+            parsed,
+            context,
+          );
+          // still inside the transaction: the result, with what a load step named
+          return (
+            await $loadRows($loadPlan, "Post", tx, [$stored], [...$loads], $load)
+          )[0] as unknown as PostWith<"comments" | "excerpt">;
+        },
+      );
     },
 
-    async archive(input: ArchivePostInput, ...[_context]: $ContextArgument): Promise<void> {
+    async archive(input: ArchivePostInput, ...[context]: $ContextArgument): Promise<void> {
       // Not run in this version: policies owner
 
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, archivePostInput, input);
-      return layer.transaction(async (tx) => {
-        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        // plan: nothing in the body can see the record, so the row is deleted without being read
-        const $key = { id: parsed.id };
-        // data layer
-        if (!(await tx.deleteByKey(tables.post, $key))) throw new $NotFoundError("Post", $key);
-        $noteWrite(tx);
-      });
+      return $runAction(
+        layer,
+        options.seams,
+        { entity: "Post", action: "archive" },
+        parsed,
+        context,
+        async (tx) => {
+          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+          // plan: nothing in the body can see the record, so the row is deleted without being read, unless a seam wants it: then it is read under the lock first, so the seam gets `before`
+          const $key = { id: parsed.id };
+          const $before = $wantsChanges(options.seams)
+            ? await tx.selectByKeyForUpdate(tables.post, $key)
+            : undefined;
+          if ($wantsChanges(options.seams) && $before === undefined)
+            throw new $NotFoundError("Post", $key);
+          // data layer
+          if (!(await tx.deleteByKey(tables.post, $key))) throw new $NotFoundError("Post", $key);
+          $noteWrite(tx);
+          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+          await $recordWrite(
+            tx,
+            options.seams,
+            { entity: "Post", action: "archive" },
+            $before ?? null,
+            null,
+            parsed,
+            context,
+          );
+        },
+      );
     },
 
     async published<const L extends readonly (keyof PostLoadable)[] = readonly []>(
@@ -247,17 +306,39 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
       return $reads.read(input, context);
     },
 
-    async destroy(input: DestroyPostInput, ...[_context]: $ContextArgument): Promise<void> {
+    async destroy(input: DestroyPostInput, ...[context]: $ContextArgument): Promise<void> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, destroyPostInput, input);
-      return layer.transaction(async (tx) => {
-        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        // plan: nothing in the body can see the record, so the row is deleted without being read
-        const $key = { id: parsed.id };
-        // data layer
-        if (!(await tx.deleteByKey(tables.post, $key))) throw new $NotFoundError("Post", $key);
-        $noteWrite(tx);
-      });
+      return $runAction(
+        layer,
+        options.seams,
+        { entity: "Post", action: "destroy" },
+        parsed,
+        context,
+        async (tx) => {
+          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+          // plan: nothing in the body can see the record, so the row is deleted without being read, unless a seam wants it: then it is read under the lock first, so the seam gets `before`
+          const $key = { id: parsed.id };
+          const $before = $wantsChanges(options.seams)
+            ? await tx.selectByKeyForUpdate(tables.post, $key)
+            : undefined;
+          if ($wantsChanges(options.seams) && $before === undefined)
+            throw new $NotFoundError("Post", $key);
+          // data layer
+          if (!(await tx.deleteByKey(tables.post, $key))) throw new $NotFoundError("Post", $key);
+          $noteWrite(tx);
+          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+          await $recordWrite(
+            tx,
+            options.seams,
+            { entity: "Post", action: "destroy" },
+            $before ?? null,
+            null,
+            parsed,
+            context,
+          );
+        },
+      );
     },
   });
 }

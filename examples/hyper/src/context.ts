@@ -3,6 +3,10 @@ import "@meshfw/runtime";
 declare module "@meshfw/runtime" {
   interface ActionContext {
     actor: { id: string };
+    /** The command a call belongs to; the application sets it, and the seams (`afterWrite`) see it on every write of the call, nested ones included. */
+    commandId?: string;
+    /** Who sent the command (a surface or a plugin name); reaches the seams like `commandId`. */
+    caller?: string;
     /**
      * Set only by `review.accept` on its nested `task.complete`, as Hyper's engine passes the completion through
      * the changeset context (`tasks/review/changes/review.ex:25-31`): the Completion then records rule

@@ -10,6 +10,7 @@ import {
   type BindOptions as $BindOptions,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type Seams as $Seams,
 } from "@meshfw/runtime";
 @each(entity in entities)
 @if(entity.hasActions)~
@@ -26,13 +27,9 @@ import type { Actions, Reads } from "./composition";
  * Every action function, bound to `layer`, and `transaction`. Opens nothing and creates no table:
  * the caller owns the layer and closes it.
  */
-@if(hasFunctions)~
 export function bind(layer: $DataLayer, options: $BindOptions = {}) {
-@else~
-export function bind(layer: $DataLayer, _options: $BindOptions = {}) {
-@end~
   // `actions` and `tx` in a function of an entity file come from this composer, which holds this binding's functions.
-  const $composer = $makeComposer(layer);
+  const $composer = $makeComposer(layer, options.seams);
   @each(entity in entities)
   @if(entity.hasActions)~
   const {{ entity.local }} = {{ entity.bindName }}(layer, options, $composer);
@@ -92,7 +89,8 @@ export async function connect(): Promise<void> {
       `The data adapter "${config.data.name}" configured in mesh.config.ts has no run-time half: connect() needs a data layer with transaction(), refuseIfFailed() and close()`,
     );
   if ($defaultLayer) throw new $FrameworkError("connect() was called while connected; call disconnect() first");
-  $defaultBinding = bind(data);
+  // `config` is read as the project wrote it, so a configuration that is not typed with `defineConfig` still binds.
+  $defaultBinding = bind(data, { seams: (config as { readonly seams?: $Seams }).seams });
   $defaultLayer = data;
 }
 

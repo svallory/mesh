@@ -77,7 +77,7 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
     return { config: null, diagnostics };
   }
   const config = value;
-  const keys = new Set(["domain", "output", "data", "extensions", "ignore"]);
+  const keys = new Set(["domain", "output", "data", "extensions", "ignore", "seams"]);
   for (const key of Object.keys(config)) if (!keys.has(key)) fail(key, `Unknown configuration field "${key}"`, key === "resources" ? "`resources` was renamed `domain`" : "Remove the unknown field");
   const domain = config.domain;
   if (!nonEmpty(domain) && !(Array.isArray(domain) && domain.length > 0 && domain.every(nonEmpty))) fail("domain", "Configuration field `domain` must be a non-empty relative folder, glob or list of relative file paths");
@@ -99,6 +99,15 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
     if (!Array.isArray(extensions)) fail("extensions", "Configuration field `extensions` must be an array");
     else for (const [index, extension] of extensions.entries()) {
       if (!record(extension) || !nonEmpty(extension.name)) fail("extensions", `Configuration field \`extensions[${index}]\` must be an object with a non-empty name string`);
+    }
+  }
+  if (Object.hasOwn(config, "seams")) {
+    const seams = config.seams;
+    const names = ["beforeTransaction", "afterWrite", "afterCommit"];
+    if (!record(seams)) fail("seams", "Configuration field `seams` must be an object of seam functions", "Set seams: { beforeTransaction, afterWrite, afterCommit }, each optional");
+    else for (const [name, seam] of Object.entries(seams)) {
+      if (!names.includes(name)) fail("seams", `Unknown seam "${name}" in configuration field \`seams\`; the seams are ${names.join(", ")}`, "Rename the seam or remove it");
+      else if (typeof seam !== "function") fail("seams", `Seam \`${name}\` in configuration field \`seams\` must be a function`);
     }
   }
   if (diagnostics.length) return { config: null, diagnostics };

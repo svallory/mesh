@@ -393,9 +393,9 @@ A **seam** is a place in every generated action where your application may run c
 
 | Seam | Runs | Receives | May |
 |:--|:--|:--|:--|
-| `beforeTransaction` | Before the transaction opens | `{ entity, action, input, context }` | Throw to refuse the call |
-| `afterWrite` | Inside the transaction, right after each row is written | `db` and `{ entity, action, before, after, input, context }` | Write through `db`; a throw rolls back the whole call |
-| `afterCommit` | Once, after the outermost transaction commits | `{ changes }`, every row written, in order | Observe or log what committed; it is not called when the call rolls back. It is not the way to run an effect after commit: that is a `publish` plus a listener |
+| `beforeTransaction` | Before the transaction opens, for the call that opens it | `{ entity, action, input, context }` | Throw to refuse the call: nothing is written |
+| `afterWrite` | Inside the transaction, right after each row is written, before any `run [after=:write]` step | `db` and `{ entity, action, before, after, input, context }` | Write through `db`; a throw rolls back the whole call |
+| `afterCommit` | Once, after the outermost transaction commits | `{ changes }`, every row written, in order, each `{ entity, action, before, after }` | Observe or log what committed; it is not called when the call rolls back. It is not the way to run an effect after commit: that is a `publish` plus a listener |
 
 Register them under `seams` in `mesh.config.ts`, and pass the same object to `bind` in a test:
 
@@ -421,7 +421,9 @@ export default defineConfig({
 });
 ```
 
-In `afterWrite`, `db` is the transaction's data operations (`insert`, `selectByKey`, `updateByKey`, `deleteByKey`, with the tables exported as `tables` from `#mesh`), so a seam can write a row of its own, such as an idempotency record, without calling an action. Domain events do not go through a seam: an action raises one with `publish`, which writes it to the outbox in the same transaction, and an event bus delivers it after commit. A write through it does not run seams. `before` is the row as it was, or `null` for a create; `after` is the row as written, or `null` for a destroy.
+`entity` and `action` are the names as written in the entity file (`Review`, `accept`). `input` is the call's validated input and `context` its context (`{}` when the call passed none). A seam sees only plain data, never the read handle, the data layer or a function of your entity files.
+
+In `afterWrite`, `db` is the transaction's data operations, only the four that work on one row by key (`insert`, `selectByKey`, `updateByKey`, `deleteByKey`, with the tables exported as `tables` from `#mesh`), so a seam can write a row of its own, such as an idempotency record, without calling an action. A write through `db` runs no seams and is not a change in `afterCommit`. Domain events do not go through a seam: an action raises one with `publish`, which writes it to the outbox in the same transaction, and an event bus delivers it after commit. `before` is the row as it was, or `null` for a create; `after` is the row as written, or `null` for a destroy. A destroy's `before` is never `null`: while an `afterWrite` or `afterCommit` seam is registered, a destroy reads the locked row first, even when nothing in its body could see it, so the seam gets the row that was deleted (with none registered the delete is one statement by key, as before). A read runs no seam.
 
 ```ts "src/seams.ts (excerpt)"
 async afterWrite(db, { entity, action, after }) {
@@ -429,7 +431,13 @@ async afterWrite(db, { entity, action, after }) {
 },
 ```
 
-A call that another action makes through `actions` runs the seams for its own writes, with the caller's `context`, so a `commandId` or `caller` you put in the context reaches every seam call.
+What a throw does:
+
+- In `beforeTransaction`, the call rejects with your error before any transaction opens: nothing is written.
+- In `afterWrite`, the whole outermost transaction rolls back and the call rejects with your error, as a failed call inside a transaction does (when the throw is in a call that another action made and caught, the outermost call rejects with a `FrameworkError` whose `cause` is your error). That includes the rows written by calls the action made through `actions`, and by seams through `db`.
+- In `afterCommit`, nothing is undone: the data is committed and the call resolves with its result. Mesh reports the error with `console.error`, naming the seam, and does not retry. Put anything that must not be lost in the transaction (an `afterWrite` that writes through `db`), not here. The call waits for `afterCommit` before it resolves, so a slow seam delays the call, and `disconnect()`, which waits for calls in flight.
+
+A call that another action makes through `actions` runs the seams for its own writes, with the caller's `context`, so a `commandId` or `caller` you put in the context reaches every seam call. Such a call joins the caller's transaction, so it has no "before the transaction": `beforeTransaction` runs only for the call that opens the transaction, a call you make at top level, and `afterCommit` runs once for the transaction as a whole, with the changes of the outer action and of every call nested in it, in the order the rows were written. The `transaction(fn, context)` you import from `#mesh` is such a transaction too: `afterCommit` runs once when it commits, with every change made inside it, and the actions you call there are joined, so none of them runs `beforeTransaction`. If it rolls back, or writes nothing, `afterCommit` does not run. `mesh explain <entity> <action>` lists where the three seams run in an action's plan. Each binding (each `bind` call) tracks the changes made through its own seams, so a call through a second binding on the same layer, made inside the first binding's transaction, is not in the first binding's `afterCommit`. A seam receives deeply frozen copies of the input, `before` and `after` (a date in them is read-only), so it cannot change what Mesh writes or what another seam sees. The context is the application's own: a seam gets a frozen copy of its top level (it cannot swap `actor` or `commandId` for what runs next), and what it holds, such as a logger, a class instance or a buffer, is passed as the same objects, never copied and never frozen.
 
 ## Asking instead of calling: `can`
 

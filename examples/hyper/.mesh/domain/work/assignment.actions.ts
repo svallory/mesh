@@ -15,6 +15,8 @@ import {
   noteWrite as $noteWrite,
   pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
+  recordWrite as $recordWrite,
+  runAction as $runAction,
   runCheck as $runCheck,
   scope as $scope,
   uuidv7 as $uuidv7,
@@ -95,68 +97,85 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
     async start(input: StartAssignmentInput, ...[context]: $ContextArgument): Promise<Assignment> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, startAssignmentInput, input);
-      return layer.transaction(async (tx) => {
-        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $context = (context ?? {}) as unknown as Record<string, unknown>;
-        const $actor = $context.actor;
-        const $clock = $pinClock(options.clock);
-        // plan: a create is one insert; nothing is read first
-        const $changes: $Row = {
-          id: $uuidv7(),
-          reviewWaived: false,
-          endedAt: null,
-          endReason: null,
-        };
-        const $record: $Row = {
-          ...$changes,
-          startedAt: null,
-          taskId: null,
-          assigneeId: null,
-          delegatorId: null,
-        };
-        const $self = $readOnlyRecord(
-          $guarded($loadPlan, "Assignment", $record, "action function"),
-          "Assignment.start",
-        );
-        const $s = $scope(
+      return $runAction(
+        layer,
+        options.seams,
+        { entity: "Assignment", action: "start" },
+        parsed,
+        context,
+        async (tx) => {
+          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+          const $context = (context ?? {}) as unknown as Record<string, unknown>;
+          const $actor = $context.actor;
+          const $clock = $pinClock(options.clock);
+          // plan: a create is one insert; nothing is read first
+          const $changes: $Row = {
+            id: $uuidv7(),
+            reviewWaived: false,
+            endedAt: null,
+            endReason: null,
+          };
+          const $record: $Row = {
+            ...$changes,
+            startedAt: null,
+            taskId: null,
+            assigneeId: null,
+            delegatorId: null,
+          };
+          const $self = $readOnlyRecord(
+            $guarded($loadPlan, "Assignment", $record, "action function"),
+            "Assignment.start",
+          );
+          const $s = $scope(
+            {
+              self: $self,
+              input: $readOnlyRecord(parsed, "Assignment.start"),
+              actor: $actor,
+              context: $context,
+              before: null,
+              ...$composed(compose, tx, context, "Assignment.start", $clock),
+            },
+            { clock: $clock },
+          ) as unknown as $Scope<StartAssignmentInput>;
+          // the input: the member inputs the caller sent, applied now that the checks have passed
+          if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
+          if (parsed.assignee !== undefined)
+            $changes.assigneeId = $record.assigneeId = parsed.assignee;
+          if (parsed.reviewWaived !== undefined)
+            $changes.reviewWaived = $record.reviewWaived = parsed.reviewWaived;
+          // do: the steps run in written order, each seeing the record as the ones before it left it
           {
-            self: $self,
-            input: $readOnlyRecord(parsed, "Assignment.start"),
-            actor: $actor,
-            context: $context,
-            before: null,
-            ...$composed(compose, tx, context, "Assignment.start", $clock),
-          },
-          { clock: $clock },
-        ) as unknown as $Scope<StartAssignmentInput>;
-        // the input: the member inputs the caller sent, applied now that the checks have passed
-        if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
-        if (parsed.assignee !== undefined)
-          $changes.assigneeId = $record.assigneeId = parsed.assignee;
-        if (parsed.reviewWaived !== undefined)
-          $changes.reviewWaived = $record.reviewWaived = parsed.reviewWaived;
-        // do: the steps run in written order, each seeing the record as the ones before it left it
-        {
-          const $value = await $expressions["start.step.0.set.delegator"]($s);
-          if ($value === undefined || $value === null)
-            throw new $FrameworkError(
-              "set &delegator (src/domain/work/assignment.mesh.mx:23:22) produced no value, and the relationship delegator is required",
-            );
-          $changes.delegatorId = $record.delegatorId = $value;
-        }
-        {
-          const $value = await $expressions["start.step.0.set.startedAt"]($s);
-          if ($value === undefined || $value === null)
-            throw new $FrameworkError(
-              "set &startedAt (src/domain/work/assignment.mesh.mx:24:22) produced no value, and startedAt is required",
-            );
-          $changes.startedAt = $record.startedAt = $value;
-        }
-        // data layer
-        const $stored = await tx.insert(tables.assignment, $changes);
-        $noteWrite(tx);
-        return $stored as Assignment;
-      });
+            const $value = await $expressions["start.step.0.set.delegator"]($s);
+            if ($value === undefined || $value === null)
+              throw new $FrameworkError(
+                "set &delegator (src/domain/work/assignment.mesh.mx:23:22) produced no value, and the relationship delegator is required",
+              );
+            $changes.delegatorId = $record.delegatorId = $value;
+          }
+          {
+            const $value = await $expressions["start.step.0.set.startedAt"]($s);
+            if ($value === undefined || $value === null)
+              throw new $FrameworkError(
+                "set &startedAt (src/domain/work/assignment.mesh.mx:24:22) produced no value, and startedAt is required",
+              );
+            $changes.startedAt = $record.startedAt = $value;
+          }
+          // data layer
+          const $stored = await tx.insert(tables.assignment, $changes);
+          $noteWrite(tx);
+          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+          await $recordWrite(
+            tx,
+            options.seams,
+            { entity: "Assignment", action: "start" },
+            null,
+            $stored,
+            parsed,
+            context,
+          );
+          return $stored as Assignment;
+        },
+      );
     },
 
     async finish(
@@ -165,64 +184,81 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
     ): Promise<Assignment> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, finishAssignmentInput, input);
-      return layer.transaction(async (tx) => {
-        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $context = (context ?? {}) as unknown as Record<string, unknown>;
-        const $actor = $context.actor;
-        const $clock = $pinClock(options.clock);
-        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-        const $key = { id: parsed.id };
-        const $before = await tx.selectByKeyForUpdate(tables.assignment, $key);
-        if ($before === undefined) throw new $NotFoundError("Assignment", $key);
-        const $changes: $Row = {};
-        const $record: $Row = { ...$before };
-        const $writes = $writeCount(tx);
-        const $self = $readOnlyRecord(
-          $guarded($loadPlan, "Assignment", $record, "action function"),
-          "Assignment.finish",
-        );
-        const $s = $scope(
+      return $runAction(
+        layer,
+        options.seams,
+        { entity: "Assignment", action: "finish" },
+        parsed,
+        context,
+        async (tx) => {
+          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+          const $context = (context ?? {}) as unknown as Record<string, unknown>;
+          const $actor = $context.actor;
+          const $clock = $pinClock(options.clock);
+          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+          const $key = { id: parsed.id };
+          const $before = await tx.selectByKeyForUpdate(tables.assignment, $key);
+          if ($before === undefined) throw new $NotFoundError("Assignment", $key);
+          const $changes: $Row = {};
+          const $record: $Row = { ...$before };
+          const $writes = $writeCount(tx);
+          const $self = $readOnlyRecord(
+            $guarded($loadPlan, "Assignment", $record, "action function"),
+            "Assignment.finish",
+          );
+          const $s = $scope(
+            {
+              self: $self,
+              input: $readOnlyRecord(parsed, "Assignment.finish"),
+              actor: $actor,
+              context: $context,
+              before: $readOnlyRecord(
+                $guarded($loadPlan, "Assignment", $before, "before"),
+                "Assignment.finish",
+              ) as unknown as Assignment,
+              ...$composed(compose, tx, context, "Assignment.finish", $clock),
+            },
+            { clock: $clock },
+          ) as unknown as $StoredScope<FinishAssignmentInput>;
+          // validate: every check runs, and every failed check is reported together
+          const $issues: $Issue[] = [];
+          const $checks = $checkScope($s);
+          await $runCheck($issues, $checks, {
+            label: "current",
+            code: "assignment.current",
+            message: "the assignment has already ended",
+            source: { file: "src/domain/work/assignment.mesh.mx", line: 29, column: 9 },
+            that: $expressions["finish.check.current.that"],
+          });
+          if ($issues.length > 0) throw new $InvalidInputError($issues);
+          // do: the steps run in written order, each seeing the record as the ones before it left it
           {
-            self: $self,
-            input: $readOnlyRecord(parsed, "Assignment.finish"),
-            actor: $actor,
-            context: $context,
-            before: $readOnlyRecord(
-              $guarded($loadPlan, "Assignment", $before, "before"),
-              "Assignment.finish",
-            ) as unknown as Assignment,
-            ...$composed(compose, tx, context, "Assignment.finish", $clock),
-          },
-          { clock: $clock },
-        ) as unknown as $StoredScope<FinishAssignmentInput>;
-        // validate: every check runs, and every failed check is reported together
-        const $issues: $Issue[] = [];
-        const $checks = $checkScope($s);
-        await $runCheck($issues, $checks, {
-          label: "current",
-          code: "assignment.current",
-          message: "the assignment has already ended",
-          source: { file: "src/domain/work/assignment.mesh.mx", line: 29, column: 9 },
-          that: $expressions["finish.check.current.that"],
-        });
-        if ($issues.length > 0) throw new $InvalidInputError($issues);
-        // do: the steps run in written order, each seeing the record as the ones before it left it
-        {
-          const $value = await $expressions["finish.step.0.set.endedAt"]($s);
-          $changes.endedAt = $record.endedAt = $value === undefined ? null : $value;
-        }
-        {
-          const $value = await $expressions["finish.step.0.set.endReason"]($s);
-          $changes.endReason = $record.endReason = $value === undefined ? null : $value;
-        }
-        // data layer
-        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-        await $checkUnchanged(tx, $writes, tables.assignment, $key, $before, "Assignment.finish");
-        const $stored = await tx.updateByKey(tables.assignment, $key, $changes);
-        if ($stored === undefined) throw new $NotFoundError("Assignment", $key);
-        $noteWrite(tx);
-        return $stored as Assignment;
-      });
+            const $value = await $expressions["finish.step.0.set.endedAt"]($s);
+            $changes.endedAt = $record.endedAt = $value === undefined ? null : $value;
+          }
+          {
+            const $value = await $expressions["finish.step.0.set.endReason"]($s);
+            $changes.endReason = $record.endReason = $value === undefined ? null : $value;
+          }
+          // data layer
+          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+          await $checkUnchanged(tx, $writes, tables.assignment, $key, $before, "Assignment.finish");
+          const $stored = await tx.updateByKey(tables.assignment, $key, $changes);
+          if ($stored === undefined) throw new $NotFoundError("Assignment", $key);
+          $noteWrite(tx);
+          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+          await $recordWrite(
+            tx,
+            options.seams,
+            { entity: "Assignment", action: "finish" },
+            $before,
+            $stored,
+            parsed,
+            context,
+          );
+          return $stored as Assignment;
+        },
+      );
     },
 
     async read<const L extends readonly (keyof AssignmentLoadable)[] = readonly []>(

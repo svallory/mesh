@@ -1,4 +1,5 @@
 import type { DataAdapter } from "./data-adapter.ts";
+import type { Seams } from "./seams.ts";
 
 /** Only the extension's identity is understood before M6. */
 export interface ExtensionDescriptor { readonly name: string }
@@ -15,6 +16,8 @@ export interface MeshConfig {
   /** Globs, relative to the project root, of entity files Mesh must skip. */
   ignore?: string | string[];
   data: DataAdapter;
+  /** Code the application runs before a transaction, after each write and after a commit (ADR-0075); `connect()` binds them. */
+  seams?: Seams;
   /** Kept opaque beyond identity; extensions are not activated here. */
   extensions?: readonly ExtensionDescriptor[];
 }

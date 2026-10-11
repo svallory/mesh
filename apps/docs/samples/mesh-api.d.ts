@@ -25,8 +25,8 @@ declare module "@meshfw/runtime" {
     seams?: Seams;
   };
 
-  /** Storage operations of one open transaction, by table handle (`tables` from `#mesh`). Writes through it run no seams. */
-  export type DataOperations = {
+  /** The storage operations a seam gets, by table handle (`tables` from `#mesh`): the four by key. Writes through it run no seams. */
+  export type SeamDb = {
     insert(table: object, row: Record<string, unknown>): Promise<Record<string, unknown>>;
     selectByKey(table: object, key: Record<string, unknown>): Promise<Record<string, unknown> | undefined>;
     updateByKey(table: object, key: Record<string, unknown>, changes: Record<string, unknown>): Promise<Record<string, unknown> | undefined>;
@@ -34,23 +34,21 @@ declare module "@meshfw/runtime" {
   };
 
   /** One row written by a call: the row as it was (`null` on a create) and as written (`null` on a destroy). */
-  export type WriteChange = {
+  export type Change = {
     entity: string;
     action: string;
     before: Record<string, unknown> | null;
     after: Record<string, unknown> | null;
-    input: unknown;
-    context: ActionContext;
   };
 
   /** Code the application runs at three points of every generated action. Payloads are plain data. */
   export type Seams = {
-    /** Before the transaction opens; throw to refuse the call. */
-    beforeTransaction?(call: { entity: string; action: string; input: unknown; context: ActionContext }): void | Promise<void>;
+    /** Before the transaction opens, for the call that opens it; throw to refuse the call. */
+    beforeTransaction?(call: { entity: string; action: string; input: unknown; context: Readonly<ActionContext> }): void | Promise<void>;
     /** Inside the transaction, right after each row is written; a throw rolls back the whole call. */
-    afterWrite?(db: DataOperations, change: WriteChange): void | Promise<void>;
-    /** Once, after the outermost transaction commits; not called on rollback. */
-    afterCommit?(commit: { changes: WriteChange[] }): void | Promise<void>;
+    afterWrite?(db: SeamDb, write: Change & { input: unknown; context: Readonly<ActionContext> }): void | Promise<void>;
+    /** Once, after the outermost transaction commits; not called on rollback; a throw is reported and does not fail the call. */
+    afterCommit?(commit: { changes: Change[] }): void | Promise<void>;
   };
 
   export function defineConfig(config: MeshConfig): MeshConfig;

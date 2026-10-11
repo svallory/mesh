@@ -29,9 +29,9 @@ Mesh builds the three points now, for the application, with the names and payloa
 
 | Seam | Runs | Receives | May |
 |:--|:--|:--|:--|
-| `beforeTransaction` | before the transaction opens | `{ entity, action, input, context }` | throw to refuse |
+| `beforeTransaction` | before the transaction opens, for the call that opens it (a nested call, or one inside the application `transaction`, joins a running transaction and runs none) | `{ entity, action, input, context }` | throw to refuse |
 | `afterWrite` | inside the transaction, right after each row is written and before any `after=:write` step | `db` and `{ entity, action, before, after, input, context }` | write through `db`; throw to roll everything back |
-| `afterCommit` | once, after the outermost transaction commits | `{ changes }`, every row written in it, in order | nothing that can fail the call; not called on rollback |
+| `afterCommit` | once, after the outermost transaction commits | `{ changes }`, every row written in it, in order, each `{ entity, action, before, after }` | nothing that can fail the call: a throw is reported with `console.error`, the call resolves; not called on rollback |
 
 - They are registered when the application binds a data layer, `bind(layer, { seams })`, and `connect()` reads the same functions from the `seams` key of `mesh.config.ts`.
 - A nested call ([ADR-0068](./0068-actions-compose-through-actions-and-tx.md)) runs the seams of its own row writes with the caller's `context`, so `caller` and `commandId` reach every event.
@@ -55,4 +55,4 @@ Option 1 costs agreeing now the shape the host will use, which the [extension-ho
 
 ## Action items
 
-- [ ] M6: the three seams, `bind(layer, { seams })` and the `seams` configuration key.
+- [x] M6: the three seams, `bind(layer, { seams })` and the `seams` configuration key (built: `runtime/src/seams.ts`, the generated `$runAction` and `$afterWrite`, and a `seams` section in `mesh explain`).
