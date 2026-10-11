@@ -46,8 +46,9 @@ async function taskOf(tx: Reads, id: string): Promise<Task> {
  * are not done as `warnings` (`tasks/task/changes/record_completion.ex:15-43`, PROTOCOL.md:333).
  */
 export async function taskComplete(input: CompleteTaskInput, context: ActionContext, binding: Binding = connected): Promise<TaskCompleted | LateResultRecorded> {
-  const now = binding.clock();
   return binding.transaction(async ({ actions, tx }) => {
+    // Read inside the transaction: a call queued behind another one decides stale or not when it runs.
+    const now = binding.clock();
     const stale = staleClaim(await tx.readClaim({ filter: { taskId: { eq: input.id } } }), input.fence, context.actor.id, now);
     if (stale) {
       const lateResult = await actions.recordLateResult({ task: input.id, fence: stale.fence, summary: input.summary ?? null, evidence: input.evidence ?? [] });
@@ -67,8 +68,8 @@ export async function taskComplete(input: CompleteTaskInput, context: ActionCont
  * else; otherwise `submitSubmission` records the pending submission and releases the claim.
  */
 export async function submissionSubmit(input: SubmitSubmissionInput, context: ActionContext, binding: Binding = connected): Promise<SubmissionSubmitted | LateResultRecorded> {
-  const now = binding.clock();
   return binding.transaction(async ({ actions, tx }) => {
+    const now = binding.clock();
     const stale = staleClaim(await tx.readClaim({ filter: { taskId: { eq: input.task } } }), input.fence, context.actor.id, now);
     if (stale) {
       const lateResult = await actions.recordLateResult({ task: input.task, fence: stale.fence, summary: input.summary, evidence: input.evidence ?? [] });

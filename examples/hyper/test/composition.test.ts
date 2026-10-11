@@ -262,6 +262,22 @@ describe("acceptance 10: warnings, and a late result instead of a failure", () =
     expect(await w.hyper.readCompletion({}, as(w.alice))).toEqual([]);
   }));
 
+  test("a submit queued behind another transaction decides stale or not when it runs, not when it was called", () => within(async (w) => {
+    const claim = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
+    w.advance(9);
+    // A transaction holds the layer, which runs whole transactions one at a time, so the submit waits behind it.
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => { open = resolve; });
+    const holding = w.hyper.transaction(() => gate, as(w.alice));
+    const queued = submissionSubmit({ task: w.task.id, fence: claim.fence, summary: "late" }, as(w.bot), w.binding);
+    // The lease ends while the submit waits: when it runs, the fence is stale.
+    w.advance(2);
+    open();
+    await holding;
+    expect(await queued).toMatchObject({ outcome: "late-result-recorded", lateResult: { fence: claim.fence, summary: "late", submitterId: w.bot.id } });
+    expect(await w.hyper.readSubmission({}, as(w.alice))).toEqual([]);
+  }));
+
   test("a fence the actor never held is claim.current-fence, not a late result", () => within(async (w) => {
     const claim = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
     await w.hyper.revokeClaim({ id: claim.id, reason: "taking over" }, as(w.alice));
