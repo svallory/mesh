@@ -1,10 +1,9 @@
 // Helpers for the corpus tests: `parseEntity` lowers a source as `parseEntitySource` (`src/front-end/build.ts`) does, with the
 // frozen contracts of the corpus (see fixtures/mesh-corpus/README.md), and `corpusFiles` lists the corpus.
-import type { CustomTag, Dialect, LowerSourceResult } from "@mxlang/core";
+import { lowerSource, type CustomTag, type Dialect, type LowerSourceResult } from "@mxlang/core";
 import { readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { MESH_DIALECT } from "../src/front-end/dialect.ts";
-import { lowerMesh } from "../src/front-end/lower.ts";
 import contractsModule from "./fixtures/mesh-corpus/contracts.ts";
 
 export const CORPUS = join(import.meta.dir, "fixtures/mesh-corpus");
@@ -13,7 +12,7 @@ const contracts = contractsModule as Record<string, CustomTag>;
 
 /** `parseEntitySource` (`src/front-end/build.ts`) with the contracts of the corpus and the dialect as a parameter. */
 export function parseEntity(source: string, file: string, dialect: Dialect = MESH_DIALECT): LowerSourceResult {
-  return lowerMesh(source, file, {
+  return lowerSource(source, file, {
     dialect,
     customTags: contracts,
     tagRules: "none",
