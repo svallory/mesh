@@ -20,7 +20,7 @@ export async function noActiveMembershipOf(tx: Reads, collaboratorId: string): P
 }
 
 /**
- * `membership.last-owner` (`memberships/rules.ex:9-37`): a change that takes away an owner is refused when the
+ * `membership.last-owner` (`memberships/rules.ex:19-45`): a change that takes away an owner is refused when the
  * workspace has no other active owner. `losesOwner` says whether this change takes one away.
  */
 export async function keepsAnOwnerOf(tx: Reads, losesOwner: boolean): Promise<boolean> {

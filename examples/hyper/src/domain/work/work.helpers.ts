@@ -42,7 +42,7 @@ export function claimToRelease<C extends ClaimFacts>(claims: readonly C[], now: 
 
 /**
  * The claims to revoke: every claim still `active`, a lapsed one included, optionally only one holder's
- * (`tasks/claim/changes/end_claim.ex:18-23`, `revoke_all`).
+ * (`tasks/claim/changes/end_claim.ex:16-21`, `revoke_all`).
  */
 export function openClaims<C extends ClaimFacts>(claims: readonly C[], holderId?: string): C[] {
   return claims.filter((claim) => claim.state === "active" && (holderId === undefined || claim.holderId === holderId));
@@ -83,7 +83,7 @@ export function fenceIsCurrent(claims: readonly ClaimFacts[], fence: number | nu
   return live !== undefined && live.fence === fence && live.holderId === actorId;
 }
 
-/** The fence the performer holds on the Task, or null (`runs/attempt/changes/start_attempt.ex:44-46`). */
+/** The fence the performer holds on the Task, or null (`runs/attempt/changes/start_attempt.ex:41-43`). */
 export function heldFence(claims: readonly ClaimFacts[], actorId: string, now: Date): number | null {
   const live = liveClaim(claims, now);
   return live !== undefined && live.holderId === actorId ? live.fence : null;
@@ -184,7 +184,7 @@ export interface BlockReason {
 }
 
 /**
- * The block reasons a Task's prerequisites give (`tasks/task/calculations/blocked_reasons.ex:24-38`): one per
+ * The block reasons a Task's prerequisites give (`tasks/task/calculations/blocked_reasons.ex:21-35`): one per
  * prerequisite that is not done, `prerequisite-canceled` for a canceled one. The `condition` kind comes from
  * blocking-condition providers, which arrive with the plugin hook points (M6).
  */
