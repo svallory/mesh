@@ -429,6 +429,42 @@
             {
               "title": "0076. The compiler's front end and its TypeScript back end",
               "path": "/architecture/decisions/0076-compiler-front-end-and-back-end-are-separate/"
+            },
+            {
+              "title": "0077. A `surface` file lists what an audience may reach",
+              "path": "/architecture/decisions/0077-surfaces-and-file-kinds/"
+            },
+            {
+              "title": "0078. Effects are split three ways; services",
+              "path": "/architecture/decisions/0078-services-and-where-effects-go/"
+            },
+            {
+              "title": "0079. Commands and events are files; the core outbox",
+              "path": "/architecture/decisions/0079-commands-events-and-the-outbox/"
+            },
+            {
+              "title": "0080. An aggregate is a file; a concept is a value object",
+              "path": "/architecture/decisions/0080-aggregates-and-concepts/"
+            },
+            {
+              "title": "0081. Event sourcing and CQRS are two extensions",
+              "path": "/architecture/decisions/0081-event-sourcing-and-cqrs-are-extensions/"
+            },
+            {
+              "title": "0082. Named checks and mixins; step files dropped",
+              "path": "/architecture/decisions/0082-named-checks-and-mixins/"
+            },
+            {
+              "title": "0083. Names for the new constructs",
+              "path": "/architecture/decisions/0083-names-for-the-new-constructs/"
+            },
+            {
+              "title": "0084. Architecture rules are core",
+              "path": "/architecture/decisions/0084-architecture-rules-are-core/"
+            },
+            {
+              "title": "0085. MX discovers a dialect's tags (target design)",
+              "path": "/architecture/decisions/0085-tag-discovery-for-dialect-tags/"
             }
           ]
         },
@@ -544,6 +580,10 @@
             {
               "title": "Hyper on Mesh: gap analysis",
               "path": "/architecture/research/hyper-port-gap-analysis/"
+            },
+            {
+              "title": "Domain concepts",
+              "path": "/architecture/research/domain-concepts/"
             },
             {
               "title": "Reviews",
