@@ -24,16 +24,26 @@ export function sawKey(context: any, phase: string, key: unknown, other: unknown
   context.seen.push({ phase, key, other });
   return true;
 }
+// What a check gets beside the roots it names: whether \`before\` is in it at all.
+export function sawRest(context: any, phase: string, rest: any): boolean {
+  context.seen.push({ phase, hasBefore: "before" in rest, before: rest.before });
+  return true;
+}
 `;
 
 const person = `entity :Person table="people"
   attributes
     uuid :id primary-key
     string :name min=1
+    boolean :active default=true
   actions auto=[:read]
     create :join
       input
         &name
+    update :retire
+      do
+        set
+          &active=false
 `;
 
 const note = `import { Person } from "./person.mesh.mx"
@@ -156,6 +166,43 @@ entity :Tag table="tags"
         check :watch that=({ self, context }) => sawKey(context, "validate", self.code, self.label) code="watch" message="watch"
 `;
 
+// A check that loads a relationship, before the input changes it; a required belongs-to a step fills, not the input.
+const card = `import { Person } from "./person.mesh.mx"
+import { sawRest } from "./helpers"
+entity :Card table="cards"
+  attributes
+    uuid :id primary-key
+    string :title min=1
+    string :ownerName nullable
+  relationships
+    belongs-to :owner entity=Person
+    belongs-to :creator entity=Person
+  actions auto=[:read]
+    create :make
+      input
+        &title
+        &owner
+      validate
+        check :scope that=({ context, ...rest }) => sawRest(context, "make", rest) code="scope" message="scope"
+        check :noCreatorYet that=() => &creator === null code="card.creator" message="the creator is already set"
+      do
+        set
+          &creator=({ actor }) => actor.id
+          &ownerName=() => &owner.name
+    update :reassign
+      input
+        &owner
+      validate
+        check :scope that=({ context, ...rest }) => sawRest(context, "reassign", rest) code="scope" message="scope"
+        check :ownerActive that=() => &owner.active code="card.owner" message="the current owner is retired"
+      do
+        set
+          &ownerName=() => &owner.name
+    destroy :scrap
+      validate
+        check :scope that=({ context, ...rest }) => sawRest(context, "scrap", rest) code="scope" message="scope"
+`;
+
 const SQLITE: ResolvedConfig["data"] = {
   kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build",
   capabilities: { adapter: "sqlite", capabilities: ["aggregates", "integer-key-fill"] }, options: { file: ":memory:" },
@@ -167,7 +214,7 @@ beforeAll(async () => {
   dir = await mkdtemp(join(import.meta.dir, ".validate-self-"));
   const config: ResolvedConfig = { root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"), data: SQLITE };
   await Bun.write(join(dir, "src/domain/helpers.ts"), helpers);
-  const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: Object.entries({ person, note, event, tag }).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source })) });
+  const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: Object.entries({ person, note, event, tag, card }).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source })) });
   expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   await writeGeneratedFiles(await generateFiles({ config, document: built.document as ModelDocument }, build), config);
   // `binding.ts` imports the project's config, which is not part of this fixture.
@@ -178,7 +225,7 @@ afterAll(async () => { if (dir) await rm(dir, { recursive: true, force: true });
 
 const NOW = new Date("2026-10-11T10:00:00.000Z");
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-type Seen = { phase: string; self?: any; input?: any; sent?: string[]; before?: any; key?: unknown; other?: unknown };
+type Seen = { phase: string; self?: any; input?: any; sent?: string[]; before?: any; key?: unknown; other?: unknown; hasBefore?: boolean };
 
 async function fresh() {
   const db = sqlite({ file: ":memory:" });
@@ -399,6 +446,31 @@ describe("composition: an action called through actions or tx checks the record 
   });
 });
 
+describe("a relationship a check loads", () => {
+  test("update: a check loads the stored &owner; a step after the input reads the new owner, not the one the check loaded", async () => {
+    const world = await fresh();
+    try {
+      const ctx = { ...world.ctx, actor: { id: world.ada.id } };
+      const made = await world.mesh.makeCard({ title: "t", owner: world.ada.id }, ctx);
+      expect(made.ownerName).toBe("Ada");
+      const moved = await world.mesh.reassignCard({ id: made.id, owner: world.bo.id }, ctx);
+      expect(moved).toMatchObject({ ownerId: world.bo.id, ownerName: "Bo" });
+      // The check read the stored owner: once Bo is retired, moving the card away from Bo is refused.
+      await world.mesh.retirePerson({ id: world.bo.id }, ctx);
+      expect(labels(await invalid(world.mesh.reassignCard({ id: made.id, owner: world.ada.id }, ctx)))).toEqual(["ownerActive"]);
+    } finally { await world.db.close(); }
+  });
+
+  test("create: a check reading a required belongs-to that only a step fills sees null, not a load failure", async () => {
+    const world = await fresh();
+    try {
+      const ctx = { ...world.ctx, actor: { id: world.ada.id } };
+      const made = await world.mesh.makeCard({ title: "t", owner: world.bo.id }, ctx);
+      expect(made).toMatchObject({ creatorId: world.ada.id, ownerId: world.bo.id, ownerName: "Bo" });
+    } finally { await world.db.close(); }
+  });
+});
+
 describe("the key on a create", () => {
   test("an integer key is null in validate and in do, and set after the write; the data layer counts from 1", async () => {
     const world = await fresh();
@@ -437,6 +509,19 @@ describe("the key on a create", () => {
 });
 
 describe("before is gone from validate", () => {
+  test("at run time too: a check that hands the rest of its scope to a helper finds no before in it, on a create, an update and a destroy", async () => {
+    const world = await fresh();
+    try {
+      const ctx = { ...world.ctx, actor: { id: world.ada.id } };
+      const made = await world.mesh.makeCard({ title: "t", owner: world.ada.id }, ctx);
+      await world.mesh.reassignCard({ id: made.id, owner: world.bo.id }, ctx);
+      await world.mesh.scrapCard({ id: made.id }, ctx);
+      expect(world.seen.filter((entry) => entry.hasBefore !== undefined).map(({ phase, hasBefore, before }) => [phase, hasBefore, before])).toEqual([
+        ["make", false, undefined], ["reassign", false, undefined], ["scrap", false, undefined],
+      ]);
+    } finally { await world.db.close(); }
+  });
+
   test("a check that reads before is a build error with MESH_VALIDATE_BEFORE, and says what to write instead", () => {
     const source = note.replace("check :draftOnly that=() => &state === :draft code=\"note.live\" message=\"only a draft can be published\"",
       "check :draftOnly that=({ before }) => before.state === :draft code=\"note.live\" message=\"only a draft can be published\"");
