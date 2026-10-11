@@ -123,19 +123,24 @@ export interface DataLayer {
    * the same callback (siblings started together, as with Promise.all) run in the order they
    * were made, each after the one before it settled, so two read-then-write calls on one row
    * cannot both read before either writes. A call joined from inside a joined call queues
-   * behind that call's own joined calls only, so nesting never waits for itself. Joining
+   * behind that call's own joined calls only, so nesting never waits for itself. So a joined call must never
+   * await a call that was joined after it from the same frame: that call's turn comes only once the awaiting one
+   * settled, and the transaction hangs. Joining
    * follows async context, so a detached promise started inside the callback joins it too;
    * one whose turn comes after the outer call settled rejects with a FrameworkError. A call
    * made after the outer transaction settled starts a new one.
    */
   transaction<T>(run: (tx: DataOperations) => Promise<T>): Promise<T>;
   /**
-   * Refuse a call made inside a transaction that a joined call already failed. Every generated function calls this
-   * first, before it casts its input: there it throws the FrameworkError that `transaction` would refuse the call with
-   * (cause: the first failure), so the call does no work at all. Anywhere else (outside a transaction, inside one that
-   * has not failed, or after the failed one settled) it returns. It opens nothing, takes no lock and waits for nothing.
+   * Whether a call made here would join a running transaction, refusing it if that transaction has failed. Every
+   * generated function calls this first, before it casts its input. Inside a transaction that a joined call already
+   * failed it throws the FrameworkError that `transaction` would refuse the call with (cause: the first failure), so the
+   * call does no work at all. Inside a running transaction that has not failed it returns true: a call made here joins
+   * it. Anywhere else (at top level, from another request's async context while a transaction runs, or after the
+   * transaction settled) it returns false: a call made here would start its own. It opens nothing, takes no lock and
+   * waits for nothing, and it answers for the caller's async context only, never from layer-wide state.
    */
-  refuseIfFailed(): void;
+  refuseIfFailed(): boolean;
   /** Release the adapter's connection and other owned handles. Rejects while
    * transactions are running or queued, leaving the layer open. Idempotent.
    * Releases handles only: a later transaction must open the layer again, on the

@@ -176,7 +176,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
         $loads.add("excerpt");
         // data layer
         $changes.updatedAt = $now;
-        // a call made before this write must not have changed this row: the write would overwrite that change
+        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
         await $checkUnchanged(tx, $writes, tables.post, $key, $before, "Post.publish");
         const $stored = await tx.updateByKey(tables.post, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Post", $key);

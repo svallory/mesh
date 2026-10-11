@@ -10,7 +10,7 @@ function layerOf(): { layer: DataLayer; current: { ops: DataOperations } } {
   const current = { ops: {} as DataOperations };
   const layer = {
     transaction: <T>(run: (ops: DataOperations) => Promise<T>) => run(current.ops),
-    refuseIfFailed: () => {},
+    refuseIfFailed: () => true,
     close: async () => {},
   } as unknown as DataLayer;
   return { layer, current };
@@ -138,26 +138,43 @@ describe("castInput and failJoined", () => {
     "~standard": { version: 1, vendor: "test", validate: (value) => (typeof value === "number" && value > 0 ? { value } : { issues: [{ message: "must be positive", path: [] }] }) },
   };
 
-  test("a value that casts comes back without touching the layer", async () => {
+  test.each([["at top level", false], ["inside a running transaction", true]])("%s, a value that casts comes back without opening or joining a transaction", async (_where, joined) => {
     let opened = 0;
-    const layer = { transaction: async () => { opened++; }, refuseIfFailed: () => {}, close: async () => {} } as unknown as DataLayer;
+    const layer = { transaction: async () => { opened++; }, refuseIfFailed: () => joined, close: async () => {} } as unknown as DataLayer;
     expect(await castInput(layer, positive, 3)).toBe(3);
     expect(opened).toBe(0);
   });
 
-  test("a failed cast passes through the layer's transaction, so a running one is marked, and rejects with the cast error itself", async () => {
+  test("inside a running transaction, a failed cast passes through the layer's transaction, so the transaction is marked, and rejects with the cast error itself", async () => {
     const seen: unknown[] = [];
-    const layer = { transaction: (run: () => Promise<unknown>) => run().catch((cause) => { seen.push(cause); throw cause; }), refuseIfFailed: () => {}, close: async () => {} } as unknown as DataLayer;
+    const layer = { transaction: (run: () => Promise<unknown>) => run().catch((cause) => { seen.push(cause); throw cause; }), refuseIfFailed: () => true, close: async () => {} } as unknown as DataLayer;
     const error = await castInput(layer, positive, -1).catch((cause: unknown) => cause);
     expect(error).toBeInstanceOf(InvalidInputError);
     expect(seen).toEqual([error]);
   });
 
+  test("at top level, a failed cast rejects with the cast error and never calls the layer's transaction, so it takes no lock", async () => {
+    let opened = 0;
+    const layer = { transaction: async () => { opened++; }, refuseIfFailed: () => false, close: async () => {} } as unknown as DataLayer;
+    const error = await castInput(layer, positive, -1).catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(InvalidInputError);
+    expect(opened).toBe(0);
+  });
+
+  test("when refuseIfFailed refuses, castInput rejects with that refusal before the input is cast", async () => {
+    let cast = 0;
+    const counted: StandardSchemaV1<unknown, number> = { "~standard": { version: 1, vendor: "test", validate: (value) => { cast++; return { value: value as number }; } } };
+    const refusal = new FrameworkError("refused", { cause: new Error("the first failure") });
+    const layer = { transaction: async () => { throw new Error("must not open"); }, refuseIfFailed: () => { throw refusal; }, close: async () => {} } as unknown as DataLayer;
+    await expect(castInput(layer, counted, 3)).rejects.toBe(refusal);
+    expect(cast).toBe(0);
+  });
+
   test("whatever the layer's transaction rejects with, the caller gets the original error", async () => {
     const original = new Error("the original");
-    const broken = { transaction: async () => { throw new FrameworkError("the layer is unusable"); }, refuseIfFailed: () => {}, close: async () => {} } as unknown as DataLayer;
+    const broken = { transaction: async () => { throw new FrameworkError("the layer is unusable"); }, refuseIfFailed: () => true, close: async () => {} } as unknown as DataLayer;
     await expect(failJoined(broken, original)).rejects.toBe(original);
-    const resolving = { transaction: async () => "swallowed", refuseIfFailed: () => {}, close: async () => {} } as unknown as DataLayer;
+    const resolving = { transaction: async () => "swallowed", refuseIfFailed: () => true, close: async () => {} } as unknown as DataLayer;
     await expect(failJoined(resolving, original)).rejects.toBe(original);
   });
 });
@@ -199,6 +216,8 @@ describe("checkUnchanged", () => {
     expect(error).toBeInstanceOf(FrameworkError);
     expect((error as Error).message).toMatch(/^Account\.rename: a call made before this action's write /);
     expect((error as Error).message).toMatch(message);
+    expect((error as Error).message).toContain("so this action's checks and steps decided on a stale row. Make the call from a step that runs after the write");
+    expect((error as Error).message).not.toContain("overwrite");
     expect((error as Error).message).toMatch(/run \[after=:write\]$/);
   });
 });

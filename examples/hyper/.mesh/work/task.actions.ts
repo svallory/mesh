@@ -215,7 +215,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           $changes.version = $record.version = $value;
         }
         // data layer
-        // a call made before this write must not have changed this row: the write would overwrite that change
+        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
         await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.update");
         const $stored = await tx.updateByKey(tables.task, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Task", $key);
@@ -285,7 +285,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           $changes.version = $record.version = $value;
         }
         // data layer
-        // a call made before this write must not have changed this row: the write would overwrite that change
+        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
         await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.setPriority");
         const $stored = await tx.updateByKey(tables.task, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Task", $key);
@@ -372,7 +372,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         }
         $unloadFrom($loadPlan, "Task", $record);
         // data layer
-        // a call made before this write must not have changed this row: the write would overwrite that change
+        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
         await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.move");
         const $stored = await tx.updateByKey(tables.task, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Task", $key);
@@ -442,7 +442,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           $changes.version = $record.version = $value;
         }
         // data layer
-        // a call made before this write must not have changed this row: the write would overwrite that change
+        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
         await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.reopen");
         const $stored = await tx.updateByKey(tables.task, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Task", $key);

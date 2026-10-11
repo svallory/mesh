@@ -131,7 +131,7 @@ test("createSchema refuses data-losing statements and preserves existing rows", 
 });
 
 test("createSchema rejects a foreign layer and invalid table handles", async () => {
-  await expect(createSchema({ transaction: async () => { throw new Error("must not run"); }, refuseIfFailed: () => {}, close: async () => {} }, {})).rejects.toThrow("made by sqlite()");
+  await expect(createSchema({ transaction: async () => { throw new Error("must not run"); }, refuseIfFailed: () => false, close: async () => {} }, {})).rejects.toThrow("made by sqlite()");
   await withLayer(async (layer) => {
     const postgres = pgTable("wrong", { id: pgText("id") });
     for (const invalid of [{}, postgres]) {

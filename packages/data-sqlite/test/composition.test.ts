@@ -267,6 +267,53 @@ const audit = `entity :Audit table="audits"
         }
 `;
 
+/** Every column type, and an `always` step that writes on every update: the S3 re-read must find each row unchanged. */
+const doc = `entity :Doc table="docs"
+  attributes
+    integer :id primary-key
+    uuid :ref nullable
+    string :title
+    integer :count default=0
+    float :ratio nullable
+    decimal :price nullable
+    boolean :flag default=false
+    enum :state values=[:draft, :live] nullable
+    date :day nullable
+    datetime :at nullable
+    timestamp :seen nullable
+    json :meta nullable
+  actions auto=[:read]
+    always types=[:update]
+      do
+        run({ self, actions }) {
+          await actions.logAudit({ what: \`touching doc \${self.id}\` });
+        }
+    create :make
+      input
+        &title
+        &ref
+        &ratio
+        &price
+        &flag
+        &state
+        &day
+        &at
+        &seen
+        &meta
+    update :bump
+      do
+        set
+          &count=({}) => &count + 1
+    update :touch
+    update :poke
+      input
+        integer :other
+      do
+        run({ input, actions }) {
+          await actions.bumpDoc({ id: input.other });
+        }
+`;
+
 /** A helper module the entity file imports: it opens an application transaction from inside a \`run\`. */
 const helpers = `type Composition = { readonly actions: { logAudit(input: { what: string }): Promise<unknown> }; readonly tx: { readAudit(input: object): Promise<readonly unknown[]> } };
 type Binding = {
@@ -760,6 +807,40 @@ describe("a generated function called directly inside a transaction fails it as 
       expect((await world.mesh.depositAccount({ id: opened.id, amount: 2 }, world.ctx)).balance).toBe(2);
     } finally { await world.db.close(); }
   });
+
+  test("at top level, a bad input is rejected at once while another request's failed transaction holds the write lock, and takes no lock (review r2, N7 and F1)", async () => {
+    const world = await fresh();
+    try {
+      const opened = await world.mesh.openAccount({ name: "Ada" }, world.ctx);
+      const before = await rows(world);
+      let open!: () => void;
+      const gate = new Promise<void>((resolve) => { open = resolve; });
+      let marked!: () => void;
+      const failed = new Promise<void>((resolve) => { marked = resolve; });
+      // Another request: its transaction fails on a caught call, then stays open, holding the lock.
+      const other = failure(world.mesh.transaction(async ({ actions }: any) => {
+        await actions.failAudit({ what: "the other request's failure" }).catch(() => undefined);
+        marked();
+        await gate;
+      }, world.ctx));
+      await failed;
+      // A bad input outside that transaction gets its own InvalidInputError, without waiting for the lock.
+      const outcome = await Promise.race([
+        world.mesh.depositAccount({ id: opened.id, amount: "nope" }, world.ctx).then(() => "resolved", (error: unknown) => error),
+        Bun.sleep(500).then(() => "waited for the lock"),
+      ]);
+      // A good call made meanwhile waits its turn and commits once the failed transaction rolled back.
+      const good = world.mesh.depositAccount({ id: opened.id, amount: 2 }, world.ctx);
+      open();
+      const otherError = await other;
+      expect(outcome).toBeInstanceOf(InvalidInputError);
+      expect((outcome as InvalidInputError).issues[0]!.path).toEqual(["amount"]);
+      expect(otherError).toBeInstanceOf(FrameworkError);
+      expect(((otherError as Error).cause as Error).message).toBe("audit refused");
+      expect((await good).balance).toBe(2);
+      expect((await rows(world)).audits).toEqual(before.audits);
+    } finally { await world.db.close(); }
+  });
 });
 
 describe("calls joined to one transaction run one at a time (decisions log, 2026-10-11 02:45, S1)", () => {
@@ -837,7 +918,7 @@ describe("a nested write to the caller's own row before the caller's write is a 
       const before = await rows(world);
       const error = await failure(world.mesh.renameBeforeAccount({ id: opened.id, newName: "lost?" }, world.ctx));
       expect(error).toBeInstanceOf(FrameworkError);
-      expect((error as Error).message).toMatch(/^Account\.renameBefore: a call made before this action's write changed the row this action is updating \(\{"id":1\}\)/);
+      expect((error as Error).message).toMatch(/^Account\.renameBefore: a call made before this action's write changed the row this action is updating \(\{"id":1\}\), so this action's checks and steps decided on a stale row\. /);
       expect((error as Error).message).toMatch(/run \[after=:write\]$/);
       expect(await rows(world)).toEqual(before);
     } finally { await world.db.close(); }
@@ -918,5 +999,45 @@ describe("a call that joins a failed transaction is refused before it does anyth
       expect(world.log).toEqual(["tally ran"]);
       expect((await rows(world)).audits).toHaveLength(before.audits.length + 1);
     } finally { await world.db.close(); }
+  });
+});
+
+describe("an update that a nested write did not change passes the S3 check, whatever its columns hold (review r2, N9)", () => {
+  let docDir: string;
+  let docApp: any;
+  beforeAll(async () => {
+    docDir = await generate(".composition-doc-", { doc, audit });
+    docApp = await import(join(docDir, ".mesh/index.ts"));
+  });
+  afterAll(async () => { if (docDir) await rm(docDir, { recursive: true, force: true }); });
+
+  const full = {
+    title: "Full", ref: "0190f2c4-1d2e-7a3b-8c4d-5e6f7a8b9c0d", ratio: 0.1 + 0.2, price: 12.34, flag: true, state: "live",
+    day: new Date("2026-01-02T00:00:00.000Z"), at: new Date("2026-03-04T05:06:07.089Z"), seen: new Date(1_767_225_600_123),
+    meta: { list: [1, null, [2, { deep: null }]], nested: { empty: [], none: null, text: "x" }, top: null },
+  };
+
+  test.each([["every column set", full], ["every nullable column null", { title: "Bare" }]] as const)("%s: own steps, an always step that writes, a nested update of another row, joined or not", async (_name, values) => {
+    const db = sqlite({ file: ":memory:" });
+    await createSchema(db, docApp.tables);
+    const ctx = { actor: alice, log: [] as string[] };
+    const mesh = docApp.bind(db);
+    try {
+      const made = await mesh.makeDoc(values, ctx);
+      const other = await mesh.makeDoc({ title: "Other" }, ctx);
+      await mesh.bumpDoc({ id: made.id }, ctx);
+      await mesh.touchDoc({ id: made.id }, ctx);
+      await mesh.pokeDoc({ id: made.id, other: other.id }, ctx);
+      await mesh.transaction(async ({ actions }: any) => {
+        await actions.bumpDoc({ id: made.id });
+        await actions.touchDoc({ id: made.id });
+        await actions.pokeDoc({ id: other.id, other: made.id });
+      }, ctx);
+      const stored = (await mesh.readDoc({}, ctx)) as any[];
+      expect(stored.find((row) => row.id === made.id)).toEqual({ ...made, count: 3 });
+      expect(stored.find((row) => row.id === other.id)).toEqual({ ...other, count: 1 });
+      // One audit per update, nested ones included: bump, touch, poke and its bump; then bump, touch, poke and its bump.
+      expect(await mesh.readAudit({}, ctx)).toHaveLength(8);
+    } finally { await db.close(); }
   });
 });

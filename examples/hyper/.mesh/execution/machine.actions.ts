@@ -147,7 +147,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           $changes.version = $record.version = $value;
         }
         // data layer
-        // a call made before this write must not have changed this row: the write would overwrite that change
+        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
         await $checkUnchanged(tx, $writes, tables.machine, $key, $before, "Machine.update");
         const $stored = await tx.updateByKey(tables.machine, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Machine", $key);

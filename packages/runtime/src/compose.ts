@@ -111,20 +111,21 @@ export function failJoined(layer: DataLayer, cause: unknown): Promise<never> {
 }
 
 /**
- * Cast a generated function's input. The cast runs before the function opens or joins a transaction, so a failed cast
- * goes through `failJoined`: called inside a running transaction, directly from `#mesh` or through `actions`, it fails
- * that transaction like any other failed call, even when the caller catches it. At top level the caller gets the same
- * error as from `parseInput`; only that failure pays for an empty transaction. Before the cast, the layer refuses a call
- * made inside a transaction that a joined call already failed (`DataLayer.refuseIfFailed`), so such a call does nothing.
+ * Cast a generated function's input. The cast runs before the function opens or joins a transaction. First the layer
+ * says whether the call runs inside a transaction, and refuses it if that transaction has already failed
+ * (`DataLayer.refuseIfFailed`), so such a call does nothing. Inside a running transaction, called directly from `#mesh`
+ * or through `actions`, a failed cast goes through `failJoined`: it fails that transaction like any other failed call,
+ * even when the caller catches it. At top level the caller gets the cast error at once, as from `parseInput`: no
+ * transaction opens and no lock is taken.
  */
 export async function castInput<T>(layer: DataLayer, schema: StandardSchemaV1<unknown, T>, input: unknown): Promise<T> {
-  // Fail fast: a call made inside a transaction that a joined call already failed is refused before anything runs.
-  layer.refuseIfFailed();
+  const joined = layer.refuseIfFailed();
   // An `await`, not `.catch`: the error's async stack then keeps the generated function that called this, so its first
   // frame outside Mesh's packages is still the generated action (blog acceptance 3).
   try {
     return await parseInput(schema, input);
   } catch (cause) {
+    if (!joined) throw cause;
     return failJoined(layer, cause);
   }
 }
@@ -144,18 +145,21 @@ export function writeCount(operations: DataOperations): number {
 /**
  * Before an update's own write: when a call made during the update's earlier phases wrote anything (`writeCount` moved
  * past `since`), re-read the row by key and compare it with `before`, the copy read under the lock. A difference means
- * a nested call changed this very row, and the update's write would overwrite that change without a trace, so it is a
+ * a nested call changed or deleted this very row, so the update's checks and steps decided on a stale row: it is a
  * `FrameworkError` that says to move the call after the write.
  */
 export async function checkUnchanged(operations: DataOperations, since: number, table: TableHandle, key: Key, before: Row, where: string): Promise<void> {
   if (writeCount(operations) === since) return;
   const now = await operations.selectByKey(table, key);
   if (now !== undefined && sameValue(now, before)) return;
-  throw new FrameworkError(`${where}: a call made before this action's write ${now === undefined ? "deleted" : "changed"} the row this action is updating (${JSON.stringify(key)}), and this action's write would ${now === undefined ? "fail on it" : "overwrite that change"}. Make the call from a step that runs after the write: run [after=:write]`);
+  throw new FrameworkError(`${where}: a call made before this action's write ${now === undefined ? "deleted" : "changed"} the row this action is updating (${JSON.stringify(key)}), so this action's checks and steps decided on a stale row. Make the call from a step that runs after the write: run [after=:write]`);
 }
 
-/** Equal stored values: dates by time, byte arrays by content, objects and arrays member by member. */
-function sameValue(a: unknown, b: unknown): boolean {
+/**
+ * Equal stored values: dates by time, byte arrays by content, objects and arrays member by member. The contract v1
+ * suite uses it too, to check that an adapter's two reads by key decode a row identically.
+ */
+export function sameValue(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true;
   if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return false;
   if (a instanceof Date || b instanceof Date) return a instanceof Date && b instanceof Date && a.getTime() === b.getTime();

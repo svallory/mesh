@@ -162,7 +162,7 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
           $changes.version = $record.version = $value;
         }
         // data layer
-        // a call made before this write must not have changed this row: the write would overwrite that change
+        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
         await $checkUnchanged(
           tx,
           $writes,

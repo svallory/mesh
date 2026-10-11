@@ -201,8 +201,11 @@ export function sqlite(options: SQLiteOptions): SQLiteLayer {
       });
     },
     refuseIfFailed() {
-      const failed = context.getStore()?.token;
-      if (failed?.active && failed.failed) throw refusal(failed.failed);
+      // The same test as the join in `transaction`: true exactly when a call made here would join.
+      const token = context.getStore()?.token;
+      if (!token?.active || !token.operations) return false;
+      if (token.failed) throw refusal(token.failed);
+      return true;
     },
     async close() {
       if (running || queued) throw new FrameworkError(`Cannot close SQLite data layer: ${running} running and ${queued} queued; wait for transactions to settle`);

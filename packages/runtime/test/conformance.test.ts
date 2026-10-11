@@ -77,8 +77,9 @@ function fake(mode: "correct" | "no rollback" | "wrong error" | "no commit" | "b
       if (mode === "poisoned queue") void tail.catch(() => undefined);
       return result;
     },
-    // This double never marks a failed join (rollback-only is contract v1), so there is nothing to refuse.
-    refuseIfFailed() {},
+    // This double never marks a failed join (rollback-only is contract v1), so there is nothing to refuse: it only says
+    // whether a call made here would join.
+    refuseIfFailed() { return context.getStore()?.token.active ?? false; },
     async close() {
       if (pendingCount && mode !== "closes while busy") throw new FrameworkError("transactions pending");
       closed = true;

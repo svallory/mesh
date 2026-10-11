@@ -140,7 +140,7 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
           $changes.version = $record.version = $value;
         }
         // data layer
-        // a call made before this write must not have changed this row: the write would overwrite that change
+        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
         await $checkUnchanged(tx, $writes, tables.workspace, $key, $before, "Workspace.rename");
         const $stored = await tx.updateByKey(tables.workspace, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Workspace", $key);

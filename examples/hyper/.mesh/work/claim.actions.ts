@@ -164,7 +164,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           $changes.expiresAt = $record.expiresAt = $value;
         }
         // data layer
-        // a call made before this write must not have changed this row: the write would overwrite that change
+        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
         await $checkUnchanged(tx, $writes, tables.claim, $key, $before, "Claim.renew");
         const $stored = await tx.updateByKey(tables.claim, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Claim", $key);
@@ -241,7 +241,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           $changes.endReason = $record.endReason = $value === undefined ? null : $value;
         }
         // data layer
-        // a call made before this write must not have changed this row: the write would overwrite that change
+        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
         await $checkUnchanged(tx, $writes, tables.claim, $key, $before, "Claim.release");
         const $stored = await tx.updateByKey(tables.claim, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Claim", $key);
@@ -303,7 +303,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           $changes.endReason = $record.endReason = $value === undefined ? null : $value;
         }
         // data layer
-        // a call made before this write must not have changed this row: the write would overwrite that change
+        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
         await $checkUnchanged(tx, $writes, tables.claim, $key, $before, "Claim.revoke");
         const $stored = await tx.updateByKey(tables.claim, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Claim", $key);

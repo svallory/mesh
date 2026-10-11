@@ -1,5 +1,6 @@
 import { validateCapabilityManifest, type CapabilityManifest } from "./capabilities.ts";
 import type { DataLayer, DataOperations, Query, Row, TableHandle } from "./data-layer.ts";
+import { sameValue } from "./compose.ts";
 import { FrameworkError } from "./errors.ts";
 import type { DataLayerFixture } from "./testing.ts";
 
@@ -37,6 +38,17 @@ const TASKS: Row[] = [
 ];
 
 const V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+/** What `probe` returns, or the error it throws, so a check can inspect either. */
+function answer(probe: () => unknown): unknown {
+  try { return probe(); } catch (cause) { return cause; }
+}
+
+/** A value for an assertion message: an error by class and message, anything else as JSON. */
+function describe(value: unknown): string {
+  if (value instanceof Error) return `${value.constructor.name}: ${value.message}${value.cause instanceof Error ? ` (cause: ${value.cause.message})` : ""}`;
+  try { return JSON.stringify(value) ?? String(value); } catch { return String(value); }
+}
 
 /** Run `run` in one transaction, and settle with its error, if any, so a check can inspect it. */
 async function failure(layer: DataLayer, run: (tx: DataOperations) => Promise<unknown>): Promise<unknown> {
@@ -341,29 +353,99 @@ export function contractV1Checks(makeLayer: () => Promise<DataLayerFixtureV1>, m
       assert(outcome instanceof FrameworkError, "the outer call must reject after a parallel joined call failed");
       assert((await layer.transaction((tx) => tx.select(uuidTable))).length === 0, "no parallel joined write may commit");
     })],
+    ["refuseIfFailed says whether a call made here joins a running transaction", withFixture(async ({ layer, uuidTable }) => {
+      assert(answer(() => layer.refuseIfFailed()) === false, "refuseIfFailed must return false at top level");
+      let inside: unknown, joined: unknown, nested: unknown, elsewhere: unknown;
+      let open!: () => void;
+      const gate = new Promise<void>((resolve) => { open = resolve; });
+      let started!: () => void;
+      const running = new Promise<void>((resolve) => { started = resolve; });
+      let late!: Promise<unknown>;
+      let ended!: () => void;
+      const afterCommit = new Promise<void>((resolve) => { ended = resolve; });
+      const work = layer.transaction(async (tx) => {
+        inside = answer(() => layer.refuseIfFailed());
+        await layer.transaction(async () => {
+          joined = answer(() => layer.refuseIfFailed());
+          await layer.transaction(async () => { nested = answer(() => layer.refuseIfFailed()); });
+        });
+        await tx.insert(uuidTable, { label: "kept" });
+        // Started here, but answered only after the transaction committed: a call made then starts its own.
+        late = afterCommit.then(() => answer(() => layer.refuseIfFailed()));
+        started();
+        await gate;
+      });
+      await running;
+      // The test's own async context is not inside that transaction, even while it is open.
+      elsewhere = answer(() => layer.refuseIfFailed());
+      open();
+      await work;
+      ended();
+      assert(inside === true, "refuseIfFailed must return true inside a transaction's callback");
+      assert(joined === true, "refuseIfFailed must return true inside a joined call");
+      assert(nested === true, "refuseIfFailed must return true inside a call joined from a joined call");
+      assert(elsewhere === false, "refuseIfFailed must return false from another async context while a transaction is open");
+      assert(await late === false, "refuseIfFailed must return false from a continuation of the callback that runs after the transaction committed");
+      assert(answer(() => layer.refuseIfFailed()) === false, "refuseIfFailed must return false once the transaction settled");
+      assert((await layer.transaction((tx) => tx.select(uuidTable))).length === 1, "asking refuseIfFailed must not change what commits");
+    })],
     ["a call that joins a failed transaction is refused before it runs, and refuseIfFailed refuses only there", withFixture(async ({ layer, uuidTable }) => {
       const first = new Error("first");
-      const refusedBy = (probe: () => void): unknown => { try { probe(); return undefined; } catch (cause) { return cause; } };
-      assert(refusedBy(() => layer.refuseIfFailed()) === undefined, "refuseIfFailed must return outside a transaction");
-      let healthy: unknown, probed: unknown, refused: unknown, again: unknown;
+      assert(answer(() => layer.refuseIfFailed()) === false, "refuseIfFailed must return false outside a transaction");
+      let healthy: unknown, probed: unknown, refused: unknown, again: unknown, queuedAnswer: unknown;
       let ran = 0;
-      const outcome = await failure(layer, async (tx) => {
-        healthy = refusedBy(() => layer.refuseIfFailed());
+      let open!: () => void;
+      const gate = new Promise<void>((resolve) => { open = resolve; });
+      let marked!: () => void;
+      const failed = new Promise<void>((resolve) => { marked = resolve; });
+      const outcomeOf = failure(layer, async (tx) => {
+        healthy = answer(() => layer.refuseIfFailed());
         await tx.insert(uuidTable, { label: "outer" });
         await layer.transaction(async () => { throw first; }).catch(() => undefined);
-        probed = refusedBy(() => layer.refuseIfFailed());
+        probed = answer(() => layer.refuseIfFailed());
         refused = await layer.transaction(async (joined) => { ran++; await joined.insert(uuidTable, { label: "after" }); }).then(() => "ran", (cause: unknown) => cause);
         // A refusal does not clear the mark: the call after it is refused too.
         again = await layer.transaction(async () => { ran++; }).then(() => "ran", (cause: unknown) => cause);
+        // Held open, failed, while the test asks from its own context.
+        marked();
+        await gate;
       });
-      assert(healthy === undefined, "refuseIfFailed must return inside a transaction that has not failed");
+      await failed;
+      // The failure belongs to that transaction: another request's call is neither refused nor told it would join.
+      const elsewhere = answer(() => layer.refuseIfFailed());
+      // A top-level transaction queued while the failed one is still open runs and commits after it.
+      const queued = layer.transaction(async (tx) => {
+        queuedAnswer = answer(() => layer.refuseIfFailed());
+        await tx.insert(uuidTable, { label: "queued" });
+      }).then(() => "committed", (cause: unknown) => cause);
+      open();
+      const outcome = await outcomeOf;
+      const queuedOutcome = await queued;
+      assert(healthy === true, "refuseIfFailed must return true inside a transaction that has not failed");
       assert(probed instanceof FrameworkError && probed.cause === first, "refuseIfFailed inside a failed transaction must throw a FrameworkError whose cause is the first failure");
       assert(refused instanceof FrameworkError && refused.cause === first, "a call that joins a failed transaction must be refused with a FrameworkError whose cause is the first failure");
       assert(again instanceof FrameworkError && again.cause === first, "every later call that joins a failed transaction must be refused");
       assert(ran === 0, "a call that joins a failed transaction must not run");
+      assert(elsewhere === false, `refuseIfFailed from another async context while a failed transaction is still open must return false, not refuse; got ${describe(elsewhere)}`);
       assert(outcome instanceof FrameworkError && outcome.cause === first, "the outer call must still reject with the first failure as its cause");
-      assert((await layer.transaction((joined) => joined.select(uuidTable))).length === 0, "nothing of a failed transaction may commit");
-      assert(refusedBy(() => layer.refuseIfFailed()) === undefined, "refuseIfFailed must return once the failed transaction settled");
+      assert(queuedOutcome === "committed", `a top-level transaction queued while a failed one is open must commit once it settles; got ${describe(queuedOutcome)}`);
+      assert(queuedAnswer === true, "refuseIfFailed inside the queued transaction must return true, not carry the earlier failure");
+      const stored = (await layer.transaction((tx) => tx.select(uuidTable))).map((row) => row.label);
+      assert(stored.length === 1 && stored[0] === "queued", `nothing of a failed transaction may commit, and the queued one must: got ${JSON.stringify(stored)}`);
+      assert(answer(() => layer.refuseIfFailed()) === false, "refuseIfFailed must return false once the failed transaction settled");
+    })],
+    ["selectByKey and selectByKeyForUpdate return the same row by value", withTasks(async (_read, { layer, taskTable }) => {
+      // An update reads its row with selectByKeyForUpdate and, after a nested write, compares it with a selectByKey of
+      // the same row: two reads that decode a value differently would refuse every composing update.
+      await layer.transaction(async (tx) => {
+        for (const task of TASKS) {
+          const key = { id: task.id as string };
+          const plain = await tx.selectByKey(taskTable, key);
+          const locked = await tx.selectByKeyForUpdate(taskTable, key);
+          assert(plain !== undefined && sameValue(plain, locked), `selectByKey and selectByKeyForUpdate of ${key.id} must be equal by value: ${describe(plain)} and ${describe(locked)}`);
+          assert(sameValue(plain, task), `selectByKey of ${key.id} must return the row as inserted: ${describe(plain)}`);
+        }
+      });
     })],
     ["parallel inserts with integer fill get distinct consecutive keys", withFixture(async ({ layer, integerTable }) => {
       if (!declared("integer-key-fill")) return;

@@ -103,7 +103,7 @@ const ops = {
 };
 export default { data: { kind: "data-adapter", name: "memory", build: "./none", capabilities: { adapter: "memory", capabilities: [] }, options: {},
   transaction: async (run) => { const result = await run(ops); events.push("commit"); return result; },
-  refuseIfFailed: () => {},
+  refuseIfFailed: () => false,
   close: async () => {
     if (failClose.next) { failClose.next = false; throw new Error("close failed"); }
     closes.count++; events.push("close");
@@ -196,7 +196,7 @@ describe("the generated index", () => {
       .toEqual({ code: 0, output: "" });
     const mesh = await import(resolve(root, ".mesh/index.ts"));
     // With no action, the binding is only `transaction`, whose `actions` and `tx` are empty.
-    const bound = mesh.bind({ transaction: async (run: (tx: object) => Promise<unknown>) => run({}), refuseIfFailed: () => {}, close: async () => {} });
+    const bound = mesh.bind({ transaction: async (run: (tx: object) => Promise<unknown>) => run({}), refuseIfFailed: () => false, close: async () => {} });
     expect(Object.keys(bound)).toEqual(["transaction"]);
     expect(await bound.transaction(async ({ actions, tx }: { actions: object; tx: object }) => [Object.keys(actions), Object.keys(tx)])).toEqual([[], []]);
   });
@@ -208,7 +208,7 @@ describe("the generated index", () => {
     const rows: unknown[] = [];
     const layer = {
       transaction: (run: (tx: object) => Promise<unknown>) => run({ insert: async (_t: object, row: object) => { rows.push(row); return row; } }),
-      refuseIfFailed: () => {},
+      refuseIfFailed: () => false,
       close: async () => { closed++; },
     };
     const bound = mesh.bind(layer);
@@ -254,7 +254,7 @@ describe("entity names never break the generated files", () => {
       .toEqual({ code: 0, output: "" });
     const mesh = await import(resolve(root, ".mesh/index.ts"));
     const rows: object[] = [];
-    const bound = mesh.bind({ transaction: (run: (tx: object) => Promise<unknown>) => run({ insert: async (_t: object, row: object) => { rows.push(row); return row; } }), refuseIfFailed: () => {}, close: async () => {} });
+    const bound = mesh.bind({ transaction: (run: (tx: object) => Promise<unknown>) => run({ insert: async (_t: object, row: object) => { rows.push(row); return row; } }), refuseIfFailed: () => false, close: async () => {} });
     for (const name of names) expect((await bound[`create${name}`]({ label: name })).label).toBe(name);
     expect(typeof mesh.inFlight).toBe("function");
     expect(typeof mesh.defaultBinding).toBe("function");

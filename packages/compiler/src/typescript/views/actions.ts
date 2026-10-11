@@ -511,11 +511,11 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     } else if (action.kind === "update") {
       for (const attribute of stamped) { used.now = true; emit(`${read("$changes", attribute.name)} = $now;`); }
       if (used.scope) {
-        // A call a function made before this write may have changed this very row; this write must not overwrite that silently.
+        // A call a function made before this write may have changed this very row; the action must not write after deciding on a stale copy.
         runtime.add("writeCount");
         runtime.add("checkUnchanged");
         head.push("const $writes = $writeCount(tx);");
-        emit("// a call made before this write must not have changed this row: the write would overwrite that change");
+        emit("// a call made before this write must not have changed this row: the checks and steps above decided on the row as read");
         emit(`await $checkUnchanged(tx, $writes, ${table}, ${KEY}, $before, ${where});`);
       }
       emit(`const $stored = await tx.updateByKey(${table}, ${KEY}, $changes);`);
