@@ -1,10 +1,11 @@
 import { Task } from "./task.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
+import { isStale, missingEvidenceOf } from "./work.helpers"
 
 entity :LateResult table="late_results"
   attributes
     uuid :id primary-key
-    integer :fence
+    integer :fence min=1
     string :summary nullable
     json :evidence default=[]
     timestamp :recordedAt on=:create
@@ -14,8 +15,22 @@ entity :LateResult table="late_results"
   actions auto=[:read]
     create :record
       input
+        &task
         &fence
         &summary
         &evidence
-        &task
-        &submitter
+      validate
+        check :staleFence [
+          that=({ actor }) => isStale(&task.claims, &fence, actor.id, now())
+          code="claim.stale-fence"
+          message="only a fence you held that expired or was revoked records a late result"
+        ]
+        check :evidenceExists [
+          that=async ({ tx }) => (await missingEvidenceOf(tx, &evidence)).length === 0
+          code="evidence.exists"
+          message="an evidence reference does not exist"
+          details=async ({ tx }) => ({ missing: await missingEvidenceOf(tx, &evidence) })
+        ]
+      do
+        set
+          &submitter=({ actor }) => actor.id

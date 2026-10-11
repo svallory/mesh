@@ -3,7 +3,14 @@
 
 import { z } from "zod";
 
-import type { StartAttemptInput, ReadAttemptInput, AttemptFilter } from "./attempt.types";
+import type {
+  StartAttemptInput,
+  FinishAttemptInput,
+  ReportStoppedAttemptInput,
+  AbandonAttemptInput,
+  ReadAttemptInput,
+  AttemptFilter,
+} from "./attempt.types";
 
 type Keys<T> = T extends Record<string, never> ? never : keyof T;
 
@@ -100,20 +107,72 @@ export const attemptSort = z
   .readonly();
 
 export const startAttemptInput = z.strictObject({
-  step: z.string().optional(),
-  number: z.int(),
-  claimFence: z.int().nullable().optional(),
-  runtime: z.string().nullable().optional(),
   run: z.uuid(),
-  task: z.uuid(),
-  performer: z.uuid(),
-  delegator: z.uuid(),
+  step: z.string().optional(),
+  runtime: z.string().nullable().optional(),
   machine: z.uuid().nullable().optional(),
   session: z.uuid().nullable().optional(),
 }) satisfies z.ZodType<StartAttemptInput>;
 
 export type StartAttemptInputShape = Assert<
   SameShape<z.output<typeof startAttemptInput>, StartAttemptInput>
+>;
+
+export const finishAttemptInput = z.strictObject({
+  id: z.uuid(),
+  result: z.enum(["succeeded", "failed"]),
+  outputs: (
+    z
+      .json()
+      .refine((value) => value !== null, {
+        message: "null is only allowed on a nullable attribute",
+      }) as z.ZodType<unknown>
+  )
+    .nullable()
+    .optional(),
+  evidence: (
+    z
+      .json()
+      .refine((value) => value !== null, {
+        message: "null is only allowed on a nullable attribute",
+      }) as z.ZodType<unknown>
+  )
+    .nullable()
+    .optional(),
+  error: (
+    z
+      .json()
+      .refine((value) => value !== null, {
+        message: "null is only allowed on a nullable attribute",
+      }) as z.ZodType<unknown>
+  )
+    .nullable()
+    .optional(),
+  expectedVersion: z.int().nullable().optional(),
+}) satisfies z.ZodType<FinishAttemptInput>;
+
+export type FinishAttemptInputShape = Assert<
+  SameShape<z.output<typeof finishAttemptInput>, FinishAttemptInput>
+>;
+
+export const reportStoppedAttemptInput = z.strictObject({
+  id: z.uuid(),
+  reason: z.string().min(1),
+  expectedVersion: z.int().nullable().optional(),
+}) satisfies z.ZodType<ReportStoppedAttemptInput>;
+
+export type ReportStoppedAttemptInputShape = Assert<
+  SameShape<z.output<typeof reportStoppedAttemptInput>, ReportStoppedAttemptInput>
+>;
+
+export const abandonAttemptInput = z.strictObject({
+  id: z.uuid(),
+  note: z.string().nullable().optional(),
+  expectedVersion: z.int().nullable().optional(),
+}) satisfies z.ZodType<AbandonAttemptInput>;
+
+export type AbandonAttemptInputShape = Assert<
+  SameShape<z.output<typeof abandonAttemptInput>, AbandonAttemptInput>
 >;
 
 export const readAttemptInput = z.strictObject({

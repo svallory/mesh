@@ -75,7 +75,7 @@ export const dependencySort = z
 export const addDependencyInput = z.strictObject({
   dependent: z.uuid(),
   prerequisite: z.uuid(),
-  createdBy: z.uuid(),
+  expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<AddDependencyInput>;
 
 export type AddDependencyInputShape = Assert<
@@ -84,6 +84,8 @@ export type AddDependencyInputShape = Assert<
 
 export const removeDependencyInput = z.strictObject({
   id: z.uuid(),
+  reason: z.string().nullable().optional(),
+  expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<RemoveDependencyInput>;
 
 export type RemoveDependencyInputShape = Assert<

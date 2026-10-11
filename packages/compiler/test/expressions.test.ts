@@ -353,6 +353,20 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(expressions["computed.c"](scope({ self: { n: 1 } }))).toBe(true);
   });
 
+  test("now() and today() in plain code read the injected clock, as in a translated expression; a local of that name is the author's", async () => {
+    const plain = entity(check("() => true")).replace("  actions auto", "  computed\n    boolean :stamped() { return Math.floor(now().getTime() / 1000) === &n }\n    boolean :daily() { return [today()].some((d) => d.getTime() === &n) }\n    boolean :own() { const now = () => 7; return now() === &n }\n  actions auto");
+    const { root, built } = await generated(plain);
+    const computed = built.document!.entities[0]!.computed;
+    expect(computed.map((c) => c.body?.plain?.clock)).toEqual([["now"], ["today"], undefined]);
+    expect(checkTypes(root, ["generated/task.expressions.ts", "generated/task.types.ts"])).toEqual({ code: 0, output: "" });
+    const { expressions } = await import(resolve(root, "generated/task.expressions.ts"));
+    const at = { clock: () => new Date(86_400_000 * 2 + 5_000) };
+    expect(expressions["computed.stamped"](scope({ self: { n: 86_400 * 2 + 5 } }, at))).toBe(true);
+    expect(expressions["computed.stamped"](scope({ self: { n: 1 } }, at))).toBe(false);
+    expect(expressions["computed.daily"](scope({ self: { n: 86_400_000 * 2 } }, at))).toBe(true);
+    expect(expressions["computed.own"](scope({ self: { n: 7 } }, at))).toBe(true);
+  });
+
   test("plain code runs with the authored meaning, `&` and atoms desugared", async () => {
     const { root } = await generated(source);
     const { expressions } = await import(resolve(root, "generated/task.expressions.ts"));

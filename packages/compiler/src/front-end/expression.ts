@@ -93,8 +93,9 @@ function bindings(root: N): Set<string> {
  * Free-variable errors for one function, at the identifier. Returns the scope names the function reads as variables
  * that its parameters do not bind (`&name` is `self.name`, so it reads `self`), in a fixed order: what the printed
  * function takes from the scope. A name a nested binding shadows still counts, so the function is never short of one.
+ * Adds to `clock` each clock function (`now`, `today`) the function calls that no binding of its own shadows.
  */
-function freeVariables(fn: N, ctx: ConvertContext): string[] {
+function freeVariables(fn: N, ctx: ConvertContext, clock: Set<string>): string[] {
   const bound = bindings(fn);
   const parameters = bindings({ type: "ArrowFunctionExpression", params: fn.params ?? [], body: null } as unknown as N);
   const roots = new Set<string>();
@@ -110,6 +111,7 @@ function freeVariables(fn: N, ctx: ConvertContext): string[] {
       const objectKey = parent && (parent.type === "ObjectProperty" || parent.type === "ObjectMethod" || parent.type === "ClassMethod" || parent.type === "ClassProperty") && key === "key" && !parent.computed;
       const label = parent && /^(LabeledStatement|BreakStatement|ContinueStatement)$/.test(parent.type) && key === "label";
       if (!property && !objectKey && !label && SCOPE_NAMES.has(n.name!) && !parameters.has(n.name!)) roots.add(n.name!);
+      if (!property && !objectKey && !label && n.name! in REGISTERED_CALLS && !bound.has(n.name!)) clock.add(n.name!);
       if (!property && !objectKey && !label && !known(n.name!) && n.start !== undefined) {
         ctx.report({
           severity: "error",
@@ -306,14 +308,18 @@ const PARAMETER_ERROR = (n: N) => new Plain("unsupported-parameter", "this param
 
 /** Translate one function (`fn` is its Babel node, `span` its authored extent). */
 /** What printing a translated expression as plain code needs, for the checker if it later demotes one: its edits and the scope names it reads. */
-export interface Demotion { edits: SourceEdit[]; roots: string[] }
+export interface Demotion { edits: SourceEdit[]; roots: string[]; clock?: ("now" | "today")[] }
 const demotions = new WeakMap<object, Demotion>();
 export const demotionOf = (expression: object): Demotion => demotions.get(expression) ?? { edits: [], roots: [] };
 export const rememberDemotion = (expression: object, demotion: Demotion): void => { demotions.set(expression, demotion); };
 
 export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd: number }, ctx: ConvertContext): { tree?: ExprNode; plain?: PlainReason; demotion?: Demotion } {
   const f = fn as N;
-  const free = freeVariables(f, ctx);
+  const called = new Set<string>();
+  const free = freeVariables(f, ctx, called);
+  // `now()` and `today()` in code Mesh does not translate read the same clock as a translated expression.
+  const clock = (["now", "today"] as const).filter((name) => called.has(name));
+  const clocked = clock.length ? { clock } : {};
   const roots = new Map<string, string>();
   /**
    * A body that is an object literal (a check's `details`) is plain only because of the literal. Each property value that Mesh can
@@ -335,7 +341,7 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
   const plain = (e: Plain): { plain: PlainReason } => {
     const object = objectParts();
     return {
-      plain: { why: e.why, detail: e.detail, position: ctx.at(start(e.node) || span.sourceStart), edits: editsFor(f, span.sourceStart), roots: free, ...((object ? hasDifferingOperator(object.rest) : hasDifferingOperator(f.body)) ? { operators: true as const } : {}), ...(object?.parts.length ? { parts: object.parts } : {}), ...(f.type === "FunctionExpression" ? { method: true as const } : {}) },
+      plain: { why: e.why, detail: e.detail, position: ctx.at(start(e.node) || span.sourceStart), edits: editsFor(f, span.sourceStart), roots: free, ...clocked, ...((object ? hasDifferingOperator(object.rest) : hasDifferingOperator(f.body)) ? { operators: true as const } : {}), ...(object?.parts.length ? { parts: object.parts } : {}), ...(f.type === "FunctionExpression" ? { method: true as const } : {}) },
     };
   };
   try {
@@ -363,7 +369,7 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
       body = statements[0]!.argument as N;
     }
     const tree = convert(body, { roots, locals: new Set(), reads: { record: false } }, ctx);
-    return { tree, demotion: { edits: editsFor(f, span.sourceStart), roots: free } };
+    return { tree, demotion: { edits: editsFor(f, span.sourceStart), roots: free, ...clocked } };
   } catch (e) {
     if (e instanceof Plain) return plain(e);
     throw e;

@@ -20,12 +20,21 @@ export type Machine = {
 export type RegisterMachineInput = {
   name: string;
   platform?: string | null | undefined;
-  firstReportedBy?: Collaborator["id"] | null | undefined;
+};
+
+export type ReportMachineInput = {
+  name: string;
 };
 
 export type UpdateMachineInput = {
   id: string;
   platform?: string | null | undefined;
+  expectedVersion?: number | null | undefined;
+};
+
+export type RetireMachineInput = {
+  id: string;
+  reason: string;
   expectedVersion?: number | null | undefined;
 };
 

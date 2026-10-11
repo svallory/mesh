@@ -1,6 +1,7 @@
 import { Task } from "../work/task.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
 import { Attempt } from "./attempt.mesh.mx"
+import { responsibleFor } from "./execution.helpers"
 
 entity :Run table="runs"
   attributes
@@ -21,8 +22,52 @@ entity :Run table="runs"
   actions auto=[:read]
     create :start
       input
-        &inputs
         &task
-        &responsible
-        &startedBy
+        &inputs
         &parentRun
+      validate
+        check :taskOpen [
+          that=() => &task.state === :open
+          code="run.task-open"
+          message="runs serve open tasks"
+        ]
+        check :parentRunning [
+          that=() => &parentRun === null || &parentRun?.state === :running
+          code="run.parent-running"
+          message="the parent run is not running"
+        ]
+      do
+        set
+          &startedBy=({ actor }) => actor.id
+          &responsible=({ actor }) => responsibleFor(&task.assignments, actor.id)
+    update :cancel
+      input
+        string :reason min=1
+        integer :expectedVersion nullable
+      validate
+        check :cancelable [
+          that=() => &state === :running
+          code="run.cancelable"
+          message="the run is not running"
+        ]
+        check :versionMatches [
+          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
+          code="expected-version"
+          message="the record is at another version; read it again and retry"
+          details=({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })
+        ]
+      do
+        set
+          &state=:canceled
+          &endedAt=() => now()
+          &cancelReason=({ input }) => input.reason
+          &version=() => &version + 1
+    update :settle
+      input
+        enum :result values=[:succeeded, :failed]
+        &outcome
+      do
+        set
+          &state=({ input }) => input.result
+          &endedAt=() => now()
+          &version=() => &version + 1

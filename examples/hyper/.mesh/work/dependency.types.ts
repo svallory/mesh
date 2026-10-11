@@ -18,11 +18,13 @@ export type Dependency = {
 export type AddDependencyInput = {
   dependent: Task["id"];
   prerequisite: Task["id"];
-  createdBy: Collaborator["id"];
+  expectedVersion?: number | null | undefined;
 };
 
 export type RemoveDependencyInput = {
   id: string;
+  reason?: string | null | undefined;
+  expectedVersion?: number | null | undefined;
 };
 
 export type ReadDependencyInput = {

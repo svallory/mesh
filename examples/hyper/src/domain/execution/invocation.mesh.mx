@@ -30,6 +30,7 @@ entity :Invocation table="invocations"
   actions auto=[:read]
     create :record
       input
+        &attempt
         &requestedProvider
         &requestedModel
         &actualProvider
@@ -43,15 +44,58 @@ entity :Invocation table="invocations"
         &pricingBasis
         &startedAt
         &endedAt
-        &attempt
-        &task
         &session
-        &recordedBy
+      validate
+        check :session [
+          that=() => &session === null || &session?.id === &attempt.sessionId
+          code="invocation.session"
+          message="the session is not the attempt's session"
+        ]
+        check :costUnknown [
+          that=() => (&inputTokens !== null && &outputTokens !== null) || &estimatedCost === null
+          code="invocation.cost-unknown"
+          message="the cost is unknown while a token count it needs is unknown"
+        ]
+      do
+        set
+          &task=() => &attempt.taskId
+          &recordedBy=({ actor }) => actor.id
     create :correct
       input
-        &reason
-        &usageSource
-        &attempt
-        &task
         &corrects
-        &recordedBy
+        &reason
+        &requestedProvider
+        &requestedModel
+        &actualProvider
+        &actualModel
+        &inputTokens
+        &outputTokens
+        &cacheReadTokens
+        &cacheWriteTokens
+        &usageSource
+        &estimatedCost
+        &pricingBasis
+        &startedAt
+        &endedAt
+        &session
+      validate
+        check :notCorrected [
+          that=async ({ input, tx }) => input.corrects != null && (await tx.readInvocation({ filter: { correctsId: { eq: input.corrects } }, limit: 1 })).length === 0
+          code="invocation.not-corrected"
+          message="the invocation is already corrected"
+        ]
+        check :reason [
+          that=() => (&reason ?? "") !== ""
+          code="invocation.reason"
+          message="a correction gives a reason"
+        ]
+        check :costUnknown [
+          that=() => (&inputTokens !== null && &outputTokens !== null) || &estimatedCost === null
+          code="invocation.cost-unknown"
+          message="the cost is unknown while a token count it needs is unknown"
+        ]
+      do
+        set
+          &attempt=async ({ input, tx }) => (await tx.readInvocation({ filter: { id: { eq: input.corrects ?? "" } } })).map((corrected) => corrected.attemptId)[0]
+          &task=async ({ input, tx }) => (await tx.readInvocation({ filter: { id: { eq: input.corrects ?? "" } } })).map((corrected) => corrected.taskId)[0]
+          &recordedBy=({ actor }) => actor.id

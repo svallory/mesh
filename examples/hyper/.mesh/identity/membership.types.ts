@@ -18,15 +18,19 @@ export type Membership = {
 };
 
 export type GrantMembershipInput = {
-  role: "owner" | "member" | "guest";
-  grantedAt: Date;
   collaborator: Collaborator["id"];
-  grantedBy: Collaborator["id"];
+  role: "owner" | "member" | "guest";
 };
 
 export type ChangeRoleMembershipInput = {
   id: string;
   role?: "owner" | "member" | "guest" | undefined;
+  expectedVersion?: number | null | undefined;
+};
+
+export type RevokeMembershipInput = {
+  id: string;
+  reason?: string | null | undefined;
   expectedVersion?: number | null | undefined;
 };
 

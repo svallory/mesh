@@ -9,6 +9,11 @@ import type {
   SetPriorityTaskInput,
   MoveTaskInput,
   ReopenTaskInput,
+  TouchTaskInput,
+  CancelTaskInput,
+  CompleteTaskInput,
+  AssignTaskInput,
+  UnassignTaskInput,
   ReadTaskInput,
   TaskFilter,
 } from "./task.types";
@@ -118,7 +123,6 @@ export const createTaskInput = z.strictObject({
   intent: z.string().nullable().optional(),
   parent: z.uuid().nullable().optional(),
   priority: z.int().nullable().optional(),
-  creator: z.uuid(),
 }) satisfies z.ZodType<CreateTaskInput>;
 
 export type CreateTaskInputShape = Assert<
@@ -162,6 +166,65 @@ export const reopenTaskInput = z.strictObject({
 
 export type ReopenTaskInputShape = Assert<
   SameShape<z.output<typeof reopenTaskInput>, ReopenTaskInput>
+>;
+
+export const touchTaskInput = z.strictObject({
+  id: z.uuid(),
+}) satisfies z.ZodType<TouchTaskInput>;
+
+export type TouchTaskInputShape = Assert<
+  SameShape<z.output<typeof touchTaskInput>, TouchTaskInput>
+>;
+
+export const cancelTaskInput = z.strictObject({
+  id: z.uuid(),
+  reason: z.string().min(1),
+  expectedVersion: z.int().nullable().optional(),
+}) satisfies z.ZodType<CancelTaskInput>;
+
+export type CancelTaskInputShape = Assert<
+  SameShape<z.output<typeof cancelTaskInput>, CancelTaskInput>
+>;
+
+export const completeTaskInput = z.strictObject({
+  id: z.uuid(),
+  fence: z.int().min(1).nullable().optional(),
+  summary: z.string().min(1).nullable().optional(),
+  evidence: (
+    z
+      .json()
+      .refine((value) => value !== null, {
+        message: "null is only allowed on a nullable attribute",
+      }) as z.ZodType<unknown>
+  )
+    .nullable()
+    .optional(),
+  expectedVersion: z.int().nullable().optional(),
+}) satisfies z.ZodType<CompleteTaskInput>;
+
+export type CompleteTaskInputShape = Assert<
+  SameShape<z.output<typeof completeTaskInput>, CompleteTaskInput>
+>;
+
+export const assignTaskInput = z.strictObject({
+  id: z.uuid(),
+  assignee: z.uuid(),
+  waiveReview: z.boolean().nullable().optional(),
+  expectedVersion: z.int().nullable().optional(),
+}) satisfies z.ZodType<AssignTaskInput>;
+
+export type AssignTaskInputShape = Assert<
+  SameShape<z.output<typeof assignTaskInput>, AssignTaskInput>
+>;
+
+export const unassignTaskInput = z.strictObject({
+  id: z.uuid(),
+  reason: z.string().nullable().optional(),
+  expectedVersion: z.int().nullable().optional(),
+}) satisfies z.ZodType<UnassignTaskInput>;
+
+export type UnassignTaskInputShape = Assert<
+  SameShape<z.output<typeof unassignTaskInput>, UnassignTaskInput>
 >;
 
 export const readTaskInput = z.strictObject({

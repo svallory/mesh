@@ -23,10 +23,25 @@ entity :SessionReference table="session_references"
         &location
         &machine
         &agentProfile
-        &recordedBy
+      validate
+        check :agentProfile [
+          that=async ({ input, tx }) => (await tx.readCollaborator({ filter: { id: { eq: input.agentProfile } }, limit: 1 })).length > 0
+          code="session.agent-profile"
+          message="the agent profile is not a collaborator"
+        ]
+        check :machineRetired [
+          that=() => &machine?.state === :active
+          code="machine.retired"
+          message="the machine is retired; report the host by a new name"
+        ]
+      do
+        set
+          &recordedBy=({ actor }) => actor.id
     update :setAvailability
       input
         &availability
+        &location
+        string :reason nullable
         integer :expectedVersion nullable
       validate
         check :notRedacted [
@@ -34,10 +49,10 @@ entity :SessionReference table="session_references"
           code="session.not-redacted"
           message="the session is redacted and cannot be changed"
         ]
-        check :availabilityChanges [
-          that=({ before }) => &availability !== before.availability
+        check :availabilityKept [
+          that=() => &availability !== :redacted
           code="session.availability"
-          message="the session already has that availability"
+          message="availability is complete, partial or unavailable; redact with redact"
         ]
         check :versionMatches [
           that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
@@ -50,6 +65,7 @@ entity :SessionReference table="session_references"
           &version=() => &version + 1
     update :redact
       input
+        string :reason min=1
         integer :expectedVersion nullable
       validate
         check :notRedacted [

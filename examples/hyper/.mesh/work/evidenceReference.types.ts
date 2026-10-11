@@ -20,7 +20,6 @@ export type RecordEvidenceReferenceInput = {
   locator: string;
   contentHash?: string | null | undefined;
   description?: string | null | undefined;
-  recordedBy: Collaborator["id"];
 };
 
 export type ReadEvidenceReferenceInput = {

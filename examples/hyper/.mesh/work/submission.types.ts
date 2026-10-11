@@ -20,12 +20,30 @@ export type Submission = {
 };
 
 export type SubmitSubmissionInput = {
+  task: Task["id"];
+  fence: number;
+  summary: string;
+  evidence?: unknown | undefined;
+  expectedVersion?: number | null | undefined;
+};
+
+export type WithdrawSubmissionInput = {
+  id: string;
+  reason?: string | null | undefined;
+  expectedVersion?: number | null | undefined;
+};
+
+export type SettleSubmissionInput = {
+  id: string;
+  outcome: "accepted" | "returned" | "withdrawn";
+};
+
+export type RecordAcceptedSubmissionInput = {
+  task: Task["id"];
   summary?: string | null | undefined;
   evidence?: unknown | undefined;
   fence?: number | null | undefined;
   taskVersion: number;
-  task: Task["id"];
-  submitter: Collaborator["id"];
 };
 
 export type ReadSubmissionInput = {

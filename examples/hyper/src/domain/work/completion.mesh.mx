@@ -17,4 +17,6 @@ entity :Completion table="completions"
         &rule
         &task
         &submission
-        &completedBy
+      do
+        set
+          &completedBy=({ actor }) => actor.id

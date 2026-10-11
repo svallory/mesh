@@ -52,6 +52,8 @@ export interface PlainReason {
    * parameters do not bind, `self` included when `&name` stands for `self.name`; the printed function takes these from the scope.
    */
   roots: string[];
+  /** The clock functions (`now`, `today`) the authored text calls; the printed function binds them to the scope's clock. */
+  clock?: ("now" | "today")[];
   /** The authored text is a method (`(params) { body }`), so TypeScript needs `function` before it. */
   method?: true;
   /** The authored code uses an operator whose null rule differs from Mesh's (comparison, `!`, `&&`, `||`, arithmetic), so the build warns. */

@@ -6,6 +6,7 @@ import { z } from "zod";
 import type {
   GrantMembershipInput,
   ChangeRoleMembershipInput,
+  RevokeMembershipInput,
   ReadMembershipInput,
   MembershipFilter,
 } from "./membership.types";
@@ -85,10 +86,8 @@ export const membershipSort = z
   .readonly();
 
 export const grantMembershipInput = z.strictObject({
-  role: z.enum(["owner", "member", "guest"]),
-  grantedAt: z.date(),
   collaborator: z.uuid(),
-  grantedBy: z.uuid(),
+  role: z.enum(["owner", "member", "guest"]),
 }) satisfies z.ZodType<GrantMembershipInput>;
 
 export type GrantMembershipInputShape = Assert<
@@ -103,6 +102,16 @@ export const changeRoleMembershipInput = z.strictObject({
 
 export type ChangeRoleMembershipInputShape = Assert<
   SameShape<z.output<typeof changeRoleMembershipInput>, ChangeRoleMembershipInput>
+>;
+
+export const revokeMembershipInput = z.strictObject({
+  id: z.uuid(),
+  reason: z.string().nullable().optional(),
+  expectedVersion: z.int().nullable().optional(),
+}) satisfies z.ZodType<RevokeMembershipInput>;
+
+export type RevokeMembershipInputShape = Assert<
+  SameShape<z.output<typeof revokeMembershipInput>, RevokeMembershipInput>
 >;
 
 export const readMembershipInput = z.strictObject({

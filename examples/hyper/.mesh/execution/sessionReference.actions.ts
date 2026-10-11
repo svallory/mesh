@@ -10,10 +10,12 @@ import {
   checkUnchanged as $checkUnchanged,
   composed as $composed,
   guarded as $guarded,
+  loadInto as $loadInto,
   noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
+  unloadFrom as $unloadFrom,
   writeCount as $writeCount,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
@@ -38,6 +40,7 @@ import {
 import { tables } from "../schema";
 import {
   expressions as $expressions,
+  type SessionReferenceScope as $Scope,
   type SessionReferenceStoredScope as $StoredScope,
 } from "./sessionReference.expressions";
 import { loadPlan as $loadPlan } from "../load";
@@ -76,12 +79,14 @@ export function bindSessionReference(
   return Object.freeze({
     async record(
       input: RecordSessionReferenceInput,
-      ...[_context]: $ContextArgument
+      ...[context]: $ContextArgument
     ): Promise<SessionReference> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, recordSessionReferenceInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $actor = $context.actor;
         const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
@@ -93,8 +98,52 @@ export function bindSessionReference(
           recordedAt: $now,
           machineId: parsed.machine,
           agentProfileId: parsed.agentProfile,
-          recordedById: parsed.recordedBy,
         };
+        const $record: $Row = { ...$changes };
+        const $load = { actor: $actor, context: $context, clock: options.clock };
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "SessionReference", $record, "action function"),
+          "SessionReference.record",
+        );
+        const $s = $scope(
+          {
+            self: $self,
+            input: $readOnlyRecord(parsed, "SessionReference.record"),
+            actor: $actor,
+            context: $context,
+            before: null,
+            ...$composed(compose, tx, context, "SessionReference.record"),
+          },
+          options,
+        ) as unknown as $Scope<RecordSessionReferenceInput>;
+        // validate: every check runs, and every failed check is reported together
+        const $issues: $Issue[] = [];
+        await $loadInto($loadPlan, "SessionReference", tx, $record, ["machine"], $load);
+        await $runCheck($issues, $s, {
+          label: "agentProfile",
+          code: "session.agent-profile",
+          message: "the agent profile is not a collaborator",
+          source: { file: "src/domain/execution/session-reference.mesh.mx", line: 27, column: 9 },
+          that: $expressions["record.check.agentProfile.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "machineRetired",
+          code: "machine.retired",
+          message: "the machine is retired; report the host by a new name",
+          source: { file: "src/domain/execution/session-reference.mesh.mx", line: 32, column: 9 },
+          that: $expressions["record.check.machineRetired.that"],
+        });
+        if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // do: the steps run in written order, each seeing the record as the ones before it left it
+        {
+          const $value = await $expressions["record.step.0.set.recordedBy"]($s);
+          if ($value === undefined || $value === null)
+            throw new $FrameworkError(
+              "set &recordedBy (src/domain/execution/session-reference.mesh.mx:39:23) produced no value, and the relationship recordedBy is required",
+            );
+          $changes.recordedById = $record.recordedById = $value;
+        }
+        $unloadFrom($loadPlan, "SessionReference", $record);
         // data layer
         const $stored = await tx.insert(tables.sessionReference, $changes);
         $noteWrite(tx);
@@ -120,6 +169,7 @@ export function bindSessionReference(
         const $record: $Row = { ...$before };
         if (parsed.availability !== undefined)
           $changes.availability = $record.availability = parsed.availability;
+        if (parsed.location !== undefined) $changes.location = $record.location = parsed.location;
         const $writes = $writeCount(tx);
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "SessionReference", $record, "action function"),
@@ -145,21 +195,21 @@ export function bindSessionReference(
           label: "notRedacted",
           code: "session.not-redacted",
           message: "the session is redacted and cannot be changed",
-          source: { file: "src/domain/execution/session-reference.mesh.mx", line: 32, column: 9 },
+          source: { file: "src/domain/execution/session-reference.mesh.mx", line: 47, column: 9 },
           that: $expressions["setAvailability.check.notRedacted.that"],
         });
         await $runCheck($issues, $s, {
-          label: "availabilityChanges",
+          label: "availabilityKept",
           code: "session.availability",
-          message: "the session already has that availability",
-          source: { file: "src/domain/execution/session-reference.mesh.mx", line: 37, column: 9 },
-          that: $expressions["setAvailability.check.availabilityChanges.that"],
+          message: "availability is complete, partial or unavailable; redact with redact",
+          source: { file: "src/domain/execution/session-reference.mesh.mx", line: 52, column: 9 },
+          that: $expressions["setAvailability.check.availabilityKept.that"],
         });
         await $runCheck($issues, $s, {
           label: "versionMatches",
           code: "expected-version",
           message: "the record is at another version; read it again and retry",
-          source: { file: "src/domain/execution/session-reference.mesh.mx", line: 42, column: 9 },
+          source: { file: "src/domain/execution/session-reference.mesh.mx", line: 57, column: 9 },
           that: $expressions["setAvailability.check.versionMatches.that"],
           details: $expressions["setAvailability.check.versionMatches.details"],
         });
@@ -169,7 +219,7 @@ export function bindSessionReference(
           const $value = await $expressions["setAvailability.step.0.set.version"]($s);
           if ($value === undefined || $value === null)
             throw new $FrameworkError(
-              "set &version (src/domain/execution/session-reference.mesh.mx:50:20) produced no value, and version is required",
+              "set &version (src/domain/execution/session-reference.mesh.mx:65:20) produced no value, and version is required",
             );
           $changes.version = $record.version = $value;
         }
@@ -231,14 +281,14 @@ export function bindSessionReference(
           label: "notRedacted",
           code: "session.not-redacted",
           message: "the session is redacted and cannot be changed",
-          source: { file: "src/domain/execution/session-reference.mesh.mx", line: 55, column: 9 },
+          source: { file: "src/domain/execution/session-reference.mesh.mx", line: 71, column: 9 },
           that: $expressions["redact.check.notRedacted.that"],
         });
         await $runCheck($issues, $s, {
           label: "versionMatches",
           code: "expected-version",
           message: "the record is at another version; read it again and retry",
-          source: { file: "src/domain/execution/session-reference.mesh.mx", line: 60, column: 9 },
+          source: { file: "src/domain/execution/session-reference.mesh.mx", line: 76, column: 9 },
           that: $expressions["redact.check.versionMatches.that"],
           details: $expressions["redact.check.versionMatches.details"],
         });
@@ -250,7 +300,7 @@ export function bindSessionReference(
           const $value = await $expressions["redact.step.0.set.version"]($s);
           if ($value === undefined || $value === null)
             throw new $FrameworkError(
-              "set &version (src/domain/execution/session-reference.mesh.mx:70:20) produced no value, and version is required",
+              "set &version (src/domain/execution/session-reference.mesh.mx:86:20) produced no value, and version is required",
             );
           $changes.version = $record.version = $value;
         }

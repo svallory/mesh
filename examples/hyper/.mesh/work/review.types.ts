@@ -18,16 +18,14 @@ export type Review = {
 };
 
 export type AcceptReviewInput = {
-  ruleApplied: "parent-assignee" | "parent-creator" | "task-creator";
   submission: Submission["id"];
-  reviewer: Collaborator["id"];
+  expectedVersion?: number | null | undefined;
 };
 
 export type ReturnReviewInput = {
-  reasons?: string | null | undefined;
-  ruleApplied: "parent-assignee" | "parent-creator" | "task-creator";
+  reasons: string;
   submission: Submission["id"];
-  reviewer: Collaborator["id"];
+  expectedVersion?: number | null | undefined;
 };
 
 export type ReadReviewInput = {

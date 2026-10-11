@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import type {
   StartAssignmentInput,
+  FinishAssignmentInput,
   ReadAssignmentInput,
   AssignmentFilter,
 } from "./assignment.types";
@@ -81,15 +82,22 @@ export const assignmentSort = z
   .readonly();
 
 export const startAssignmentInput = z.strictObject({
-  reviewWaived: z.boolean().optional(),
-  startedAt: z.date(),
   task: z.uuid(),
   assignee: z.uuid(),
-  delegator: z.uuid(),
+  reviewWaived: z.boolean().optional(),
 }) satisfies z.ZodType<StartAssignmentInput>;
 
 export type StartAssignmentInputShape = Assert<
   SameShape<z.output<typeof startAssignmentInput>, StartAssignmentInput>
+>;
+
+export const finishAssignmentInput = z.strictObject({
+  id: z.uuid(),
+  reason: z.enum(["reassigned", "unassigned"]),
+}) satisfies z.ZodType<FinishAssignmentInput>;
+
+export type FinishAssignmentInputShape = Assert<
+  SameShape<z.output<typeof finishAssignmentInput>, FinishAssignmentInput>
 >;
 
 export const readAssignmentInput = z.strictObject({

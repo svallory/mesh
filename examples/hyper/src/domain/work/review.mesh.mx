@@ -1,5 +1,6 @@
 import { Submission } from "./submission.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
+import { reviewerRuleOf } from "./work.helpers"
 
 entity :Review table="reviews"
   attributes
@@ -14,18 +15,59 @@ entity :Review table="reviews"
   actions auto=[:read]
     create :accept
       input
-        &ruleApplied
         &submission
-        &reviewer
+        integer :expectedVersion nullable
+      validate
+        check :pending [
+          that=() => &submission.state === :pending
+          code="submission.pending"
+          message="the submission is not pending"
+        ]
+        check :taskVersion [
+          that=() => &submission.state !== :pending || &submission.task.version === &submission.taskVersion + 1
+          code="submission.task-version"
+          message="the task changed since this was submitted; return it for rework"
+          details=() => ({ submitted: &submission.taskVersion, current: &submission.task.version })
+        ]
+        check :versionMatches [
+          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &submission.task.version
+          code="expected-version"
+          message="the task is at another version; read it again and retry"
+          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &submission.task.version })
+        ]
       do
         set
           &decision=:accept
+          &reviewer=({ actor }) => actor.id
+          &ruleApplied=({ tx }) => reviewerRuleOf(tx, &submission.taskId)
+        run [after=:write] ({ self, context, actions }) {
+          const submission = await actions.settleSubmission({ id: self.submissionId, outcome: :accepted });
+          await actions.completeTask({ id: submission.taskId }, { ...context, completion: { rule: "review-accepted", submissionId: submission.id } });
+        }
     create :return
       input
-        &reasons
-        &ruleApplied
+        string :reasons min=1
         &submission
-        &reviewer
+        integer :expectedVersion nullable
+      validate
+        check :pending [
+          that=() => &submission.state === :pending
+          code="submission.pending"
+          message="the submission is not pending"
+        ]
+        check :versionMatches [
+          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &submission.task.version
+          code="expected-version"
+          message="the task is at another version; read it again and retry"
+          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &submission.task.version })
+        ]
       do
         set
           &decision=:return
+          &reasons=({ input }) => input.reasons
+          &reviewer=({ actor }) => actor.id
+          &ruleApplied=({ tx }) => reviewerRuleOf(tx, &submission.taskId)
+        run [after=:write] ({ self, actions }) {
+          const submission = await actions.settleSubmission({ id: self.submissionId, outcome: :returned });
+          await actions.touchTask({ id: submission.taskId });
+        }

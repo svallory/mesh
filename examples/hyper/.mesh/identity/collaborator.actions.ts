@@ -26,16 +26,19 @@ import type {
   Collaborator,
   RegisterCollaboratorInput,
   UpdateCollaboratorInput,
+  RetireCollaboratorInput,
   ReadCollaboratorInput,
 } from "./collaborator.types";
 import {
   registerCollaboratorInput,
   updateCollaboratorInput,
+  retireCollaboratorInput,
   readCollaboratorInput,
 } from "./collaborator.validators";
 import { tables } from "../schema";
 import {
   expressions as $expressions,
+  type CollaboratorScope as $Scope,
   type CollaboratorStoredScope as $StoredScope,
 } from "./collaborator.expressions";
 import { loadPlan as $loadPlan } from "../load";
@@ -74,12 +77,14 @@ export function bindCollaborator(
   return Object.freeze({
     async register(
       input: RegisterCollaboratorInput,
-      ...[_context]: $ContextArgument
+      ...[context]: $ContextArgument
     ): Promise<Collaborator> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, registerCollaboratorInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $actor = $context.actor;
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           kind: parsed.kind,
@@ -87,6 +92,32 @@ export function bindCollaborator(
           state: "active",
           version: 1,
         };
+        const $record: $Row = { ...$changes };
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Collaborator", $record, "action function"),
+          "Collaborator.register",
+        );
+        const $s = $scope(
+          {
+            self: $self,
+            input: $readOnlyRecord(parsed, "Collaborator.register"),
+            actor: $actor,
+            context: $context,
+            before: null,
+            ...$composed(compose, tx, context, "Collaborator.register"),
+          },
+          options,
+        ) as unknown as $Scope<RegisterCollaboratorInput>;
+        // validate: every check runs, and every failed check is reported together
+        const $issues: $Issue[] = [];
+        await $runCheck($issues, $s, {
+          label: "nameUnique",
+          code: "collaborator.name-unique",
+          message: "another active collaborator has that name",
+          source: { file: "src/domain/identity/collaborator.mesh.mx", line: 19, column: 9 },
+          that: $expressions["register.check.nameUnique.that"],
+        });
+        if ($issues.length > 0) throw new $InvalidInputError($issues);
         // data layer
         const $stored = await tx.insert(tables.collaborator, $changes);
         $noteWrite(tx);
@@ -136,21 +167,28 @@ export function bindCollaborator(
           label: "collaboratorActive",
           code: "collaborator.active",
           message: "the collaborator is retired",
-          source: { file: "src/domain/identity/collaborator.mesh.mx", line: 23, column: 9 },
+          source: { file: "src/domain/identity/collaborator.mesh.mx", line: 30, column: 9 },
           that: $expressions["update.check.collaboratorActive.that"],
         });
         await $runCheck($issues, $s, {
           label: "kindImmutable",
           code: "collaborator.kind-immutable",
           message: "a collaborator keeps its kind",
-          source: { file: "src/domain/identity/collaborator.mesh.mx", line: 28, column: 9 },
+          source: { file: "src/domain/identity/collaborator.mesh.mx", line: 35, column: 9 },
           that: $expressions["update.check.kindImmutable.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "nameUnique",
+          code: "collaborator.name-unique",
+          message: "another active collaborator has that name",
+          source: { file: "src/domain/identity/collaborator.mesh.mx", line: 40, column: 9 },
+          that: $expressions["update.check.nameUnique.that"],
         });
         await $runCheck($issues, $s, {
           label: "versionMatches",
           code: "expected-version",
           message: "the record is at another version; read it again and retry",
-          source: { file: "src/domain/identity/collaborator.mesh.mx", line: 33, column: 9 },
+          source: { file: "src/domain/identity/collaborator.mesh.mx", line: 45, column: 9 },
           that: $expressions["update.check.versionMatches.that"],
           details: $expressions["update.check.versionMatches.details"],
         });
@@ -160,7 +198,7 @@ export function bindCollaborator(
           const $value = await $expressions["update.step.0.set.version"]($s);
           if ($value === undefined || $value === null)
             throw new $FrameworkError(
-              "set &version (src/domain/identity/collaborator.mesh.mx:41:20) produced no value, and version is required",
+              "set &version (src/domain/identity/collaborator.mesh.mx:53:20) produced no value, and version is required",
             );
           $changes.version = $record.version = $value;
         }
@@ -173,6 +211,93 @@ export function bindCollaborator(
           $key,
           $before,
           "Collaborator.update",
+        );
+        const $stored = await tx.updateByKey(tables.collaborator, $key, $changes);
+        if ($stored === undefined) throw new $NotFoundError("Collaborator", $key);
+        $noteWrite(tx);
+        return $stored as Collaborator;
+      });
+    },
+
+    async retire(
+      input: RetireCollaboratorInput,
+      ...[context]: $ContextArgument
+    ): Promise<Collaborator> {
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, retireCollaboratorInput, input);
+      return layer.transaction(async (tx) => {
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $actor = $context.actor;
+        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        const $key = { id: parsed.id };
+        const $before = await tx.selectByKeyForUpdate(tables.collaborator, $key);
+        if ($before === undefined) throw new $NotFoundError("Collaborator", $key);
+        const $changes: $Row = {};
+        const $record: $Row = { ...$before };
+        const $writes = $writeCount(tx);
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Collaborator", $record, "action function"),
+          "Collaborator.retire",
+        );
+        const $s = $scope(
+          {
+            self: $self,
+            input: $readOnlyRecord(parsed, "Collaborator.retire"),
+            actor: $actor,
+            context: $context,
+            before: $readOnlyRecord(
+              $guarded($loadPlan, "Collaborator", $before, "before"),
+              "Collaborator.retire",
+            ) as unknown as Collaborator,
+            ...$composed(compose, tx, context, "Collaborator.retire"),
+          },
+          options,
+        ) as unknown as $StoredScope<RetireCollaboratorInput>;
+        // validate: every check runs, and every failed check is reported together
+        const $issues: $Issue[] = [];
+        await $runCheck($issues, $s, {
+          label: "collaboratorActive",
+          code: "collaborator.active",
+          message: "the collaborator is retired",
+          source: { file: "src/domain/identity/collaborator.mesh.mx", line: 59, column: 9 },
+          that: $expressions["retire.check.collaboratorActive.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "lastOwner",
+          code: "membership.last-owner",
+          message: "the workspace would have no owner; grant another owner first",
+          source: { file: "src/domain/identity/collaborator.mesh.mx", line: 64, column: 9 },
+          that: $expressions["retire.check.lastOwner.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "versionMatches",
+          code: "expected-version",
+          message: "the record is at another version; read it again and retry",
+          source: { file: "src/domain/identity/collaborator.mesh.mx", line: 69, column: 9 },
+          that: $expressions["retire.check.versionMatches.that"],
+          details: $expressions["retire.check.versionMatches.details"],
+        });
+        if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // do: the steps run in written order, each seeing the record as the ones before it left it
+        $changes.state = $record.state = "retired";
+        {
+          const $value = await $expressions["retire.step.0.set.version"]($s);
+          if ($value === undefined || $value === null)
+            throw new $FrameworkError(
+              "set &version (src/domain/identity/collaborator.mesh.mx:78:20) produced no value, and version is required",
+            );
+          $changes.version = $record.version = $value;
+        }
+        // data layer
+        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+        await $checkUnchanged(
+          tx,
+          $writes,
+          tables.collaborator,
+          $key,
+          $before,
+          "Collaborator.retire",
         );
         const $stored = await tx.updateByKey(tables.collaborator, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Collaborator", $key);

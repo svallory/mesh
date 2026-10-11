@@ -3,8 +3,13 @@
 // Mesh's own imports carry a `$` so that no entity name can shadow them.
 
 import {
+  FrameworkError as $FrameworkError,
   castInput as $castInput,
+  composed as $composed,
+  guarded as $guarded,
   noteWrite as $noteWrite,
+  readOnlyRecord as $readOnlyRecord,
+  scope as $scope,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
@@ -21,6 +26,11 @@ import {
   readEvidenceReferenceInput,
 } from "./evidenceReference.validators";
 import { tables } from "../schema";
+import {
+  expressions as $expressions,
+  type EvidenceReferenceScope as $Scope,
+} from "./evidenceReference.expressions";
+import { loadPlan as $loadPlan } from "../load";
 
 /**
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
@@ -50,18 +60,20 @@ export function bindEvidenceReferenceReads(layer: $DataLayer) {
 export function bindEvidenceReference(
   layer: $DataLayer,
   options: $BindOptions = {},
-  _compose?: $Composer,
+  compose?: $Composer,
 ) {
   const $reads = bindEvidenceReferenceReads(layer);
   return Object.freeze({
     async record(
       input: RecordEvidenceReferenceInput,
-      ...[_context]: $ContextArgument
+      ...[context]: $ContextArgument
     ): Promise<EvidenceReference> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, recordEvidenceReferenceInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $actor = $context.actor;
         const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
@@ -70,8 +82,32 @@ export function bindEvidenceReference(
           contentHash: parsed.contentHash === undefined ? null : parsed.contentHash,
           description: parsed.description === undefined ? null : parsed.description,
           recordedAt: $now,
-          recordedById: parsed.recordedBy,
         };
+        const $record: $Row = { ...$changes };
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "EvidenceReference", $record, "action function"),
+          "EvidenceReference.record",
+        );
+        const $s = $scope(
+          {
+            self: $self,
+            input: $readOnlyRecord(parsed, "EvidenceReference.record"),
+            actor: $actor,
+            context: $context,
+            before: null,
+            ...$composed(compose, tx, context, "EvidenceReference.record"),
+          },
+          options,
+        ) as unknown as $Scope<RecordEvidenceReferenceInput>;
+        // do: the steps run in written order, each seeing the record as the ones before it left it
+        {
+          const $value = await $expressions["record.step.0.set.recordedBy"]($s);
+          if ($value === undefined || $value === null)
+            throw new $FrameworkError(
+              "set &recordedBy (src/domain/work/evidence-reference.mesh.mx:22:23) produced no value, and the relationship recordedBy is required",
+            );
+          $changes.recordedById = $record.recordedById = $value;
+        }
         // data layer
         const $stored = await tx.insert(tables.evidenceReference, $changes);
         $noteWrite(tx);

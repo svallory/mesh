@@ -5,9 +5,9 @@ import type { Comparison as $Comparison } from "@meshfw/runtime";
 
 import type { Attempt, AttemptLoaded } from "./attempt.types";
 
-import type { Task, TaskLoaded } from "../work/task.types";
-
 import type { SessionReference, SessionReferenceLoaded } from "./sessionReference.types";
+
+import type { Task, TaskLoaded } from "../work/task.types";
 
 import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
 
@@ -36,6 +36,7 @@ export type Invocation = {
 };
 
 export type RecordInvocationInput = {
+  attempt: Attempt["id"];
   requestedProvider?: string | null | undefined;
   requestedModel?: string | null | undefined;
   actualProvider?: string | null | undefined;
@@ -49,19 +50,26 @@ export type RecordInvocationInput = {
   pricingBasis?: string | null | undefined;
   startedAt?: Date | null | undefined;
   endedAt?: Date | null | undefined;
-  attempt: Attempt["id"];
-  task: Task["id"];
   session?: SessionReference["id"] | null | undefined;
-  recordedBy: Collaborator["id"];
 };
 
 export type CorrectInvocationInput = {
-  reason?: string | null | undefined;
-  usageSource: "runtime" | "provider" | "estimate";
-  attempt: Attempt["id"];
-  task: Task["id"];
   corrects?: Invocation["id"] | null | undefined;
-  recordedBy: Collaborator["id"];
+  reason?: string | null | undefined;
+  requestedProvider?: string | null | undefined;
+  requestedModel?: string | null | undefined;
+  actualProvider?: string | null | undefined;
+  actualModel?: string | null | undefined;
+  inputTokens?: number | null | undefined;
+  outputTokens?: number | null | undefined;
+  cacheReadTokens?: number | null | undefined;
+  cacheWriteTokens?: number | null | undefined;
+  usageSource: "runtime" | "provider" | "estimate";
+  estimatedCost?: number | null | undefined;
+  pricingBasis?: string | null | undefined;
+  startedAt?: Date | null | undefined;
+  endedAt?: Date | null | undefined;
+  session?: SessionReference["id"] | null | undefined;
 };
 
 export type ReadInvocationInput = {

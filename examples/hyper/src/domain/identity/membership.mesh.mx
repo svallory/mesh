@@ -1,4 +1,5 @@
 import { Collaborator } from "./collaborator.mesh.mx"
+import { keepsAnOwnerOf, noActiveMembershipOf } from "./identity.helpers"
 
 entity :Membership table="memberships"
   attributes
@@ -15,10 +16,23 @@ entity :Membership table="memberships"
   actions auto=[:read]
     create :grant
       input
-        &role
-        &grantedAt
         &collaborator
-        &grantedBy
+        &role
+      validate
+        check :collaboratorActive [
+          that=() => &collaborator.state === :active
+          code="collaborator.active"
+          message="the collaborator is retired"
+        ]
+        check :noneActive [
+          that=({ input, tx }) => noActiveMembershipOf(tx, input.collaborator)
+          code="membership.none-active"
+          message="the collaborator already has an active membership; change its role instead"
+        ]
+      do
+        set
+          &grantedAt=() => now()
+          &grantedBy=({ actor }) => actor.id
     update :changeRole
       input
         &role
@@ -34,6 +48,11 @@ entity :Membership table="memberships"
           code="membership.unchanged"
           message="the member already has that role"
         ]
+        check :lastOwner [
+          that=({ before, tx }) => keepsAnOwnerOf(tx, before.state === :active && before.role === :owner && &role !== :owner)
+          code="membership.last-owner"
+          message="the workspace would have no owner; grant another owner first"
+        ]
         check :versionMatches [
           that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
           code="expected-version"
@@ -42,4 +61,31 @@ entity :Membership table="memberships"
         ]
       do
         set
+          &version=() => &version + 1
+    update :revoke
+      input
+        string :reason nullable
+        integer :expectedVersion nullable
+      validate
+        check :membershipActive [
+          that=() => &state === :active
+          code="membership.active"
+          message="the membership is revoked"
+        ]
+        check :lastOwner [
+          that=({ tx }) => keepsAnOwnerOf(tx, &state === :active && &role === :owner)
+          code="membership.last-owner"
+          message="the workspace would have no owner; grant another owner first"
+        ]
+        check :versionMatches [
+          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
+          code="expected-version"
+          message="the record is at another version; read it again and retry"
+          details=({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })
+        ]
+      do
+        set
+          &state=:revoked
+          &revokedAt=() => now()
+          &revokedBy=({ actor }) => actor.id
           &version=() => &version + 1
