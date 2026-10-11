@@ -76,10 +76,7 @@ function references(lists: string[]): NonNullable<CustomTag["analyze"]> {
         if (!a) continue;
         const n = node(a);
         if (n?.type !== "ArrayExpression" || !n.elements?.every(isMember))
-          ctx.fail(
-            `MESH_MEMBER_REFERENCE: \`${key}\` requires a list of member references`,
-            a.loc,
-          );
+          ctx.fail(`\`${key}\` requires a list of member references`, { at: a.loc, code: "MESH_MEMBER_REFERENCE" });
       }
     }
   };
@@ -228,16 +225,10 @@ for (const type of ATTRIBUTE_TYPES)
       for (const call of calls) {
         const match = get(call, "match");
         if (match && node(match)?.type !== "RegExpLiteral")
-          ctx.fail(
-            "MESH_ATTRIBUTE_RULE: match must be a regular expression",
-            match.loc,
-          );
+          ctx.fail("match must be a regular expression", { at: match.loc, code: "MESH_ATTRIBUTE_RULE" });
         const values = get(call, "values");
         if (values && node(values)?.type !== "ArrayExpression")
-          ctx.fail(
-            "MESH_ENUM_VALUES: values must be a list of atoms",
-            values.loc,
-          );
+          ctx.fail("values must be a list of atoms", { at: values.loc, code: "MESH_ENUM_VALUES" });
       }
     },
   });
@@ -255,10 +246,7 @@ for (const kind of ["belongs-to", "has-many", "has-one"])
       for (const call of calls) {
         const a = get(call, "entity");
         if (node(a)?.type !== "Identifier")
-          ctx.fail(
-            "MESH_ENTITY_REFERENCE: entity must be an imported identifier",
-            a?.loc,
-          );
+          ctx.fail("entity must be an imported identifier", { at: a?.loc, code: "MESH_ENTITY_REFERENCE" });
       }
     },
   });
@@ -289,20 +277,14 @@ for (const contract of Object.values(contracts)) {
   contract.analyze = (calls, ctx) => {
     for (const call of calls) {
       if (call.params.length || call.var)
-        ctx.fail(
-          "MESH_SYNTAX: tag parameters and variable bindings are not entity declarations",
-          call.loc,
-        );
+        ctx.fail("tag parameters and variable bindings are not entity declarations", { at: call.loc, code: "MESH_SYNTAX" });
       for (const [key, declaration] of Object.entries(
         contract.attributes ?? {},
       )) {
         const a = get(call, key);
         if (!a) continue;
         if (a.kind === "bound")
-          ctx.fail(
-            "MESH_SYNTAX: bound attributes are not entity declarations",
-            a.loc,
-          );
+          ctx.fail("bound attributes are not entity declarations", { at: a.loc, code: "MESH_SYNTAX" });
         const n = node(a);
         if (
           declaration.type === "function" &&
@@ -310,32 +292,26 @@ for (const contract of Object.values(contracts)) {
             n?.type ?? "",
           )
         )
-          ctx.fail(
-            `MESH_EXPRESSION: ${key} must be a function as written`,
-            a.loc,
-          );
+          ctx.fail(`${key} must be a function as written`, { at: a.loc, code: "MESH_EXPRESSION" });
         if (
           key === "name" &&
           declaration.type === "atom" &&
           !(a.kind === "static" && a.atom)
         )
-          ctx.fail("MESH_NAME: a declaration needs one atom name", a.loc);
+          ctx.fail("a declaration needs one atom name", { at: a.loc, code: "MESH_NAME" });
         if (["auto", "types", "values"].includes(key)) {
           if (n?.type !== "ArrayExpression")
-            ctx.fail(`MESH_ATOM_LIST: ${key} must be a list of atoms`, a.loc);
+            ctx.fail(`${key} must be a list of atoms`, { at: a.loc, code: "MESH_ATOM_LIST" });
           const names = n?.elements?.map((e) => e?.value) ?? [];
           if (!names.length || new Set(names).size !== names.length)
-            ctx.fail(
-              `MESH_ATOM_LIST: ${key} must be non-empty with no repeated values`,
-              a.loc,
-            );
+            ctx.fail(`${key} must be non-empty with no repeated values`, { at: a.loc, code: "MESH_ATOM_LIST" });
         }
         if (
           declaration.type === "string" &&
           a.kind === "static" &&
           !a.value.trim()
         )
-          ctx.fail(`MESH_TEXT: ${key} cannot be empty`, a.loc);
+          ctx.fail(`${key} cannot be empty`, { at: a.loc, code: "MESH_TEXT" });
       }
     }
     analyze?.(calls, ctx);

@@ -838,30 +838,15 @@ export function buildModel(project: ProjectDescription): BuildResult {
     const file = path.file;
     const parsed = parseEntitySource(input.source, file);
     diagnostics.push(
-      ...parsed.diagnostics.filter((d, _, all) => {
-        // MX reports both parent rejection and unknown-tag rejection for the
-        // same unknown child. Keep the specific unknown-tag error only.
-        // The match is on MX's message text because MX 0.1.0-alpha.17's
-        // IrDiagnostic carries a `code` only from a dialect's `ctx.fail` and the duplicate-attribute warning. It stands
-        // until MX fills diagnostic codes; do not replace it with an offset-only
-        // rule, which would depend on MX's diagnostic order instead.
-        const denied = /`<([^>]+)>` is not allowed here;/.exec(d.message)?.[1];
-        return !denied || !all.some((other) => other.offset === d.offset &&
-          other.message.startsWith(`\`<${denied}>\` is not a known tag:`));
-      }).map((d): Diagnostic => {
-        // Mesh's contracts report their own code as a `MESH_X: ` message
-        // prefix, because a contract's `ctx.fail(message, at?)` takes no code. This
-        // stands until MX fills diagnostic codes for contracts and returns them
-        // on the diagnostic.
-        const coded = /\b(MESH_[A-Z_]+): (.*)/s.exec(d.message);
-        return {
-          severity: d.severity,
-          code: coded?.[1] ?? "MESH_SYNTAX",
-          message: coded?.[2] ?? d.message,
-          position: { file, line: d.line, column: d.column, offset: d.offset },
-          fix: null,
-        };
-      }),
+      ...parsed.diagnostics.map((d): Diagnostic => ({
+        severity: d.severity,
+        // Mesh's own codes ride in `IrDiagnostic.code` (`ctx.fail(message, { code })`, MX alpha.18). Any other
+        // diagnostic, MX's own `MX_*` codes included, is a syntax error to Mesh.
+        code: d.code?.startsWith("MESH_") ? d.code : "MESH_SYNTAX",
+        message: d.message,
+        position: { file, line: d.line, column: d.column, offset: d.offset },
+        fix: null,
+      })),
     );
     if (!parsed.ir) continue;
     const roots = tags(parsed.ir.body);

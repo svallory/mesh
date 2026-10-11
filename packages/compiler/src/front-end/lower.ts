@@ -1,7 +1,7 @@
 /**
  * `lowerMesh`: `lowerSource` plus the one check that no dialect hook can make.
  *
- * Since MX 0.1.0-alpha.17 a colon in a tag head is part of the name (`uuid:id`, `<string:title/>`, `entity:Todo` and
+ * Since MX 0.1.0-alpha.17 (and still in alpha.18) a colon in a tag head is part of the name (`uuid:id`, `<string:title/>`, `entity:Todo` and
  * `<:x/>` are one tag name each), so such a tag is an unknown tag to MX, not a call with a name. A dialect's `afterLower`
  * sees only the tags a contract names (`LoweredUnit.calls`), so Mesh cannot refuse the form there. This reads the lowered
  * tree instead: a tag name with a `:` at any index is `MESH_UNSPACED_NAME`, Mesh's own error, since a line is
@@ -9,6 +9,11 @@
  *
  * Under `unknownTags: "reject"` MX returns no IR for such a file, so the tags are read from a second lowering with the
  * contracts and rejections off. That lowering runs only when the first one failed.
+ *
+ * Both this wrapper and the offset match in `restates` wait for MX's unknown-tag slice 2 (`explainUnknownTag`, a
+ * dialect hook that words the error for a tag with no contract). Then `MESH_UNSPACED_NAME` moves into the dialect and
+ * this file goes. MX alpha.18's #507 left one case: an unnamed tag still takes the caller's `defaultTag` instead of the
+ * parent's, so `<set><#a/></set>` can still give two errors; the offset match covers it.
  */
 import { lowerSource, type IrDiagnostic, type LowerSourceOptions, type LowerSourceResult } from "@mxlang/core";
 import type { Tag } from "./tree.ts";
@@ -35,19 +40,18 @@ function message(name: string, defaultTag: string | undefined): string {
   const kind = name.slice(0, colon);
   if (kind === "") {
     if (defaultTag === undefined)
-      return `MESH_UNSPACED_NAME: \`${name}\` is a name with no tag before it; Mesh writes a tag, a space, then the name: \`kind ${name}\``;
-    return `MESH_UNSPACED_NAME: \`${name}\` writes the name against the tag; Mesh writes a name after a space: \`${defaultTag} ${name}\``;
+      return `\`${name}\` is a name with no tag before it; Mesh writes a tag, a space, then the name: \`kind ${name}\``;
+    return `\`${name}\` writes the name against the tag; Mesh writes a name after a space: \`${defaultTag} ${name}\``;
   }
-  return `MESH_UNSPACED_NAME: \`${name}\` writes the name against the tag; Mesh writes a name after a space: \`${kind} ${name.slice(colon)}\``;
+  return `\`${name}\` writes the name against the tag; Mesh writes a name after a space: \`${kind} ${name.slice(colon)}\``;
 }
 
 /**
- * MX answers the same tag with its own errors: "is not a known tag" and, inside a closed parent, "is not allowed here".
- * Mesh's error replaces them. The match is on MX's message text and the tag's offset, like the unknown-tag match in
- * `buildModel`; MX gives these no code.
+ * MX answers the same tag with its own errors: `MX_UNKNOWN_TAG` and, inside a closed parent, `MX_TAG_NOT_ALLOWED`.
+ * Mesh's error replaces them. The match is on the diagnostic's code and the tag's offset, never on MX's message text.
  */
-function restates(d: IrDiagnostic, name: string, offset: number): boolean {
-  return d.offset === offset && (d.message.startsWith(`\`<${name}>\` is not a known tag`) || d.message.includes(`\`<${name}>\` is not allowed here`));
+function restates(d: IrDiagnostic, offset: number): boolean {
+  return d.offset === offset && (d.code === "MX_UNKNOWN_TAG" || d.code === "MX_TAG_NOT_ALLOWED");
 }
 
 export function lowerMesh(source: string, file: string, options: LowerSourceOptions): LowerSourceResult {
@@ -74,7 +78,7 @@ export function lowerMesh(source: string, file: string, options: LowerSourceOpti
       code: "MESH_UNSPACED_NAME",
     };
   });
-  const kept = lowered.diagnostics.filter((d) => !found.some(({ tag }) => restates(d, tag.name, tag.nameSpan.sourceStart)));
+  const kept = lowered.diagnostics.filter((d) => !found.some(({ tag }) => restates(d, tag.nameSpan.sourceStart)));
   const diagnostics = [...kept, ...mine].sort((a, b) => a.offset - b.offset);
   return { ir: undefined, diagnostics };
 }

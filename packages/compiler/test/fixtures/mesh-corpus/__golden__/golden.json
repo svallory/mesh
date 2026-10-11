@@ -5739,17 +5739,11 @@
   "diagnostics": [
    {
     "severity": "error",
-    "message": "`<entity>`: `<audit>` is not allowed here; allowed children: `<attributes>`, `<relationships>`, `<computed>`, `<actions>`, `<policies>`",
-    "line": 6,
-    "column": 2,
-    "offset": 133
-   },
-   {
-    "severity": "error",
     "message": "`<audit>` is not a known tag: it has no contract in `customTags`",
     "line": 6,
     "column": 2,
-    "offset": 133
+    "offset": 133,
+    "code": "MX_UNKNOWN_TAG"
    }
   ]
  },
@@ -32175,7 +32169,7 @@
   "diagnostics": [
    {
     "severity": "error",
-    "message": "MESH_UNSPACED_NAME: `:id` is a name with no tag before it; Mesh writes a tag, a space, then the name: `kind :id`",
+    "message": "`:id` is a name with no tag before it; Mesh writes a tag, a space, then the name: `kind :id`",
     "line": 7,
     "column": 8,
     "offset": 100,
@@ -33488,7 +33482,8 @@
     "message": "`<let>` is not a known tag: it has no contract in `customTags`; did you mean `<set>`?",
     "line": 1,
     "column": 0,
-    "offset": 0
+    "offset": 0,
+    "code": "MX_UNKNOWN_TAG"
    }
   ]
  },
@@ -33874,17 +33869,11 @@
   "diagnostics": [
    {
     "severity": "error",
-    "message": "`<create>`: `<arguments>` is not allowed here; allowed children: `<input>`, `<validate>`, `<do>`",
-    "line": 6,
-    "column": 6,
-    "offset": 86
-   },
-   {
-    "severity": "error",
     "message": "`<arguments>` is not a known tag: it has no contract in `customTags`",
     "line": 6,
     "column": 6,
-    "offset": 86
+    "offset": 86,
+    "code": "MX_UNKNOWN_TAG"
    }
   ]
  },
@@ -35212,7 +35201,8 @@
     "message": "`<record>` is not a known tag: it has no contract in `customTags`",
     "line": 1,
     "column": 0,
-    "offset": 0
+    "offset": 0,
+    "code": "MX_UNKNOWN_TAG"
    }
   ]
  },
