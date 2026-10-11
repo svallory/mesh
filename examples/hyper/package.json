@@ -5,7 +5,9 @@
   "license": "MIT",
   "type": "module",
   "imports": {
-    "#mesh": "./.mesh/index.ts"
+    "#mesh": "./.mesh/index.ts",
+    "#mesh/domain": "./.mesh/domain/index.ts",
+    "#mesh/domain/*": "./.mesh/domain/*/index.ts"
   },
   "scripts": {
     "test": "mesh build --check && bun test",

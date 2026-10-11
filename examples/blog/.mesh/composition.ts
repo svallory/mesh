@@ -3,7 +3,7 @@
 // The types of `actions` and `tx`, which the functions of an entity file and an application's `transaction` callback receive.
 
 import type { ActionContext as $ActionContext } from "@meshfw/runtime";
-import type { Comment, ReadCommentInput } from "./blog/comment.types";
+import type { Comment, ReadCommentInput } from "./domain/blog/comment.types";
 import type {
   Post,
   CreatePostInput,
@@ -13,8 +13,8 @@ import type {
   ReadPostInput,
   DestroyPostInput,
   PostWith,
-} from "./blog/post.types";
-import type { User, CreateUserInput, ReadUserInput } from "./blog/user.types";
+} from "./domain/blog/post.types";
+import type { User, CreateUserInput, ReadUserInput } from "./domain/blog/user.types";
 
 /** Every action function of the project, bound to the running transaction: a call joins it, and carries the caller's context unless it passes its own. */
 export interface Actions {

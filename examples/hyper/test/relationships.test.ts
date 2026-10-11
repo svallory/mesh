@@ -4,7 +4,10 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { DataLayer, DataOperations } from "@meshfw/runtime";
-import { loadCollaboratorFields, loadInvocationFields, loadRunFields, loadTaskFields, tables, type Task, type TaskWith } from "#mesh";
+import { tables } from "#mesh";
+import { loadInvocationFields, loadRunFields } from "#mesh/domain/execution";
+import { loadCollaboratorFields } from "#mesh/domain/identity";
+import { loadTaskFields, type Task, type TaskWith } from "#mesh/domain/work";
 import { attemptStart } from "../src/domain/execution/execution.commands";
 import { as, codes, empty, issuesOf, minutes, NOW, setup, type Empty, type Hyper } from "./world";
 

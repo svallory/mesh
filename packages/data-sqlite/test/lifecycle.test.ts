@@ -337,7 +337,7 @@ describe("the generated files", () => {
   test("type-check under the strictest flags a consuming project might use", async () => {
     const files = (await readdir(join(dir, ".mesh"), { recursive: true })).filter((name) => name.endsWith(".ts")).map((name) => join(".mesh", name));
     expect(files.length).toBeGreaterThan(8);
-    // `index.ts` imports the project's config, which is not part of this fixture.
+    // `binding.ts` imports the project's config, which is not part of this fixture.
     await Bun.write(join(dir, "mesh.config.ts"), "export default { data: { name: 'sqlite', transaction: async () => undefined, close: async () => undefined } };\n");
     const child = Bun.spawnSync([
       resolve(import.meta.dir, "../../../node_modules/.bin/tsc"), "--ignoreConfig", "--noEmit", "--strict", "--noUncheckedIndexedAccess",

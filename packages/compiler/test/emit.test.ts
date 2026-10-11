@@ -44,7 +44,7 @@ test("v4 record and input types preserve the legacy layout and action names", as
       "ReadTodoInput",
     ]),
   );
-  expect(files.map((f) => f.path)).toContain("generated/todo/todo.types.ts");
+  expect(files.map((f) => f.path)).toContain("generated/domain/todo/todo.types.ts");
 });
 
 test("deterministic bytes, independent of source discovery order or machine root", async () => {
@@ -92,7 +92,7 @@ test("generated types and validators typecheck with strict exact-optional flags 
   await writeFile(resolve(root, "mesh.config.ts"), "export default { data: { kind: \"data-adapter\", name: \"memory\", build: \"./none\", options: {} } };\n");
   await writeFile(
     resolve(root, "consumer.ts"),
-    `import type { CreateTodoInput, CompleteTodoInput, DestroyTodoInput, Todo } from "./generated/todo/todo.types";
+    `import type { CreateTodoInput, CompleteTodoInput, DestroyTodoInput, Todo } from "./generated/domain/todo/todo.types";
 const update: CompleteTodoInput = { id: "id", count: 1 };
 const destroy: DestroyTodoInput = { id: "id" };
 // @ts-expect-error row selector is required
@@ -217,9 +217,10 @@ test.each(["", "sales/billing"])("module %j emits verbatim relative paths", asyn
   const entity = todo(document);
   entity.module = module;
   const files = await generateFiles({ document, config: configOf("/project", ".mesh") });
-  const prefix = module ? `.mesh/${module}` : ".mesh";
+  const prefix = module ? `.mesh/domain/${module}` : ".mesh/domain";
   expect(files.map((file) => file.path)).toContain(`${prefix}/todo.types.ts`);
   expect(files.map((file) => file.path)).toContain(`${prefix}/todo.validators.ts`);
+  expect(files.map((file) => file.path)).toContain(`${prefix}/index.ts`);
 });
 
 test("Date type shadows are diagnosed only where the global is used", async () => {
@@ -238,7 +239,7 @@ test("Date type shadows are diagnosed only where the global is used", async () =
   );
   expect(
     (await generateFiles({ document, config: configOf("/project") })).length,
-  ).toBe(8); // model.json, types, validators, expressions, load, actions, composition and index for one entity
+  ).toBe(10); // model.json, types, validators, expressions, load, actions, composition, binding, the module's index and index for one entity
 });
 
 test("source path line terminators are escaped in headers", async () => {

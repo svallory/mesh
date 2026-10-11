@@ -160,14 +160,8 @@ The two ids are UUIDs because `ownerId` has type `uuid`. An application with sig
 
 ```ts "src/main.ts"
 import { InvalidInputError, NotFoundError } from "@meshfw/runtime";
-import {
-  connect,
-  disconnect,
-  createList,
-  createTodo,
-  completeTodo,
-  pendingTodo,
-} from "#mesh";
+import { connect, disconnect } from "#mesh";
+import { createList, createTodo, completeTodo, pendingTodo } from "#mesh/domain/todo";
 import { alice, bob } from "./context";
 
 await connect();

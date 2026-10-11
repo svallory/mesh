@@ -238,9 +238,27 @@ export function entitySegment(entity: Entity): string {
     position: entity.position,
   });
 }
+/**
+ * The folder under the output directory that holds everything generated from the domain: one folder per module,
+ * mirroring the domain folder, each with the module's `index.ts` and its entities' files. Mesh's own files
+ * (`index.ts`, `binding.ts`, `composition.ts`, `load.ts`, the adapter's `schema.ts`, `model.json`) sit beside it, so
+ * no module name can reach one of them.
+ */
+export const DOMAIN_FOLDER = "domain";
+/** The import specifier of the domain root's module; a module's own is this, a `/` and the module path. */
+export const DOMAIN_SPECIFIER = `#mesh/${DOMAIN_FOLDER}`;
+/** A module's folder below the output directory: `domain` for the domain root, `domain/sales/billing` for `sales/billing`. */
+export function modulePath(module: string, position: SourcePosition): string {
+  const segments = module === "" ? [] : module.split("/").map((value) => pathSegment({ value, position }));
+  return [DOMAIN_FOLDER, ...segments].join("/");
+}
+/** What application code imports a module as: `#mesh/domain` for the domain root, `#mesh/domain/sales/billing` for `sales/billing`. */
+export function moduleSpecifier(module: string): string {
+  return module === "" ? DOMAIN_SPECIFIER : `${DOMAIN_SPECIFIER}/${module}`;
+}
+/** An entity's generated files below the output directory, without the kind and extension: `domain/work/task`. */
 export function entityPath(entity: Entity): string {
-  const modules = entity.module === "" ? [] : entity.module.split("/").map((value) => pathSegment({ value, position: entity.position }));
-  return [...modules, entitySegment(entity)].join("/");
+  return `${modulePath(entity.module, entity.position)}/${entitySegment(entity)}`;
 }
 /** PascalCase with the first letter lower-cased: the same word rule, for values (`publish`, `blogPost`). */
 export function camelCase(name: string): string {

@@ -217,7 +217,7 @@ test("M2 test 4: the allow-list is data adapters, emitted schemas, manifests, lo
 
 test("M2 test 4: a schema.ts is exempt only at .mesh/schema.ts with the generated header", () => {
   workspace((dir, put) => {
-    const paths = ["examples/blog/src/schema.ts", "examples/blog/.mesh/blog/schema.ts", "examples/blog/mesh/schema.ts", "examples/blog/.mesh/schema.js"];
+    const paths = ["examples/blog/src/schema.ts", "examples/blog/.mesh/blog/schema.ts", "examples/blog/.mesh/domain/schema.ts", "examples/blog/.mesh/domain/schema/schema.ts", "examples/blog/mesh/schema.ts", "examples/blog/.mesh/schema.js"];
     for (const path of paths) put(path, `${SCHEMA_HEADER}import "drizzle-orm";`);
     put("examples/demo/.mesh/schema.ts", 'import "drizzle-orm";');
     const errors = checkDrizzleImports(dir);
@@ -226,20 +226,49 @@ test("M2 test 4: a schema.ts is exempt only at .mesh/schema.ts with the generate
   });
 });
 
-test("M2 test 4: no generated file imports the model, the compiler, Drizzle (outside schema.ts) or model.json", () => {
+test("M2 test 4: no generated file imports the model, the compiler, Drizzle (outside schema.ts), model.json or mesh.config (outside binding.ts)", () => {
   expect(checkGeneratedImports(root)).toEqual([]);
 });
 
 test.each(["@meshfw/model", "@meshfw/compiler", "model.json", "drizzle-orm", "drizzle-kit"])(
   "M2 test 4: a planted %s in a generated file fails, comments included", (name) => {
     workspace((dir, put) => {
-      const paths = ["examples/blog/.mesh/index.ts", "examples/blog/.mesh/blog/post.actions.ts", "apps/demo/.mesh/x/y.validators.js"];
+      const paths = ["examples/blog/.mesh/index.ts", "examples/blog/.mesh/binding.ts", "examples/blog/.mesh/domain/blog/index.ts", "examples/blog/.mesh/domain/blog/post.actions.ts", "apps/demo/.mesh/domain/x/y.validators.js"];
       for (const path of paths) put(path, `// Do not edit\n// ${name}`);
       expect(checkGeneratedImports(dir)).toEqual(paths.sort().map((path) =>
-        `${path}:2: Generated code must not import ${name} (roadmap M2, acceptance 4); it imports only @meshfw/runtime, zod, its sibling files, the adapter's schema.ts and (index.ts only) ../mesh.config`));
+        `${path}:2: Generated code must not import ${name} (roadmap M2, acceptance 4); it imports only @meshfw/runtime, zod, the other files of its .mesh/ tree, the adapter's schema.ts and (binding.ts only) the project's mesh.config`));
     });
   },
 );
+
+const CONFIG_TAIL = "outside .mesh/binding.ts (roadmap M2, acceptance 4); it imports only @meshfw/runtime, zod, the other files of its .mesh/ tree, the adapter's schema.ts and (binding.ts only) the project's mesh.config";
+
+test.each([
+  ["a static import", 'import config from "../mesh.config";', "../mesh.config"],
+  ["a side-effect import with the extension", "import '../../../mesh.config.ts';", "../../../mesh.config.ts"],
+  ["a dynamic import", "const { default: config } = await import(\"../mesh.config\");", "../mesh.config"],
+  ["a dynamic import in a template literal", "await import(`../../mesh.config.js`);", "../../mesh.config.js"],
+  ["a re-export", 'export { default } from "/abs/project/mesh.config";', "/abs/project/mesh.config"],
+  ["a require", 'const config = require("../mesh.config.cjs");', "../mesh.config.cjs"],
+  ["a commented-out import", '// import "../mesh.config";', "../mesh.config"],
+])("M2 test 4: %s of mesh.config in a generated file other than .mesh/binding.ts fails", (_, text, specifier) => {
+  workspace((dir, put) => {
+    // `.mesh/domain/x/binding.ts` is a module's file, not the binding, so it is not exempt.
+    const paths = ["examples/blog/.mesh/index.ts", "examples/blog/.mesh/composition.ts", "examples/blog/.mesh/domain/blog/index.ts",
+      "examples/blog/.mesh/domain/blog/post.actions.ts", "examples/blog/.mesh/domain/x/binding.ts", "apps/demo/.mesh/domain/binding.ts"];
+    for (const path of paths) put(path, `// Do not edit\n${text}`);
+    expect(checkGeneratedImports(dir)).toEqual(paths.sort().map((path) => `${path}:2: Generated code must not import ${specifier} ${CONFIG_TAIL}`));
+  });
+});
+
+test("M2 test 4: .mesh/binding.ts may import mesh.config; a name that only contains mesh.config, or a mention outside an import, passes", () => {
+  workspace((dir, put) => {
+    put("examples/blog/.mesh/binding.ts", '// mesh.config.ts configures the layer\nconst { default: config } = await import("../mesh.config");\nimport "../mesh.config.ts";');
+    put("apps/demo/.mesh/binding.ts", 'export { default } from "../../mesh.config";');
+    put("examples/blog/.mesh/index.ts", '// The data layer is the one mesh.config.ts configures.\nimport "./mesh.configuration";\nimport "./my-mesh.config.d";\nconst note = "see mesh.config";');
+    expect(checkGeneratedImports(dir)).toEqual([]);
+  });
+});
 
 test("M2 test 4: the emitted schema may import Drizzle but not the build half; model.json is not scanned; elsewhere is not generated", () => {
   workspace((dir, put) => {
@@ -248,7 +277,7 @@ test("M2 test 4: the emitted schema may import Drizzle but not the build half; m
     put("examples/blog/src/main.ts", 'import "@meshfw/model";');
     put("examples/blog/node_modules/x/.mesh/index.ts", 'import "@meshfw/model";');
     expect(checkGeneratedImports(dir)).toEqual([
-      "examples/blog/.mesh/schema.ts:2: Generated code must not import @meshfw/compiler (roadmap M2, acceptance 4); it imports only @meshfw/runtime, zod, its sibling files, the adapter's schema.ts and (index.ts only) ../mesh.config",
+      "examples/blog/.mesh/schema.ts:2: Generated code must not import @meshfw/compiler (roadmap M2, acceptance 4); it imports only @meshfw/runtime, zod, the other files of its .mesh/ tree, the adapter's schema.ts and (binding.ts only) the project's mesh.config",
     ]);
   });
 });

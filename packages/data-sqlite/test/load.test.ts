@@ -123,8 +123,9 @@ beforeAll(async () => {
   const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: Object.entries(files).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source })) });
   expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   await writeGeneratedFiles(await generateFiles({ config, document: built.document as ModelDocument }, build), config);
-  app = await import(join(dir, ".mesh/index.ts")) as Generated;
-  expressions = { post: (await import(join(dir, ".mesh/post.expressions.ts"))).expressions };
+  // `bind` and `tables` are `#mesh`'s; the load functions are the root module's (`#mesh/domain`).
+  app = { ...await import(join(dir, ".mesh/index.ts")), ...await import(join(dir, ".mesh/domain/index.ts")) } as Generated;
+  expressions = { post: (await import(join(dir, ".mesh/domain/post.expressions.ts"))).expressions };
 });
 afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
 
@@ -611,8 +612,10 @@ describe("what cannot be loaded is an error", () => {
 
 describe("types", () => {
   test("reading a relationship or a computed field that was not loaded is a type error", async () => {
-    await writeFile(join(dir, "check.ts"), `import type { Post, PostWith, PostLoadable } from "./.mesh/post.types";
-import { loadPostFields, loadAuthorFields } from "./.mesh/load";
+    // The module's index reaches `.mesh/binding.ts`, which imports the project's config: a stand-in is enough here.
+    await writeFile(join(dir, "mesh.config.ts"), "export default { data: { name: \"sqlite\" } };\n");
+    await writeFile(join(dir, "check.ts"), `import type { Post, PostWith, PostLoadable } from "./.mesh/domain/index.ts";
+import { loadPostFields, loadAuthorFields } from "./.mesh/domain/index.ts";
 import type { DataOperations } from "@meshfw/runtime";
 declare const tx: DataOperations;
 declare const post: Post;

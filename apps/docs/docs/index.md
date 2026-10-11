@@ -57,7 +57,7 @@ entity :Todo table="todos"
   insertedAt: Date }
 interface CreateTodoInput {
   title: string; list: List["id"] }</code></div></div>
-<div class="mh-box" data-box="functions" data-from="actions" data-group="Your app"><h3>Functions <code>todo.actions.ts</code></h3><p class="mh-from">one per action, from <code>actions</code>, imported from <code>#mesh</code></p><div class="mh-snip"><code>createTodo(input, context)
+<div class="mh-box" data-box="functions" data-from="actions" data-group="Your app"><h3>Functions <code>todo.actions.ts</code></h3><p class="mh-from">one per action, from <code>actions</code>, imported from <code>#mesh/domain/todo</code></p><div class="mh-snip"><code>createTodo(input, context)
 pendingTodo(input, context)
 renameTodo, readTodo, destroyTodo</code></div></div>
 <div class="mh-box" data-box="validation" data-from="attributes actions" data-group="Your app"><h3>Input validation <code>todo.validators.ts</code></h3><p>Every input is checked before your code runs: no empty title, and no field the action does not accept.</p><p class="mh-from">from <code>attributes</code>, <code>actions</code></p></div>

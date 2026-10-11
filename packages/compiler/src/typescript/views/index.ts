@@ -1,132 +1,21 @@
-import { relative } from "node:path";
 import type { EmitInput } from "../emit.ts";
 import { orderedEntities } from "../emitters/order.ts";
-import { actionsView } from "./actions.ts";
-import { hasLoader, loaderName } from "./load.ts";
-import { camelCase, entityInputs, entityPath, filterTypeName, hasRead, sortTypeName, typeName } from "./inputs.ts";
+import { moduleSpecifier } from "./inputs.ts";
+import { modulesOf } from "./module.ts";
 
 /**
- * What `index.ts.jig` renders: `.mesh/index.ts`, the one entry point a project imports
- * as `#mesh` (ADR-0047). Every string is final; the template prints, loops and
- * branches on these fields and computes nothing. A project's own `index.ts.jig`
- * depends on this shape.
+ * What `index.ts.jig` renders: `.mesh/index.ts`, which a project imports as `#mesh` (ADR-0047, ADR-0058). It holds
+ * only the framework's exports: `bind`, `connect`, `disconnect` and `transaction` from `./binding`, the types of
+ * `actions` and `tx` from `./composition`, and the adapter's `tables` from `./schema`. An entity's action functions and
+ * types are its module's (`#mesh/domain/<module>`, CMP-17), never re-exported here. Every string is final; the
+ * template prints and loops. A project's own `index.ts.jig` depends on this shape.
  */
 export interface IndexView {
-  /** The relative module specifier of `mesh.config.ts` from the output folder, quoted, e.g. `"../mesh.config"`. */
-  readonly configFromLiteral: string;
-  /** One entry per entity, in the fixed entity order of the other generators. */
-  readonly entities: readonly IndexEntity[];
-  /** Every action function across the build, in entity order, then action order. */
-  readonly functions: readonly IndexFunction[];
-  /** Every record and input type, in entity order: re-exported with `export type { ... }`. */
-  readonly types: readonly string[];
-  /** The names of the load functions re-exported from `./load` (`loadTaskFields`), in entity order; empty when no entity has a relationship or a computed field. */
-  readonly loaders: readonly string[];
-  /** The schema exports re-exported from `./schema`: `tables`, then each entity's table handle. */
-  readonly schemaExports: readonly string[];
-  /** True when at least one action exists; when false, `bind` returns only `transaction`. */
-  readonly hasFunctions: boolean;
-  /** Every read action's body without the authorizer slot, by its top-level name: what `tx` holds (ADR-0068). */
-  readonly reads: readonly IndexRead[];
+  /** The import specifier of every module that holds an entity, by module path, e.g. `#mesh/domain/blog`: named in the header only. */
+  readonly modules: readonly string[];
 }
 
-/** One entry of the table `tx` is built from: `readPost: postReads.read`. */
-export interface IndexRead {
-  /** The read's top-level name, e.g. `readPost`. */
-  readonly name: string;
-  /** The bound read body, e.g. `postReads.read`. */
-  readonly method: string;
-}
-
-/** The imports for one entity, and its binding inside `bind`. */
-export interface IndexEntity {
-  /** The record and input types of the entity, imported with `import type`. */
-  readonly types: readonly string[];
-  /** The entity's types file, quoted, e.g. `"./blog/post.types"`. */
-  readonly typesFromLiteral: string;
-  /** True when the entity has actions: only then is its `bind<Entity>` imported and called. */
-  readonly hasActions: boolean;
-  /** The binding function of its actions file, e.g. `bindPost`. */
-  readonly bindName: string;
-  /** The entity's actions file, quoted, e.g. `"./blog/post.actions"`. */
-  readonly actionsFromLiteral: string;
-  /** The local name of the entity's bound object inside `bind`: the entity name, camelCase, plus `Actions`, e.g. `postActions`. A fixed suffix, so no entity name becomes a reserved word or `bind`'s `layer`. */
-  readonly local: string;
-  /** The entity's reads binding, e.g. `bindPostReads`, or null when it has no read action. */
-  readonly readsBindName: string | null;
-  /** The local name of its bound reads inside `bind`, e.g. `postReads`. */
-  readonly readsLocal: string;
-}
-
-/** One top-level action function and its entry in `bind`'s object. */
-export interface IndexFunction {
-  /** The function's name, e.g. `publishPost`. */
-  readonly name: string;
-  /** The name as a quoted string literal, for the error a call before `connect()` throws. */
-  readonly nameLiteral: string;
-  /** The input type, e.g. `PublishPostInput`. */
-  readonly inputType: string;
-  /** The resolved type, e.g. `Post`. */
-  readonly returnType: string;
-  /** The bound method it is, e.g. `postActions.publish`. */
-  readonly method: string;
-}
-
-const quote = (path: string) => JSON.stringify(path.startsWith(".") ? path : `./${path}`);
-
-/** The index view of the whole model. Pure and synchronous; a model it cannot render is an `EmitError`. */
+/** The index view of the whole model. Pure and synchronous. */
 export function indexView(input: EmitInput): IndexView {
-  const { document, config } = input;
-  const entities: IndexEntity[] = [];
-  const functions: IndexFunction[] = [];
-  const types: string[] = [];
-  const handles: string[] = [];
-  const loaders: string[] = [];
-  const reads: IndexRead[] = [];
-  for (const entity of orderedEntities(document)) {
-    const actions = actionsView(input, entity);
-    const key = camelCase(entity.name);
-    const local = `${key}Actions`;
-    const readsLocal = `${key}Reads`;
-    const entityTypes = [
-      typeName(entity.name, entity.position),
-      ...entityInputs(entity, document).map((i) => i.name),
-      ...(hasRead(entity) ? [filterTypeName(entity), sortTypeName(entity)] : []),
-      ...(hasLoader(entity) ? [`${typeName(entity.name, entity.position)}Loadable`, `${typeName(entity.name, entity.position)}With`] : []),
-    ];
-    if (hasLoader(entity)) loaders.push(loaderName(entity));
-    types.push(...entityTypes);
-    handles.push(`${key}Table`);
-    entities.push({
-      types: entityTypes,
-      typesFromLiteral: quote(`${entityPath(entity)}.types`),
-      hasActions: actions.hasActions,
-      bindName: actions.bindName,
-      actionsFromLiteral: quote(`${entityPath(entity)}.actions`),
-      local,
-      readsBindName: actions.readsBindName,
-      readsLocal,
-    });
-    for (const method of actions.methods) {
-      if (method.isRead) reads.push({ name: method.functionName, method: `${readsLocal}.${method.name}` });
-      functions.push({
-        name: method.functionName,
-        nameLiteral: JSON.stringify(method.functionName),
-        inputType: method.inputType,
-        returnType: method.returnType,
-        method: `${local}.${method.name}`,
-      });
-    }
-  }
-  const configModule = relative(config.output, config.configFile).replace(/\\/g, "/").replace(/\.ts$/, "");
-  return {
-    configFromLiteral: quote(configModule),
-    entities,
-    functions,
-    types,
-    loaders,
-    schemaExports: ["tables", ...handles.sort()],
-    hasFunctions: functions.length > 0,
-    reads,
-  };
+  return { modules: modulesOf(orderedEntities(input.document)).map(({ module }) => moduleSpecifier(module)) };
 }

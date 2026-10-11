@@ -13,10 +13,10 @@ Mesh does not own your project. It reads the entity files you write and writes t
 
 ```text
 todo-app/
-  .mesh/                  generated; never edited; imported as "#mesh"
+  .mesh/                  generated; never edited; imported as "#mesh" and "#mesh/domain/…"
   migrations/             SQL from `mesh migrate generate`
   mesh.config.ts          what Mesh reads
-  package.json            "imports": { "#mesh": "./.mesh/index.ts" }
+  package.json            "imports" maps "#mesh" and "#mesh/domain/…" into .mesh/
   src/
     domain/               your domain
       accounts/
@@ -42,14 +42,14 @@ The folder is the module, so nothing in the file repeats it. `todo.mesh.mx` does
 
 Two folder rules decide a file's module:
 
-- **A nested folder is a submodule.** `src/domain/todo/reminders/reminder.mesh.mx` belongs to module `todo/reminders`, and its generated code goes to `.mesh/todo/reminders/`.
-- **A folder whose name starts with `_` only organises files.** A file's module is its folder path with every segment that starts with `_` removed (a segment that is only `_` is an error). `src/domain/todo/_scheduling/schedule.mesh.mx` belongs to module `todo`, and its generated code goes to `.mesh/todo/`. A group directly under `src/domain/`, such as `src/domain/_misc/`, belongs to the domain root. A group inside a submodule stays in that submodule: `todo/reminders/_x/` is module `todo/reminders`.
+- **A nested folder is a submodule.** `src/domain/todo/reminders/reminder.mesh.mx` belongs to module `todo/reminders`, its generated code goes to `.mesh/domain/todo/reminders/`, and your code imports it as `#mesh/domain/todo/reminders`.
+- **A folder whose name starts with `_` only organises files.** A file's module is its folder path with every segment that starts with `_` removed (a segment that is only `_` is an error). `src/domain/todo/_scheduling/schedule.mesh.mx` belongs to module `todo`, and its generated code goes to `.mesh/domain/todo/`. A group directly under `src/domain/`, such as `src/domain/_misc/`, belongs to the domain root. A group inside a submodule stays in that submodule: `todo/reminders/_x/` is module `todo/reminders`.
 
 `_name/` is the only folder marker; a folder named only `_` is a build error. A group changes the module, not the file: imports still use the real path (`import { List } from "../list.mesh.mx"`), and a name stays in one place, so `entity :Task` in `tasks/` and again in `tasks/_x/` is a duplicate-entity error.
 
 To keep files out of Mesh altogether, list them under `ignore` in `mesh.config.ts`. It takes globs relative to the project root, and ignored files are not read, so errors in them are not reported. See [Configuration](./configuration.md#ignoring-files).
 
-An entity file holds exactly one entity and ends in `.mesh.mx`. Two entities in one file is a build error. Another entity is imported by relative path: `import { List } from "./list.mesh.mx"`, then `belongs-to :list entity=List`. Each file exports its declared entity name. Two folders may each declare an `entity :List` without conflict; the import path distinguishes them. Those declarations do not conflict, but how the generated `#mesh` entry point exposes their same-named action exports is still open ([finding 21](../architecture/open-questions.md#dx-findings)).
+An entity file holds exactly one entity and ends in `.mesh.mx`. Two entities in one file is a build error. Another entity is imported by relative path: `import { List } from "./list.mesh.mx"`, then `belongs-to :list entity=List`. Each file exports its declared entity name. Two folders may each declare an `entity :List` without conflict; the import path distinguishes them, and each module's specifier exports its own `createList`. How the project-wide `actions`, `tx` and what `bind` returns, which hold every action function by name, tell the two apart is still open ([finding 21](../architecture/open-questions.md#dx-findings)).
 
 A hand-written helper next to the entity that uses it is the ordinary way to keep an entity file small. `todo.helpers.ts` is a normal TypeScript module; a `check` or a `do` step in `todo.mesh.mx` calls into it.
 
@@ -57,25 +57,42 @@ A hand-written helper next to the entity that uses it is the ordinary way to kee
 
 `.mesh/` is written by `mesh build` and committed. You import it, and you never edit it: the guard in [the command line](./command-line.md#the-guard) fails the build if a file in it differs from what the build would write.
 
-One entry point, in `package.json`:
+The entry points, in `package.json`:
 
 ```json
-"imports": { "#mesh": "./.mesh/index.ts" }
+"imports": {
+  "#mesh": "./.mesh/index.ts",
+  "#mesh/domain": "./.mesh/domain/index.ts",
+  "#mesh/domain/*": "./.mesh/domain/*/index.ts"
+}
 ```
 
-Your code imports `#mesh`. Never import a path into `.mesh`: the paths are an implementation detail and the entry point is what stays stable.
+Your code imports a module's action functions and types from that module's specifier, and what belongs to the whole project from `#mesh`:
+
+```ts "src/main.ts (excerpt)"
+import { connect, disconnect } from "#mesh";
+import { createList, createTodo } from "#mesh/domain/todo";
+```
+
+- **`#mesh`** exports `connect`, `disconnect`, `transaction`, `bind`, the `Actions` and `Reads` types and `tables`. It exports no action function and no entity type.
+- **`#mesh/domain/<module>`** exports the action functions and the types of the entities in that module: `#mesh/domain/todo` for `src/domain/todo/`, `#mesh/domain/todo/reminders` for the submodule. It never re-exports another module.
+- **`#mesh/domain`** is the same for the entities directly in `src/domain/`, the domain root.
+
+Each module has exactly one specifier, and only a folder that holds an entity has one: a folder of submodules alone is not imported. The modules live under `.mesh/domain/`, apart from Mesh's own files, so a module may be called `schema` or `load` and still be `#mesh/domain/schema`. Never import a path into `.mesh` any other way: the paths behind the specifiers are an implementation detail and the specifiers are what stays stable.
 
 What is inside, for the tutorial's two entities:
 
 | File | What it is |
 |:--|:--|
-| `.mesh/index.ts` | `connect`, `disconnect`, `bind`, and every action function and type, re-exported |
-| `.mesh/todo/list.types.ts` | `List` and the input types of its actions |
-| `.mesh/todo/list.actions.ts` | One function per action, with the whole lifecycle written out |
-| `.mesh/todo/list.validators.ts` | The schema each input is checked against |
-| `.mesh/todo/todo.types.ts` | `Todo`, `TodoInput`, and the same for each action |
-| `.mesh/todo/todo.actions.ts` | `createTodo`, `completeTodo`, `pendingTodo`, and the rest |
-| `.mesh/todo/todo.validators.ts` | The input schemas for those actions |
+| `.mesh/index.ts` | `#mesh`: `connect`, `disconnect`, `transaction`, `bind`, `Actions`, `Reads` and `tables`, re-exported |
+| `.mesh/binding.ts` | `bind`, which binds every entity to one data layer, and the binding `connect()` opens, which every module's functions call |
+| `.mesh/domain/todo/index.ts` | `#mesh/domain/todo`: the module's action functions and its entities' types |
+| `.mesh/domain/todo/list.types.ts` | `List` and the input types of its actions |
+| `.mesh/domain/todo/list.actions.ts` | One function per action, with the whole lifecycle written out |
+| `.mesh/domain/todo/list.validators.ts` | The schema each input is checked against |
+| `.mesh/domain/todo/todo.types.ts` | `Todo`, `TodoInput`, and the same for each action |
+| `.mesh/domain/todo/todo.actions.ts` | `createTodo`, `completeTodo`, `pendingTodo`, and the rest |
+| `.mesh/domain/todo/todo.validators.ts` | The input schemas for those actions |
 | `.mesh/schema.ts` | The database tables, written by the data adapter |
 | `.mesh/model.json` | One document per entity, with the source position of every declaration |
 | `.mesh/mx-contracts.js` | The tag contracts for the editor extension that highlights and checks `.mesh.mx` files |

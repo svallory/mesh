@@ -3,7 +3,7 @@
 // The types of `actions` and `tx`, which the functions of an entity file and an application's `transaction` callback receive.
 
 import type { ActionContext as $ActionContext } from "@meshfw/runtime";
-import type { Event, RecordEventInput, ReadEventInput } from "./audit/event.types";
+import type { Event, RecordEventInput, ReadEventInput } from "./domain/audit/event.types";
 import type {
   Attempt,
   StartAttemptInput,
@@ -11,13 +11,13 @@ import type {
   ReportStoppedAttemptInput,
   AbandonAttemptInput,
   ReadAttemptInput,
-} from "./execution/attempt.types";
+} from "./domain/execution/attempt.types";
 import type {
   Invocation,
   RecordInvocationInput,
   CorrectInvocationInput,
   ReadInvocationInput,
-} from "./execution/invocation.types";
+} from "./domain/execution/invocation.types";
 import type {
   Machine,
   RegisterMachineInput,
@@ -25,47 +25,47 @@ import type {
   UpdateMachineInput,
   RetireMachineInput,
   ReadMachineInput,
-} from "./execution/machine.types";
+} from "./domain/execution/machine.types";
 import type {
   Run,
   StartRunInput,
   CancelRunInput,
   SettleRunInput,
   ReadRunInput,
-} from "./execution/run.types";
+} from "./domain/execution/run.types";
 import type {
   SessionReference,
   RecordSessionReferenceInput,
   SetAvailabilitySessionReferenceInput,
   RedactSessionReferenceInput,
   ReadSessionReferenceInput,
-} from "./execution/sessionReference.types";
+} from "./domain/execution/sessionReference.types";
 import type {
   Collaborator,
   RegisterCollaboratorInput,
   UpdateCollaboratorInput,
   RetireCollaboratorInput,
   ReadCollaboratorInput,
-} from "./identity/collaborator.types";
+} from "./domain/identity/collaborator.types";
 import type {
   Membership,
   GrantMembershipInput,
   ChangeRoleMembershipInput,
   RevokeMembershipInput,
   ReadMembershipInput,
-} from "./identity/membership.types";
+} from "./domain/identity/membership.types";
 import type {
   Workspace,
   CreateWorkspaceInput,
   RenameWorkspaceInput,
   ReadWorkspaceInput,
-} from "./identity/workspace.types";
+} from "./domain/identity/workspace.types";
 import type {
   Assignment,
   StartAssignmentInput,
   FinishAssignmentInput,
   ReadAssignmentInput,
-} from "./work/assignment.types";
+} from "./domain/work/assignment.types";
 import type {
   Claim,
   AcquireClaimInput,
@@ -75,34 +75,34 @@ import type {
   ExpireClaimInput,
   EndClaimInput,
   ReadClaimInput,
-} from "./work/claim.types";
+} from "./domain/work/claim.types";
 import type {
   Completion,
   RecordCompletionInput,
   ReadCompletionInput,
-} from "./work/completion.types";
+} from "./domain/work/completion.types";
 import type {
   Dependency,
   AddDependencyInput,
   RemoveDependencyInput,
   ReadDependencyInput,
-} from "./work/dependency.types";
+} from "./domain/work/dependency.types";
 import type {
   EvidenceReference,
   RecordEvidenceReferenceInput,
   ReadEvidenceReferenceInput,
-} from "./work/evidenceReference.types";
+} from "./domain/work/evidenceReference.types";
 import type {
   LateResult,
   RecordLateResultInput,
   ReadLateResultInput,
-} from "./work/lateResult.types";
+} from "./domain/work/lateResult.types";
 import type {
   Review,
   AcceptReviewInput,
   ReturnReviewInput,
   ReadReviewInput,
-} from "./work/review.types";
+} from "./domain/work/review.types";
 import type {
   Submission,
   SubmitSubmissionInput,
@@ -110,7 +110,7 @@ import type {
   SettleSubmissionInput,
   RecordAcceptedSubmissionInput,
   ReadSubmissionInput,
-} from "./work/submission.types";
+} from "./domain/work/submission.types";
 import type {
   Task,
   CreateTaskInput,
@@ -124,7 +124,7 @@ import type {
   AssignTaskInput,
   UnassignTaskInput,
   ReadTaskInput,
-} from "./work/task.types";
+} from "./domain/work/task.types";
 
 /** Every action function of the project, bound to the running transaction: a call joins it, and carries the caller's context unless it passes its own. */
 export interface Actions {

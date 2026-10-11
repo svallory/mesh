@@ -26,9 +26,12 @@ It copies the generator templates into your project:
 ```text
 .mesh-generators/
   actions.ts.jig
+  binding.ts.jig
+  composition.ts.jig
   expressions.ts.jig
   index.ts.jig
   load.ts.jig
+  module.ts.jig
   types.ts.jig
   validators.ts.jig
   schema.ts.jig
@@ -44,6 +47,16 @@ This is the honest price of the copy, and it is the whole argument against it.
 
 **You own the output from then on.** When you upgrade Mesh, your generators do not improve. A fix to the action lifecycle — a bug in how a denied write is reported, a missing tracing span, a change in how validations fold into a statement — reaches every project except yours. Your copy is a fork with no merge path.
 
+**An upgrade can break your copy.** A template is written against the view of the Mesh version it came from: the fields its generator hands it. A release can rename, move or drop those fields, or move what one template printed into another, and your copy does not follow. It then fails in one of two ways. The loud one: it reads a property of a field that is gone, and `mesh build` stops with `Generator "<name>" cannot render .mesh-generators/<template>` at the line. The quiet one: it loops over a field that is gone, the loop prints nothing, and the build reports `0 errors, 0 warnings` while it writes an almost empty file. The guard passes as well, because it renders the same template, so the first sign is your own type check failing at an import. After every upgrade, compare each of your templates with the one Mesh now ships, and carry your edits over:
+
+```bash
+mv .mesh-generators .mesh-generators.mine
+mesh export generators
+diff -ru .mesh-generators .mesh-generators.mine
+```
+
+Then put your edits into the fresh copies, delete the ones you do not change, and remove `.mesh-generators.mine`.
+
 **The files are large.** An action template is one of the bigger pieces of the build. Reading a diff of it is work you would not otherwise do.
 
 **The escape hatch becomes the path of least resistance.** A team that edits one template to add a log line, and then another to change a signature, has moved from "declare your rules, call the framework" to "maintain a framework".
@@ -58,13 +71,13 @@ If none of those is your situation, the generated code is better left alone. The
 
 ## Overriding one template
 
-You do not have to copy all five. Delete the ones you are not changing and keep one:
+You do not have to keep them all. Delete the ones you are not changing and keep one:
 
 ```bash
-rm .mesh-generators/index.ts.jig .mesh-generators/types.ts.jig .mesh-generators/validators.ts.jig .mesh-generators/schema.ts.jig
+rm .mesh-generators/{binding,composition,expressions,index,load,module,types,validators,schema}.ts.jig
 ```
 
-The build now uses your `actions.ts.jig` and Mesh's own for the rest, and a Mesh release that improves the other four reaches you as usual. Start there: copy one template when one template is what does not fit, and only copy the rest when you have a reason for each.
+The build now uses your `actions.ts.jig` and Mesh's own for the rest, and a Mesh release that improves the others reaches you as usual. Start there: copy one template when one template is what does not fit, and only copy the rest when you have a reason for each.
 
 ## Next
 

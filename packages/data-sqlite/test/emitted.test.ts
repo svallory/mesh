@@ -63,8 +63,8 @@ beforeAll(async () => {
 afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
 
 test("each column's inferred TypeScript type equals the record type the types generator writes", async () => {
-  await writeFile(join(dir, "check.ts"), `import type { Owner } from "./.mesh/owner.types";
-import type { Sample } from "./.mesh/sample.types";
+  await writeFile(join(dir, "check.ts"), `import type { Owner } from "./.mesh/domain/owner.types";
+import type { Sample } from "./.mesh/domain/sample.types";
 import { ownerTable, sampleTable, tables } from "./.mesh/schema";
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
 export const sampleMatches: Equal<typeof sampleTable.$inferSelect, Sample> = true;

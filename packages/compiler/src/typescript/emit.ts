@@ -10,7 +10,9 @@ import { modelJsonEmitter } from "./emitters/model-json.ts";
 import { typesGenerator } from "./emitters/types.ts";
 import { validatorsGenerator } from "./emitters/validators.ts";
 import { actionsGenerator } from "./emitters/actions.ts";
+import { bindingGenerator } from "./emitters/binding.ts";
 import { indexGenerator } from "./emitters/index.ts";
+import { moduleGenerator } from "./emitters/module.ts";
 import { compositionGenerator } from "./emitters/composition.ts";
 import { expressionsGenerator } from "./emitters/expressions.ts";
 import { loadGenerator } from "./emitters/load.ts";
@@ -116,7 +118,7 @@ export async function renderGenerator<View extends object>(
 }
 
 /** The emitters of the core build, in a fixed order. The result is sorted by path anyway. */
-export const EMITTERS: readonly (Emitter | Generator)[] = Object.freeze([modelJsonEmitter, typesGenerator, validatorsGenerator, expressionsGenerator, loadGenerator, actionsGenerator, compositionGenerator, indexGenerator]);
+export const EMITTERS: readonly (Emitter | Generator)[] = Object.freeze([modelJsonEmitter, typesGenerator, validatorsGenerator, expressionsGenerator, loadGenerator, actionsGenerator, compositionGenerator, bindingGenerator, moduleGenerator, indexGenerator]);
 
 /** The generators among `EMITTERS`: the ones with a template. */
 export const GENERATORS: readonly Generator[] = Object.freeze(EMITTERS.filter(isGenerator));

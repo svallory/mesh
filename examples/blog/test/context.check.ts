@@ -1,5 +1,5 @@
 // Acceptance test 5: `src/context.ts` declares a required `actor`, so the context is required.
-import { createPost, readPost } from "#mesh";
+import { createPost, readPost } from "#mesh/domain/blog";
 import { alice } from "../src/context";
 
 void readPost({}, { actor: alice });

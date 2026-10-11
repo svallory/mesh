@@ -118,7 +118,7 @@ describe("a create and a json", () => {
 
   test("the validators accept null and every JSON value, reject what JSON cannot hold, and take no json as required", async () => {
     const { root } = await generated();
-    const { createNoteInput, bareNoteInput, readNoteInput } = await import(resolve(root, "generated/m/note.validators.ts"));
+    const { createNoteInput, bareNoteInput, readNoteInput } = await import(resolve(root, "generated/domain/m/note.validators.ts"));
     const create = (payload: unknown) => createNoteInput.safeParse({ title: "t", payload }).success;
     for (const value of [null, {}, [], "", "s", 0, -1.5, true, false, { a: [1, { b: null }] }, [null, [[]]], undefined]) expect(create(value)).toBe(true);
     for (const value of [() => 1, new Date(), new Map(), Symbol("s"), 1n, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, { a: undefined }, { a: () => 1 }, [undefined], new (class X {})()])

@@ -9,9 +9,9 @@ import {
   type LoadPlan as $LoadPlan,
 } from "@meshfw/runtime";
 import { tables } from "./schema";
-import { expressions as postExpressions } from "./blog/post.expressions";
-import type { Comment, CommentLoadable, CommentWith } from "./blog/comment.types";
-import type { Post, PostLoadable, PostWith } from "./blog/post.types";
+import { expressions as postExpressions } from "./domain/blog/post.expressions";
+import type { Comment, CommentLoadable, CommentWith } from "./domain/blog/comment.types";
+import type { Post, PostLoadable, PostWith } from "./domain/blog/post.types";
 
 /** What `loadRows` follows: each entity's table and key, its relationships and its computed fields. */
 export const loadPlan = {

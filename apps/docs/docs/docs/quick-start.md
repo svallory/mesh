@@ -36,7 +36,7 @@ bun create meshfw todo-app
 cd todo-app
 ```
 
-Choose **SQLite** when asked. The `create-meshfw` starter installs the dependencies, including the `meshfw` package that provides the `mesh` command. It creates a minimal runnable app: one `List` entity in `src/domain/todo/list.mesh.mx`, `mesh.config.ts`, `src/context.ts` with a demo actor named `alice`, and `src/demo.ts`. Its `bun run demo` script calls `createList` and prints the record. The `#mesh` import is already configured.
+Choose **SQLite** when asked. The `create-meshfw` starter installs the dependencies, including the `meshfw` package that provides the `mesh` command. It creates a minimal runnable app: one `List` entity in `src/domain/todo/list.mesh.mx`, `mesh.config.ts`, `src/context.ts` with a demo actor named `alice`, and `src/demo.ts`. Its `bun run demo` script calls `createList` and prints the record. The `#mesh` imports are already configured.
 
 For an existing project, install the CLI with `bun add -d meshfw`; [Configuration](./configuration.md#dependencies) lists the runtime and adapter dependencies. The commands below use `mesh`: `bunx mesh build` runs the project's own copy without a global install, and `bun add -g meshfw` gives you a global `mesh`.
 
@@ -61,9 +61,10 @@ The build writes the functions you call. The schema push creates the table in `t
 
 ## Use your domain
 
-Import a function from `#mesh` and pass its input and the caller's context:
+Import a function from its module, `#mesh/domain/todo` for the entities in `src/domain/todo/`, and pass its input and the caller's context; `connect` and `disconnect` come from `#mesh`:
 ```ts "src/demo.ts"
-import { connect, createList, disconnect } from "#mesh";
+import { connect, disconnect } from "#mesh";
+import { createList } from "#mesh/domain/todo";
 import { alice } from "./context";
 await connect();
 try {

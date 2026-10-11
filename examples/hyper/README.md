@@ -8,3 +8,5 @@ mesh build        # writes .mesh/
 mesh db push      # creates the 18 tables in hyper.db
 bun test          # the rules, the effects, the relationships and a round-trip of every entity
 ```
+
+Code here imports `bind`, `connect`, `disconnect`, `transaction`, `tables` and the types of `actions` and `tx` from `#mesh`, and a module's action functions, record and input types and load functions from that module's specifier: `#mesh/domain/identity`, `#mesh/domain/work`, `#mesh/domain/execution` or `#mesh/domain/audit`. `package.json` maps the three specifiers (`#mesh`, `#mesh/domain` and `#mesh/domain/*`) to `.mesh/`.

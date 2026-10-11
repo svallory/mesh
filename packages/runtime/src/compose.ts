@@ -7,7 +7,7 @@ import type { StandardSchemaV1 } from "./standard-schema.ts";
 /**
  * Action composition (M5, ADR-0068). The functions of an entity file receive `actions`, every generated action
  * function, and `tx`, one function per read action, both bound to the running transaction; an application gets the
- * same two from `transaction(fn, context)` in `#mesh`. The generated index makes one composer per `bind(layer)` and
+ * same two from `transaction(fn, context)` in `#mesh`. The generated `binding.ts` makes one composer per `bind(layer)` and
  * hands it the bound functions once every entity is bound, so an entity's actions file never imports another one:
  * it receives the composer as an argument and asks it for `{ actions, tx }` when a function needs them.
  */
@@ -113,8 +113,8 @@ export function failJoined(layer: DataLayer, cause: unknown): Promise<never> {
 /**
  * Cast a generated function's input. The cast runs before the function opens or joins a transaction. First the layer
  * says whether the call runs inside a transaction, and refuses it if that transaction has already failed
- * (`DataLayer.refuseIfFailed`), so such a call does nothing. Inside a running transaction, called directly from `#mesh`
- * or through `actions`, a failed cast goes through `failJoined`: it fails that transaction like any other failed call,
+ * (`DataLayer.refuseIfFailed`), so such a call does nothing. Inside a running transaction, called directly from its module
+ * (`#mesh/domain/<module>`) or through `actions`, a failed cast goes through `failJoined`: it fails that transaction like any other failed call,
  * even when the caller catches it. At top level the caller gets the cast error at once, as from `parseInput`: no
  * transaction opens and no lock is taken.
  */

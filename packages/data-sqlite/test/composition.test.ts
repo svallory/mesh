@@ -322,7 +322,7 @@ type Binding = {
 };
 let binding: Binding | undefined;
 export function use(given: Binding): void { binding = given; }
-/** A generated function called directly, as an application imports it from \`#mesh\`, not through \`actions\`. */
+/** A generated function called directly, as an application imports it from \`#mesh/domain\`, not through \`actions\`. */
 export async function directDeposit(id: number, amount: unknown): Promise<void> {
   if (!binding) throw new Error("no binding");
   await binding.depositAccount({ id, amount: amount as number });
@@ -349,7 +349,7 @@ async function generate(prefix: string, sources: Record<string, string>): Promis
   const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: Object.entries(sources).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source })) });
   expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   await writeGeneratedFiles(await generateFiles({ config, document: built.document as ModelDocument }, build), config);
-  // `index.ts` imports the project's config, which is not part of this fixture.
+  // `binding.ts` imports the project's config, which is not part of this fixture.
   await Bun.write(join(dir, "mesh.config.ts"), "export default { data: { name: 'sqlite', transaction: async () => undefined, close: async () => undefined } };\n");
   return dir;
 }
@@ -429,10 +429,10 @@ describe("the generated files", () => {
   test("`input`, related records, `before` and what `actions` and `tx` return are deep read-only; inputs are checked", async () => {
     await Bun.write(join(dir, "check-types.ts"), [
       'import { cloneValue } from "@meshfw/runtime";',
-      'import type { AccountStoredScope } from "./.mesh/account.expressions.ts";',
-      'import type { DepositAccountInput } from "./.mesh/account.types.ts";',
-      'import type { EntryScope } from "./.mesh/entry.expressions.ts";',
-      'import type { PostEntryInput } from "./.mesh/entry.types.ts";',
+      'import type { AccountStoredScope } from "./.mesh/domain/account.expressions.ts";',
+      'import type { DepositAccountInput } from "./.mesh/domain/account.types.ts";',
+      'import type { EntryScope } from "./.mesh/domain/entry.expressions.ts";',
+      'import type { PostEntryInput } from "./.mesh/domain/entry.types.ts";',
       'import { bind, type Actions, type Reads } from "./.mesh/index.ts";',
       "declare const s: AccountStoredScope<DepositAccountInput>;",
       "declare const e: EntryScope<PostEntryInput>;",
@@ -489,7 +489,7 @@ describe("the generated files", () => {
     });
     try {
       const output = await typeCheck(wrong);
-      expect(output).toContain(".mesh/account.expressions.ts");
+      expect(output).toContain(".mesh/domain/account.expressions.ts");
       expect(output).toMatch(/Type 'number' is not assignable to type 'string'/);
     } finally { await rm(wrong, { recursive: true, force: true }); }
   });
@@ -739,7 +739,7 @@ describe("an entity bound alone", () => {
   test("runs the actions that never compose, and refuses `actions` in one that does, storing nothing", async () => {
     const world = await fresh();
     try {
-      const { bindAccount } = await import(join(dir, ".mesh/account.actions.ts"));
+      const { bindAccount } = await import(join(dir, ".mesh/domain/account.actions.ts"));
       const alone = bindAccount(world.db);
       const from = await world.mesh.openAccount({ name: "Ada", balance: 100 }, world.ctx);
       const to = await world.mesh.openAccount({ name: "Bo" }, world.ctx);

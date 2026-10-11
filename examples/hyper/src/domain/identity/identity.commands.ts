@@ -1,9 +1,10 @@
 // The identity commands whose effects cross aggregates: revoking a membership or retiring a collaborator revokes
 // the collaborator's claims, which belong to the Task aggregate (`tasks.ex:2`), and retiring also revokes the
 // membership, its own aggregate (`memberships.ex:2`). Each is one application transaction over the generated actions.
-// Names follow Hyper's method names in camelCase, so none can be a `#mesh` export (those put the action first).
+// Names follow Hyper's method names in camelCase, so none can be a generated action function (those put the action first).
 import type { ActionContext } from "@meshfw/runtime";
-import type { Actions, Collaborator, Membership, RetireCollaboratorInput, RevokeMembershipInput } from "#mesh";
+import type { Actions } from "#mesh";
+import type { Collaborator, Membership, RetireCollaboratorInput, RevokeMembershipInput } from "#mesh/domain/identity";
 import { connected, type Binding } from "../binding";
 import type { Reads } from "../work/work.helpers";
 

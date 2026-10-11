@@ -1,4 +1,5 @@
-import { connect, createPost, createUser, destroyPost, disconnect, publishPost, readPost } from "#mesh";
+import { connect, disconnect } from "#mesh";
+import { createPost, createUser, destroyPost, publishPost, readPost } from "#mesh/domain/blog";
 import { alice } from "./context";
 
 await connect();
@@ -14,7 +15,7 @@ await destroyPost({ id: post.id }, { actor: alice });
 try {
   await publishPost({ id: post.id }, { actor: alice });
 } catch (error) {
-  // Every Mesh error carries a `code`, so the program needs nothing but #mesh to tell them apart.
+  // Every Mesh error carries a `code`, so the program needs no import beyond the generated ones to tell them apart.
   if (!(error instanceof Error && "code" in error && error.code === "not_found")) throw error;
   console.log(error.code);
 }

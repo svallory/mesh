@@ -1,9 +1,10 @@
 // The execution commands whose effects cross aggregates: an attempt or a session report names its machine by host
 // name, and an unknown name records the Machine (`machines/changes/report_machine.ex:23-43`), which is its own
 // aggregate (`machines.ex:2`). Each is one application transaction over the generated actions. Names follow Hyper's
-// method names in camelCase, so none can be a `#mesh` export (those put the action first).
+// method names in camelCase, so none can be a generated action function (those put the action first).
 import type { ActionContext } from "@meshfw/runtime";
-import type { Actions, Attempt, RecordSessionReferenceInput, SessionReference, StartAttemptInput } from "#mesh";
+import type { Actions } from "#mesh";
+import type { Attempt, RecordSessionReferenceInput, SessionReference, StartAttemptInput } from "#mesh/domain/execution";
 import { connected, type Binding } from "../binding";
 import type { Reads } from "../work/work.helpers";
 

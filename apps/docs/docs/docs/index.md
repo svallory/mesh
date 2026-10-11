@@ -79,10 +79,10 @@ entity :Todo table="todos"
 
 ## What you call
 
-An action becomes an ordinary TypeScript function. Its name is the action name followed by the entity name: `create` on `entity :Todo` becomes `createTodo`, and `read :pending` becomes `pendingTodo`.
+An action becomes an ordinary TypeScript function. Its name is the action name followed by the entity name: `create` on `entity :Todo` becomes `createTodo`, and `read :pending` becomes `pendingTodo`. You import it from the entity's module: `src/domain/todo/` is `#mesh/domain/todo`.
 
 ```ts "src/main.ts (excerpt)"
-import { createTodo } from "#mesh";
+import { createTodo } from "#mesh/domain/todo";
 
 const todo = await createTodo({ title: "Buy milk", list: list.id }, { actor });
 ```

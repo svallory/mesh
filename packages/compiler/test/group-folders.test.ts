@@ -92,9 +92,12 @@ test("generated paths follow the stripped module", async () => {
   });
   expect(result.diagnostics).toEqual([]);
   const paths = (await generateFiles({ document: result.document!, config: configOf("/project", ".mesh") })).map((f) => f.path);
-  expect(paths).toContain(".mesh/tasks/scheduling.types.ts");
-  expect(paths).toContain(".mesh/tasks/services/runner.types.ts");
-  expect(paths).toContain(".mesh/top.types.ts");
+  expect(paths).toContain(".mesh/domain/tasks/scheduling.types.ts");
+  expect(paths).toContain(".mesh/domain/tasks/services/runner.types.ts");
+  expect(paths).toContain(".mesh/domain/top.types.ts");
+  // One index per module, the group folders stripped there too.
+  expect(paths.filter((p) => p.startsWith(".mesh/domain/") && p.endsWith("/index.ts")))
+    .toEqual([".mesh/domain/index.ts", ".mesh/domain/tasks/index.ts", ".mesh/domain/tasks/services/index.ts"]);
   expect(paths.some((p) => p.includes("_services") || p.includes("/_x") || p.includes("_y"))).toBe(false);
 });
 

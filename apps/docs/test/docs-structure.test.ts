@@ -44,7 +44,7 @@ test("Quick start is requirements, installation, running and a short domain call
   expect(quick).not.toContain("```mx");
   expect(quick).toContain("bun create meshfw todo-app");
   expect(quick).toContain("mesh build\nmesh db push\nbun run demo");
-  expect(quick).toContain('import { connect, createList, disconnect } from "#mesh"');
+  expect(quick).toContain('import { connect, disconnect } from "#mesh";\nimport { createList } from "#mesh/domain/todo";');
   const prompt = /Let an agent check[\s\S]*?```text\n([\s\S]*?)```/.exec(quick)![1]!;
   expect(prompt.trim().split("\n").length).toBeLessThanOrEqual(6);
   for (const requirement of ["Bun 1.3.14", "Git 2.x", "Visual Studio Code", "Verify", "Install", "Report"]) {
@@ -84,4 +84,29 @@ test("integration snippets are explicitly excerpts rather than claimed type-chec
     expect(solidStart).toContain(`if (error instanceof ${error}) return { error: { code: error.code } };`);
   }
   expect(solidStart).not.toMatch(/return[^\n]*(?:issues|breakdown|source)/);
+});
+
+test("a page imports action functions from their module, and only the framework's names from #mesh (CMP-17)", () => {
+  const framework = new Set(["bind", "connect", "disconnect", "transaction", "tables", "Actions", "Reads"]);
+  const modules = new Set<string>();
+  let seen = 0;
+  for (const name of readdirSync(docs).filter((name) => name.endsWith(".md"))) {
+    const text = readFileSync(join(docs, name), "utf8");
+    for (const match of text.matchAll(/import(?:\s+type)?\s*\{([^}]*)\}\s*from\s*"(#mesh[^"]*)"/g)) {
+      const names = match[1]!.split(",").map((n) => n.trim().replace(/^type\s+/, "")).filter(Boolean);
+      seen += 1;
+      if (match[2] === "#mesh") {
+        expect({ page: name, outside: names.filter((n) => !framework.has(n)) }).toEqual({ page: name, outside: [] });
+      } else {
+        expect(match[2]).toMatch(/^#mesh\/domain(\/[a-z0-9_-]+)*$/);
+        expect({ page: name, framework: names.filter((n) => framework.has(n)) }).toEqual({ page: name, framework: [] });
+        modules.add(match[2]!);
+      }
+    }
+    // A dynamic import of an action function goes to its module too.
+    for (const match of text.matchAll(/const \{([^}]*)\} = await import\("#mesh"\)/g))
+      expect({ page: name, names: match[1]!.trim() }).toEqual({ page: name, names: "" });
+  }
+  expect(seen).toBeGreaterThan(20);
+  expect([...modules].sort()).toEqual(["#mesh/domain/billing", "#mesh/domain/todo"]);
 });
