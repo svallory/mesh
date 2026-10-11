@@ -56,10 +56,10 @@ export type {
 };
 export { loadCommentFields, loadPostFields } from "../../load";
 
-export async function readComment(
-  input: ReadCommentInput,
+export async function readComment<const N extends keyof CommentLoadable = never>(
+  input: ReadCommentInput<N>,
   ...context: $ContextArgument
-): Promise<Comment[]> {
+): Promise<CommentWith<N>[]> {
   return $delegate("readComment", (binding) => binding.readComment(input, ...context));
 }
 
@@ -84,17 +84,17 @@ export async function archivePost(
   return $delegate("archivePost", (binding) => binding.archivePost(input, ...context));
 }
 
-export async function publishedPost(
-  input: PublishedPostInput,
+export async function publishedPost<const N extends keyof PostLoadable = never>(
+  input: PublishedPostInput<N>,
   ...context: $ContextArgument
-): Promise<Post[]> {
+): Promise<PostWith<N>[]> {
   return $delegate("publishedPost", (binding) => binding.publishedPost(input, ...context));
 }
 
-export async function readPost(
-  input: ReadPostInput,
+export async function readPost<const N extends keyof PostLoadable = never>(
+  input: ReadPostInput<N>,
   ...context: $ContextArgument
-): Promise<Post[]> {
+): Promise<PostWith<N>[]> {
   return $delegate("readPost", (binding) => binding.readPost(input, ...context));
 }
 

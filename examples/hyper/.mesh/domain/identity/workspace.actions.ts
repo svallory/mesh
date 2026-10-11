@@ -44,7 +44,7 @@ import {
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
  * The read actions below run the slot, then these.
  */
-export function bindWorkspaceReads(layer: $DataLayer) {
+export function bindWorkspaceReads(layer: $DataLayer, _options: $BindOptions = {}) {
   return Object.freeze({
     async read(input: ReadWorkspaceInput): Promise<Workspace[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
@@ -66,7 +66,7 @@ export function bindWorkspaceReads(layer: $DataLayer) {
  * `actions` and `tx`; the project's `bind` in the index passes it.
  */
 export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
-  const $reads = bindWorkspaceReads(layer);
+  const $reads = bindWorkspaceReads(layer, options);
   return Object.freeze({
     async create(input: CreateWorkspaceInput, ...[_context]: $ContextArgument): Promise<Workspace> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it

@@ -72,11 +72,12 @@ export type CorrectInvocationInput = {
   session?: SessionReference["id"] | null | undefined;
 };
 
-export type ReadInvocationInput = {
+export type ReadInvocationInput<N extends keyof InvocationLoadable = never> = {
   filter?: InvocationFilter | undefined;
   sort?: InvocationSort | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
+  load?: readonly N[] | undefined;
 };
 
 /** What `load` attaches to a Invocation. The record has none of it, so reading one that was not loaded is a type error. */

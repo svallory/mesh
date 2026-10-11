@@ -28,11 +28,12 @@ export type ReturnReviewInput = {
   expectedVersion?: number | null | undefined;
 };
 
-export type ReadReviewInput = {
+export type ReadReviewInput<N extends keyof ReviewLoadable = never> = {
   filter?: ReviewFilter | undefined;
   sort?: ReviewSort | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
+  load?: readonly N[] | undefined;
 };
 
 /** What `load` attaches to a Review. The record has none of it, so reading one that was not loaded is a type error. */

@@ -11,6 +11,7 @@ import {
   checkUnchanged as $checkUnchanged,
   composed as $composed,
   guarded as $guarded,
+  loadRows as $loadRows,
   noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
@@ -26,6 +27,8 @@ import {
 } from "@meshfw/runtime";
 import type {
   SessionReference,
+  SessionReferenceWith,
+  SessionReferenceLoadable,
   RecordSessionReferenceInput,
   SetAvailabilitySessionReferenceInput,
   RedactSessionReferenceInput,
@@ -49,18 +52,28 @@ import { loadPlan as $loadPlan } from "../../load";
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
  * The read actions below run the slot, then these.
  */
-export function bindSessionReferenceReads(layer: $DataLayer) {
+export function bindSessionReferenceReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read(input: ReadSessionReferenceInput): Promise<SessionReference[]> {
+    async read<const N extends keyof SessionReferenceLoadable = never>(
+      input: ReadSessionReferenceInput<N>,
+      context?: unknown,
+    ): Promise<SessionReferenceWith<N>[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readSessionReferenceInput, input);
       return layer.transaction(async (tx) => {
-        return (await tx.select(tables.sessionReference, {
+        const $rows = (await tx.select(tables.sessionReference, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
           offset: parsed.offset,
         })) as SessionReference[];
+        if (!parsed.load?.length) return $rows as unknown as SessionReferenceWith<N>[];
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        return (await $loadRows($loadPlan, "SessionReference", tx, $rows, parsed.load, {
+          actor: $context.actor,
+          context: $context,
+          clock: options.clock,
+        })) as unknown as SessionReferenceWith<N>[];
       });
     },
   });
@@ -75,7 +88,7 @@ export function bindSessionReference(
   options: $BindOptions = {},
   compose?: $Composer,
 ) {
-  const $reads = bindSessionReferenceReads(layer);
+  const $reads = bindSessionReferenceReads(layer, options);
   return Object.freeze({
     async record(
       input: RecordSessionReferenceInput,
@@ -336,12 +349,12 @@ export function bindSessionReference(
       });
     },
 
-    async read(
-      input: ReadSessionReferenceInput,
-      ...[_context]: $ContextArgument
-    ): Promise<SessionReference[]> {
+    async read<const N extends keyof SessionReferenceLoadable = never>(
+      input: ReadSessionReferenceInput<N>,
+      ...[context]: $ContextArgument
+    ): Promise<SessionReferenceWith<N>[]> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
-      return $reads.read(input);
+      return $reads.read(input, context);
     },
   });
 }

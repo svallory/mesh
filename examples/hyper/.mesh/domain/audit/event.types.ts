@@ -39,11 +39,12 @@ export type RecordEventInput = {
   task?: Task["id"] | null | undefined;
 };
 
-export type ReadEventInput = {
+export type ReadEventInput<N extends keyof EventLoadable = never> = {
   filter?: EventFilter | undefined;
   sort?: EventSort | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
+  load?: readonly N[] | undefined;
 };
 
 /** What `load` attaches to a Event. The record has none of it, so reading one that was not loaded is a type error. */

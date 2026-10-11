@@ -31,11 +31,12 @@ export type RetireCollaboratorInput = {
   expectedVersion?: number | null | undefined;
 };
 
-export type ReadCollaboratorInput = {
+export type ReadCollaboratorInput<N extends keyof CollaboratorLoadable = never> = {
   filter?: CollaboratorFilter | undefined;
   sort?: CollaboratorSort | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
+  load?: readonly N[] | undefined;
 };
 
 /** What `load` attaches to a Collaborator. The record has none of it, so reading one that was not loaded is a type error. */

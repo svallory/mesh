@@ -10,6 +10,7 @@ import type {
   RecordAcceptedSubmissionInput,
   ReadSubmissionInput,
   SubmissionFilter,
+  SubmissionLoadable,
 } from "./submission.types";
 
 type Keys<T> = T extends Record<string, never> ? never : keyof T;
@@ -131,8 +132,12 @@ export const readSubmissionInput = z.strictObject({
   sort: submissionSort.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
-}) satisfies z.ZodType<ReadSubmissionInput>;
+  load: z
+    .array(z.enum(["task", "submitter"]))
+    .readonly()
+    .optional(),
+}) satisfies z.ZodType<ReadSubmissionInput<keyof SubmissionLoadable>>;
 
 export type ReadSubmissionInputShape = Assert<
-  SameShape<z.output<typeof readSubmissionInput>, ReadSubmissionInput>
+  SameShape<z.output<typeof readSubmissionInput>, ReadSubmissionInput<keyof SubmissionLoadable>>
 >;

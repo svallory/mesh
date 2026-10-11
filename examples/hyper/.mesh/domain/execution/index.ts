@@ -150,10 +150,10 @@ export async function abandonAttempt(
   return $delegate("abandonAttempt", (binding) => binding.abandonAttempt(input, ...context));
 }
 
-export async function readAttempt(
-  input: ReadAttemptInput,
+export async function readAttempt<const N extends keyof AttemptLoadable = never>(
+  input: ReadAttemptInput<N>,
   ...context: $ContextArgument
-): Promise<Attempt[]> {
+): Promise<AttemptWith<N>[]> {
   return $delegate("readAttempt", (binding) => binding.readAttempt(input, ...context));
 }
 
@@ -171,10 +171,10 @@ export async function correctInvocation(
   return $delegate("correctInvocation", (binding) => binding.correctInvocation(input, ...context));
 }
 
-export async function readInvocation(
-  input: ReadInvocationInput,
+export async function readInvocation<const N extends keyof InvocationLoadable = never>(
+  input: ReadInvocationInput<N>,
   ...context: $ContextArgument
-): Promise<Invocation[]> {
+): Promise<InvocationWith<N>[]> {
   return $delegate("readInvocation", (binding) => binding.readInvocation(input, ...context));
 }
 
@@ -206,10 +206,10 @@ export async function retireMachine(
   return $delegate("retireMachine", (binding) => binding.retireMachine(input, ...context));
 }
 
-export async function readMachine(
-  input: ReadMachineInput,
+export async function readMachine<const N extends keyof MachineLoadable = never>(
+  input: ReadMachineInput<N>,
   ...context: $ContextArgument
-): Promise<Machine[]> {
+): Promise<MachineWith<N>[]> {
   return $delegate("readMachine", (binding) => binding.readMachine(input, ...context));
 }
 
@@ -225,7 +225,10 @@ export async function settleRun(input: SettleRunInput, ...context: $ContextArgum
   return $delegate("settleRun", (binding) => binding.settleRun(input, ...context));
 }
 
-export async function readRun(input: ReadRunInput, ...context: $ContextArgument): Promise<Run[]> {
+export async function readRun<const N extends keyof RunLoadable = never>(
+  input: ReadRunInput<N>,
+  ...context: $ContextArgument
+): Promise<RunWith<N>[]> {
   return $delegate("readRun", (binding) => binding.readRun(input, ...context));
 }
 
@@ -256,10 +259,10 @@ export async function redactSessionReference(
   );
 }
 
-export async function readSessionReference(
-  input: ReadSessionReferenceInput,
+export async function readSessionReference<const N extends keyof SessionReferenceLoadable = never>(
+  input: ReadSessionReferenceInput<N>,
   ...context: $ContextArgument
-): Promise<SessionReference[]> {
+): Promise<SessionReferenceWith<N>[]> {
   return $delegate("readSessionReference", (binding) =>
     binding.readSessionReference(input, ...context),
   );

@@ -46,11 +46,12 @@ export type RecordAcceptedSubmissionInput = {
   taskVersion: number;
 };
 
-export type ReadSubmissionInput = {
+export type ReadSubmissionInput<N extends keyof SubmissionLoadable = never> = {
   filter?: SubmissionFilter | undefined;
   sort?: SubmissionSort | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
+  load?: readonly N[] | undefined;
 };
 
 /** What `load` attaches to a Submission. The record has none of it, so reading one that was not loaded is a type error. */

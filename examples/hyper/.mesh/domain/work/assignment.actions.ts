@@ -11,6 +11,7 @@ import {
   checkUnchanged as $checkUnchanged,
   composed as $composed,
   guarded as $guarded,
+  loadRows as $loadRows,
   noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
@@ -26,6 +27,8 @@ import {
 } from "@meshfw/runtime";
 import type {
   Assignment,
+  AssignmentWith,
+  AssignmentLoadable,
   StartAssignmentInput,
   FinishAssignmentInput,
   ReadAssignmentInput,
@@ -47,18 +50,28 @@ import { loadPlan as $loadPlan } from "../../load";
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
  * The read actions below run the slot, then these.
  */
-export function bindAssignmentReads(layer: $DataLayer) {
+export function bindAssignmentReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read(input: ReadAssignmentInput): Promise<Assignment[]> {
+    async read<const N extends keyof AssignmentLoadable = never>(
+      input: ReadAssignmentInput<N>,
+      context?: unknown,
+    ): Promise<AssignmentWith<N>[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readAssignmentInput, input);
       return layer.transaction(async (tx) => {
-        return (await tx.select(tables.assignment, {
+        const $rows = (await tx.select(tables.assignment, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Assignment[];
+        if (!parsed.load?.length) return $rows as unknown as AssignmentWith<N>[];
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        return (await $loadRows($loadPlan, "Assignment", tx, $rows, parsed.load, {
+          actor: $context.actor,
+          context: $context,
+          clock: options.clock,
+        })) as unknown as AssignmentWith<N>[];
       });
     },
   });
@@ -69,7 +82,7 @@ export function bindAssignmentReads(layer: $DataLayer) {
  * `actions` and `tx`; the project's `bind` in the index passes it.
  */
 export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
-  const $reads = bindAssignmentReads(layer);
+  const $reads = bindAssignmentReads(layer, options);
   return Object.freeze({
     async start(input: StartAssignmentInput, ...[context]: $ContextArgument): Promise<Assignment> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
@@ -202,9 +215,12 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
       });
     },
 
-    async read(input: ReadAssignmentInput, ...[_context]: $ContextArgument): Promise<Assignment[]> {
+    async read<const N extends keyof AssignmentLoadable = never>(
+      input: ReadAssignmentInput<N>,
+      ...[context]: $ContextArgument
+    ): Promise<AssignmentWith<N>[]> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
-      return $reads.read(input);
+      return $reads.read(input, context);
     },
   });
 }

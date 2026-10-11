@@ -42,11 +42,12 @@ export type SettleRunInput = {
   outcome?: unknown | undefined;
 };
 
-export type ReadRunInput = {
+export type ReadRunInput<N extends keyof RunLoadable = never> = {
   filter?: RunFilter | undefined;
   sort?: RunSort | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
+  load?: readonly N[] | undefined;
 };
 
 /** What `load` attaches to a Run. The record has none of it, so reading one that was not loaded is a type error. */

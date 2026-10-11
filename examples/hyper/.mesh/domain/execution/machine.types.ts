@@ -38,11 +38,12 @@ export type RetireMachineInput = {
   expectedVersion?: number | null | undefined;
 };
 
-export type ReadMachineInput = {
+export type ReadMachineInput<N extends keyof MachineLoadable = never> = {
   filter?: MachineFilter | undefined;
   sort?: MachineSort | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
+  load?: readonly N[] | undefined;
 };
 
 /** What `load` attaches to a Machine. The record has none of it, so reading one that was not loaded is a type error. */

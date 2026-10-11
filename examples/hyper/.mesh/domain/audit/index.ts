@@ -35,9 +35,9 @@ export async function recordEvent(
   return $delegate("recordEvent", (binding) => binding.recordEvent(input, ...context));
 }
 
-export async function readEvent(
-  input: ReadEventInput,
+export async function readEvent<const N extends keyof EventLoadable = never>(
+  input: ReadEventInput<N>,
   ...context: $ContextArgument
-): Promise<Event[]> {
+): Promise<EventWith<N>[]> {
   return $delegate("readEvent", (binding) => binding.readEvent(input, ...context));
 }

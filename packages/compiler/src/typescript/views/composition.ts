@@ -21,18 +21,20 @@ export interface CompositionView {
   readonly reads: readonly CompositionFunction[];
 }
 
-/** `readonly <name>: (input: <inputType>...) => Promise<<returnType>>;` */
+/** `readonly <name>: <generics>(input: <inputType>...) => Promise<<returnType>>;` */
 export interface CompositionFunction {
   /** The top-level function name, e.g. `createPost`. */
   readonly name: string;
-  /** The input type, e.g. `CreatePostInput`. */
+  /** The type parameter list as printed (a read that takes `load`: `<const N extends keyof PostLoadable = never>`), or the empty string. */
+  readonly generics: string;
+  /** The input type, e.g. `CreatePostInput`, or `ReadPostInput<N>`. */
   readonly inputType: string;
   /** The resolved type, e.g. `Post`, `Post[]` or `PostWith<"comments">`. */
   readonly returnType: string;
 }
 
 /** The type names `composition.ts` and the index declare, which no entity type may take. */
-export const COMPOSITION_TYPES: readonly string[] = Object.freeze(["Actions", "Reads"]);
+export const COMPOSITION_TYPES: readonly string[] = Object.freeze(["Actions", "Reads", "ReadOnlyActions", "ReadOnlyReads"]);
 
 const IDENTIFIERS = /[A-Za-z_$][A-Za-z0-9_$]*/g;
 
@@ -50,10 +52,10 @@ export function compositionView(input: EmitInput): CompositionView {
         throw emitError("MESH_EMIT_NAME", `Entity :${entity.name} would generate the type ${name}, which .mesh/composition.ts declares and #mesh exports for \`actions\` and \`tx\``, entity.position, "Rename the entity or the action");
     const used = new Set<string>();
     for (const method of view.methods) {
-      const fn = { name: method.functionName, inputType: method.inputType, returnType: method.returnType };
+      const fn = { name: method.functionName, generics: method.generics, inputType: method.inputType, returnType: method.returnType };
       actions.push(fn);
       if (method.isRead) reads.push(fn);
-      for (const name of `${method.inputType} ${method.returnType}`.match(IDENTIFIERS) ?? []) if (own.has(name)) used.add(name);
+      for (const name of `${method.generics} ${method.inputType} ${method.returnType}`.match(IDENTIFIERS) ?? []) if (own.has(name)) used.add(name);
     }
     if (used.size) imports.push({ names: [...own].filter((name) => used.has(name)).join(", "), fromLiteral: JSON.stringify(`./${entityPath(entity)}.types`) });
   }

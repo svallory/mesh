@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 
-import type { ReadCommentInput, CommentFilter } from "./comment.types";
+import type { ReadCommentInput, CommentFilter, CommentLoadable } from "./comment.types";
 
 type Keys<T> = T extends Record<string, never> ? never : keyof T;
 
@@ -57,8 +57,12 @@ export const readCommentInput = z.strictObject({
   sort: commentSort.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
-}) satisfies z.ZodType<ReadCommentInput>;
+  load: z
+    .array(z.enum(["post"]))
+    .readonly()
+    .optional(),
+}) satisfies z.ZodType<ReadCommentInput<keyof CommentLoadable>>;
 
 export type ReadCommentInputShape = Assert<
-  SameShape<z.output<typeof readCommentInput>, ReadCommentInput>
+  SameShape<z.output<typeof readCommentInput>, ReadCommentInput<keyof CommentLoadable>>
 >;

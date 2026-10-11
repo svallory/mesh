@@ -8,5 +8,5 @@
 // The other files in this folder are an implementation detail.
 
 export { bind, connect, disconnect, transaction } from "./binding";
-export type { Actions, Reads } from "./composition";
+export type { Actions, ReadOnlyActions, ReadOnlyReads, Reads } from "./composition";
 export { tables } from "./schema";

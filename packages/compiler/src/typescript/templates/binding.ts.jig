@@ -38,7 +38,7 @@ export function bind(layer: $DataLayer, _options: $BindOptions = {}) {
   const {{ entity.local }} = {{ entity.bindName }}(layer, options, $composer);
   @end~
   @if(entity.readsBindName)~
-  const {{ entity.readsLocal }} = {{ entity.readsBindName }}(layer);
+  const {{ entity.readsLocal }} = {{ entity.readsBindName }}(layer, options);
   @end~
   @end
   const $functions = Object.freeze({

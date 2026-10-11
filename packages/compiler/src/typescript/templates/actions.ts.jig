@@ -43,10 +43,10 @@ import { loadPlan as $loadPlan } from {{ loadFromLiteral }};
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
  * The read actions below run the slot, then these.
  */
-export function {{ readsBindName }}(layer: $DataLayer) {
+export function {{ readsBindName }}(layer: $DataLayer, {{ readsOptionsName }}: $BindOptions = {}) {
   return Object.freeze({
     @each(body in reads)
-    async {{ body.name }}(input: {{ body.inputType }}): Promise<{{ body.returnType }}> {
+    async {{ body.name }}{{ body.generics }}(input: {{ body.inputType }}{{ body.contextParam }}): Promise<{{ body.returnType }}> {
       @if(body.unsupported)
       await $castInput(layer, {{ body.validator }}, input);
       return $failJoined(layer, new $FrameworkError({{ body.unsupported }}));
@@ -77,11 +77,11 @@ export function {{ readsBindName }}(layer: $DataLayer) {
  */
 export function {{ bindName }}(layer: $DataLayer, {{ optionsName }}: $BindOptions = {}, {{ composeName }}?: $Composer) {
   @if(readsBindName)
-  const $reads = {{ readsBindName }}(layer);
+  const $reads = {{ readsBindName }}(layer, {{ optionsName }});
   @end
   return Object.freeze({
     @each(method in methods)
-    async {{ method.name }}(input: {{ method.inputType }}, ...[{{ method.contextName }}]: $ContextArgument): Promise<{{ method.returnType }}> {
+    async {{ method.name }}{{ method.generics }}(input: {{ method.inputType }}, ...[{{ method.contextName }}]: $ContextArgument): Promise<{{ method.returnType }}> {
       @if(method.notRun)
       // {{ method.notRun }}
       @end

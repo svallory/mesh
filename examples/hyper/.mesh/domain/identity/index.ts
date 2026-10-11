@@ -93,10 +93,10 @@ export async function retireCollaborator(
   );
 }
 
-export async function readCollaborator(
-  input: ReadCollaboratorInput,
+export async function readCollaborator<const N extends keyof CollaboratorLoadable = never>(
+  input: ReadCollaboratorInput<N>,
   ...context: $ContextArgument
-): Promise<Collaborator[]> {
+): Promise<CollaboratorWith<N>[]> {
   return $delegate("readCollaborator", (binding) => binding.readCollaborator(input, ...context));
 }
 
@@ -123,10 +123,10 @@ export async function revokeMembership(
   return $delegate("revokeMembership", (binding) => binding.revokeMembership(input, ...context));
 }
 
-export async function readMembership(
-  input: ReadMembershipInput,
+export async function readMembership<const N extends keyof MembershipLoadable = never>(
+  input: ReadMembershipInput<N>,
   ...context: $ContextArgument
-): Promise<Membership[]> {
+): Promise<MembershipWith<N>[]> {
   return $delegate("readMembership", (binding) => binding.readMembership(input, ...context));
 }
 

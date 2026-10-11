@@ -104,9 +104,9 @@ describe("actions view", () => {
       ["rename", "renameArticle", "RenameArticleInput", "renameArticleInput", "Article"],
       ["publish", "publishArticle", "PublishArticleInput", "publishArticleInput", 'ArticleWith<"author">'],
       ["purge", "purgeArticle", "PurgeArticleInput", "purgeArticleInput", "void"],
-      ["live", "liveArticle", "LiveArticleInput", "liveArticleInput", "Article[]"],
-      ["load", "loadArticle", "LoadArticleInput", "loadArticleInput", "Article[]"],
-      ["read", "readArticle", "ReadArticleInput", "readArticleInput", "Article[]"],
+      ["live", "liveArticle", "LiveArticleInput<N>", "liveArticleInput", "ArticleWith<N>[]"],
+      ["load", "loadArticle", "LoadArticleInput<N>", "loadArticleInput", "ArticleWith<N>[]"],
+      ["read", "readArticle", "ReadArticleInput<N>", "readArticleInput", "ArticleWith<N>[]"],
       ["destroy", "destroyArticle", "DestroyArticleInput", "destroyArticleInput", "void"],
     ]);
     expect(view.runtimeValues).toEqual([
@@ -183,9 +183,13 @@ describe("actions view", () => {
     expect(live.statements).toEqual([]);
     const read = view.reads.find((m) => m.name === "read")!;
     expect(read).toMatchObject({ unsupported: null, usesParsed: true, statements: [
-      "return (await tx.select(tables.article, { filter: parsed.filter, sort: parsed.sort, limit: parsed.limit, offset: parsed.offset })) as Article[];"] });
+      "const $rows = (await tx.select(tables.article, { filter: parsed.filter, sort: parsed.sort, limit: parsed.limit, offset: parsed.offset })) as Article[];",
+      "if (!parsed.load?.length) return $rows as unknown as ArticleWith<N>[];",
+      "const $context = (context ?? {}) as unknown as Record<string, unknown>;",
+      'return (await $loadRows($loadPlan, "Article", tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: options.clock })) as unknown as ArticleWith<N>[];'],
+      generics: "<const N extends keyof ArticleLoadable = never>", contextParam: ", context?: unknown" });
     expect(view.methods.filter((m) => m.isRead).map((m) => [m.name, m.readsCall, m.statements])).toEqual([
-      ["live", "$reads.live(input)", []], ["load", "$reads.load(input)", []], ["read", "$reads.read(input)", []]]);
+      ["live", "$reads.live(input, context)", []], ["load", "$reads.load(input, context)", []], ["read", "$reads.read(input, context)", []]]);
   });
 
   test("a destroy whose body cannot see the record deletes by key and turns a missing row into NotFoundError", () => {

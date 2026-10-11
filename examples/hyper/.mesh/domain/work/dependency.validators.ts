@@ -8,6 +8,7 @@ import type {
   RemoveDependencyInput,
   ReadDependencyInput,
   DependencyFilter,
+  DependencyLoadable,
 } from "./dependency.types";
 
 type Keys<T> = T extends Record<string, never> ? never : keyof T;
@@ -97,8 +98,12 @@ export const readDependencyInput = z.strictObject({
   sort: dependencySort.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
-}) satisfies z.ZodType<ReadDependencyInput>;
+  load: z
+    .array(z.enum(["dependent", "prerequisite", "createdBy"]))
+    .readonly()
+    .optional(),
+}) satisfies z.ZodType<ReadDependencyInput<keyof DependencyLoadable>>;
 
 export type ReadDependencyInputShape = Assert<
-  SameShape<z.output<typeof readDependencyInput>, ReadDependencyInput>
+  SameShape<z.output<typeof readDependencyInput>, ReadDependencyInput<keyof DependencyLoadable>>
 >;

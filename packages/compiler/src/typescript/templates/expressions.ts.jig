@@ -9,7 +9,6 @@ import {
   expr as $,
   @end
   type DeepReadonly as $DeepReadonly,
-  type ReadOnlyResults as $ReadOnlyResults,
   type Scope as $Scope,
   @if(usesSharedInput)
   type SharedInput as $SharedInput,
@@ -18,7 +17,7 @@ import {
 @each(helper in helperImports)
 import { {{ helper.names }} } from {{ helper.fromLiteral }};
 @end
-import type { Actions as $Actions, Reads as $Reads } from {{ compositionFromLiteral }};
+import type { ReadOnlyActions as $ReadOnlyActions, ReadOnlyReads as $ReadOnlyReads } from {{ compositionFromLiteral }};
 import type {
   @each(name in typeImports)
   {{ name }},

@@ -10,6 +10,7 @@ import {
   composed as $composed,
   guarded as $guarded,
   loadInto as $loadInto,
+  loadRows as $loadRows,
   noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
   rescope as $rescope,
@@ -24,7 +25,14 @@ import {
   type Issue as $Issue,
   type Row as $Row,
 } from "@meshfw/runtime";
-import type { Review, AcceptReviewInput, ReturnReviewInput, ReadReviewInput } from "./review.types";
+import type {
+  Review,
+  ReviewWith,
+  ReviewLoadable,
+  AcceptReviewInput,
+  ReturnReviewInput,
+  ReadReviewInput,
+} from "./review.types";
 import { acceptReviewInput, returnReviewInput, readReviewInput } from "./review.validators";
 import { tables } from "../../schema";
 import { expressions as $expressions, type ReviewScope as $Scope } from "./review.expressions";
@@ -34,18 +42,28 @@ import { loadPlan as $loadPlan } from "../../load";
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
  * The read actions below run the slot, then these.
  */
-export function bindReviewReads(layer: $DataLayer) {
+export function bindReviewReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read(input: ReadReviewInput): Promise<Review[]> {
+    async read<const N extends keyof ReviewLoadable = never>(
+      input: ReadReviewInput<N>,
+      context?: unknown,
+    ): Promise<ReviewWith<N>[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readReviewInput, input);
       return layer.transaction(async (tx) => {
-        return (await tx.select(tables.review, {
+        const $rows = (await tx.select(tables.review, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Review[];
+        if (!parsed.load?.length) return $rows as unknown as ReviewWith<N>[];
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        return (await $loadRows($loadPlan, "Review", tx, $rows, parsed.load, {
+          actor: $context.actor,
+          context: $context,
+          clock: options.clock,
+        })) as unknown as ReviewWith<N>[];
       });
     },
   });
@@ -56,7 +74,7 @@ export function bindReviewReads(layer: $DataLayer) {
  * `actions` and `tx`; the project's `bind` in the index passes it.
  */
 export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
-  const $reads = bindReviewReads(layer);
+  const $reads = bindReviewReads(layer, options);
   return Object.freeze({
     async accept(input: AcceptReviewInput, ...[context]: $ContextArgument): Promise<Review> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
@@ -272,9 +290,12 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
       });
     },
 
-    async read(input: ReadReviewInput, ...[_context]: $ContextArgument): Promise<Review[]> {
+    async read<const N extends keyof ReviewLoadable = never>(
+      input: ReadReviewInput<N>,
+      ...[context]: $ContextArgument
+    ): Promise<ReviewWith<N>[]> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
-      return $reads.read(input);
+      return $reads.read(input, context);
     },
   });
 }

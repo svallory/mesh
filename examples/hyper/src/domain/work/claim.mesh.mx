@@ -23,10 +23,10 @@ entity :Claim table="claims"
         integer :expectedVersion nullable
       validate
         check :taskReady [
-          that=async ({ input, tx }) => (await derivedStateOf(tx, input.task, now())) === :ready
+          that=async ({ input, tx }) => (await derivedStateOf(tx, input.task)) === :ready
           code="claim.task-ready"
           message="the task is not ready to claim"
-          details=({ input, tx }) => readinessOf(tx, input.task, now())
+          details=({ input, tx }) => readinessOf(tx, input.task)
         ]
         check :versionMatches [
           that=async ({ input, tx }) => input.expectedVersion == null || input.expectedVersion === await taskVersionOf(tx, input.task)

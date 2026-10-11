@@ -39,18 +39,20 @@ export type ArchivePostInput = {
   id: string;
 };
 
-export type PublishedPostInput = {
+export type PublishedPostInput<N extends keyof PostLoadable = never> = {
   filter?: PostFilter | undefined;
   sort?: PostSort | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
+  load?: readonly N[] | undefined;
 };
 
-export type ReadPostInput = {
+export type ReadPostInput<N extends keyof PostLoadable = never> = {
   filter?: PostFilter | undefined;
   sort?: PostSort | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
+  load?: readonly N[] | undefined;
 };
 
 export type DestroyPostInput = {

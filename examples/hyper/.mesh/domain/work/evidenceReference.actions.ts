@@ -7,6 +7,7 @@ import {
   castInput as $castInput,
   composed as $composed,
   guarded as $guarded,
+  loadRows as $loadRows,
   noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
   scope as $scope,
@@ -19,6 +20,8 @@ import {
 } from "@meshfw/runtime";
 import type {
   EvidenceReference,
+  EvidenceReferenceWith,
+  EvidenceReferenceLoadable,
   RecordEvidenceReferenceInput,
   ReadEvidenceReferenceInput,
 } from "./evidenceReference.types";
@@ -37,18 +40,28 @@ import { loadPlan as $loadPlan } from "../../load";
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
  * The read actions below run the slot, then these.
  */
-export function bindEvidenceReferenceReads(layer: $DataLayer) {
+export function bindEvidenceReferenceReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read(input: ReadEvidenceReferenceInput): Promise<EvidenceReference[]> {
+    async read<const N extends keyof EvidenceReferenceLoadable = never>(
+      input: ReadEvidenceReferenceInput<N>,
+      context?: unknown,
+    ): Promise<EvidenceReferenceWith<N>[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readEvidenceReferenceInput, input);
       return layer.transaction(async (tx) => {
-        return (await tx.select(tables.evidenceReference, {
+        const $rows = (await tx.select(tables.evidenceReference, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
           offset: parsed.offset,
         })) as EvidenceReference[];
+        if (!parsed.load?.length) return $rows as unknown as EvidenceReferenceWith<N>[];
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        return (await $loadRows($loadPlan, "EvidenceReference", tx, $rows, parsed.load, {
+          actor: $context.actor,
+          context: $context,
+          clock: options.clock,
+        })) as unknown as EvidenceReferenceWith<N>[];
       });
     },
   });
@@ -63,7 +76,7 @@ export function bindEvidenceReference(
   options: $BindOptions = {},
   compose?: $Composer,
 ) {
-  const $reads = bindEvidenceReferenceReads(layer);
+  const $reads = bindEvidenceReferenceReads(layer, options);
   return Object.freeze({
     async record(
       input: RecordEvidenceReferenceInput,
@@ -122,12 +135,12 @@ export function bindEvidenceReference(
       });
     },
 
-    async read(
-      input: ReadEvidenceReferenceInput,
-      ...[_context]: $ContextArgument
-    ): Promise<EvidenceReference[]> {
+    async read<const N extends keyof EvidenceReferenceLoadable = never>(
+      input: ReadEvidenceReferenceInput<N>,
+      ...[context]: $ContextArgument
+    ): Promise<EvidenceReferenceWith<N>[]> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
-      return $reads.read(input);
+      return $reads.read(input, context);
     },
   });
 }

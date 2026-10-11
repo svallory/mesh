@@ -4,31 +4,43 @@
 
 import {
   castInput as $castInput,
+  loadRows as $loadRows,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
 } from "@meshfw/runtime";
-import type { Comment, ReadCommentInput } from "./comment.types";
+import type { Comment, CommentWith, CommentLoadable, ReadCommentInput } from "./comment.types";
 import { readCommentInput } from "./comment.validators";
 import { tables } from "../../schema";
+import { loadPlan as $loadPlan } from "../../load";
 
 /**
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
  * The read actions below run the slot, then these.
  */
-export function bindCommentReads(layer: $DataLayer) {
+export function bindCommentReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read(input: ReadCommentInput): Promise<Comment[]> {
+    async read<const N extends keyof CommentLoadable = never>(
+      input: ReadCommentInput<N>,
+      context?: unknown,
+    ): Promise<CommentWith<N>[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readCommentInput, input);
       return layer.transaction(async (tx) => {
-        return (await tx.select(tables.comment, {
+        const $rows = (await tx.select(tables.comment, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Comment[];
+        if (!parsed.load?.length) return $rows as unknown as CommentWith<N>[];
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        return (await $loadRows($loadPlan, "Comment", tx, $rows, parsed.load, {
+          actor: $context.actor,
+          context: $context,
+          clock: options.clock,
+        })) as unknown as CommentWith<N>[];
       });
     },
   });
@@ -38,12 +50,15 @@ export function bindCommentReads(layer: $DataLayer) {
  * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
  * `actions` and `tx`; the project's `bind` in the index passes it.
  */
-export function bindComment(layer: $DataLayer, _options: $BindOptions = {}, _compose?: $Composer) {
-  const $reads = bindCommentReads(layer);
+export function bindComment(layer: $DataLayer, options: $BindOptions = {}, _compose?: $Composer) {
+  const $reads = bindCommentReads(layer, options);
   return Object.freeze({
-    async read(input: ReadCommentInput, ...[_context]: $ContextArgument): Promise<Comment[]> {
+    async read<const N extends keyof CommentLoadable = never>(
+      input: ReadCommentInput<N>,
+      ...[context]: $ContextArgument
+    ): Promise<CommentWith<N>[]> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
-      return $reads.read(input);
+      return $reads.read(input, context);
     },
   });
 }

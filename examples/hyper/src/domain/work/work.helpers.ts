@@ -333,8 +333,8 @@ export async function dependencyExistsOf(tx: Reads, dependentId: string, prerequ
 }
 
 /** `claim.task-ready`'s details (`tasks/claim/rules.ex:36-47`): the derived state and the block reasons behind it. */
-export async function readinessOf(tx: Reads, taskId: string, now: Date): Promise<{ derivedState: DerivedState | null; reasons: BlockReason[] }> {
-  return { derivedState: await derivedStateOf(tx, taskId, now), reasons: await blockReasonsOf(tx, taskId) };
+export async function readinessOf(tx: Reads, taskId: string): Promise<{ derivedState: DerivedState | null; reasons: BlockReason[] }> {
+  return { derivedState: await derivedStateOf(tx, taskId), reasons: await blockReasonsOf(tx, taskId) };
 }
 
 // The reads a create's check makes. In `validate`, a create's `self` is the new instance before the input is applied
@@ -381,20 +381,16 @@ export async function claimsOf(tx: Reads, taskId: string) {
   return tx.readClaim({ filter: { taskId: { eq: taskId } } });
 }
 
-/** The Task's `maxFence` (`max :maxFence of="claims.fence"`): the highest fence of its claims, or null when it has none. */
-export function maxFence(claims: readonly { readonly fence: number }[]): number | null {
-  return claims.length === 0 ? null : Math.max(...claims.map((claim) => claim.fence));
-}
-
 /** `claim.current-fence`'s details for the Task `taskId`, read through `tx` (`fenceDetails`). */
 export async function fenceDetailsOf(tx: Reads, taskId: string, fence: number | null | undefined, actorId: string, now: Date): Promise<{ currentFence: number | null; stale: boolean }> {
-  const claims = await claimsOf(tx, taskId);
-  return fenceDetails(maxFence(claims), claims, fence, actorId, now);
+  const [task] = await tx.readTask({ filter: { id: { eq: taskId } }, limit: 1, load: ["maxFence", "claims"] });
+  return fenceDetails(task?.maxFence ?? null, task?.claims ?? [], fence, actorId, now);
 }
 
 /** The Task's `inReview`: a submission of it is pending. */
 export async function inReviewOf(tx: Reads, taskId: string): Promise<boolean> {
-  return (await tx.readSubmission({ filter: { taskId: { eq: taskId }, state: { eq: "pending" } }, limit: 1 })).length > 0;
+  const [task] = await tx.readTask({ filter: { id: { eq: taskId } }, limit: 1, load: ["inReview"] });
+  return task?.inReview ?? false;
 }
 
 export type DerivedState = "ready" | "blocked" | "claimed" | "in-review" | "done" | "canceled";
@@ -404,13 +400,9 @@ export type DerivedState = "ready" | "blocked" | "claimed" | "in-review" | "done
  * claimed (an active claim whose lease has not run out), then blocked (a prerequisite not done), else ready. Null when
  * the Task does not exist.
  */
-export async function derivedStateOf(tx: Reads, taskId: string, now: Date): Promise<DerivedState | null> {
-  const task = await taskOf(tx, taskId);
-  if (!task) return null;
-  if (task.state === "done" || task.state === "canceled") return task.state;
-  if (await inReviewOf(tx, taskId)) return "in-review";
-  if (liveClaim(await claimsOf(tx, taskId), now)) return "claimed";
-  return (await blockReasonsOf(tx, taskId)).length > 0 ? "blocked" : "ready";
+export async function derivedStateOf(tx: Reads, taskId: string): Promise<DerivedState | null> {
+  const [task] = await tx.readTask({ filter: { id: { eq: taskId } }, limit: 1, load: ["derivedState"] });
+  return task?.derivedState ?? null;
 }
 
 export interface SubmittedVersions {

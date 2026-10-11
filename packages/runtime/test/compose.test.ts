@@ -17,7 +17,7 @@ function layerOf(): { layer: DataLayer; current: { ops: DataOperations } } {
 }
 
 describe("composer", () => {
-  test("a call carries the caller's context unless it passes its own; a read gets its input only", async () => {
+  test("a call carries the caller's context unless it passes its own; a read gets the transaction's context too (a load runs computed bodies that read it)", async () => {
     const { layer, current } = layerOf();
     const made = composer(layer);
     const seen: unknown[] = [];
@@ -29,7 +29,7 @@ describe("composer", () => {
     await actions.openThing!({ n: 1 });
     await actions.openThing!({ n: 2 }, { actor: "own" });
     await tx.readThing!({ limit: 1 });
-    expect(seen).toEqual([[{ n: 1 }, { actor: "caller" }], [{ n: 2 }, { actor: "own" }], [{ limit: 1 }]]);
+    expect(seen).toEqual([[{ n: 1 }, { actor: "caller" }], [{ n: 2 }, { actor: "own" }], [{ limit: 1 }, { actor: "caller" }]]);
     expect(Object.isFrozen(actions)).toBe(true);
     expect(Object.isFrozen(tx)).toBe(true);
   });

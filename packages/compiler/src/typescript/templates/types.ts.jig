@@ -16,7 +16,7 @@ export type {{ record.name }} = {
 };
 
 @each(input in inputs)
-export type {{ input.name }} = {
+export type {{ input.name }}{{ input.generics }} = {
   @if(input.empty)
   [key: string]: never;
   @end

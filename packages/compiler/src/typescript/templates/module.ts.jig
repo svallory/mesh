@@ -31,7 +31,7 @@ export {
 @end
 
 @each(fn in functions)
-export async function {{ fn.name }}(input: {{ fn.inputType }}, ...context: $ContextArgument): Promise<{{ fn.returnType }}> {
+export async function {{ fn.name }}{{ fn.generics }}(input: {{ fn.inputType }}, ...context: $ContextArgument): Promise<{{ fn.returnType }}> {
   return $delegate({{ fn.nameLiteral }}, (binding) => binding.{{ fn.name }}(input, ...context));
 }
 

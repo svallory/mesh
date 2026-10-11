@@ -11,6 +11,7 @@ import type {
   ReadPostInput,
   DestroyPostInput,
   PostFilter,
+  PostLoadable,
 } from "./post.types";
 
 type Keys<T> = T extends Record<string, never> ? never : keyof T;
@@ -137,10 +138,14 @@ export const publishedPostInput = z.strictObject({
   sort: postSort.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
-}) satisfies z.ZodType<PublishedPostInput>;
+  load: z
+    .array(z.enum(["author", "comments", "excerpt", "commentCount"]))
+    .readonly()
+    .optional(),
+}) satisfies z.ZodType<PublishedPostInput<keyof PostLoadable>>;
 
 export type PublishedPostInputShape = Assert<
-  SameShape<z.output<typeof publishedPostInput>, PublishedPostInput>
+  SameShape<z.output<typeof publishedPostInput>, PublishedPostInput<keyof PostLoadable>>
 >;
 
 export const readPostInput = z.strictObject({
@@ -148,9 +153,15 @@ export const readPostInput = z.strictObject({
   sort: postSort.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
-}) satisfies z.ZodType<ReadPostInput>;
+  load: z
+    .array(z.enum(["author", "comments", "excerpt", "commentCount"]))
+    .readonly()
+    .optional(),
+}) satisfies z.ZodType<ReadPostInput<keyof PostLoadable>>;
 
-export type ReadPostInputShape = Assert<SameShape<z.output<typeof readPostInput>, ReadPostInput>>;
+export type ReadPostInputShape = Assert<
+  SameShape<z.output<typeof readPostInput>, ReadPostInput<keyof PostLoadable>>
+>;
 
 export const destroyPostInput = z.strictObject({
   id: z.uuid(),

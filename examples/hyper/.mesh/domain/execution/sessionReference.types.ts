@@ -43,11 +43,12 @@ export type RedactSessionReferenceInput = {
   expectedVersion?: number | null | undefined;
 };
 
-export type ReadSessionReferenceInput = {
+export type ReadSessionReferenceInput<N extends keyof SessionReferenceLoadable = never> = {
   filter?: SessionReferenceFilter | undefined;
   sort?: SessionReferenceSort | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
+  load?: readonly N[] | undefined;
 };
 
 /** What `load` attaches to a SessionReference. The record has none of it, so reading one that was not loaded is a type error. */

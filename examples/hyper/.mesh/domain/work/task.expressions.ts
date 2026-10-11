@@ -4,7 +4,6 @@
 import {
   expr as $,
   type DeepReadonly as $DeepReadonly,
-  type ReadOnlyResults as $ReadOnlyResults,
   type Scope as $Scope,
 } from "@meshfw/runtime";
 import {
@@ -29,7 +28,10 @@ import {
   taskChanges,
 } from "../../../src/domain/work/work.helpers";
 import { assignableOf, collaboratorActiveOf } from "../../../src/domain/identity/identity.helpers";
-import type { Actions as $Actions, Reads as $Reads } from "../../composition";
+import type {
+  ReadOnlyActions as $ReadOnlyActions,
+  ReadOnlyReads as $ReadOnlyReads,
+} from "../../composition";
 import type {
   Task,
   TaskLoaded,
@@ -52,8 +54,8 @@ export type TaskScope<I = unknown> = $Scope<{
   actor: any;
   context: any;
   before: $DeepReadonly<Task> | null;
-  actions: $ReadOnlyResults<$Actions>;
-  tx: $ReadOnlyResults<$Reads>;
+  actions: $ReadOnlyActions;
+  tx: $ReadOnlyReads;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
 export type TaskStoredScope<I = unknown> = TaskScope<I> & { before: $DeepReadonly<Task> };

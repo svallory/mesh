@@ -10,6 +10,7 @@ import {
   composed as $composed,
   guarded as $guarded,
   loadInto as $loadInto,
+  loadRows as $loadRows,
   noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
@@ -25,6 +26,8 @@ import {
 } from "@meshfw/runtime";
 import type {
   Invocation,
+  InvocationWith,
+  InvocationLoadable,
   RecordInvocationInput,
   CorrectInvocationInput,
   ReadInvocationInput,
@@ -45,18 +48,28 @@ import { loadPlan as $loadPlan } from "../../load";
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
  * The read actions below run the slot, then these.
  */
-export function bindInvocationReads(layer: $DataLayer) {
+export function bindInvocationReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read(input: ReadInvocationInput): Promise<Invocation[]> {
+    async read<const N extends keyof InvocationLoadable = never>(
+      input: ReadInvocationInput<N>,
+      context?: unknown,
+    ): Promise<InvocationWith<N>[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readInvocationInput, input);
       return layer.transaction(async (tx) => {
-        return (await tx.select(tables.invocation, {
+        const $rows = (await tx.select(tables.invocation, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Invocation[];
+        if (!parsed.load?.length) return $rows as unknown as InvocationWith<N>[];
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        return (await $loadRows($loadPlan, "Invocation", tx, $rows, parsed.load, {
+          actor: $context.actor,
+          context: $context,
+          clock: options.clock,
+        })) as unknown as InvocationWith<N>[];
       });
     },
   });
@@ -67,7 +80,7 @@ export function bindInvocationReads(layer: $DataLayer) {
  * `actions` and `tx`; the project's `bind` in the index passes it.
  */
 export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
-  const $reads = bindInvocationReads(layer);
+  const $reads = bindInvocationReads(layer, options);
   return Object.freeze({
     async record(
       input: RecordInvocationInput,
@@ -335,9 +348,12 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
       });
     },
 
-    async read(input: ReadInvocationInput, ...[_context]: $ContextArgument): Promise<Invocation[]> {
+    async read<const N extends keyof InvocationLoadable = never>(
+      input: ReadInvocationInput<N>,
+      ...[context]: $ContextArgument
+    ): Promise<InvocationWith<N>[]> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
-      return $reads.read(input);
+      return $reads.read(input, context);
     },
   });
 }

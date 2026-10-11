@@ -8,6 +8,7 @@ import type {
   FinishAssignmentInput,
   ReadAssignmentInput,
   AssignmentFilter,
+  AssignmentLoadable,
 } from "./assignment.types";
 
 type Keys<T> = T extends Record<string, never> ? never : keyof T;
@@ -105,8 +106,12 @@ export const readAssignmentInput = z.strictObject({
   sort: assignmentSort.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
-}) satisfies z.ZodType<ReadAssignmentInput>;
+  load: z
+    .array(z.enum(["task", "assignee", "delegator"]))
+    .readonly()
+    .optional(),
+}) satisfies z.ZodType<ReadAssignmentInput<keyof AssignmentLoadable>>;
 
 export type ReadAssignmentInputShape = Assert<
-  SameShape<z.output<typeof readAssignmentInput>, ReadAssignmentInput>
+  SameShape<z.output<typeof readAssignmentInput>, ReadAssignmentInput<keyof AssignmentLoadable>>
 >;

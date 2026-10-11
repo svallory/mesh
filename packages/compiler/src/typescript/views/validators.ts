@@ -1,6 +1,6 @@
 import type { AttributeType, Entity } from "@meshfw/model";
 import type { EmitInput } from "../emit.ts";
-import { entityInputs, entitySegment, filterTypeName, hasRead, propertyName, queryColumns, sortTypeName, type FieldShape, type QueryColumn, type QueryField } from "./inputs.ts";
+import { entityInputs, entitySegment, filterTypeName, hasRead, propertyName, typeName, queryColumns, sortTypeName, takesLoad, type FieldShape, type QueryColumn, type QueryField } from "./inputs.ts";
 import { entityFileComment } from "./types.ts";
 
 /**
@@ -24,7 +24,7 @@ export interface ValidatorsView {
 
 /** The filter and sort schemas a read input uses. */
 export interface QuerySchema {
-  /** The filter type, imported from the types file with the input types. */
+  /** The filter type, and the loadable map when the entity has one, imported from the types file with the input types. */
   readonly typeImports: readonly string[];
   /** The filter type's name, e.g. `PostFilter`. */
   readonly filterTypeName: string;
@@ -42,6 +42,8 @@ export interface QuerySchema {
 export interface InputSchema {
   /** The input type it validates, imported from the types file, e.g. `CreatePostInput`. */
   readonly typeName: string;
+  /** The type argument the schema is checked at: `<keyof PostLoadable>` for a read that takes `load` (every name it may list), else the empty string. */
+  readonly typeArguments: string;
   /** The exported schema constant: `typeName` with its first letter lower-cased, e.g. `createPostInput`. */
   readonly constName: string;
   /** The exported compile-time assertion that schema output and input type agree, e.g. `CreatePostInputShape`. */
@@ -86,6 +88,7 @@ export function validatorsView({ document }: EmitInput, entity: Entity): Validat
     typesFromLiteral: JSON.stringify(`./${entitySegment(entity)}.types`),
     schemas: inputs.map((input) => ({
       typeName: input.name,
+      typeArguments: takesLoad(input) ? `<keyof ${typeName(entity.name, entity.position)}Loadable>` : "",
       constName: input.name[0]!.toLowerCase() + input.name.slice(1),
       shapeTypeName: `${input.name}Shape`,
       fields: input.fields.map(({ attribute, optional, query }) => ({
@@ -106,6 +109,7 @@ const sortConst = (entity: Entity) => lowerFirst(sortTypeName(entity));
 function querySchema(entity: Entity, field: QueryField): string {
   return field === "filter" ? `${filterConst(entity)}.optional()`
     : field === "sort" ? `${sortConst(entity)}.optional()`
+    : field === "load" ? `z.array(z.enum([${[...entity.relationships, ...entity.computed].map((member) => JSON.stringify(member.name)).join(", ")}])).readonly().optional()`
     : "z.int().min(0).optional()";
 }
 
@@ -119,7 +123,7 @@ function comparedSchema(column: QueryColumn): string {
 function queryView(entity: Entity): QuerySchema {
   const columns = queryColumns(entity);
   return {
-    typeImports: [filterTypeName(entity)],
+    typeImports: [filterTypeName(entity), ...(entity.relationships.length + entity.computed.length > 0 ? [`${typeName(entity.name, entity.position)}Loadable`] : [])],
     filterTypeName: filterTypeName(entity),
     filterConst: filterConst(entity),
     filterFields: columns

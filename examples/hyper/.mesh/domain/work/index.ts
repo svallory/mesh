@@ -220,10 +220,10 @@ export async function finishAssignment(
   return $delegate("finishAssignment", (binding) => binding.finishAssignment(input, ...context));
 }
 
-export async function readAssignment(
-  input: ReadAssignmentInput,
+export async function readAssignment<const N extends keyof AssignmentLoadable = never>(
+  input: ReadAssignmentInput<N>,
   ...context: $ContextArgument
-): Promise<Assignment[]> {
+): Promise<AssignmentWith<N>[]> {
   return $delegate("readAssignment", (binding) => binding.readAssignment(input, ...context));
 }
 
@@ -266,10 +266,10 @@ export async function endClaim(input: EndClaimInput, ...context: $ContextArgumen
   return $delegate("endClaim", (binding) => binding.endClaim(input, ...context));
 }
 
-export async function readClaim(
-  input: ReadClaimInput,
+export async function readClaim<const N extends keyof ClaimLoadable = never>(
+  input: ReadClaimInput<N>,
   ...context: $ContextArgument
-): Promise<Claim[]> {
+): Promise<ClaimWith<N>[]> {
   return $delegate("readClaim", (binding) => binding.readClaim(input, ...context));
 }
 
@@ -280,10 +280,10 @@ export async function recordCompletion(
   return $delegate("recordCompletion", (binding) => binding.recordCompletion(input, ...context));
 }
 
-export async function readCompletion(
-  input: ReadCompletionInput,
+export async function readCompletion<const N extends keyof CompletionLoadable = never>(
+  input: ReadCompletionInput<N>,
   ...context: $ContextArgument
-): Promise<Completion[]> {
+): Promise<CompletionWith<N>[]> {
   return $delegate("readCompletion", (binding) => binding.readCompletion(input, ...context));
 }
 
@@ -301,10 +301,10 @@ export async function removeDependency(
   return $delegate("removeDependency", (binding) => binding.removeDependency(input, ...context));
 }
 
-export async function readDependency(
-  input: ReadDependencyInput,
+export async function readDependency<const N extends keyof DependencyLoadable = never>(
+  input: ReadDependencyInput<N>,
   ...context: $ContextArgument
-): Promise<Dependency[]> {
+): Promise<DependencyWith<N>[]> {
   return $delegate("readDependency", (binding) => binding.readDependency(input, ...context));
 }
 
@@ -317,10 +317,12 @@ export async function recordEvidenceReference(
   );
 }
 
-export async function readEvidenceReference(
-  input: ReadEvidenceReferenceInput,
+export async function readEvidenceReference<
+  const N extends keyof EvidenceReferenceLoadable = never,
+>(
+  input: ReadEvidenceReferenceInput<N>,
   ...context: $ContextArgument
-): Promise<EvidenceReference[]> {
+): Promise<EvidenceReferenceWith<N>[]> {
   return $delegate("readEvidenceReference", (binding) =>
     binding.readEvidenceReference(input, ...context),
   );
@@ -333,10 +335,10 @@ export async function recordLateResult(
   return $delegate("recordLateResult", (binding) => binding.recordLateResult(input, ...context));
 }
 
-export async function readLateResult(
-  input: ReadLateResultInput,
+export async function readLateResult<const N extends keyof LateResultLoadable = never>(
+  input: ReadLateResultInput<N>,
   ...context: $ContextArgument
-): Promise<LateResult[]> {
+): Promise<LateResultWith<N>[]> {
   return $delegate("readLateResult", (binding) => binding.readLateResult(input, ...context));
 }
 
@@ -354,10 +356,10 @@ export async function returnReview(
   return $delegate("returnReview", (binding) => binding.returnReview(input, ...context));
 }
 
-export async function readReview(
-  input: ReadReviewInput,
+export async function readReview<const N extends keyof ReviewLoadable = never>(
+  input: ReadReviewInput<N>,
   ...context: $ContextArgument
-): Promise<Review[]> {
+): Promise<ReviewWith<N>[]> {
   return $delegate("readReview", (binding) => binding.readReview(input, ...context));
 }
 
@@ -393,10 +395,10 @@ export async function recordAcceptedSubmission(
   );
 }
 
-export async function readSubmission(
-  input: ReadSubmissionInput,
+export async function readSubmission<const N extends keyof SubmissionLoadable = never>(
+  input: ReadSubmissionInput<N>,
   ...context: $ContextArgument
-): Promise<Submission[]> {
+): Promise<SubmissionWith<N>[]> {
   return $delegate("readSubmission", (binding) => binding.readSubmission(input, ...context));
 }
 
@@ -467,9 +469,9 @@ export async function unassignTask(
   return $delegate("unassignTask", (binding) => binding.unassignTask(input, ...context));
 }
 
-export async function readTask(
-  input: ReadTaskInput,
+export async function readTask<const N extends keyof TaskLoadable = never>(
+  input: ReadTaskInput<N>,
   ...context: $ContextArgument
-): Promise<Task[]> {
+): Promise<TaskWith<N>[]> {
   return $delegate("readTask", (binding) => binding.readTask(input, ...context));
 }

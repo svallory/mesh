@@ -4,7 +4,6 @@
 import {
   expr as $,
   type DeepReadonly as $DeepReadonly,
-  type ReadOnlyResults as $ReadOnlyResults,
   type Scope as $Scope,
 } from "@meshfw/runtime";
 import {
@@ -13,7 +12,10 @@ import {
   readinessOf,
   taskVersionOf,
 } from "../../../src/domain/work/work.helpers";
-import type { Actions as $Actions, Reads as $Reads } from "../../composition";
+import type {
+  ReadOnlyActions as $ReadOnlyActions,
+  ReadOnlyReads as $ReadOnlyReads,
+} from "../../composition";
 import type {
   Claim,
   ClaimLoaded,
@@ -32,8 +34,8 @@ export type ClaimScope<I = unknown> = $Scope<{
   actor: any;
   context: any;
   before: $DeepReadonly<Claim> | null;
-  actions: $ReadOnlyResults<$Actions>;
-  tx: $ReadOnlyResults<$Reads>;
+  actions: $ReadOnlyActions;
+  tx: $ReadOnlyReads;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
 export type ClaimStoredScope<I = unknown> = ClaimScope<I> & { before: $DeepReadonly<Claim> };
@@ -65,13 +67,11 @@ export const expressions = {
     $.and($.eq($s.self.state, "active"), $.lte($s.self.expiresAt, $.now($s))),
   // check :taskReady that, plain (uses-tx) (src/domain/work/claim.mesh.mx:26:16)
   "acquire.check.taskReady.that": ($s: ClaimNewScope<AcquireClaimInput>) => {
-    const now = () => $.now($s);
-    return (async ({ input, tx }) => (await derivedStateOf(tx, input.task, now())) === "ready")($s);
+    return (async ({ input, tx }) => (await derivedStateOf(tx, input.task)) === "ready")($s);
   },
   // check :taskReady details, plain (uses-tx) (src/domain/work/claim.mesh.mx:29:19)
   "acquire.check.taskReady.details": ($s: ClaimNewScope<AcquireClaimInput>) => {
-    const now = () => $.now($s);
-    return (({ input, tx }) => readinessOf(tx, input.task, now()))($s);
+    return (({ input, tx }) => readinessOf(tx, input.task))($s);
   },
   // check :versionMatches that, plain (uses-tx) (src/domain/work/claim.mesh.mx:32:16)
   "acquire.check.versionMatches.that": ($s: ClaimNewScope<AcquireClaimInput>) => {

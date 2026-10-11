@@ -7,6 +7,7 @@ import {
   castInput as $castInput,
   composed as $composed,
   guarded as $guarded,
+  loadRows as $loadRows,
   noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
   scope as $scope,
@@ -17,7 +18,13 @@ import {
   type DataLayer as $DataLayer,
   type Row as $Row,
 } from "@meshfw/runtime";
-import type { Completion, RecordCompletionInput, ReadCompletionInput } from "./completion.types";
+import type {
+  Completion,
+  CompletionWith,
+  CompletionLoadable,
+  RecordCompletionInput,
+  ReadCompletionInput,
+} from "./completion.types";
 import { recordCompletionInput, readCompletionInput } from "./completion.validators";
 import { tables } from "../../schema";
 import {
@@ -30,18 +37,28 @@ import { loadPlan as $loadPlan } from "../../load";
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
  * The read actions below run the slot, then these.
  */
-export function bindCompletionReads(layer: $DataLayer) {
+export function bindCompletionReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read(input: ReadCompletionInput): Promise<Completion[]> {
+    async read<const N extends keyof CompletionLoadable = never>(
+      input: ReadCompletionInput<N>,
+      context?: unknown,
+    ): Promise<CompletionWith<N>[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readCompletionInput, input);
       return layer.transaction(async (tx) => {
-        return (await tx.select(tables.completion, {
+        const $rows = (await tx.select(tables.completion, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Completion[];
+        if (!parsed.load?.length) return $rows as unknown as CompletionWith<N>[];
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        return (await $loadRows($loadPlan, "Completion", tx, $rows, parsed.load, {
+          actor: $context.actor,
+          context: $context,
+          clock: options.clock,
+        })) as unknown as CompletionWith<N>[];
       });
     },
   });
@@ -52,7 +69,7 @@ export function bindCompletionReads(layer: $DataLayer) {
  * `actions` and `tx`; the project's `bind` in the index passes it.
  */
 export function bindCompletion(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
-  const $reads = bindCompletionReads(layer);
+  const $reads = bindCompletionReads(layer, options);
   return Object.freeze({
     async record(
       input: RecordCompletionInput,
@@ -108,9 +125,12 @@ export function bindCompletion(layer: $DataLayer, options: $BindOptions = {}, co
       });
     },
 
-    async read(input: ReadCompletionInput, ...[_context]: $ContextArgument): Promise<Completion[]> {
+    async read<const N extends keyof CompletionLoadable = never>(
+      input: ReadCompletionInput<N>,
+      ...[context]: $ContextArgument
+    ): Promise<CompletionWith<N>[]> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
-      return $reads.read(input);
+      return $reads.read(input, context);
     },
   });
 }

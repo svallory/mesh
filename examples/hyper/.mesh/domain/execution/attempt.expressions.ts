@@ -4,7 +4,6 @@
 import {
   expr as $,
   type DeepReadonly as $DeepReadonly,
-  type ReadOnlyResults as $ReadOnlyResults,
   type Scope as $Scope,
 } from "@meshfw/runtime";
 import {
@@ -18,7 +17,10 @@ import {
   stepIdleOf,
 } from "../../../src/domain/execution/execution.helpers";
 import { heldFence, missingEvidenceOf } from "../../../src/domain/work/work.helpers";
-import type { Actions as $Actions, Reads as $Reads } from "../../composition";
+import type {
+  ReadOnlyActions as $ReadOnlyActions,
+  ReadOnlyReads as $ReadOnlyReads,
+} from "../../composition";
 import type {
   Attempt,
   AttemptLoaded,
@@ -35,8 +37,8 @@ export type AttemptScope<I = unknown> = $Scope<{
   actor: any;
   context: any;
   before: $DeepReadonly<Attempt> | null;
-  actions: $ReadOnlyResults<$Actions>;
-  tx: $ReadOnlyResults<$Reads>;
+  actions: $ReadOnlyActions;
+  tx: $ReadOnlyReads;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
 export type AttemptStoredScope<I = unknown> = AttemptScope<I> & { before: $DeepReadonly<Attempt> };

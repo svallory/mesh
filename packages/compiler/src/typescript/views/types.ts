@@ -9,7 +9,9 @@ import {
   entityPath,
   filterTypeName,
   hasRead,
+  loadGenerics,
   propertyName,
+  takesLoad,
   queryColumns,
   sortTypeName,
   typeName,
@@ -89,6 +91,8 @@ export interface RecordDeclaration {
 export interface TypeDeclaration {
   /** The exported input type's name, e.g. `CreatePostInput`. */
   readonly name: string;
+  /** The type parameter list as printed (`<N extends keyof PostLoadable = never>` on a read that takes `load`), or the empty string. */
+  readonly generics: string;
   /** True when the type has no members; it is then printed as a closed empty object, `[key: string]: never`. */
   readonly empty: boolean;
   /** The members, in order; empty exactly when `empty` is true. */
@@ -167,7 +171,7 @@ export function typesView({ document }: EmitInput, entity: Entity): TypesView {
     entityFile: entityFileComment(entity),
     imports,
     record: { name: recordName, members: recordMembers },
-    inputs: inputs.map((input) => declaration(input.name, input.fields.map((field) => member(field, entity)))),
+    inputs: inputs.map((input) => declaration(input.name, takesLoad(input) ? loadGenerics(entity, false) : "", input.fields.map((field) => member(field, entity)))),
     query: hasRead(entity) ? queryDeclaration(entity) : null,
     loadable: loadableDeclaration(document, entity, recordName),
   };
@@ -224,13 +228,13 @@ export function entityFileComment(entity: Entity): string {
   return entity.file.replace(/[\r\n\u2028\u2029]/g, (s) => `\\u${s.charCodeAt(0).toString(16).padStart(4, "0")}`);
 }
 
-function declaration(name: string, members: TypeMember[]): TypeDeclaration {
-  return { name, empty: members.length === 0, members };
+function declaration(name: string, generics: string, members: TypeMember[]): TypeDeclaration {
+  return { name, generics, empty: members.length === 0, members };
 }
 
 function member({ attribute, optional, reference, query }: PlannedField, entity: Entity): TypeMember {
   const type = query
-    ? query === "filter" ? filterTypeName(entity) : query === "sort" ? sortTypeName(entity) : "number"
+    ? query === "filter" ? filterTypeName(entity) : query === "sort" ? sortTypeName(entity) : query === "load" ? "readonly N[]" : "number"
     : reference
     ? `${typeName(reference.name, reference.position)}[${JSON.stringify(reference.attributes.find((a) => a.primaryKey)!.name)}]${attribute.nullable ? " | null" : ""}`
     : valueType(attribute);

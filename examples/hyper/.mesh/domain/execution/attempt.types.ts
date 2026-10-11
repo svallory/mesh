@@ -61,11 +61,12 @@ export type AbandonAttemptInput = {
   expectedVersion?: number | null | undefined;
 };
 
-export type ReadAttemptInput = {
+export type ReadAttemptInput<N extends keyof AttemptLoadable = never> = {
   filter?: AttemptFilter | undefined;
   sort?: AttemptSort | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
+  load?: readonly N[] | undefined;
 };
 
 /** What `load` attaches to a Attempt. The record has none of it, so reading one that was not loaded is a type error. */

@@ -51,7 +51,9 @@ export interface ModuleFunction {
   readonly name: string;
   /** The name as a quoted string literal, for the error a call before `connect()` throws. */
   readonly nameLiteral: string;
-  /** The input type, e.g. `PublishPostInput`. */
+  /** The type parameter list as printed (a read that takes `load`: `<const N extends keyof PostLoadable = never>`), or the empty string. */
+  readonly generics: string;
+  /** The input type, e.g. `PublishPostInput`, or `ReadPostInput<N>`. */
   readonly inputType: string;
   /** The resolved type, e.g. `Post`. */
   readonly returnType: string;
@@ -90,7 +92,7 @@ export function moduleView(input: EmitInput, module: string, entities: readonly 
     imports.push({ types: entityTypes, typesFromLiteral: JSON.stringify(`./${entitySegment(entity)}.types`) });
     if (hasLoader(entity)) loaders.push(loaderName(entity));
     for (const method of actionsView(input, entity).methods)
-      functions.push({ name: method.functionName, nameLiteral: JSON.stringify(method.functionName), inputType: method.inputType, returnType: method.returnType });
+      functions.push({ name: method.functionName, nameLiteral: JSON.stringify(method.functionName), generics: method.generics, inputType: method.inputType, returnType: method.returnType });
   }
   return {
     module,

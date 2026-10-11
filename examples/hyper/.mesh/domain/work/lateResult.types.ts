@@ -24,11 +24,12 @@ export type RecordLateResultInput = {
   evidence?: unknown | undefined;
 };
 
-export type ReadLateResultInput = {
+export type ReadLateResultInput<N extends keyof LateResultLoadable = never> = {
   filter?: LateResultFilter | undefined;
   sort?: LateResultSort | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
+  load?: readonly N[] | undefined;
 };
 
 /** What `load` attaches to a LateResult. The record has none of it, so reading one that was not loaded is a type error. */

@@ -131,13 +131,14 @@ describe("typesView", () => {
     ]);
   });
 
-  test("inputs: a read takes the caller's filter, sort, limit and offset, all optional", () => {
+  test("inputs: a read takes the caller's filter, sort, limit, offset and load, all optional; load is generic in its names", () => {
     const read = types(documentOf(), "Todo").inputs.find((input) => input.name === "ReadTodoInput")!;
-    expect(read).toEqual({ name: "ReadTodoInput", empty: false, members: [
+    expect(read).toEqual({ name: "ReadTodoInput", generics: "<N extends keyof TodoLoadable = never>", empty: false, members: [
       { name: "filter", optional: true, key: "filter", type: "TodoFilter | undefined" },
       { name: "sort", optional: true, key: "sort", type: "TodoSort | undefined" },
       { name: "limit", optional: true, key: "limit", type: "number | undefined" },
       { name: "offset", optional: true, key: "offset", type: "number | undefined" },
+      { name: "load", optional: true, key: "load", type: "readonly N[] | undefined" },
     ] });
   });
 
@@ -216,12 +217,13 @@ describe("validatorsView", () => {
     );
   });
 
-  test("a read's schema holds the four query fields, each optional", () => {
+  test("a read's schema holds the five query fields, each optional; load lists the relationships and computed fields", () => {
     expect(validators(documentOf(), "Todo").schemas.find((s) => s.typeName === "ReadTodoInput")!.fields).toEqual([
       { name: "filter", key: "filter", schema: "todoFilter.optional()" },
       { name: "sort", key: "sort", schema: "todoSort.optional()" },
       { name: "limit", key: "limit", schema: "z.int().min(0).optional()" },
       { name: "offset", key: "offset", schema: "z.int().min(0).optional()" },
+      { name: "load", key: "load", schema: 'z.array(z.enum(["list", "children", "detail", "label", "childCount", "largest"])).readonly().optional()' },
     ]);
   });
 

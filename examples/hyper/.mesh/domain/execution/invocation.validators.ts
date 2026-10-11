@@ -8,6 +8,7 @@ import type {
   CorrectInvocationInput,
   ReadInvocationInput,
   InvocationFilter,
+  InvocationLoadable,
 } from "./invocation.types";
 
 type Keys<T> = T extends Record<string, never> ? never : keyof T;
@@ -170,8 +171,12 @@ export const readInvocationInput = z.strictObject({
   sort: invocationSort.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
-}) satisfies z.ZodType<ReadInvocationInput>;
+  load: z
+    .array(z.enum(["attempt", "task", "session", "corrects", "recordedBy"]))
+    .readonly()
+    .optional(),
+}) satisfies z.ZodType<ReadInvocationInput<keyof InvocationLoadable>>;
 
 export type ReadInvocationInputShape = Assert<
-  SameShape<z.output<typeof readInvocationInput>, ReadInvocationInput>
+  SameShape<z.output<typeof readInvocationInput>, ReadInvocationInput<keyof InvocationLoadable>>
 >;

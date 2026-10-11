@@ -198,28 +198,31 @@ declare module "#mesh/domain/todo" {
 
   export type TodoField = "id" | "title" | "done" | "listId" | "insertedAt" | "updatedAt";
 
-  export interface ReadTodoInput {
+  export type TodoLoadable = "label";
+
+  export interface ReadTodoInput<N extends TodoLoadable = never> {
     filter?: Filter<TodoField>;
     sort?: string[];
     limit?: number;
     offset?: number;
-    load?: readonly string[];
+    load?: readonly N[];
   }
 
-  export type TodoOrLabelled = Todo & { label: string };
+  /** The record with the loaded names attached; with none, the plain record. */
+  export type TodoWith<N extends TodoLoadable = never> = Todo & Pick<{ label: string }, N>;
 
-  /** A computed field is a property only when the read asked for it: two signatures say so. */
-  export interface PendingTodo {
-    (input: { load: readonly ["label"] }, context: ActionContext): Promise<TodoOrLabelled[]>;
-    (input: { filter?: Filter<TodoField>; load?: readonly string[] }, context: ActionContext): Promise<Todo[]>;
-  }
+  /** A computed field is a property only when the read asked for it: the `const` parameter takes the names as written. */
+  export type PendingTodo = <const N extends TodoLoadable = never>(
+    input: ReadTodoInput<N>,
+    context: ActionContext,
+  ) => Promise<TodoWith<N>[]>;
 
   export function createList(input: { name: string }, context: ActionContext): Promise<List>;
-  export function readList(input: ReadTodoInput, context: ActionContext): Promise<List[]>;
+  export function readList(input: Omit<ReadTodoInput, "load">, context: ActionContext): Promise<List[]>;
   export function destroyList(input: { id: string }, context: ActionContext): Promise<void>;
   /** `&list` in input takes the related id; the returned record still has listId. */
   export function createTodo(input: { title: string; list: List["id"] }, context: ActionContext): Promise<Todo>;
-  export function readTodo(input: ReadTodoInput, context: ActionContext): Promise<Todo[]>;
+  export function readTodo<const N extends TodoLoadable = never>(input: ReadTodoInput<N>, context: ActionContext): Promise<TodoWith<N>[]>;
   export const pendingTodo: PendingTodo;
   export function completeTodo(input: { id: string }, context: ActionContext): Promise<Todo>;
   export function renameTodo(input: { id: string; title: string }, context: ActionContext): Promise<Todo>;
@@ -307,8 +310,8 @@ declare module "#mesh" {
 
   /** The reads of the running transaction; no read policies run. */
   export type Reads = {
-    readList(input: todo.ReadTodoInput): Promise<todo.List[]>;
-    readTodo(input: todo.ReadTodoInput): Promise<todo.Todo[]>;
+    readList(input: Omit<todo.ReadTodoInput, "load">): Promise<todo.List[]>;
+    readTodo<const N extends todo.TodoLoadable = never>(input: todo.ReadTodoInput<N>): Promise<todo.TodoWith<N>[]>;
   };
 
   /** Opens a transaction, or joins the running one, and hands `run` the bound `actions` and `tx`. */

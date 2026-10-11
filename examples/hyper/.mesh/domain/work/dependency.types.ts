@@ -27,11 +27,12 @@ export type RemoveDependencyInput = {
   expectedVersion?: number | null | undefined;
 };
 
-export type ReadDependencyInput = {
+export type ReadDependencyInput<N extends keyof DependencyLoadable = never> = {
   filter?: DependencyFilter | undefined;
   sort?: DependencySort | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
+  load?: readonly N[] | undefined;
 };
 
 /** What `load` attaches to a Dependency. The record has none of it, so reading one that was not loaded is a type error. */

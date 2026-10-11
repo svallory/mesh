@@ -5,7 +5,7 @@ import { emitError } from "../emit-error.ts";
 import type { EmitInput } from "../emit.ts";
 import { expressionIds } from "./expressions.ts";
 import { hasLoader } from "./load.ts";
-import { camelCase, computedColumns, effectiveActions, entityInputs, entityPath, entitySegment, propertyName, typeName, valueName } from "./inputs.ts";
+import { camelCase, computedColumns, effectiveActions, entityInputs, entityPath, entitySegment, loadGenerics, propertyName, takesLoad, typeName, valueName } from "./inputs.ts";
 import { entityFileComment } from "./types.ts";
 
 /**
@@ -53,6 +53,8 @@ export interface ActionsView {
   readonly methods: readonly ActionMethod[];
   /** The exported function that binds the read bodies, e.g. `bindPostReads`, or `null` when the entity has no read action. */
   readonly readsBindName: string | null;
+  /** What `bind<Entity>Reads` names its second parameter, the binding's options (the clock a loaded computed field reads): `options`, or `_options` when no body loads. */
+  readonly readsOptionsName: string;
   /** One body per read action, without the authorizer slot: what `tx` calls and what the read method calls after that slot. */
   readonly reads: readonly ReadBody[];
 }
@@ -61,11 +63,15 @@ export interface ActionsView {
 export interface ReadBody {
   /** The method key: the action name, lowerCamel, e.g. `read`. */
   readonly name: string;
-  /** The read's input type, e.g. `ReadPostInput`. */
+  /** The read's input type, e.g. `ReadPostInput`, or `ReadPostInput<N>` when it takes `load`. */
   readonly inputType: string;
+  /** The type parameter list as printed (`<const N extends keyof PostLoadable = never>` when the read takes `load`), or the empty string. */
+  readonly generics: string;
+  /** What follows `input` in the parameter list: `, context?: unknown` when the body loads and so reads the caller's context, else the empty string. */
+  readonly contextParam: string;
   /** The validator constant, e.g. `readPostInput`. */
   readonly validator: string;
-  /** The resolved type, e.g. `Post[]`. */
+  /** The resolved type, e.g. `Post[]`, or `PostWith<N>[]` when the read takes `load`. */
   readonly returnType: string;
   /** As on `ActionMethod`: when not `null`, the body validates its input and then throws a `FrameworkError` with this message. */
   readonly unsupported: string | null;
@@ -81,11 +87,13 @@ export interface ActionMethod {
   readonly name: string;
   /** The top-level function the index exports for it: action name + entity name PascalCase, e.g. `publishPost`. */
   readonly functionName: string;
-  /** The action's input type, e.g. `PublishPostInput`. */
+  /** The action's input type, e.g. `PublishPostInput`, or `ReadPostInput<N>` for a read that takes `load`. */
   readonly inputType: string;
+  /** The type parameter list as printed (`<const N extends keyof PostLoadable = never>` for a read that takes `load`), or the empty string. */
+  readonly generics: string;
   /** The validator constant, e.g. `publishPostInput`. */
   readonly validator: string;
-  /** The resolved type, e.g. `Post`, `Post[]`, `void` or `PostWith<"comments">` when a `load` step names fields. */
+  /** The resolved type, e.g. `Post`, `Post[]`, `void`, `PostWith<N>[]` for a read that takes `load`, or `PostWith<"comments">` when a `load` step names fields. */
   readonly returnType: string;
   /** What the method names its context parameter: `context`, or `_context` when the statements do not read it. */
   readonly contextName: string;
@@ -236,6 +244,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
   let planUsed = false;
   let optionsUsed = false;
   let composeUsed = false;
+  let readsLoad = false;
   const readBodies: ReadBody[] = [];
   const methods = actions.map((action, index): ActionMethod => {
     const input = inputs[index]!;
@@ -245,6 +254,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       name,
       functionName: `${name}${recordName}`,
       inputType: input.name,
+      generics: "",
       validator,
     };
     runtime.add("castInput");
@@ -258,14 +268,23 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     };
     if (action.kind === "read") {
       // The body goes to `bind<Entity>Reads`, which `tx` calls; the method runs the authorizer slot, then the body.
-      const body = { name, inputType: input.name, validator, returnType: `${recordName}[]` };
-      const method = { ...base, returnType: `${recordName}[]`, contextName: "_context", notRun: notRun([]), unsupported: null, usesParsed: false,
-        statements: [], isRead: true, readsCall: `$reads.${name}(input)` };
+      // A read that takes `load` is generic in the names it lists: the result is the record with exactly those loaded.
+      const loads = takesLoad(input);
+      const inputType = loads ? `${input.name}<N>` : input.name;
+      const generics = loads ? loadGenerics(entity, true) : "";
+      const returnType = loads ? `${recordName}With<N>[]` : `${recordName}[]`;
+      if (loads) {
+        extraTypes.add(`${recordName}With`);
+        extraTypes.add(`${recordName}Loadable`);
+      }
+      const body = { name, inputType, generics, contextParam: loads ? ", context?: unknown" : "", validator, returnType };
+      const method = { ...base, inputType, generics, returnType, contextName: loads ? "context" : "_context", notRun: notRun([]), unsupported: null, usesParsed: false,
+        statements: [], isRead: true, readsCall: loads ? `$reads.${name}(input, context)` : `$reads.${name}(input)` };
       if (action.filter || action.sort) {
         runtime.add("FrameworkError");
         runtime.add("failJoined");
         const parts = [action.filter ? "filter" : null, action.sort ? "sort" : null].filter(Boolean).join(" and ");
-        readBodies.push({ ...body, usesParsed: false, unsupported: JSON.stringify(
+        readBodies.push({ ...body, contextParam: loads ? ", _context?: unknown" : "", usesParsed: false, unsupported: JSON.stringify(
           `${base.functionName} cannot run in this version: its ${parts} ${action.filter && action.sort ? "are" : "is"} evaluated by the SQL evaluator, which arrives in M10`), statements: [] });
         return method;
       }
@@ -273,10 +292,24 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       // A filter or sort by a computed field or rollup is the SQL evaluator's job (M10): say so before touching the database.
       const computed = computedColumns(entity).map((column) => JSON.stringify(column.name));
       if (computed.length) runtime.add("rejectComputedQuery");
+      const select = `await tx.select(${table}, { ${query} })`;
+      if (loads) {
+        // The names were validated before the transaction opened. The rows are read, then loaded in the same transaction.
+        runtime.add("loadRows");
+        planUsed = true;
+        readsLoad = true;
+      }
       readBodies.push({ ...body, unsupported: null, usesParsed: true,
         statements: [
           ...(computed.length ? [`rejectComputedQuery(${JSON.stringify(entity.name)}, [${computed.join(", ")}], parsed);`] : []),
-          `return (await tx.select(${table}, { ${query} })) as ${recordName}[];`,
+          ...(loads
+            ? [
+              `const $rows = (${select}) as ${recordName}[];`,
+              `if (!parsed.load?.length) return $rows as unknown as ${returnType};`,
+              "const $context = (context ?? {}) as unknown as Record<string, unknown>;",
+              `return (await $loadRows($loadPlan, ${JSON.stringify(entity.name)}, tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: options.clock })) as unknown as ${returnType};`,
+            ]
+            : [`return (${select}) as ${recordName}[];`]),
         ] });
       return method;
     }
@@ -650,10 +683,11 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     expressionsFromLiteral: usesExpressions ? JSON.stringify(`./${entitySegment(entity)}.expressions`) : null,
     scopeImports: [...scopes].sort(compareCode),
     loadFromLiteral: planUsed ? fromLiteral(entity, "load") : null,
-    optionsName: optionsUsed ? "options" : "_options",
+    optionsName: optionsUsed || readBodies.length > 0 ? "options" : "_options",
     composeName: composeUsed ? "compose" : "_compose",
     methods,
     readsBindName: readBodies.length ? `bind${recordName}Reads` : null,
+    readsOptionsName: readsLoad ? "options" : "_options",
     reads: readBodies,
   };
 }

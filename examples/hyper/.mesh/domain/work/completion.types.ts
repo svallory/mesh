@@ -24,11 +24,12 @@ export type RecordCompletionInput = {
   submission?: Submission["id"] | null | undefined;
 };
 
-export type ReadCompletionInput = {
+export type ReadCompletionInput<N extends keyof CompletionLoadable = never> = {
   filter?: CompletionFilter | undefined;
   sort?: CompletionSort | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
+  load?: readonly N[] | undefined;
 };
 
 /** What `load` attaches to a Completion. The record has none of it, so reading one that was not loaded is a type error. */

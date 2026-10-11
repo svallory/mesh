@@ -17,8 +17,11 @@ import type { StandardSchemaV1 } from "./standard-schema.ts";
  * so that every generated function fits, whether the project's context is optional or has a required key.
  */
 type ActionFunction = (input: never, context: never) => Promise<unknown>;
-/** A read as the composer holds it: the input only. It is the read's body without the authorizer slot. */
-type ReadFunction = (input: never) => Promise<unknown>;
+/**
+ * A read as the composer holds it: the input, then the context of the call it runs for. It is the read's body without the
+ * authorizer slot; a body that loads (`load` on its input) reads the context for a computed field's `actor`.
+ */
+type ReadFunction = (input: never, context?: unknown) => Promise<unknown>;
 
 /** What a function of an entity file, and an application's `transaction` callback, receive: the actions and the reads, bound to one transaction. */
 export interface Composition<A extends object = object, R extends object = object> {
@@ -68,7 +71,7 @@ export function composer(layer: DataLayer): Composer {
     const actions = Object.freeze(Object.fromEntries(Object.entries(functions).map(([name, fn]) =>
       [name, (input: unknown, own?: unknown) => join(() => (fn as (input: unknown, context: unknown) => Promise<unknown>)(input, own === undefined ? context : own))])));
     const tx = Object.freeze(Object.fromEntries(Object.entries(reads).map(([name, fn]) =>
-      [name, (input: unknown) => join(() => (fn as (input: unknown) => Promise<unknown>)(input))])));
+      [name, (input: unknown) => join(() => (fn as (input: unknown, context: unknown) => Promise<unknown>)(input, context))])));
     return Object.freeze({ actions, tx });
   };
   return Object.freeze({

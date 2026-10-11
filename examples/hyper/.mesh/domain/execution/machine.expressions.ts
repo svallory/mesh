@@ -4,10 +4,12 @@
 import {
   expr as $,
   type DeepReadonly as $DeepReadonly,
-  type ReadOnlyResults as $ReadOnlyResults,
   type Scope as $Scope,
 } from "@meshfw/runtime";
-import type { Actions as $Actions, Reads as $Reads } from "../../composition";
+import type {
+  ReadOnlyActions as $ReadOnlyActions,
+  ReadOnlyReads as $ReadOnlyReads,
+} from "../../composition";
 import type {
   Machine,
   MachineLoaded,
@@ -24,8 +26,8 @@ export type MachineScope<I = unknown> = $Scope<{
   actor: any;
   context: any;
   before: $DeepReadonly<Machine> | null;
-  actions: $ReadOnlyResults<$Actions>;
-  tx: $ReadOnlyResults<$Reads>;
+  actions: $ReadOnlyActions;
+  tx: $ReadOnlyReads;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
 export type MachineStoredScope<I = unknown> = MachineScope<I> & { before: $DeepReadonly<Machine> };

@@ -30,6 +30,7 @@ import {
 import type {
   Post,
   PostWith,
+  PostLoadable,
   CreatePostInput,
   PublishPostInput,
   ArchivePostInput,
@@ -56,9 +57,12 @@ import { loadPlan as $loadPlan } from "../../load";
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
  * The read actions below run the slot, then these.
  */
-export function bindPostReads(layer: $DataLayer) {
+export function bindPostReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async published(input: PublishedPostInput): Promise<Post[]> {
+    async published<const N extends keyof PostLoadable = never>(
+      input: PublishedPostInput<N>,
+      _context?: unknown,
+    ): Promise<PostWith<N>[]> {
       await $castInput(layer, publishedPostInput, input);
       return $failJoined(
         layer,
@@ -68,17 +72,27 @@ export function bindPostReads(layer: $DataLayer) {
       );
     },
 
-    async read(input: ReadPostInput): Promise<Post[]> {
+    async read<const N extends keyof PostLoadable = never>(
+      input: ReadPostInput<N>,
+      context?: unknown,
+    ): Promise<PostWith<N>[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readPostInput, input);
       return layer.transaction(async (tx) => {
         rejectComputedQuery("Post", ["excerpt", "commentCount"], parsed);
-        return (await tx.select(tables.post, {
+        const $rows = (await tx.select(tables.post, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Post[];
+        if (!parsed.load?.length) return $rows as unknown as PostWith<N>[];
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        return (await $loadRows($loadPlan, "Post", tx, $rows, parsed.load, {
+          actor: $context.actor,
+          context: $context,
+          clock: options.clock,
+        })) as unknown as PostWith<N>[];
       });
     },
   });
@@ -89,7 +103,7 @@ export function bindPostReads(layer: $DataLayer) {
  * `actions` and `tx`; the project's `bind` in the index passes it.
  */
 export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
-  const $reads = bindPostReads(layer);
+  const $reads = bindPostReads(layer, options);
   return Object.freeze({
     async create(input: CreatePostInput, ...[_context]: $ContextArgument): Promise<Post> {
       // Not run in this version: on:load published
@@ -207,16 +221,22 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
       });
     },
 
-    async published(input: PublishedPostInput, ...[_context]: $ContextArgument): Promise<Post[]> {
+    async published<const N extends keyof PostLoadable = never>(
+      input: PublishedPostInput<N>,
+      ...[context]: $ContextArgument
+    ): Promise<PostWith<N>[]> {
       // Not run in this version: on:load published; policies public
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
-      return $reads.published(input);
+      return $reads.published(input, context);
     },
 
-    async read(input: ReadPostInput, ...[_context]: $ContextArgument): Promise<Post[]> {
+    async read<const N extends keyof PostLoadable = never>(
+      input: ReadPostInput<N>,
+      ...[context]: $ContextArgument
+    ): Promise<PostWith<N>[]> {
       // Not run in this version: on:load published; policies public
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
-      return $reads.read(input);
+      return $reads.read(input, context);
     },
 
     async destroy(input: DestroyPostInput, ...[_context]: $ContextArgument): Promise<void> {

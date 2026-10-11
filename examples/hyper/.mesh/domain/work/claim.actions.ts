@@ -12,6 +12,7 @@ import {
   composed as $composed,
   guarded as $guarded,
   loadInto as $loadInto,
+  loadRows as $loadRows,
   noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
   rejectComputedQuery,
@@ -30,6 +31,8 @@ import {
 } from "@meshfw/runtime";
 import type {
   Claim,
+  ClaimWith,
+  ClaimLoadable,
   AcquireClaimInput,
   RenewClaimInput,
   ReleaseClaimInput,
@@ -59,19 +62,29 @@ import { loadPlan as $loadPlan } from "../../load";
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
  * The read actions below run the slot, then these.
  */
-export function bindClaimReads(layer: $DataLayer) {
+export function bindClaimReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read(input: ReadClaimInput): Promise<Claim[]> {
+    async read<const N extends keyof ClaimLoadable = never>(
+      input: ReadClaimInput<N>,
+      context?: unknown,
+    ): Promise<ClaimWith<N>[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readClaimInput, input);
       return layer.transaction(async (tx) => {
         rejectComputedQuery("Claim", ["lapsed"], parsed);
-        return (await tx.select(tables.claim, {
+        const $rows = (await tx.select(tables.claim, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Claim[];
+        if (!parsed.load?.length) return $rows as unknown as ClaimWith<N>[];
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        return (await $loadRows($loadPlan, "Claim", tx, $rows, parsed.load, {
+          actor: $context.actor,
+          context: $context,
+          clock: options.clock,
+        })) as unknown as ClaimWith<N>[];
       });
     },
   });
@@ -82,7 +95,7 @@ export function bindClaimReads(layer: $DataLayer) {
  * `actions` and `tx`; the project's `bind` in the index passes it.
  */
 export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
-  const $reads = bindClaimReads(layer);
+  const $reads = bindClaimReads(layer, options);
   return Object.freeze({
     async acquire(input: AcquireClaimInput, ...[context]: $ContextArgument): Promise<Claim> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
@@ -646,9 +659,12 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
       });
     },
 
-    async read(input: ReadClaimInput, ...[_context]: $ContextArgument): Promise<Claim[]> {
+    async read<const N extends keyof ClaimLoadable = never>(
+      input: ReadClaimInput<N>,
+      ...[context]: $ContextArgument
+    ): Promise<ClaimWith<N>[]> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
-      return $reads.read(input);
+      return $reads.read(input, context);
     },
   });
 }

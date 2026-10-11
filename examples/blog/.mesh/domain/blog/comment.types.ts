@@ -11,11 +11,12 @@ export type Comment = {
   postId: string;
 };
 
-export type ReadCommentInput = {
+export type ReadCommentInput<N extends keyof CommentLoadable = never> = {
   filter?: CommentFilter | undefined;
   sort?: CommentSort | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
+  load?: readonly N[] | undefined;
 };
 
 /** What `load` attaches to a Comment. The record has none of it, so reading one that was not loaded is a type error. */

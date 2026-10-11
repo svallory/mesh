@@ -12,6 +12,7 @@ import {
   composed as $composed,
   guarded as $guarded,
   loadInto as $loadInto,
+  loadRows as $loadRows,
   noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
   rescope as $rescope,
@@ -29,6 +30,8 @@ import {
 } from "@meshfw/runtime";
 import type {
   Submission,
+  SubmissionWith,
+  SubmissionLoadable,
   SubmitSubmissionInput,
   WithdrawSubmissionInput,
   SettleSubmissionInput,
@@ -54,18 +57,28 @@ import { loadPlan as $loadPlan } from "../../load";
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
  * The read actions below run the slot, then these.
  */
-export function bindSubmissionReads(layer: $DataLayer) {
+export function bindSubmissionReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read(input: ReadSubmissionInput): Promise<Submission[]> {
+    async read<const N extends keyof SubmissionLoadable = never>(
+      input: ReadSubmissionInput<N>,
+      context?: unknown,
+    ): Promise<SubmissionWith<N>[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readSubmissionInput, input);
       return layer.transaction(async (tx) => {
-        return (await tx.select(tables.submission, {
+        const $rows = (await tx.select(tables.submission, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Submission[];
+        if (!parsed.load?.length) return $rows as unknown as SubmissionWith<N>[];
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        return (await $loadRows($loadPlan, "Submission", tx, $rows, parsed.load, {
+          actor: $context.actor,
+          context: $context,
+          clock: options.clock,
+        })) as unknown as SubmissionWith<N>[];
       });
     },
   });
@@ -76,7 +89,7 @@ export function bindSubmissionReads(layer: $DataLayer) {
  * `actions` and `tx`; the project's `bind` in the index passes it.
  */
 export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
-  const $reads = bindSubmissionReads(layer);
+  const $reads = bindSubmissionReads(layer, options);
   return Object.freeze({
     async submit(
       input: SubmitSubmissionInput,
@@ -418,9 +431,12 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
       });
     },
 
-    async read(input: ReadSubmissionInput, ...[_context]: $ContextArgument): Promise<Submission[]> {
+    async read<const N extends keyof SubmissionLoadable = never>(
+      input: ReadSubmissionInput<N>,
+      ...[context]: $ContextArgument
+    ): Promise<SubmissionWith<N>[]> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
-      return $reads.read(input);
+      return $reads.read(input, context);
     },
   });
 }

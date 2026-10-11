@@ -20,7 +20,7 @@ import { tables } from "../../schema";
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
  * The read actions below run the slot, then these.
  */
-export function bindUserReads(layer: $DataLayer) {
+export function bindUserReads(layer: $DataLayer, _options: $BindOptions = {}) {
   return Object.freeze({
     async read(input: ReadUserInput): Promise<User[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
@@ -41,8 +41,8 @@ export function bindUserReads(layer: $DataLayer) {
  * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
  * `actions` and `tx`; the project's `bind` in the index passes it.
  */
-export function bindUser(layer: $DataLayer, _options: $BindOptions = {}, _compose?: $Composer) {
-  const $reads = bindUserReads(layer);
+export function bindUser(layer: $DataLayer, options: $BindOptions = {}, _compose?: $Composer) {
+  const $reads = bindUserReads(layer, options);
   return Object.freeze({
     async create(input: CreateUserInput, ...[_context]: $ContextArgument): Promise<User> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it

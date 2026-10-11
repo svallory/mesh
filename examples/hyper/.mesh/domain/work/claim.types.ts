@@ -54,11 +54,12 @@ export type EndClaimInput = {
   reason: string;
 };
 
-export type ReadClaimInput = {
+export type ReadClaimInput<N extends keyof ClaimLoadable = never> = {
   filter?: ClaimFilter | undefined;
   sort?: ClaimSort | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
+  load?: readonly N[] | undefined;
 };
 
 /** What `load` attaches to a Claim. The record has none of it, so reading one that was not loaded is a type error. */

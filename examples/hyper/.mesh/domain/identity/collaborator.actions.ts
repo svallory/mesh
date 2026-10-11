@@ -11,6 +11,7 @@ import {
   checkUnchanged as $checkUnchanged,
   composed as $composed,
   guarded as $guarded,
+  loadRows as $loadRows,
   noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
@@ -26,6 +27,8 @@ import {
 } from "@meshfw/runtime";
 import type {
   Collaborator,
+  CollaboratorWith,
+  CollaboratorLoadable,
   RegisterCollaboratorInput,
   UpdateCollaboratorInput,
   RetireCollaboratorInput,
@@ -49,18 +52,28 @@ import { loadPlan as $loadPlan } from "../../load";
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
  * The read actions below run the slot, then these.
  */
-export function bindCollaboratorReads(layer: $DataLayer) {
+export function bindCollaboratorReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read(input: ReadCollaboratorInput): Promise<Collaborator[]> {
+    async read<const N extends keyof CollaboratorLoadable = never>(
+      input: ReadCollaboratorInput<N>,
+      context?: unknown,
+    ): Promise<CollaboratorWith<N>[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readCollaboratorInput, input);
       return layer.transaction(async (tx) => {
-        return (await tx.select(tables.collaborator, {
+        const $rows = (await tx.select(tables.collaborator, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Collaborator[];
+        if (!parsed.load?.length) return $rows as unknown as CollaboratorWith<N>[];
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        return (await $loadRows($loadPlan, "Collaborator", tx, $rows, parsed.load, {
+          actor: $context.actor,
+          context: $context,
+          clock: options.clock,
+        })) as unknown as CollaboratorWith<N>[];
       });
     },
   });
@@ -75,7 +88,7 @@ export function bindCollaborator(
   options: $BindOptions = {},
   compose?: $Composer,
 ) {
-  const $reads = bindCollaboratorReads(layer);
+  const $reads = bindCollaboratorReads(layer, options);
   return Object.freeze({
     async register(
       input: RegisterCollaboratorInput,
@@ -314,12 +327,12 @@ export function bindCollaborator(
       });
     },
 
-    async read(
-      input: ReadCollaboratorInput,
-      ...[_context]: $ContextArgument
-    ): Promise<Collaborator[]> {
+    async read<const N extends keyof CollaboratorLoadable = never>(
+      input: ReadCollaboratorInput<N>,
+      ...[context]: $ContextArgument
+    ): Promise<CollaboratorWith<N>[]> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
-      return $reads.read(input);
+      return $reads.read(input, context);
     },
   });
 }

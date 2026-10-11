@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 
-import type { RecordEventInput, ReadEventInput, EventFilter } from "./event.types";
+import type { RecordEventInput, ReadEventInput, EventFilter, EventLoadable } from "./event.types";
 
 type Keys<T> = T extends Record<string, never> ? never : keyof T;
 
@@ -115,8 +115,12 @@ export const readEventInput = z.strictObject({
   sort: eventSort.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
-}) satisfies z.ZodType<ReadEventInput>;
+  load: z
+    .array(z.enum(["task"]))
+    .readonly()
+    .optional(),
+}) satisfies z.ZodType<ReadEventInput<keyof EventLoadable>>;
 
 export type ReadEventInputShape = Assert<
-  SameShape<z.output<typeof readEventInput>, ReadEventInput>
+  SameShape<z.output<typeof readEventInput>, ReadEventInput<keyof EventLoadable>>
 >;

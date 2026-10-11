@@ -23,11 +23,11 @@ import type { Actions, Reads } from "./composition";
   // `actions` and `tx` in a function of an entity file come from this composer, which holds this binding's functions.
   const $composer = $makeComposer(layer);
   const commentActions = bindComment(layer, options, $composer);
-  const commentReads = bindCommentReads(layer);
+  const commentReads = bindCommentReads(layer, options);
   const postActions = bindPost(layer, options, $composer);
-  const postReads = bindPostReads(layer);
+  const postReads = bindPostReads(layer, options);
   const userActions = bindUser(layer, options, $composer);
-  const userReads = bindUserReads(layer);
+  const userReads = bindUserReads(layer, options);
   const $functions = Object.freeze({
     readComment: commentActions.read,
     createPost: postActions.create,
