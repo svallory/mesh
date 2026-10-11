@@ -113,14 +113,27 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Machine", "register", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOrMember",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+              record: true,
+              run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
           ],
         },
@@ -166,6 +179,8 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
             },
             { clock: $clock },
           ) as unknown as $Scope<RegisterMachineInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -173,7 +188,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
             label: "nameFree",
             code: "machine.name-free",
             message: "a machine already has that name",
-            source: { file: "src/domain/execution/machine.mesh.mx", line: 21, column: 9 },
+            source: { file: "src/domain/execution/machine.mesh.mx", line: 22, column: 9 },
             that: $expressions["register.check.nameFree.that"],
           });
           if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -213,14 +228,14 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Machine", "report", [
         {
-          name: "untilM8b",
+          name: "internal",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
+              check: "({ context }) => isSystem(context)",
               record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              run: $expressions["policy.internal.authorize-if.0"],
             },
           ],
         },
@@ -273,7 +288,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
             label: "nameFree",
             code: "machine.name-free",
             message: "a machine already has that name",
-            source: { file: "src/domain/execution/machine.mesh.mx", line: 33, column: 9 },
+            source: { file: "src/domain/execution/machine.mesh.mx", line: 34, column: 9 },
             that: $expressions["report.check.nameFree.that"],
           });
           if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -312,14 +327,27 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Machine", "update", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOnly",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner])",
+              record: true,
+              run: $expressions["policy.ownerOnly.authorize-if.0"],
             },
           ],
         },
@@ -364,6 +392,8 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
             },
             { clock: $clock },
           ) as unknown as $StoredScope<UpdateMachineInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -371,14 +401,14 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
             label: "machineActive",
             code: "machine.active",
             message: "the machine is retired",
-            source: { file: "src/domain/execution/machine.mesh.mx", line: 46, column: 9 },
+            source: { file: "src/domain/execution/machine.mesh.mx", line: 47, column: 9 },
             that: $expressions["update.check.machineActive.that"],
           });
           await $runCheck($issues, $checks, {
             label: "versionMatches",
             code: "expected-version",
             message: "the record is at another version; read it again and retry",
-            source: { file: "src/domain/execution/machine.mesh.mx", line: 51, column: 9 },
+            source: { file: "src/domain/execution/machine.mesh.mx", line: 52, column: 9 },
             that: $expressions["update.check.versionMatches.that"],
             details: $expressions["update.check.versionMatches.details"],
           });
@@ -390,7 +420,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
             const $value = await $expressions["update.step.0.set.version"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &version (src/domain/execution/machine.mesh.mx:59:20) produced no value, and version is required",
+                "set &version (src/domain/execution/machine.mesh.mx:60:20) produced no value, and version is required",
               );
             $changes.version = $record.version = $value;
           }
@@ -424,14 +454,27 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Machine", "retire", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOnly",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner])",
+              record: true,
+              run: $expressions["policy.ownerOnly.authorize-if.0"],
             },
           ],
         },
@@ -477,6 +520,8 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
             },
             { clock: $clock },
           ) as unknown as $StoredScope<RetireMachineInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -485,21 +530,21 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
             label: "machineActive",
             code: "machine.active",
             message: "the machine is retired",
-            source: { file: "src/domain/execution/machine.mesh.mx", line: 65, column: 9 },
+            source: { file: "src/domain/execution/machine.mesh.mx", line: 66, column: 9 },
             that: $expressions["retire.check.machineActive.that"],
           });
           await $runCheck($issues, $checks, {
             label: "machineIdle",
             code: "machine.idle",
             message: "an attempt on this machine is reported running",
-            source: { file: "src/domain/execution/machine.mesh.mx", line: 70, column: 9 },
+            source: { file: "src/domain/execution/machine.mesh.mx", line: 71, column: 9 },
             that: $expressions["retire.check.machineIdle.that"],
           });
           await $runCheck($issues, $checks, {
             label: "versionMatches",
             code: "expected-version",
             message: "the record is at another version; read it again and retry",
-            source: { file: "src/domain/execution/machine.mesh.mx", line: 75, column: 9 },
+            source: { file: "src/domain/execution/machine.mesh.mx", line: 76, column: 9 },
             that: $expressions["retire.check.versionMatches.that"],
             details: $expressions["retire.check.versionMatches.details"],
           });
@@ -510,7 +555,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
             const $value = await $expressions["retire.step.0.set.version"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &version (src/domain/execution/machine.mesh.mx:84:20) produced no value, and version is required",
+                "set &version (src/domain/execution/machine.mesh.mx:85:20) produced no value, and version is required",
               );
             $changes.version = $record.version = $value;
           }
@@ -548,14 +593,14 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
       if (
         !(await $authorizer("Machine", "read", [
           {
-            name: "untilM8b",
+            name: "membersRead",
             when: null,
             checks: [
               {
                 kind: "authorize-if",
-                check: "() => true",
+                check: "({ actor, context }) => isSystem(context) || actor.role != null",
                 record: false,
-                run: $expressions["policy.untilM8b.authorize-if.0"],
+                run: $expressions["policy.membersRead.authorize-if.0"],
               },
             ],
           },

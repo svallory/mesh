@@ -1,5 +1,5 @@
 import { Collaborator } from "./collaborator.mesh.mx"
-import { collaboratorActiveOf, keepsAnOwnerOf, noActiveMembershipOf } from "./identity.helpers"
+import { collaboratorActiveOf, keepsAnOwnerOf, memberOf, noActiveMembershipOf, roleIn } from "./identity.helpers"
 
 entity :Membership table="memberships"
   attributes
@@ -90,5 +90,9 @@ entity :Membership table="memberships"
           &revokedBy=({ actor }) => actor.id
           &version=() => &version + 1
   policies
-    policy :untilM8b
-      authorize-if=() => true
+    policy :membersRead types=[:read]
+      authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
+    policy :isMember actions=[&grant, &changeRole, &revoke]
+      authorize-if=({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)
+    policy :ownerOnly actions=[&grant, &changeRole, &revoke]
+      authorize-if=({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner])

@@ -110,14 +110,27 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Dependency", "add", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOrMember",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+              record: true,
+              run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
           ],
         },
@@ -164,6 +177,8 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
             },
             { clock: $clock },
           ) as unknown as $Scope<AddDependencyInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -171,7 +186,7 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
             label: "exists",
             code: "dependency.exists",
             message: "a task of the dependency does not exist",
-            source: { file: "src/domain/work/dependency.mesh.mx", line: 20, column: 9 },
+            source: { file: "src/domain/work/dependency.mesh.mx", line: 21, column: 9 },
             that: $expressions["add.check.exists.that"],
             details: $expressions["add.check.exists.details"],
           });
@@ -179,28 +194,28 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
             label: "distinct",
             code: "dependency.distinct",
             message: "a task cannot depend on itself",
-            source: { file: "src/domain/work/dependency.mesh.mx", line: 26, column: 9 },
+            source: { file: "src/domain/work/dependency.mesh.mx", line: 27, column: 9 },
             that: $expressions["add.check.distinct.that"],
           });
           await $runCheck($issues, $checks, {
             label: "duplicate",
             code: "dependency.duplicate",
             message: "the dependency already exists",
-            source: { file: "src/domain/work/dependency.mesh.mx", line: 31, column: 9 },
+            source: { file: "src/domain/work/dependency.mesh.mx", line: 32, column: 9 },
             that: $expressions["add.check.duplicate.that"],
           });
           await $runCheck($issues, $checks, {
             label: "noCycle",
             code: "dependency.no-cycle",
             message: "the prerequisite already waits for the dependent",
-            source: { file: "src/domain/work/dependency.mesh.mx", line: 36, column: 9 },
+            source: { file: "src/domain/work/dependency.mesh.mx", line: 37, column: 9 },
             that: $expressions["add.check.noCycle.that"],
           });
           await $runCheck($issues, $checks, {
             label: "versionMatches",
             code: "expected-version",
             message: "the task is at another version; read it again and retry",
-            source: { file: "src/domain/work/dependency.mesh.mx", line: 41, column: 9 },
+            source: { file: "src/domain/work/dependency.mesh.mx", line: 42, column: 9 },
             that: $expressions["add.check.versionMatches.that"],
             details: $expressions["add.check.versionMatches.details"],
           });
@@ -215,7 +230,7 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
             const $value = await $expressions["add.step.0.set.createdBy"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &createdBy (src/domain/work/dependency.mesh.mx:49:22) produced no value, and the relationship createdBy is required",
+                "set &createdBy (src/domain/work/dependency.mesh.mx:50:22) produced no value, and the relationship createdBy is required",
               );
             $changes.createdById = $record.createdById = $value;
           }
@@ -261,14 +276,27 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Dependency", "remove", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOrMember",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+              record: true,
+              run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
           ],
         },
@@ -312,6 +340,8 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
             },
             { clock: $clock },
           ) as unknown as $StoredScope<RemoveDependencyInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -320,7 +350,7 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
             label: "versionMatches",
             code: "expected-version",
             message: "the task is at another version; read it again and retry",
-            source: { file: "src/domain/work/dependency.mesh.mx", line: 58, column: 9 },
+            source: { file: "src/domain/work/dependency.mesh.mx", line: 59, column: 9 },
             that: $expressions["remove.check.versionMatches.that"],
             details: $expressions["remove.check.versionMatches.details"],
           });
@@ -363,14 +393,14 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
       if (
         !(await $authorizer("Dependency", "read", [
           {
-            name: "untilM8b",
+            name: "membersRead",
             when: null,
             checks: [
               {
                 kind: "authorize-if",
-                check: "() => true",
+                check: "({ actor, context }) => isSystem(context) || actor.role != null",
                 record: false,
-                run: $expressions["policy.untilM8b.authorize-if.0"],
+                run: $expressions["policy.membersRead.authorize-if.0"],
               },
             ],
           },

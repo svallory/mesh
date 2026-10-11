@@ -17,9 +17,11 @@ import {
   fenceDetails,
   fenceIsCurrent,
   invalidatedFences,
+  managesTaskOf,
   missingEvidenceOf,
   movedParent,
   noContainmentCycleOf,
+  noOtherHolderOf,
   openChildren,
   openClaims,
   ownPending,
@@ -28,7 +30,12 @@ import {
   reviewerFor,
   taskChanges,
 } from "../../../src/domain/work/work.helpers";
-import { assignableOf, collaboratorActiveOf } from "../../../src/domain/identity/identity.helpers";
+import {
+  assignableOf,
+  collaboratorActiveOf,
+  memberOf,
+  roleIn,
+} from "../../../src/domain/identity/identity.helpers";
 import type {
   ReadOnlyActions as $ReadOnlyActions,
   ReadOnlyReads as $ReadOnlyReads,
@@ -216,13 +223,19 @@ export const expressions = {
   "cancel.step.0.set.version": ($s: TaskStoredScope<CancelTaskInput>) => $.add($s.self.version, 1),
   // run, plain (run-step) (src/domain/work/task.mesh.mx:180:28)
   "cancel.step.1.run": ($s: TaskStoredScope<CancelTaskInput>) => {
-    return (async function ({ self, tx, actions }) {
+    return (async function ({ self, context, tx, actions }) {
       for (const claim of openClaims(await tx.readClaim({ filter: { taskId: { eq: self.id } } })))
-        await actions.endClaim({ id: claim.id, outcome: "revoked", reason: "task canceled" });
+        await actions.endClaim(
+          { id: claim.id, outcome: "revoked", reason: "task canceled" },
+          { ...context, system: true },
+        );
       for (const submission of await tx.readSubmission({
         filter: { taskId: { eq: self.id }, state: { eq: "pending" } },
       }))
-        await actions.settleSubmission({ id: submission.id, outcome: "withdrawn" });
+        await actions.settleSubmission(
+          { id: submission.id, outcome: "withdrawn" },
+          { ...context, system: true },
+        );
     })($s);
   },
   // check :taskOpen that, translated (src/domain/work/task.mesh.mx:194:16)
@@ -335,13 +348,16 @@ export const expressions = {
       else {
         rule = completionRule(actor.id, await reviewerFor(tx, self));
         if (input.summary != null || input.evidence != null) {
-          const recorded = await actions.recordAcceptedSubmission({
-            task: self.id,
-            summary: input.summary ?? null,
-            evidence: input.evidence ?? [],
-            fence: input.fence ?? null,
-            taskVersion: before.version,
-          });
+          const recorded = await actions.recordAcceptedSubmission(
+            {
+              task: self.id,
+              summary: input.summary ?? null,
+              evidence: input.evidence ?? [],
+              fence: input.fence ?? null,
+              taskVersion: before.version,
+            },
+            { ...context, system: true },
+          );
           submission = recorded.id;
         } else {
           const own = ownPending(
@@ -351,17 +367,27 @@ export const expressions = {
             actor.id,
           );
           if (own) {
-            await actions.settleSubmission({ id: own.id, outcome: "accepted" });
+            await actions.settleSubmission(
+              { id: own.id, outcome: "accepted" },
+              { ...context, system: true },
+            );
             submission = own.id;
           }
         }
       }
-      await actions.recordCompletion({ task: self.id, submission, rule });
+      await actions.recordCompletion(
+        { task: self.id, submission, rule },
+        { ...context, system: true },
+      );
       const live = claimToRelease(
         await tx.readClaim({ filter: { taskId: { eq: self.id } } }),
         now(),
       );
-      if (live) await actions.endClaim({ id: live.id, outcome: "released", reason: "completed" });
+      if (live)
+        await actions.endClaim(
+          { id: live.id, outcome: "released", reason: "completed" },
+          { ...context, system: true },
+        );
     })($s);
   },
   // check :taskOpen that, translated (src/domain/work/task.mesh.mx:276:16)
@@ -396,7 +422,7 @@ export const expressions = {
   "assign.step.0.set.version": ($s: TaskStoredScope<AssignTaskInput>) => $.add($s.self.version, 1),
   // run, plain (run-step) (src/domain/work/task.mesh.mx:304:28)
   "assign.step.1.run": ($s: TaskStoredScope<AssignTaskInput>) => {
-    return (async function ({ self, input, tx, actions }) {
+    return (async function ({ self, input, context, tx, actions }) {
       const current = currentAssignment(
         await tx.readAssignment({ filter: { taskId: { eq: self.id }, endedAt: { nil: true } } }),
       );
@@ -406,14 +432,19 @@ export const expressions = {
             await tx.readClaim({ filter: { taskId: { eq: self.id } } }),
             current.assigneeId,
           ))
-            await actions.endClaim({ id: claim.id, outcome: "revoked", reason: "reassigned" });
-        await actions.finishAssignment({ id: current.id, reason: "reassigned" });
+            await actions.endClaim(
+              { id: claim.id, outcome: "revoked", reason: "reassigned" },
+              { ...context, system: true },
+            );
+        await actions.finishAssignment(
+          { id: current.id, reason: "reassigned" },
+          { ...context, system: true },
+        );
       }
-      await actions.startAssignment({
-        task: self.id,
-        assignee: input.assignee,
-        reviewWaived: input.waiveReview ?? false,
-      });
+      await actions.startAssignment(
+        { task: self.id, assignee: input.assignee, reviewWaived: input.waiveReview ?? false },
+        { ...context, system: true },
+      );
     })($s);
   },
   // check :assignmentCurrent that, translated (src/domain/work/task.mesh.mx:320:16)
@@ -435,7 +466,7 @@ export const expressions = {
     $.add($s.self.version, 1),
   // run, plain (run-step) (src/domain/work/task.mesh.mx:333:28)
   "unassign.step.1.run": ($s: TaskStoredScope<UnassignTaskInput>) => {
-    return (async function ({ self, tx, actions }) {
+    return (async function ({ self, context, tx, actions }) {
       const current = currentAssignment(
         await tx.readAssignment({ filter: { taskId: { eq: self.id }, endedAt: { nil: true } } }),
       );
@@ -444,25 +475,82 @@ export const expressions = {
         await tx.readClaim({ filter: { taskId: { eq: self.id } } }),
         current.assigneeId,
       ))
-        await actions.endClaim({ id: claim.id, outcome: "revoked", reason: "unassigned" });
-      await actions.finishAssignment({ id: current.id, reason: "unassigned" });
+        await actions.endClaim(
+          { id: claim.id, outcome: "revoked", reason: "unassigned" },
+          { ...context, system: true },
+        );
+      await actions.finishAssignment(
+        { id: current.id, reason: "unassigned" },
+        { ...context, system: true },
+      );
     })($s);
   },
-  // policy :untilM8b authorize-if, translated (src/domain/work/task.mesh.mx:342:20)
-  "policy.untilM8b.authorize-if.0": (
-    _$s: TaskNewScope<
+  // policy :membersRead authorize-if, translated (src/domain/work/task.mesh.mx:342:20)
+  "policy.membersRead.authorize-if.0": ($s: TaskCheckScope<unknown>) =>
+    $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
+  // policy :isMember authorize-if, plain (uses-tx) (src/domain/work/task.mesh.mx:344:20)
+  "policy.isMember.authorize-if.0": (
+    $s: TaskNewScope<
       $SharedInput<
         | CreateTaskInput
         | UpdateTaskInput
         | SetPriorityTaskInput
         | MoveTaskInput
         | ReopenTaskInput
-        | TouchTaskInput
         | CancelTaskInput
         | CompleteTaskInput
         | AssignTaskInput
         | UnassignTaskInput
       >
     >,
-  ) => true,
+  ) => {
+    const isSystem = $.isSystem;
+    return (({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id))($s);
+  },
+  // policy :ownerOrMember authorize-if, plain (uses-tx) (src/domain/work/task.mesh.mx:346:20)
+  "policy.ownerOrMember.authorize-if.0": (
+    $s: TaskNewScope<
+      $SharedInput<
+        | CreateTaskInput
+        | UpdateTaskInput
+        | SetPriorityTaskInput
+        | MoveTaskInput
+        | ReopenTaskInput
+        | CancelTaskInput
+        | CompleteTaskInput
+        | AssignTaskInput
+        | UnassignTaskInput
+      >
+    >,
+  ) => {
+    const isSystem = $.isSystem;
+    return (({ actor, context, tx }) =>
+      isSystem(context) || roleIn(tx, actor.id, ["owner", "member"]))($s);
+  },
+  // policy :taskManager authorize-if, plain (uses-tx) (src/domain/work/task.mesh.mx:348:20)
+  "policy.taskManager.authorize-if.0": (
+    $s: TaskCheckScope<$SharedInput<ReopenTaskInput | CancelTaskInput>>,
+  ) => {
+    const isSystem = $.isSystem;
+    return (({ self, actor, context, tx }) =>
+      isSystem(context) || managesTaskOf(tx, self, actor.id, true))($s);
+  },
+  // policy :taskUnassigner authorize-if, plain (uses-tx) (src/domain/work/task.mesh.mx:350:20)
+  "policy.taskUnassigner.authorize-if.0": ($s: TaskCheckScope<UnassignTaskInput>) => {
+    const isSystem = $.isSystem;
+    return (({ self, actor, context, tx }) =>
+      isSystem(context) || managesTaskOf(tx, self, actor.id, false))($s);
+  },
+  // policy :claimHolder authorize-if, plain (uses-tx) (src/domain/work/task.mesh.mx:352:20)
+  "policy.claimHolder.authorize-if.0": ($s: TaskCheckScope<CompleteTaskInput>) => {
+    const now = () => $.now($s);
+    const isSystem = $.isSystem;
+    return (({ self, input, actor, context, tx }) =>
+      isSystem(context) || noOtherHolderOf(tx, self.id, input.fence, actor.id, now()))($s);
+  },
+  // policy :reviewCompletion forbid-if, translated (src/domain/work/task.mesh.mx:354:17)
+  "policy.reviewCompletion.forbid-if.0": ($s: TaskCheckScope<CompleteTaskInput>) =>
+    $.and($.isNotNull($s.context?.completion), $.not($.isSystem($s.context))),
+  // policy :internal authorize-if, translated (src/domain/work/task.mesh.mx:356:20)
+  "policy.internal.authorize-if.0": ($s: TaskCheckScope<TouchTaskInput>) => $.isSystem($s.context),
 } as const;

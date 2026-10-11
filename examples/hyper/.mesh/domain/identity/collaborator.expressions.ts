@@ -7,7 +7,12 @@ import {
   type Scope as $Scope,
   type SharedInput as $SharedInput,
 } from "@meshfw/runtime";
-import { nameFreeOf, retireKeepsAnOwnerOf } from "../../../src/domain/identity/identity.helpers";
+import {
+  memberOf,
+  nameFreeOf,
+  retireKeepsAnOwnerOf,
+  roleIn,
+} from "../../../src/domain/identity/identity.helpers";
 import type {
   ReadOnlyActions as $ReadOnlyActions,
   ReadOnlyReads as $ReadOnlyReads,
@@ -97,10 +102,29 @@ export const expressions = {
   // set &version, translated (src/domain/identity/collaborator.mesh.mx:78:20)
   "retire.step.0.set.version": ($s: CollaboratorStoredScope<RetireCollaboratorInput>) =>
     $.add($s.self.version, 1),
-  // policy :untilM8b authorize-if, translated (src/domain/identity/collaborator.mesh.mx:81:20)
-  "policy.untilM8b.authorize-if.0": (
-    _$s: CollaboratorNewScope<
-      $SharedInput<RegisterCollaboratorInput | UpdateCollaboratorInput | RetireCollaboratorInput>
-    >,
-  ) => true,
+  // policy :membersRead authorize-if, translated (src/domain/identity/collaborator.mesh.mx:81:20)
+  "policy.membersRead.authorize-if.0": ($s: CollaboratorCheckScope<unknown>) =>
+    $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
+  // policy :isMember authorize-if, plain (uses-tx) (src/domain/identity/collaborator.mesh.mx:83:20)
+  "policy.isMember.authorize-if.0": (
+    $s: CollaboratorNewScope<$SharedInput<RegisterCollaboratorInput | RetireCollaboratorInput>>,
+  ) => {
+    const isSystem = $.isSystem;
+    return (({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id))($s);
+  },
+  // policy :ownerOnly authorize-if, plain (uses-tx) (src/domain/identity/collaborator.mesh.mx:85:20)
+  "policy.ownerOnly.authorize-if.0": (
+    $s: CollaboratorNewScope<$SharedInput<RegisterCollaboratorInput | RetireCollaboratorInput>>,
+  ) => {
+    const isSystem = $.isSystem;
+    return (({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, ["owner"]))($s);
+  },
+  // policy :collaboratorSelfOrOwner authorize-if, plain (uses-tx) (src/domain/identity/collaborator.mesh.mx:87:20)
+  "policy.collaboratorSelfOrOwner.authorize-if.0": (
+    $s: CollaboratorCheckScope<UpdateCollaboratorInput>,
+  ) => {
+    const isSystem = $.isSystem;
+    return (({ self, actor, context, tx }) =>
+      isSystem(context) || self.id === actor.id || roleIn(tx, actor.id, ["owner"]))($s);
+  },
 } as const;

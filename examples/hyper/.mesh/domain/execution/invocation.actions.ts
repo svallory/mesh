@@ -111,14 +111,40 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Invocation", "record", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOrMember",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+              record: true,
+              run: $expressions["policy.ownerOrMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "attemptPerformer",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ input, actor, context, tx }) => isSystem(context) || performsAttemptOf(tx, input.attempt, actor.id)",
+              record: true,
+              run: $expressions["policy.attemptPerformer.authorize-if.0"],
             },
           ],
         },
@@ -182,6 +208,8 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
             },
             { clock: $clock },
           ) as unknown as $Scope<RecordInvocationInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -189,14 +217,14 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
             label: "session",
             code: "invocation.session",
             message: "the session is not the attempt's session",
-            source: { file: "src/domain/execution/invocation.mesh.mx", line: 50, column: 9 },
+            source: { file: "src/domain/execution/invocation.mesh.mx", line: 51, column: 9 },
             that: $expressions["record.check.session.that"],
           });
           await $runCheck($issues, $checks, {
             label: "costUnknown",
             code: "invocation.cost-unknown",
             message: "the cost is unknown while a token count it needs is unknown",
-            source: { file: "src/domain/execution/invocation.mesh.mx", line: 55, column: 9 },
+            source: { file: "src/domain/execution/invocation.mesh.mx", line: 56, column: 9 },
             that: $expressions["record.check.costUnknown.that"],
           });
           if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -234,7 +262,7 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
             const $value = await $expressions["record.step.0.set.task"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &task (src/domain/execution/invocation.mesh.mx:62:17) produced no value, and the relationship task is required",
+                "set &task (src/domain/execution/invocation.mesh.mx:63:17) produced no value, and the relationship task is required",
               );
             $changes.taskId = $record.taskId = $value;
           }
@@ -242,7 +270,7 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
             const $value = await $expressions["record.step.0.set.recordedBy"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &recordedBy (src/domain/execution/invocation.mesh.mx:63:23) produced no value, and the relationship recordedBy is required",
+                "set &recordedBy (src/domain/execution/invocation.mesh.mx:64:23) produced no value, and the relationship recordedBy is required",
               );
             $changes.recordedById = $record.recordedById = $value;
           }
@@ -277,14 +305,40 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Invocation", "correct", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOrMember",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+              record: true,
+              run: $expressions["policy.ownerOrMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "invocationRecorder",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ input, actor, context, tx }) => isSystem(context) || correctsInvocationOf(tx, input.corrects, actor.id)",
+              record: true,
+              run: $expressions["policy.invocationRecorder.authorize-if.0"],
             },
           ],
         },
@@ -351,6 +405,8 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
             },
             { clock: $clock },
           ) as unknown as $Scope<CorrectInvocationInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -358,21 +414,21 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
             label: "notCorrected",
             code: "invocation.not-corrected",
             message: "the invocation is already corrected",
-            source: { file: "src/domain/execution/invocation.mesh.mx", line: 83, column: 9 },
+            source: { file: "src/domain/execution/invocation.mesh.mx", line: 84, column: 9 },
             that: $expressions["correct.check.notCorrected.that"],
           });
           await $runCheck($issues, $checks, {
             label: "reason",
             code: "invocation.reason",
             message: "a correction gives a reason",
-            source: { file: "src/domain/execution/invocation.mesh.mx", line: 88, column: 9 },
+            source: { file: "src/domain/execution/invocation.mesh.mx", line: 89, column: 9 },
             that: $expressions["correct.check.reason.that"],
           });
           await $runCheck($issues, $checks, {
             label: "costUnknown",
             code: "invocation.cost-unknown",
             message: "the cost is unknown while a token count it needs is unknown",
-            source: { file: "src/domain/execution/invocation.mesh.mx", line: 93, column: 9 },
+            source: { file: "src/domain/execution/invocation.mesh.mx", line: 94, column: 9 },
             that: $expressions["correct.check.costUnknown.that"],
           });
           if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -411,7 +467,7 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
             const $value = await $expressions["correct.step.0.set.attempt"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &attempt (src/domain/execution/invocation.mesh.mx:100:20) produced no value, and the relationship attempt is required",
+                "set &attempt (src/domain/execution/invocation.mesh.mx:101:20) produced no value, and the relationship attempt is required",
               );
             $changes.attemptId = $record.attemptId = $value;
           }
@@ -419,7 +475,7 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
             const $value = await $expressions["correct.step.0.set.task"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &task (src/domain/execution/invocation.mesh.mx:101:17) produced no value, and the relationship task is required",
+                "set &task (src/domain/execution/invocation.mesh.mx:102:17) produced no value, and the relationship task is required",
               );
             $changes.taskId = $record.taskId = $value;
           }
@@ -427,7 +483,7 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
             const $value = await $expressions["correct.step.0.set.recordedBy"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &recordedBy (src/domain/execution/invocation.mesh.mx:102:23) produced no value, and the relationship recordedBy is required",
+                "set &recordedBy (src/domain/execution/invocation.mesh.mx:103:23) produced no value, and the relationship recordedBy is required",
               );
             $changes.recordedById = $record.recordedById = $value;
           }
@@ -461,14 +517,14 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
       if (
         !(await $authorizer("Invocation", "read", [
           {
-            name: "untilM8b",
+            name: "membersRead",
             when: null,
             checks: [
               {
                 kind: "authorize-if",
-                check: "() => true",
+                check: "({ actor, context }) => isSystem(context) || actor.role != null",
                 record: false,
-                run: $expressions["policy.untilM8b.authorize-if.0"],
+                run: $expressions["policy.membersRead.authorize-if.0"],
               },
             ],
           },

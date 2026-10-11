@@ -36,5 +36,7 @@ entity :Assignment table="assignments"
           &endedAt=() => now()
           &endReason=({ input }) => input.reason
   policies
-    policy :untilM8b
-      authorize-if=() => true
+    policy :membersRead types=[:read]
+      authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
+    policy :internal actions=[&start, &finish]
+      authorize-if=({ context }) => isSystem(context)

@@ -21,5 +21,7 @@ entity :Completion table="completions"
         set
           &completedBy=({ actor }) => actor.id
   policies
-    policy :untilM8b
-      authorize-if=() => true
+    policy :membersRead types=[:read]
+      authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
+    policy :internal actions=[&record]
+      authorize-if=({ context }) => isSystem(context)

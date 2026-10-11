@@ -5,6 +5,7 @@ import { Machine } from "./machine.mesh.mx"
 import { SessionReference } from "./session-reference.mesh.mx"
 import { heldFence, missingEvidenceOf } from "../work/work.helpers"
 import { attemptOutcome, claimerOf, delegatorFor, machineActiveOf, nextNumber, runRunningOf, settlesRun, stepIdleOf } from "./execution.helpers"
+import { memberOf, roleIn } from "../identity/identity.helpers"
 
 entity :Attempt table="attempts"
   attributes
@@ -34,11 +35,6 @@ entity :Attempt table="attempts"
         &machine
         &session
       validate
-        check :claimer [
-          that=({ input, actor, tx }) => claimerOf(tx, input.run, actor.id, now())
-          code="attempt.claimer"
-          message="the claim on the task is no longer the actor's; claim it again to report"
-        ]
         check :runRunning [
           that=({ input, tx }) => runRunningOf(tx, input.run)
           code="attempt.run-running"
@@ -102,10 +98,10 @@ entity :Attempt table="attempts"
           &endedAt=() => now()
           &outcome=({ input }) => attemptOutcome({ outputs: input.outputs, evidence: input.evidence, error: input.error })
           &version=() => &version + 1
-        run [after=:write] ({ self, input, tx, actions }) {
+        run [after=:write] ({ self, input, context, tx, actions }) {
           const [run] = await tx.readRun({ filter: { id: { eq: self.runId } } });
           if (run && settlesRun(run.state, input.result, input.error))
-            await actions.settleRun({ id: run.id, result: input.result, outcome: self.outcome });
+            await actions.settleRun({ id: run.id, result: input.result, outcome: self.outcome }, { ...context, system: true });
         }
     update :reportStopped
       input
@@ -152,5 +148,13 @@ entity :Attempt table="attempts"
           &outcome=({ input }) => attemptOutcome({ note: input.note })
           &version=() => &version + 1
   policies
-    policy :untilM8b
-      authorize-if=() => true
+    policy :membersRead types=[:read]
+      authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
+    policy :isMember actions=[&start]
+      authorize-if=({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)
+    policy :ownerOrMember actions=[&start]
+      authorize-if=({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])
+    policy :attemptClaimer actions=[&start]
+      authorize-if=({ input, actor, context, tx }) => isSystem(context) || claimerOf(tx, input.run, actor.id, now())
+    policy :attemptPerformer actions=[&finish, &reportStopped, &abandon]
+      authorize-if=({ self, actor, context }) => isSystem(context) || self.performerId === actor.id

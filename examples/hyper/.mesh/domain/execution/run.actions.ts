@@ -107,14 +107,27 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Run", "start", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOrMember",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+              record: true,
+              run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
           ],
         },
@@ -169,6 +182,8 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
             },
             { clock: $clock },
           ) as unknown as $Scope<StartRunInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -176,14 +191,14 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
             label: "taskOpen",
             code: "run.task-open",
             message: "runs serve open tasks",
-            source: { file: "src/domain/execution/run.mesh.mx", line: 30, column: 9 },
+            source: { file: "src/domain/execution/run.mesh.mx", line: 31, column: 9 },
             that: $expressions["start.check.taskOpen.that"],
           });
           await $runCheck($issues, $checks, {
             label: "parentRunning",
             code: "run.parent-running",
             message: "the parent run is not running",
-            source: { file: "src/domain/execution/run.mesh.mx", line: 35, column: 9 },
+            source: { file: "src/domain/execution/run.mesh.mx", line: 36, column: 9 },
             that: $expressions["start.check.parentRunning.that"],
           });
           if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -197,7 +212,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
             const $value = await $expressions["start.step.0.set.startedBy"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &startedBy (src/domain/execution/run.mesh.mx:42:22) produced no value, and the relationship startedBy is required",
+                "set &startedBy (src/domain/execution/run.mesh.mx:43:22) produced no value, and the relationship startedBy is required",
               );
             $changes.startedById = $record.startedById = $value;
           }
@@ -206,7 +221,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
             const $value = await $expressions["start.step.0.set.responsible"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &responsible (src/domain/execution/run.mesh.mx:43:24) produced no value, and the relationship responsible is required",
+                "set &responsible (src/domain/execution/run.mesh.mx:44:24) produced no value, and the relationship responsible is required",
               );
             $changes.responsibleId = $record.responsibleId = $value;
           }
@@ -238,14 +253,40 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Run", "cancel", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOrMember",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+              record: true,
+              run: $expressions["policy.ownerOrMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "runCanceler",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ self, actor, context, tx }) => isSystem(context) || cancelsRunOf(tx, self, actor.id)",
+              record: true,
+              run: $expressions["policy.runCanceler.authorize-if.0"],
             },
           ],
         },
@@ -290,6 +331,8 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
             },
             { clock: $clock },
           ) as unknown as $StoredScope<CancelRunInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -297,14 +340,14 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
             label: "cancelable",
             code: "run.cancelable",
             message: "the run is not running",
-            source: { file: "src/domain/execution/run.mesh.mx", line: 49, column: 9 },
+            source: { file: "src/domain/execution/run.mesh.mx", line: 50, column: 9 },
             that: $expressions["cancel.check.cancelable.that"],
           });
           await $runCheck($issues, $checks, {
             label: "versionMatches",
             code: "expected-version",
             message: "the record is at another version; read it again and retry",
-            source: { file: "src/domain/execution/run.mesh.mx", line: 54, column: 9 },
+            source: { file: "src/domain/execution/run.mesh.mx", line: 55, column: 9 },
             that: $expressions["cancel.check.versionMatches.that"],
             details: $expressions["cancel.check.versionMatches.details"],
           });
@@ -323,7 +366,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
             const $value = await $expressions["cancel.step.0.set.version"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &version (src/domain/execution/run.mesh.mx:65:20) produced no value, and version is required",
+                "set &version (src/domain/execution/run.mesh.mx:66:20) produced no value, and version is required",
               );
             $changes.version = $record.version = $value;
           }
@@ -357,14 +400,14 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Run", "settle", [
         {
-          name: "untilM8b",
+          name: "internal",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
+              check: "({ context }) => isSystem(context)",
               record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              run: $expressions["policy.internal.authorize-if.0"],
             },
           ],
         },
@@ -416,7 +459,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
             const $value = await $expressions["settle.step.0.set.state"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &state (src/domain/execution/run.mesh.mx:72:18) produced no value, and state is required",
+                "set &state (src/domain/execution/run.mesh.mx:73:18) produced no value, and state is required",
               );
             $changes.state = $record.state = $value;
           }
@@ -428,7 +471,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
             const $value = await $expressions["settle.step.0.set.version"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &version (src/domain/execution/run.mesh.mx:74:20) produced no value, and version is required",
+                "set &version (src/domain/execution/run.mesh.mx:75:20) produced no value, and version is required",
               );
             $changes.version = $record.version = $value;
           }
@@ -465,14 +508,14 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
       if (
         !(await $authorizer("Run", "read", [
           {
-            name: "untilM8b",
+            name: "membersRead",
             when: null,
             checks: [
               {
                 kind: "authorize-if",
-                check: "() => true",
+                check: "({ actor, context }) => isSystem(context) || actor.role != null",
                 record: false,
-                run: $expressions["policy.untilM8b.authorize-if.0"],
+                run: $expressions["policy.membersRead.authorize-if.0"],
               },
             ],
           },

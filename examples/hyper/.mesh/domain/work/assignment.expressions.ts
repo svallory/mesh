@@ -66,8 +66,11 @@ export const expressions = {
   // set &endReason, translated (src/domain/work/assignment.mesh.mx:37:22)
   "finish.step.0.set.endReason": ($s: AssignmentStoredScope<FinishAssignmentInput>) =>
     $s.input?.reason,
-  // policy :untilM8b authorize-if, translated (src/domain/work/assignment.mesh.mx:40:20)
-  "policy.untilM8b.authorize-if.0": (
-    _$s: AssignmentNewScope<$SharedInput<StartAssignmentInput | FinishAssignmentInput>>,
-  ) => true,
+  // policy :membersRead authorize-if, translated (src/domain/work/assignment.mesh.mx:40:20)
+  "policy.membersRead.authorize-if.0": ($s: AssignmentCheckScope<unknown>) =>
+    $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
+  // policy :internal authorize-if, translated (src/domain/work/assignment.mesh.mx:42:20)
+  "policy.internal.authorize-if.0": (
+    $s: AssignmentNewScope<$SharedInput<StartAssignmentInput | FinishAssignmentInput>>,
+  ) => $.isSystem($s.context),
 } as const;

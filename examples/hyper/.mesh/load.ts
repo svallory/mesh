@@ -99,14 +99,14 @@ export const loadPlan = {
     computed: {},
     reads: [
       {
-        name: "untilM8b",
+        name: "membersRead",
         when: null,
         checks: [
           {
             kind: "authorize-if",
-            check: "() => true",
+            check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: eventExpressions["policy.untilM8b.authorize-if.0"],
+            run: eventExpressions["policy.membersRead.authorize-if.0"],
           },
         ],
       },
@@ -141,14 +141,14 @@ export const loadPlan = {
     computed: {},
     reads: [
       {
-        name: "untilM8b",
+        name: "membersRead",
         when: null,
         checks: [
           {
             kind: "authorize-if",
-            check: "() => true",
+            check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: attemptExpressions["policy.untilM8b.authorize-if.0"],
+            run: attemptExpressions["policy.membersRead.authorize-if.0"],
           },
         ],
       },
@@ -177,14 +177,14 @@ export const loadPlan = {
     computed: {},
     reads: [
       {
-        name: "untilM8b",
+        name: "membersRead",
         when: null,
         checks: [
           {
             kind: "authorize-if",
-            check: "() => true",
+            check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: invocationExpressions["policy.untilM8b.authorize-if.0"],
+            run: invocationExpressions["policy.membersRead.authorize-if.0"],
           },
         ],
       },
@@ -205,14 +205,14 @@ export const loadPlan = {
     computed: {},
     reads: [
       {
-        name: "untilM8b",
+        name: "membersRead",
         when: null,
         checks: [
           {
             kind: "authorize-if",
-            check: "() => true",
+            check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: machineExpressions["policy.untilM8b.authorize-if.0"],
+            run: machineExpressions["policy.membersRead.authorize-if.0"],
           },
         ],
       },
@@ -241,14 +241,14 @@ export const loadPlan = {
     computed: {},
     reads: [
       {
-        name: "untilM8b",
+        name: "membersRead",
         when: null,
         checks: [
           {
             kind: "authorize-if",
-            check: "() => true",
+            check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: runExpressions["policy.untilM8b.authorize-if.0"],
+            run: runExpressions["policy.membersRead.authorize-if.0"],
           },
         ],
       },
@@ -275,14 +275,14 @@ export const loadPlan = {
     computed: {},
     reads: [
       {
-        name: "untilM8b",
+        name: "membersRead",
         when: null,
         checks: [
           {
             kind: "authorize-if",
-            check: "() => true",
+            check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: sessionReferenceExpressions["policy.untilM8b.authorize-if.0"],
+            run: sessionReferenceExpressions["policy.membersRead.authorize-if.0"],
           },
         ],
       },
@@ -297,14 +297,14 @@ export const loadPlan = {
     computed: {},
     reads: [
       {
-        name: "untilM8b",
+        name: "membersRead",
         when: null,
         checks: [
           {
             kind: "authorize-if",
-            check: "() => true",
+            check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: collaboratorExpressions["policy.untilM8b.authorize-if.0"],
+            run: collaboratorExpressions["policy.membersRead.authorize-if.0"],
           },
         ],
       },
@@ -336,14 +336,14 @@ export const loadPlan = {
     computed: {},
     reads: [
       {
-        name: "untilM8b",
+        name: "membersRead",
         when: null,
         checks: [
           {
             kind: "authorize-if",
-            check: "() => true",
+            check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: membershipExpressions["policy.untilM8b.authorize-if.0"],
+            run: membershipExpressions["policy.membersRead.authorize-if.0"],
           },
         ],
       },
@@ -356,14 +356,14 @@ export const loadPlan = {
     computed: {},
     reads: [
       {
-        name: "untilM8b",
+        name: "membersRead",
         when: null,
         checks: [
           {
             kind: "authorize-if",
-            check: "() => true",
+            check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: workspaceExpressions["policy.untilM8b.authorize-if.0"],
+            run: workspaceExpressions["policy.membersRead.authorize-if.0"],
           },
         ],
       },
@@ -390,14 +390,14 @@ export const loadPlan = {
     computed: {},
     reads: [
       {
-        name: "untilM8b",
+        name: "membersRead",
         when: null,
         checks: [
           {
             kind: "authorize-if",
-            check: "() => true",
+            check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: assignmentExpressions["policy.untilM8b.authorize-if.0"],
+            run: assignmentExpressions["policy.membersRead.authorize-if.0"],
           },
         ],
       },
@@ -415,14 +415,14 @@ export const loadPlan = {
     },
     reads: [
       {
-        name: "untilM8b",
+        name: "membersRead",
         when: null,
         checks: [
           {
             kind: "authorize-if",
-            check: "() => true",
+            check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: claimExpressions["policy.untilM8b.authorize-if.0"],
+            run: claimExpressions["policy.membersRead.authorize-if.0"],
           },
         ],
       },
@@ -449,14 +449,14 @@ export const loadPlan = {
     computed: {},
     reads: [
       {
-        name: "untilM8b",
+        name: "membersRead",
         when: null,
         checks: [
           {
             kind: "authorize-if",
-            check: "() => true",
+            check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: completionExpressions["policy.untilM8b.authorize-if.0"],
+            run: completionExpressions["policy.membersRead.authorize-if.0"],
           },
         ],
       },
@@ -483,14 +483,14 @@ export const loadPlan = {
     computed: {},
     reads: [
       {
-        name: "untilM8b",
+        name: "membersRead",
         when: null,
         checks: [
           {
             kind: "authorize-if",
-            check: "() => true",
+            check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: dependencyExpressions["policy.untilM8b.authorize-if.0"],
+            run: dependencyExpressions["policy.membersRead.authorize-if.0"],
           },
         ],
       },
@@ -510,14 +510,14 @@ export const loadPlan = {
     computed: {},
     reads: [
       {
-        name: "untilM8b",
+        name: "membersRead",
         when: null,
         checks: [
           {
             kind: "authorize-if",
-            check: "() => true",
+            check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: evidenceReferenceExpressions["policy.untilM8b.authorize-if.0"],
+            run: evidenceReferenceExpressions["policy.membersRead.authorize-if.0"],
           },
         ],
       },
@@ -538,14 +538,14 @@ export const loadPlan = {
     computed: {},
     reads: [
       {
-        name: "untilM8b",
+        name: "membersRead",
         when: null,
         checks: [
           {
             kind: "authorize-if",
-            check: "() => true",
+            check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: lateResultExpressions["policy.untilM8b.authorize-if.0"],
+            run: lateResultExpressions["policy.membersRead.authorize-if.0"],
           },
         ],
       },
@@ -571,14 +571,14 @@ export const loadPlan = {
     computed: {},
     reads: [
       {
-        name: "untilM8b",
+        name: "membersRead",
         when: null,
         checks: [
           {
             kind: "authorize-if",
-            check: "() => true",
+            check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: reviewExpressions["policy.untilM8b.authorize-if.0"],
+            run: reviewExpressions["policy.membersRead.authorize-if.0"],
           },
         ],
       },
@@ -599,14 +599,14 @@ export const loadPlan = {
     computed: {},
     reads: [
       {
-        name: "untilM8b",
+        name: "membersRead",
         when: null,
         checks: [
           {
             kind: "authorize-if",
-            check: "() => true",
+            check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: submissionExpressions["policy.untilM8b.authorize-if.0"],
+            run: submissionExpressions["policy.membersRead.authorize-if.0"],
           },
         ],
       },
@@ -663,14 +663,14 @@ export const loadPlan = {
     },
     reads: [
       {
-        name: "untilM8b",
+        name: "membersRead",
         when: null,
         checks: [
           {
             kind: "authorize-if",
-            check: "() => true",
+            check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: taskExpressions["policy.untilM8b.authorize-if.0"],
+            run: taskExpressions["policy.membersRead.authorize-if.0"],
           },
         ],
       },

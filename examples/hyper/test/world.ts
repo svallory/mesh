@@ -1,8 +1,9 @@
 // The fixtures the Hyper tests share: an in-memory database bound with a clock the test moves, three collaborators
 // with their memberships, the context each one acts in, and the binding the command functions run on.
 import { createSchema, sqlite } from "@meshfw/data-sqlite";
-import { InvalidInputError, type ActionContext, type Issue, type Seams } from "@meshfw/runtime";
+import { ForbiddenError, InvalidInputError, type ActionContext, type AfterCommitEvent, type Issue, type Seams } from "@meshfw/runtime";
 import { bind, tables } from "#mesh";
+import type { Role } from "../src/context";
 import type { Binding } from "../src/domain/binding";
 import { attemptStart, sessionRecord } from "../src/domain/execution/execution.commands";
 import { reviewAccept, submissionSubmit } from "../src/domain/work/work.commands";
@@ -10,19 +11,55 @@ import { reviewAccept, submissionSubmit } from "../src/domain/work/work.commands
 export const NOW = new Date("2026-10-10T12:00:00.000Z");
 export const minutes = (n: number, from: Date = NOW) => new Date(from.getTime() + n * 60_000);
 
-/** The context of a call made as `collaborator`. */
-export const as = (collaborator: { readonly id: string }): ActionContext => ({ actor: { id: collaborator.id } });
+/**
+ * Each collaborator's role as committed: the role of its active membership, or absent when it has none. Every world
+ * keeps it current through an `afterCommit` seam (`trackRoles`), so `as()` reads committed state when a call is made,
+ * as HA reads the membership from the database when a call comes in (decision POL-20). Collaborator ids are random,
+ * so the worlds of one test run share the map without meeting.
+ */
+const roles = new Map<string, Role>();
 
-/** The actor of the calls that set up a world before any collaborator exists: registering the first ones. */
-export const setup: ActionContext = { actor: { id: "00000000-0000-4000-8000-000000000000" } };
+/** The `afterCommit` seam that keeps `roles` current: a membership written active sets its role, a revoked one clears it. */
+function trackRoles({ changes }: AfterCommitEvent): void {
+  for (const change of changes) {
+    if (change.entity !== "Membership" || !change.after) continue;
+    const { collaboratorId, role, state } = change.after as { collaboratorId: string; role: Role; state: string };
+    if (state === "active") roles.set(collaboratorId, role);
+    else roles.delete(collaboratorId);
+  }
+}
 
-/** An empty database and its binding; the clock reads `time.now`, which a test moves. */
+/**
+ * The context of a call made as `collaborator`, as HA builds it: the actor's id and the role of its active membership
+ * when the call is made (`null` without one). Only the read policies use the role; write policies read it through `tx`.
+ */
+export const as = (collaborator: { readonly id: string }): ActionContext => ({ actor: { id: collaborator.id, role: roles.get(collaborator.id) ?? null } });
+
+/**
+ * The context of a call made as `collaborator` with `system` set, as the engine makes a nested call or an effect
+ * (ADR-0071): for the bootstrap grant, and for a test that calls an internal action (Claim `expire`, Run `settle`…)
+ * directly, as only the engine does.
+ */
+export const asSystem = (collaborator: { readonly id: string }): ActionContext => ({ ...as(collaborator), system: true });
+
+/**
+ * The engine's context for the calls that set up a world before any collaborator exists: registering the first ones,
+ * as the spec's bootstrap acts as the engine (PROTOCOL.md:40-52).
+ */
+export const setup: ActionContext = { actor: { id: "00000000-0000-4000-8000-000000000000", role: null }, system: true };
+
+/**
+ * An empty database and its binding; the clock reads `time.now`, which a test moves. The binding's `afterCommit` seam
+ * keeps the roles `as()` reads current, and then runs the test's own, if it passes one.
+ */
 export async function empty(options: { readonly seams?: Seams } = {}) {
   const db = sqlite({ file: ":memory:" });
   await createSchema(db, tables);
   const time = { now: NOW };
   const clock = () => time.now;
-  const hyper = bind(db, { clock, seams: options.seams });
+  const own = options.seams?.afterCommit;
+  const seams: Seams = { ...options.seams, afterCommit: async (event) => { trackRoles(event); await own?.(event); } };
+  const hyper = bind(db, { clock, seams });
   const binding: Binding = { transaction: hyper.transaction, clock };
   /** Write a column the actions never write, to reach a state for a test: set columns of one row. */
   const force = (table: keyof typeof tables, id: string, changes: Record<string, unknown>) =>
@@ -47,7 +84,8 @@ export async function world() {
   const alice = await hyper.registerCollaborator({ kind: "human", name: "Alice" }, setup);
   const bob = await hyper.registerCollaborator({ kind: "human", name: "Bob" }, setup);
   const bot = await hyper.registerCollaborator({ kind: "agent", name: "Bot" }, setup);
-  const owner = await hyper.grantMembership({ collaborator: alice.id, role: "owner" }, as(alice));
+  // The bootstrap grant (PROTOCOL.md:48): the engine grants the first owner, recorded as granted by that owner.
+  const owner = await hyper.grantMembership({ collaborator: alice.id, role: "owner" }, asSystem(alice));
   const bobMember = await hyper.grantMembership({ collaborator: bob.id, role: "member" }, as(alice));
   const botMember = await hyper.grantMembership({ collaborator: bot.id, role: "member" }, as(alice));
   const task = await hyper.createTask({ title: "Ship" }, as(alice));
@@ -70,6 +108,18 @@ export async function issuesOf(call: Promise<unknown>): Promise<readonly Issue[]
   }
 }
 export const codes = (issues: readonly Issue[]) => issues.map((issue) => issue.code);
+
+/**
+ * The policies a call is refused by (`ForbiddenError.policies`, each named after the spec's check id, `PORTING.md`), or
+ * `[]` when it succeeds; any other error is rethrown, so a call refused for another reason fails the test.
+ */
+export async function deniedBy(call: Promise<unknown>): Promise<readonly string[]> {
+  try { await call; return []; }
+  catch (cause) {
+    if (cause instanceof ForbiddenError) return cause.policies;
+    throw cause;
+  }
+}
 
 /** The one row of `read`'s result, or a failure naming what was missing. */
 export async function one<T>(rows: Promise<readonly T[]>): Promise<T> {
@@ -98,7 +148,7 @@ export async function populate({ hyper, binding }: Pick<Empty, "hyper" | "bindin
   const workspace = await hyper.createWorkspace({ name: "Home" }, setup);
   const alice = await hyper.registerCollaborator({ kind: "human", name: "Alice" }, setup);
   const bot = await hyper.registerCollaborator({ kind: "agent", name: "Bot" }, setup);
-  const membership = await hyper.grantMembership({ role: "owner", collaborator: alice.id }, as(alice));
+  const membership = await hyper.grantMembership({ role: "owner", collaborator: alice.id }, asSystem(alice));
   const botMembership = await hyper.grantMembership({ role: "member", collaborator: bot.id }, as(alice));
   const task = await hyper.createTask({ title: "Ship", priority: 2 }, as(alice));
   const child = await hyper.createTask({ title: "Test", parent: task.id }, as(alice));

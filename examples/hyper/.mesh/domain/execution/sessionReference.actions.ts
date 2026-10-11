@@ -121,14 +121,27 @@ export function bindSessionReference(
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("SessionReference", "record", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOrMember",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+              record: true,
+              run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
           ],
         },
@@ -184,6 +197,8 @@ export function bindSessionReference(
             },
             { clock: $clock },
           ) as unknown as $Scope<RecordSessionReferenceInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -191,14 +206,14 @@ export function bindSessionReference(
             label: "agentProfile",
             code: "session.agent-profile",
             message: "the agent profile is not a collaborator",
-            source: { file: "src/domain/execution/session-reference.mesh.mx", line: 28, column: 9 },
+            source: { file: "src/domain/execution/session-reference.mesh.mx", line: 29, column: 9 },
             that: $expressions["record.check.agentProfile.that"],
           });
           await $runCheck($issues, $checks, {
             label: "machineRetired",
             code: "machine.retired",
             message: "the machine is retired; report the host by a new name",
-            source: { file: "src/domain/execution/session-reference.mesh.mx", line: 33, column: 9 },
+            source: { file: "src/domain/execution/session-reference.mesh.mx", line: 34, column: 9 },
             that: $expressions["record.check.machineRetired.that"],
           });
           if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -217,7 +232,7 @@ export function bindSessionReference(
             const $value = await $expressions["record.step.0.set.recordedBy"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &recordedBy (src/domain/execution/session-reference.mesh.mx:40:23) produced no value, and the relationship recordedBy is required",
+                "set &recordedBy (src/domain/execution/session-reference.mesh.mx:41:23) produced no value, and the relationship recordedBy is required",
               );
             $changes.recordedById = $record.recordedById = $value;
           }
@@ -251,14 +266,15 @@ export function bindSessionReference(
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("SessionReference", "setAvailability", [
         {
-          name: "untilM8b",
+          name: "sessionRecorder",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check:
+                "({ self, actor, context }) => isSystem(context) || self.recordedById === actor.id",
+              record: true,
+              run: $expressions["policy.sessionRecorder.authorize-if.0"],
             },
           ],
         },
@@ -307,6 +323,8 @@ export function bindSessionReference(
             },
             { clock: $clock },
           ) as unknown as $StoredScope<SetAvailabilitySessionReferenceInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -314,21 +332,21 @@ export function bindSessionReference(
             label: "notRedacted",
             code: "session.not-redacted",
             message: "the session is redacted and cannot be changed",
-            source: { file: "src/domain/execution/session-reference.mesh.mx", line: 48, column: 9 },
+            source: { file: "src/domain/execution/session-reference.mesh.mx", line: 49, column: 9 },
             that: $expressions["setAvailability.check.notRedacted.that"],
           });
           await $runCheck($issues, $checks, {
             label: "availabilityKept",
             code: "session.availability",
             message: "availability is complete, partial or unavailable; redact with redact",
-            source: { file: "src/domain/execution/session-reference.mesh.mx", line: 53, column: 9 },
+            source: { file: "src/domain/execution/session-reference.mesh.mx", line: 54, column: 9 },
             that: $expressions["setAvailability.check.availabilityKept.that"],
           });
           await $runCheck($issues, $checks, {
             label: "versionMatches",
             code: "expected-version",
             message: "the record is at another version; read it again and retry",
-            source: { file: "src/domain/execution/session-reference.mesh.mx", line: 58, column: 9 },
+            source: { file: "src/domain/execution/session-reference.mesh.mx", line: 59, column: 9 },
             that: $expressions["setAvailability.check.versionMatches.that"],
             details: $expressions["setAvailability.check.versionMatches.details"],
           });
@@ -342,7 +360,7 @@ export function bindSessionReference(
             const $value = await $expressions["setAvailability.step.0.set.version"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &version (src/domain/execution/session-reference.mesh.mx:66:20) produced no value, and version is required",
+                "set &version (src/domain/execution/session-reference.mesh.mx:67:20) produced no value, and version is required",
               );
             $changes.version = $record.version = $value;
           }
@@ -386,14 +404,27 @@ export function bindSessionReference(
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("SessionReference", "redact", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOnly",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner])",
+              record: true,
+              run: $expressions["policy.ownerOnly.authorize-if.0"],
             },
           ],
         },
@@ -442,6 +473,8 @@ export function bindSessionReference(
             },
             { clock: $clock },
           ) as unknown as $StoredScope<RedactSessionReferenceInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -449,14 +482,14 @@ export function bindSessionReference(
             label: "notRedacted",
             code: "session.not-redacted",
             message: "the session is redacted and cannot be changed",
-            source: { file: "src/domain/execution/session-reference.mesh.mx", line: 72, column: 9 },
+            source: { file: "src/domain/execution/session-reference.mesh.mx", line: 73, column: 9 },
             that: $expressions["redact.check.notRedacted.that"],
           });
           await $runCheck($issues, $checks, {
             label: "versionMatches",
             code: "expected-version",
             message: "the record is at another version; read it again and retry",
-            source: { file: "src/domain/execution/session-reference.mesh.mx", line: 77, column: 9 },
+            source: { file: "src/domain/execution/session-reference.mesh.mx", line: 78, column: 9 },
             that: $expressions["redact.check.versionMatches.that"],
             details: $expressions["redact.check.versionMatches.details"],
           });
@@ -468,7 +501,7 @@ export function bindSessionReference(
             const $value = await $expressions["redact.step.0.set.version"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &version (src/domain/execution/session-reference.mesh.mx:87:20) produced no value, and version is required",
+                "set &version (src/domain/execution/session-reference.mesh.mx:88:20) produced no value, and version is required",
               );
             $changes.version = $record.version = $value;
           }
@@ -512,14 +545,14 @@ export function bindSessionReference(
       if (
         !(await $authorizer("SessionReference", "read", [
           {
-            name: "untilM8b",
+            name: "membersRead",
             when: null,
             checks: [
               {
                 kind: "authorize-if",
-                check: "() => true",
+                check: "({ actor, context }) => isSystem(context) || actor.role != null",
                 record: false,
-                run: $expressions["policy.untilM8b.authorize-if.0"],
+                run: $expressions["policy.membersRead.authorize-if.0"],
               },
             ],
           },

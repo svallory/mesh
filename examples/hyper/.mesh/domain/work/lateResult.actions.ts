@@ -104,14 +104,27 @@ export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, co
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("LateResult", "record", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOrMember",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+              record: true,
+              run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
           ],
         },
@@ -155,6 +168,8 @@ export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, co
             },
             { clock: $clock },
           ) as unknown as $Scope<RecordLateResultInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -162,14 +177,14 @@ export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, co
             label: "staleFence",
             code: "claim.stale-fence",
             message: "only a fence you held that expired or was revoked records a late result",
-            source: { file: "src/domain/work/late-result.mesh.mx", line: 23, column: 9 },
+            source: { file: "src/domain/work/late-result.mesh.mx", line: 24, column: 9 },
             that: $expressions["record.check.staleFence.that"],
           });
           await $runCheck($issues, $checks, {
             label: "evidenceExists",
             code: "evidence.exists",
             message: "an evidence reference does not exist",
-            source: { file: "src/domain/work/late-result.mesh.mx", line: 28, column: 9 },
+            source: { file: "src/domain/work/late-result.mesh.mx", line: 29, column: 9 },
             that: $expressions["record.check.evidenceExists.that"],
             details: $expressions["record.check.evidenceExists.details"],
           });
@@ -184,7 +199,7 @@ export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, co
             const $value = await $expressions["record.step.0.set.submitter"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &submitter (src/domain/work/late-result.mesh.mx:36:22) produced no value, and the relationship submitter is required",
+                "set &submitter (src/domain/work/late-result.mesh.mx:37:22) produced no value, and the relationship submitter is required",
               );
             $changes.submitterId = $record.submitterId = $value;
           }
@@ -218,14 +233,14 @@ export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, co
       if (
         !(await $authorizer("LateResult", "read", [
           {
-            name: "untilM8b",
+            name: "membersRead",
             when: null,
             checks: [
               {
                 kind: "authorize-if",
-                check: "() => true",
+                check: "({ actor, context }) => isSystem(context) || actor.role != null",
                 record: false,
-                run: $expressions["policy.untilM8b.authorize-if.0"],
+                run: $expressions["policy.membersRead.authorize-if.0"],
               },
             ],
           },

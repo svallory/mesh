@@ -1,5 +1,5 @@
 import { Membership } from "./membership.mesh.mx"
-import { nameFreeOf, retireKeepsAnOwnerOf } from "./identity.helpers"
+import { memberOf, nameFreeOf, retireKeepsAnOwnerOf, roleIn } from "./identity.helpers"
 
 entity :Collaborator table="collaborators"
   attributes
@@ -77,5 +77,11 @@ entity :Collaborator table="collaborators"
           &state=:retired
           &version=() => &version + 1
   policies
-    policy :untilM8b
-      authorize-if=() => true
+    policy :membersRead types=[:read]
+      authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
+    policy :isMember actions=[&register, &retire]
+      authorize-if=({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)
+    policy :ownerOnly actions=[&register, &retire]
+      authorize-if=({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner])
+    policy :collaboratorSelfOrOwner actions=[&update]
+      authorize-if=({ self, actor, context, tx }) => isSystem(context) || self.id === actor.id || roleIn(tx, actor.id, [:owner])

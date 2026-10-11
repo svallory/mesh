@@ -16,7 +16,7 @@ import * as identityCommands from "../src/domain/identity/identity.commands";
 import { collaboratorRetire, membershipRevoke } from "../src/domain/identity/identity.commands";
 import * as workCommands from "../src/domain/work/work.commands";
 import { reviewAccept, submissionSubmit, taskCancel, taskComplete } from "../src/domain/work/work.commands";
-import { as, codes, issuesOf, minutes, NOW, one, within, type World } from "./world";
+import { as, asSystem, codes, deniedBy, issuesOf, minutes, NOW, one, within, type World } from "./world";
 
 const taskOf = async (w: World, id: string) => one(w.hyper.readTask({ filter: { id: { eq: id } } }, as(w.alice)));
 const claimsOf = (w: World, taskId: string) => w.hyper.readClaim({ filter: { taskId: { eq: taskId } } }, as(w.alice));
@@ -106,14 +106,20 @@ describe("acceptance 1: task.complete writes the completion, the submission and 
     const other = await w.hyper.createTask({ title: "Other" }, as(w.alice));
     const foreign = await submitted(w, other.id);
     const before = await taskOf(w, w.task.id);
-    const forged = (submissionId: string, actor: { id: string } = w.alice) => ({ ...as(actor), completion: { rule: "review-accepted" as const, submissionId } });
+    // A caller that sets `completion` without `system` is refused before the transaction (policy reviewCompletion, C5).
+    const fromCaller = { ...as(w.alice), completion: { rule: "review-accepted" as const, submissionId: foreign.id } };
+    expect(await deniedBy(taskComplete({ id: w.task.id }, fromCaller, w.binding))).toEqual(["reviewCompletion"]);
+    expect(await deniedBy(w.hyper.completeTask({ id: w.task.id }, fromCaller))).toEqual(["reviewCompletion"]);
+    // With `system`, as only review.accept's nested call sets it, the completion is still checked: the rest of this
+    // test is the guard behind the policy, for engine code that names the wrong submission.
+    const forged = (submissionId: string, actor: { id: string } = w.alice) => ({ ...asSystem(actor), completion: { rule: "review-accepted" as const, submissionId } });
     await expect(taskComplete({ id: w.task.id }, forged(foreign.id), w.binding)).rejects.toBeInstanceOf(FrameworkError);
     await expect(w.hyper.completeTask({ id: w.task.id }, forged(foreign.id))).rejects.toThrow(`submission ${foreign.id}`);
-    // Another Task's submission that is accepted (through the exported internal settle, G20) is refused for its Task
-    // alone (PR #65 round 2, N2): the `accepted` condition does not cover it.
+    // Another Task's submission that is accepted (through the exported internal settle, G20, called as the engine) is
+    // refused for its Task alone (PR #65 round 2, N2): the `accepted` condition does not cover it.
     const elsewhere = await w.hyper.createTask({ title: "Elsewhere" }, as(w.alice));
     const acceptedElsewhere = await submitted(w, elsewhere.id);
-    await w.hyper.settleSubmission({ id: acceptedElsewhere.id, outcome: "accepted" }, as(w.alice));
+    await w.hyper.settleSubmission({ id: acceptedElsewhere.id, outcome: "accepted" }, asSystem(w.alice));
     await expect(taskComplete({ id: w.task.id }, forged(acceptedElsewhere.id), w.binding)).rejects.toThrow(`submission ${acceptedElsewhere.id}`);
     // This Task's own submission while it is still pending, named by its submitter, whose assignment waives review.
     await w.hyper.assignTask({ id: w.task.id, assignee: w.bot.id, waiveReview: true }, as(w.alice));
@@ -151,7 +157,8 @@ describe("acceptance 2: task.cancel revokes the claims, withdraws the submission
     const claim = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
     const running = await w.hyper.startRun({ task: w.task.id }, as(w.bot));
     const finished = await w.hyper.startRun({ task: w.task.id }, as(w.bot));
-    await w.hyper.settleRun({ id: finished.id, result: "succeeded" }, as(w.bot));
+    // Run :settle is internal (only attempt.finish settles a run): called as the engine.
+    await w.hyper.settleRun({ id: finished.id, result: "succeeded" }, asSystem(w.bot));
     const before = await taskOf(w, w.task.id);
     const { task } = await taskCancel({ id: w.task.id, reason: "dropped" }, as(w.alice), w.binding);
     expect(task).toMatchObject({ state: "canceled", version: before.version + 1 });
@@ -192,14 +199,17 @@ describe("acceptance 3: claim.acquire assigns an unassigned task; two concurrent
     expect(claim).toMatchObject({ holderId: w.bot.id, fence: 1, state: "active", acquiredAt: NOW, expiresAt: minutes(10) });
     expect(await w.hyper.readAssignment({}, as(w.alice))).toMatchObject([{ taskId: w.task.id, assigneeId: w.bot.id, delegatorId: w.bot.id, reviewWaived: false, endedAt: null, startedAt: NOW }]);
     await w.hyper.releaseClaim({ id: claim.id, fence: claim.fence }, as(w.bot));
-    const second = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bob));
+    // The release keeps Bot's assignment, so only Bot claims it again (claim.assignee).
+    expect(await deniedBy(w.hyper.acquireClaim({ task: w.task.id }, as(w.bob)))).toEqual(["claimAssignee"]);
+    const second = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
     expect(second.fence).toBe(2);
     // The task already has a current assignment, so no second one starts.
     expect(await w.hyper.readAssignment({}, as(w.alice))).toHaveLength(1);
   }));
 
-  test("two concurrent acquires: one claim, one claim.task-ready with the derived state", () => within(async (w) => {
-    const outcomes = await Promise.all([w.bot, w.bob].map((who) => issuesOf(w.hyper.acquireClaim({ task: w.task.id }, as(who)))));
+  test("two concurrent acquires by the assignee: one claim, one claim.task-ready with the derived state (05:148)", () => within(async (w) => {
+    await w.hyper.assignTask({ id: w.task.id, assignee: w.bot.id }, as(w.alice));
+    const outcomes = await Promise.all([w.bot, w.bot].map((who) => issuesOf(w.hyper.acquireClaim({ task: w.task.id }, as(who)))));
     expect(outcomes.filter((issues) => issues.length === 0)).toHaveLength(1);
     const loser = outcomes.find((issues) => issues.length > 0)!;
     expect(codes(loser)).toEqual(["claim.task-ready"]);
@@ -208,10 +218,22 @@ describe("acceptance 3: claim.acquire assigns an unassigned task; two concurrent
     expect(await w.hyper.readAssignment({}, as(w.alice))).toHaveLength(1);
   }));
 
+  test("two concurrent acquires of an unassigned task by two members: one claim; the loser is refused (05:130)", () => within(async (w) => {
+    // The winner's acquire assigns the task to it, and the loser's policies run inside its transaction, after the
+    // winner's commit: the loser is refused by claim.assignee, which the spec's race accepts (permission_denied or
+    // rule_violation, 05:139).
+    const outcomes = await Promise.all([w.bot, w.bob].map((who) => deniedBy(w.hyper.acquireClaim({ task: w.task.id }, as(who)))));
+    expect(outcomes.filter((denied) => denied.length === 0)).toHaveLength(1);
+    expect(outcomes.find((denied) => denied.length > 0)).toEqual(["claimAssignee"]);
+    expect(await claimsOf(w, w.task.id)).toHaveLength(1);
+    expect(await w.hyper.readAssignment({}, as(w.alice))).toHaveLength(1);
+  }));
+
   test("an acquire after the lease ran out expires the lapsed claim first, in the same transaction", () => within(async (w) => {
     const first = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
     w.advance(11);
-    const second = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bob));
+    // Bot is the task's assignee since its first acquire, so it is the one that may claim it again (claim.assignee).
+    const second = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
     expect(second.fence).toBe(2);
     expect(await one(w.hyper.readClaim({ filter: { id: { eq: first.id } } }, as(w.alice)))).toMatchObject({ state: "expired", endReason: "lease expired", endedAt: minutes(11) });
   }));
@@ -325,10 +347,14 @@ describe("acceptance 10: warnings, and a late result instead of a failure", () =
   test("a fence the actor never held is claim.current-fence, not a late result", () => within(async (w) => {
     const claim = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
     await w.hyper.revokeClaim({ id: claim.id, reason: "taking over" }, as(w.alice));
-    // Bob never held fence 1.
+    // Bob never held a claim on the task: claim.holder refuses the submit (PROTOCOL.md:249, C3).
+    expect(await deniedBy(submissionSubmit({ task: w.task.id, fence: claim.fence, summary: "mine" }, as(w.bob), w.binding))).toEqual(["claimHolder"]);
+    // Once Bob holds a claim of his own (fence 2), fence 1, which he never held, is claim.current-fence.
+    await w.hyper.unassignTask({ id: w.task.id }, as(w.alice));
+    await w.hyper.acquireClaim({ task: w.task.id }, as(w.bob));
     const issues = await issuesOf(submissionSubmit({ task: w.task.id, fence: claim.fence, summary: "mine" }, as(w.bob), w.binding));
     expect(codes(issues)).toEqual(["claim.current-fence"]);
-    expect(issues[0]!.details).toEqual({ currentFence: 1, stale: false });
+    expect(issues[0]!.details).toEqual({ currentFence: 2, stale: false });
     expect(await w.hyper.readLateResult({}, as(w.alice))).toEqual([]);
   }));
 
@@ -383,9 +409,9 @@ describe("effects across aggregates in the execution commands: the machine named
   }));
 
   test("a report that fails after recording a new machine leaves no machine", () => within(async (w) => {
-    // Bob holds no claim on the task, so attempt.claimer refuses, and the machine the call recorded rolls back.
+    // Bob holds no claim on the task, so attempt.claimer (a policy) refuses, and the machine the call recorded rolls back.
     const run = await w.hyper.startRun({ task: w.task.id }, as(w.bob));
-    expect(codes(await issuesOf(attemptStart({ run: run.id, machine: "desktop" }, as(w.bob), w.binding)))).toEqual(["attempt.claimer"]);
+    expect(await deniedBy(attemptStart({ run: run.id, machine: "desktop" }, as(w.bob), w.binding))).toEqual(["attemptClaimer"]);
     expect(await w.hyper.readMachine({}, as(w.alice))).toEqual([]);
   }));
 });
@@ -413,7 +439,8 @@ describe("PROTOCOL.md §4.5: the Task's version goes up by one per committed com
       ["claim.acquire by Alice", async () => { fence = (await w.hyper.acquireClaim({ task: w.task.id }, as(w.alice))).fence; }],
       ["claim.revoke", async () => w.hyper.revokeClaim({ id: (await claimsOf(w, w.task.id)).find((c) => c.fence === fence)!.id, reason: "stop" }, as(w.alice))],
       ["claim.acquire, then expire", async () => { fence = (await w.hyper.acquireClaim({ task: w.task.id }, as(w.alice))).fence; }],
-      ["claim.expire", async () => w.hyper.expireClaim({ id: (await claimsOf(w, w.task.id)).find((c) => c.fence === fence)!.id }, as(w.alice))],
+      // Claim :expire is internal (the engine's lease sweeper): called as the engine.
+      ["claim.expire", async () => w.hyper.expireClaim({ id: (await claimsOf(w, w.task.id)).find((c) => c.fence === fence)!.id }, asSystem(w.alice))],
       ["dependency.remove", async () => w.hyper.removeDependency({ id: (await one(w.hyper.readDependency({}, as(w.alice)))).id }, as(w.alice))],
       ["task.setPriority", () => w.hyper.setPriorityTask({ id: w.task.id, priority: 2 }, as(w.alice))],
       ["claim.acquire, then complete", async () => { fence = (await w.hyper.acquireClaim({ task: w.task.id }, as(w.alice))).fence; }],

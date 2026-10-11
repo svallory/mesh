@@ -2,7 +2,8 @@ import { Attempt } from "./attempt.mesh.mx"
 import { Task } from "../work/task.mesh.mx"
 import { SessionReference } from "./session-reference.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
-import { attemptSessionOf } from "./execution.helpers"
+import { attemptSessionOf, correctsInvocationOf, performsAttemptOf } from "./execution.helpers"
+import { memberOf, roleIn } from "../identity/identity.helpers"
 
 entity :Invocation table="invocations"
   attributes
@@ -101,5 +102,13 @@ entity :Invocation table="invocations"
           &task=async ({ input, tx }) => (await tx.readInvocation({ filter: { id: { eq: input.corrects ?? "" } } })).map((corrected) => corrected.taskId)[0]
           &recordedBy=({ actor }) => actor.id
   policies
-    policy :untilM8b
-      authorize-if=() => true
+    policy :membersRead types=[:read]
+      authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
+    policy :isMember actions=[&record, &correct]
+      authorize-if=({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)
+    policy :ownerOrMember actions=[&record, &correct]
+      authorize-if=({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])
+    policy :attemptPerformer actions=[&record]
+      authorize-if=({ input, actor, context, tx }) => isSystem(context) || performsAttemptOf(tx, input.attempt, actor.id)
+    policy :invocationRecorder actions=[&correct]
+      authorize-if=({ input, actor, context, tx }) => isSystem(context) || correctsInvocationOf(tx, input.corrects, actor.id)
