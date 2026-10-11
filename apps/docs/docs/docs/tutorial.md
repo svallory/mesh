@@ -14,7 +14,7 @@ You will build a small program: lists of todos, where a list belongs to somebody
 Start from the project in the [Quick start](./quick-start.md), or create a new one and choose **SQLite**:
 
 ```bash
-bun create mesh todo-app
+bun create meshfw todo-app
 cd todo-app
 ```
 
