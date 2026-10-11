@@ -162,6 +162,7 @@ function freeVariables(fn: N, ctx: ConvertContext, clock: Set<string>): string[]
     if (Array.isArray(value)) { for (const v of value) walk(v, parent, key, scope); return; }
     const n = value as N;
     if (typeof n.type === "string" && n.type.startsWith("TS")) return;
+    if (n.type === "PrivateName") return; // `#x` names a class member, never a variable
     if (n.type === "Identifier") {
       const property = parent && (parent.type === "MemberExpression" || parent.type === "OptionalMemberExpression") && key === "property" && !parent.computed;
       const objectKey = parent && (parent.type === "ObjectProperty" || parent.type === "ObjectMethod" || parent.type === "ClassMethod" || parent.type === "ClassProperty") && key === "key" && !parent.computed;

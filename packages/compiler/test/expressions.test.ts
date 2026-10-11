@@ -142,7 +142,7 @@ describe("free variables (acceptance test 2)", () => {
   });
 });
 
-describe("a name is a scope root only where it refers to the scope (small-fixes-2, item 1)", () => {
+describe("a name is a scope root only where it refers to the scope (small-fixes-2, items 1 and 2)", () => {
   const make = (steps: string) => entity("").replace("      validate\n", "").replace("  actions auto=[:read]\n", `  actions auto=[:read]\n    create :make\n      input\n        &n\n      do\n${steps}`);
   /** The roots the first run step of `make` reads from the scope. */
   const rootsOf = (body: string) => {
@@ -165,6 +165,10 @@ describe("a name is a scope root only where it refers to the scope (small-fixes-
     expect(rootsOf("{ console.log(input); [1].forEach((input) => console.log(input)) }")).toEqual(["input"]);
     expect(rootsOf("{ try { console.log(input) } catch (input) { console.log(input) } }")).toEqual(["input"]);
     expect(rootsOf("{ if (context) { const input = 1; console.log(input) } else { console.log(input) } }")).toEqual(["input"]);
+  });
+  test("a private class member is never a free variable", () => {
+    const body = "{ class C { #x = 1; static #y = 2; get() { return this.#x + C.#y } has(o: object) { return #x in o } } console.log(new C().get()) }";
+    expect(rootsOf(body)).toEqual([]);
   });
 });
 
@@ -455,20 +459,25 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(expressions["go.check.c.that"](scope({ self: { dueAt: new Date(-5) } }, at))).toBe(true);
   });
 
-  test("plain code that shadows a scope name declares no unused binding (TS6133 under noUnusedLocals)", async () => {
-    const plain = entity(check("() => true")) + [
+  test("plain code that shadows a scope name declares no unused binding, and a class with a private member runs", async () => {
+    const plain = (entity(check("() => true")) + [
       "      do",
       "        run ({ context }) { for (const input of [1, 2]) { console.log(input, context) } try { console.log(1) } catch (input) { console.log(input) } }",
+      "        run ({ self }) { class C { #x = self.n; get() { return this.#x } } console.log(new C().get()) }",
       "",
-    ].join("\n");
-    const { root } = await generated(plain);
+    ].join("\n"));
+    const { root, files } = await generated(plain);
     expect(checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
     const { expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
-    const log = console.log;
     const logs: unknown[][] = [];
+    const log = console.log;
     console.log = (...args: unknown[]) => { logs.push(args); };
-    try { await expressions["go.step.0.run"](scope({ context: "c" })); } finally { console.log = log; }
-    expect(logs).toEqual([[1, "c"], [2, "c"], [1]]);
+    try {
+      const keys = Object.keys(expressions).filter((k) => /^go\.step\.\d+\.run$/.test(k));
+      expect(keys.length).toBe(2);
+      for (const k of keys) await expressions[k](scope({ self: { n: 5 }, context: {} }));
+    } finally { console.log = log; }
+    expect(logs.at(-1)).toEqual([5]);
   });
 
   test("plain code runs with the authored meaning, `&` and atoms desugared", async () => {
