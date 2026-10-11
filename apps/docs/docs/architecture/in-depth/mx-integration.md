@@ -36,7 +36,7 @@ Measured on `@mxlang/core` `0.1.0-alpha.18` through the compiler's parse (`parse
 
 | Feature | Used for | State on alpha.18 |
 |---|---|---|
-| Atoms and `kind :name` | Declarations and fixed-set/enum values | Parses; a whole-value atom (`via=:owner`) is claimed by the dialect's `mesh:Atom` node type and lowers to a `static` attribute with `atom: { name, span }`, exactly as on alpha.15; expression atoms have `extra.mxAtom`. `Attr.node` stays unset |
+| Atoms and `kind :name` | Declarations and fixed-set/enum values | Parses; a whole-value atom (`inverse=:owner`) is claimed by the dialect's `mesh:Atom` node type and lowers to a `static` attribute with `atom: { name, span }`, exactly as on alpha.15; expression atoms have `extra.mxAtom`. `Attr.node` stays unset |
 | Comments | `// …` before the entity, at the end of a line and on their own line in a body | Parse under structural rejection |
 | Entity imports and `entity=Customer` | Cross-file identity | Parse; each IR `Import` carries `from` and `names` (optional in MX's types, guarded by the reader) (`imported`, `local`, `kind`, `typeOnly`), read by the compiler. Each name carries `span` (and `localSpan` for an alias), so an import diagnostic points at the name |
 | `&name` after a kind | `asc &dueOn` | Lowered to a `static` attribute named `member` with `member: { name: "dueOn", span }`; a second member in the slot is an MX error |

@@ -349,7 +349,7 @@ async function loadRelation(
     return;
   }
   if (relation.column === null)
-    throw new FrameworkError(`${describe(entity, name, relation)} cannot be loaded: :${relation.target} has no belongs-to back to :${entity}. Declare one in :${relation.target}, and name it with via=:name if there are several`);
+    throw new FrameworkError(`${describe(entity, name, relation)} cannot be loaded: :${relation.target} has no belongs-to back to :${entity}. Declare one in :${relation.target}, and name it with inverse=:name if there are several`);
   // A row with no key yet (a create's pending record) has nothing pointing at it.
   const keys = [...new Set(rows.map((row) => row[entityPlan.key]).filter((key) => key !== null && key !== undefined))];
   const grouped = new Map<unknown, Work[]>();

@@ -1,9 +1,16 @@
 ---
-title: "0070. A `has-many` names the inverse it follows with `via=`"
-description: "Decision record 0070: when the other entity has several `belongs-to` back to this one, `via=:name` chooses the key. Status: Accepted."
+title: "0070. A `has-many` names the inverse it follows with `inverse=`"
+description: "Decision record 0070: when Mesh cannot guess which `belongs-to` of the other entity a `has-many` follows, `inverse=:name` chooses the key. Status: Accepted, amended 2026-10-11 (DOM-32)."
 ---
 
-# 0070. A `has-many` names the inverse it follows with `via=`
+# 0070. A `has-many` names the inverse it follows with `inverse=`
+
+> **Amendment, 2026-10-11 (DOM-32).** Two changes to the text below.
+>
+> 1. **The word is `inverse=`, not `via=`** (operator, 2026-10-11 10:12, ruled). The name follows Rails' `inverse_of:` and TypeORM's inverse side. `via` is no longer a Mesh word, with no alias: `via=:x` is an unknown option. The diagnostic codes `MESH_VIA_UNKNOWN`, `MESH_VIA_ENTITY` and `MESH_VIA_REQUIRED` are `MESH_INVERSE_UNKNOWN`, `MESH_INVERSE_ENTITY` and `MESH_INVERSE_REQUIRED`, and the model field `Relationship.via` is `Relationship.inverse`.
+> 2. **A default ladder** (lead reading, awaiting operator review): `inverse=` is needed only when Mesh cannot guess. For a `has-many` or `has-one` of entity E with target T, the candidates are T's `belongs-to` that point back at E. No candidate: unchanged (no build error). One candidate: that one. Several: the one named after E in lower camel case (Collaborator's `memberships` follows Membership's `belongs-to :collaborator`, as Ash, Rails, Ecto, Sequelize and Lucid default the key to `<parent>_id`). Several and none named after E: the build error that lists the candidates. An authored `inverse=` always wins over the ladder, and one that names what the ladder would pick is legal and gets no diagnostic.
+>
+> Everything below is the original record, written with `via=`; read `via=` there as `inverse=`, and "required with more than one" as "required when the ladder cannot pick".
 
 ## Status
 

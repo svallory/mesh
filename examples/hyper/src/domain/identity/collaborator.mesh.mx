@@ -9,7 +9,7 @@ entity :Collaborator table="collaborators"
     enum :state values=[:active, :retired] default=:active
     integer :version default=1
   relationships
-    has-many :memberships entity=Membership via=:collaborator
+    has-many :memberships entity=Membership
   actions auto=[:read]
     create :register
       input

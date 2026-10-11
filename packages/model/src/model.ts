@@ -77,8 +77,8 @@ export interface Relationship {
   keyColumn?: string;
   /** `belongs-to` only: the type of the target's primary key, which is the type of `keyColumn`. Set when the build resolves the target. */
   keyType?: AttributeType;
-  /** `has-many` and `has-one`: the name of the target's `belongs-to` this relationship follows, authored (`via=:name`) or the only candidate. Set when the build resolves the target. */
-  via?: string;
+  /** `has-many` and `has-one`: the name of the target's `belongs-to` this relationship follows, authored (`inverse=:name`), the only candidate, or the candidate named after the owning entity. Set when the build resolves the target. */
+  inverse?: string;
   position: SourcePosition;
 }
 export type Rollup = {

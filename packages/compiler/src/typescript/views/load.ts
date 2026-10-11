@@ -79,7 +79,7 @@ export function loadView(input: EmitInput, generatedPath: string): LoadView {
       const parts = [`kind: ${JSON.stringify(relation.kind)}`, `target: ${JSON.stringify(target.name)}`];
       if (relation.kind === "belongs-to") parts.push(`column: ${JSON.stringify(relation.keyColumn)}`, `nullable: ${relation.nullable}`);
       else {
-        const back = relation.via === undefined ? undefined : target.relationships.find((other) => other.name === relation.via);
+        const back = relation.inverse === undefined ? undefined : target.relationships.find((other) => other.name === relation.inverse);
         parts.push(`column: ${back?.keyColumn === undefined ? "null" : JSON.stringify(back.keyColumn)}`);
       }
       return { key: propertyName(relation.name), plan: `{ ${parts.join(", ")} }` };

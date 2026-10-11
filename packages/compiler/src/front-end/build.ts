@@ -172,7 +172,7 @@ function buildEntity(
   diagnostics: Diagnostic[],
   rollups: PendingRollup[],
   importDetails: Map<Import, ParsedImport>,
-  viaPositions: Map<Relationship, SourcePosition>,
+  inversePositions: Map<Relationship, SourcePosition>,
   folder: string,
 ): Entity {
   const at = (offset: number) => positionAt(source, file, offset);
@@ -439,18 +439,18 @@ function buildEntity(
     }
     const name = declaredName(tag);
     const kind = tag.name as Relationship["kind"];
-    const via = atomOf(attr(tag, "via"))?.name;
+    const inverse = atomOf(attr(tag, "inverse"))?.name;
     const relation: Relationship = {
       kind,
       name,
       entity: { identifier, from: itself ? `./${basename(file)}` : imported?.from ?? "" },
       nullable: opt(tag, "nullable") === true,
       ...(kind === "belongs-to" ? { keyColumn: `${name}Id` } : {}),
-      ...(via !== undefined ? { via } : {}),
+      ...(inverse !== undefined ? { inverse } : {}),
       position: pos(tag),
     };
     entity.relationships.push(relation);
-    if (via !== undefined) viaPositions.set(relation, at(attrOffset(attr(tag, "via")!)));
+    if (inverse !== undefined) inversePositions.set(relation, at(attrOffset(attr(tag, "inverse")!)));
   }
   for (const tag of tags(section("computed")?.children ?? [])) {
     const base = { name: declaredName(tag), position: pos(tag) };
@@ -799,7 +799,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
   const document: ModelDocument = { entities: [] };
   const rollups: PendingRollup[] = [];
   const importDetails = new Map<Import, ParsedImport>();
-  const viaPositions = new Map<Relationship, SourcePosition>();
+  const inversePositions = new Map<Relationship, SourcePosition>();
   if (foreignAbsolute(project.root))
     return {
       document: null,
@@ -869,7 +869,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
             diagnostics,
             rollups,
             importDetails,
-            viaPositions,
+            inversePositions,
             normalizePath(relative(domainRoot, dirname(path.absolute))),
           ),
         );
@@ -937,7 +937,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
         );
     }
   }
-  resolveRelationships(document, viaPositions, diagnostics);
+  resolveRelationships(document, inversePositions, diagnostics);
   resolveRollups(document, rollups, diagnostics);
   checkExpressions(document, diagnostics, { demotionOf });
   computeNeeds(document, diagnostics);

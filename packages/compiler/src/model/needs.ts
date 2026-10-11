@@ -32,7 +32,7 @@ export function computeNeeds(document: ModelDocument, diagnostics: Diagnostic[])
         if (!owner) return;
         const relation = owner.relationships.find((r) => r.name === segment);
         if (relation) {
-          if (relation.kind !== "belongs-to" && relation.via === undefined && !noInverse.has(relation)) {
+          if (relation.kind !== "belongs-to" && relation.inverse === undefined && !noInverse.has(relation)) {
             noInverse.add(relation);
             const problem = inverseProblem(document, owner, relation);
             diagnostics.push(error(problem.code,

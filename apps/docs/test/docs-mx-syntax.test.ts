@@ -147,7 +147,7 @@ entity :Todo
 });
 
 test("an entity names its own type in a relationship with no import, and no other", () => {
-  const own = "entity :Task\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :parent entity=Task nullable\n    has-many :children entity=Task via=:parent\n";
+  const own = "entity :Task\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :parent entity=Task nullable\n    has-many :children entity=Task inverse=:parent\n";
   expect(oldSpellingInV4(own)).toBeNull();
   expect(parseV4(own, "own.mx")).toEqual([]);
   expect(oldSpellingInV4(own.replace("entity=Task nullable", "entity=Nope nullable"))).toContain("entity=Nope must name an import");

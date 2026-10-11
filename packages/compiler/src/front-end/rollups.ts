@@ -138,7 +138,7 @@ export function resolveRollups(
       fail("MESH_NOT_IMPLEMENTED", `${fn} :${computed.name} goes through ${first.kind === "belongs-to" ? "a belongs-to" : "more than one relationship"}, which needs a join; joins arrive with the SQL evaluator (M10). Only a ${fn} over one has-many or has-one runs before then`, computed.position);
       continue;
     }
-    if (first.via === undefined) {
+    if (first.inverse === undefined) {
       const problem = inverseProblem(document, entity, first);
       diagnostics.push({ severity: "error", code: problem.code, message: `${fn} :${computed.name} reads ${first.kind} :${first.name}, which cannot be loaded: ${problem.because}`, position: computed.position, fix: problem.fix });
     }

@@ -2,15 +2,18 @@ import { dirname, resolve } from "node:path";
 import type { Diagnostic, Entity, ModelDocument, Relationship, SourcePosition } from "@meshfw/model";
 import { nearestName } from "./nearest-name.ts";
 
+const lowerCamel = (name: string) => name.charAt(0).toLowerCase() + name.slice(1);
+
 /**
  * Resolve every relationship against the model (M7), after all entities are built: a
  * `belongs-to` learns the type of its target's key, and a `has-many` or `has-one` learns which
- * `belongs-to` of the target it follows (ADR-0070). A target that is not in the model is
+ * `belongs-to` of the target it follows (ADR-0070, DOM-32: `inverse=`, else the only candidate, else the one named after
+ * the entity). A target that is not in the model is
  * reported where the relationship is declared; this pass leaves it alone.
  */
 export function resolveRelationships(
   document: ModelDocument,
-  viaPositions: ReadonlyMap<Relationship, SourcePosition>,
+  inversePositions: ReadonlyMap<Relationship, SourcePosition>,
   diagnostics: Diagnostic[],
 ): void {
   const byFile = new Map(document.entities.map((entity) => [resolve(entity.file), entity]));
@@ -34,44 +37,48 @@ export function resolveRelationships(
       const names = candidates.map((candidate) => candidate.name);
       const list = names.map((name) => `:${name}`).join(", ");
       const describe = `${relation.kind} :${relation.name} of :${entity.name}`;
-      const authored = relation.via;
+      const authored = relation.inverse;
       if (authored !== undefined) {
-        const position = viaPositions.get(relation) ?? relation.position;
+        const position = inversePositions.get(relation) ?? relation.position;
         const named = target.relationships.find((other) => other.name === authored);
         if (!named || named.kind !== "belongs-to") {
           const suggestion = nearestName(authored, names);
           fail(
-            "MESH_VIA_UNKNOWN",
-            `via=:${authored} names no belongs-to of :${target.name}.${suggestion ? ` Did you mean via=:${suggestion}?` : names.length ? ` The belongs-to from :${target.name} to :${entity.name}: ${list}.` : ""}`,
+            "MESH_INVERSE_UNKNOWN",
+            `inverse=:${authored} names no belongs-to of :${target.name}.${suggestion ? ` Did you mean inverse=:${suggestion}?` : names.length ? ` The belongs-to from :${target.name} to :${entity.name}: ${list}.` : ""}`,
             position,
           );
-          delete relation.via;
+          delete relation.inverse;
         } else if (targetOf(target, named) !== entity) {
           fail(
-            "MESH_VIA_ENTITY",
-            `via=:${authored} is a belongs-to of :${target.name} that points at :${named.entity.identifier}, not at :${entity.name}.${names.length ? ` The belongs-to from :${target.name} to :${entity.name}: ${list}.` : ""}`,
+            "MESH_INVERSE_ENTITY",
+            `inverse=:${authored} is a belongs-to of :${target.name} that points at :${named.entity.identifier}, not at :${entity.name}.${names.length ? ` The belongs-to from :${target.name} to :${entity.name}: ${list}.` : ""}`,
             position,
           );
-          delete relation.via;
+          delete relation.inverse;
         }
         continue;
       }
       // No belongs-to back is not a build error (cross-file inverse checks come after 1.0): loading it fails at run time.
       if (candidates.length === 0) continue;
-      if (candidates.length === 1) relation.via = names[0]!;
+      // The ladder: one candidate is the one; of several, the one named after this entity (Collaborator's
+      // `memberships` follows Membership's `collaborator`); otherwise the author must say (DOM-32).
+      const namedAfterEntity = names.find((name) => name === lowerCamel(entity.name));
+      if (candidates.length === 1) relation.inverse = names[0]!;
+      else if (namedAfterEntity !== undefined) relation.inverse = namedAfterEntity;
       else if (relation.kind === "has-many")
         fail(
-          "MESH_VIA_REQUIRED",
+          "MESH_INVERSE_REQUIRED",
           `${describe} could follow any of ${candidates.length} belongs-to of :${target.name} back to :${entity.name} (${list})`,
           relation.position,
-          `Choose one: \`via=:${names[0]}\``,
+          `Choose one: \`inverse=:${names[0]}\``,
         );
       else
         fail(
-          "MESH_VIA_REQUIRED",
-          `${describe} follows one belongs-to, and :${target.name} has ${candidates.length} back to :${entity.name} (${list}); a has-one takes no via`,
+          "MESH_INVERSE_REQUIRED",
+          `${describe} follows one belongs-to, and :${target.name} has ${candidates.length} back to :${entity.name} (${list}); a has-one takes no inverse`,
           relation.position,
-          `Use \`has-many\` with \`via=:${names[0]}\`, and read the one row you want from the list`,
+          `Use \`has-many\` with \`inverse=:${names[0]}\`, and read the one row you want from the list`,
         );
     }
   }

@@ -234,13 +234,18 @@ Add `nullable` to a `belongs-to` when a related row is optional. A caller sets t
 
 ### Choosing the key a has-many follows
 
-A `has-many` follows the key the other entity holds back to this one. When the other entity has more than one `belongs-to` to this entity, say which one with `via=`, an atom naming the other entity's `belongs-to`:
+A `has-many` (or `has-one`) follows the key the other entity holds back to this one: one of the other entity's `belongs-to` that points at this entity. Mesh finds it without help in two cases. With one `belongs-to` back, that one is followed. With several, the one named after this entity in lower camel case is followed: a `Collaborator` with `has-many :memberships entity=Membership` follows `belongs-to :collaborator` of `Membership`, even when `Membership` also has `belongs-to :grantedBy entity=Collaborator`.
 
-```text "src/domain/team/collaborator.mesh.mx (excerpt)"
-has-many :memberships entity=Membership via=:collaborator
+When Mesh cannot guess, say which one with `inverse=`, an atom naming the other entity's `belongs-to`:
+
+```text "src/domain/work/task.mesh.mx (excerpt)"
+has-many :dependencies entity=Dependency inverse=:dependent
+has-many :dependents entity=Dependency inverse=:prerequisite
 ```
 
-Here `membership.mesh.mx` declares `belongs-to :collaborator entity=Collaborator` and `belongs-to :grantedBy entity=Collaborator`, and `via=:collaborator` picks the first. `via` is an atom and not `&collaborator`, because `&name` refers to a member of this entity and `collaborator` is a member of `Membership`. With one `belongs-to` back, leave `via` out. With several and no `via`, the build lists the candidates; a `via` that names no `belongs-to` from that entity to this one is a build error with a suggestion. An entity relates to its own type by its own name, with no import: `belongs-to :parent entity=Task nullable` and `has-many :children entity=Task`. With a second `belongs-to` to the same type, say which one the `has-many` follows: `has-many :children entity=Task via=:parent`.
+Here `dependency.mesh.mx` declares `belongs-to :dependent entity=Task` and `belongs-to :prerequisite entity=Task`. Neither is named `task`, so each `has-many` says which key it follows. `inverse=` also wins when you want a key other than the one Mesh would pick: `has-many :grants entity=Membership inverse=:grantedBy` follows `grantedBy`, and one that names the key Mesh would pick anyway is legal. `inverse` is an atom and not `&dependent`, because `&name` refers to a member of this entity and `dependent` is a member of `Dependency`.
+
+With several `belongs-to` back and none named after this entity, and no `inverse=`, the build lists the candidates. An `inverse=` that names no `belongs-to` from that entity to this one is a build error with a suggestion. A `has-one` takes no `inverse=`: when its target has several `belongs-to` back and none is named after the entity, the build says so. An entity relates to its own type by its own name, with no import: `belongs-to :parent entity=Task nullable` and `has-many :children entity=Task`. With a second `belongs-to` to the same type, say which one the `has-many` follows: `has-many :children entity=Task inverse=:parent`.
 
 Two entity files may import each other: `todo.mesh.mx` imports `List` while `list.mesh.mx` imports `Todo`. The other side is not automatic. The list knows nothing about its todos until `list.mesh.mx` imports `Todo` and declares `has-many :todos entity=Todo`.
 

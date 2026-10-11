@@ -403,7 +403,7 @@
               "path": "/architecture/decisions/0069-json-attribute-type/"
             },
             {
-              "title": "0070. A `has-many` names its inverse with `via=`",
+              "title": "0070. A `has-many` names its inverse with `inverse=`",
               "path": "/architecture/decisions/0070-has-many-via/"
             },
             {

@@ -59,7 +59,7 @@ export const tags = (nodes: readonly IrNode[]): Tag[] =>
 export const attr = (tag: Tag, name: string): Attr | undefined =>
   tag.attrs.find((a): a is Named => a.kind !== "spread" && a.name === name);
 /**
- * An atom in value position (`via=:owner`, `on=:create`) is claimed by Mesh's own `Atom` node type
+ * An atom in value position (`inverse=:owner`, `on=:create`) is claimed by Mesh's own `Atom` node type
  * (`mesh:Atom`, `syntax/mesh.ts`). The row lowers it to the atom-marked literal the expression trigger
  * builds, so the IR holds the same `atom` mark as an atom anywhere else and `Attr.node` stays unset.
  *

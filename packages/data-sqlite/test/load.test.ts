@@ -19,8 +19,8 @@ entity :Author table="authors"
     string :name
     boolean :retired default=false
   relationships
-    has-many :posts entity=Post via=:author
-    has-many :reviews entity=Post via=:reviewer
+    has-many :posts entity=Post
+    has-many :reviews entity=Post inverse=:reviewer
     has-one :profile entity=Profile
     has-many :orphans entity=Orphan
   computed
@@ -42,7 +42,7 @@ entity :Post table="posts"
     belongs-to :author entity=Author
     belongs-to :reviewer entity=Author nullable
     belongs-to :replyTo entity=Post nullable
-    has-many :replies entity=Post via=:replyTo
+    has-many :replies entity=Post inverse=:replyTo
     has-many :comments entity=Comment
   computed
     boolean :answered() { return &replies.length > 0 }
@@ -93,7 +93,7 @@ const ticket = `entity :Ticket table="tickets"
     string :title
   relationships
     belongs-to :duplicateOf entity=Ticket nullable
-    has-many :duplicates entity=Ticket via=:duplicateOf
+    has-many :duplicates entity=Ticket inverse=:duplicateOf
   computed
     count :duplicateCount of="duplicates"
   actions auto=[:read]
@@ -258,7 +258,7 @@ describe("has-many and has-one", () => {
     } finally { await db.close(); }
   });
 
-  test("via picks the key: posts follow author, reviews follow reviewer", async () => {
+  test("posts follow author by the default ladder; reviews follow reviewer because the authored inverse wins", async () => {
     const db = await fresh();
     try {
       await run(db, async (tx) => {

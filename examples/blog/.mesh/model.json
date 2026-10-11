@@ -888,6 +888,7 @@
             "from": "./comment.mesh.mx",
             "identifier": "Comment"
           },
+          "inverse": "post",
           "kind": "has-many",
           "name": "comments",
           "nullable": false,
@@ -896,8 +897,7 @@
             "file": "src/domain/blog/post.mesh.mx",
             "line": 21,
             "offset": 620
-          },
-          "via": "post"
+          }
         }
       ],
       "table": "posts"

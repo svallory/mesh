@@ -240,7 +240,7 @@ for (const kind of ["belongs-to", "has-many", "has-one"])
       entity: { type: "expression", required: true },
       ...(kind === "belongs-to" ? { nullable: flag() } : {}),
       // The other entity's belongs-to this follows (ADR-0070).
-      ...(kind === "has-many" ? { via: atom() } : {}),
+      ...(kind === "has-many" ? { inverse: atom() } : {}),
     },
     analyze(calls, ctx) {
       for (const call of calls) {
