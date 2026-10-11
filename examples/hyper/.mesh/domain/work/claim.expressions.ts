@@ -44,11 +44,17 @@ export type ClaimNewScope<I = unknown> = Omit<ClaimCheckScope<I>, "self"> & {
   self: $DeepReadonly<
     Omit<
       ClaimLoaded,
-      "fence" | "acquiredAt" | "expiresAt" | "taskId" | "task" | "holderId" | "holder"
+      "fence" | "acquiredAt" | "expiresAt" | "taskId" | "task" | "holderId" | "holder" | "lapsed"
     > & {
-      [K in "fence" | "acquiredAt" | "expiresAt" | "taskId" | "task" | "holderId" | "holder"]:
-        | ClaimLoaded[K]
-        | null;
+      [K in
+        | "fence"
+        | "acquiredAt"
+        | "expiresAt"
+        | "taskId"
+        | "task"
+        | "holderId"
+        | "holder"
+        | "lapsed"]: ClaimLoaded[K] | null;
     }
   >;
 };
