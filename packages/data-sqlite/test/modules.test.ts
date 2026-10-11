@@ -294,6 +294,19 @@ describe("a module's action functions on the default binding", () => {
     expect((await app.orders.readOrder({})).length).toBe(before);
   });
 
+  test("disconnect waits for a module's call already in flight, then closes the layer", async () => {
+    // placeOrder nests issueInvoice, so the call is still running when disconnect() starts.
+    const pending = app.orders.placeOrder({ item: "inflight", amount: 5 });
+    let settled = false;
+    void pending.then(() => { settled = true; }, () => { settled = true; });
+    await app.mesh.disconnect();
+    expect(settled).toBe(true);
+    expect(await pending).toMatchObject({ item: "inflight", amount: 5 });
+    // The layer is closed: a new call refuses until connect() runs again.
+    await expect(app.orders.readOrder({})).rejects.toBeInstanceOf(FrameworkError);
+    await app.mesh.connect();
+  });
+
   test("after disconnect, every module's functions refuse again", async () => {
     await app.mesh.disconnect();
     await expect(app.billing.readInvoice({})).rejects.toBeInstanceOf(FrameworkError);

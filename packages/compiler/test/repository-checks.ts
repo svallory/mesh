@@ -99,14 +99,18 @@ export function checkDrizzleImports(root: string): string[] {
   });
 }
 
+const GENERATED_IMPORTS = "it imports only @meshfw/runtime, zod, the other files of its .mesh/ tree, the adapter's schema.ts and (binding.ts only) the project's mesh.config";
+
 /**
  * Acceptance test 4 for generated code: nothing under a project's output folder
  * (`.mesh/`) imports the build half or Drizzle. Every code file under a `.mesh/`
  * folder in `examples/` and `apps/` is read as text, comments and strings included:
  * `@meshfw/model`, `@meshfw/compiler` and `model.json` are forbidden everywhere,
- * and Drizzle everywhere except the emitted `.mesh/schema.ts`. `model.json` itself
- * is data, not code, and is not scanned. Finding no `.mesh/` folder is an error, so
- * the rule cannot pass vacuously.
+ * and Drizzle everywhere except the emitted `.mesh/schema.ts`. Only `.mesh/binding.ts`
+ * may import the project's `mesh.config` (`connect()` loads it): any other file whose
+ * import, export or `require` specifier ends in `mesh.config` (with or without an
+ * extension) fails, comments included. `model.json` itself is data, not code, and is
+ * not scanned. Finding no `.mesh/` folder is an error, so the rule cannot pass vacuously.
  */
 export function checkGeneratedImports(root: string): string[] {
   const files = ["examples", "apps"].filter((group) => existsSync(join(root, group)))
@@ -118,8 +122,16 @@ export function checkGeneratedImports(root: string): string[] {
     const path = relative(root, file).split(sep).join("/");
     const schema = /(?:^|\/)\.mesh\/schema\.ts$/.test(path);
     const forbidden = schema ? /@meshfw\/model|@meshfw\/compiler|model\.json/g : /@meshfw\/model|@meshfw\/compiler|model\.json|drizzle-[a-z]+/g;
-    return [...source.matchAll(forbidden)].map((match) =>
-      `${path}:${source.slice(0, match.index).split(/\r\n|\r|\n/).length}: Generated code must not import ${match[0]} (roadmap M2, acceptance 4); it imports only @meshfw/runtime, zod, the other files of its .mesh/ tree, the adapter's schema.ts and (binding.ts only) the project's mesh.config`);
+    const line = (index: number) => source.slice(0, index).split(/\r\n|\r|\n/).length;
+    const errors = [...source.matchAll(forbidden)].map((match) =>
+      `${path}:${line(match.index)}: Generated code must not import ${match[0]} (roadmap M2, acceptance 4); ${GENERATED_IMPORTS}`);
+    if (!/(?:^|\/)\.mesh\/binding\.ts$/.test(path)) {
+      for (const match of source.matchAll(/(?:\bfrom|\bimport|\brequire)\s*\(?\s*(["'`])([^"'`\r\n]*)\1/g)) {
+        if (/(?:^|\/)mesh\.config(?:\.[cm]?[jt]s)?$/.test(match[2]!))
+          errors.push(`${path}:${line(match.index)}: Generated code must not import ${match[2]} outside .mesh/binding.ts (roadmap M2, acceptance 4); ${GENERATED_IMPORTS}`);
+      }
+    }
+    return errors;
   });
 }
 

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createSchema, sqlite, type SQLiteLayer } from "@meshfw/data-sqlite";
 import { FrameworkError, InvalidInputError, NotFoundError } from "@meshfw/runtime";
 import { bind, connect, disconnect, tables } from "#mesh";
@@ -404,24 +404,37 @@ test.each(["domain/blog/post.actions.ts", "domain/blog/index.ts", "binding.ts", 
 });
 
 test("acceptance 6: mesh build --check fails on a deleted module index, and mesh build writes it back", () => {
-  const file = resolve(import.meta.dir, "../.mesh/domain/blog/index.ts");
-  const original = readFileSync(file);
-  const run = (...args: string[]) => Bun.spawnSync([process.execPath, "x", "mesh", "build", ...args], { cwd: resolve(import.meta.dir, "..") });
+  // On a copy of the project, so a failure here never leaves the committed .mesh/ tree changed. The copy
+  // sits inside the example, where the example's node_modules resolve meshfw and the adapter.
+  const project = resolve(import.meta.dir, "..");
+  const copy = mkdtempSync(join(import.meta.dir, ".guard-"));
   try {
+    for (const entry of ["mesh.config.ts", "package.json", "src", ".mesh"]) cpSync(join(project, entry), join(copy, entry), { recursive: true });
+    const file = join(copy, ".mesh/domain/blog/index.ts");
+    const original = readFileSync(file);
+    const run = (...args: string[]) => Bun.spawnSync([process.execPath, "x", "mesh", "build", ...args], { cwd: copy });
+    expect(run("--check").exitCode).toBe(0);
     rmSync(file);
     const result = run("--check");
     expect(result.exitCode).toBe(1);
     expect(result.stderr.toString()).toContain(".mesh/domain/blog/index.ts:1:1 error Generated file is missing");
     expect(run().exitCode).toBe(0);
     expect(readFileSync(file)).toEqual(original);
-  } finally { writeFileSync(file, original); }
-  expect(run("--check").exitCode).toBe(0);
+    expect(run("--check").exitCode).toBe(0);
+  } finally { rmSync(copy, { recursive: true, force: true }); }
 });
 
-test("acceptance 8: application code imports only #mesh, a module's #mesh/domain specifier and relative paths", () => {
-  const src = resolve(import.meta.dir, "../src");
-  const files = readdirSync(src, { recursive: true }).map(String).filter((name) => /\.[cm]?[jt]sx?$/.test(name));
-  expect(files.length).toBeGreaterThan(0);
+/**
+ * Acceptance 8's scan: every import, export-from and dynamic import specifier in the code files under
+ * `<project>/src`. Allowed: `#mesh`, `#mesh/domain`, `#mesh/domain/<module>`, a relative path that does
+ * not resolve into `<project>/.mesh/` (that tree is reached only through the `#mesh` specifiers), and a
+ * bare `import "x"` next to `declare module "x"`. Returns `src/<file>: <specifier>` for the rest.
+ */
+function importOffenders(project: string): string[] {
+  const src = join(project, "src");
+  const output = join(project, ".mesh");
+  const files = readdirSync(src, { recursive: true }).map(String).filter((name) => /\.[cm]?[jt]sx?$/.test(name)).sort();
+  if (files.length === 0) return ["src: No code files scanned"];
   const offenders: string[] = [];
   for (const name of files) {
     const source = readFileSync(join(src, name), "utf8");
@@ -432,9 +445,53 @@ test("acceptance 8: application code imports only #mesh, a module's #mesh/domain
       const specifier = match[1]!;
       const bare = /^import\s*["']/.test(match[0]);
       const generated = specifier === "#mesh" || specifier === "#mesh/domain" || specifier.startsWith("#mesh/domain/");
-      if (generated || specifier.startsWith(".") || (bare && augmented.has(specifier))) continue;
-      offenders.push(`src/${name}: ${specifier}`);
+      const local = specifier.startsWith(".") && !inside(output, resolve(src, dirname(name), specifier));
+      if (generated || local || (bare && augmented.has(specifier))) continue;
+      offenders.push(`src/${name.split(sep).join("/")}: ${specifier}`);
     }
   }
-  expect(offenders).toEqual([]);
+  return offenders;
+}
+
+/** True when `path` is `folder` or below it. */
+function inside(folder: string, path: string): boolean {
+  const rest = relative(folder, path);
+  return rest === "" || (!rest.startsWith("..") && !isAbsolute(rest));
+}
+
+test("acceptance 8: application code imports only #mesh, a module's #mesh/domain specifier and relative paths outside .mesh/", () => {
+  expect(importOffenders(resolve(import.meta.dir, ".."))).toEqual([]);
+});
+
+test("acceptance 8: a relative path into .mesh/, or a #mesh specifier the package does not map, is an offender", () => {
+  const project = mkdtempSync(join(tmpdir(), "mesh-blog-imports-"));
+  const put = (path: string, text: string) => {
+    mkdirSync(dirname(join(project, path)), { recursive: true });
+    writeFileSync(join(project, path), text);
+  };
+  try {
+    put("src/main.ts", [
+      'import { createPost } from "#mesh/domain/blog";',
+      'import { connect } from "#mesh";',
+      'import { alice } from "./context";',
+      'import { bindPost } from "../.mesh/domain/blog/post.actions";',
+      'import { tables } from "../.mesh";',
+      'export * from "../.mesh/index.ts";',
+      'const binding = await import("../.mesh/binding");',
+      'import { bind } from "#mesh/binding";',
+      'import "../.meshy/notes";',
+      'import "../.mesh-generators/index.ts.jig";',
+    ].join("\n"));
+    put("src/context.ts", 'import "@meshfw/runtime";\ndeclare module "@meshfw/runtime" {}\nimport { z } from "zod";');
+    put("src/domain/blog/helpers.ts", 'import { x } from "../../../.mesh/domain/blog/index.ts";\nimport { y } from "../../main";');
+    expect(importOffenders(project)).toEqual([
+      "src/context.ts: zod",
+      "src/domain/blog/helpers.ts: ../../../.mesh/domain/blog/index.ts",
+      "src/main.ts: ../.mesh/domain/blog/post.actions",
+      "src/main.ts: ../.mesh",
+      "src/main.ts: ../.mesh/index.ts",
+      "src/main.ts: ../.mesh/binding",
+      "src/main.ts: #mesh/binding",
+    ]);
+  } finally { rmSync(project, { recursive: true, force: true }); }
 });
