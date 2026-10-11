@@ -30,7 +30,7 @@ test("user pages retain one release note and only the approved local-binary exce
   for (const name of names) {
     const text = readFileSync(join(docs, name), "utf8");
     expect(text.match(/Mesh is not released yet\. These pages describe Mesh 1\.0\./g)).toHaveLength(1);
-    expect(text).not.toMatch(/@meshfw\/cli|calling-actions/);
+    expect(text).not.toMatch(/@meshfw\/cli|bun create mesh(?!fw)|calling-actions/);
     expect(text.match(/bunx mesh/g) ?? []).toHaveLength(name === "quick-start.md" ? 1 : 0);
   }
   expect(existsSync(join(docs, "calling-actions.md"))).toBe(false);
