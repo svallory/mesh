@@ -1,9 +1,11 @@
 ---
 title: "0027. No MCP server; agents get a rules file and, later, a generated CLI"
-description: "Decision record 0027: No MCP server; agents get a rules file and, later, a generated CLI. Status: Accepted."
+description: "Decision record 0027: No MCP server; agents get a rules file and, later, a generated CLI. Status: Accepted. Amended 2026-10-11 (DOM-21)."
 ---
 
 # 0027. No MCP server; agents get a rules file and, later, a generated CLI
+
+> **Amendment, 2026-10-11 (DOM-21).** The generated CLI that agents get later is a reader of a surface (for example `surface :agent`): core owns the surface format and the CLI is an adapter ([ADR-0077](./0077-surfaces-and-file-kinds.md)). "Generated from the action list" reads as generated from the surface's list. The rules file and test builders are unchanged.
 
 ## Status
 

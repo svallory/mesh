@@ -1,9 +1,11 @@
 ---
 title: "0051. Entity files end in `.mesh.mx`; Mesh ships an MX host named `mesh`"
-description: "Decision record 0051: the file extension, the MX host package, and the MX features entity file syntax v2 depends on. Status: Accepted."
+description: "Decision record 0051: the file extension, the MX host package, and the MX features entity file syntax v2 depends on. Status: Accepted. Amended 2026-10-11 (DOM-12)."
 ---
 
 # 0051. Entity files end in `.mesh.mx`; Mesh ships an MX host named `mesh`
+
+> **Amendment, 2026-10-11 (DOM-12).** Every file keeps the `.mesh.mx` extension and its root tag decides its kind (`entity`, `surface`, `aggregate`, `mixin`, `architecture`, and so on; [ADR-0077](./0077-surfaces-and-file-kinds.md)). There are no step files, so read "entity and step files" and "reusable step files" below as entity files only ([ADR-0082](./0082-named-checks-and-mixins.md)).
 
 ## Status
 

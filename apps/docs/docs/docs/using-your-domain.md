@@ -328,7 +328,7 @@ A caught error has type `unknown` in strict TypeScript, so narrow it before read
 
 ## Several actions in one transaction
 
-Actions that call other actions do it inside the entity file, through `actions` ([Entities: calling other actions](./entities.md#calling-other-actions)). Your application can do the same when a method must answer with more than a record. `transaction` opens a transaction, or joins the one that is running, and hands you the same `actions` and `tx`:
+Actions that call other actions do it inside the entity file, through `actions` ([Entities: calling other actions](./entities.md#calling-other-actions)), for the root writing its own parts. An effect across aggregates is a service or, until services exist, plain code like the example below; an effect that may happen later is a `publish` and a listener. Your application can use `transaction` when a method must answer with more than a record. `transaction` opens a transaction, or joins the one that is running, and hands you the same `actions` and `tx`:
 
 ```ts "src/main.ts"
 import { connect, disconnect, transaction } from "#mesh";
@@ -395,7 +395,7 @@ A **seam** is a place in every generated action where your application may run c
 |:--|:--|:--|:--|
 | `beforeTransaction` | Before the transaction opens | `{ entity, action, input, context }` | Throw to refuse the call |
 | `afterWrite` | Inside the transaction, right after each row is written | `db` and `{ entity, action, before, after, input, context }` | Write through `db`; a throw rolls back the whole call |
-| `afterCommit` | Once, after the outermost transaction commits | `{ changes }`, every row written, in order | Publish; it is not called when the call rolls back |
+| `afterCommit` | Once, after the outermost transaction commits | `{ changes }`, every row written, in order | Observe or log what committed; it is not called when the call rolls back. It is not the way to run an effect after commit: that is a `publish` plus a listener |
 
 Register them under `seams` in `mesh.config.ts`, and pass the same object to `bind` in a test:
 
@@ -421,15 +421,15 @@ export default defineConfig({
 });
 ```
 
-In `afterWrite`, `db` is the transaction's data operations (`insert`, `selectByKey`, `updateByKey`, `deleteByKey`, with the tables exported as `tables` from `#mesh`), so a seam can write a row of its own, such as an event, without calling an action. A write through it does not run seams. `before` is the row as it was, or `null` for a create; `after` is the row as written, or `null` for a destroy.
+In `afterWrite`, `db` is the transaction's data operations (`insert`, `selectByKey`, `updateByKey`, `deleteByKey`, with the tables exported as `tables` from `#mesh`), so a seam can write a row of its own, such as an idempotency record, without calling an action. Domain events do not go through a seam: an action raises one with `publish`, which writes it to the outbox in the same transaction, and an event bus delivers it after commit. A write through it does not run seams. `before` is the row as it was, or `null` for a create; `after` is the row as written, or `null` for a destroy.
 
-```ts "src/events.ts (excerpt)"
+```ts "src/seams.ts (excerpt)"
 async afterWrite(db, { entity, action, after }) {
-  await db.insert(tables.event, { type: `${entity}.${action}`, payload: after });
+  await db.insert(tables.writeLog, { type: `${entity}.${action}`, payload: after });
 },
 ```
 
-A call that another action makes through `actions` runs the seams for its own writes, with the caller's `context`, so a `commandId` or `caller` you put in the context reaches every event.
+A call that another action makes through `actions` runs the seams for its own writes, with the caller's `context`, so a `commandId` or `caller` you put in the context reaches every seam call.
 
 ## Asking instead of calling: `can`
 

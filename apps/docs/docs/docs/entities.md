@@ -552,6 +552,8 @@ entity :Invoice
         }
 ```
 
+Use `actions` for the root writing its own parts. An effect across aggregates goes in a service or, until services exist, in plain code over `transaction` from `#mesh` ([Using your domain](./using-your-domain.md#several-actions-in-one-transaction)); an effect that may happen later is a `publish` and a listener. Mesh warns when an entity action calls another aggregate's action.
+
 A call through `actions` is an ordinary call with three differences. It joins the running transaction, so a throw anywhere rolls back the payment and the receipt together. That includes a call that fails inside a `try`: the whole action fails even if your code catches the error, so decide before you call, with a `tx` read or its `can<Action>` check. It carries your `context` unless you pass another as its second argument. And it is checked like any other call: the action it names runs its own validation, policies and steps, so a cascade can never do what its target forbids. A reason to keep `recordReceipt` for internal use is a policy that says so; see [internal writes](./using-your-domain.md#internal-writes).
 
 `tx` reads the stored rows as they are inside the transaction. It does not run read policies: it is the rule's own view of the data, available only to code you wrote in the entity file.

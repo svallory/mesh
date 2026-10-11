@@ -1,9 +1,11 @@
 ---
 title: "0050. Entity file syntax: `kind #name options` (amended by ADR-0066)"
-description: "Decision record 0050: the line shape, sections, attributes, relationships and computed fields of an entity file, with the reference file. Status: Accepted."
+description: "Decision record 0050: the line shape, sections, attributes, relationships and computed fields of an entity file, with the reference file. Status: Accepted. Amended 2026-10-11 (DOM-04, DOM-25, DOM-28)."
 ---
 
 # 0050. Entity file syntax: `kind #name options`
+
+> **Amendment, 2026-10-11 (DOM-04, DOM-25, DOM-28).** The list of planned or rejected words changes: reusable steps (`step :slugify`) and `after-commit` are dropped, reuse is a `mixin` with `use` and named checks are a `checks` section ([ADR-0082](./0082-named-checks-and-mixins.md), [ADR-0079](./0079-commands-events-and-the-outbox.md)). `lock` and `relate` are unchanged.
 
 Amended by [ADR-0066](./0066-names-and-references-are-atoms.md): a declaration is now `kind :name options`.
 

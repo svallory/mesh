@@ -1,6 +1,6 @@
 ---
 title: "Research"
-description: "Investigations that fed Mesh decisions: twelve documents on Ash, TypeScript prior art, durable engines, expression languages, validation libraries and the Hyper port, with their fact-check reviews."
+description: "Investigations that fed Mesh decisions: thirteen documents on Ash, TypeScript prior art, durable engines, expression languages, validation libraries, the Hyper port and domain concepts, with their fact-check reviews."
 ---
 
 # Research
@@ -27,6 +27,7 @@ Start with the synthesis, then read the document for the layer you care about. W
 | 09 | [Expression language](./expression-language.md) | Can an existing project carry Mesh's expression language, in memory and as SQL? Decision: [ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md) | 6,820 | [Corrected in place](./reviews/expression-language-review.md): conclusion rewritten (Greffon) |
 | 10 | [Validation library](./validation-library.md) | Which validation library should Mesh generate validators with? Decision: [ADR-0062](../decisions/0062-direct-dependencies-zod-drizzle-opentelemetry.md) (keeps Zod, against the document's pick) | 4,609 | No review file |
 | 11 | [Hyper on Mesh: gap analysis](./hyper-port-gap-analysis.md) | What would porting the Hyper engine to Mesh need that Mesh does not have, and which milestone delivers it? Input to [roadmap revision 5](../roadmap/roadmap.md) and [ADR-0072](../decisions/0072-mesh-1-0-is-the-port-gate.md) | 16,600 | Reviewed before publication; the review file is not published |
+| 12 | [Domain concepts](./domain-concepts.md) | Which domain-driven design concepts should Mesh add (surfaces, services, commands, events, aggregates, mixins, architecture rules), and what was decided? Decisions: [ADR-0077](../decisions/0077-surfaces-and-file-kinds.md) to [ADR-0085](../decisions/0085-tag-discovery-for-dialect-tags.md) | 13,400 | Reviewed before publication; the review file is not published |
 
 ## Reviews
 

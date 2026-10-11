@@ -1,13 +1,15 @@
 ---
 title: "0035. What `public` means on an attribute"
-description: "Decision record 0035: What `public` means on an attribute. Status: Proposed."
+description: "Decision record 0035: What `public` means on an attribute. Status: Superseded by ADR-0077 (DOM-22)."
 ---
 
 # 0035. What `public` means on an attribute
 
+> **Superseded 2026-10-11 by [ADR-0077](./0077-surfaces-and-file-kinds.md) (DOM-22).** Fields that leave through a surface fail closed: a surface lists `fields=[...]` or `fields=:all`. There is no `public` flag on an attribute. The record below is kept as history.
+
 ## Status
 
-Proposed
+Superseded by [ADR-0077](./0077-surfaces-and-file-kinds.md) (was Proposed).
 
 ## Date
 
