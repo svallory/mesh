@@ -52,7 +52,7 @@ describe("the atom contract checks see value atoms", () => {
     ["a string via", '    string :a\n  relationships\n    has-many :xs entity=User via="owner"\n', "`via` must be atom, got string"],
     ["a via that breaks the pattern", "    string :a\n  relationships\n    has-many :xs entity=User via=:Own-er\n", "does not match the pattern"],
     ["a string in a list of atoms", '    enum :s values=[:a, "b"]\n', "must be atom, got string"],
-    ["a repeated atom in a list", "    enum :s values=[:a, :a]\n", "MESH_ATOM_LIST"],
+    ["a repeated atom in a list", "    enum :s values=[:a, :a]\n", "must be non-empty with no repeated values"],
   ])("rejects %s", (_name, body, message) => {
     const found = diagnostics(body);
     expect(found.length).toBe(1);

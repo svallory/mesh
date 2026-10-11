@@ -32,7 +32,8 @@ describe("the unspaced tag-head name is refused, showing the spaced spelling", (
     expect(found).toHaveLength(1);
     expect(found[0]).toMatchObject({
       severity: "error",
-      message: `MESH_UNSPACED_NAME: \`${written}\` writes the name against the tag; Mesh writes a name after a space: \`${spaced}\``,
+      code: "MESH_UNSPACED_NAME",
+      message: `\`${written}\` writes the name against the tag; Mesh writes a name after a space: \`${spaced}\``,
       line,
       column,
     });
