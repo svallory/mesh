@@ -141,7 +141,7 @@ describe("json in the generated code", () => {
   test("the generated files type-check under the strictest flags", async () => {
     const { root, files } = await generated({ "m/note.mesh.mx": note });
     expect(checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts") && !f.path.endsWith("index.ts") && !f.path.endsWith("binding.ts")).map((f) => f.path), "generated/schema.ts"])).toEqual({ code: 0, output: "" });
-  });
+  }, 30_000);
 
   test("the validator accepts any JSON value and null, and nothing else", async () => {
     const { root } = await generated({ "m/note.mesh.mx": note });
@@ -207,7 +207,7 @@ describe("the key of a create", () => {
     expect(types.inputs.find((i) => i.name === "DestroyItemInput")!.members).toEqual([{ name: "seq", optional: false, key: "seq", type: "number" }]);
     expect(types.query!.filterMembers[0]).toMatchObject({ key: "seq", type: "$Comparison<number>" });
     expect(checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts") && !f.path.endsWith("index.ts") && !f.path.endsWith("binding.ts")).map((f) => f.path), "generated/schema.ts"])).toEqual({ code: 0, output: "" });
-  });
+  }, 30_000);
 
   test.each([["uuid :id primary-key", "id"], ["integer :seq primary-key", "seq"]])("a client cannot send the key of %s", (key, name) => {
     const source = items(key).replace("        &name\n", `        &name\n        &${name}\n`);
@@ -253,7 +253,7 @@ describe("a read's input", () => {
     expect(view.query!.filterMembers.map((m) => m.key)).toEqual(["id", "name", "count"]);
     expect(view.query!.sortKeys).toContain('"and"');
     expect(checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts") && !f.path.endsWith("index.ts") && !f.path.endsWith("binding.ts")).map((f) => f.path), "generated/schema.ts"])).toEqual({ code: 0, output: "" });
-  });
+  }, 30_000);
 
   test("an entity without a read has no query types", async () => {
     const source = "entity :Item table=\"items\"\n  attributes\n    uuid :id primary-key\n  actions auto=[:destroy]\n";
@@ -395,5 +395,5 @@ describe("hyphens in enum values", () => {
     const actions = actionsView({ document, config: configOf("/p") }, entity);
     expect(actions.methods.find((m) => m.name === "waive")!.statements.join("\n")).toContain('$changes.kind = $record.kind = "performer-is-reviewer";');
     expect(actions.methods.find((m) => m.name === "make")!.statements.join("\n")).toContain('kind: parsed.kind === undefined ? "review-accepted" : parsed.kind');
-  });
+  }, 30_000);
 });

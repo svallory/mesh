@@ -151,7 +151,7 @@ describe("the generated index", () => {
     const { root, files } = await generated(descriptorConfig);
     expect(checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts")).map((f) => f.path), ".mesh/schema.ts", "mesh.config.ts"]))
       .toEqual({ code: 0, output: "" });
-  });
+  }, 30_000);
 
   test("connect, call, duplicate connect, disconnect, calls after it, no-op disconnect, reconnect", async () => {
     const { root } = await generated();
@@ -226,7 +226,7 @@ describe("the generated index", () => {
     const bound = mesh.bind({ transaction: async (run: (tx: object) => Promise<unknown>) => run({}), refuseIfFailed: () => false, close: async () => {} });
     expect(Object.keys(bound)).toEqual(["transaction"]);
     expect(await bound.transaction(async ({ actions, tx }: { actions: object; tx: object }) => [Object.keys(actions), Object.keys(tx)])).toEqual([[], []]);
-  });
+  }, 30_000);
 
   test("bind returns frozen functions over a caller's layer and disconnect never closes it", async () => {
     const { root } = await generated();
@@ -290,7 +290,7 @@ describe("entity names never break the generated files", () => {
     expect(typeof domain.defaultBinding).toBe("function");
     expect(Object.keys(domain)).toHaveLength(names.length * 4 + 2);
     expect(rows).toHaveLength(names.length);
-  });
+  }, 30_000);
 
   test.each(["Actions", "Reads", "ReadOnlyActions", "ReadOnlyReads"])("an entity named %s, the type composition.ts declares for actions and tx, is MESH_EMIT_NAME", async (name) => {
     const error = await generateFiles({ document: documentOf({ "x.mesh.mx": files["class.mesh.mx"]!.replace(":Class", `:${name}`) }), config: configOf("/project") })

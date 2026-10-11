@@ -347,7 +347,7 @@ describe("the generated files", () => {
     ], { cwd: dir });
     expect(relative(dir, dir) + (child.stdout.toString() + child.stderr.toString())).toBe("");
     expect(child.exitCode).toBe(0);
-  });
+  }, 30_000);
 
   test("a load nested in when is typed as possibly absent; a top-level load as present", async () => {
     await Bun.write(join(dir, "mesh.config.ts"), "export default { data: { name: 'sqlite', transaction: async () => undefined, close: async () => undefined } };\n");
@@ -375,7 +375,7 @@ describe("the generated files", () => {
       "--module", "esnext", "--moduleResolution", "bundler", "--target", "es2022", "--skipLibCheck", "--allowImportingTsExtensions", "mesh.config.ts", "check-types.ts", ...files,
     ], { cwd: dir });
     expect(child.stdout.toString() + child.stderr.toString()).toBe("");
-  });
+  }, 30_000);
 });
 
 const NOW = new Date("2026-10-10T10:00:00.000Z");

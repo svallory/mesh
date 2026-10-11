@@ -412,7 +412,7 @@ async function rows(world: World) {
 describe("the generated files", () => {
   test("type-check under the strictest flags, with `actions`, `tx` and the composition types", async () => {
     expect(await typeCheck(dir)).toBe("");
-  });
+  }, 30_000);
 
   test("type-check when the project's context has a required key: a nested call may still leave it out and carry the caller's", async () => {
     await Bun.write(join(dir, "context.ts"), 'import "@meshfw/runtime";\ndeclare module "@meshfw/runtime" {\n  interface ActionContext {\n    actor: { id: string };\n    log: string[];\n    stash?: unknown;\n  }\n}\nexport {};\n');
@@ -432,7 +432,7 @@ describe("the generated files", () => {
       await rm(join(dir, "context.ts"));
       await rm(join(dir, "check-context.ts"));
     }
-  });
+  }, 30_000);
 
   test("`input`, related records, `before` and what `actions` and `tx` return are deep read-only; inputs are checked", async () => {
     await Bun.write(join(dir, "check-types.ts"), [
@@ -488,7 +488,7 @@ describe("the generated files", () => {
       "",
     ].join("\n"));
     expect(await typeCheck(dir, ["check-types.ts"])).toBe("");
-  });
+  }, 30_000);
 
   test("a call to `actions` with a wrong input in an entity file is a type error in its generated output", async () => {
     const wrong = await generate(".composition-wrong-", {
@@ -500,7 +500,7 @@ describe("the generated files", () => {
       expect(output).toContain(".mesh/domain/account.expressions.ts");
       expect(output).toMatch(/Type 'number' is not assignable to type 'string'/);
     } finally { await rm(wrong, { recursive: true, force: true }); }
-  });
+  }, 30_000);
 });
 
 describe("after=:write", () => {

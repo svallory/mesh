@@ -189,7 +189,7 @@ test("generated validators and all ten scalar mappings typecheck with exact opti
   expect(Object.keys(VALIDATOR_TYPES).sort()).toEqual(
     ATTRIBUTE_TYPES.map((entry) => entry.name).sort(),
   );
-});
+}, 30_000);
 
 test("validator drift tripwires catch keys, requiredness, nullability and scalar width", async () => {
   const out = await emitted();

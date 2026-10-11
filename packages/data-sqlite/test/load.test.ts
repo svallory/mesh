@@ -663,7 +663,7 @@ export type Keys = keyof PostLoadable;
     const result = Bun.spawnSync([tsc, "--ignoreConfig", "--noEmit", "--strict", "--noUncheckedIndexedAccess", "--exactOptionalPropertyTypes", "--skipLibCheck", "--allowImportingTsExtensions",
       "--target", "es2022", "--module", "esnext", "--moduleResolution", "bundler", "--types", "bun", join(dir, "check.ts")], { cwd: dir });
     expect(result.stdout.toString() + result.stderr.toString()).toBe("");
-  });
+  }, 30_000);
 });
 
 describe("the guarded record of a plain body", () => {

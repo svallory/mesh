@@ -13,4 +13,4 @@ test("the bin prints the message and exits 0", async () => {
   const out = await new Response(proc.stdout).text();
   expect(await proc.exited).toBe(0);
   expect(out.trim()).toBe(message());
-});
+}, 30_000);

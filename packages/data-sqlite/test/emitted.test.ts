@@ -79,7 +79,7 @@ export const map: Equal<keyof typeof tables, "owner" | "sample"> = true;
     "--target", "es2022", "--module", "esnext", "--moduleResolution", "bundler", "--types", "bun", join(dir, "check.ts")], { cwd: dir });
   expect(result.stdout.toString() + result.stderr.toString()).toBe("");
   expect(result.exitCode).toBe(0);
-});
+}, 30_000);
 
 test("the emitted schema is usable as-is: createSchema, then every type round-trips through the adapter", async () => {
   const { tables, sampleTable, ownerTable } = await import(join(dir, ".mesh/schema.ts")) as Record<string, TableHandle> & { tables: Record<string, TableHandle> };

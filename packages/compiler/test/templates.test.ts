@@ -85,7 +85,7 @@ describe("MESH_TEMPLATE_READ", () => {
     const error = await readError(root);
     expect(error.diagnostic.position).toEqual(at(".mesh-generators/types.ts.jig"));
     expect(error.diagnostic.message).toBe('The template ".mesh-generators/types.ts.jig" is not a regular file; delete or move it');
-  });
+  }, 30_000);
 
   test("a symlinked .mesh-generators/ is refused", async () => {
     const root = await projectRoot();

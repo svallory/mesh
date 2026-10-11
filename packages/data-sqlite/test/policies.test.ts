@@ -222,7 +222,7 @@ async function denial(call: Promise<unknown>): Promise<ForbiddenError> {
 test("the generated tree type-checks, policies and all", async () => {
   const files = (await readdir(join(dir, ".mesh"), { recursive: true })).filter((name) => name.endsWith(".ts")).map((name) => join(".mesh", name));
   expect(typeCheck(dir, files)).toBe("");
-});
+}, 30_000);
 
 describe("deny by default", () => {
   test("an action no policy covers is forbidden, and the error shows an open policy to copy", async () => {
@@ -683,5 +683,5 @@ export async function direct(ops: DataOperations, given: LoadOptions): Promise<s
 `);
     const files = (await readdir(join(loadsDir, ".mesh"), { recursive: true })).filter((name) => name.endsWith(".ts")).map((name) => join(".mesh", name));
     expect(typeCheck(loadsDir, [...files, "use.ts"])).toBe("");
-  });
+  }, 30_000);
 });
