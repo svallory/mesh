@@ -7,7 +7,7 @@ entity :Run table="runs"
   attributes
     uuid :id primary-key
     json :inputs default={}
-    json :outcome nullable
+    json :outcome
     enum :state values=[:running, :succeeded, :failed, :canceled] default=:running
     string :cancelReason nullable
     timestamp :endedAt nullable

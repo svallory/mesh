@@ -87,13 +87,7 @@ export const submitSubmissionInput = z.strictObject({
   task: z.uuid(),
   fence: z.int().min(1),
   summary: z.string().min(1),
-  evidence: (
-    z
-      .json()
-      .refine((value) => value !== null, {
-        message: "null is only allowed on a nullable attribute",
-      }) as z.ZodType<unknown>
-  ).optional(),
+  evidence: (z.json() as z.ZodType<unknown>).nullable().optional(),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<SubmitSubmissionInput>;
 
@@ -123,13 +117,7 @@ export type SettleSubmissionInputShape = Assert<
 export const recordAcceptedSubmissionInput = z.strictObject({
   task: z.uuid(),
   summary: z.string().min(1).nullable().optional(),
-  evidence: (
-    z
-      .json()
-      .refine((value) => value !== null, {
-        message: "null is only allowed on a nullable attribute",
-      }) as z.ZodType<unknown>
-  ).optional(),
+  evidence: (z.json() as z.ZodType<unknown>).nullable().optional(),
   fence: z.int().nullable().optional(),
   taskVersion: z.int(),
 }) satisfies z.ZodType<RecordAcceptedSubmissionInput>;

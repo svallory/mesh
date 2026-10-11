@@ -13,7 +13,7 @@ entity :Attempt table="attempts"
     integer :number
     integer :claimFence nullable
     string :runtime nullable
-    json :outcome nullable
+    json :outcome
     enum :state values=[:running, :succeeded, :failed, :stopped, :abandoned] default=:running
     timestamp :endedAt nullable
     integer :version default=1
@@ -69,9 +69,9 @@ entity :Attempt table="attempts"
     update :finish
       input
         enum :result values=[:succeeded, :failed]
-        json :outputs nullable
-        json :evidence nullable
-        json :error nullable
+        json :outputs
+        json :evidence
+        json :error
         integer :expectedVersion nullable
       validate
         check :running [

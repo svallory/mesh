@@ -14,7 +14,7 @@ entity :Event table="events"
     timestamp :occurredAt
     timestamp :recordedAt on=:create
     json :cause
-    json :checks nullable
+    json :checks
     json :payload
   relationships
     belongs-to :task entity=Task nullable

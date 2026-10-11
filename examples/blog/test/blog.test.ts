@@ -133,6 +133,7 @@ describe("json attributes", () => {
     ["a boolean", false],
     ["an empty object", {}],
     ["an empty array", []],
+    ["null", null],
   ];
   test.each(values)("%s is stored and returned as it was given", async (_name, metadata) => {
     const { db, blog, author } = await fresh().then(async (world) => ({ ...world, author: await world.blog.createUser({ name: "Alice" }, context) }));
@@ -160,7 +161,6 @@ describe("json attributes", () => {
     ["a Map", new Map()],
     ["a symbol", Symbol("x")],
     ["a bigint", 1n],
-    ["null, because the attribute is not nullable", null],
   ])("%s fails at the validator and nothing is written", async (_name, metadata) => {
     const { db, blog, author } = await fresh().then(async (world) => ({ ...world, author: await world.blog.createUser({ name: "Alice" }, context) }));
     try {

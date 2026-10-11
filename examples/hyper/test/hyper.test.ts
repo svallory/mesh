@@ -209,7 +209,7 @@ describe("json attributes", () => {
     const { db, hyper } = fresh;
     try {
       const { task, alice } = await populate(fresh);
-      for (const bad of [() => 1, new Date(), Number.NaN, { a: undefined }, new Map(), 1n, null])
+      for (const bad of [() => 1, new Date(), Number.NaN, { a: undefined }, new Map(), 1n])
         await expect(hyper.startRun({ task: task.id, inputs: bad }, as(alice)), String(bad)).rejects.toBeInstanceOf(InvalidInputError);
       expect(await hyper.readRun({}, context)).toHaveLength(1);
       // @ts-expect-error a json attribute is not a filter key

@@ -72,9 +72,9 @@ export const VALIDATOR_TYPES = {
   datetime: "z.date()",
   timestamp: "z.date()",
   enum: "z.string()",
-  // Any JSON value, no shape; the cast gives the input type `unknown` (ADR-0069). `null` is the
-  // absence of a value in the database, so only a nullable attribute takes it.
-  json: '(z.json().refine((value) => value !== null, { message: "null is only allowed on a nullable attribute" }) as z.ZodType<unknown>)',
+  // Any JSON value, no shape; the cast gives the input type `unknown` (ADR-0069). `null` is JSON, and the model
+  // marks every json attribute and argument nullable (ENT-03), so the field adds `.nullable()` and `.optional()`.
+  json: "(z.json() as z.ZodType<unknown>)",
 } as const satisfies Record<AttributeType, string>;
 
 /** The validators view of one entity. Pure and synchronous; a model it cannot render is an `EmitError`. */

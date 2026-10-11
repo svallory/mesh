@@ -78,13 +78,7 @@ export const recordLateResultInput = z.strictObject({
   task: z.uuid(),
   fence: z.int().min(1),
   summary: z.string().nullable().optional(),
-  evidence: (
-    z
-      .json()
-      .refine((value) => value !== null, {
-        message: "null is only allowed on a nullable attribute",
-      }) as z.ZodType<unknown>
-  ).optional(),
+  evidence: (z.json() as z.ZodType<unknown>).nullable().optional(),
 }) satisfies z.ZodType<RecordLateResultInput>;
 
 export type RecordLateResultInputShape = Assert<

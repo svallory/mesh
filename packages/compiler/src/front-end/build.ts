@@ -291,6 +291,20 @@ function buildEntity(
       Attribute,
       "nullable" | "default" | "values" | "min" | "max" | "match"
     > = { nullable: opt(tag, "nullable") === true };
+    // A json validates only that the value is JSON, and null is JSON (ENT-03, ADR-0069): it always accepts null,
+    // so the model says nullable for it, and a `nullable` the author wrote is redundant.
+    if (tag.name === "json") {
+      const written = attr(tag, "nullable");
+      if (written)
+        diagnostics.push({
+          severity: "warning",
+          code: "MESH_JSON_NULLABLE",
+          message: "a json attribute already accepts null, so `nullable` on it has no effect",
+          position: at(attrOffset(written)),
+          fix: "remove `nullable`",
+        });
+      result.nullable = true;
+    }
     const def = attr(tag, "default");
     if (def) {
       result.default = valueOf(def);

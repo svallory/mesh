@@ -33,9 +33,9 @@ export type RecordEventInput = {
   actor: string;
   caller: string;
   occurredAt: Date;
-  cause: unknown;
+  cause?: unknown | undefined;
   checks?: unknown | undefined;
-  payload: unknown;
+  payload?: unknown | undefined;
   task?: Task["id"] | null | undefined;
 };
 

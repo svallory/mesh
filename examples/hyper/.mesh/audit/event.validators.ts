@@ -100,25 +100,9 @@ export const recordEventInput = z.strictObject({
   actor: z.string(),
   caller: z.string(),
   occurredAt: z.date(),
-  cause: z
-    .json()
-    .refine((value) => value !== null, {
-      message: "null is only allowed on a nullable attribute",
-    }) as z.ZodType<unknown>,
-  checks: (
-    z
-      .json()
-      .refine((value) => value !== null, {
-        message: "null is only allowed on a nullable attribute",
-      }) as z.ZodType<unknown>
-  )
-    .nullable()
-    .optional(),
-  payload: z
-    .json()
-    .refine((value) => value !== null, {
-      message: "null is only allowed on a nullable attribute",
-    }) as z.ZodType<unknown>,
+  cause: (z.json() as z.ZodType<unknown>).nullable().optional(),
+  checks: (z.json() as z.ZodType<unknown>).nullable().optional(),
+  payload: (z.json() as z.ZodType<unknown>).nullable().optional(),
   task: z.uuid().nullable().optional(),
 }) satisfies z.ZodType<RecordEventInput>;
 

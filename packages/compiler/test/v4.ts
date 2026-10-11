@@ -14,7 +14,7 @@ entity :Todo table="todos"
     datetime :paidAt nullable
     timestamp :insertedAt on=:create
     timestamp :updatedAt on=:update
-    json :metadata nullable
+    json :metadata
   relationships
     belongs-to :list entity=List
     has-many :children entity=List

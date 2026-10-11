@@ -18,7 +18,7 @@ entity :Account table="accounts"
     string :name min=1
     integer :balance default=0
     boolean :closed default=false
-    json :meta nullable
+    json :meta
   relationships
     has-many :entries entity=Entry via=:account
   actions auto=[:read]
@@ -281,7 +281,7 @@ const doc = `entity :Doc table="docs"
     date :day nullable
     datetime :at nullable
     timestamp :seen nullable
-    json :meta nullable
+    json :meta
   actions auto=[:read]
     always types=[:update]
       do

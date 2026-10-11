@@ -238,6 +238,8 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `when` | `when=() => true` | `when` | on main |
 | `when.value` | `when=() => true` | `when.value` | on main |
 
+A `json` always accepts `null` (ENT-03, [ADR-0069](../decisions/0069-json-attribute-type.md)), so the `json.nullable` row is redundant and the build warns on it (`MESH_JSON_NULLABLE`).
+
 ## 4. Deviations
 
 ### 4.0 Where Mesh's design differs from Ash

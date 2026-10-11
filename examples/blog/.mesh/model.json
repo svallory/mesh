@@ -538,7 +538,7 @@
         {
           "default": {},
           "name": "metadata",
-          "nullable": false,
+          "nullable": true,
           "position": {
             "column": 4,
             "file": "src/domain/blog/post.mesh.mx",

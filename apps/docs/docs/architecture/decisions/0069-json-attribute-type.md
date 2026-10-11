@@ -9,6 +9,8 @@ description: "Decision record 0069: a core attribute type for maps and arrays th
 
 Accepted
 
+Amended 2026-10-11 (operator, decision ENT-03): a `json` accepts `null` with or without `nullable`, which is redundant on it and warns; shape validation is revisited later. This supersedes the lead's narrowing of 2026-10-10 below, which is kept for the record.
+
 ## Date
 
 2026-10-10
@@ -30,11 +32,13 @@ Entity file syntax has ten attribute types ([ADR-0050](./0050-entity-file-syntax
 - **Validation.** The generated validator accepts any JSON value (an object, array, string, number, boolean or null) and rejects anything JSON cannot hold. It does not validate a shape.
 - **TypeScript.** The record and input types carry `unknown`. The caller narrows it.
 - **Storage.** A SQLite text column holding the JSON text; the adapter serialises and parses it. A Postgres adapter would use `jsonb`.
-- **Options.** `nullable` and `default=` (a JSON literal) work as on any attribute. `unique`, `min`, `max` and `match` are build errors on it.
+- **Options.** `default=` (a JSON literal) works as on any attribute. `nullable` is accepted but redundant, because a `json` always accepts `null` (the 2026-10-11 amendment); the build warns on it (`MESH_JSON_NULLABLE`). `unique`, `min`, `max` and `match` are build errors on it.
 - **Where it cannot go.** A `json` attribute is not a rollup operand and cannot be compared in a `filter`; a caller who needs to query inside it models the field as columns.
 - **Count.** The registry has eleven attribute types.
 
-## Amendment (2026-10-10, lead ruling, pending operator review)
+## Amendment (2026-10-10, lead ruling, pending operator review) — superseded by the amendment of 2026-10-11 (ENT-03)
+
+Superseded: the operator ruled the opposite on 2026-10-11, and a `json` accepts `null` whether or not it says `nullable` (see Status). The text below is what the lead decided on 2026-10-10 and is kept as history; it no longer describes Mesh.
 
 This ruling is the lead's (decisions log, 2026-10-10 12:25, "[lead, for operator review]") and the operator has not reviewed it yet.
 

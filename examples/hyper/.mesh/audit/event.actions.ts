@@ -61,9 +61,9 @@ export function bindEvent(layer: $DataLayer, options: $BindOptions = {}, _compos
           caller: parsed.caller,
           occurredAt: parsed.occurredAt,
           recordedAt: $now,
-          cause: parsed.cause,
+          cause: parsed.cause === undefined ? null : parsed.cause,
           checks: parsed.checks === undefined ? null : parsed.checks,
-          payload: parsed.payload,
+          payload: parsed.payload === undefined ? null : parsed.payload,
           taskId: parsed.task === undefined ? null : parsed.task,
         };
         // data layer

@@ -184,7 +184,7 @@ entity :Post
 | `timestamp` | `Date` | A moment, always with its time zone |
 | `json` | `unknown` | Any JSON value: an object, an array, a string, a number or a boolean |
 
-`json` holds data whose shape you do not model, such as a list of ids or a map of results. Mesh validates that the value is JSON and stores it as JSON, and does not look inside; the caller narrows `unknown` to the shape they expect. It takes `nullable` (a nullable `json` also holds `null`) and `default=` (a JSON literal) but not `unique`, `min`, `max` or `match`, and it cannot be a rollup operand or appear in a `filter`. To query by a part of the value, declare that part as its own attribute.
+`json` holds data whose shape you do not model, such as a list of ids or a map of results. Mesh validates that the value is JSON and stores it as JSON, and does not look inside; the caller narrows `unknown` to the shape they expect. A `json` always accepts `null`, as if it were `nullable`: it is stored as a NULL column, a create that does not send it stores `null`, and the validator takes `null` as it takes any other JSON value. Writing `nullable` on a `json` is legal but redundant, and the build warns about it. It takes `default=` (a JSON literal) but not `unique`, `min`, `max` or `match`, and it cannot be a rollup operand or appear in a `filter`. To query by a part of the value, declare that part as its own attribute.
 
 `integer`, `float` and `decimal` are all `number` in TypeScript, but a whole number, a money amount and a measurement are different things to store. An atom may be compared with, or assigned to, an `enum` field only: `&status === :sent` is an error if `status` is a `string`.
 
