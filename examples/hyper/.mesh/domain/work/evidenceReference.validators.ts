@@ -7,6 +7,7 @@ import type {
   RecordEvidenceReferenceInput,
   ReadEvidenceReferenceInput,
   EvidenceReferenceFilter,
+  EvidenceReferenceLoadable,
 } from "./evidenceReference.types";
 
 type Keys<T> = T extends Record<string, never> ? never : keyof T;
@@ -93,8 +94,15 @@ export const readEvidenceReferenceInput = z.strictObject({
   sort: evidenceReferenceSort.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
-}) satisfies z.ZodType<ReadEvidenceReferenceInput>;
+  load: z
+    .array(z.enum(["recordedBy"]))
+    .readonly()
+    .optional(),
+}) satisfies z.ZodType<ReadEvidenceReferenceInput<keyof EvidenceReferenceLoadable>>;
 
 export type ReadEvidenceReferenceInputShape = Assert<
-  SameShape<z.output<typeof readEvidenceReferenceInput>, ReadEvidenceReferenceInput>
+  SameShape<
+    z.output<typeof readEvidenceReferenceInput>,
+    ReadEvidenceReferenceInput<keyof EvidenceReferenceLoadable>
+  >
 >;

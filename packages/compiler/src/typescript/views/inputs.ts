@@ -55,14 +55,17 @@ export type FieldShape = Pick<
   | "match"
   | "position"
 >;
-/** The names a read's input reserves beside its own arguments. */
-export const QUERY_FIELDS = ["filter", "sort", "limit", "offset"] as const;
+/** The names a read's input reserves beside its own arguments; `load` only on an entity that has something to load. */
+export const QUERY_FIELDS = ["filter", "sort", "limit", "offset", "load"] as const;
 export type QueryField = (typeof QUERY_FIELDS)[number];
+/** The fields a read of this entity takes from its caller, in the order its input type lists them. */
+export const queryFieldsOf = (entity: Entity): readonly QueryField[] =>
+  QUERY_FIELDS.filter((name) => name !== "load" || entity.relationships.length + entity.computed.length > 0);
 export interface PlannedField {
   attribute: FieldShape;
   optional: boolean;
   reference?: Entity;
-  /** Set on the four fields every read takes from its caller; their type and schema are not an attribute's. */
+  /** Set on the fields every read takes from its caller (`load` only when the entity has something to load); their type and schema are not an attribute's. */
   query?: QueryField;
 }
 /** A stored column a caller may filter and sort by. */
@@ -96,6 +99,19 @@ export function computedColumns(entity: Entity): QueryColumn[] {
 }
 export const filterTypeName = (entity: Entity) => `${typeName(entity.name, entity.position)}Filter`;
 export const sortTypeName = (entity: Entity) => `${typeName(entity.name, entity.position)}Sort`;
+/**
+ * The type parameter of a read's input type and of a read function: `N`, the names its `load` lists. The input type
+ * is `<N extends keyof PostLoadable = never>` (a type alias takes no `const`); the function is the same with `const`,
+ * so `load: ["author"]` is read as the tuple of literals without `as const`. With no `load`, `N` is `never` and the
+ * result is the bare record.
+ */
+export const loadGenerics = (entity: Entity, forFunction: boolean) => {
+  const loadable = `${typeName(entity.name, entity.position)}Loadable`;
+  // A function infers the tuple of names written (`const L`); a type alias takes the union of them.
+  return forFunction ? `<const L extends readonly (keyof ${loadable})[] = readonly []>` : `<N extends keyof ${loadable} = never>`;
+};
+/** True for the input of a read that takes `load`. */
+export const takesLoad = (input: PlannedInput) => input.fields.some((field) => field.query === "load");
 export const hasRead = (entity: Entity) => effectiveActions(entity).some((action) => action.kind === "read");
 export interface PlannedInput {
   name: string;
@@ -201,10 +217,10 @@ export function entityInputs(
           `Input ${field.name} conflicts with the row selector`,
           field.position,
         );
-      if (action.kind === "read" && (QUERY_FIELDS as readonly string[]).includes(field.name))
+      if (action.kind === "read" && (queryFieldsOf(entity) as readonly string[]).includes(field.name))
         throw emitError(
           "MESH_DUPLICATE_INPUT",
-          `Input ${field.name} conflicts with the ${QUERY_FIELDS.join(", ")} that a read takes from its caller`,
+          `Input ${field.name} conflicts with the ${queryFieldsOf(entity).join(", ")} that a read takes from its caller`,
           field.position,
           `Rename the argument of read :${action.name}`,
         );
@@ -219,9 +235,9 @@ export function entityInputs(
       });
     }
     if (action.kind === "read")
-      for (const name of QUERY_FIELDS)
+      for (const name of queryFieldsOf(entity))
         fields.push({
-          attribute: { name, type: name === "filter" || name === "sort" ? "json" : "integer", nullable: false, position: action.position },
+          attribute: { name, type: name === "filter" || name === "sort" || name === "load" ? "json" : "integer", nullable: false, position: action.position },
           optional: true,
           query: name,
         });

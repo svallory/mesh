@@ -12,6 +12,7 @@ import type {
   EndClaimInput,
   ReadClaimInput,
   ClaimFilter,
+  ClaimLoadable,
 } from "./claim.types";
 
 type Keys<T> = T extends Record<string, never> ? never : keyof T;
@@ -153,8 +154,12 @@ export const readClaimInput = z.strictObject({
   sort: claimSort.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
-}) satisfies z.ZodType<ReadClaimInput>;
+  load: z
+    .array(z.enum(["task", "holder", "lapsed"]))
+    .readonly()
+    .optional(),
+}) satisfies z.ZodType<ReadClaimInput<keyof ClaimLoadable>>;
 
 export type ReadClaimInputShape = Assert<
-  SameShape<z.output<typeof readClaimInput>, ReadClaimInput>
+  SameShape<z.output<typeof readClaimInput>, ReadClaimInput<keyof ClaimLoadable>>
 >;

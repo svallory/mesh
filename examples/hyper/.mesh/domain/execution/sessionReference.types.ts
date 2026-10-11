@@ -43,11 +43,12 @@ export type RedactSessionReferenceInput = {
   expectedVersion?: number | null | undefined;
 };
 
-export type ReadSessionReferenceInput = {
+export type ReadSessionReferenceInput<N extends keyof SessionReferenceLoadable = never> = {
   filter?: SessionReferenceFilter | undefined;
   sort?: SessionReferenceSort | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
+  load?: readonly N[] | undefined;
 };
 
 /** What `load` attaches to a SessionReference. The record has none of it, so reading one that was not loaded is a type error. */
@@ -60,6 +61,17 @@ export type SessionReferenceLoadable = {
 /** A SessionReference with the relationships and computed fields named in N loaded. */
 export type SessionReferenceWith<N extends keyof SessionReferenceLoadable> = SessionReference &
   Pick<SessionReferenceLoadable, N>;
+
+/** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
+export type SessionReferenceLoadNames<L extends readonly (keyof SessionReferenceLoadable)[]> =
+  number extends L["length"] ? never : L[number];
+
+/** The `load` member of a read called with the tuple `L`: required when `L` lists a name, so an input cannot claim a load it does not make. */
+export type SessionReferenceLoadArg<L extends readonly (keyof SessionReferenceLoadable)[]> = [
+  SessionReferenceLoadNames<L>,
+] extends [never]
+  ? { load?: L | undefined }
+  : { load: L };
 
 /** A SessionReference as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
 export type SessionReferenceLoaded = SessionReference & {

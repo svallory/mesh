@@ -12,7 +12,9 @@ import {
   composed as $composed,
   guarded as $guarded,
   loadInto as $loadInto,
+  loadRows as $loadRows,
   noteWrite as $noteWrite,
+  pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
@@ -28,6 +30,10 @@ import {
 } from "@meshfw/runtime";
 import type {
   Machine,
+  MachineWith,
+  MachineLoadNames,
+  MachineLoadArg,
+  MachineLoadable,
   RegisterMachineInput,
   ReportMachineInput,
   UpdateMachineInput,
@@ -53,18 +59,31 @@ import { loadPlan as $loadPlan } from "../../load";
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
  * The read actions below run the slot, then these.
  */
-export function bindMachineReads(layer: $DataLayer) {
+export function bindMachineReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read(input: ReadMachineInput): Promise<Machine[]> {
+    async read<const L extends readonly (keyof MachineLoadable)[] = readonly []>(
+      input: Omit<ReadMachineInput, "load"> & MachineLoadArg<L>,
+      context?: unknown,
+      clock?: () => Date,
+    ): Promise<L extends unknown ? MachineWith<MachineLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readMachineInput, input);
       return layer.transaction(async (tx) => {
-        return (await tx.select(tables.machine, {
+        const $rows = (await tx.select(tables.machine, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Machine[];
+        if (!parsed.load?.length)
+          return $rows as unknown as L extends unknown ? MachineWith<MachineLoadNames<L>>[] : never;
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $clock = clock ?? $pinClock(options.clock);
+        return (await $loadRows($loadPlan, "Machine", tx, $rows, parsed.load, {
+          actor: $context.actor,
+          context: $context,
+          clock: $clock,
+        })) as unknown as L extends unknown ? MachineWith<MachineLoadNames<L>>[] : never;
       });
     },
   });
@@ -75,7 +94,7 @@ export function bindMachineReads(layer: $DataLayer) {
  * `actions` and `tx`; the project's `bind` in the index passes it.
  */
 export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
-  const $reads = bindMachineReads(layer);
+  const $reads = bindMachineReads(layer, options);
   return Object.freeze({
     async register(input: RegisterMachineInput, ...[context]: $ContextArgument): Promise<Machine> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
@@ -84,7 +103,8 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        const $now = options.clock?.() ?? new Date();
+        const $clock = $pinClock(options.clock);
+        const $now = $clock();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           id: $uuidv7(),
@@ -106,9 +126,9 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
             actor: $actor,
             context: $context,
             before: null,
-            ...$composed(compose, tx, context, "Machine.register"),
+            ...$composed(compose, tx, context, "Machine.register", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $Scope<RegisterMachineInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -144,7 +164,8 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        const $now = options.clock?.() ?? new Date();
+        const $clock = $pinClock(options.clock);
+        const $now = $clock();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           id: $uuidv7(),
@@ -166,9 +187,9 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
             actor: $actor,
             context: $context,
             before: null,
-            ...$composed(compose, tx, context, "Machine.report"),
+            ...$composed(compose, tx, context, "Machine.report", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $Scope<ReportMachineInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -203,6 +224,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.machine, $key);
@@ -224,9 +246,9 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
               $guarded($loadPlan, "Machine", $before, "before"),
               "Machine.update",
             ) as unknown as Machine,
-            ...$composed(compose, tx, context, "Machine.update"),
+            ...$composed(compose, tx, context, "Machine.update", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<UpdateMachineInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -275,6 +297,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.machine, $key);
@@ -282,7 +305,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
         const $writes = $writeCount(tx);
-        const $load = { actor: $actor, context: $context, clock: options.clock };
+        const $load = { actor: $actor, context: $context, clock: $clock };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Machine", $record, "action function"),
           "Machine.retire",
@@ -297,9 +320,9 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
               $guarded($loadPlan, "Machine", $before, "before"),
               "Machine.retire",
             ) as unknown as Machine,
-            ...$composed(compose, tx, context, "Machine.retire"),
+            ...$composed(compose, tx, context, "Machine.retire", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<RetireMachineInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -349,9 +372,12 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
       });
     },
 
-    async read(input: ReadMachineInput, ...[_context]: $ContextArgument): Promise<Machine[]> {
+    async read<const L extends readonly (keyof MachineLoadable)[] = readonly []>(
+      input: Omit<ReadMachineInput, "load"> & MachineLoadArg<L>,
+      ...[context]: $ContextArgument
+    ): Promise<L extends unknown ? MachineWith<MachineLoadNames<L>>[] : never> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
-      return $reads.read(input);
+      return $reads.read(input, context);
     },
   });
 }

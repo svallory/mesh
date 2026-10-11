@@ -4,12 +4,14 @@
 import {
   expr as $,
   type DeepReadonly as $DeepReadonly,
-  type ReadOnlyResults as $ReadOnlyResults,
   type Scope as $Scope,
 } from "@meshfw/runtime";
 import { responsibleFor, runRunningOf } from "../../../src/domain/execution/execution.helpers";
 import { taskOpenOf } from "../../../src/domain/work/work.helpers";
-import type { Actions as $Actions, Reads as $Reads } from "../../composition";
+import type {
+  ReadOnlyActions as $ReadOnlyActions,
+  ReadOnlyReads as $ReadOnlyReads,
+} from "../../composition";
 import type { Run, RunLoaded, CancelRunInput, SettleRunInput, StartRunInput } from "./run.types";
 
 /** What every expression of Run reads; `I` is the input of the action it runs in. */
@@ -19,8 +21,8 @@ export type RunScope<I = unknown> = $Scope<{
   actor: any;
   context: any;
   before: $DeepReadonly<Run> | null;
-  actions: $ReadOnlyResults<$Actions>;
-  tx: $ReadOnlyResults<$Reads>;
+  actions: $ReadOnlyActions;
+  tx: $ReadOnlyReads;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
 export type RunStoredScope<I = unknown> = RunScope<I> & { before: $DeepReadonly<Run> };

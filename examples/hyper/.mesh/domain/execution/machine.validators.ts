@@ -10,6 +10,7 @@ import type {
   RetireMachineInput,
   ReadMachineInput,
   MachineFilter,
+  MachineLoadable,
 } from "./machine.types";
 
 type Keys<T> = T extends Record<string, never> ? never : keyof T;
@@ -122,8 +123,12 @@ export const readMachineInput = z.strictObject({
   sort: machineSort.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
-}) satisfies z.ZodType<ReadMachineInput>;
+  load: z
+    .array(z.enum(["firstReportedBy", "attempts"]))
+    .readonly()
+    .optional(),
+}) satisfies z.ZodType<ReadMachineInput<keyof MachineLoadable>>;
 
 export type ReadMachineInputShape = Assert<
-  SameShape<z.output<typeof readMachineInput>, ReadMachineInput>
+  SameShape<z.output<typeof readMachineInput>, ReadMachineInput<keyof MachineLoadable>>
 >;

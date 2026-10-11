@@ -9,7 +9,9 @@ import {
   checkScope as $checkScope,
   composed as $composed,
   guarded as $guarded,
+  loadRows as $loadRows,
   noteWrite as $noteWrite,
+  pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
@@ -21,7 +23,15 @@ import {
   type Issue as $Issue,
   type Row as $Row,
 } from "@meshfw/runtime";
-import type { LateResult, RecordLateResultInput, ReadLateResultInput } from "./lateResult.types";
+import type {
+  LateResult,
+  LateResultWith,
+  LateResultLoadNames,
+  LateResultLoadArg,
+  LateResultLoadable,
+  RecordLateResultInput,
+  ReadLateResultInput,
+} from "./lateResult.types";
 import { recordLateResultInput, readLateResultInput } from "./lateResult.validators";
 import { tables } from "../../schema";
 import {
@@ -34,18 +44,33 @@ import { loadPlan as $loadPlan } from "../../load";
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
  * The read actions below run the slot, then these.
  */
-export function bindLateResultReads(layer: $DataLayer) {
+export function bindLateResultReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read(input: ReadLateResultInput): Promise<LateResult[]> {
+    async read<const L extends readonly (keyof LateResultLoadable)[] = readonly []>(
+      input: Omit<ReadLateResultInput, "load"> & LateResultLoadArg<L>,
+      context?: unknown,
+      clock?: () => Date,
+    ): Promise<L extends unknown ? LateResultWith<LateResultLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readLateResultInput, input);
       return layer.transaction(async (tx) => {
-        return (await tx.select(tables.lateResult, {
+        const $rows = (await tx.select(tables.lateResult, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
           offset: parsed.offset,
         })) as LateResult[];
+        if (!parsed.load?.length)
+          return $rows as unknown as L extends unknown
+            ? LateResultWith<LateResultLoadNames<L>>[]
+            : never;
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $clock = clock ?? $pinClock(options.clock);
+        return (await $loadRows($loadPlan, "LateResult", tx, $rows, parsed.load, {
+          actor: $context.actor,
+          context: $context,
+          clock: $clock,
+        })) as unknown as L extends unknown ? LateResultWith<LateResultLoadNames<L>>[] : never;
       });
     },
   });
@@ -56,7 +81,7 @@ export function bindLateResultReads(layer: $DataLayer) {
  * `actions` and `tx`; the project's `bind` in the index passes it.
  */
 export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
-  const $reads = bindLateResultReads(layer);
+  const $reads = bindLateResultReads(layer, options);
   return Object.freeze({
     async record(
       input: RecordLateResultInput,
@@ -68,7 +93,8 @@ export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, co
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        const $now = options.clock?.() ?? new Date();
+        const $clock = $pinClock(options.clock);
+        const $now = $clock();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           id: $uuidv7(),
@@ -88,9 +114,9 @@ export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, co
             actor: $actor,
             context: $context,
             before: null,
-            ...$composed(compose, tx, context, "LateResult.record"),
+            ...$composed(compose, tx, context, "LateResult.record", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $Scope<RecordLateResultInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -132,9 +158,12 @@ export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, co
       });
     },
 
-    async read(input: ReadLateResultInput, ...[_context]: $ContextArgument): Promise<LateResult[]> {
+    async read<const L extends readonly (keyof LateResultLoadable)[] = readonly []>(
+      input: Omit<ReadLateResultInput, "load"> & LateResultLoadArg<L>,
+      ...[context]: $ContextArgument
+    ): Promise<L extends unknown ? LateResultWith<LateResultLoadNames<L>>[] : never> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
-      return $reads.read(input);
+      return $reads.read(input, context);
     },
   });
 }

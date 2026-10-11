@@ -8,6 +8,7 @@ import type {
   ReturnReviewInput,
   ReadReviewInput,
   ReviewFilter,
+  ReviewLoadable,
 } from "./review.types";
 
 type Keys<T> = T extends Record<string, never> ? never : keyof T;
@@ -104,8 +105,12 @@ export const readReviewInput = z.strictObject({
   sort: reviewSort.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
-}) satisfies z.ZodType<ReadReviewInput>;
+  load: z
+    .array(z.enum(["submission", "reviewer"]))
+    .readonly()
+    .optional(),
+}) satisfies z.ZodType<ReadReviewInput<keyof ReviewLoadable>>;
 
 export type ReadReviewInputShape = Assert<
-  SameShape<z.output<typeof readReviewInput>, ReadReviewInput>
+  SameShape<z.output<typeof readReviewInput>, ReadReviewInput<keyof ReviewLoadable>>
 >;

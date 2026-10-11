@@ -73,9 +73,9 @@ export const {{ schema.constName }} = z.strictObject({
   @each(field in schema.fields)
   {{ field.key }}: {{ field.schema }},
   @end
-}) satisfies z.ZodType<{{ schema.typeName }}>;
+}) satisfies z.ZodType<{{ schema.typeName }}{{ schema.typeArguments }}>;
 
-export type {{ schema.shapeTypeName }} = Assert<SameShape<z.output<typeof {{ schema.constName }}>, {{ schema.typeName }}>>;
+export type {{ schema.shapeTypeName }} = Assert<SameShape<z.output<typeof {{ schema.constName }}>, {{ schema.typeName }}{{ schema.typeArguments }}>>;
 
 @end
 @end

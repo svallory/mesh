@@ -11,7 +11,9 @@ import {
   checkUnchanged as $checkUnchanged,
   composed as $composed,
   guarded as $guarded,
+  loadRows as $loadRows,
   noteWrite as $noteWrite,
+  pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
@@ -26,6 +28,10 @@ import {
 } from "@meshfw/runtime";
 import type {
   Collaborator,
+  CollaboratorWith,
+  CollaboratorLoadNames,
+  CollaboratorLoadArg,
+  CollaboratorLoadable,
   RegisterCollaboratorInput,
   UpdateCollaboratorInput,
   RetireCollaboratorInput,
@@ -49,18 +55,33 @@ import { loadPlan as $loadPlan } from "../../load";
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
  * The read actions below run the slot, then these.
  */
-export function bindCollaboratorReads(layer: $DataLayer) {
+export function bindCollaboratorReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read(input: ReadCollaboratorInput): Promise<Collaborator[]> {
+    async read<const L extends readonly (keyof CollaboratorLoadable)[] = readonly []>(
+      input: Omit<ReadCollaboratorInput, "load"> & CollaboratorLoadArg<L>,
+      context?: unknown,
+      clock?: () => Date,
+    ): Promise<L extends unknown ? CollaboratorWith<CollaboratorLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readCollaboratorInput, input);
       return layer.transaction(async (tx) => {
-        return (await tx.select(tables.collaborator, {
+        const $rows = (await tx.select(tables.collaborator, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Collaborator[];
+        if (!parsed.load?.length)
+          return $rows as unknown as L extends unknown
+            ? CollaboratorWith<CollaboratorLoadNames<L>>[]
+            : never;
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $clock = clock ?? $pinClock(options.clock);
+        return (await $loadRows($loadPlan, "Collaborator", tx, $rows, parsed.load, {
+          actor: $context.actor,
+          context: $context,
+          clock: $clock,
+        })) as unknown as L extends unknown ? CollaboratorWith<CollaboratorLoadNames<L>>[] : never;
       });
     },
   });
@@ -75,7 +96,7 @@ export function bindCollaborator(
   options: $BindOptions = {},
   compose?: $Composer,
 ) {
-  const $reads = bindCollaboratorReads(layer);
+  const $reads = bindCollaboratorReads(layer, options);
   return Object.freeze({
     async register(
       input: RegisterCollaboratorInput,
@@ -87,6 +108,7 @@ export function bindCollaborator(
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           id: $uuidv7(),
@@ -105,9 +127,9 @@ export function bindCollaborator(
             actor: $actor,
             context: $context,
             before: null,
-            ...$composed(compose, tx, context, "Collaborator.register"),
+            ...$composed(compose, tx, context, "Collaborator.register", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $Scope<RegisterCollaboratorInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -140,6 +162,7 @@ export function bindCollaborator(
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.collaborator, $key);
@@ -161,9 +184,9 @@ export function bindCollaborator(
               $guarded($loadPlan, "Collaborator", $before, "before"),
               "Collaborator.update",
             ) as unknown as Collaborator,
-            ...$composed(compose, tx, context, "Collaborator.update"),
+            ...$composed(compose, tx, context, "Collaborator.update", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<UpdateCollaboratorInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -236,6 +259,7 @@ export function bindCollaborator(
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.collaborator, $key);
@@ -257,9 +281,9 @@ export function bindCollaborator(
               $guarded($loadPlan, "Collaborator", $before, "before"),
               "Collaborator.retire",
             ) as unknown as Collaborator,
-            ...$composed(compose, tx, context, "Collaborator.retire"),
+            ...$composed(compose, tx, context, "Collaborator.retire", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<RetireCollaboratorInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -314,12 +338,12 @@ export function bindCollaborator(
       });
     },
 
-    async read(
-      input: ReadCollaboratorInput,
-      ...[_context]: $ContextArgument
-    ): Promise<Collaborator[]> {
+    async read<const L extends readonly (keyof CollaboratorLoadable)[] = readonly []>(
+      input: Omit<ReadCollaboratorInput, "load"> & CollaboratorLoadArg<L>,
+      ...[context]: $ContextArgument
+    ): Promise<L extends unknown ? CollaboratorWith<CollaboratorLoadNames<L>>[] : never> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
-      return $reads.read(input);
+      return $reads.read(input, context);
     },
   });
 }

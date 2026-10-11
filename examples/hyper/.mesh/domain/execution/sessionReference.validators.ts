@@ -9,6 +9,7 @@ import type {
   RedactSessionReferenceInput,
   ReadSessionReferenceInput,
   SessionReferenceFilter,
+  SessionReferenceLoadable,
 } from "./sessionReference.types";
 
 type Keys<T> = T extends Record<string, never> ? never : keyof T;
@@ -133,8 +134,15 @@ export const readSessionReferenceInput = z.strictObject({
   sort: sessionReferenceSort.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
-}) satisfies z.ZodType<ReadSessionReferenceInput>;
+  load: z
+    .array(z.enum(["machine", "agentProfile", "recordedBy"]))
+    .readonly()
+    .optional(),
+}) satisfies z.ZodType<ReadSessionReferenceInput<keyof SessionReferenceLoadable>>;
 
 export type ReadSessionReferenceInputShape = Assert<
-  SameShape<z.output<typeof readSessionReferenceInput>, ReadSessionReferenceInput>
+  SameShape<
+    z.output<typeof readSessionReferenceInput>,
+    ReadSessionReferenceInput<keyof SessionReferenceLoadable>
+  >
 >;

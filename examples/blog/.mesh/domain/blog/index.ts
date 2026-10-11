@@ -14,6 +14,8 @@ import type {
   CommentSort,
   CommentLoadable,
   CommentWith,
+  CommentLoadNames,
+  CommentLoadArg,
 } from "./comment.types";
 import type {
   Post,
@@ -27,6 +29,8 @@ import type {
   PostSort,
   PostLoadable,
   PostWith,
+  PostLoadNames,
+  PostLoadArg,
 } from "./post.types";
 import type { User, CreateUserInput, ReadUserInput, UserFilter, UserSort } from "./user.types";
 
@@ -37,6 +41,8 @@ export type {
   CommentSort,
   CommentLoadable,
   CommentWith,
+  CommentLoadNames,
+  CommentLoadArg,
   Post,
   CreatePostInput,
   PublishPostInput,
@@ -48,6 +54,8 @@ export type {
   PostSort,
   PostLoadable,
   PostWith,
+  PostLoadNames,
+  PostLoadArg,
   User,
   CreateUserInput,
   ReadUserInput,
@@ -56,10 +64,10 @@ export type {
 };
 export { loadCommentFields, loadPostFields } from "../../load";
 
-export async function readComment(
-  input: ReadCommentInput,
+export async function readComment<const L extends readonly (keyof CommentLoadable)[] = readonly []>(
+  input: Omit<ReadCommentInput, "load"> & CommentLoadArg<L>,
   ...context: $ContextArgument
-): Promise<Comment[]> {
+): Promise<L extends unknown ? CommentWith<CommentLoadNames<L>>[] : never> {
   return $delegate("readComment", (binding) => binding.readComment(input, ...context));
 }
 
@@ -84,17 +92,17 @@ export async function archivePost(
   return $delegate("archivePost", (binding) => binding.archivePost(input, ...context));
 }
 
-export async function publishedPost(
-  input: PublishedPostInput,
+export async function publishedPost<const L extends readonly (keyof PostLoadable)[] = readonly []>(
+  input: Omit<PublishedPostInput, "load"> & PostLoadArg<L>,
   ...context: $ContextArgument
-): Promise<Post[]> {
+): Promise<L extends unknown ? PostWith<PostLoadNames<L>>[] : never> {
   return $delegate("publishedPost", (binding) => binding.publishedPost(input, ...context));
 }
 
-export async function readPost(
-  input: ReadPostInput,
+export async function readPost<const L extends readonly (keyof PostLoadable)[] = readonly []>(
+  input: Omit<ReadPostInput, "load"> & PostLoadArg<L>,
   ...context: $ContextArgument
-): Promise<Post[]> {
+): Promise<L extends unknown ? PostWith<PostLoadNames<L>>[] : never> {
   return $delegate("readPost", (binding) => binding.readPost(input, ...context));
 }
 

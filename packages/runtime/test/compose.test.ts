@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { castInput, checkUnchanged, cloneValue, composed, composer, failJoined, FrameworkError, InvalidInputError, noteWrite, readOnlyRecord, writeCount, type DataLayer, type DataOperations, type StandardSchemaV1, type TableHandle } from "../src/index.ts";
+import { pinClock, castInput, checkUnchanged, cloneValue, composed, composer, failJoined, FrameworkError, InvalidInputError, noteWrite, readOnlyRecord, writeCount, type DataLayer, type DataOperations, type StandardSchemaV1, type TableHandle } from "../src/index.ts";
 
 /**
  * The composer on its own, over a layer that hands every call the operations it is told to. The joining and rollback
@@ -17,7 +17,33 @@ function layerOf(): { layer: DataLayer; current: { ops: DataOperations } } {
 }
 
 describe("composer", () => {
-  test("a call carries the caller's context unless it passes its own; a read gets its input only", async () => {
+  test("a tx read carries the instant of the action that composed it", async () => {
+    const { layer, current } = layerOf();
+    const made = composer(layer);
+    const seen: unknown[] = [];
+    made.provide({}, { readThing: (async (...args: unknown[]) => { seen.push(args[2]); return []; }) as never });
+    const clock = () => new Date(7);
+    const { tx } = made.bound(current.ops, {}, undefined, clock) as { tx: Record<string, (input: unknown) => Promise<unknown>> };
+    await tx.readThing!({});
+    expect(seen).toEqual([clock]);
+    const bare = made.bound(current.ops, {}) as { tx: Record<string, (input: unknown) => Promise<unknown>> };
+    await bare.tx.readThing!({});
+    expect(seen[1]).toBeUndefined();
+  });
+
+  test("pinClock reads its clock once and hands out the same instant as a fresh Date each time", () => {
+    let reads = 0;
+    const pinned = pinClock(() => new Date(1_000 * ++reads));
+    expect(reads).toBe(0);
+    const first = pinned();
+    first.setTime(0);
+    expect(pinned().getTime()).toBe(1_000);
+    expect(pinned()).not.toBe(pinned());
+    expect(reads).toBe(1);
+    expect(pinClock()().getTime()).toBeGreaterThan(0);
+  });
+
+  test("a call carries the caller's context unless it passes its own; a read gets the transaction's context too (a load runs computed bodies that read it)", async () => {
     const { layer, current } = layerOf();
     const made = composer(layer);
     const seen: unknown[] = [];
@@ -29,7 +55,7 @@ describe("composer", () => {
     await actions.openThing!({ n: 1 });
     await actions.openThing!({ n: 2 }, { actor: "own" });
     await tx.readThing!({ limit: 1 });
-    expect(seen).toEqual([[{ n: 1 }, { actor: "caller" }], [{ n: 2 }, { actor: "own" }], [{ limit: 1 }]]);
+    expect(seen).toEqual([[{ n: 1 }, { actor: "caller" }], [{ n: 2 }, { actor: "own" }], [{ limit: 1 }, { actor: "caller" }]]);
     expect(Object.isFrozen(actions)).toBe(true);
     expect(Object.isFrozen(tx)).toBe(true);
   });

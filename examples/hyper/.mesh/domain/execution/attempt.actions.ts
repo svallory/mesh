@@ -12,7 +12,9 @@ import {
   composed as $composed,
   guarded as $guarded,
   loadInto as $loadInto,
+  loadRows as $loadRows,
   noteWrite as $noteWrite,
+  pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
   rescope as $rescope,
   runCheck as $runCheck,
@@ -29,6 +31,10 @@ import {
 } from "@meshfw/runtime";
 import type {
   Attempt,
+  AttemptWith,
+  AttemptLoadNames,
+  AttemptLoadArg,
+  AttemptLoadable,
   StartAttemptInput,
   FinishAttemptInput,
   ReportStoppedAttemptInput,
@@ -54,18 +60,31 @@ import { loadPlan as $loadPlan } from "../../load";
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
  * The read actions below run the slot, then these.
  */
-export function bindAttemptReads(layer: $DataLayer) {
+export function bindAttemptReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read(input: ReadAttemptInput): Promise<Attempt[]> {
+    async read<const L extends readonly (keyof AttemptLoadable)[] = readonly []>(
+      input: Omit<ReadAttemptInput, "load"> & AttemptLoadArg<L>,
+      context?: unknown,
+      clock?: () => Date,
+    ): Promise<L extends unknown ? AttemptWith<AttemptLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readAttemptInput, input);
       return layer.transaction(async (tx) => {
-        return (await tx.select(tables.attempt, {
+        const $rows = (await tx.select(tables.attempt, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Attempt[];
+        if (!parsed.load?.length)
+          return $rows as unknown as L extends unknown ? AttemptWith<AttemptLoadNames<L>>[] : never;
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $clock = clock ?? $pinClock(options.clock);
+        return (await $loadRows($loadPlan, "Attempt", tx, $rows, parsed.load, {
+          actor: $context.actor,
+          context: $context,
+          clock: $clock,
+        })) as unknown as L extends unknown ? AttemptWith<AttemptLoadNames<L>>[] : never;
       });
     },
   });
@@ -76,7 +95,7 @@ export function bindAttemptReads(layer: $DataLayer) {
  * `actions` and `tx`; the project's `bind` in the index passes it.
  */
 export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
-  const $reads = bindAttemptReads(layer);
+  const $reads = bindAttemptReads(layer, options);
   return Object.freeze({
     async start(input: StartAttemptInput, ...[context]: $ContextArgument): Promise<Attempt> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
@@ -85,7 +104,8 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        const $now = options.clock?.() ?? new Date();
+        const $clock = $pinClock(options.clock);
+        const $now = $clock();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           id: $uuidv7(),
@@ -108,7 +128,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
           performerId: null,
           delegatorId: null,
         };
-        const $load = { actor: $actor, context: $context, clock: options.clock };
+        const $load = { actor: $actor, context: $context, clock: $clock };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Attempt", $record, "action function"),
           "Attempt.start",
@@ -120,9 +140,9 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
             actor: $actor,
             context: $context,
             before: null,
-            ...$composed(compose, tx, context, "Attempt.start"),
+            ...$composed(compose, tx, context, "Attempt.start", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $Scope<StartAttemptInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -239,6 +259,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.attempt, $key);
@@ -260,9 +281,9 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
               $guarded($loadPlan, "Attempt", $before, "before"),
               "Attempt.finish",
             ) as unknown as Attempt,
-            ...$composed(compose, tx, context, "Attempt.finish"),
+            ...$composed(compose, tx, context, "Attempt.finish", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<FinishAttemptInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -358,6 +379,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.attempt, $key);
@@ -379,9 +401,9 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
               $guarded($loadPlan, "Attempt", $before, "before"),
               "Attempt.reportStopped",
             ) as unknown as Attempt,
-            ...$composed(compose, tx, context, "Attempt.reportStopped"),
+            ...$composed(compose, tx, context, "Attempt.reportStopped", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<ReportStoppedAttemptInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -437,6 +459,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.attempt, $key);
@@ -458,9 +481,9 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
               $guarded($loadPlan, "Attempt", $before, "before"),
               "Attempt.abandon",
             ) as unknown as Attempt,
-            ...$composed(compose, tx, context, "Attempt.abandon"),
+            ...$composed(compose, tx, context, "Attempt.abandon", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<AbandonAttemptInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -509,9 +532,12 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
       });
     },
 
-    async read(input: ReadAttemptInput, ...[_context]: $ContextArgument): Promise<Attempt[]> {
+    async read<const L extends readonly (keyof AttemptLoadable)[] = readonly []>(
+      input: Omit<ReadAttemptInput, "load"> & AttemptLoadArg<L>,
+      ...[context]: $ContextArgument
+    ): Promise<L extends unknown ? AttemptWith<AttemptLoadNames<L>>[] : never> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
-      return $reads.read(input);
+      return $reads.read(input, context);
     },
   });
 }

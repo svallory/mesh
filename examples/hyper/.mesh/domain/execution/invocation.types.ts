@@ -72,11 +72,12 @@ export type CorrectInvocationInput = {
   session?: SessionReference["id"] | null | undefined;
 };
 
-export type ReadInvocationInput = {
+export type ReadInvocationInput<N extends keyof InvocationLoadable = never> = {
   filter?: InvocationFilter | undefined;
   sort?: InvocationSort | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
+  load?: readonly N[] | undefined;
 };
 
 /** What `load` attaches to a Invocation. The record has none of it, so reading one that was not loaded is a type error. */
@@ -91,6 +92,17 @@ export type InvocationLoadable = {
 /** A Invocation with the relationships and computed fields named in N loaded. */
 export type InvocationWith<N extends keyof InvocationLoadable> = Invocation &
   Pick<InvocationLoadable, N>;
+
+/** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
+export type InvocationLoadNames<L extends readonly (keyof InvocationLoadable)[]> =
+  number extends L["length"] ? never : L[number];
+
+/** The `load` member of a read called with the tuple `L`: required when `L` lists a name, so an input cannot claim a load it does not make. */
+export type InvocationLoadArg<L extends readonly (keyof InvocationLoadable)[]> = [
+  InvocationLoadNames<L>,
+] extends [never]
+  ? { load?: L | undefined }
+  : { load: L };
 
 /** A Invocation as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
 export type InvocationLoaded = Invocation & {

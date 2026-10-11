@@ -99,12 +99,12 @@ describe("the layout", () => {
 });
 
 describe("what each index holds", () => {
-  test("#mesh re-exports bind, connect, disconnect, transaction, Actions, Reads and tables, and names every module in its header", async () => {
+  test("#mesh re-exports bind, connect, disconnect, transaction, Actions, ReadOnlyActions, ReadOnlyReads, Reads and tables, and names every module in its header", async () => {
     const index = (await contentsOf(".mesh/index.ts"))!;
     const code = index.split("\n").filter((line) => !line.startsWith("//")).join("\n").trim();
     expect(code).toBe([
       'export { bind, connect, disconnect, transaction } from "./binding";',
-      'export type { Actions, Reads } from "./composition";',
+      'export type { Actions, ReadOnlyActions, ReadOnlyReads, Reads } from "./composition";',
       'export { tables } from "./schema";',
     ].join("\n"));
     for (const specifier of ["#mesh/domain", "#mesh/domain/billing", "#mesh/domain/sales/orders", "#mesh/domain/schema"])

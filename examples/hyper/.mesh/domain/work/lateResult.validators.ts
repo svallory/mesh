@@ -7,6 +7,7 @@ import type {
   RecordLateResultInput,
   ReadLateResultInput,
   LateResultFilter,
+  LateResultLoadable,
 } from "./lateResult.types";
 
 type Keys<T> = T extends Record<string, never> ? never : keyof T;
@@ -90,8 +91,12 @@ export const readLateResultInput = z.strictObject({
   sort: lateResultSort.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
-}) satisfies z.ZodType<ReadLateResultInput>;
+  load: z
+    .array(z.enum(["task", "submitter"]))
+    .readonly()
+    .optional(),
+}) satisfies z.ZodType<ReadLateResultInput<keyof LateResultLoadable>>;
 
 export type ReadLateResultInputShape = Assert<
-  SameShape<z.output<typeof readLateResultInput>, ReadLateResultInput>
+  SameShape<z.output<typeof readLateResultInput>, ReadLateResultInput<keyof LateResultLoadable>>
 >;

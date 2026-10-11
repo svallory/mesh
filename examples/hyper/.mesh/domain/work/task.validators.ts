@@ -16,6 +16,7 @@ import type {
   UnassignTaskInput,
   ReadTaskInput,
   TaskFilter,
+  TaskLoadable,
 } from "./task.types";
 
 type Keys<T> = T extends Record<string, never> ? never : keyof T;
@@ -227,6 +228,33 @@ export const readTaskInput = z.strictObject({
   sort: taskSort.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
-}) satisfies z.ZodType<ReadTaskInput>;
+  load: z
+    .array(
+      z.enum([
+        "parent",
+        "creator",
+        "children",
+        "dependencies",
+        "dependents",
+        "assignments",
+        "claims",
+        "submissions",
+        "completions",
+        "events",
+        "childrenSettled",
+        "claimed",
+        "lapsedClaim",
+        "inReview",
+        "assigned",
+        "blocked",
+        "maxFence",
+        "derivedState",
+      ]),
+    )
+    .readonly()
+    .optional(),
+}) satisfies z.ZodType<ReadTaskInput<keyof TaskLoadable>>;
 
-export type ReadTaskInputShape = Assert<SameShape<z.output<typeof readTaskInput>, ReadTaskInput>>;
+export type ReadTaskInputShape = Assert<
+  SameShape<z.output<typeof readTaskInput>, ReadTaskInput<keyof TaskLoadable>>
+>;

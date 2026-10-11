@@ -1,7 +1,8 @@
 import type { DataLayer, DataOperations, Key, Row, TableHandle } from "./data-layer.ts";
 import { FrameworkError } from "./errors.ts";
+import type { Clock } from "./expr.ts";
 import { parseInput } from "./input.ts";
-import { readOnlyRecord, type DeepReadonly } from "./load.ts";
+import { readOnlyRecord } from "./load.ts";
 import type { StandardSchemaV1 } from "./standard-schema.ts";
 
 /**
@@ -17,8 +18,11 @@ import type { StandardSchemaV1 } from "./standard-schema.ts";
  * so that every generated function fits, whether the project's context is optional or has a required key.
  */
 type ActionFunction = (input: never, context: never) => Promise<unknown>;
-/** A read as the composer holds it: the input only. It is the read's body without the authorizer slot. */
-type ReadFunction = (input: never) => Promise<unknown>;
+/**
+ * A read as the composer holds it: the input, then the context of the call it runs for. It is the read's body without the
+ * authorizer slot; a body that loads (`load` on its input) reads the context for a computed field's `actor`.
+ */
+type ReadFunction = (input: never, context?: unknown, clock?: Clock) => Promise<unknown>;
 
 /** What a function of an entity file, and an application's `transaction` callback, receive: the actions and the reads, bound to one transaction. */
 export interface Composition<A extends object = object, R extends object = object> {
@@ -26,21 +30,16 @@ export interface Composition<A extends object = object, R extends object = objec
   readonly tx: R;
 }
 
-/** `T`'s functions with deep read-only results: what `actions` and `tx` are inside an entity file, where a record is never changed in place. */
-export type ReadOnlyResults<T> = {
-  readonly [K in keyof T]: T[K] extends (...args: infer A) => Promise<infer R> ? (...args: A) => Promise<DeepReadonly<R>> : T[K];
-};
-
 /** Made by the generated `bind(layer)`, once per binding. */
 export interface Composer {
   /** Hand over every action function (by its top-level name) and every read body (by its read's top-level name); once, after every entity is bound. */
   provide(actions: Readonly<Record<string, ActionFunction>>, reads: Readonly<Record<string, ReadFunction>>): void;
   /**
    * `{ actions, tx }` for the transaction whose operations are `operations`. A call without a context of its own carries
-   * `context`. With `where`, the results are read-only views (`readOnlyRecord`), as everything a function of an entity
+   * `context`. A `tx` read carries `clock`, the instant of the action that made them, so what it loads reads the same `now()`. With `where`, the results are read-only views (`readOnlyRecord`), as everything a function of an entity
    * file is handed; an application's `transaction` callback gets plain results.
    */
-  bound(operations: DataOperations, context: unknown, where?: string): Composition;
+  bound(operations: DataOperations, context: unknown, where?: string, clock?: Clock): Composition;
   /** Open a transaction, or join the running one, and call `fn({ actions, tx })`; resolves with what `fn` resolves with. */
   transaction<T>(fn: (composition: Composition) => Promise<T>, context?: unknown): Promise<T>;
 }
@@ -57,7 +56,7 @@ const ENDED = "`actions` and `tx` are bound to the transaction that handed them 
 export function composer(layer: DataLayer): Composer {
   let functions: Readonly<Record<string, ActionFunction>> | undefined;
   let reads: Readonly<Record<string, ReadFunction>> | undefined;
-  const bound = (operations: DataOperations, context: unknown, where?: string): Composition => {
+  const bound = (operations: DataOperations, context: unknown, where?: string, clock?: Clock): Composition => {
     if (!functions || !reads) throw new FrameworkError("This binding's actions are not all bound yet: `actions` and `tx` exist once bind() has returned");
     const view = (value: unknown): unknown =>
       where === undefined || value === null || typeof value !== "object" ? value : readOnlyRecord(value as Row, where);
@@ -68,7 +67,7 @@ export function composer(layer: DataLayer): Composer {
     const actions = Object.freeze(Object.fromEntries(Object.entries(functions).map(([name, fn]) =>
       [name, (input: unknown, own?: unknown) => join(() => (fn as (input: unknown, context: unknown) => Promise<unknown>)(input, own === undefined ? context : own))])));
     const tx = Object.freeze(Object.fromEntries(Object.entries(reads).map(([name, fn]) =>
-      [name, (input: unknown) => join(() => (fn as (input: unknown) => Promise<unknown>)(input))])));
+      [name, (input: unknown) => join(() => (fn as (input: unknown, context: unknown, clock?: Clock) => Promise<unknown>)(input, context, clock))])));
     return Object.freeze({ actions, tx });
   };
   return Object.freeze({
@@ -89,8 +88,8 @@ export function composer(layer: DataLayer): Composer {
  * own `bind<Entity>` instead of the project's `bind`, has none: its functions get stand-ins that throw a
  * `FrameworkError` when a function reads a member of them, so the actions that never use `actions` or `tx` still run.
  */
-export function composed(composer: Composer | undefined, operations: DataOperations, context: unknown, where: string): Composition {
-  if (composer) return composer.bound(operations, context, where);
+export function composed(composer: Composer | undefined, operations: DataOperations, context: unknown, where: string, clock?: Clock): Composition {
+  if (composer) return composer.bound(operations, context, where, clock);
   const missing = (root: string): object => new Proxy(Object.freeze({}), {
     get(_target, member) {
       if (typeof member === "symbol") return undefined;

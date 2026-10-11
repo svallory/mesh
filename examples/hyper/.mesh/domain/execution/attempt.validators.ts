@@ -10,6 +10,7 @@ import type {
   AbandonAttemptInput,
   ReadAttemptInput,
   AttemptFilter,
+  AttemptLoadable,
 } from "./attempt.types";
 
 type Keys<T> = T extends Record<string, never> ? never : keyof T;
@@ -156,8 +157,12 @@ export const readAttemptInput = z.strictObject({
   sort: attemptSort.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
-}) satisfies z.ZodType<ReadAttemptInput>;
+  load: z
+    .array(z.enum(["run", "task", "performer", "delegator", "machine", "session"]))
+    .readonly()
+    .optional(),
+}) satisfies z.ZodType<ReadAttemptInput<keyof AttemptLoadable>>;
 
 export type ReadAttemptInputShape = Assert<
-  SameShape<z.output<typeof readAttemptInput>, ReadAttemptInput>
+  SameShape<z.output<typeof readAttemptInput>, ReadAttemptInput<keyof AttemptLoadable>>
 >;

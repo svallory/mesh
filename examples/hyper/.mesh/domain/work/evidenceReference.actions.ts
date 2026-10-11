@@ -7,7 +7,9 @@ import {
   castInput as $castInput,
   composed as $composed,
   guarded as $guarded,
+  loadRows as $loadRows,
   noteWrite as $noteWrite,
+  pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
   scope as $scope,
   uuidv7 as $uuidv7,
@@ -19,6 +21,10 @@ import {
 } from "@meshfw/runtime";
 import type {
   EvidenceReference,
+  EvidenceReferenceWith,
+  EvidenceReferenceLoadNames,
+  EvidenceReferenceLoadArg,
+  EvidenceReferenceLoadable,
   RecordEvidenceReferenceInput,
   ReadEvidenceReferenceInput,
 } from "./evidenceReference.types";
@@ -37,18 +43,35 @@ import { loadPlan as $loadPlan } from "../../load";
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
  * The read actions below run the slot, then these.
  */
-export function bindEvidenceReferenceReads(layer: $DataLayer) {
+export function bindEvidenceReferenceReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read(input: ReadEvidenceReferenceInput): Promise<EvidenceReference[]> {
+    async read<const L extends readonly (keyof EvidenceReferenceLoadable)[] = readonly []>(
+      input: Omit<ReadEvidenceReferenceInput, "load"> & EvidenceReferenceLoadArg<L>,
+      context?: unknown,
+      clock?: () => Date,
+    ): Promise<L extends unknown ? EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readEvidenceReferenceInput, input);
       return layer.transaction(async (tx) => {
-        return (await tx.select(tables.evidenceReference, {
+        const $rows = (await tx.select(tables.evidenceReference, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
           offset: parsed.offset,
         })) as EvidenceReference[];
+        if (!parsed.load?.length)
+          return $rows as unknown as L extends unknown
+            ? EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[]
+            : never;
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $clock = clock ?? $pinClock(options.clock);
+        return (await $loadRows($loadPlan, "EvidenceReference", tx, $rows, parsed.load, {
+          actor: $context.actor,
+          context: $context,
+          clock: $clock,
+        })) as unknown as L extends unknown
+          ? EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[]
+          : never;
       });
     },
   });
@@ -63,7 +86,7 @@ export function bindEvidenceReference(
   options: $BindOptions = {},
   compose?: $Composer,
 ) {
-  const $reads = bindEvidenceReferenceReads(layer);
+  const $reads = bindEvidenceReferenceReads(layer, options);
   return Object.freeze({
     async record(
       input: RecordEvidenceReferenceInput,
@@ -75,7 +98,8 @@ export function bindEvidenceReference(
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        const $now = options.clock?.() ?? new Date();
+        const $clock = $pinClock(options.clock);
+        const $now = $clock();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           id: $uuidv7(),
@@ -95,9 +119,9 @@ export function bindEvidenceReference(
             actor: $actor,
             context: $context,
             before: null,
-            ...$composed(compose, tx, context, "EvidenceReference.record"),
+            ...$composed(compose, tx, context, "EvidenceReference.record", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $Scope<RecordEvidenceReferenceInput>;
         // the input: the member inputs the caller sent, applied now that the checks have passed
         if (parsed.kind !== undefined) $changes.kind = $record.kind = parsed.kind;
@@ -122,12 +146,12 @@ export function bindEvidenceReference(
       });
     },
 
-    async read(
-      input: ReadEvidenceReferenceInput,
-      ...[_context]: $ContextArgument
-    ): Promise<EvidenceReference[]> {
+    async read<const L extends readonly (keyof EvidenceReferenceLoadable)[] = readonly []>(
+      input: Omit<ReadEvidenceReferenceInput, "load"> & EvidenceReferenceLoadArg<L>,
+      ...[context]: $ContextArgument
+    ): Promise<L extends unknown ? EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[] : never> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
-      return $reads.read(input);
+      return $reads.read(input, context);
     },
   });
 }

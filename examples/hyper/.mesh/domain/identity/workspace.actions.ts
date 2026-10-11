@@ -11,6 +11,7 @@ import {
   checkUnchanged as $checkUnchanged,
   composed as $composed,
   noteWrite as $noteWrite,
+  pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
@@ -44,7 +45,7 @@ import {
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
  * The read actions below run the slot, then these.
  */
-export function bindWorkspaceReads(layer: $DataLayer) {
+export function bindWorkspaceReads(layer: $DataLayer, _options: $BindOptions = {}) {
   return Object.freeze({
     async read(input: ReadWorkspaceInput): Promise<Workspace[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
@@ -66,7 +67,7 @@ export function bindWorkspaceReads(layer: $DataLayer) {
  * `actions` and `tx`; the project's `bind` in the index passes it.
  */
 export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
-  const $reads = bindWorkspaceReads(layer);
+  const $reads = bindWorkspaceReads(layer, options);
   return Object.freeze({
     async create(input: CreateWorkspaceInput, ...[_context]: $ContextArgument): Promise<Workspace> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
@@ -95,6 +96,7 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.workspace, $key);
@@ -110,9 +112,9 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
             actor: $actor,
             context: $context,
             before: $readOnlyRecord($before, "Workspace.rename") as unknown as Workspace,
-            ...$composed(compose, tx, context, "Workspace.rename"),
+            ...$composed(compose, tx, context, "Workspace.rename", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<RenameWorkspaceInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];

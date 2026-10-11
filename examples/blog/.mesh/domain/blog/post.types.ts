@@ -39,18 +39,20 @@ export type ArchivePostInput = {
   id: string;
 };
 
-export type PublishedPostInput = {
+export type PublishedPostInput<N extends keyof PostLoadable = never> = {
   filter?: PostFilter | undefined;
   sort?: PostSort | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
+  load?: readonly N[] | undefined;
 };
 
-export type ReadPostInput = {
+export type ReadPostInput<N extends keyof PostLoadable = never> = {
   filter?: PostFilter | undefined;
   sort?: PostSort | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
+  load?: readonly N[] | undefined;
 };
 
 export type DestroyPostInput = {
@@ -67,6 +69,18 @@ export type PostLoadable = {
 
 /** A Post with the relationships and computed fields named in N loaded. */
 export type PostWith<N extends keyof PostLoadable> = Post & Pick<PostLoadable, N>;
+
+/** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
+export type PostLoadNames<L extends readonly (keyof PostLoadable)[]> = number extends L["length"]
+  ? never
+  : L[number];
+
+/** The `load` member of a read called with the tuple `L`: required when `L` lists a name, so an input cannot claim a load it does not make. */
+export type PostLoadArg<L extends readonly (keyof PostLoadable)[]> = [PostLoadNames<L>] extends [
+  never,
+]
+  ? { load?: L | undefined }
+  : { load: L };
 
 /** A Post as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
 export type PostLoaded = Post & {

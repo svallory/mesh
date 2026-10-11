@@ -11,7 +11,9 @@ import {
   checkUnchanged as $checkUnchanged,
   composed as $composed,
   guarded as $guarded,
+  loadRows as $loadRows,
   noteWrite as $noteWrite,
+  pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
@@ -26,6 +28,10 @@ import {
 } from "@meshfw/runtime";
 import type {
   Assignment,
+  AssignmentWith,
+  AssignmentLoadNames,
+  AssignmentLoadArg,
+  AssignmentLoadable,
   StartAssignmentInput,
   FinishAssignmentInput,
   ReadAssignmentInput,
@@ -47,18 +53,33 @@ import { loadPlan as $loadPlan } from "../../load";
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
  * The read actions below run the slot, then these.
  */
-export function bindAssignmentReads(layer: $DataLayer) {
+export function bindAssignmentReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read(input: ReadAssignmentInput): Promise<Assignment[]> {
+    async read<const L extends readonly (keyof AssignmentLoadable)[] = readonly []>(
+      input: Omit<ReadAssignmentInput, "load"> & AssignmentLoadArg<L>,
+      context?: unknown,
+      clock?: () => Date,
+    ): Promise<L extends unknown ? AssignmentWith<AssignmentLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readAssignmentInput, input);
       return layer.transaction(async (tx) => {
-        return (await tx.select(tables.assignment, {
+        const $rows = (await tx.select(tables.assignment, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Assignment[];
+        if (!parsed.load?.length)
+          return $rows as unknown as L extends unknown
+            ? AssignmentWith<AssignmentLoadNames<L>>[]
+            : never;
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $clock = clock ?? $pinClock(options.clock);
+        return (await $loadRows($loadPlan, "Assignment", tx, $rows, parsed.load, {
+          actor: $context.actor,
+          context: $context,
+          clock: $clock,
+        })) as unknown as L extends unknown ? AssignmentWith<AssignmentLoadNames<L>>[] : never;
       });
     },
   });
@@ -69,7 +90,7 @@ export function bindAssignmentReads(layer: $DataLayer) {
  * `actions` and `tx`; the project's `bind` in the index passes it.
  */
 export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
-  const $reads = bindAssignmentReads(layer);
+  const $reads = bindAssignmentReads(layer, options);
   return Object.freeze({
     async start(input: StartAssignmentInput, ...[context]: $ContextArgument): Promise<Assignment> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
@@ -78,6 +99,7 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           id: $uuidv7(),
@@ -103,9 +125,9 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
             actor: $actor,
             context: $context,
             before: null,
-            ...$composed(compose, tx, context, "Assignment.start"),
+            ...$composed(compose, tx, context, "Assignment.start", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $Scope<StartAssignmentInput>;
         // the input: the member inputs the caller sent, applied now that the checks have passed
         if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
@@ -147,6 +169,7 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.assignment, $key);
@@ -168,9 +191,9 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
               $guarded($loadPlan, "Assignment", $before, "before"),
               "Assignment.finish",
             ) as unknown as Assignment,
-            ...$composed(compose, tx, context, "Assignment.finish"),
+            ...$composed(compose, tx, context, "Assignment.finish", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<FinishAssignmentInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -202,9 +225,12 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
       });
     },
 
-    async read(input: ReadAssignmentInput, ...[_context]: $ContextArgument): Promise<Assignment[]> {
+    async read<const L extends readonly (keyof AssignmentLoadable)[] = readonly []>(
+      input: Omit<ReadAssignmentInput, "load"> & AssignmentLoadArg<L>,
+      ...[context]: $ContextArgument
+    ): Promise<L extends unknown ? AssignmentWith<AssignmentLoadNames<L>>[] : never> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
-      return $reads.read(input);
+      return $reads.read(input, context);
     },
   });
 }

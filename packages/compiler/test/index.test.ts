@@ -289,7 +289,7 @@ describe("entity names never break the generated files", () => {
     expect(rows).toHaveLength(names.length);
   });
 
-  test.each(["Actions", "Reads"])("an entity named %s, the type composition.ts declares for actions and tx, is MESH_EMIT_NAME", async (name) => {
+  test.each(["Actions", "Reads", "ReadOnlyActions", "ReadOnlyReads"])("an entity named %s, the type composition.ts declares for actions and tx, is MESH_EMIT_NAME", async (name) => {
     const error = await generateFiles({ document: documentOf({ "x.mesh.mx": files["class.mesh.mx"]!.replace(":Class", `:${name}`) }), config: configOf("/project") })
       .then(() => undefined, (cause: unknown) => cause);
     expect(error).toBeInstanceOf(EmitError);

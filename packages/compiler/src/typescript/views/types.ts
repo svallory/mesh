@@ -9,7 +9,9 @@ import {
   entityPath,
   filterTypeName,
   hasRead,
+  loadGenerics,
   propertyName,
+  takesLoad,
   queryColumns,
   sortTypeName,
   typeName,
@@ -47,6 +49,10 @@ export interface LoadableDeclaration {
   readonly name: string;
   /** The loaded record's name, e.g. `TaskWith`. */
   readonly withName: string;
+  /** `TaskLoadNames<L>`: the names of a `load` tuple `L`, none for a list that does not say which (a widened array). */
+  readonly namesName: string;
+  /** `TaskLoadArg<L>`: the `load` member of a read called with `L`, required when `L` names something. */
+  readonly argName: string;
   /** One member per relationship (the related record, a list of them, or `| null`) and per computed field, in authored order; never optional. */
   readonly members: readonly TypeMember[];
   /** The fully loaded record's name, e.g. `TaskLoaded`: what the functions of the entity file see as `self`. */
@@ -89,6 +95,8 @@ export interface RecordDeclaration {
 export interface TypeDeclaration {
   /** The exported input type's name, e.g. `CreatePostInput`. */
   readonly name: string;
+  /** The type parameter list as printed (`<N extends keyof PostLoadable = never>` on a read that takes `load`), or the empty string. */
+  readonly generics: string;
   /** True when the type has no members; it is then printed as a closed empty object, `[key: string]: never`. */
   readonly empty: boolean;
   /** The members, in order; empty exactly when `empty` is true. */
@@ -117,7 +125,7 @@ export function typesView({ document }: EmitInput, entity: Entity): TypesView {
     declared.add(input.name);
   }
   if (entity.relationships.length + entity.computed.length > 0)
-    for (const name of [`${recordName}Loadable`, `${recordName}With`, `${recordName}Loaded`]) {
+    for (const name of [`${recordName}Loadable`, `${recordName}With`, `${recordName}LoadNames`, `${recordName}LoadArg`, `${recordName}Loaded`]) {
       if (declared.has(name)) throw emitError("MESH_EMIT_NAME", `Duplicate generated type ${name}`, entity.position);
       declared.add(name);
     }
@@ -167,7 +175,7 @@ export function typesView({ document }: EmitInput, entity: Entity): TypesView {
     entityFile: entityFileComment(entity),
     imports,
     record: { name: recordName, members: recordMembers },
-    inputs: inputs.map((input) => declaration(input.name, input.fields.map((field) => member(field, entity)))),
+    inputs: inputs.map((input) => declaration(input.name, takesLoad(input) ? loadGenerics(entity, false) : "", input.fields.map((field) => member(field, entity)))),
     query: hasRead(entity) ? queryDeclaration(entity) : null,
     loadable: loadableDeclaration(document, entity, recordName),
   };
@@ -203,7 +211,7 @@ function loadableDeclaration(document: EmitInput["document"], entity: Entity, re
     loadedMembers.push(member);
   }
   if (members.length === 0) return null;
-  return { name: `${recordName}Loadable`, withName: `${recordName}With`, members, loadedName: `${recordName}Loaded`, loadedMembers };
+  return { name: `${recordName}Loadable`, withName: `${recordName}With`, namesName: `${recordName}LoadNames`, argName: `${recordName}LoadArg`, members, loadedName: `${recordName}Loaded`, loadedMembers };
 }
 
 /** The columns a caller of a read may name. An attribute called `and` or `or` cannot be filtered: the contract reads those keys as combinators. */
@@ -224,13 +232,13 @@ export function entityFileComment(entity: Entity): string {
   return entity.file.replace(/[\r\n\u2028\u2029]/g, (s) => `\\u${s.charCodeAt(0).toString(16).padStart(4, "0")}`);
 }
 
-function declaration(name: string, members: TypeMember[]): TypeDeclaration {
-  return { name, empty: members.length === 0, members };
+function declaration(name: string, generics: string, members: TypeMember[]): TypeDeclaration {
+  return { name, generics, empty: members.length === 0, members };
 }
 
 function member({ attribute, optional, reference, query }: PlannedField, entity: Entity): TypeMember {
   const type = query
-    ? query === "filter" ? filterTypeName(entity) : query === "sort" ? sortTypeName(entity) : "number"
+    ? query === "filter" ? filterTypeName(entity) : query === "sort" ? sortTypeName(entity) : query === "load" ? "readonly N[]" : "number"
     : reference
     ? `${typeName(reference.name, reference.position)}[${JSON.stringify(reference.attributes.find((a) => a.primaryKey)!.name)}]${attribute.nullable ? " | null" : ""}`
     : valueType(attribute);

@@ -9,6 +9,7 @@ import type {
   SettleRunInput,
   ReadRunInput,
   RunFilter,
+  RunLoadable,
 } from "./run.types";
 
 type Keys<T> = T extends Record<string, never> ? never : keyof T;
@@ -121,6 +122,12 @@ export const readRunInput = z.strictObject({
   sort: runSort.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
-}) satisfies z.ZodType<ReadRunInput>;
+  load: z
+    .array(z.enum(["task", "responsible", "startedBy", "parentRun", "attempts"]))
+    .readonly()
+    .optional(),
+}) satisfies z.ZodType<ReadRunInput<keyof RunLoadable>>;
 
-export type ReadRunInputShape = Assert<SameShape<z.output<typeof readRunInput>, ReadRunInput>>;
+export type ReadRunInputShape = Assert<
+  SameShape<z.output<typeof readRunInput>, ReadRunInput<keyof RunLoadable>>
+>;

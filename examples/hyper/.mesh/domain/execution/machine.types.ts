@@ -38,11 +38,12 @@ export type RetireMachineInput = {
   expectedVersion?: number | null | undefined;
 };
 
-export type ReadMachineInput = {
+export type ReadMachineInput<N extends keyof MachineLoadable = never> = {
   filter?: MachineFilter | undefined;
   sort?: MachineSort | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
+  load?: readonly N[] | undefined;
 };
 
 /** What `load` attaches to a Machine. The record has none of it, so reading one that was not loaded is a type error. */
@@ -53,6 +54,17 @@ export type MachineLoadable = {
 
 /** A Machine with the relationships and computed fields named in N loaded. */
 export type MachineWith<N extends keyof MachineLoadable> = Machine & Pick<MachineLoadable, N>;
+
+/** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
+export type MachineLoadNames<L extends readonly (keyof MachineLoadable)[]> =
+  number extends L["length"] ? never : L[number];
+
+/** The `load` member of a read called with the tuple `L`: required when `L` lists a name, so an input cannot claim a load it does not make. */
+export type MachineLoadArg<L extends readonly (keyof MachineLoadable)[]> = [
+  MachineLoadNames<L>,
+] extends [never]
+  ? { load?: L | undefined }
+  : { load: L };
 
 /** A Machine as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
 export type MachineLoaded = Machine & {

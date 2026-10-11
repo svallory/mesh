@@ -12,7 +12,9 @@ import {
   composed as $composed,
   guarded as $guarded,
   loadInto as $loadInto,
+  loadRows as $loadRows,
   noteWrite as $noteWrite,
+  pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
   rescope as $rescope,
   runCheck as $runCheck,
@@ -29,6 +31,10 @@ import {
 } from "@meshfw/runtime";
 import type {
   Submission,
+  SubmissionWith,
+  SubmissionLoadNames,
+  SubmissionLoadArg,
+  SubmissionLoadable,
   SubmitSubmissionInput,
   WithdrawSubmissionInput,
   SettleSubmissionInput,
@@ -54,18 +60,33 @@ import { loadPlan as $loadPlan } from "../../load";
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
  * The read actions below run the slot, then these.
  */
-export function bindSubmissionReads(layer: $DataLayer) {
+export function bindSubmissionReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read(input: ReadSubmissionInput): Promise<Submission[]> {
+    async read<const L extends readonly (keyof SubmissionLoadable)[] = readonly []>(
+      input: Omit<ReadSubmissionInput, "load"> & SubmissionLoadArg<L>,
+      context?: unknown,
+      clock?: () => Date,
+    ): Promise<L extends unknown ? SubmissionWith<SubmissionLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readSubmissionInput, input);
       return layer.transaction(async (tx) => {
-        return (await tx.select(tables.submission, {
+        const $rows = (await tx.select(tables.submission, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Submission[];
+        if (!parsed.load?.length)
+          return $rows as unknown as L extends unknown
+            ? SubmissionWith<SubmissionLoadNames<L>>[]
+            : never;
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $clock = clock ?? $pinClock(options.clock);
+        return (await $loadRows($loadPlan, "Submission", tx, $rows, parsed.load, {
+          actor: $context.actor,
+          context: $context,
+          clock: $clock,
+        })) as unknown as L extends unknown ? SubmissionWith<SubmissionLoadNames<L>>[] : never;
       });
     },
   });
@@ -76,7 +97,7 @@ export function bindSubmissionReads(layer: $DataLayer) {
  * `actions` and `tx`; the project's `bind` in the index passes it.
  */
 export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
-  const $reads = bindSubmissionReads(layer);
+  const $reads = bindSubmissionReads(layer, options);
   return Object.freeze({
     async submit(
       input: SubmitSubmissionInput,
@@ -88,7 +109,8 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        const $now = options.clock?.() ?? new Date();
+        const $clock = $pinClock(options.clock);
+        const $now = $clock();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           id: $uuidv7(),
@@ -99,7 +121,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           submittedAt: $now,
         };
         const $record: $Row = { ...$changes, taskVersion: null, taskId: null, submitterId: null };
-        const $load = { actor: $actor, context: $context, clock: options.clock };
+        const $load = { actor: $actor, context: $context, clock: $clock };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Submission", $record, "action function"),
           "Submission.submit",
@@ -111,9 +133,9 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
             actor: $actor,
             context: $context,
             before: null,
-            ...$composed(compose, tx, context, "Submission.submit"),
+            ...$composed(compose, tx, context, "Submission.submit", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $Scope<SubmitSubmissionInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -219,6 +241,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.submission, $key);
@@ -226,7 +249,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
         const $writes = $writeCount(tx);
-        const $load = { actor: $actor, context: $context, clock: options.clock };
+        const $load = { actor: $actor, context: $context, clock: $clock };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Submission", $record, "action function"),
           "Submission.withdraw",
@@ -241,9 +264,9 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
               $guarded($loadPlan, "Submission", $before, "before"),
               "Submission.withdraw",
             ) as unknown as Submission,
-            ...$composed(compose, tx, context, "Submission.withdraw"),
+            ...$composed(compose, tx, context, "Submission.withdraw", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<WithdrawSubmissionInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -303,6 +326,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.submission, $key);
@@ -324,9 +348,9 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
               $guarded($loadPlan, "Submission", $before, "before"),
               "Submission.settle",
             ) as unknown as Submission,
-            ...$composed(compose, tx, context, "Submission.settle"),
+            ...$composed(compose, tx, context, "Submission.settle", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<SettleSubmissionInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -368,7 +392,8 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        const $now = options.clock?.() ?? new Date();
+        const $clock = $pinClock(options.clock);
+        const $now = $clock();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           id: $uuidv7(),
@@ -390,9 +415,9 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
             actor: $actor,
             context: $context,
             before: null,
-            ...$composed(compose, tx, context, "Submission.recordAccepted"),
+            ...$composed(compose, tx, context, "Submission.recordAccepted", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $Scope<RecordAcceptedSubmissionInput>;
         // the input: the member inputs the caller sent, applied now that the checks have passed
         if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
@@ -418,9 +443,12 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
       });
     },
 
-    async read(input: ReadSubmissionInput, ...[_context]: $ContextArgument): Promise<Submission[]> {
+    async read<const L extends readonly (keyof SubmissionLoadable)[] = readonly []>(
+      input: Omit<ReadSubmissionInput, "load"> & SubmissionLoadArg<L>,
+      ...[context]: $ContextArgument
+    ): Promise<L extends unknown ? SubmissionWith<SubmissionLoadNames<L>>[] : never> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
-      return $reads.read(input);
+      return $reads.read(input, context);
     },
   });
 }

@@ -7,6 +7,7 @@ import type {
   RecordCompletionInput,
   ReadCompletionInput,
   CompletionFilter,
+  CompletionLoadable,
 } from "./completion.types";
 
 type Keys<T> = T extends Record<string, never> ? never : keyof T;
@@ -91,8 +92,12 @@ export const readCompletionInput = z.strictObject({
   sort: completionSort.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
-}) satisfies z.ZodType<ReadCompletionInput>;
+  load: z
+    .array(z.enum(["task", "submission", "completedBy"]))
+    .readonly()
+    .optional(),
+}) satisfies z.ZodType<ReadCompletionInput<keyof CompletionLoadable>>;
 
 export type ReadCompletionInputShape = Assert<
-  SameShape<z.output<typeof readCompletionInput>, ReadCompletionInput>
+  SameShape<z.output<typeof readCompletionInput>, ReadCompletionInput<keyof CompletionLoadable>>
 >;

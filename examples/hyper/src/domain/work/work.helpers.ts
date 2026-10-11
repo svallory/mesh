@@ -1,11 +1,11 @@
 // Helpers for the work entity files and the work functions. The pure ones take values (rows already read, ids, a
 // time) and never the model; the ones whose names end in `Of` read through `tx`, the reads of the running
 // transaction, and hand what they read to a pure one. Each names the Hyper rule or change it follows.
-import { FrameworkError, type ReadOnlyResults } from "@meshfw/runtime";
-import type { Reads as AllReads } from "#mesh";
+import { FrameworkError } from "@meshfw/runtime";
+import type { ReadOnlyReads } from "#mesh";
 
 /** The reads of the running transaction, as an entity file's `tx` or an application transaction's `tx` hands them over. */
-export type Reads = ReadOnlyResults<AllReads>;
+export type Reads = ReadOnlyReads;
 
 /** The default lease (PROTOCOL.md:33, `--lease-ms`): 10 minutes. */
 export const LEASE_MS = 600_000;
@@ -333,14 +333,14 @@ export async function dependencyExistsOf(tx: Reads, dependentId: string, prerequ
 }
 
 /** `claim.task-ready`'s details (`tasks/claim/rules.ex:36-47`): the derived state and the block reasons behind it. */
-export async function readinessOf(tx: Reads, taskId: string, now: Date): Promise<{ derivedState: DerivedState | null; reasons: BlockReason[] }> {
-  return { derivedState: await derivedStateOf(tx, taskId, now), reasons: await blockReasonsOf(tx, taskId) };
+export async function readinessOf(tx: Reads, taskId: string): Promise<{ derivedState: DerivedState | null; reasons: BlockReason[] }> {
+  return { derivedState: await derivedStateOf(tx, taskId), reasons: await blockReasonsOf(tx, taskId) };
 }
 
 // The reads a create's check makes. In `validate`, a create's `self` is the new instance before the input is applied
 // (ACT-27), so `&task` is not the Task the caller names yet: the check reads that Task through `tx`, by the id in
-// `input` (POL-08). `tx` returns stored rows without computed fields, so the helpers below derive the ones the checks
-// need from the rows, the same way the computed fields in `task.mesh.mx` do.
+// `input` (POL-08). A read through `tx` takes `load`, so the helpers below read the Task with the computed fields and
+// rollups the checks need (`derivedState`, `maxFence`, `inReview`) instead of deriving them from rows.
 
 /** The Task `taskId`, or undefined when there is none. */
 export async function taskOf(tx: Reads, taskId: string) {
@@ -381,20 +381,16 @@ export async function claimsOf(tx: Reads, taskId: string) {
   return tx.readClaim({ filter: { taskId: { eq: taskId } } });
 }
 
-/** The Task's `maxFence` (`max :maxFence of="claims.fence"`): the highest fence of its claims, or null when it has none. */
-export function maxFence(claims: readonly { readonly fence: number }[]): number | null {
-  return claims.length === 0 ? null : Math.max(...claims.map((claim) => claim.fence));
-}
-
 /** `claim.current-fence`'s details for the Task `taskId`, read through `tx` (`fenceDetails`). */
 export async function fenceDetailsOf(tx: Reads, taskId: string, fence: number | null | undefined, actorId: string, now: Date): Promise<{ currentFence: number | null; stale: boolean }> {
-  const claims = await claimsOf(tx, taskId);
-  return fenceDetails(maxFence(claims), claims, fence, actorId, now);
+  const [task] = await tx.readTask({ filter: { id: { eq: taskId } }, limit: 1, load: ["maxFence", "claims"] });
+  return fenceDetails(task?.maxFence ?? null, task?.claims ?? [], fence, actorId, now);
 }
 
 /** The Task's `inReview`: a submission of it is pending. */
 export async function inReviewOf(tx: Reads, taskId: string): Promise<boolean> {
-  return (await tx.readSubmission({ filter: { taskId: { eq: taskId }, state: { eq: "pending" } }, limit: 1 })).length > 0;
+  const [task] = await tx.readTask({ filter: { id: { eq: taskId } }, limit: 1, load: ["inReview"] });
+  return task?.inReview ?? false;
 }
 
 export type DerivedState = "ready" | "blocked" | "claimed" | "in-review" | "done" | "canceled";
@@ -404,13 +400,9 @@ export type DerivedState = "ready" | "blocked" | "claimed" | "in-review" | "done
  * claimed (an active claim whose lease has not run out), then blocked (a prerequisite not done), else ready. Null when
  * the Task does not exist.
  */
-export async function derivedStateOf(tx: Reads, taskId: string, now: Date): Promise<DerivedState | null> {
-  const task = await taskOf(tx, taskId);
-  if (!task) return null;
-  if (task.state === "done" || task.state === "canceled") return task.state;
-  if (await inReviewOf(tx, taskId)) return "in-review";
-  if (liveClaim(await claimsOf(tx, taskId), now)) return "claimed";
-  return (await blockReasonsOf(tx, taskId)).length > 0 ? "blocked" : "ready";
+export async function derivedStateOf(tx: Reads, taskId: string): Promise<DerivedState | null> {
+  const [task] = await tx.readTask({ filter: { id: { eq: taskId } }, limit: 1, load: ["derivedState"] });
+  return task?.derivedState ?? null;
 }
 
 export interface SubmittedVersions {

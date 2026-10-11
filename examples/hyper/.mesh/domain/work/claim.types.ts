@@ -54,11 +54,12 @@ export type EndClaimInput = {
   reason: string;
 };
 
-export type ReadClaimInput = {
+export type ReadClaimInput<N extends keyof ClaimLoadable = never> = {
   filter?: ClaimFilter | undefined;
   sort?: ClaimSort | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
+  load?: readonly N[] | undefined;
 };
 
 /** What `load` attaches to a Claim. The record has none of it, so reading one that was not loaded is a type error. */
@@ -70,6 +71,18 @@ export type ClaimLoadable = {
 
 /** A Claim with the relationships and computed fields named in N loaded. */
 export type ClaimWith<N extends keyof ClaimLoadable> = Claim & Pick<ClaimLoadable, N>;
+
+/** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
+export type ClaimLoadNames<L extends readonly (keyof ClaimLoadable)[]> = number extends L["length"]
+  ? never
+  : L[number];
+
+/** The `load` member of a read called with the tuple `L`: required when `L` lists a name, so an input cannot claim a load it does not make. */
+export type ClaimLoadArg<L extends readonly (keyof ClaimLoadable)[]> = [ClaimLoadNames<L>] extends [
+  never,
+]
+  ? { load?: L | undefined }
+  : { load: L };
 
 /** A Claim as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
 export type ClaimLoaded = Claim & {

@@ -1,6 +1,6 @@
 import type { DataOperations, Filter, Row, TableHandle } from "./data-layer.ts";
 import { FrameworkError } from "./errors.ts";
-import { scope, type Clock } from "./expr.ts";
+import { pinClock, scope, type Clock } from "./expr.ts";
 
 /**
  * Loading relationships and computed fields (M7). The compiler writes one `LoadPlan` for the
@@ -85,8 +85,10 @@ export async function loadRows(
   tx: DataOperations,
   rows: readonly Row[],
   names: readonly string[],
-  options: LoadOptions = {},
+  given: LoadOptions = {},
 ): Promise<Row[]> {
+  // One instant for the whole call: every row and computed field reads the same `now()`.
+  const options = { ...given, clock: pinClock(given.clock) };
   const entityPlan = planOf(plan, entity);
   for (const name of names)
     if (!Object.hasOwn(entityPlan.relations, name) && !Object.hasOwn(entityPlan.computed, name))
@@ -428,8 +430,9 @@ export function rejectComputedQuery(entity: string, computed: readonly string[],
  * each function that reads the record and pays for what is not there yet. `record` must be the plain row, not its guard.
  */
 export async function loadInto(
-  plan: LoadPlan, entity: string, tx: DataOperations, record: Row, paths: readonly string[], options: LoadOptions = {},
+  plan: LoadPlan, entity: string, tx: DataOperations, record: Row, paths: readonly string[], given: LoadOptions = {},
 ): Promise<void> {
+  const options = { ...given, clock: pinClock(given.clock) };
   const passed: Options = options.newInstance ? { ...options, pending: record } : options;
   for (const path of paths) await ensurePath(plan, entity, tx, [record], path.split("."), passed, 0);
 }

@@ -4,33 +4,57 @@
 
 import {
   castInput as $castInput,
+  loadRows as $loadRows,
   noteWrite as $noteWrite,
+  pinClock as $pinClock,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
   type Row as $Row,
 } from "@meshfw/runtime";
-import type { Event, RecordEventInput, ReadEventInput } from "./event.types";
+import type {
+  Event,
+  EventWith,
+  EventLoadNames,
+  EventLoadArg,
+  EventLoadable,
+  RecordEventInput,
+  ReadEventInput,
+} from "./event.types";
 import { recordEventInput, readEventInput } from "./event.validators";
 import { tables } from "../../schema";
+import { loadPlan as $loadPlan } from "../../load";
 
 /**
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
  * The read actions below run the slot, then these.
  */
-export function bindEventReads(layer: $DataLayer) {
+export function bindEventReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read(input: ReadEventInput): Promise<Event[]> {
+    async read<const L extends readonly (keyof EventLoadable)[] = readonly []>(
+      input: Omit<ReadEventInput, "load"> & EventLoadArg<L>,
+      context?: unknown,
+      clock?: () => Date,
+    ): Promise<L extends unknown ? EventWith<EventLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readEventInput, input);
       return layer.transaction(async (tx) => {
-        return (await tx.select(tables.event, {
+        const $rows = (await tx.select(tables.event, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Event[];
+        if (!parsed.load?.length)
+          return $rows as unknown as L extends unknown ? EventWith<EventLoadNames<L>>[] : never;
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $clock = clock ?? $pinClock(options.clock);
+        return (await $loadRows($loadPlan, "Event", tx, $rows, parsed.load, {
+          actor: $context.actor,
+          context: $context,
+          clock: $clock,
+        })) as unknown as L extends unknown ? EventWith<EventLoadNames<L>>[] : never;
       });
     },
   });
@@ -41,14 +65,15 @@ export function bindEventReads(layer: $DataLayer) {
  * `actions` and `tx`; the project's `bind` in the index passes it.
  */
 export function bindEvent(layer: $DataLayer, options: $BindOptions = {}, _compose?: $Composer) {
-  const $reads = bindEventReads(layer);
+  const $reads = bindEventReads(layer, options);
   return Object.freeze({
     async record(input: RecordEventInput, ...[_context]: $ContextArgument): Promise<Event> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, recordEventInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $now = options.clock?.() ?? new Date();
+        const $clock = $pinClock(options.clock);
+        const $now = $clock();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           type: parsed.type,
@@ -73,9 +98,12 @@ export function bindEvent(layer: $DataLayer, options: $BindOptions = {}, _compos
       });
     },
 
-    async read(input: ReadEventInput, ...[_context]: $ContextArgument): Promise<Event[]> {
+    async read<const L extends readonly (keyof EventLoadable)[] = readonly []>(
+      input: Omit<ReadEventInput, "load"> & EventLoadArg<L>,
+      ...[context]: $ContextArgument
+    ): Promise<L extends unknown ? EventWith<EventLoadNames<L>>[] : never> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
-      return $reads.read(input);
+      return $reads.read(input, context);
     },
   });
 }

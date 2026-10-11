@@ -4,11 +4,13 @@
 import {
   expr as $,
   type DeepReadonly as $DeepReadonly,
-  type ReadOnlyResults as $ReadOnlyResults,
   type Scope as $Scope,
 } from "@meshfw/runtime";
 import { machineActiveOf } from "../../../src/domain/execution/execution.helpers";
-import type { Actions as $Actions, Reads as $Reads } from "../../composition";
+import type {
+  ReadOnlyActions as $ReadOnlyActions,
+  ReadOnlyReads as $ReadOnlyReads,
+} from "../../composition";
 import type {
   SessionReference,
   SessionReferenceLoaded,
@@ -24,8 +26,8 @@ export type SessionReferenceScope<I = unknown> = $Scope<{
   actor: any;
   context: any;
   before: $DeepReadonly<SessionReference> | null;
-  actions: $ReadOnlyResults<$Actions>;
-  tx: $ReadOnlyResults<$Reads>;
+  actions: $ReadOnlyActions;
+  tx: $ReadOnlyReads;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
 export type SessionReferenceStoredScope<I = unknown> = SessionReferenceScope<I> & {

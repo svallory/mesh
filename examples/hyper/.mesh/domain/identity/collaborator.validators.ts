@@ -9,6 +9,7 @@ import type {
   RetireCollaboratorInput,
   ReadCollaboratorInput,
   CollaboratorFilter,
+  CollaboratorLoadable,
 } from "./collaborator.types";
 
 type Keys<T> = T extends Record<string, never> ? never : keyof T;
@@ -108,8 +109,15 @@ export const readCollaboratorInput = z.strictObject({
   sort: collaboratorSort.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
-}) satisfies z.ZodType<ReadCollaboratorInput>;
+  load: z
+    .array(z.enum(["memberships"]))
+    .readonly()
+    .optional(),
+}) satisfies z.ZodType<ReadCollaboratorInput<keyof CollaboratorLoadable>>;
 
 export type ReadCollaboratorInputShape = Assert<
-  SameShape<z.output<typeof readCollaboratorInput>, ReadCollaboratorInput>
+  SameShape<
+    z.output<typeof readCollaboratorInput>,
+    ReadCollaboratorInput<keyof CollaboratorLoadable>
+  >
 >;

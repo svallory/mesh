@@ -5,7 +5,7 @@ import { emitError } from "../emit-error.ts";
 import type { EmitInput } from "../emit.ts";
 import { expressionIds } from "./expressions.ts";
 import { hasLoader } from "./load.ts";
-import { camelCase, computedColumns, effectiveActions, entityInputs, entityPath, entitySegment, propertyName, typeName, valueName } from "./inputs.ts";
+import { camelCase, computedColumns, effectiveActions, entityInputs, entityPath, entitySegment, loadGenerics, propertyName, takesLoad, typeName, valueName } from "./inputs.ts";
 import { entityFileComment } from "./types.ts";
 
 /**
@@ -53,6 +53,8 @@ export interface ActionsView {
   readonly methods: readonly ActionMethod[];
   /** The exported function that binds the read bodies, e.g. `bindPostReads`, or `null` when the entity has no read action. */
   readonly readsBindName: string | null;
+  /** What `bind<Entity>Reads` names its second parameter, the binding's options (the clock a loaded computed field reads): `options`, or `_options` when no body loads. */
+  readonly readsOptionsName: string;
   /** One body per read action, without the authorizer slot: what `tx` calls and what the read method calls after that slot. */
   readonly reads: readonly ReadBody[];
 }
@@ -61,11 +63,15 @@ export interface ActionsView {
 export interface ReadBody {
   /** The method key: the action name, lowerCamel, e.g. `read`. */
   readonly name: string;
-  /** The read's input type, e.g. `ReadPostInput`. */
+  /** The read's input type, e.g. `ReadPostInput`, or `ReadPostInput<N>` when it takes `load`. */
   readonly inputType: string;
+  /** The type parameter list as printed (`<const N extends keyof PostLoadable = never>` when the read takes `load`), or the empty string. */
+  readonly generics: string;
+  /** What follows `input` in the parameter list: `, context?: unknown` when the body loads and so reads the caller's context, else the empty string. */
+  readonly contextParam: string;
   /** The validator constant, e.g. `readPostInput`. */
   readonly validator: string;
-  /** The resolved type, e.g. `Post[]`. */
+  /** The resolved type, e.g. `Post[]`, or `PostWith<N>[]` when the read takes `load`. */
   readonly returnType: string;
   /** As on `ActionMethod`: when not `null`, the body validates its input and then throws a `FrameworkError` with this message. */
   readonly unsupported: string | null;
@@ -81,11 +87,13 @@ export interface ActionMethod {
   readonly name: string;
   /** The top-level function the index exports for it: action name + entity name PascalCase, e.g. `publishPost`. */
   readonly functionName: string;
-  /** The action's input type, e.g. `PublishPostInput`. */
+  /** The action's input type, e.g. `PublishPostInput`, or `ReadPostInput<N>` for a read that takes `load`. */
   readonly inputType: string;
+  /** The type parameter list as printed (`<const N extends keyof PostLoadable = never>` for a read that takes `load`), or the empty string. */
+  readonly generics: string;
   /** The validator constant, e.g. `publishPostInput`. */
   readonly validator: string;
-  /** The resolved type, e.g. `Post`, `Post[]`, `void` or `PostWith<"comments">` when a `load` step names fields. */
+  /** The resolved type, e.g. `Post`, `Post[]`, `void`, `PostWith<N>[]` for a read that takes `load`, or `PostWith<"comments">` when a `load` step names fields. */
   readonly returnType: string;
   /** What the method names its context parameter: `context`, or `_context` when the statements do not read it. */
   readonly contextName: string;
@@ -236,6 +244,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
   let planUsed = false;
   let optionsUsed = false;
   let composeUsed = false;
+  let readsLoad = false;
   const readBodies: ReadBody[] = [];
   const methods = actions.map((action, index): ActionMethod => {
     const input = inputs[index]!;
@@ -245,6 +254,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       name,
       functionName: `${name}${recordName}`,
       inputType: input.name,
+      generics: "",
       validator,
     };
     runtime.add("castInput");
@@ -258,14 +268,26 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     };
     if (action.kind === "read") {
       // The body goes to `bind<Entity>Reads`, which `tx` calls; the method runs the authorizer slot, then the body.
-      const body = { name, inputType: input.name, validator, returnType: `${recordName}[]` };
-      const method = { ...base, returnType: `${recordName}[]`, contextName: "_context", notRun: notRun([]), unsupported: null, usesParsed: false,
-        statements: [], isRead: true, readsCall: `$reads.${name}(input)` };
+      // A read that takes `load` is generic in the names it lists: the result is the record with exactly those loaded.
+      const loads = takesLoad(input);
+      // The `load` member comes from the tuple `L` itself, so that TypeScript infers the names written.
+      const inputType = loads ? `Omit<${input.name}, "load"> & ${recordName}LoadArg<L>` : input.name;
+      const generics = loads ? loadGenerics(entity, true) : "";
+      const returnType = loads ? `(L extends unknown ? ${recordName}With<${recordName}LoadNames<L>>[] : never)` : `${recordName}[]`;
+      if (loads) {
+        extraTypes.add(`${recordName}With`);
+        extraTypes.add(`${recordName}LoadNames`);
+        extraTypes.add(`${recordName}LoadArg`);
+        extraTypes.add(`${recordName}Loadable`);
+      }
+      const body = { name, inputType, generics, contextParam: loads ? ", context?: unknown, clock?: () => Date" : "", validator, returnType };
+      const method = { ...base, inputType, generics, returnType, contextName: loads ? "context" : "_context", notRun: notRun([]), unsupported: null, usesParsed: false,
+        statements: [], isRead: true, readsCall: loads ? `$reads.${name}(input, context)` : `$reads.${name}(input)` };
       if (action.filter || action.sort) {
         runtime.add("FrameworkError");
         runtime.add("failJoined");
         const parts = [action.filter ? "filter" : null, action.sort ? "sort" : null].filter(Boolean).join(" and ");
-        readBodies.push({ ...body, usesParsed: false, unsupported: JSON.stringify(
+        readBodies.push({ ...body, contextParam: loads ? ", _context?: unknown" : "", usesParsed: false, unsupported: JSON.stringify(
           `${base.functionName} cannot run in this version: its ${parts} ${action.filter && action.sort ? "are" : "is"} evaluated by the SQL evaluator, which arrives in M10`), statements: [] });
         return method;
       }
@@ -273,10 +295,27 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       // A filter or sort by a computed field or rollup is the SQL evaluator's job (M10): say so before touching the database.
       const computed = computedColumns(entity).map((column) => JSON.stringify(column.name));
       if (computed.length) runtime.add("rejectComputedQuery");
+      const select = `await tx.select(${table}, { ${query} })`;
+      if (loads) {
+        // The names were validated before the transaction opened. The rows are read, then loaded in the same transaction.
+        runtime.add("loadRows");
+        runtime.add("pinClock");
+        planUsed = true;
+        readsLoad = true;
+      }
       readBodies.push({ ...body, unsupported: null, usesParsed: true,
         statements: [
           ...(computed.length ? [`rejectComputedQuery(${JSON.stringify(entity.name)}, [${computed.join(", ")}], parsed);`] : []),
-          `return (await tx.select(${table}, { ${query} })) as ${recordName}[];`,
+          ...(loads
+            ? [
+              `const $rows = (${select}) as ${recordName}[];`,
+              `if (!parsed.load?.length) return $rows as unknown as ${returnType};`,
+              "const $context = (context ?? {}) as unknown as Record<string, unknown>;",
+              // One instant per call: the caller's (a `tx` read inside an action carries the action's), else this read's own.
+              "const $clock = clock ?? $pinClock(options.clock);",
+              `return (await $loadRows($loadPlan, ${JSON.stringify(entity.name)}, tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock })) as unknown as ${returnType};`,
+            ]
+            : [`return (${select}) as ${recordName}[];`]),
         ] });
       return method;
     }
@@ -603,9 +642,15 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       used.options = true;
       prelude.push("const $context = (context ?? {}) as unknown as Record<string, unknown>;", "const $actor = $context.actor;");
     }
-    if (used.now) { used.options = true; prelude.push("const $now = options.clock?.() ?? new Date();"); }
+    // One instant per action call: the scope's `now()`, the `$now` stamps, the `load` step and every `tx` read read it.
+    if (usesContext || used.now) {
+      used.options = true;
+      runtime.add("pinClock");
+      prelude.push("const $clock = $pinClock(options.clock);");
+    }
+    if (used.now) prelude.push("const $now = $clock();");
     const afterHead: string[] = [];
-    if (used.load) afterHead.push("const $load = { actor: $actor, context: $context, clock: options.clock };");
+    if (used.load) afterHead.push("const $load = { actor: $actor, context: $context, clock: $clock };");
     if (used.scope) {
       runtime.add("scope");
       // An update or a destroy reads a stored record, so `before` is never null for its functions.
@@ -625,7 +670,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       // `actions` and `tx` come from the binding's composer, bound to this transaction and carrying this call's context (ADR-0068).
       runtime.add("composed");
       composeUsed = true;
-      afterHead.push(`const $s = $scope({ self: $self, input: $readOnlyRecord(parsed, ${where}), actor: $actor, context: $context, before: ${beforeView}, ...$composed(compose, tx, context, ${where}) }, options) as unknown as ${scopeAlias}<${input.name}>;`);
+      afterHead.push(`const $s = $scope({ self: $self, input: $readOnlyRecord(parsed, ${where}), actor: $actor, context: $context, before: ${beforeView}, ...$composed(compose, tx, context, ${where}, $clock) }, { clock: $clock }) as unknown as ${scopeAlias}<${input.name}>;`);
     }
     if (used.plan) planUsed = true;
     if (used.options) optionsUsed = true;
@@ -650,10 +695,11 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     expressionsFromLiteral: usesExpressions ? JSON.stringify(`./${entitySegment(entity)}.expressions`) : null,
     scopeImports: [...scopes].sort(compareCode),
     loadFromLiteral: planUsed ? fromLiteral(entity, "load") : null,
-    optionsName: optionsUsed ? "options" : "_options",
+    optionsName: optionsUsed || readBodies.length > 0 ? "options" : "_options",
     composeName: composeUsed ? "compose" : "_compose",
     methods,
     readsBindName: readBodies.length ? `bind${recordName}Reads` : null,
+    readsOptionsName: readsLoad ? "options" : "_options",
     reads: readBodies,
   };
 }

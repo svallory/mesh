@@ -15,6 +15,12 @@ export const systemClock: Clock = () => new Date();
 /** The roots an expression reads (`self`, `input`, ...) and the clock `now()` reads. */
 export type Scope<T extends object = Record<string, unknown>> = T & { readonly clock: Clock };
 
+/** A clock that reads `clock` on its first call and gives that same instant (a fresh `Date` each time) after: one instant per action call or load. */
+export function pinClock(clock: Clock = systemClock): Clock {
+  let at: number | undefined;
+  return () => new Date(at ??= clock().getTime());
+}
+
 const instants = new WeakMap<object, Date>();
 
 /** A scope for one evaluation run: `now()` is read from `clock` once and then fixed. */

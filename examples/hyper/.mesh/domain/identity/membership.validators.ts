@@ -9,6 +9,7 @@ import type {
   RevokeMembershipInput,
   ReadMembershipInput,
   MembershipFilter,
+  MembershipLoadable,
 } from "./membership.types";
 
 type Keys<T> = T extends Record<string, never> ? never : keyof T;
@@ -119,8 +120,12 @@ export const readMembershipInput = z.strictObject({
   sort: membershipSort.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
-}) satisfies z.ZodType<ReadMembershipInput>;
+  load: z
+    .array(z.enum(["collaborator", "grantedBy", "revokedBy"]))
+    .readonly()
+    .optional(),
+}) satisfies z.ZodType<ReadMembershipInput<keyof MembershipLoadable>>;
 
 export type ReadMembershipInputShape = Assert<
-  SameShape<z.output<typeof readMembershipInput>, ReadMembershipInput>
+  SameShape<z.output<typeof readMembershipInput>, ReadMembershipInput<keyof MembershipLoadable>>
 >;

@@ -12,7 +12,9 @@ import {
   composed as $composed,
   guarded as $guarded,
   loadInto as $loadInto,
+  loadRows as $loadRows,
   noteWrite as $noteWrite,
+  pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
@@ -26,7 +28,17 @@ import {
   type Issue as $Issue,
   type Row as $Row,
 } from "@meshfw/runtime";
-import type { Run, StartRunInput, CancelRunInput, SettleRunInput, ReadRunInput } from "./run.types";
+import type {
+  Run,
+  RunWith,
+  RunLoadNames,
+  RunLoadArg,
+  RunLoadable,
+  StartRunInput,
+  CancelRunInput,
+  SettleRunInput,
+  ReadRunInput,
+} from "./run.types";
 import { startRunInput, cancelRunInput, settleRunInput, readRunInput } from "./run.validators";
 import { tables } from "../../schema";
 import {
@@ -40,18 +52,31 @@ import { loadPlan as $loadPlan } from "../../load";
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
  * The read actions below run the slot, then these.
  */
-export function bindRunReads(layer: $DataLayer) {
+export function bindRunReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read(input: ReadRunInput): Promise<Run[]> {
+    async read<const L extends readonly (keyof RunLoadable)[] = readonly []>(
+      input: Omit<ReadRunInput, "load"> & RunLoadArg<L>,
+      context?: unknown,
+      clock?: () => Date,
+    ): Promise<L extends unknown ? RunWith<RunLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readRunInput, input);
       return layer.transaction(async (tx) => {
-        return (await tx.select(tables.run, {
+        const $rows = (await tx.select(tables.run, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Run[];
+        if (!parsed.load?.length)
+          return $rows as unknown as L extends unknown ? RunWith<RunLoadNames<L>>[] : never;
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $clock = clock ?? $pinClock(options.clock);
+        return (await $loadRows($loadPlan, "Run", tx, $rows, parsed.load, {
+          actor: $context.actor,
+          context: $context,
+          clock: $clock,
+        })) as unknown as L extends unknown ? RunWith<RunLoadNames<L>>[] : never;
       });
     },
   });
@@ -62,7 +87,7 @@ export function bindRunReads(layer: $DataLayer) {
  * `actions` and `tx`; the project's `bind` in the index passes it.
  */
 export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
-  const $reads = bindRunReads(layer);
+  const $reads = bindRunReads(layer, options);
   return Object.freeze({
     async start(input: StartRunInput, ...[context]: $ContextArgument): Promise<Run> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
@@ -71,7 +96,8 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        const $now = options.clock?.() ?? new Date();
+        const $clock = $pinClock(options.clock);
+        const $now = $clock();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           id: $uuidv7(),
@@ -85,7 +111,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
           parentRunId: null,
         };
         const $record: $Row = { ...$changes, taskId: null, responsibleId: null, startedById: null };
-        const $load = { actor: $actor, context: $context, clock: options.clock };
+        const $load = { actor: $actor, context: $context, clock: $clock };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Run", $record, "action function"),
           "Run.start",
@@ -97,9 +123,9 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
             actor: $actor,
             context: $context,
             before: null,
-            ...$composed(compose, tx, context, "Run.start"),
+            ...$composed(compose, tx, context, "Run.start", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $Scope<StartRunInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -157,6 +183,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.run, $key);
@@ -178,9 +205,9 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
               $guarded($loadPlan, "Run", $before, "before"),
               "Run.cancel",
             ) as unknown as Run,
-            ...$composed(compose, tx, context, "Run.cancel"),
+            ...$composed(compose, tx, context, "Run.cancel", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<CancelRunInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -236,6 +263,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.run, $key);
@@ -257,9 +285,9 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
               $guarded($loadPlan, "Run", $before, "before"),
               "Run.settle",
             ) as unknown as Run,
-            ...$composed(compose, tx, context, "Run.settle"),
+            ...$composed(compose, tx, context, "Run.settle", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<SettleRunInput>;
         // the input: the member inputs the caller sent, applied now that the checks have passed
         if (parsed.outcome !== undefined) $changes.outcome = $record.outcome = parsed.outcome;
@@ -294,9 +322,12 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
       });
     },
 
-    async read(input: ReadRunInput, ...[_context]: $ContextArgument): Promise<Run[]> {
+    async read<const L extends readonly (keyof RunLoadable)[] = readonly []>(
+      input: Omit<ReadRunInput, "load"> & RunLoadArg<L>,
+      ...[context]: $ContextArgument
+    ): Promise<L extends unknown ? RunWith<RunLoadNames<L>>[] : never> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
-      return $reads.read(input);
+      return $reads.read(input, context);
     },
   });
 }

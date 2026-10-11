@@ -198,28 +198,42 @@ declare module "#mesh/domain/todo" {
 
   export type TodoField = "id" | "title" | "done" | "listId" | "insertedAt" | "updatedAt";
 
-  export interface ReadTodoInput {
+  /** What `load` attaches to a Todo; the record has none of it. */
+  export type TodoLoadable = { label: string };
+  /** The names a `load` tuple lists; none for a list that does not say which (a widened array). */
+  export type TodoLoadNames<L extends readonly (keyof TodoLoadable)[]> = number extends L["length"] ? never : L[number];
+  /** The `load` member of a read called with the tuple `L`: required when `L` lists a name. */
+  export type TodoLoadArg<L extends readonly (keyof TodoLoadable)[]> = [TodoLoadNames<L>] extends [never] ? { load?: L | undefined } : { load: L };
+
+  export interface ReadTodoInput<N extends keyof TodoLoadable = never> {
     filter?: Filter<TodoField>;
     sort?: string[];
     limit?: number;
     offset?: number;
-    load?: readonly string[];
+    load?: readonly N[];
   }
 
-  export type TodoOrLabelled = Todo & { label: string };
+  /** The record with the loaded names attached; with none, the plain record. */
+  export type TodoWith<N extends keyof TodoLoadable> = Todo & Pick<TodoLoadable, N>;
 
-  /** A computed field is a property only when the read asked for it: two signatures say so. */
-  export interface PendingTodo {
-    (input: { load: readonly ["label"] }, context: ActionContext): Promise<TodoOrLabelled[]>;
-    (input: { filter?: Filter<TodoField>; load?: readonly string[] }, context: ActionContext): Promise<Todo[]>;
-  }
+  /** A computed field is a property only when the read asked for it: the `const` parameter takes the names as written. */
+  export type PendingTodo = <const L extends readonly (keyof TodoLoadable)[] = readonly []>(
+    input: Omit<ReadTodoInput, "load"> & TodoLoadArg<L>,
+    context: ActionContext,
+  ) => Promise<TodoWith<TodoLoadNames<L>>[]>;
+
+  export type ListLoadable = { todoCount: number };
+  export type ListLoadNames<L extends readonly (keyof ListLoadable)[]> = number extends L["length"] ? never : L[number];
+  export type ListLoadArg<L extends readonly (keyof ListLoadable)[]> = [ListLoadNames<L>] extends [never] ? { load?: L | undefined } : { load: L };
+  export type ListWith<N extends keyof ListLoadable> = List & Pick<ListLoadable, N>;
+  export type ReadListInput<N extends keyof ListLoadable = never> = Omit<ReadTodoInput, "load"> & { load?: readonly N[] };
 
   export function createList(input: { name: string }, context: ActionContext): Promise<List>;
-  export function readList(input: ReadTodoInput, context: ActionContext): Promise<List[]>;
+  export function readList<const L extends readonly (keyof ListLoadable)[] = readonly []>(input: Omit<ReadListInput, "load"> & ListLoadArg<L>, context: ActionContext): Promise<ListWith<ListLoadNames<L>>[]>;
   export function destroyList(input: { id: string }, context: ActionContext): Promise<void>;
   /** `&list` in input takes the related id; the returned record still has listId. */
   export function createTodo(input: { title: string; list: List["id"] }, context: ActionContext): Promise<Todo>;
-  export function readTodo(input: ReadTodoInput, context: ActionContext): Promise<Todo[]>;
+  export function readTodo<const L extends readonly (keyof TodoLoadable)[] = readonly []>(input: Omit<ReadTodoInput, "load"> & TodoLoadArg<L>, context: ActionContext): Promise<TodoWith<TodoLoadNames<L>>[]>;
   export const pendingTodo: PendingTodo;
   export function completeTodo(input: { id: string }, context: ActionContext): Promise<Todo>;
   export function renameTodo(input: { id: string; title: string }, context: ActionContext): Promise<Todo>;
@@ -307,8 +321,8 @@ declare module "#mesh" {
 
   /** The reads of the running transaction; no read policies run. */
   export type Reads = {
-    readList(input: todo.ReadTodoInput): Promise<todo.List[]>;
-    readTodo(input: todo.ReadTodoInput): Promise<todo.Todo[]>;
+    readList<const L extends readonly (keyof todo.ListLoadable)[] = readonly []>(input: Omit<todo.ReadListInput, "load"> & todo.ListLoadArg<L>): Promise<todo.ListWith<todo.ListLoadNames<L>>[]>;
+    readTodo<const L extends readonly (keyof todo.TodoLoadable)[] = readonly []>(input: Omit<todo.ReadTodoInput, "load"> & todo.TodoLoadArg<L>): Promise<todo.TodoWith<todo.TodoLoadNames<L>>[]>;
   };
 
   /** Opens a transaction, or joins the running one, and hands `run` the bound `actions` and `tx`. */

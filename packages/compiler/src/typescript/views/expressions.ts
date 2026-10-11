@@ -165,7 +165,7 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
   // `self` carries every relationship and computed field, each related record the same way (M7): the action loads what
   // a function reads before calling it, and a member that was not loaded throws instead of being undefined.
   const selfType = hasLoader(entity) ? `${recordName}Loaded` : recordName;
-  const scopeType = `$Scope<{ self: $DeepReadonly<${selfType}>; input: $DeepReadonly<I>; actor: any; context: any; before: $DeepReadonly<${recordName}> | null; actions: $ReadOnlyResults<$Actions>; tx: $ReadOnlyResults<$Reads> }>`;
+  const scopeType = `$Scope<{ self: $DeepReadonly<${selfType}>; input: $DeepReadonly<I>; actor: any; context: any; before: $DeepReadonly<${recordName}> | null; actions: $ReadOnlyActions; tx: $ReadOnlyReads }>`;
   const found = collect(entity);
   // On a create, `self` is the new instance (ACT-27): the members nothing has filled yet are null there, so the scopes
   // of the functions that can run on one say so.
