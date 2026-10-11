@@ -64,9 +64,9 @@ export interface ExpressionEntry {
 }
 
 /**
- * Which scope an expression reads: `base` (a computed field, a policy, a step that can run on a create after the write),
- * `stored` (a step on an update or a destroy), `check` (a check on a stored record), `new` (a check that can run on a
- * create) or `create` (a step that can run on a create before the write).
+ * Which scope an expression reads: `base` (a computed field, a step that can run on a create after the write),
+ * `stored` (a step on an update or a destroy), `check` (a check or a policy on a stored record), `new` (a check or a policy
+ * that can run on a create) or `create` (a step that can run on a create before the write).
  */
 type ScopeKind = "base" | "stored" | "check" | "new" | "create";
 /** `actions`: the actions whose input the expression reads as `input`; none (a computed field) reads no input. */
@@ -127,10 +127,11 @@ function collect(entity: Entity): Found[] {
     checks(`always.${i}`, block.validate);
     steps(`always.${i}`, block.do, "");
   });
-  stored = false;
-  phase = "other";
+  // A policy sees what a check sees (POL-08): `self` before the input, no `before`; the new instance when it covers a create.
+  phase = "check";
   for (const policy of entity.policies) {
     actions = covers(policy);
+    stored = !actions.some((action) => action.kind === "create");
     policy.authorizeIf.forEach((e, i) => add(`policy.${policy.name}.authorize-if.${i}`, `policy :${policy.name} authorize-if`, e, true));
     policy.forbidIf.forEach((e, i) => add(`policy.${policy.name}.forbid-if.${i}`, `policy :${policy.name} forbid-if`, e, true));
     if (policy.when) add(`policy.${policy.name}.when`, `policy :${policy.name} when`, policy.when, true);

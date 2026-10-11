@@ -5,6 +5,7 @@ import {
   expr as $,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
+  type SharedInput as $SharedInput,
 } from "@meshfw/runtime";
 import type {
   ReadOnlyActions as $ReadOnlyActions,
@@ -90,4 +91,12 @@ export const expressions = {
   // set &version, translated (src/domain/execution/machine.mesh.mx:84:20)
   "retire.step.0.set.version": ($s: MachineStoredScope<RetireMachineInput>) =>
     $.add($s.self.version, 1),
+  // policy :untilM8b authorize-if, translated (src/domain/execution/machine.mesh.mx:87:20)
+  "policy.untilM8b.authorize-if.0": (
+    _$s: MachineNewScope<
+      $SharedInput<
+        RegisterMachineInput | ReportMachineInput | UpdateMachineInput | RetireMachineInput
+      >
+    >,
+  ) => true,
 } as const;

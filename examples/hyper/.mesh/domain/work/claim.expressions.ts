@@ -5,6 +5,7 @@ import {
   expr as $,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
+  type SharedInput as $SharedInput,
 } from "@meshfw/runtime";
 import {
   derivedStateOf,
@@ -247,4 +248,17 @@ export const expressions = {
   "end.step.0.set.endedAt": ($s: ClaimStoredScope<EndClaimInput>) => $.now($s),
   // set &endReason, translated (src/domain/work/claim.mesh.mx:176:22)
   "end.step.0.set.endReason": ($s: ClaimStoredScope<EndClaimInput>) => $s.input?.reason,
+  // policy :untilM8b authorize-if, translated (src/domain/work/claim.mesh.mx:179:20)
+  "policy.untilM8b.authorize-if.0": (
+    _$s: ClaimNewScope<
+      $SharedInput<
+        | AcquireClaimInput
+        | RenewClaimInput
+        | ReleaseClaimInput
+        | RevokeClaimInput
+        | ExpireClaimInput
+        | EndClaimInput
+      >
+    >,
+  ) => true,
 } as const;

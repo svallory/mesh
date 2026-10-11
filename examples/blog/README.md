@@ -31,6 +31,6 @@ Mesh is at milestone M2 ([roadmap](../../apps/docs/docs/architecture/roadmap/roa
 - `validate` checks, and `do` steps other than a `set` whose values are literals or atoms (M4, M5): `publishPost` sets `state` to `published` but does not check `titlePresent`;
 - a read with `filter` or `sort` (M4): `publishedPost` throws a `FrameworkError` rather than return unfiltered rows;
 - `load`, computed fields and `on:load` (M7);
-- policies and `can<Action>` (M8): nothing checks who calls.
+- `can<Action>` (M8b), and a read policy that reads the record (M10): the policies run (M8a), and a call no policy covers is forbidden, but the read policy `:public` cannot yet keep drafts out (`&state === :published` would be a filter on the query), so it lets every caller read every post; `:owner` lets only a post's author publish, archive or destroy it.
 
 Each generated method starts with a comment naming what it does not run yet.

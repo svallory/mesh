@@ -23,6 +23,9 @@ const author = `entity :Author table="authors"
     create :create
       input
         &name
+  policies
+    policy :open
+      authorize-if=() => true
 `;
 const article = `import { Author } from "./author.mesh.mx"
 
@@ -110,7 +113,7 @@ describe("actions view", () => {
       ["destroy", "destroyArticle", "DestroyArticleInput", "destroyArticleInput", "void"],
     ]);
     expect(view.runtimeValues).toEqual([
-      "FrameworkError as $FrameworkError", "InvalidInputError as $InvalidInputError", "NotFoundError as $NotFoundError", "castInput as $castInput", "checkScope as $checkScope",
+      "FrameworkError as $FrameworkError", "InvalidInputError as $InvalidInputError", "NotFoundError as $NotFoundError", "authorizer as $authorizer", "castInput as $castInput", "checkScope as $checkScope",
       "checkUnchanged as $checkUnchanged", "composed as $composed", "failJoined as $failJoined", "guarded as $guarded", "loadRows as $loadRows",
       "noteWrite as $noteWrite", "pinClock as $pinClock", "readOnlyRecord as $readOnlyRecord", "recordWrite as $recordWrite", "runAction as $runAction", "runCheck as $runCheck", "scope as $scope", "uuidv7 as $uuidv7", "wantsChanges as $wantsChanges", "writeCount as $writeCount"]);
     expect(view.runtimeTypes).toEqual(["Issue as $Issue", "Row as $Row"]);
@@ -122,7 +125,6 @@ describe("actions view", () => {
   test("create builds the new instance in declared order (key, defaults, stamps, null), then applies the input; a set step runs after it", () => {
     const create = viewOf("Article").methods[0]!;
     expect(create.statements.slice(1)).toEqual([
-      "const $clock = $pinClock(options.clock);",
       "const $now = $clock();",
       "// plan: a create is one insert; nothing is read first",
       "const $changes: $Row = {",
@@ -152,7 +154,16 @@ describe("actions view", () => {
       'await $recordWrite(tx, options.seams, { entity: "Article", action: "create" }, null, $stored, parsed, context);',
       "return $stored as Article;",
     ]);
-    expect(create.notRun).toBe("Not run in this version: on:load load; policies everyone");
+    expect(create.notRun).toBe("Not run in this version: on:load load");
+    // M8: the policies run before the transaction (the context and the clock are read there, once, for the whole call).
+    expect(create.preCheck).toEqual([
+      expect.stringMatching(/^\/\/ pre-check: /),
+      "const $context = (context ?? {}) as unknown as Record<string, unknown>;",
+      "const $actor = $context.actor;",
+      "const $clock = $pinClock(options.clock);",
+      'const $policies = $authorizer("Article", "create", [{ name: "everyone", when: null, checks: [{ kind: "authorize-if", check: "() => true", record: false, run: $expressions["policy.everyone.authorize-if.0"] }] }]);',
+      'await $policies.before(layer, $scope({ input: $readOnlyRecord(parsed, "Article.create"), actor: $actor, context: $context }, { clock: $clock }));',
+    ]);
   });
 
   test("update reads the row under the lock, runs the checks, then applies the accepted input and writes only what changed", () => {
@@ -173,13 +184,16 @@ describe("actions view", () => {
     expect(rename!.statements.filter((line) => line.startsWith("await $runCheck"))).toHaveLength(1);
     expect(publish!.statements.filter((line) => line.startsWith("await $runCheck")).map((line) => /label: "(\w+)"/.exec(line)![1])).toEqual(["fresh", "titled"]);
     expect(publish!.returnType).toBe('ArticleWith<"author">');
-    expect(rename!.notRun).toBe("Not run in this version: on:load load; policies editors, everyone");
-    expect(publish!.notRun).toBe("Not run in this version: on:load load; policies everyone");
+    expect(rename!.notRun).toBe("Not run in this version: on:load load");
+    expect(publish!.notRun).toBe("Not run in this version: on:load load");
+    expect(rename!.preCheck.find((line) => line.startsWith("const $policies"))).toContain('[{ name: "editors", when: null, checks: [{ kind: "authorize-if", check: "() => true", record: false, run: $expressions["policy.editors.authorize-if.0"] }] }, { name: "everyone"');
+    // No policy reads the record: nothing runs inside the transaction for them.
+    expect(text).not.toContain("$policies.inside");
   });
 
   test("a read selects every row; a read with filter or sort validates, then throws naming M10", () => {
     const view = viewOf("Article");
-    // The body lives in the reads table (`bindArticleReads`), which `tx` uses; the method passes through the read authorizer slot to it.
+    // The body lives in the reads table (`bindArticleReads`), which `tx` uses; the method evaluates the read's policies, then calls it.
     expect(view.readsBindName).toBe("bindArticleReads");
     const live = view.reads.find((m) => m.name === "live")!;
     expect(live.unsupported).toBe('"liveArticle cannot run in this version: its filter is evaluated by the SQL evaluator, which arrives in M10"');
@@ -193,7 +207,16 @@ describe("actions view", () => {
       'return (await $loadRows($loadPlan, "Article", tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock })) as unknown as (L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never);'],
       generics: "<const L extends readonly (keyof ArticleLoadable)[] = readonly []>", contextParam: ", context?: unknown, clock?: () => Date" });
     expect(view.methods.filter((m) => m.isRead).map((m) => [m.name, m.readsCall, m.statements])).toEqual([
-      ["live", "$reads.live(input, context)", []], ["load", "$reads.load(input, context)", []], ["read", "$reads.read(input, context)", []]]);
+      ["live", "$reads.live(input, context)", []], ["load", "$reads.load(input, context, $clock)", []], ["read", "$reads.read(input, context, $clock)", []]]);
+    // A read's policies are a filter; the read the SQL evaluator must run fails in its body whatever they say.
+    expect(view.methods.find((m) => m.name === "live")!.preCheck).toEqual([]);
+    const readMethod = view.methods.find((m) => m.name === "read")!;
+    expect(readMethod.preCheck.slice(4)).toEqual([
+      'if (!(await $authorizer("Article", "read", [{ name: "everyone", when: null, checks: [{ kind: "authorize-if", check: "() => true", record: false, run: $expressions["policy.everyone.authorize-if.0"] }] }]).filter(layer, $scope({ input: $readOnlyRecord(input as never, "Article.read"), actor: $actor, context: $context }, { clock: $clock })))) {',
+      "await $castInput(layer, readArticleInput, input);",
+      "return [] as unknown as (L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never);",
+      "}",
+    ]);
   });
 
   test("a destroy whose body cannot see the record deletes by key and turns a missing row into NotFoundError", () => {
@@ -209,7 +232,7 @@ describe("actions view", () => {
       "// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write",
       'await $recordWrite(tx, options.seams, { entity: "Article", action: "destroy" }, $before ?? null, null, parsed, context);',
     ]);
-    expect(destroy.notRun).toBe("Not run in this version: policies everyone");
+    expect(destroy.notRun).toBeNull();
   });
 
   test("an entity without actions binds an empty object and imports nothing else", () => {
@@ -353,6 +376,9 @@ describe("explain", () => {
       "Article.publish (update)",
       "  strategy     read-then-write: every update reads the row under the write lock, checks it, changes it, then writes it",
       "  input        none",
+      "  policies     :everyone",
+      "                 authorize-if () => true: before the transaction, once",
+      "               every policy above must pass; in one, any forbid-if that holds or is unknown forbids, and of its authorize-ifs one must hold",
       "  checks       always: fresh (stale)",
       "               titled (t)",
       "  steps        set &state = \"live\"",
@@ -360,7 +386,6 @@ describe("explain", () => {
       "               when () => true",
       "                 run () { }",
       "               load &author",
-      "  policy       everyone: declared, not run in this version (M8)",
       "  seams        beforeTransaction: before the transaction opens, for a top-level call only (a call through `actions` or inside `transaction` joins one and runs none)",
       "               afterWrite: inside the transaction, right after the row is written, before the steps after the write",
       "               afterCommit: once, after the outermost transaction commits, with every change it made",
@@ -392,7 +417,7 @@ describe("explain", () => {
       .replace("    update :rename\n", "    update :rename\n      do\n        run [after=:write] ({ self }) { console.log(self.id) }\n        when=() => true\n          set\n            &views=2\n          run [after=:write] () { }\n        run () { }\n");
     const entity = documentOf({ "blog/author.mesh.mx": author, "blog/article.mesh.mx": source }).entities.find((e) => e.name === "Article")!;
     const rename = explainAction(entity, "rename")!;
-    expect(rename.slice(rename.findIndex((line) => line.startsWith("  steps")), rename.findIndex((line) => line.startsWith("  policy")))).toEqual([
+    expect(rename.slice(rename.findIndex((line) => line.startsWith("  steps")))).toEqual([
       "  steps        when () => true",
       "                 set &views = 2",
       "               run () { }",
@@ -403,7 +428,7 @@ describe("explain", () => {
     ]);
     const purge = explainAction(entity, "purge")!;
     expect(purge[1]).toContain("read-then-write");
-    expect(purge.slice(purge.findIndex((line) => line.startsWith("  after write")), purge.findIndex((line) => line.startsWith("  policy")))).toEqual([
+    expect(purge.slice(purge.findIndex((line) => line.startsWith("  after write")))).toEqual([
       "  after write  self is the deleted row as it was",
       "               run ({ self }) { console.log(self.title) }",
     ]);

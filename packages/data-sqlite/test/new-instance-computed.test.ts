@@ -7,6 +7,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
+import { openPolicies } from "./open-policy.ts";
 import build from "../src/build.ts";
 import { InvalidInputError, type Issue } from "@meshfw/runtime";
 import { createSchema, sqlite } from "../src/index.ts";
@@ -47,7 +48,7 @@ let app: any;
 beforeAll(async () => {
   dir = await mkdtemp(join(import.meta.dir, ".new-instance-computed-"));
   const config: ResolvedConfig = { root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"), data: SQLITE };
-  const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: [{ file: "src/domain/box.mesh.mx", source: box }] });
+  const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: openPolicies([{ file: "src/domain/box.mesh.mx", source: box }]) });
   expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   await writeGeneratedFiles(await generateFiles({ config, document: built.document as ModelDocument }, build), config);
   await Bun.write(join(dir, "mesh.config.ts"), "export default { data: { name: 'sqlite', transaction: async () => undefined, close: async () => undefined } };\n");

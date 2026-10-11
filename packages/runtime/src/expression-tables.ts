@@ -59,6 +59,15 @@ export const EXPRESSION_TABLES: Readonly<Record<string, readonly TableCase[]>> =
   today: [{ args: [], clock: 1_700_000_123_456, result: D(1_699_920_000_000) }],
   coalesce: rows([[1, 2, 1], [N, 2, 2], [N, N, N], [0, 5, 0], ["", "x", ""], [F, T, F], [N, F, F], [D(1), D(2), D(1)]]),
   cond: ([[T, 1, 2, 1], [F, 1, 2, 2], [N, 1, 2, 2], [T, N, 2, N], [F, 1, N, N]] as const).map(([c, a, b, r]) => ({ args: [c, a, b], result: r })),
+  isSystem: [
+    { args: [{ system: true }], result: T },
+    { args: [{ system: false }], result: F },
+    { args: [{ system: "true" }], result: F, note: "only the boolean true counts" },
+    { args: [{ actor: { id: "a" } }], result: F, note: "no system key" },
+    { args: [{}], result: F },
+    { args: [N], result: F, note: "no context" },
+    { args: [true], result: F, note: "not a context" },
+  ],
 });
 
 /**

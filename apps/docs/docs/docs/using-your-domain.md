@@ -288,7 +288,7 @@ Every action throws on failure. All four classes come from `@meshfw/runtime`, ex
 |:--|:--|:--|
 | `InvalidInputError` | `invalid_input` | The input does not fit the action, or a `check` failed |
 | `NotFoundError` | `not_found` | The row the call names does not exist, or is not visible to this actor |
-| `ForbiddenError` | `forbidden` | A policy denied the call. Carries a `breakdown` of every check |
+| `ForbiddenError` | `forbidden` | A policy denied the call, or no policy covers the action. Names the `entity`, the `action` and the failed `policies`, and carries a `breakdown` of the checks that ran |
 | `FrameworkError` | `framework` | A mistake in the program: an action called before `connect`, a load that cannot be served |
 
 `InvalidInputError.issues` holds every failure it collected, one entry each. An entry has a `label` (the label you gave the `check`), the `code` and `message` you wrote, the `details` the check returned (or `null`), a `path` into the input, and, when the failure came from a rule you declared, the file, line and column of the declaration that carried it. The code you declared is on the issue rather than on the error because several checks can fail in one call, and one code on the error could only name one of them.
@@ -372,13 +372,7 @@ for (const todo of open) {
 await disconnect();
 ```
 
-Mesh does nothing with `system` by itself: no policy is skipped. A policy admits an internal write by testing the key, in a helper you write:
-
-```text "src/domain/work/work.helpers.ts (excerpt)"
-export function isSystem(context: { system?: boolean }): boolean {
-  return context.system === true;
-}
-```
+Mesh does nothing with `system` by itself: no policy is skipped. A policy admits an internal write by testing the key with `isSystem(context)`, a built-in function that is true only when `context.system` is the boolean `true`:
 
 ```text "src/domain/work/completion.mesh.mx (excerpt)"
 policy :recordedByCascade types=[:create]
@@ -465,14 +459,15 @@ false
 [
   {
     policy: "owner",
-    check: "&list.ownerId === actor.id",
+    kind: "authorize-if",
+    check: "({ actor }) => &list.ownerId === actor.id",
     result: false,
     decisive: true,
   },
 ]
 ```
 
-`breakdown` is a list, one entry per check: `{ policy, check, result, decisive }`. `policy` is the name of the policy that carried the check, `check` is the check as written, `result` is whether it held, and `decisive` marks the one that decided the answer. It is data, so a test can assert on it. Prefer it to asserting on an error class: when a call is denied on an action that runs as one statement, the row is reported as not found, and `can` is where the reason is.
+`breakdown` is a list, one entry per check that ran: `{ policy, kind, check, result, decisive }`. `policy` is the name of the policy that carried the check, `kind` is `authorize-if`, `forbid-if` or `when`, `check` is the function as written, `result` is whether it held (`true`, `false`, or `null` when the answer was unknown, which fails closed), and `decisive` marks the checks that decided the answer. A `ForbiddenError` carries the same list. It is data, so a test can assert on it. Prefer it to asserting on an error class: when a call is denied on an action that runs as one statement, the row is reported as not found, and `can` is where the reason is.
 
 **What `can` means for a read.** A read's policies usually read the stored row, and that makes them part of the query rather than a per-row decision, so there is no row for `can` to rule on: `canPendingTodo({}, { actor: bob })` answers whether the read is allowed at all, which for the tutorial's todo it is. What Bob does not get is Alice's rows — `pendingTodo({}, { actor: bob })` returns an empty array, not an error. The denials worth asking about are the ones on an action that writes, or a read policy that cannot be folded into the query; use `can` there, and assert on the empty result for a read.
 

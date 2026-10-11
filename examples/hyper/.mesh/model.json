@@ -403,7 +403,40 @@
       ],
       "module": "audit",
       "name": "Event",
-      "policies": [],
+      "policies": [
+        {
+          "authorizeIf": [
+            {
+              "params": [],
+              "position": {
+                "column": 19,
+                "file": "src/domain/audit/event.mesh.mx",
+                "line": 39,
+                "offset": 893
+              },
+              "source": "() => true",
+              "tree": {
+                "kind": "literal",
+                "position": {
+                  "column": 25,
+                  "file": "src/domain/audit/event.mesh.mx",
+                  "line": 39,
+                  "offset": 899
+                },
+                "value": true
+              }
+            }
+          ],
+          "forbidIf": [],
+          "name": "untilM8b",
+          "position": {
+            "column": 4,
+            "file": "src/domain/audit/event.mesh.mx",
+            "line": 38,
+            "offset": 857
+          }
+        }
+      ],
       "position": {
         "column": 0,
         "file": "src/domain/audit/event.mesh.mx",
@@ -2756,7 +2789,40 @@
       ],
       "module": "execution",
       "name": "Attempt",
-      "policies": [],
+      "policies": [
+        {
+          "authorizeIf": [
+            {
+              "params": [],
+              "position": {
+                "column": 19,
+                "file": "src/domain/execution/attempt.mesh.mx",
+                "line": 156,
+                "offset": 6299
+              },
+              "source": "() => true",
+              "tree": {
+                "kind": "literal",
+                "position": {
+                  "column": 25,
+                  "file": "src/domain/execution/attempt.mesh.mx",
+                  "line": 156,
+                  "offset": 6305
+                },
+                "value": true
+              }
+            }
+          ],
+          "forbidIf": [],
+          "name": "untilM8b",
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/attempt.mesh.mx",
+            "line": 155,
+            "offset": 6263
+          }
+        }
+      ],
       "position": {
         "column": 0,
         "file": "src/domain/execution/attempt.mesh.mx",
@@ -4265,7 +4331,40 @@
       ],
       "module": "execution",
       "name": "Invocation",
-      "policies": [],
+      "policies": [
+        {
+          "authorizeIf": [
+            {
+              "params": [],
+              "position": {
+                "column": 19,
+                "file": "src/domain/execution/invocation.mesh.mx",
+                "line": 105,
+                "offset": 3798
+              },
+              "source": "() => true",
+              "tree": {
+                "kind": "literal",
+                "position": {
+                  "column": 25,
+                  "file": "src/domain/execution/invocation.mesh.mx",
+                  "line": 105,
+                  "offset": 3804
+                },
+                "value": true
+              }
+            }
+          ],
+          "forbidIf": [],
+          "name": "untilM8b",
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/invocation.mesh.mx",
+            "line": 104,
+            "offset": 3762
+          }
+        }
+      ],
       "position": {
         "column": 0,
         "file": "src/domain/execution/invocation.mesh.mx",
@@ -5535,7 +5634,40 @@
       ],
       "module": "execution",
       "name": "Machine",
-      "policies": [],
+      "policies": [
+        {
+          "authorizeIf": [
+            {
+              "params": [],
+              "position": {
+                "column": 19,
+                "file": "src/domain/execution/machine.mesh.mx",
+                "line": 87,
+                "offset": 2929
+              },
+              "source": "() => true",
+              "tree": {
+                "kind": "literal",
+                "position": {
+                  "column": 25,
+                  "file": "src/domain/execution/machine.mesh.mx",
+                  "line": 87,
+                  "offset": 2935
+                },
+                "value": true
+              }
+            }
+          ],
+          "forbidIf": [],
+          "name": "untilM8b",
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/machine.mesh.mx",
+            "line": 86,
+            "offset": 2893
+          }
+        }
+      ],
       "position": {
         "column": 0,
         "file": "src/domain/execution/machine.mesh.mx",
@@ -6630,7 +6762,40 @@
       ],
       "module": "execution",
       "name": "Run",
-      "policies": [],
+      "policies": [
+        {
+          "authorizeIf": [
+            {
+              "params": [],
+              "position": {
+                "column": 19,
+                "file": "src/domain/execution/run.mesh.mx",
+                "line": 77,
+                "offset": 2570
+              },
+              "source": "() => true",
+              "tree": {
+                "kind": "literal",
+                "position": {
+                  "column": 25,
+                  "file": "src/domain/execution/run.mesh.mx",
+                  "line": 77,
+                  "offset": 2576
+                },
+                "value": true
+              }
+            }
+          ],
+          "forbidIf": [],
+          "name": "untilM8b",
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/run.mesh.mx",
+            "line": 76,
+            "offset": 2534
+          }
+        }
+      ],
       "position": {
         "column": 0,
         "file": "src/domain/execution/run.mesh.mx",
@@ -7916,7 +8081,40 @@
       ],
       "module": "execution",
       "name": "SessionReference",
-      "policies": [],
+      "policies": [
+        {
+          "authorizeIf": [
+            {
+              "params": [],
+              "position": {
+                "column": 19,
+                "file": "src/domain/execution/session-reference.mesh.mx",
+                "line": 90,
+                "offset": 3241
+              },
+              "source": "() => true",
+              "tree": {
+                "kind": "literal",
+                "position": {
+                  "column": 25,
+                  "file": "src/domain/execution/session-reference.mesh.mx",
+                  "line": 90,
+                  "offset": 3247
+                },
+                "value": true
+              }
+            }
+          ],
+          "forbidIf": [],
+          "name": "untilM8b",
+          "position": {
+            "column": 4,
+            "file": "src/domain/execution/session-reference.mesh.mx",
+            "line": 89,
+            "offset": 3205
+          }
+        }
+      ],
       "position": {
         "column": 0,
         "file": "src/domain/execution/session-reference.mesh.mx",
@@ -9094,7 +9292,40 @@
       ],
       "module": "identity",
       "name": "Collaborator",
-      "policies": [],
+      "policies": [
+        {
+          "authorizeIf": [
+            {
+              "params": [],
+              "position": {
+                "column": 19,
+                "file": "src/domain/identity/collaborator.mesh.mx",
+                "line": 81,
+                "offset": 2877
+              },
+              "source": "() => true",
+              "tree": {
+                "kind": "literal",
+                "position": {
+                  "column": 25,
+                  "file": "src/domain/identity/collaborator.mesh.mx",
+                  "line": 81,
+                  "offset": 2883
+                },
+                "value": true
+              }
+            }
+          ],
+          "forbidIf": [],
+          "name": "untilM8b",
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/collaborator.mesh.mx",
+            "line": 80,
+            "offset": 2841
+          }
+        }
+      ],
       "position": {
         "column": 0,
         "file": "src/domain/identity/collaborator.mesh.mx",
@@ -10459,7 +10690,40 @@
       ],
       "module": "identity",
       "name": "Membership",
-      "policies": [],
+      "policies": [
+        {
+          "authorizeIf": [
+            {
+              "params": [],
+              "position": {
+                "column": 19,
+                "file": "src/domain/identity/membership.mesh.mx",
+                "line": 94,
+                "offset": 3516
+              },
+              "source": "() => true",
+              "tree": {
+                "kind": "literal",
+                "position": {
+                  "column": 25,
+                  "file": "src/domain/identity/membership.mesh.mx",
+                  "line": 94,
+                  "offset": 3522
+                },
+                "value": true
+              }
+            }
+          ],
+          "forbidIf": [],
+          "name": "untilM8b",
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/membership.mesh.mx",
+            "line": 93,
+            "offset": 3480
+          }
+        }
+      ],
       "position": {
         "column": 0,
         "file": "src/domain/identity/membership.mesh.mx",
@@ -10994,7 +11258,40 @@
       "imports": [],
       "module": "identity",
       "name": "Workspace",
-      "policies": [],
+      "policies": [
+        {
+          "authorizeIf": [
+            {
+              "params": [],
+              "position": {
+                "column": 19,
+                "file": "src/domain/identity/workspace.mesh.mx",
+                "line": 34,
+                "offset": 1091
+              },
+              "source": "() => true",
+              "tree": {
+                "kind": "literal",
+                "position": {
+                  "column": 25,
+                  "file": "src/domain/identity/workspace.mesh.mx",
+                  "line": 34,
+                  "offset": 1097
+                },
+                "value": true
+              }
+            }
+          ],
+          "forbidIf": [],
+          "name": "untilM8b",
+          "position": {
+            "column": 4,
+            "file": "src/domain/identity/workspace.mesh.mx",
+            "line": 33,
+            "offset": 1055
+          }
+        }
+      ],
       "position": {
         "column": 0,
         "file": "src/domain/identity/workspace.mesh.mx",
@@ -11432,7 +11729,40 @@
       ],
       "module": "work",
       "name": "Assignment",
-      "policies": [],
+      "policies": [
+        {
+          "authorizeIf": [
+            {
+              "params": [],
+              "position": {
+                "column": 19,
+                "file": "src/domain/work/assignment.mesh.mx",
+                "line": 40,
+                "offset": 1102
+              },
+              "source": "() => true",
+              "tree": {
+                "kind": "literal",
+                "position": {
+                  "column": 25,
+                  "file": "src/domain/work/assignment.mesh.mx",
+                  "line": 40,
+                  "offset": 1108
+                },
+                "value": true
+              }
+            }
+          ],
+          "forbidIf": [],
+          "name": "untilM8b",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/assignment.mesh.mx",
+            "line": 39,
+            "offset": 1066
+          }
+        }
+      ],
       "position": {
         "column": 0,
         "file": "src/domain/work/assignment.mesh.mx",
@@ -14507,7 +14837,40 @@
       ],
       "module": "work",
       "name": "Claim",
-      "policies": [],
+      "policies": [
+        {
+          "authorizeIf": [
+            {
+              "params": [],
+              "position": {
+                "column": 19,
+                "file": "src/domain/work/claim.mesh.mx",
+                "line": 179,
+                "offset": 7002
+              },
+              "source": "() => true",
+              "tree": {
+                "kind": "literal",
+                "position": {
+                  "column": 25,
+                  "file": "src/domain/work/claim.mesh.mx",
+                  "line": 179,
+                  "offset": 7008
+                },
+                "value": true
+              }
+            }
+          ],
+          "forbidIf": [],
+          "name": "untilM8b",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/claim.mesh.mx",
+            "line": 178,
+            "offset": 6966
+          }
+        }
+      ],
       "position": {
         "column": 0,
         "file": "src/domain/work/claim.mesh.mx",
@@ -14760,7 +15123,40 @@
       ],
       "module": "work",
       "name": "Completion",
-      "policies": [],
+      "policies": [
+        {
+          "authorizeIf": [
+            {
+              "params": [],
+              "position": {
+                "column": 19,
+                "file": "src/domain/work/completion.mesh.mx",
+                "line": 25,
+                "offset": 721
+              },
+              "source": "() => true",
+              "tree": {
+                "kind": "literal",
+                "position": {
+                  "column": 25,
+                  "file": "src/domain/work/completion.mesh.mx",
+                  "line": 25,
+                  "offset": 727
+                },
+                "value": true
+              }
+            }
+          ],
+          "forbidIf": [],
+          "name": "untilM8b",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/completion.mesh.mx",
+            "line": 24,
+            "offset": 685
+          }
+        }
+      ],
       "position": {
         "column": 0,
         "file": "src/domain/work/completion.mesh.mx",
@@ -15569,7 +15965,40 @@
       ],
       "module": "work",
       "name": "Dependency",
-      "policies": [],
+      "policies": [
+        {
+          "authorizeIf": [
+            {
+              "params": [],
+              "position": {
+                "column": 19,
+                "file": "src/domain/work/dependency.mesh.mx",
+                "line": 70,
+                "offset": 2974
+              },
+              "source": "() => true",
+              "tree": {
+                "kind": "literal",
+                "position": {
+                  "column": 25,
+                  "file": "src/domain/work/dependency.mesh.mx",
+                  "line": 70,
+                  "offset": 2980
+                },
+                "value": true
+              }
+            }
+          ],
+          "forbidIf": [],
+          "name": "untilM8b",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/dependency.mesh.mx",
+            "line": 69,
+            "offset": 2938
+          }
+        }
+      ],
       "position": {
         "column": 0,
         "file": "src/domain/work/dependency.mesh.mx",
@@ -15855,7 +16284,40 @@
       ],
       "module": "work",
       "name": "EvidenceReference",
-      "policies": [],
+      "policies": [
+        {
+          "authorizeIf": [
+            {
+              "params": [],
+              "position": {
+                "column": 19,
+                "file": "src/domain/work/evidence-reference.mesh.mx",
+                "line": 25,
+                "offset": 605
+              },
+              "source": "() => true",
+              "tree": {
+                "kind": "literal",
+                "position": {
+                  "column": 25,
+                  "file": "src/domain/work/evidence-reference.mesh.mx",
+                  "line": 25,
+                  "offset": 611
+                },
+                "value": true
+              }
+            }
+          ],
+          "forbidIf": [],
+          "name": "untilM8b",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/evidence-reference.mesh.mx",
+            "line": 24,
+            "offset": 569
+          }
+        }
+      ],
       "position": {
         "column": 0,
         "file": "src/domain/work/evidence-reference.mesh.mx",
@@ -16244,7 +16706,40 @@
       ],
       "module": "work",
       "name": "LateResult",
-      "policies": [],
+      "policies": [
+        {
+          "authorizeIf": [
+            {
+              "params": [],
+              "position": {
+                "column": 19,
+                "file": "src/domain/work/late-result.mesh.mx",
+                "line": 39,
+                "offset": 1358
+              },
+              "source": "() => true",
+              "tree": {
+                "kind": "literal",
+                "position": {
+                  "column": 25,
+                  "file": "src/domain/work/late-result.mesh.mx",
+                  "line": 39,
+                  "offset": 1364
+                },
+                "value": true
+              }
+            }
+          ],
+          "forbidIf": [],
+          "name": "untilM8b",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/late-result.mesh.mx",
+            "line": 38,
+            "offset": 1322
+          }
+        }
+      ],
       "position": {
         "column": 0,
         "file": "src/domain/work/late-result.mesh.mx",
@@ -17151,7 +17646,40 @@
       ],
       "module": "work",
       "name": "Review",
-      "policies": [],
+      "policies": [
+        {
+          "authorizeIf": [
+            {
+              "params": [],
+              "position": {
+                "column": 19,
+                "file": "src/domain/work/review.mesh.mx",
+                "line": 76,
+                "offset": 3671
+              },
+              "source": "() => true",
+              "tree": {
+                "kind": "literal",
+                "position": {
+                  "column": 25,
+                  "file": "src/domain/work/review.mesh.mx",
+                  "line": 76,
+                  "offset": 3677
+                },
+                "value": true
+              }
+            }
+          ],
+          "forbidIf": [],
+          "name": "untilM8b",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/review.mesh.mx",
+            "line": 75,
+            "offset": 3635
+          }
+        }
+      ],
       "position": {
         "column": 0,
         "file": "src/domain/work/review.mesh.mx",
@@ -18611,7 +19139,40 @@
       ],
       "module": "work",
       "name": "Submission",
-      "policies": [],
+      "policies": [
+        {
+          "authorizeIf": [
+            {
+              "params": [],
+              "position": {
+                "column": 19,
+                "file": "src/domain/work/submission.mesh.mx",
+                "line": 112,
+                "offset": 4413
+              },
+              "source": "() => true",
+              "tree": {
+                "kind": "literal",
+                "position": {
+                  "column": 25,
+                  "file": "src/domain/work/submission.mesh.mx",
+                  "line": 112,
+                  "offset": 4419
+                },
+                "value": true
+              }
+            }
+          ],
+          "forbidIf": [],
+          "name": "untilM8b",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/submission.mesh.mx",
+            "line": 111,
+            "offset": 4377
+          }
+        }
+      ],
       "position": {
         "column": 0,
         "file": "src/domain/work/submission.mesh.mx",
@@ -24335,7 +24896,40 @@
       ],
       "module": "work",
       "name": "Task",
-      "policies": [],
+      "policies": [
+        {
+          "authorizeIf": [
+            {
+              "params": [],
+              "position": {
+                "column": 19,
+                "file": "src/domain/work/task.mesh.mx",
+                "line": 342,
+                "offset": 15580
+              },
+              "source": "() => true",
+              "tree": {
+                "kind": "literal",
+                "position": {
+                  "column": 25,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 342,
+                  "offset": 15586
+                },
+                "value": true
+              }
+            }
+          ],
+          "forbidIf": [],
+          "name": "untilM8b",
+          "position": {
+            "column": 4,
+            "file": "src/domain/work/task.mesh.mx",
+            "line": 341,
+            "offset": 15544
+          }
+        }
+      ],
       "position": {
         "column": 0,
         "file": "src/domain/work/task.mesh.mx",

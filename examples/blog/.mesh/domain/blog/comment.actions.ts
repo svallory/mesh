@@ -3,9 +3,12 @@
 // Mesh's own imports carry a `$` so that no entity name can shadow them.
 
 import {
+  authorizer as $authorizer,
   castInput as $castInput,
   loadRows as $loadRows,
   pinClock as $pinClock,
+  readOnlyRecord as $readOnlyRecord,
+  scope as $scope,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
@@ -21,11 +24,12 @@ import type {
 } from "./comment.types";
 import { readCommentInput } from "./comment.validators";
 import { tables } from "../../schema";
+import { expressions as $expressions } from "./comment.expressions";
 import { loadPlan as $loadPlan } from "../../load";
 
 /**
- * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
- * The read actions below run the slot, then these.
+ * The reads of this entity without their policies: what `tx` holds in a function of an entity file (ADR-0068).
+ * The read actions below evaluate the read's policies, then call these.
  */
 export function bindCommentReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
@@ -68,8 +72,40 @@ export function bindComment(layer: $DataLayer, options: $BindOptions = {}, _comp
       input: Omit<ReadCommentInput, "load"> & CommentLoadArg<L>,
       ...[context]: $ContextArgument
     ): Promise<L extends unknown ? CommentWith<CommentLoadNames<L>>[] : never> {
-      // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
-      return $reads.read(input, context);
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a read through `tx` skips them
+      const $context = (context ?? {}) as unknown as Record<string, unknown>;
+      const $actor = $context.actor;
+      const $clock = $pinClock(options.clock);
+      if (
+        !(await $authorizer("Comment", "read", [
+          {
+            name: "signedIn",
+            when: null,
+            checks: [
+              {
+                kind: "authorize-if",
+                check: "({ actor }) => actor.id !== null",
+                record: false,
+                run: $expressions["policy.signedIn.authorize-if.0"],
+              },
+            ],
+          },
+        ]).filter(
+          layer,
+          $scope(
+            {
+              input: $readOnlyRecord(input as never, "Comment.read"),
+              actor: $actor,
+              context: $context,
+            },
+            { clock: $clock },
+          ),
+        ))
+      ) {
+        await $castInput(layer, readCommentInput, input);
+        return [] as unknown as L extends unknown ? CommentWith<CommentLoadNames<L>>[] : never;
+      }
+      return $reads.read(input, context, $clock);
     },
   });
 }

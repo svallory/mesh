@@ -1,6 +1,7 @@
 import { dirname, resolve } from "node:path";
 import type { Diagnostic, Entity, Expression, ExprNode, ModelDocument, SourcePosition } from "@meshfw/model";
 import { actionExpressions } from "./action-expressions.ts";
+import { policyExpressions } from "./policies.ts";
 import { inverseProblem } from "./inverse.ts";
 import { error } from "./diagnostics.ts";
 
@@ -94,6 +95,12 @@ export function computeNeeds(document: ModelDocument, diagnostics: Diagnostic[])
       const needs = needsOf(entity, expression, what, expression.position);
       if (needs.length) expression.needs = needs;
     }
+    // So do a policy's checks that read the record (M8): they are loaded onto the locked row or the new instance first.
+    for (const policy of entity.policies)
+      for (const { expression, what } of policyExpressions(policy)) {
+        const needs = needsOf(entity, expression, what, expression.position);
+        if (needs.length) expression.needs = needs;
+      }
     // Two computed fields that read each other can never be loaded.
     const edges = new Map(entity.computed.map((c) => [c.name, (c.needs ?? []).filter((n) => entity.computed.some((o) => o.name === n))]));
     const state = new Map<string, "walking" | "done">();

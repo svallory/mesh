@@ -337,3 +337,6 @@ entity :Task table="tasks"
             await actions.endClaim({ id: claim.id, outcome: :revoked, reason: "unassigned" });
           await actions.finishAssignment({ id: current.id, reason: :unassigned });
         }
+  policies
+    policy :untilM8b
+      authorize-if=() => true

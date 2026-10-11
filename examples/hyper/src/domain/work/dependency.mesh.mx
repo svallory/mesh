@@ -65,3 +65,6 @@ entity :Dependency table="dependencies"
         run [after=:write] ({ self, actions }) {
           await actions.touchTask({ id: self.dependentId });
         }
+  policies
+    policy :untilM8b
+      authorize-if=() => true

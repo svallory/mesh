@@ -26,9 +26,26 @@ export type EvidenceReferenceScope<I = unknown> = $Scope<{
 export type EvidenceReferenceStoredScope<I = unknown> = EvidenceReferenceScope<I> & {
   before: $DeepReadonly<EvidenceReference>;
 };
+/** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
+export type EvidenceReferenceCheckScope<I = unknown> = Omit<EvidenceReferenceScope<I>, "before">;
+/** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
+export type EvidenceReferenceNewScope<I = unknown> = Omit<
+  EvidenceReferenceCheckScope<I>,
+  "self"
+> & {
+  self: $DeepReadonly<
+    Omit<EvidenceReferenceLoaded, "kind" | "locator" | "recordedById" | "recordedBy"> & {
+      [K in "kind" | "locator" | "recordedById" | "recordedBy"]: EvidenceReferenceLoaded[K] | null;
+    }
+  >;
+};
 
 export const expressions = {
   // set &recordedBy, translated (src/domain/work/evidence-reference.mesh.mx:22:23)
   "record.step.0.set.recordedBy": ($s: EvidenceReferenceScope<RecordEvidenceReferenceInput>) =>
     $s.actor?.id,
+  // policy :untilM8b authorize-if, translated (src/domain/work/evidence-reference.mesh.mx:25:20)
+  "policy.untilM8b.authorize-if.0": (
+    _$s: EvidenceReferenceNewScope<RecordEvidenceReferenceInput>,
+  ) => true,
 } as const;

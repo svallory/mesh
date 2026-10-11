@@ -55,7 +55,65 @@
       ],
       "module": "blog",
       "name": "Comment",
-      "policies": [],
+      "policies": [
+        {
+          "authorizeIf": [
+            {
+              "params": [
+                "actor"
+              ],
+              "position": {
+                "column": 19,
+                "file": "src/domain/blog/comment.mesh.mx",
+                "line": 12,
+                "offset": 250
+              },
+              "source": "({ actor }) => actor.id !== null",
+              "tree": {
+                "args": [
+                  {
+                    "kind": "member",
+                    "name": "id",
+                    "object": {
+                      "kind": "var",
+                      "name": "actor",
+                      "position": {
+                        "column": 34,
+                        "file": "src/domain/blog/comment.mesh.mx",
+                        "line": 12,
+                        "offset": 265
+                      }
+                    },
+                    "optional": false,
+                    "position": {
+                      "column": 34,
+                      "file": "src/domain/blog/comment.mesh.mx",
+                      "line": 12,
+                      "offset": 265
+                    }
+                  }
+                ],
+                "fn": "isNotNull",
+                "kind": "call",
+                "position": {
+                  "column": 34,
+                  "file": "src/domain/blog/comment.mesh.mx",
+                  "line": 12,
+                  "offset": 265
+                }
+              }
+            }
+          ],
+          "forbidIf": [],
+          "name": "signedIn",
+          "position": {
+            "column": 4,
+            "file": "src/domain/blog/comment.mesh.mx",
+            "line": 11,
+            "offset": 214
+          }
+        }
+      ],
       "position": {
         "column": 0,
         "file": "src/domain/blog/comment.mesh.mx",
@@ -691,49 +749,16 @@
                 "line": 46,
                 "offset": 1317
               },
-              "source": "() => &state === :published",
+              "source": "() => true",
               "tree": {
-                "args": [
-                  {
-                    "kind": "member",
-                    "name": "state",
-                    "object": {
-                      "kind": "var",
-                      "name": "self",
-                      "position": {
-                        "column": 25,
-                        "file": "src/domain/blog/post.mesh.mx",
-                        "line": 46,
-                        "offset": 1323
-                      }
-                    },
-                    "optional": false,
-                    "position": {
-                      "column": 25,
-                      "file": "src/domain/blog/post.mesh.mx",
-                      "line": 46,
-                      "offset": 1323
-                    }
-                  },
-                  {
-                    "kind": "atom",
-                    "position": {
-                      "column": 36,
-                      "file": "src/domain/blog/post.mesh.mx",
-                      "line": 46,
-                      "offset": 1334
-                    },
-                    "value": "published"
-                  }
-                ],
-                "fn": "eq",
-                "kind": "call",
+                "kind": "literal",
                 "position": {
                   "column": 25,
                   "file": "src/domain/blog/post.mesh.mx",
                   "line": 46,
                   "offset": 1323
-                }
+                },
+                "value": true
               }
             }
           ],
@@ -750,26 +775,6 @@
           ]
         },
         {
-          "actions": [
-            {
-              "name": "publish",
-              "position": {
-                "column": 27,
-                "file": "src/domain/blog/post.mesh.mx",
-                "line": 47,
-                "offset": 1372
-              }
-            },
-            {
-              "name": "archive",
-              "position": {
-                "column": 37,
-                "file": "src/domain/blog/post.mesh.mx",
-                "line": 47,
-                "offset": 1382
-              }
-            }
-          ],
           "authorizeIf": [
             {
               "params": [
@@ -779,7 +784,99 @@
                 "column": 19,
                 "file": "src/domain/blog/post.mesh.mx",
                 "line": 48,
-                "offset": 1411
+                "offset": 1384
+              },
+              "source": "({ actor }) => actor.id !== null",
+              "tree": {
+                "args": [
+                  {
+                    "kind": "member",
+                    "name": "id",
+                    "object": {
+                      "kind": "var",
+                      "name": "actor",
+                      "position": {
+                        "column": 34,
+                        "file": "src/domain/blog/post.mesh.mx",
+                        "line": 48,
+                        "offset": 1399
+                      }
+                    },
+                    "optional": false,
+                    "position": {
+                      "column": 34,
+                      "file": "src/domain/blog/post.mesh.mx",
+                      "line": 48,
+                      "offset": 1399
+                    }
+                  }
+                ],
+                "fn": "isNotNull",
+                "kind": "call",
+                "position": {
+                  "column": 34,
+                  "file": "src/domain/blog/post.mesh.mx",
+                  "line": 48,
+                  "offset": 1399
+                }
+              }
+            }
+          ],
+          "forbidIf": [],
+          "name": "signedIn",
+          "position": {
+            "column": 4,
+            "file": "src/domain/blog/post.mesh.mx",
+            "line": 47,
+            "offset": 1332
+          },
+          "types": [
+            "create"
+          ]
+        },
+        {
+          "actions": [
+            {
+              "name": "publish",
+              "position": {
+                "column": 27,
+                "file": "src/domain/blog/post.mesh.mx",
+                "line": 49,
+                "offset": 1444
+              }
+            },
+            {
+              "name": "archive",
+              "position": {
+                "column": 37,
+                "file": "src/domain/blog/post.mesh.mx",
+                "line": 49,
+                "offset": 1454
+              }
+            },
+            {
+              "name": "destroy",
+              "position": {
+                "column": 47,
+                "file": "src/domain/blog/post.mesh.mx",
+                "line": 49,
+                "offset": 1464
+              }
+            }
+          ],
+          "authorizeIf": [
+            {
+              "needs": [
+                "author"
+              ],
+              "params": [
+                "actor"
+              ],
+              "position": {
+                "column": 19,
+                "file": "src/domain/blog/post.mesh.mx",
+                "line": 50,
+                "offset": 1493
               },
               "source": "({ actor }) => &author.id === actor.id",
               "tree": {
@@ -796,24 +893,24 @@
                         "position": {
                           "column": 34,
                           "file": "src/domain/blog/post.mesh.mx",
-                          "line": 48,
-                          "offset": 1426
+                          "line": 50,
+                          "offset": 1508
                         }
                       },
                       "optional": false,
                       "position": {
                         "column": 34,
                         "file": "src/domain/blog/post.mesh.mx",
-                        "line": 48,
-                        "offset": 1426
+                        "line": 50,
+                        "offset": 1508
                       }
                     },
                     "optional": false,
                     "position": {
                       "column": 34,
                       "file": "src/domain/blog/post.mesh.mx",
-                      "line": 48,
-                      "offset": 1426
+                      "line": 50,
+                      "offset": 1508
                     }
                   },
                   {
@@ -825,16 +922,16 @@
                       "position": {
                         "column": 49,
                         "file": "src/domain/blog/post.mesh.mx",
-                        "line": 48,
-                        "offset": 1441
+                        "line": 50,
+                        "offset": 1523
                       }
                     },
                     "optional": false,
                     "position": {
                       "column": 49,
                       "file": "src/domain/blog/post.mesh.mx",
-                      "line": 48,
-                      "offset": 1441
+                      "line": 50,
+                      "offset": 1523
                     }
                   }
                 ],
@@ -843,8 +940,8 @@
                 "position": {
                   "column": 34,
                   "file": "src/domain/blog/post.mesh.mx",
-                  "line": 48,
-                  "offset": 1426
+                  "line": 50,
+                  "offset": 1508
                 }
               }
             }
@@ -854,8 +951,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/blog/post.mesh.mx",
-            "line": 47,
-            "offset": 1349
+            "line": 49,
+            "offset": 1421
           }
         }
       ],
@@ -968,7 +1065,65 @@
       "imports": [],
       "module": "blog",
       "name": "User",
-      "policies": [],
+      "policies": [
+        {
+          "authorizeIf": [
+            {
+              "params": [
+                "actor"
+              ],
+              "position": {
+                "column": 19,
+                "file": "src/domain/blog/user.mesh.mx",
+                "line": 11,
+                "offset": 201
+              },
+              "source": "({ actor }) => actor.id !== null",
+              "tree": {
+                "args": [
+                  {
+                    "kind": "member",
+                    "name": "id",
+                    "object": {
+                      "kind": "var",
+                      "name": "actor",
+                      "position": {
+                        "column": 34,
+                        "file": "src/domain/blog/user.mesh.mx",
+                        "line": 11,
+                        "offset": 216
+                      }
+                    },
+                    "optional": false,
+                    "position": {
+                      "column": 34,
+                      "file": "src/domain/blog/user.mesh.mx",
+                      "line": 11,
+                      "offset": 216
+                    }
+                  }
+                ],
+                "fn": "isNotNull",
+                "kind": "call",
+                "position": {
+                  "column": 34,
+                  "file": "src/domain/blog/user.mesh.mx",
+                  "line": 11,
+                  "offset": 216
+                }
+              }
+            }
+          ],
+          "forbidIf": [],
+          "name": "signedIn",
+          "position": {
+            "column": 4,
+            "file": "src/domain/blog/user.mesh.mx",
+            "line": 10,
+            "offset": 165
+          }
+        }
+      ],
       "position": {
         "column": 0,
         "file": "src/domain/blog/user.mesh.mx",

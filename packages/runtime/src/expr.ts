@@ -113,6 +113,13 @@ export function cond<T>(c: unknown, a: T, b: T): T {
   return bool(c, "cond") === true ? a : b;
 }
 
+/**
+ * `isSystem(context)`: true only when the value is an object whose `system` key is `true` (ADR-0071). Never unknown: a missing
+ * context, a missing key or any other value is false, so a policy that admits internal writes with it fails closed.
+ */
+export const isSystem = (context: unknown): boolean =>
+  context !== null && typeof context === "object" && (context as { system?: unknown }).system === true;
+
 const holdsTest = (v: unknown, fn: string) => bool(v, fn) === true;
 /** `true` iff some element's predicate is true; an unknown predicate does not count. */
 export function some<T>(items: readonly T[] | null | undefined, p: (item: T) => unknown): boolean | null {
@@ -141,6 +148,6 @@ export const holds = (v: unknown): boolean => v === true;
 /** The namespace generated code calls: `$.gte(a, b)`. */
 export const expr = Object.freeze({
   eq, ne, isNull: isNullFn, isNotNull, lt, lte, gt, gte, and, or, not,
-  add, sub, mul, div, idiv, neg, length, now, today, coalesce, cond,
+  add, sub, mul, div, idiv, neg, length, now, today, coalesce, cond, isSystem,
   some, every, find, filter, asBool, holds,
 });

@@ -29,3 +29,6 @@ entity :Workspace table="workspaces"
       do
         set
           &version=() => &version + 1
+  policies
+    policy :untilM8b
+      authorize-if=() => true

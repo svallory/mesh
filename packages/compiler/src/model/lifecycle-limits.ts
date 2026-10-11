@@ -1,6 +1,7 @@
 import type { ActionType, Diagnostic, Entity, ModelDocument, Step } from "@meshfw/model";
 import { actionExpressions, type ActionExpression } from "./action-expressions.ts";
 import { error } from "./diagnostics.ts";
+import { policiesCovering, policyExpressions, readsRecord } from "./policies.ts";
 
 /** True when the function only ever runs in a create: an action that is one, or an `always` block that covers nothing else. */
 function createOnly(entity: Entity, owner: ActionExpression["owner"]): boolean {
@@ -13,7 +14,8 @@ function createOnly(entity: Entity, owner: ActionExpression["owner"]): boolean {
 
 /**
  * What the action lifecycle (M5) cannot run is a build error, never a silent skip (ADR-0018): `before` in a check or a create,
- * a `validate` or `do` on a read, which has no record to check or change, and a `set` or `load` in a destroy.
+ * a `validate` or `do` on a read, which has no record to check or change, a `set` or `load` in a destroy, and in a policy
+ * (M8) `before`, `actions` and, on a read, reading the record.
  */
 export function checkLifecycleLimits(document: ModelDocument, diagnostics: Diagnostic[]): void {
   for (const entity of document.entities) {
@@ -49,6 +51,32 @@ export function checkLifecycleLimits(document: ModelDocument, diagnostics: Diagn
       diagnostics.push(error("MESH_BEFORE_IN_CREATE",
         `${what} reads \`before\`, the stored record, and a create has none, so it is always null`, expression.position,
         "Remove it. Compare with `self` or `input`, or move the rule to an update"));
+    }
+    // A policy decides; it does not act, and it sees no `before` (it runs before `validate`, POL-08). A read policy that
+    // reads the record is a filter on the query, which the SQL evaluator folds in M10 (RDM-10).
+    for (const policy of entity.policies)
+      for (const { expression, what } of policyExpressions(policy)) {
+        const uses = (name: string) => expression.params.includes(name) || expression.plain?.roots.includes(name) || (expression.rest === true && new RegExp(`\\b${name}\\b`).test(expression.source));
+        const end = expression.position.offset + expression.source.length;
+        const reported = (code: string) => diagnostics.some((d) => d.code === code && d.position.file === expression.position.file && d.position.offset >= expression.position.offset && d.position.offset < end);
+        if (uses("before") && !reported("MESH_POLICY_BEFORE"))
+          diagnostics.push(error("MESH_POLICY_BEFORE",
+            `${what} reads \`before\`, which a policy does not have: it sees \`self\` as \`validate\` does, before the input is applied (the stored record, or a create's new instance), and the caller's values as \`input.x\``,
+            expression.position, "write `&x` for the stored value and `input.x` for the caller's"));
+        if (uses("actions"))
+          diagnostics.push(error("MESH_POLICY_ACTS",
+            `${what} reads \`actions\`: a policy decides whether the call may run, and must not run actions itself`,
+            expression.position, "read what the decision needs through `tx`, which runs reads only"));
+      }
+    const reads = [...entity.actions, ...entity.auto.map((kind) => ({ kind, name: kind as string }))].filter((action) => action.kind === "read");
+    for (const policy of entity.policies) {
+      const covered = reads.filter((action) => policiesCovering(entity, action).includes(policy));
+      const reading = covered.length ? policyExpressions(policy).find(({ expression }) => readsRecord(expression)) : undefined;
+      if (!reading) continue;
+      diagnostics.push(error("MESH_NOT_IMPLEMENTED",
+        `${reading.what} reads the record, and the policy covers ${covered.map((action) => `read :${action.name}`).join(", ")} of :${entity.name}: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10`,
+        reading.expression.position,
+        "Until M10, a read policy reads only `actor`, `context` and `input` (it then gives the whole result or none); scope a record-reading policy to the writes with `types=` or `actions=`"));
     }
     for (const action of entity.actions) {
       if (action.kind !== "read") continue;

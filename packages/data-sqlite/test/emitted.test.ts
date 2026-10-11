@@ -6,6 +6,7 @@ import { join } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { ATTRIBUTE_TYPES } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
+import { openPolicies } from "./open-policy.ts";
 import type { TableHandle } from "@meshfw/runtime";
 import build from "../src/build.ts";
 import { FrameworkError } from "@meshfw/runtime";
@@ -51,8 +52,8 @@ beforeAll(async () => {
     root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"),
     data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: [] }, options: { file: ":memory:" } },
   };
-  const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: [
-    { file: "src/domain/sample.mesh.mx", source: sample }, { file: "src/domain/owner.mesh.mx", source: owner }] });
+  const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: openPolicies([
+    { file: "src/domain/sample.mesh.mx", source: sample }, { file: "src/domain/owner.mesh.mx", source: owner }]) });
   expect(built.diagnostics).toEqual([]);
   const document = built.document as ModelDocument;
   // Every registered attribute type is in the sample.

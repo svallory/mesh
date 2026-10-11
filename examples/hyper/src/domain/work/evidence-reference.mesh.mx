@@ -20,3 +20,6 @@ entity :EvidenceReference table="evidence_references"
       do
         set
           &recordedBy=({ actor }) => actor.id
+  policies
+    policy :untilM8b
+      authorize-if=() => true

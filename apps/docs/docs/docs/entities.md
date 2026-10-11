@@ -615,7 +615,7 @@ One policy per line, with a name, a scope and checks. The larger example below s
 | neither | Every action in the entity |
 | `when=` | Apply the policy only when the condition holds |
 
-A policy passes when none of its `forbid-if` checks holds and, if it has any `authorize-if`, at least one holds. The checks combine without order. A policy with only `forbid-if` passes until one is true. Every policy covering the action must pass; an action no policy covers is forbidden, including every action in an entity with no policies.
+A policy passes when none of its `forbid-if` checks holds and, if it has any `authorize-if`, at least one holds. The checks combine without order. A policy with only `forbid-if` passes until one is true. Every policy covering the action must pass; an action no policy covers is forbidden, including every action in an entity with no policies. A check whose answer is unknown, because a value it reads is null, fails closed: an unknown `forbid-if` forbids, an unknown `authorize-if` does not authorize, and an unknown `when=` fails its policy. `actions=` names the entity's own actions, auto ones included; any other name is a build error. A policy decides and does not act: it reads neither `before` nor `actions`, and either is a build error.
 
 An exemption belongs in the condition: `forbid-if=({ actor }) => &status === :paid && !isStaff(actor)` forbids destroying a paid invoice except for staff.
 

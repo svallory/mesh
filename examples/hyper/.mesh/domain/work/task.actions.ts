@@ -6,6 +6,7 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
+  authorizer as $authorizer,
   castInput as $castInput,
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
@@ -72,8 +73,8 @@ import {
 import { loadPlan as $loadPlan } from "../../load";
 
 /**
- * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
- * The read actions below run the slot, then these.
+ * The reads of this entity without their policies: what `tx` holds in a function of an entity file (ADR-0068).
+ * The read actions below evaluate the read's policies, then call these.
  */
 export function bindTaskReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
@@ -129,6 +130,31 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
     async create(input: CreateTaskInput, ...[context]: $ContextArgument): Promise<Task> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, createTaskInput, input);
+      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      const $context = (context ?? {}) as unknown as Record<string, unknown>;
+      const $actor = $context.actor;
+      const $clock = $pinClock(options.clock);
+      const $policies = $authorizer("Task", "create", [
+        {
+          name: "untilM8b",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check: "() => true",
+              record: false,
+              run: $expressions["policy.untilM8b.authorize-if.0"],
+            },
+          ],
+        },
+      ]);
+      await $policies.before(
+        layer,
+        $scope(
+          { input: $readOnlyRecord(parsed, "Task.create"), actor: $actor, context: $context },
+          { clock: $clock },
+        ),
+      );
       return $runAction(
         layer,
         options.seams,
@@ -136,10 +162,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         parsed,
         context,
         async (tx) => {
-          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-          const $context = (context ?? {}) as unknown as Record<string, unknown>;
-          const $actor = $context.actor;
-          const $clock = $pinClock(options.clock);
+          // transaction: opens here; what follows commits together or not at all
           const $now = $clock();
           // plan: a create is one insert; nothing is read first
           const $changes: $Row = {
@@ -214,6 +237,31 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
     async update(input: UpdateTaskInput, ...[context]: $ContextArgument): Promise<Task> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, updateTaskInput, input);
+      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      const $context = (context ?? {}) as unknown as Record<string, unknown>;
+      const $actor = $context.actor;
+      const $clock = $pinClock(options.clock);
+      const $policies = $authorizer("Task", "update", [
+        {
+          name: "untilM8b",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check: "() => true",
+              record: false,
+              run: $expressions["policy.untilM8b.authorize-if.0"],
+            },
+          ],
+        },
+      ]);
+      await $policies.before(
+        layer,
+        $scope(
+          { input: $readOnlyRecord(parsed, "Task.update"), actor: $actor, context: $context },
+          { clock: $clock },
+        ),
+      );
       return $runAction(
         layer,
         options.seams,
@@ -221,10 +269,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         parsed,
         context,
         async (tx) => {
-          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-          const $context = (context ?? {}) as unknown as Record<string, unknown>;
-          const $actor = $context.actor;
-          const $clock = $pinClock(options.clock);
+          // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.task, $key);
@@ -312,6 +357,31 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
     async setPriority(input: SetPriorityTaskInput, ...[context]: $ContextArgument): Promise<Task> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, setPriorityTaskInput, input);
+      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      const $context = (context ?? {}) as unknown as Record<string, unknown>;
+      const $actor = $context.actor;
+      const $clock = $pinClock(options.clock);
+      const $policies = $authorizer("Task", "setPriority", [
+        {
+          name: "untilM8b",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check: "() => true",
+              record: false,
+              run: $expressions["policy.untilM8b.authorize-if.0"],
+            },
+          ],
+        },
+      ]);
+      await $policies.before(
+        layer,
+        $scope(
+          { input: $readOnlyRecord(parsed, "Task.setPriority"), actor: $actor, context: $context },
+          { clock: $clock },
+        ),
+      );
       return $runAction(
         layer,
         options.seams,
@@ -319,10 +389,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         parsed,
         context,
         async (tx) => {
-          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-          const $context = (context ?? {}) as unknown as Record<string, unknown>;
-          const $actor = $context.actor;
-          const $clock = $pinClock(options.clock);
+          // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.task, $key);
@@ -402,6 +469,31 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
     async move(input: MoveTaskInput, ...[context]: $ContextArgument): Promise<Task> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, moveTaskInput, input);
+      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      const $context = (context ?? {}) as unknown as Record<string, unknown>;
+      const $actor = $context.actor;
+      const $clock = $pinClock(options.clock);
+      const $policies = $authorizer("Task", "move", [
+        {
+          name: "untilM8b",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check: "() => true",
+              record: false,
+              run: $expressions["policy.untilM8b.authorize-if.0"],
+            },
+          ],
+        },
+      ]);
+      await $policies.before(
+        layer,
+        $scope(
+          { input: $readOnlyRecord(parsed, "Task.move"), actor: $actor, context: $context },
+          { clock: $clock },
+        ),
+      );
       return $runAction(
         layer,
         options.seams,
@@ -409,10 +501,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         parsed,
         context,
         async (tx) => {
-          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-          const $context = (context ?? {}) as unknown as Record<string, unknown>;
-          const $actor = $context.actor;
-          const $clock = $pinClock(options.clock);
+          // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.task, $key);
@@ -517,6 +606,31 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
     async reopen(input: ReopenTaskInput, ...[context]: $ContextArgument): Promise<Task> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, reopenTaskInput, input);
+      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      const $context = (context ?? {}) as unknown as Record<string, unknown>;
+      const $actor = $context.actor;
+      const $clock = $pinClock(options.clock);
+      const $policies = $authorizer("Task", "reopen", [
+        {
+          name: "untilM8b",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check: "() => true",
+              record: false,
+              run: $expressions["policy.untilM8b.authorize-if.0"],
+            },
+          ],
+        },
+      ]);
+      await $policies.before(
+        layer,
+        $scope(
+          { input: $readOnlyRecord(parsed, "Task.reopen"), actor: $actor, context: $context },
+          { clock: $clock },
+        ),
+      );
       return $runAction(
         layer,
         options.seams,
@@ -524,10 +638,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         parsed,
         context,
         async (tx) => {
-          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-          const $context = (context ?? {}) as unknown as Record<string, unknown>;
-          const $actor = $context.actor;
-          const $clock = $pinClock(options.clock);
+          // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.task, $key);
@@ -610,6 +721,31 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
     async touch(input: TouchTaskInput, ...[context]: $ContextArgument): Promise<Task> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, touchTaskInput, input);
+      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      const $context = (context ?? {}) as unknown as Record<string, unknown>;
+      const $actor = $context.actor;
+      const $clock = $pinClock(options.clock);
+      const $policies = $authorizer("Task", "touch", [
+        {
+          name: "untilM8b",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check: "() => true",
+              record: false,
+              run: $expressions["policy.untilM8b.authorize-if.0"],
+            },
+          ],
+        },
+      ]);
+      await $policies.before(
+        layer,
+        $scope(
+          { input: $readOnlyRecord(parsed, "Task.touch"), actor: $actor, context: $context },
+          { clock: $clock },
+        ),
+      );
       return $runAction(
         layer,
         options.seams,
@@ -617,10 +753,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         parsed,
         context,
         async (tx) => {
-          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-          const $context = (context ?? {}) as unknown as Record<string, unknown>;
-          const $actor = $context.actor;
-          const $clock = $pinClock(options.clock);
+          // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.task, $key);
@@ -679,6 +812,31 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
     async cancel(input: CancelTaskInput, ...[context]: $ContextArgument): Promise<Task> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, cancelTaskInput, input);
+      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      const $context = (context ?? {}) as unknown as Record<string, unknown>;
+      const $actor = $context.actor;
+      const $clock = $pinClock(options.clock);
+      const $policies = $authorizer("Task", "cancel", [
+        {
+          name: "untilM8b",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check: "() => true",
+              record: false,
+              run: $expressions["policy.untilM8b.authorize-if.0"],
+            },
+          ],
+        },
+      ]);
+      await $policies.before(
+        layer,
+        $scope(
+          { input: $readOnlyRecord(parsed, "Task.cancel"), actor: $actor, context: $context },
+          { clock: $clock },
+        ),
+      );
       return $runAction(
         layer,
         options.seams,
@@ -686,10 +844,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         parsed,
         context,
         async (tx) => {
-          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-          const $context = (context ?? {}) as unknown as Record<string, unknown>;
-          const $actor = $context.actor;
-          const $clock = $pinClock(options.clock);
+          // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.task, $key);
@@ -783,6 +938,31 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
     async complete(input: CompleteTaskInput, ...[context]: $ContextArgument): Promise<Task> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, completeTaskInput, input);
+      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      const $context = (context ?? {}) as unknown as Record<string, unknown>;
+      const $actor = $context.actor;
+      const $clock = $pinClock(options.clock);
+      const $policies = $authorizer("Task", "complete", [
+        {
+          name: "untilM8b",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check: "() => true",
+              record: false,
+              run: $expressions["policy.untilM8b.authorize-if.0"],
+            },
+          ],
+        },
+      ]);
+      await $policies.before(
+        layer,
+        $scope(
+          { input: $readOnlyRecord(parsed, "Task.complete"), actor: $actor, context: $context },
+          { clock: $clock },
+        ),
+      );
       return $runAction(
         layer,
         options.seams,
@@ -790,10 +970,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         parsed,
         context,
         async (tx) => {
-          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-          const $context = (context ?? {}) as unknown as Record<string, unknown>;
-          const $actor = $context.actor;
-          const $clock = $pinClock(options.clock);
+          // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.task, $key);
@@ -952,6 +1129,31 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
     async assign(input: AssignTaskInput, ...[context]: $ContextArgument): Promise<Task> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, assignTaskInput, input);
+      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      const $context = (context ?? {}) as unknown as Record<string, unknown>;
+      const $actor = $context.actor;
+      const $clock = $pinClock(options.clock);
+      const $policies = $authorizer("Task", "assign", [
+        {
+          name: "untilM8b",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check: "() => true",
+              record: false,
+              run: $expressions["policy.untilM8b.authorize-if.0"],
+            },
+          ],
+        },
+      ]);
+      await $policies.before(
+        layer,
+        $scope(
+          { input: $readOnlyRecord(parsed, "Task.assign"), actor: $actor, context: $context },
+          { clock: $clock },
+        ),
+      );
       return $runAction(
         layer,
         options.seams,
@@ -959,10 +1161,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         parsed,
         context,
         async (tx) => {
-          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-          const $context = (context ?? {}) as unknown as Record<string, unknown>;
-          const $actor = $context.actor;
-          const $clock = $pinClock(options.clock);
+          // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.task, $key);
@@ -1079,6 +1278,31 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
     async unassign(input: UnassignTaskInput, ...[context]: $ContextArgument): Promise<Task> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, unassignTaskInput, input);
+      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      const $context = (context ?? {}) as unknown as Record<string, unknown>;
+      const $actor = $context.actor;
+      const $clock = $pinClock(options.clock);
+      const $policies = $authorizer("Task", "unassign", [
+        {
+          name: "untilM8b",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check: "() => true",
+              record: false,
+              run: $expressions["policy.untilM8b.authorize-if.0"],
+            },
+          ],
+        },
+      ]);
+      await $policies.before(
+        layer,
+        $scope(
+          { input: $readOnlyRecord(parsed, "Task.unassign"), actor: $actor, context: $context },
+          { clock: $clock },
+        ),
+      );
       return $runAction(
         layer,
         options.seams,
@@ -1086,10 +1310,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         parsed,
         context,
         async (tx) => {
-          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-          const $context = (context ?? {}) as unknown as Record<string, unknown>;
-          const $actor = $context.actor;
-          const $clock = $pinClock(options.clock);
+          // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.task, $key);
@@ -1186,8 +1407,40 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       input: Omit<ReadTaskInput, "load"> & TaskLoadArg<L>,
       ...[context]: $ContextArgument
     ): Promise<L extends unknown ? TaskWith<TaskLoadNames<L>>[] : never> {
-      // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
-      return $reads.read(input, context);
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a read through `tx` skips them
+      const $context = (context ?? {}) as unknown as Record<string, unknown>;
+      const $actor = $context.actor;
+      const $clock = $pinClock(options.clock);
+      if (
+        !(await $authorizer("Task", "read", [
+          {
+            name: "untilM8b",
+            when: null,
+            checks: [
+              {
+                kind: "authorize-if",
+                check: "() => true",
+                record: false,
+                run: $expressions["policy.untilM8b.authorize-if.0"],
+              },
+            ],
+          },
+        ]).filter(
+          layer,
+          $scope(
+            {
+              input: $readOnlyRecord(input as never, "Task.read"),
+              actor: $actor,
+              context: $context,
+            },
+            { clock: $clock },
+          ),
+        ))
+      ) {
+        await $castInput(layer, readTaskInput, input);
+        return [] as unknown as L extends unknown ? TaskWith<TaskLoadNames<L>>[] : never;
+      }
+      return $reads.read(input, context, $clock);
     },
   });
 }

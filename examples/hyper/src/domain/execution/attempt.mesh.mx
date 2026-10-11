@@ -151,3 +151,6 @@ entity :Attempt table="attempts"
           &endedAt=() => now()
           &outcome=({ input }) => attemptOutcome({ note: input.note })
           &version=() => &version + 1
+  policies
+    policy :untilM8b
+      authorize-if=() => true

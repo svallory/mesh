@@ -20,3 +20,6 @@ entity :Completion table="completions"
       do
         set
           &completedBy=({ actor }) => actor.id
+  policies
+    policy :untilM8b
+      authorize-if=() => true

@@ -89,3 +89,6 @@ entity :Membership table="memberships"
           &revokedAt=() => now()
           &revokedBy=({ actor }) => actor.id
           &version=() => &version + 1
+  policies
+    policy :untilM8b
+      authorize-if=() => true

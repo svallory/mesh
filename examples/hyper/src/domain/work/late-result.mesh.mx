@@ -34,3 +34,6 @@ entity :LateResult table="late_results"
       do
         set
           &submitter=({ actor }) => actor.id
+  policies
+    policy :untilM8b
+      authorize-if=() => true

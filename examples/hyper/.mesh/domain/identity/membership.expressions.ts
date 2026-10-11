@@ -5,6 +5,7 @@ import {
   expr as $,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
+  type SharedInput as $SharedInput,
 } from "@meshfw/runtime";
 import {
   collaboratorActiveOf,
@@ -127,4 +128,10 @@ export const expressions = {
   // set &version, translated (src/domain/identity/membership.mesh.mx:91:20)
   "revoke.step.0.set.version": ($s: MembershipStoredScope<RevokeMembershipInput>) =>
     $.add($s.self.version, 1),
+  // policy :untilM8b authorize-if, translated (src/domain/identity/membership.mesh.mx:94:20)
+  "policy.untilM8b.authorize-if.0": (
+    _$s: MembershipNewScope<
+      $SharedInput<GrantMembershipInput | ChangeRoleMembershipInput | RevokeMembershipInput>
+    >,
+  ) => true,
 } as const;

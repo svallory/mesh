@@ -1,6 +1,7 @@
 import { dirname, relative } from "node:path";
-import type { Action, Always, Atom, Attribute, Check, Entity, Expression, Literal, SourcePosition, Step } from "@meshfw/model";
+import type { Action, Always, Atom, Attribute, Check, Entity, Expression, Literal, Policy, SourcePosition, Step } from "@meshfw/model";
 import { filledKey } from "../../model/new-instance.ts";
+import { policiesCovering, policyExpressions, readsRecord } from "../../model/policies.ts";
 import { emitError } from "../emit-error.ts";
 import type { EmitInput } from "../emit.ts";
 import { expressionIds } from "./expressions.ts";
@@ -55,11 +56,11 @@ export interface ActionsView {
   readonly readsBindName: string | null;
   /** What `bind<Entity>Reads` names its second parameter, the binding's options (the clock a loaded computed field reads): `options`, or `_options` when no body loads. */
   readonly readsOptionsName: string;
-  /** One body per read action, without the authorizer slot: what `tx` calls and what the read method calls after that slot. */
+  /** One body per read action, without its policies: what `tx` calls and what the read method calls after evaluating them. */
   readonly reads: readonly ReadBody[];
 }
 
-/** `async <name>(input: <inputType>): Promise<<returnType>> { ... }` inside `bind<Entity>Reads`: a read without its authorizer slot. */
+/** `async <name>(input: <inputType>): Promise<<returnType>> { ... }` inside `bind<Entity>Reads`: a read without its policies. */
 export interface ReadBody {
   /** The method key: the action name, lowerCamel, e.g. `read`. */
   readonly name: string;
@@ -109,8 +110,14 @@ export interface ActionMethod {
   readonly isRead: boolean;
   /** For a create, update or destroy, the seam target as an object literal, e.g. `{ entity: "Post", action: "publish" }`, which `$runAction` takes; `null` for a read (a read runs no seam). */
   readonly seamTarget: string | null;
-  /** For a read, the call of its body in `bind<Entity>Reads` that the method returns after the authorizer slot, e.g. `$reads.read(input)`; `null` otherwise, when `statements` hold the body. */
+  /** For a read, the call of its body in `bind<Entity>Reads` that the method returns after the read's policies, e.g. `$reads.read(input)`; `null` otherwise, when `statements` hold the body. */
   readonly readsCall: string | null;
+  /**
+   * The pre-check (M8): statements printed before the transaction opens (after the cast on a write, first on a read); on a
+   * write they come before `$runAction`, so a call they deny runs no seam, `beforeTransaction` included. On a write they evaluate the checks of the covering policies that read only `actor`, `context` and `input`, once; on a read,
+   * the read's policies as a filter, returning no rows when they do not admit the caller. Each line printed in full.
+   */
+  readonly preCheck: readonly string[];
 }
 
 /** How the actions file reaches each other generated file; fixed by the other generators' paths. */
@@ -185,14 +192,6 @@ export function stepsFor(action: Action, steps: readonly Step[]): Step[] {
   return out;
 }
 
-/** A policy applies when it names the action's type or the action; one that names neither applies to every action. */
-export function policiesFor(entity: Entity, action: Action): string[] {
-  return entity.policies
-    .filter((policy) => (!policy.types && !policy.actions)
-      || policy.types?.includes(action.kind) || policy.actions?.some((ref) => ref.name === action.name))
-    .map((policy) => policy.name);
-}
-
 /** The stored column a member names: an attribute, or a belongs-to's key column. */
 function columnOf(entity: Entity, name: string, position: SourcePosition): { name: string; type: Attribute["type"]; relation?: string } {
   const attribute = entity.attributes.find((a) => a.name === name);
@@ -248,6 +247,32 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
   let composeUsed = false;
   let readsLoad = false;
   const readBodies: ReadBody[] = [];
+  const idOf = (expression: Expression): string => {
+    const id = ids.get(expression);
+    if (id === undefined) throw emitError("MESH_EMIT_NAME", "An expression has no id", expression.position);
+    return `$expressions[${JSON.stringify(id)}]`;
+  };
+  // ---- policies (M8): what the pre-check and the in-transaction phase print ---------------------
+  /** `$authorizer("Post", "publish", [...])`: the policies that cover the action, each function with where it runs (`record`). */
+  const authorizerCall = (action: Action, covering: readonly Policy[]): string => {
+    runtime.add("authorizer");
+    const fn = (expression: Expression) => {
+      usesExpressions = true;
+      return `check: ${JSON.stringify(expression.source)}, record: ${readsRecord(expression)}, run: ${idOf(expression)}`;
+    };
+    const specs = covering.map((policy) => {
+      const checks = policyExpressions(policy).filter(({ kind }) => kind !== "when").map(({ kind, expression }) => `{ kind: ${JSON.stringify(kind)}, ${fn(expression)} }`);
+      return `{ name: ${JSON.stringify(policy.name)}, when: ${policy.when ? `{ ${fn(policy.when)} }` : "null"}, checks: [${checks.join(", ")}] }`;
+    });
+    return `$authorizer(${JSON.stringify(entity.name)}, ${JSON.stringify(action.name)}, [${specs.join(", ")}])`;
+  };
+  /** The scope the checks before the transaction see: no record yet, only `input`, `actor` and `context`. */
+  const preScope = (inputValue: string, where: string) => {
+    runtime.add("scope");
+    runtime.add("readOnlyRecord");
+    return `$scope({ input: $readOnlyRecord(${inputValue}, ${where}), actor: $actor, context: $context }, { clock: $clock })`;
+  };
+  // ---- end policies ----------------------------------------------------------------------------
   const methods = actions.map((action, index): ActionMethod => {
     const input = inputs[index]!;
     const name = valueName(action.name, action.position);
@@ -264,12 +289,12 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     const keyObject = `{ ${propertyName(key.name)}: ${keyRead} }`;
     const notRun = (parts: string[]) => {
       if (entity.onLoad && action.kind !== "destroy") parts.push(`on:load ${entity.onLoad.name}`);
-      const policies = policiesFor(entity, action);
-      if (policies.length) parts.push(`policies ${policies.join(", ")}`);
       return parts.length ? `Not run in this version: ${parts.join("; ")}` : null;
     };
+    const covering = policiesCovering(entity, action);
+    const where = JSON.stringify(`${entity.name}.${action.name}`);
     if (action.kind === "read") {
-      // The body goes to `bind<Entity>Reads`, which `tx` calls; the method runs the authorizer slot, then the body.
+      // The body goes to `bind<Entity>Reads`, which `tx` calls; the method evaluates the read's policies, then calls the body.
       // A read that takes `load` is generic in the names it lists: the result is the record with exactly those loaded.
       const loads = takesLoad(input);
       // The `load` member comes from the tuple `L` itself, so that TypeScript infers the names written.
@@ -283,9 +308,28 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         extraTypes.add(`${recordName}Loadable`);
       }
       const body = { name, inputType, generics, contextParam: loads ? ", context?: unknown, clock?: () => Date" : "", validator, returnType };
-      const method = { ...base, inputType, generics, returnType, contextName: loads ? "context" : "_context", notRun: notRun([]), unsupported: null, usesParsed: false,
-        statements: [], isRead: true, seamTarget: null, readsCall: loads ? `$reads.${name}(input, context)` : `$reads.${name}(input)` };
-      if (action.filter || action.sort) {
+      // ---- policies (M8): a read's policies are a filter on the read (ADR-0022, lead ruling 2 of M8a) --------------
+      // A read the SQL evaluator must run (M10) fails in its body whatever the policies say, so they are not evaluated.
+      const unsupportedRead = Boolean(action.filter || action.sort);
+      if (!unsupportedRead) {
+        runtime.add("pinClock");
+        optionsUsed = true;
+      }
+      const preCheck = unsupportedRead ? [] : [
+        "// pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a read through `tx` skips them",
+        "const $context = (context ?? {}) as unknown as Record<string, unknown>;",
+        "const $actor = $context.actor;",
+        "const $clock = $pinClock(options.clock);",
+        `if (!(await ${authorizerCall(action, covering)}.filter(layer, ${preScope("input as never", where)}))) {`,
+        // An invalid input is still reported as one, denied or not.
+        `await $castInput(layer, ${validator}, input);`,
+        `return [] as unknown as ${returnType};`,
+        "}",
+      ];
+      // ---- end policies ----------------------------------------------------------------------------------------
+      const method = { ...base, inputType, generics, returnType, contextName: unsupportedRead && !loads ? "_context" : "context", notRun: notRun([]), unsupported: null, usesParsed: false,
+        statements: [], isRead: true, seamTarget: null, readsCall: loads && !unsupportedRead ? `$reads.${name}(input, context, $clock)` : loads ? `$reads.${name}(input, context)` : `$reads.${name}(input)`, preCheck };
+      if (unsupportedRead) {
         runtime.add("FrameworkError");
         runtime.add("failJoined");
         const parts = [action.filter ? "filter" : null, action.sort ? "sort" : null].filter(Boolean).join(" and ");
@@ -330,17 +374,16 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     const checks = blocks.flatMap((block) => block.validate);
     const writes = action.kind !== "destroy";
     const steps = stepsFor(action, blocks.flatMap((block) => block.steps));
-    const idOf = (expression: Expression): string => {
-      const id = ids.get(expression);
-      if (id === undefined) throw emitError("MESH_EMIT_NAME", "An expression has no id", expression.position);
-      return `$expressions[${JSON.stringify(id)}]`;
-    };
+    // ---- policies (M8): the checks that read the record run inside the transaction, before validate (POL-08) ----
+    const recordPolicies = covering.flatMap((policy) => policyExpressions(policy).map(({ expression }) => expression)).filter(readsRecord);
+    const policyNeeds = [...new Set(recordPolicies.flatMap((expression) => expression.needs ?? []))].sort();
+    // ---- end policies ------------------------------------------------------------------------------------------
 
     // What the checks read through a relationship or a computed field, loaded onto the record before they run.
     const checkNeeds = [...new Set(checks.flatMap((check) => [check.that, check.when, check.details].flatMap((e) => e?.needs ?? [])))].sort();
     // Does the call need the stored row? An update always reads it (every update is read then write, ADR-0072);
     // a destroy reads it only when something in its body can see it.
-    const reads = action.kind === "update" || checks.length > 0 || steps.length > 0;
+    const reads = action.kind === "update" || checks.length > 0 || steps.length > 0 || recordPolicies.length > 0;
     // The columns a `set` step assigns: a create may fill a required column from one (D04), from the top level of the body.
     const setColumns = new Set<string>();
     for (const step of steps)
@@ -354,7 +397,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     const anyLoad = steps.some(function hasLoad(step): boolean { return step.kind === "load" || (step.kind === "when" && step.steps.some(hasLoad)); });
     const stamped = entity.attributes.filter((a) => a.on === "update");
     // Does any function of the action read a relationship or computed field? Only then is something ever loaded onto the record.
-    const anyNeeds = [...checks.flatMap((check) => [check.that, check.when, check.details]), ...steps.flatMap(function expressionsOf(step): (Expression | undefined)[] {
+    const anyNeeds = [...recordPolicies, ...checks.flatMap((check) => [check.that, check.when, check.details]), ...steps.flatMap(function expressionsOf(step): (Expression | undefined)[] {
       if (step.kind === "set") return step.assignments.map(({ value }) => (isExpression(value) ? value : undefined));
       if (step.kind === "when") return [step.condition, ...step.steps.flatMap(expressionsOf)];
       return step.kind === "run" ? [step.fn] : [];
@@ -461,6 +504,16 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       }
     }
 
+    // ---- policies (M8): the checks that read the record, before validate ------------------------------------
+    if (recordPolicies.length > 0) {
+      emit("// policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails");
+      loadFor(policyNeeds, "$record", action.kind === "create" ? "{ ...$load, newInstance: true }" : "$load");
+      used.scope = true;
+      runtime.add("checkScope");
+      emit("await $policies.inside($checkScope($s));");
+    }
+    // ---- end policies ------------------------------------------------------------------------------------------
+
     // validate
     if (checks.length > 0) {
       emit("// validate: every check runs, and every failed check is reported together");
@@ -494,8 +547,8 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     // apply the input: the caller's values over the record the checks saw; a field the caller did not send keeps its value
     if (applied.length > 0) {
       emit("// the input: the member inputs the caller sent, applied now that the checks have passed", ...applied);
-      // What the checks loaded was worked out from the record before the input.
-      if (checkNeeds.length > 0) {
+      // What the checks and the policies loaded was worked out from the record before the input.
+      if (checkNeeds.length > 0 || policyNeeds.length > 0) {
         used.plan = true;
         runtime.add("unloadFrom");
         emit(`$unloadFrom($loadPlan, ${JSON.stringify(entity.name)}, $record);`);
@@ -578,7 +631,6 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
 
     // data layer, commit
     let returnType = writes ? recordName : "void";
-    const where = JSON.stringify(`${entity.name}.${action.name}`);
     emit("// data layer");
     if (action.kind === "create") {
       emit(`const $stored = await tx.insert(${table}, $changes);`);
@@ -647,19 +699,12 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       } else emit(`return ${result} as ${recordName};`);
     }
 
-    // The declarations the body turned out to need, in front of it.
+    // The declarations the body turned out to need, in front of it. The pre-check reads the context and the clock before
+    // the transaction opens, so they are declared there, and the transaction's functions read the same instant.
     const prelude: string[] = [];
-    const usesContext = used.scope || used.load;
-    if (usesContext) {
-      used.options = true;
-      prelude.push("const $context = (context ?? {}) as unknown as Record<string, unknown>;", "const $actor = $context.actor;");
-    }
-    // One instant per action call: the scope's `now()`, the `$now` stamps, the `load` step and every `tx` read read it.
-    if (usesContext || used.now) {
-      used.options = true;
-      runtime.add("pinClock");
-      prelude.push("const $clock = $pinClock(options.clock);");
-    }
+    used.options = true;
+    runtime.add("pinClock");
+    // One instant per action call: the policies, the scope's `now()`, the `$now` stamps, the `load` step and every `tx` read read it.
     if (used.now) prelude.push("const $now = $clock();");
     const afterHead: string[] = [];
     if (used.load) afterHead.push("const $load = { actor: $actor, context: $context, clock: $clock };");
@@ -687,12 +732,22 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     if (used.plan) planUsed = true;
     if (used.options) optionsUsed = true;
 
-    const statements = [`// transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)`, ...prelude, ...head, ...afterHead, ...body];
+    const statements = ["// transaction: opens here; what follows commits together or not at all", ...prelude, ...head, ...afterHead, ...body];
+    // ---- policies (M8): the pre-check, before the transaction opens -------------------------------------------
+    const preCheck = [
+      "// pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam",
+      "const $context = (context ?? {}) as unknown as Record<string, unknown>;",
+      "const $actor = $context.actor;",
+      "const $clock = $pinClock(options.clock);",
+      `const $policies = ${authorizerCall(action, covering)};`,
+      `await $policies.before(layer, ${preScope("parsed", where)});`,
+    ];
+    // ---- end policies ------------------------------------------------------------------------------------------
     // The working copy of the record is declared only when something reads it.
     const declared = statements.findIndex((line) => line.startsWith("const $record:"));
     if (declared >= 0 && !statements.some((line, at) => at !== declared && /\$record\b/.test(line))) statements.splice(declared, 1);
     runtime.add("runAction");
-    return { ...base, returnType, contextName: "context", notRun: notRun([]), unsupported: null, usesParsed: true, statements, isRead: false, seamTarget, readsCall: null };
+    return { ...base, returnType, contextName: "context", notRun: notRun([]), unsupported: null, usesParsed: true, statements, isRead: false, seamTarget, readsCall: null, preCheck };
   });
   return {
     entityFile: entityFileComment(entity),

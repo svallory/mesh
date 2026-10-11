@@ -6,6 +6,7 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
+  authorizer as $authorizer,
   castInput as $castInput,
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
@@ -64,8 +65,8 @@ import {
 import { loadPlan as $loadPlan } from "../../load";
 
 /**
- * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
- * The read actions below run the slot, then these.
+ * The reads of this entity without their policies: what `tx` holds in a function of an entity file (ADR-0068).
+ * The read actions below evaluate the read's policies, then call these.
  */
 export function bindClaimReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
@@ -108,6 +109,31 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
     async acquire(input: AcquireClaimInput, ...[context]: $ContextArgument): Promise<Claim> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, acquireClaimInput, input);
+      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      const $context = (context ?? {}) as unknown as Record<string, unknown>;
+      const $actor = $context.actor;
+      const $clock = $pinClock(options.clock);
+      const $policies = $authorizer("Claim", "acquire", [
+        {
+          name: "untilM8b",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check: "() => true",
+              record: false,
+              run: $expressions["policy.untilM8b.authorize-if.0"],
+            },
+          ],
+        },
+      ]);
+      await $policies.before(
+        layer,
+        $scope(
+          { input: $readOnlyRecord(parsed, "Claim.acquire"), actor: $actor, context: $context },
+          { clock: $clock },
+        ),
+      );
       return $runAction(
         layer,
         options.seams,
@@ -115,10 +141,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         parsed,
         context,
         async (tx) => {
-          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-          const $context = (context ?? {}) as unknown as Record<string, unknown>;
-          const $actor = $context.actor;
-          const $clock = $pinClock(options.clock);
+          // transaction: opens here; what follows commits together or not at all
           // plan: a create is one insert; nothing is read first
           const $changes: $Row = {
             id: $uuidv7(),
@@ -244,6 +267,31 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
     async renew(input: RenewClaimInput, ...[context]: $ContextArgument): Promise<Claim> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, renewClaimInput, input);
+      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      const $context = (context ?? {}) as unknown as Record<string, unknown>;
+      const $actor = $context.actor;
+      const $clock = $pinClock(options.clock);
+      const $policies = $authorizer("Claim", "renew", [
+        {
+          name: "untilM8b",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check: "() => true",
+              record: false,
+              run: $expressions["policy.untilM8b.authorize-if.0"],
+            },
+          ],
+        },
+      ]);
+      await $policies.before(
+        layer,
+        $scope(
+          { input: $readOnlyRecord(parsed, "Claim.renew"), actor: $actor, context: $context },
+          { clock: $clock },
+        ),
+      );
       return $runAction(
         layer,
         options.seams,
@@ -251,10 +299,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         parsed,
         context,
         async (tx) => {
-          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-          const $context = (context ?? {}) as unknown as Record<string, unknown>;
-          const $actor = $context.actor;
-          const $clock = $pinClock(options.clock);
+          // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.claim, $key);
@@ -365,6 +410,31 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
     async release(input: ReleaseClaimInput, ...[context]: $ContextArgument): Promise<Claim> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, releaseClaimInput, input);
+      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      const $context = (context ?? {}) as unknown as Record<string, unknown>;
+      const $actor = $context.actor;
+      const $clock = $pinClock(options.clock);
+      const $policies = $authorizer("Claim", "release", [
+        {
+          name: "untilM8b",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check: "() => true",
+              record: false,
+              run: $expressions["policy.untilM8b.authorize-if.0"],
+            },
+          ],
+        },
+      ]);
+      await $policies.before(
+        layer,
+        $scope(
+          { input: $readOnlyRecord(parsed, "Claim.release"), actor: $actor, context: $context },
+          { clock: $clock },
+        ),
+      );
       return $runAction(
         layer,
         options.seams,
@@ -372,10 +442,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         parsed,
         context,
         async (tx) => {
-          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-          const $context = (context ?? {}) as unknown as Record<string, unknown>;
-          const $actor = $context.actor;
-          const $clock = $pinClock(options.clock);
+          // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.claim, $key);
@@ -487,6 +554,31 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
     async revoke(input: RevokeClaimInput, ...[context]: $ContextArgument): Promise<Claim> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, revokeClaimInput, input);
+      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      const $context = (context ?? {}) as unknown as Record<string, unknown>;
+      const $actor = $context.actor;
+      const $clock = $pinClock(options.clock);
+      const $policies = $authorizer("Claim", "revoke", [
+        {
+          name: "untilM8b",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check: "() => true",
+              record: false,
+              run: $expressions["policy.untilM8b.authorize-if.0"],
+            },
+          ],
+        },
+      ]);
+      await $policies.before(
+        layer,
+        $scope(
+          { input: $readOnlyRecord(parsed, "Claim.revoke"), actor: $actor, context: $context },
+          { clock: $clock },
+        ),
+      );
       return $runAction(
         layer,
         options.seams,
@@ -494,10 +586,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         parsed,
         context,
         async (tx) => {
-          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-          const $context = (context ?? {}) as unknown as Record<string, unknown>;
-          const $actor = $context.actor;
-          const $clock = $pinClock(options.clock);
+          // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.claim, $key);
@@ -594,6 +683,31 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
     async expire(input: ExpireClaimInput, ...[context]: $ContextArgument): Promise<Claim> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, expireClaimInput, input);
+      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      const $context = (context ?? {}) as unknown as Record<string, unknown>;
+      const $actor = $context.actor;
+      const $clock = $pinClock(options.clock);
+      const $policies = $authorizer("Claim", "expire", [
+        {
+          name: "untilM8b",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check: "() => true",
+              record: false,
+              run: $expressions["policy.untilM8b.authorize-if.0"],
+            },
+          ],
+        },
+      ]);
+      await $policies.before(
+        layer,
+        $scope(
+          { input: $readOnlyRecord(parsed, "Claim.expire"), actor: $actor, context: $context },
+          { clock: $clock },
+        ),
+      );
       return $runAction(
         layer,
         options.seams,
@@ -601,10 +715,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         parsed,
         context,
         async (tx) => {
-          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-          const $context = (context ?? {}) as unknown as Record<string, unknown>;
-          const $actor = $context.actor;
-          const $clock = $pinClock(options.clock);
+          // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.claim, $key);
@@ -690,6 +801,31 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
     async end(input: EndClaimInput, ...[context]: $ContextArgument): Promise<Claim> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, endClaimInput, input);
+      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      const $context = (context ?? {}) as unknown as Record<string, unknown>;
+      const $actor = $context.actor;
+      const $clock = $pinClock(options.clock);
+      const $policies = $authorizer("Claim", "end", [
+        {
+          name: "untilM8b",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check: "() => true",
+              record: false,
+              run: $expressions["policy.untilM8b.authorize-if.0"],
+            },
+          ],
+        },
+      ]);
+      await $policies.before(
+        layer,
+        $scope(
+          { input: $readOnlyRecord(parsed, "Claim.end"), actor: $actor, context: $context },
+          { clock: $clock },
+        ),
+      );
       return $runAction(
         layer,
         options.seams,
@@ -697,10 +833,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         parsed,
         context,
         async (tx) => {
-          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-          const $context = (context ?? {}) as unknown as Record<string, unknown>;
-          const $actor = $context.actor;
-          const $clock = $pinClock(options.clock);
+          // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.claim, $key);
@@ -779,8 +912,40 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
       input: Omit<ReadClaimInput, "load"> & ClaimLoadArg<L>,
       ...[context]: $ContextArgument
     ): Promise<L extends unknown ? ClaimWith<ClaimLoadNames<L>>[] : never> {
-      // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
-      return $reads.read(input, context);
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a read through `tx` skips them
+      const $context = (context ?? {}) as unknown as Record<string, unknown>;
+      const $actor = $context.actor;
+      const $clock = $pinClock(options.clock);
+      if (
+        !(await $authorizer("Claim", "read", [
+          {
+            name: "untilM8b",
+            when: null,
+            checks: [
+              {
+                kind: "authorize-if",
+                check: "() => true",
+                record: false,
+                run: $expressions["policy.untilM8b.authorize-if.0"],
+              },
+            ],
+          },
+        ]).filter(
+          layer,
+          $scope(
+            {
+              input: $readOnlyRecord(input as never, "Claim.read"),
+              actor: $actor,
+              context: $context,
+            },
+            { clock: $clock },
+          ),
+        ))
+      ) {
+        await $castInput(layer, readClaimInput, input);
+        return [] as unknown as L extends unknown ? ClaimWith<ClaimLoadNames<L>>[] : never;
+      }
+      return $reads.read(input, context, $clock);
     },
   });
 }

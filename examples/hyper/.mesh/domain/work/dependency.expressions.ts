@@ -5,6 +5,7 @@ import {
   expr as $,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
+  type SharedInput as $SharedInput,
 } from "@meshfw/runtime";
 import {
   dependencyExistsOf,
@@ -123,4 +124,8 @@ export const expressions = {
       await actions.touchTask({ id: self.dependentId });
     })($s);
   },
+  // policy :untilM8b authorize-if, translated (src/domain/work/dependency.mesh.mx:70:20)
+  "policy.untilM8b.authorize-if.0": (
+    _$s: DependencyNewScope<$SharedInput<AddDependencyInput | RemoveDependencyInput>>,
+  ) => true,
 } as const;

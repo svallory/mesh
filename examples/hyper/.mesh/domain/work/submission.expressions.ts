@@ -5,6 +5,7 @@ import {
   expr as $,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
+  type SharedInput as $SharedInput,
 } from "@meshfw/runtime";
 import {
   claimToRelease,
@@ -157,4 +158,15 @@ export const expressions = {
   // set &submitter, translated (src/domain/work/submission.mesh.mx:108:22)
   "recordAccepted.step.0.set.submitter": ($s: SubmissionScope<RecordAcceptedSubmissionInput>) =>
     $s.actor?.id,
+  // policy :untilM8b authorize-if, translated (src/domain/work/submission.mesh.mx:112:20)
+  "policy.untilM8b.authorize-if.0": (
+    _$s: SubmissionNewScope<
+      $SharedInput<
+        | SubmitSubmissionInput
+        | WithdrawSubmissionInput
+        | SettleSubmissionInput
+        | RecordAcceptedSubmissionInput
+      >
+    >,
+  ) => true,
 } as const;

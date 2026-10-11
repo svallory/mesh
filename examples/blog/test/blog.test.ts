@@ -3,13 +3,15 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, 
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createSchema, sqlite, type SQLiteLayer } from "@meshfw/data-sqlite";
-import { FrameworkError, InvalidInputError, NotFoundError, type Change, type DataLayer, type DataOperations, type Seams } from "@meshfw/runtime";
+import { ForbiddenError, FrameworkError, InvalidInputError, NotFoundError, type Change, type DataLayer, type DataOperations, type Seams } from "@meshfw/runtime";
 import { bind, connect, disconnect, tables } from "#mesh";
 import { createPost, createUser, readPost, type PostFilter, type PostSort } from "#mesh/domain/blog";
 import config from "../mesh.config";
 import { alice } from "../src/context";
 
 const context = { actor: alice };
+/** The context of a call made by `user`: the post's `:owner` policy lets only its author publish, archive or destroy it. */
+const as = (user: { id: string }) => ({ actor: { id: user.id } });
 
 async function fresh() {
   const db = sqlite({ file: ":memory:" });
@@ -25,11 +27,11 @@ test("acceptance 1: create, read, update, destroy, and a write after destroy is 
     expect(post).toMatchObject({ title: "Hello", body: null, views: 0, price: 0, featured: false, state: "draft", authorId: author.id });
     expect(await blog.readPost({}, context)).toEqual([post]);
 
-    const published = await blog.publishPost({ id: post.id }, context);
+    const published = await blog.publishPost({ id: post.id }, as(author));
     expect(published.state).toBe("published");
     expect(published.insertedAt).toEqual(post.insertedAt);
 
-    await blog.destroyPost({ id: post.id }, context);
+    await blog.destroyPost({ id: post.id }, as(author));
     expect(await blog.readPost({}, context)).toEqual([]);
     await expect(blog.publishPost({ id: post.id }, context)).rejects.toBeInstanceOf(NotFoundError);
     await expect(blog.destroyPost({ id: post.id }, context)).rejects.toBeInstanceOf(NotFoundError);
@@ -93,7 +95,7 @@ test("a create fills timestamps from one clock reading, and an update moves only
     expect(post.insertedAt).toBeInstanceOf(Date);
     expect(post.insertedAt.getTime()).toBe(post.updatedAt.getTime());
     await Bun.sleep(5);
-    const published = await blog.publishPost({ id: post.id }, context);
+    const published = await blog.publishPost({ id: post.id }, as(author));
     expect(published.insertedAt.getTime()).toBe(post.insertedAt.getTime());
     expect(published.updatedAt.getTime()).toBeGreaterThan(post.updatedAt.getTime());
   } finally { await db.close(); }
@@ -129,7 +131,7 @@ test("a constant set is applied: publishPost sets state to published", async () 
   try {
     const author = await blog.createUser({ name: "Alice" }, context);
     const post = await blog.createPost({ title: "Hello", author: author.id }, context);
-    await blog.publishPost({ id: post.id }, context);
+    await blog.publishPost({ id: post.id }, as(author));
     expect((await blog.readPost({}, context))[0]?.state).toBe("published");
   } finally { await db.close(); }
 });
@@ -152,6 +154,56 @@ async function seeded(titles: string[]) {
   return { ...world, author, posts };
 }
 const titlesOf = (posts: { title: string }[]) => posts.map((post) => post.title);
+
+describe("policies (M8a): every action is covered, and a caller the policies do not admit is forbidden", () => {
+  test("only the author publishes, archives or destroys a post; anyone else gets ForbiddenError and nothing is written", async () => {
+    const { db, blog } = await fresh();
+    try {
+      const author = await blog.createUser({ name: "Alice" }, context);
+      const post = await blog.createPost({ title: "Hello", author: author.id }, context);
+      const error = await blog.publishPost({ id: post.id }, context).catch((cause: unknown) => cause);
+      expect(error).toBeInstanceOf(ForbiddenError);
+      expect(error).toMatchObject({ code: "forbidden", entity: "Post", action: "publish", policies: ["owner"], message: "Post.publish is forbidden by policy :owner" });
+      // The breakdown is plain data: it survives JSON unchanged.
+      const breakdown = (error as ForbiddenError).breakdown;
+      expect(breakdown).toEqual([{ policy: "owner", kind: "authorize-if", check: "({ actor }) => &author.id === actor.id", result: false, decisive: true }]);
+      expect(JSON.parse(JSON.stringify(breakdown))).toEqual(breakdown);
+      await expect(blog.archivePost({ id: post.id }, context)).rejects.toBeInstanceOf(ForbiddenError);
+      await expect(blog.destroyPost({ id: post.id }, context)).rejects.toBeInstanceOf(ForbiddenError);
+      expect(await blog.readPost({}, context)).toEqual([post]);
+      // A post that does not exist is not found, whoever asks: the row is read before the policy that reads it.
+      await expect(blog.publishPost({ id: crypto.randomUUID() }, context)).rejects.toBeInstanceOf(NotFoundError);
+    } finally { await db.close(); }
+  });
+
+  test("the policy runs before validate: a stranger is told they may not publish, not that the title is missing", async () => {
+    const { db, blog } = await fresh();
+    try {
+      const author = await blog.createUser({ name: "Alice" }, context);
+      const post = await blog.createPost({ title: "Hello", author: author.id }, context);
+      expect((await blog.publishPost({ id: post.id }, as(author))).state).toBe("published");
+      const other = await blog.createUser({ name: "Bob" }, context);
+      await expect(blog.publishPost({ id: post.id }, as(other))).rejects.toBeInstanceOf(ForbiddenError);
+    } finally { await db.close(); }
+  });
+
+  test("a call whose actor has no id reads every post, may not create a user or a post, and reads no user or comment", async () => {
+    const { db, blog } = await fresh();
+    try {
+      const author = await blog.createUser({ name: "Alice" }, context);
+      await blog.createPost({ title: "Hello", author: author.id }, context);
+      const anonymous = { actor: {} } as unknown as typeof context;
+      expect(await blog.readPost({}, anonymous)).toHaveLength(1);
+      await expect(blog.createUser({ name: "Eve" }, anonymous)).rejects.toMatchObject({ code: "forbidden", policies: ["signedIn"] });
+      await expect(blog.createPost({ title: "Spam", author: author.id }, anonymous)).rejects.toBeInstanceOf(ForbiddenError);
+      // A read whose policies do not admit the caller gives no rows, never an error.
+      expect(await blog.readUser({}, anonymous)).toEqual([]);
+      expect(await blog.readComment({}, anonymous)).toEqual([]);
+      expect(await blog.readUser({}, context)).toHaveLength(1);
+      expect(await blog.readPost({}, context)).toHaveLength(1);
+    } finally { await db.close(); }
+  });
+});
 
 describe("ids (UUIDv7, filled when Mesh builds the new record, ACT-27)", () => {
   test("a create's id is a UUIDv7, and ids sort in creation order", async () => {
@@ -271,7 +323,7 @@ describe("reads take a filter, sort, limit and offset", () => {
   test("booleans, enums and the key column of a relationship", async () => {
     const { db, blog, author, posts } = await seeded(titles);
     try {
-      await blog.publishPost({ id: posts[1]!.id }, context);
+      await blog.publishPost({ id: posts[1]!.id }, as(author));
       expect(titlesOf(await blog.readPost({ filter: { state: { eq: "published" } } }, context))).toEqual(["alpha"]);
       expect(await blog.readPost({ filter: { featured: { eq: true } } }, context)).toEqual([]);
       expect(await blog.readPost({ filter: { authorId: { eq: author.id } } }, context)).toHaveLength(5);

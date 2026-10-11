@@ -34,3 +34,6 @@ entity :Event table="events"
         &checks
         &payload
         &task
+  policies
+    policy :untilM8b
+      authorize-if=() => true

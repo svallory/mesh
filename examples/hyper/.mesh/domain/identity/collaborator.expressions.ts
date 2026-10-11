@@ -5,6 +5,7 @@ import {
   expr as $,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
+  type SharedInput as $SharedInput,
 } from "@meshfw/runtime";
 import { nameFreeOf, retireKeepsAnOwnerOf } from "../../../src/domain/identity/identity.helpers";
 import type {
@@ -96,4 +97,10 @@ export const expressions = {
   // set &version, translated (src/domain/identity/collaborator.mesh.mx:78:20)
   "retire.step.0.set.version": ($s: CollaboratorStoredScope<RetireCollaboratorInput>) =>
     $.add($s.self.version, 1),
+  // policy :untilM8b authorize-if, translated (src/domain/identity/collaborator.mesh.mx:81:20)
+  "policy.untilM8b.authorize-if.0": (
+    _$s: CollaboratorNewScope<
+      $SharedInput<RegisterCollaboratorInput | UpdateCollaboratorInput | RetireCollaboratorInput>
+    >,
+  ) => true,
 } as const;

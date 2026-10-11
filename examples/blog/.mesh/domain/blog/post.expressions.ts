@@ -15,6 +15,8 @@ import type {
   Post,
   PostLoaded,
   ArchivePostInput,
+  CreatePostInput,
+  DestroyPostInput,
   PublishPostInput,
   PublishedPostInput,
 } from "./post.types";
@@ -33,6 +35,14 @@ export type PostScope<I = unknown> = $Scope<{
 export type PostStoredScope<I = unknown> = PostScope<I> & { before: $DeepReadonly<Post> };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
 export type PostCheckScope<I = unknown> = Omit<PostScope<I>, "before">;
+/** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
+export type PostNewScope<I = unknown> = Omit<PostCheckScope<I>, "self"> & {
+  self: $DeepReadonly<
+    Omit<PostLoaded, "title" | "authorId" | "author"> & {
+      [K in "title" | "authorId" | "author"]: PostLoaded[K] | null;
+    }
+  >;
+};
 
 export const expressions = {
   // computed excerpt, plain (unsupported-construct) (src/domain/blog/post.mesh.mx:23:20)
@@ -48,9 +58,12 @@ export const expressions = {
   // published filter, translated (src/domain/blog/post.mesh.mx:41:14)
   "published.filter": ($s: PostScope<PublishedPostInput>) => $.eq($s.self.state, "published"),
   // policy :public authorize-if, translated (src/domain/blog/post.mesh.mx:46:20)
-  "policy.public.authorize-if.0": ($s: PostScope<unknown>) => $.eq($s.self.state, "published"),
-  // policy :owner authorize-if, translated (src/domain/blog/post.mesh.mx:48:20)
+  "policy.public.authorize-if.0": (_$s: PostCheckScope<unknown>) => true,
+  // policy :signedIn authorize-if, translated (src/domain/blog/post.mesh.mx:48:20)
+  "policy.signedIn.authorize-if.0": ($s: PostNewScope<CreatePostInput>) =>
+    $.isNotNull($s.actor?.id),
+  // policy :owner authorize-if, translated (src/domain/blog/post.mesh.mx:50:20)
   "policy.owner.authorize-if.0": (
-    $s: PostScope<$SharedInput<PublishPostInput | ArchivePostInput>>,
+    $s: PostCheckScope<$SharedInput<PublishPostInput | ArchivePostInput | DestroyPostInput>>,
   ) => $.eq($s.self.author?.id, $s.actor?.id),
 } as const;

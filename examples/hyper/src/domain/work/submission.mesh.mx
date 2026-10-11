@@ -107,3 +107,6 @@ entity :Submission table="submissions"
         set
           &submitter=({ actor }) => actor.id
           &state=:accepted
+  policies
+    policy :untilM8b
+      authorize-if=() => true

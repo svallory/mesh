@@ -24,7 +24,7 @@ import { newInstanceComputed, newInstanceGaps, newInstanceMembers } from "./new-
  */
 export interface CheckOptions {
   /** What printing a translated function as plain code needs, kept by the front end for demotion: the edits that turn it into TypeScript and the scope names it reads. */
-  demotionOf: (expression: Expression) => { edits: SourceEdit[]; roots: string[]; clock?: ("now" | "today")[] };
+  demotionOf: (expression: Expression) => { edits: SourceEdit[]; roots: string[]; clock?: ("now" | "today")[]; isSystem?: true };
 }
 
 interface Ty {
@@ -74,6 +74,8 @@ interface Scope {
   args?: Set<string>;
   /** Inside `validate`: `self` is the record before the input is applied, and there is no `before` (ACT-01, ACT-27). */
   validate?: boolean;
+  /** In a policy, which sees `self` as `validate` does, before the input (POL-08): the policy's message name, `policy :owner`. */
+  policy?: string;
   /** When the function can run on a create: the members of `self` that may still be null there (see `newInstanceGaps`). */
   fresh?: ReadonlySet<string>;
   /** The members every create the function runs in takes as a member input, so `input.x ?? &x` has a value on a create. */
@@ -169,6 +171,12 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
           report("error", "MESH_VALIDATE_BEFORE",
             "`before` is gone from `validate`: there `self` is the record before the input is applied (the stored record, or a create's new instance), and the caller's values are `input.x`", n.position,
             "write `&x` for the value before the input, `input.x` for the caller's, and `input.x ?? &x` for the value the action will store");
+          return { c: "any", nullable: false };
+        }
+        if (n.name === "before" && scope.policy) {
+          report("error", "MESH_POLICY_BEFORE",
+            `${scope.policy} reads \`before\`, which a policy does not have: it sees \`self\` as \`validate\` does, before the input is applied (the stored record, or a create's new instance), and the caller's values as \`input.x\``, n.position,
+            "write `&x` for the stored value and `input.x` for the caller's");
           return { c: "any", nullable: false };
         }
         if (n.name === "before" && scope.noBefore) {
@@ -295,6 +303,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
             return { c: "number", nullable: x.c === "string" ? x.nullable : false, int: true };
           }
           case "now": case "today": return { c: "date", nullable: false };
+          case "isSystem": return { c: "boolean", nullable: false };
           case "coalesce": {
             const [x, y] = a as [Ty, Ty];
             if (!same(x, y) && !(x.literal && x.c === "any")) return fail("`??` between values of different types");
@@ -449,7 +458,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       blocks(entity, block.validate, block.do, { ...base, beforeNullable: covers.includes("create") || covers.includes(undefined), noBefore: (block.types !== undefined || named !== undefined) && covers.every((kind) => kind === "create"), inputs: null }, creates);
     }
     for (const policy of entity.policies) {
-      const scope = { ...base, inputs: null };
+      const scope: Scope = { ...base, inputs: null, policy: `policy :${policy.name}` };
       for (const e of [...policy.authorizeIf, ...policy.forbidIf]) visit(e, scope, true);
       if (policy.when) visit(policy.when, scope, true);
     }

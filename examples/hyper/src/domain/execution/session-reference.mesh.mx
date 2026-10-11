@@ -85,3 +85,6 @@ entity :SessionReference table="session_references"
           &availability=:redacted
           &location=null
           &version=() => &version + 1
+  policies
+    policy :untilM8b
+      authorize-if=() => true

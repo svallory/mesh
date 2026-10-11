@@ -5,6 +5,7 @@ import {
   expr as $,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
+  type SharedInput as $SharedInput,
 } from "@meshfw/runtime";
 import {
   attemptOutcome,
@@ -217,4 +218,12 @@ export const expressions = {
   // set &version, translated (src/domain/execution/attempt.mesh.mx:153:20)
   "abandon.step.0.set.version": ($s: AttemptStoredScope<AbandonAttemptInput>) =>
     $.add($s.self.version, 1),
+  // policy :untilM8b authorize-if, translated (src/domain/execution/attempt.mesh.mx:156:20)
+  "policy.untilM8b.authorize-if.0": (
+    _$s: AttemptNewScope<
+      $SharedInput<
+        StartAttemptInput | FinishAttemptInput | ReportStoppedAttemptInput | AbandonAttemptInput
+      >
+    >,
+  ) => true,
 } as const;

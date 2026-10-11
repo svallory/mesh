@@ -5,6 +5,7 @@ import {
   expr as $,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
+  type SharedInput as $SharedInput,
 } from "@meshfw/runtime";
 import { machineActiveOf } from "../../../src/domain/execution/execution.helpers";
 import type {
@@ -126,4 +127,14 @@ export const expressions = {
   // set &version, translated (src/domain/execution/session-reference.mesh.mx:87:20)
   "redact.step.0.set.version": ($s: SessionReferenceStoredScope<RedactSessionReferenceInput>) =>
     $.add($s.self.version, 1),
+  // policy :untilM8b authorize-if, translated (src/domain/execution/session-reference.mesh.mx:90:20)
+  "policy.untilM8b.authorize-if.0": (
+    _$s: SessionReferenceNewScope<
+      $SharedInput<
+        | RecordSessionReferenceInput
+        | SetAvailabilitySessionReferenceInput
+        | RedactSessionReferenceInput
+      >
+    >,
+  ) => true,
 } as const;

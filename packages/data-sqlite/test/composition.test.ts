@@ -6,6 +6,7 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
+import { openPolicies } from "./open-policy.ts";
 import { FrameworkError, InvalidInputError, NotFoundError } from "@meshfw/runtime";
 import build from "../src/build.ts";
 import { createSchema, sqlite } from "../src/index.ts";
@@ -346,17 +347,24 @@ async function generate(prefix: string, sources: Record<string, string>): Promis
   const dir = await mkdtemp(join(import.meta.dir, prefix));
   const config: ResolvedConfig = { root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"), data: SQLITE };
   await Bun.write(join(dir, "src/domain/helpers.ts"), helpers);
-  const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: Object.entries(sources).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source })) });
+  const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: openPolicies(Object.entries(sources).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source }))) });
   expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   await writeGeneratedFiles(await generateFiles({ config, document: built.document as ModelDocument }, build), config);
   // `binding.ts` imports the project's config, which is not part of this fixture.
   await Bun.write(join(dir, "mesh.config.ts"), "export default { data: { name: 'sqlite', transaction: async () => undefined, close: async () => undefined } };\n");
+  // The project declares the context keys its functions pass (ADR-0059): against the bare `ActionContext`, which holds only
+  // the reserved `system`, `{ actor, log }` would be excess properties.
+  await Bun.write(join(dir, "project-context.ts"), 'import "@meshfw/runtime";\ndeclare module "@meshfw/runtime" {\n  interface ActionContext {\n    actor?: { id: string };\n    log?: string[];\n    stash?: unknown;\n  }\n}\nexport {};\n');
   return dir;
 }
 
-/** Type-check the generated files, and `extra`, under the strictest flags a consuming project might use. */
+/**
+ * Type-check the generated files, and `extra`, under the strictest flags a consuming project might use. The project's
+ * context declaration comes along unless `extra` brings its own (`context.ts`).
+ */
 async function typeCheck(dir: string, extra: string[] = []): Promise<string> {
   const files = (await readdir(join(dir, ".mesh"), { recursive: true })).filter((name) => name.endsWith(".ts")).map((name) => join(".mesh", name));
+  if (!extra.includes("context.ts")) extra = ["project-context.ts", ...extra];
   const child = Bun.spawnSync([
     resolve(import.meta.dir, "../../../node_modules/.bin/tsc"), "--ignoreConfig", "--noEmit", "--strict", "--noUncheckedIndexedAccess",
     "--module", "esnext", "--moduleResolution", "bundler", "--target", "es2022", "--skipLibCheck", "--noUnusedLocals", "--noUnusedParameters",
