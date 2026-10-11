@@ -142,14 +142,27 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Task", "create", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOrMember",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+              record: true,
+              run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
           ],
         },
@@ -197,6 +210,8 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
             },
             { clock: $clock },
           ) as unknown as $Scope<CreateTaskInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -249,14 +264,27 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Task", "update", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOrMember",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+              record: true,
+              run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
           ],
         },
@@ -301,6 +329,8 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
             },
             { clock: $clock },
           ) as unknown as $StoredScope<UpdateTaskInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -369,14 +399,27 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Task", "setPriority", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOrMember",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+              record: true,
+              run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
           ],
         },
@@ -421,6 +464,8 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
             },
             { clock: $clock },
           ) as unknown as $StoredScope<SetPriorityTaskInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -481,14 +526,27 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Task", "move", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOrMember",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+              record: true,
+              run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
           ],
         },
@@ -534,6 +592,8 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
             },
             { clock: $clock },
           ) as unknown as $StoredScope<MoveTaskInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -618,14 +678,40 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Task", "reopen", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOrMember",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+              record: true,
+              run: $expressions["policy.ownerOrMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "taskManager",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ self, actor, context, tx }) => isSystem(context) || managesTaskOf(tx, self, actor.id, true)",
+              record: true,
+              run: $expressions["policy.taskManager.authorize-if.0"],
             },
           ],
         },
@@ -670,6 +756,8 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
             },
             { clock: $clock },
           ) as unknown as $StoredScope<ReopenTaskInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -733,14 +821,14 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Task", "touch", [
         {
-          name: "untilM8b",
+          name: "internal",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
+              check: "({ context }) => isSystem(context)",
               record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              run: $expressions["policy.internal.authorize-if.0"],
             },
           ],
         },
@@ -824,14 +912,40 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Task", "cancel", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOrMember",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+              record: true,
+              run: $expressions["policy.ownerOrMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "taskManager",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ self, actor, context, tx }) => isSystem(context) || managesTaskOf(tx, self, actor.id, true)",
+              record: true,
+              run: $expressions["policy.taskManager.authorize-if.0"],
             },
           ],
         },
@@ -876,6 +990,8 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
             },
             { clock: $clock },
           ) as unknown as $StoredScope<CancelTaskInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -950,14 +1066,52 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Task", "complete", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOrMember",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+              record: true,
+              run: $expressions["policy.ownerOrMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "claimHolder",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ self, input, actor, context, tx }) => isSystem(context) || noOtherHolderOf(tx, self.id, input.fence, actor.id, now())",
+              record: true,
+              run: $expressions["policy.claimHolder.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "reviewCompletion",
+          when: null,
+          checks: [
+            {
+              kind: "forbid-if",
+              check: "({ context }) => context.completion != null && !isSystem(context)",
               record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              run: $expressions["policy.reviewCompletion.forbid-if.0"],
             },
           ],
         },
@@ -1003,6 +1157,8 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
             },
             { clock: $clock },
           ) as unknown as $StoredScope<CompleteTaskInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -1141,14 +1297,27 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Task", "assign", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOrMember",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+              record: true,
+              run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
           ],
         },
@@ -1194,6 +1363,8 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
             },
             { clock: $clock },
           ) as unknown as $StoredScope<AssignTaskInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -1290,14 +1461,40 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Task", "unassign", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOrMember",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+              record: true,
+              run: $expressions["policy.ownerOrMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "taskUnassigner",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ self, actor, context, tx }) => isSystem(context) || managesTaskOf(tx, self, actor.id, false)",
+              record: true,
+              run: $expressions["policy.taskUnassigner.authorize-if.0"],
             },
           ],
         },
@@ -1343,6 +1540,8 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
             },
             { clock: $clock },
           ) as unknown as $StoredScope<UnassignTaskInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -1421,14 +1620,14 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       if (
         !(await $authorizer("Task", "read", [
           {
-            name: "untilM8b",
+            name: "membersRead",
             when: null,
             checks: [
               {
                 kind: "authorize-if",
-                check: "() => true",
+                check: "({ actor, context }) => isSystem(context) || actor.role != null",
                 record: false,
-                run: $expressions["policy.untilM8b.authorize-if.0"],
+                run: $expressions["policy.membersRead.authorize-if.0"],
               },
             ],
           },

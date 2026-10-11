@@ -18,6 +18,7 @@ import {
   stepIdleOf,
 } from "../../../src/domain/execution/execution.helpers";
 import { heldFence, missingEvidenceOf } from "../../../src/domain/work/work.helpers";
+import { memberOf, roleIn } from "../../../src/domain/identity/identity.helpers";
 import type {
   ReadOnlyActions as $ReadOnlyActions,
   ReadOnlyReads as $ReadOnlyReads,
@@ -75,73 +76,73 @@ export type AttemptNewScope<I = unknown> = Omit<AttemptCheckScope<I>, "self"> & 
 };
 
 export const expressions = {
-  // check :claimer that, plain (uses-tx) (src/domain/execution/attempt.mesh.mx:38:16)
+  // check :claimer that, plain (uses-tx) (src/domain/execution/attempt.mesh.mx:42:16)
   "start.check.claimer.that": ($s: AttemptNewScope<StartAttemptInput>) => {
     const now = () => $.now($s);
     return (({ input, actor, tx }) => claimerOf(tx, input.run, actor.id, now()))($s);
   },
-  // check :runRunning that, plain (uses-tx) (src/domain/execution/attempt.mesh.mx:43:16)
+  // check :runRunning that, plain (uses-tx) (src/domain/execution/attempt.mesh.mx:47:16)
   "start.check.runRunning.that": ($s: AttemptNewScope<StartAttemptInput>) => {
     return (({ input, tx }) => runRunningOf(tx, input.run))($s);
   },
-  // check :stepIdle that, plain (uses-tx) (src/domain/execution/attempt.mesh.mx:48:16)
+  // check :stepIdle that, plain (uses-tx) (src/domain/execution/attempt.mesh.mx:52:16)
   "start.check.stepIdle.that": ($s: AttemptNewScope<StartAttemptInput>) => {
     const { self } = $s;
     return (({ input, tx }) => stepIdleOf(tx, input.run, input.step ?? self.step))($s);
   },
-  // check :session that, plain (uses-tx) (src/domain/execution/attempt.mesh.mx:53:16)
+  // check :session that, plain (uses-tx) (src/domain/execution/attempt.mesh.mx:57:16)
   "start.check.session.that": ($s: AttemptNewScope<StartAttemptInput>) => {
     return (async ({ input, tx }) =>
       input.session == null ||
       (await tx.readSessionReference({ filter: { id: { eq: input.session } }, limit: 1 })).length >
         0)($s);
   },
-  // check :machineRetired that, plain (uses-tx) (src/domain/execution/attempt.mesh.mx:58:16)
+  // check :machineRetired that, plain (uses-tx) (src/domain/execution/attempt.mesh.mx:62:16)
   "start.check.machineRetired.that": ($s: AttemptNewScope<StartAttemptInput>) => {
     return (async ({ input, tx }) =>
       input.machine == null || (await machineActiveOf(tx, input.machine)))($s);
   },
-  // set &performer, translated (src/domain/execution/attempt.mesh.mx:64:22)
+  // set &performer, translated (src/domain/execution/attempt.mesh.mx:68:22)
   "start.step.0.set.performer": ($s: AttemptScope<StartAttemptInput>) => $s.actor?.id,
-  // set &task, translated (src/domain/execution/attempt.mesh.mx:65:17)
+  // set &task, translated (src/domain/execution/attempt.mesh.mx:69:17)
   "start.step.0.set.task": ($s: AttemptScope<StartAttemptInput>) => $s.self.run?.taskId,
-  // set &number, plain (reads-record-in-helper) (src/domain/execution/attempt.mesh.mx:66:19)
+  // set &number, plain (reads-record-in-helper) (src/domain/execution/attempt.mesh.mx:70:19)
   "start.step.0.set.number": ($s: AttemptScope<StartAttemptInput>) => {
     const { self } = $s;
     return (() => nextNumber(self.run.attempts, self.step))();
   },
-  // set &delegator, plain (reads-record-in-helper) (src/domain/execution/attempt.mesh.mx:67:22)
+  // set &delegator, plain (reads-record-in-helper) (src/domain/execution/attempt.mesh.mx:71:22)
   "start.step.0.set.delegator": ($s: AttemptScope<StartAttemptInput>) => {
     const { self } = $s;
     return (() => delegatorFor(self.run.task.assignments, self.run.startedById))();
   },
-  // set &claimFence, plain (reads-record-in-helper) (src/domain/execution/attempt.mesh.mx:68:23)
+  // set &claimFence, plain (reads-record-in-helper) (src/domain/execution/attempt.mesh.mx:72:23)
   "start.step.0.set.claimFence": ($s: AttemptScope<StartAttemptInput>) => {
     const { self } = $s;
     const now = () => $.now($s);
     return (({ actor }) => heldFence(self.run.task.claims, actor.id, now()))($s);
   },
-  // check :running that, translated (src/domain/execution/attempt.mesh.mx:78:16)
+  // check :running that, translated (src/domain/execution/attempt.mesh.mx:82:16)
   "finish.check.running.that": ($s: AttemptCheckScope<FinishAttemptInput>) =>
     $.eq($s.self.state, "running"),
-  // check :error that, translated (src/domain/execution/attempt.mesh.mx:83:16)
+  // check :error that, translated (src/domain/execution/attempt.mesh.mx:87:16)
   "finish.check.error.that": ($s: AttemptCheckScope<FinishAttemptInput>) =>
     $.or($.eq($s.input?.result, "failed"), $.isNull($s.input?.error)),
-  // check :evidence that, plain (uses-tx) (src/domain/execution/attempt.mesh.mx:88:16)
+  // check :evidence that, plain (uses-tx) (src/domain/execution/attempt.mesh.mx:92:16)
   "finish.check.evidence.that": ($s: AttemptCheckScope<FinishAttemptInput>) => {
     return (async ({ input, tx }) =>
       (await missingEvidenceOf(tx, input.evidence ?? [])).length === 0)($s);
   },
-  // check :evidence details, plain (uses-tx) (src/domain/execution/attempt.mesh.mx:91:19)
+  // check :evidence details, plain (uses-tx) (src/domain/execution/attempt.mesh.mx:95:19)
   "finish.check.evidence.details": ($s: AttemptCheckScope<FinishAttemptInput>) => {
     return (async ({ input, tx }) => ({
       missing: await missingEvidenceOf(tx, input.evidence ?? []),
     }))($s);
   },
-  // check :versionMatches that, translated (src/domain/execution/attempt.mesh.mx:94:16)
+  // check :versionMatches that, translated (src/domain/execution/attempt.mesh.mx:98:16)
   "finish.check.versionMatches.that": ($s: AttemptCheckScope<FinishAttemptInput>) =>
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/attempt.mesh.mx:97:19)
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/attempt.mesh.mx:101:19)
   "finish.check.versionMatches.details": ($s: AttemptCheckScope<FinishAttemptInput>) => {
     const { self } = $s;
     return (({ input }) => ({
@@ -149,33 +150,36 @@ export const expressions = {
       actualVersion: self.version,
     }))($s);
   },
-  // set &state, translated (src/domain/execution/attempt.mesh.mx:101:18)
+  // set &state, translated (src/domain/execution/attempt.mesh.mx:105:18)
   "finish.step.0.set.state": ($s: AttemptStoredScope<FinishAttemptInput>) => $s.input?.result,
-  // set &endedAt, translated (src/domain/execution/attempt.mesh.mx:102:20)
+  // set &endedAt, translated (src/domain/execution/attempt.mesh.mx:106:20)
   "finish.step.0.set.endedAt": ($s: AttemptStoredScope<FinishAttemptInput>) => $.now($s),
-  // set &outcome, plain (unsupported-construct) (src/domain/execution/attempt.mesh.mx:103:20)
+  // set &outcome, plain (unsupported-construct) (src/domain/execution/attempt.mesh.mx:107:20)
   "finish.step.0.set.outcome": ($s: AttemptStoredScope<FinishAttemptInput>) => {
     return (({ input }) =>
       attemptOutcome({ outputs: input.outputs, evidence: input.evidence, error: input.error }))($s);
   },
-  // set &version, translated (src/domain/execution/attempt.mesh.mx:104:20)
+  // set &version, translated (src/domain/execution/attempt.mesh.mx:108:20)
   "finish.step.0.set.version": ($s: AttemptStoredScope<FinishAttemptInput>) =>
     $.add($s.self.version, 1),
-  // run, plain (run-step) (src/domain/execution/attempt.mesh.mx:105:28)
+  // run, plain (run-step) (src/domain/execution/attempt.mesh.mx:109:28)
   "finish.step.1.run": ($s: AttemptStoredScope<FinishAttemptInput>) => {
-    return (async function ({ self, input, tx, actions }) {
+    return (async function ({ self, input, context, tx, actions }) {
       const [run] = await tx.readRun({ filter: { id: { eq: self.runId } } });
       if (run && settlesRun(run.state, input.result, input.error))
-        await actions.settleRun({ id: run.id, result: input.result, outcome: self.outcome });
+        await actions.settleRun(
+          { id: run.id, result: input.result, outcome: self.outcome },
+          { ...context, system: true },
+        );
     })($s);
   },
-  // check :running that, translated (src/domain/execution/attempt.mesh.mx:116:16)
+  // check :running that, translated (src/domain/execution/attempt.mesh.mx:120:16)
   "reportStopped.check.running.that": ($s: AttemptCheckScope<ReportStoppedAttemptInput>) =>
     $.eq($s.self.state, "running"),
-  // check :versionMatches that, translated (src/domain/execution/attempt.mesh.mx:121:16)
+  // check :versionMatches that, translated (src/domain/execution/attempt.mesh.mx:125:16)
   "reportStopped.check.versionMatches.that": ($s: AttemptCheckScope<ReportStoppedAttemptInput>) =>
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/attempt.mesh.mx:124:19)
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/attempt.mesh.mx:128:19)
   "reportStopped.check.versionMatches.details": (
     $s: AttemptCheckScope<ReportStoppedAttemptInput>,
   ) => {
@@ -185,23 +189,23 @@ export const expressions = {
       actualVersion: self.version,
     }))($s);
   },
-  // set &endedAt, translated (src/domain/execution/attempt.mesh.mx:129:20)
+  // set &endedAt, translated (src/domain/execution/attempt.mesh.mx:133:20)
   "reportStopped.step.0.set.endedAt": ($s: AttemptStoredScope<ReportStoppedAttemptInput>) =>
     $.now($s),
-  // set &outcome, plain (unsupported-construct) (src/domain/execution/attempt.mesh.mx:130:20)
+  // set &outcome, plain (unsupported-construct) (src/domain/execution/attempt.mesh.mx:134:20)
   "reportStopped.step.0.set.outcome": ($s: AttemptStoredScope<ReportStoppedAttemptInput>) => {
     return (({ input }) => attemptOutcome({ reason: input.reason }))($s);
   },
-  // set &version, translated (src/domain/execution/attempt.mesh.mx:131:20)
+  // set &version, translated (src/domain/execution/attempt.mesh.mx:135:20)
   "reportStopped.step.0.set.version": ($s: AttemptStoredScope<ReportStoppedAttemptInput>) =>
     $.add($s.self.version, 1),
-  // check :running that, translated (src/domain/execution/attempt.mesh.mx:138:16)
+  // check :running that, translated (src/domain/execution/attempt.mesh.mx:142:16)
   "abandon.check.running.that": ($s: AttemptCheckScope<AbandonAttemptInput>) =>
     $.eq($s.self.state, "running"),
-  // check :versionMatches that, translated (src/domain/execution/attempt.mesh.mx:143:16)
+  // check :versionMatches that, translated (src/domain/execution/attempt.mesh.mx:147:16)
   "abandon.check.versionMatches.that": ($s: AttemptCheckScope<AbandonAttemptInput>) =>
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/attempt.mesh.mx:146:19)
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/attempt.mesh.mx:150:19)
   "abandon.check.versionMatches.details": ($s: AttemptCheckScope<AbandonAttemptInput>) => {
     const { self } = $s;
     return (({ input }) => ({
@@ -209,21 +213,40 @@ export const expressions = {
       actualVersion: self.version,
     }))($s);
   },
-  // set &endedAt, translated (src/domain/execution/attempt.mesh.mx:151:20)
+  // set &endedAt, translated (src/domain/execution/attempt.mesh.mx:155:20)
   "abandon.step.0.set.endedAt": ($s: AttemptStoredScope<AbandonAttemptInput>) => $.now($s),
-  // set &outcome, plain (unsupported-construct) (src/domain/execution/attempt.mesh.mx:152:20)
+  // set &outcome, plain (unsupported-construct) (src/domain/execution/attempt.mesh.mx:156:20)
   "abandon.step.0.set.outcome": ($s: AttemptStoredScope<AbandonAttemptInput>) => {
     return (({ input }) => attemptOutcome({ note: input.note }))($s);
   },
-  // set &version, translated (src/domain/execution/attempt.mesh.mx:153:20)
+  // set &version, translated (src/domain/execution/attempt.mesh.mx:157:20)
   "abandon.step.0.set.version": ($s: AttemptStoredScope<AbandonAttemptInput>) =>
     $.add($s.self.version, 1),
-  // policy :untilM8b authorize-if, translated (src/domain/execution/attempt.mesh.mx:156:20)
-  "policy.untilM8b.authorize-if.0": (
-    _$s: AttemptNewScope<
-      $SharedInput<
-        StartAttemptInput | FinishAttemptInput | ReportStoppedAttemptInput | AbandonAttemptInput
-      >
+  // policy :membersRead authorize-if, translated (src/domain/execution/attempt.mesh.mx:160:20)
+  "policy.membersRead.authorize-if.0": ($s: AttemptCheckScope<unknown>) =>
+    $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
+  // policy :isMember authorize-if, plain (uses-tx) (src/domain/execution/attempt.mesh.mx:162:20)
+  "policy.isMember.authorize-if.0": ($s: AttemptNewScope<StartAttemptInput>) => {
+    const isSystem = $.isSystem;
+    return (({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id))($s);
+  },
+  // policy :ownerOrMember authorize-if, plain (uses-tx) (src/domain/execution/attempt.mesh.mx:164:20)
+  "policy.ownerOrMember.authorize-if.0": ($s: AttemptNewScope<StartAttemptInput>) => {
+    const isSystem = $.isSystem;
+    return (({ actor, context, tx }) =>
+      isSystem(context) || roleIn(tx, actor.id, ["owner", "member"]))($s);
+  },
+  // policy :attemptClaimer authorize-if, plain (uses-tx) (src/domain/execution/attempt.mesh.mx:167:20)
+  "policy.attemptClaimer.authorize-if.0": ($s: AttemptNewScope<StartAttemptInput>) => {
+    const now = () => $.now($s);
+    const isSystem = $.isSystem;
+    return (({ input, actor, context, tx }) =>
+      isSystem(context) || claimerOf(tx, input.run, actor.id, now()))($s);
+  },
+  // policy :attemptPerformer authorize-if, translated (src/domain/execution/attempt.mesh.mx:169:20)
+  "policy.attemptPerformer.authorize-if.0": (
+    $s: AttemptCheckScope<
+      $SharedInput<FinishAttemptInput | ReportStoppedAttemptInput | AbandonAttemptInput>
     >,
-  ) => true,
+  ) => $.or($.isSystem($s.context), $.eq($s.self.performerId, $s.actor?.id)),
 } as const;

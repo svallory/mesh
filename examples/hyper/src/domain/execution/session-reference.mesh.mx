@@ -1,6 +1,7 @@
 import { Machine } from "./machine.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
 import { machineActiveOf } from "./execution.helpers"
+import { memberOf, roleIn } from "../identity/identity.helpers"
 
 entity :SessionReference table="session_references"
   attributes
@@ -86,5 +87,13 @@ entity :SessionReference table="session_references"
           &location=null
           &version=() => &version + 1
   policies
-    policy :untilM8b
-      authorize-if=() => true
+    policy :membersRead types=[:read]
+      authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
+    policy :isMember actions=[&record, &redact]
+      authorize-if=({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)
+    policy :ownerOrMember actions=[&record]
+      authorize-if=({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])
+    policy :ownerOnly actions=[&redact]
+      authorize-if=({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner])
+    policy :sessionRecorder actions=[&setAvailability]
+      authorize-if=({ self, actor, context }) => isSystem(context) || self.recordedById === actor.id

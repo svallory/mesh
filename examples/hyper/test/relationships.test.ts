@@ -9,7 +9,7 @@ import { loadInvocationFields, loadRunFields } from "#mesh/domain/execution";
 import { loadCollaboratorFields } from "#mesh/domain/identity";
 import { loadTaskFields, type Task, type TaskWith } from "#mesh/domain/work";
 import { attemptStart } from "../src/domain/execution/execution.commands";
-import { as, codes, empty, issuesOf, minutes, NOW, setup, type Empty, type Hyper } from "./world";
+import { as, asSystem, codes, empty, issuesOf, minutes, NOW, setup, type Empty, type Hyper } from "./world";
 
 const root = resolve(import.meta.dir, "..");
 const context = setup;
@@ -20,9 +20,12 @@ const fresh = empty;
 const load = <T>(db: DataLayer, work: (tx: DataOperations) => Promise<T>) => db.transaction(work);
 const ids = (rows: readonly { id: string }[]) => rows.map((row) => row.id);
 
+/** Alice (owner, by the bootstrap grant) and Bot (member): the policies let both write. */
 async function people(hyper: Hyper) {
   const alice = await hyper.registerCollaborator({ kind: "human", name: "Alice" }, setup);
   const bot = await hyper.registerCollaborator({ kind: "agent", name: "Bot" }, setup);
+  await hyper.grantMembership({ role: "owner", collaborator: alice.id }, asSystem(alice));
+  await hyper.grantMembership({ role: "member", collaborator: bot.id }, as(alice));
   return { alice, bot };
 }
 
@@ -127,14 +130,19 @@ describe("acceptance 2: Collaborator.memberships follows collaboratorId, not gra
   test("a membership belongs to the collaborator it is for, and the one who granted it has it in no list", async () => {
     const { db, hyper } = await fresh();
     try {
-      const { alice, bot } = await people(hyper);
+      const alice = await hyper.registerCollaborator({ kind: "human", name: "Alice" }, context);
+      const bot = await hyper.registerCollaborator({ kind: "agent", name: "Bot" }, context);
       const carol = await hyper.registerCollaborator({ kind: "human", name: "Carol" }, context);
-      // Alice grants Bot membership; Bot grants Alice one; Carol has none and granted none.
-      const forBot = await hyper.grantMembership({ role: "member", collaborator: bot.id }, as(alice));
-      const forAlice = await hyper.grantMembership({ role: "owner", collaborator: alice.id }, as(bot));
-      const loaded = await load(db, async (tx) => loadCollaboratorFields(tx, [alice, bot, carol], ["memberships"]));
-      expect(loaded.map((c) => [c.name, ids(c.memberships)])).toEqual([["Alice", [forAlice.id]], ["Bot", [forBot.id]], ["Carol", []]]);
-      expect(loaded[0]!.memberships[0]).toMatchObject({ collaboratorId: alice.id, grantedById: bot.id });
+      const dave = await hyper.registerCollaborator({ kind: "human", name: "Dave" }, context);
+      // The bootstrap grants Alice hers; Alice (owner) grants Bot an owner's; Bot grants Carol one; Dave has none and
+      // granted none. Only an owner grants (policy ownerOnly), so each granter is one.
+      const forAlice = await hyper.grantMembership({ role: "owner", collaborator: alice.id }, asSystem(alice));
+      const forBot = await hyper.grantMembership({ role: "owner", collaborator: bot.id }, as(alice));
+      const forCarol = await hyper.grantMembership({ role: "member", collaborator: carol.id }, as(bot));
+      const loaded = await load(db, async (tx) => loadCollaboratorFields(tx, [alice, bot, carol, dave], ["memberships"]));
+      expect(loaded.map((c) => [c.name, ids(c.memberships)])).toEqual([["Alice", [forAlice.id]], ["Bot", [forBot.id]], ["Carol", [forCarol.id]], ["Dave", []]]);
+      expect(loaded[1]!.memberships[0]).toMatchObject({ collaboratorId: bot.id, grantedById: alice.id });
+      expect(loaded[2]!.memberships[0]).toMatchObject({ collaboratorId: carol.id, grantedById: bot.id });
     } finally { await db.close(); }
   });
 

@@ -2,7 +2,8 @@ import { Task } from "../work/task.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
 import { Attempt } from "./attempt.mesh.mx"
 import { taskOpenOf } from "../work/work.helpers"
-import { responsibleFor, runRunningOf } from "./execution.helpers"
+import { cancelsRunOf, responsibleFor, runRunningOf } from "./execution.helpers"
+import { memberOf, roleIn } from "../identity/identity.helpers"
 
 entity :Run table="runs"
   attributes
@@ -73,5 +74,13 @@ entity :Run table="runs"
           &endedAt=() => now()
           &version=() => &version + 1
   policies
-    policy :untilM8b
-      authorize-if=() => true
+    policy :membersRead types=[:read]
+      authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
+    policy :isMember actions=[&start, &cancel]
+      authorize-if=({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)
+    policy :ownerOrMember actions=[&start, &cancel]
+      authorize-if=({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])
+    policy :runCanceler actions=[&cancel]
+      authorize-if=({ self, actor, context, tx }) => isSystem(context) || cancelsRunOf(tx, self, actor.id)
+    policy :internal actions=[&settle]
+      authorize-if=({ context }) => isSystem(context)

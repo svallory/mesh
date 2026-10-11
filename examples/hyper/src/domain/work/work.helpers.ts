@@ -1,8 +1,9 @@
 // Helpers for the work entity files and the work functions. The pure ones take values (rows already read, ids, a
 // time) and never the model; the ones whose names end in `Of` read through `tx`, the reads of the running
 // transaction, and hand what they read to a pure one. Each names the Hyper rule or change it follows.
-import { FrameworkError } from "@meshfw/runtime";
+import { FrameworkError, NotFoundError } from "@meshfw/runtime";
 import type { ReadOnlyReads } from "#mesh";
+import { roleOf } from "../identity/identity.helpers";
 
 /** The reads of the running transaction, as an entity file's `tx` or an application transaction's `tx` hands them over. */
 export type Reads = ReadOnlyReads;
@@ -433,4 +434,87 @@ export function taskUnchangedSinceSubmit(versions: SubmittedVersions): boolean {
 /** Which part of the reviewer rule names the reviewer of the Task `taskId` (`review.accept`'s `ruleApplied`). */
 export async function reviewerRuleOf(tx: Reads, taskId: string): Promise<ReviewerRule> {
   return (await reviewerOfTask(tx, taskId)).rule;
+}
+
+// The work entities' policies (M8b). Each reads through `tx` inside the transaction, so it sees the locked state, and
+// each is the per-command rule of one of Hyper's checks; the role gate those checks start from (`Role.gate`,
+// `checks/role.ex:46-63`) is the policies `isMember` and `ownerOrMember` beside them. Unlike Hyper's checks, these deny
+// a guest or a collaborator with no membership too (fail closed); the spec accepts the extra failure (PROTOCOL.md:114).
+
+/** The Task's current assignment, read through `tx`. */
+async function currentAssignmentOf(tx: Reads, taskId: string) {
+  return currentAssignment(await tx.readAssignment({ filter: { taskId: { eq: taskId }, endedAt: { nil: true } } }));
+}
+
+/**
+ * Policies `taskManager` and `taskUnassigner`, the spec's `task.manager` (`tasks/task/checks/manager.ex:13-41`,
+ * PROTOCOL.md:251): an owner; a member who is the current assignee or delegator; with `creator` (`cancel`, `reopen`),
+ * the Task's creator while it has no current assignment.
+ */
+export async function managesTaskOf(tx: Reads, task: { readonly id: string; readonly creatorId: string }, actorId: string, creator: boolean): Promise<boolean> {
+  const role = await roleOf(tx, actorId);
+  if (role === "owner") return true;
+  if (role !== "member") return false;
+  const current = await currentAssignmentOf(tx, task.id);
+  if (current) return current.assigneeId === actorId || current.delegatorId === actorId;
+  return creator && task.creatorId === actorId;
+}
+
+/**
+ * Policy `claimAssignee`, the spec's `claim.assignee` (`tasks/claim/checks/assignee.ex:12-30`, PROTOCOL.md:248): a
+ * Task assigned to someone else is claimed only by its assignee; owners are not exempt. For an actor with a
+ * membership, a Task that does not exist is `NotFoundError` here, in the permission phase, as the spec's `exists` check
+ * answers (PROTOCOL.md:110); Hyper's check passes it and its rules report it as not found. An actor with no membership
+ * passes, and `isMember` and `ownerOrMember` refuse it: it may read no Task, so a missing Task must answer exactly as
+ * an existing one (PROTOCOL.md:110, `02:42`), as Hyper's `Role` policy refuses it before any rule runs.
+ */
+export async function assigneeMayClaimOf(tx: Reads, taskId: string, actorId: string): Promise<boolean> {
+  if ((await roleOf(tx, actorId)) === null) return true;
+  if (!(await taskOf(tx, taskId))) throw new NotFoundError("Task", taskId);
+  const current = await currentAssignmentOf(tx, taskId);
+  return current === undefined || current.assigneeId === actorId;
+}
+
+/**
+ * Policy `claimRevoker`, the spec's `claim.revoker` (`tasks/claim/checks/revoker.ex:11-36`, PROTOCOL.md:250): an
+ * owner, or a member who is the Task's reviewer or its current delegator.
+ */
+export async function revokesClaimOf(tx: Reads, taskId: string, actorId: string): Promise<boolean> {
+  const role = await roleOf(tx, actorId);
+  if (role === "owner") return true;
+  if (role !== "member") return false;
+  if ((await reviewerOfTask(tx, taskId)).collaboratorId === actorId) return true;
+  return (await currentAssignmentOf(tx, taskId))?.delegatorId === actorId;
+}
+
+/**
+ * Policy `claimHolder` on `task.complete`, the spec's `claim.holder` (PROTOCOL.md:326): a completion without a fence
+ * is refused while someone else holds the Task's live claim. With a fence, the fence rules decide. Hyper's engine has
+ * no such check (it answers `claim.current-fence`); the port follows the spec (decision POL-20).
+ */
+export async function noOtherHolderOf(tx: Reads, taskId: string, fence: number | null | undefined, actorId: string, now: Date): Promise<boolean> {
+  if (fence !== null && fence !== undefined) return true;
+  const live = liveClaim(await claimsOf(tx, taskId), now);
+  return live === undefined || live.holderId === actorId;
+}
+
+/**
+ * Policy `claimHolder` on `submission.submit`, the spec's `claim.holder` (PROTOCOL.md:249): a submission by someone
+ * who never held a claim on the Task is refused. A Task that does not exist passes, and the content checks report it
+ * (`task.open`). Hyper's engine has no such check; the port follows the spec (decision POL-20).
+ */
+export async function heldAClaimOf(tx: Reads, taskId: string, actorId: string): Promise<boolean> {
+  if ((await claimsOf(tx, taskId)).some((claim) => claim.holderId === actorId)) return true;
+  return (await taskOf(tx, taskId)) === undefined;
+}
+
+/**
+ * Policy `reviewReviewer`, the spec's `review.reviewer` (`tasks/review/checks/reviewer.ex:13-33`, PROTOCOL.md:252):
+ * only the collaborator the reviewer rule names reviews a submission; owners are not exempt. A submission that does
+ * not exist passes, and the content checks report it.
+ */
+export async function reviewsSubmissionOf(tx: Reads, submissionId: string, actorId: string): Promise<boolean> {
+  const [submission] = await tx.readSubmission({ filter: { id: { eq: submissionId } }, limit: 1 });
+  if (!submission) return true;
+  return (await reviewerOfTask(tx, submission.taskId)).collaboratorId === actorId;
 }

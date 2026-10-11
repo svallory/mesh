@@ -1,16 +1,19 @@
 // Roadmap M5 acceptance test 9: each of Hyper's 57 named rules (gap analysis, Appendix A) has a passing and a failing
 // case through the generated actions, named by Hyper's rule name as the issue `code`. A command whose effect crosses
 // aggregates is called through its function in `src/domain/<module>/<module>.commands.ts`, never through the generated
-// action alone (PORTING.md). The two rules whose case needs policies or plugins are listed in NOT_PORTED with the
-// reason and the milestone; the last test checks that the two lists together are the 57, and that every code an entity
-// file reports, at any depth under the domain root, has its cases here.
+// action alone (PORTING.md). The rule `role`, a permission check in Hyper, is a policy since M8b: its cases, in
+// POLICIES, fail with `ForbiddenError` naming the policy; `attempt.claimer` is both a rule and a policy, as in Hyper.
+// The rule whose case needs plugins is listed in NOT_PORTED with the reason and the milestone; the last test checks
+// that the three lists together are the 57, and that every code an entity file reports, at any depth under the domain
+// root, has its cases here.
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { NotFoundError } from "@meshfw/runtime";
 import { attemptStart, sessionRecord } from "../src/domain/execution/execution.commands";
 import { collaboratorRetire, membershipRevoke } from "../src/domain/identity/identity.commands";
 import { reviewAccept, submissionSubmit, taskCancel, taskComplete } from "../src/domain/work/work.commands";
-import { as, codes, issuesOf, minutes, NOW, one, setup, within, type World } from "./world";
+import { as, asSystem, codes, deniedBy, issuesOf, minutes, NOW, one, setup, within, type World } from "./world";
 
 const GHOST = "00000000-0000-4000-8000-0000000000ff";
 type Who = { readonly id: string };
@@ -79,7 +82,9 @@ const RULES: Record<string, Case> = {
     },
     fail: async (w) => {
       await collaboratorRetire({ id: w.bob.id, reason: "left" }, as(w.alice), w.binding);
-      await refused(w.hyper.updateCollaborator({ id: w.bob.id, name: "Ghost" }, as(w.bob)), "collaborator.active");
+      // Retiring revoked Bob's membership, so his own update is refused by isMember (PROTOCOL.md:88); an owner's reaches the rule.
+      expect(await deniedBy(w.hyper.updateCollaborator({ id: w.bob.id, name: "Ghost" }, as(w.bob)))).toEqual(["isMember"]);
+      await refused(w.hyper.updateCollaborator({ id: w.bob.id, name: "Ghost" }, as(w.alice)), "collaborator.active");
       await refused(w.hyper.retireCollaborator({ id: w.bob.id }, as(w.alice)), "collaborator.active");
       await refused(w.hyper.grantMembership({ collaborator: w.bob.id, role: "member" }, as(w.alice)), "collaborator.active");
       await refused(w.hyper.assignTask({ id: w.task.id, assignee: w.bob.id }, as(w.alice)), "collaborator.active");
@@ -148,12 +153,13 @@ const RULES: Record<string, Case> = {
   "machine.name-free": {
     pass: async (w) => {
       await w.hyper.registerMachine({ name: "laptop" }, as(w.alice));
-      expect((await w.hyper.reportMachine({ name: "desktop" }, as(w.bot))).firstReportedById).toBe(w.bot.id);
+      // Machine :report is internal (a report names its machine through `machineNamed`): called as the engine.
+      expect((await w.hyper.reportMachine({ name: "desktop" }, asSystem(w.bot))).firstReportedById).toBe(w.bot.id);
     },
     fail: async (w) => {
       await w.hyper.registerMachine({ name: "laptop" }, as(w.alice));
       await refused(w.hyper.registerMachine({ name: "laptop" }, as(w.alice)), "machine.name-free");
-      await refused(w.hyper.reportMachine({ name: "laptop" }, as(w.bot)), "machine.name-free");
+      await refused(w.hyper.reportMachine({ name: "laptop" }, asSystem(w.bot)), "machine.name-free");
     },
   },
   "machine.active": {
@@ -198,7 +204,8 @@ const RULES: Record<string, Case> = {
       const reference = await session(w);
       await w.hyper.redactSessionReference({ id: reference.id, reason: "private" }, as(w.alice));
       await refused(w.hyper.redactSessionReference({ id: reference.id, reason: "again" }, as(w.alice)), "session.not-redacted");
-      await refused(w.hyper.setAvailabilitySessionReference({ id: reference.id, availability: "complete" }, as(w.alice)), "session.not-redacted");
+      // By its recorder, Bot: only the recorder sets the availability (policy sessionRecorder).
+      await refused(w.hyper.setAvailabilitySessionReference({ id: reference.id, availability: "complete" }, as(w.bot)), "session.not-redacted");
     },
   },
   "session.availability": {
@@ -216,6 +223,9 @@ const RULES: Record<string, Case> = {
       expect((await w.hyper.setPriorityTask({ id: w.task.id, priority: 3 }, as(w.alice))).priority).toBe(3);
     },
     fail: async (w) => {
+      // Bot holds and releases a claim first, so its submit below passes claim.holder (C3) and reaches the rule.
+      const held = await claim(w);
+      await w.hyper.releaseClaim({ id: held.id, fence: held.fence }, as(w.bot));
       await completed(w);
       await refused(w.hyper.setPriorityTask({ id: w.task.id, priority: 4 }, as(w.alice)), "task.open");
       await refused(w.hyper.updateTask({ id: w.task.id, title: "New" }, as(w.alice)), "task.open");
@@ -236,10 +246,14 @@ const RULES: Record<string, Case> = {
       const held = await claim(w);
       await refused(w.hyper.renewClaim({ id: held.id, fence: 2 }, as(w.bot)), "claim.current-fence", { currentFence: 1, stale: false });
       await refused(w.hyper.releaseClaim({ id: held.id, fence: 2 }, as(w.bot)), "claim.current-fence");
-      // On task.complete and submission.submit: a fence that is not the live claim's, or a live claim held by another.
+      // On task.complete and submission.submit: a fence that is not the live claim's.
       await refused(taskComplete({ id: w.task.id, fence: 2 }, as(w.alice), w.binding), "claim.current-fence", { currentFence: 1, stale: false });
-      await refused(taskComplete({ id: w.task.id }, as(w.alice), w.binding), "claim.current-fence");
-      await refused(submissionSubmit({ task: w.task.id, fence: held.fence, summary: "mine" }, as(w.bob), w.binding), "claim.current-fence");
+      await refused(submissionSubmit({ task: w.task.id, fence: 2, summary: "mine" }, as(w.bot), w.binding), "claim.current-fence", { currentFence: 1, stale: false });
+      // No fence while another holds the live claim, and a submit by someone who never held a claim on the task, are
+      // the spec's claim.holder (PROTOCOL.md:326, :249), a permission check: policy claimHolder refuses both before
+      // this rule runs (C3; Hyper's engine answers claim.current-fence here).
+      expect(await deniedBy(taskComplete({ id: w.task.id }, as(w.alice), w.binding))).toEqual(["claimHolder"]);
+      expect(await deniedBy(submissionSubmit({ task: w.task.id, fence: held.fence, summary: "mine" }, as(w.bob), w.binding))).toEqual(["claimHolder"]);
     },
   },
   "submission.pending": {
@@ -499,7 +513,8 @@ const RULES: Record<string, Case> = {
       await w.hyper.assignTask({ id: w.task.id, assignee: w.bob.id }, as(w.alice));
       const [assignment] = await w.hyper.readAssignment({}, as(w.alice));
       await w.hyper.unassignTask({ id: w.task.id }, as(w.alice));
-      await refused(w.hyper.finishAssignment({ id: assignment!.id, reason: "unassigned" }, as(w.alice)), "assignment.current");
+      // Assignment :finish is internal (task.assign and task.unassign end an assignment): called as the engine.
+      await refused(w.hyper.finishAssignment({ id: assignment!.id, reason: "unassigned" }, asSystem(w.alice)), "assignment.current");
     },
   },
   "claim.task-ready": {
@@ -508,7 +523,8 @@ const RULES: Record<string, Case> = {
     },
     fail: async (w) => {
       await claim(w);
-      await refused(claim(w, w.bob), "claim.task-ready", { derivedState: "claimed", reasons: [] });
+      // Bot, the assignee its claim made it, claims again: Bob would be refused by claim.assignee first (05:148).
+      await refused(claim(w), "claim.task-ready", { derivedState: "claimed", reasons: [] });
       const prerequisite = await w.hyper.createTask({ title: "Design" }, as(w.alice));
       const other = await w.hyper.createTask({ title: "Build" }, as(w.alice));
       await w.hyper.addDependency({ dependent: other.id, prerequisite: prerequisite.id }, as(w.alice));
@@ -526,7 +542,8 @@ const RULES: Record<string, Case> = {
       await refused(w.hyper.releaseClaim({ id: held.id, fence: held.fence }, as(w.bot)), "claim.active");
       await refused(w.hyper.renewClaim({ id: held.id, fence: held.fence }, as(w.bot)), "claim.active");
       await refused(w.hyper.revokeClaim({ id: held.id, reason: "late" }, as(w.alice)), "claim.active");
-      await refused(w.hyper.expireClaim({ id: held.id }, as(w.alice)), "claim.active");
+      // Claim :expire is internal (the engine's lease sweeper): called as the engine.
+      await refused(w.hyper.expireClaim({ id: held.id }, asSystem(w.alice)), "claim.active");
     },
   },
   "claim.expired": {
@@ -687,11 +704,16 @@ const RULES: Record<string, Case> = {
       expect(await started(w, await running(w))).toMatchObject({ performerId: w.bot.id, claimFence: 1, number: 1 });
     },
     fail: async (w) => {
+      // Hyper keeps both a policy and this rule (`runs/checks/reporter.ex:35-41`, `runs/attempt/rules.ex:15-30`): a
+      // caller is refused by the policy attemptClaimer first, and a call made as `system`, which every policy admits,
+      // still fails the rule.
       const run = await running(w);
-      await refused(attemptStart({ run: run.id }, as(w.bob), w.binding), "attempt.claimer");
+      expect(await deniedBy(attemptStart({ run: run.id }, as(w.bob), w.binding))).toEqual(["attemptClaimer"]);
+      await refused(attemptStart({ run: run.id }, asSystem(w.bob), w.binding), "attempt.claimer");
       // A lapsed claim is not the actor's any more.
       w.advance(10);
-      await refused(attemptStart({ run: run.id }, as(w.bot), w.binding), "attempt.claimer");
+      expect(await deniedBy(attemptStart({ run: run.id }, as(w.bot), w.binding))).toEqual(["attemptClaimer"]);
+      await refused(attemptStart({ run: run.id }, asSystem(w.bot), w.binding), "attempt.claimer");
     },
   },
   "attempt.run-running": {
@@ -835,9 +857,39 @@ const PORT_ONLY: Record<string, Case> = {
   },
 };
 
-/** Hyper's rules whose cases need policies or plugins, with the milestone that brings them. */
+/**
+ * Hyper's rule that is a permission check, ported as a policy (M8b): the passing case is a call the policy admits, the
+ * failing one a `ForbiddenError` naming the policy. `role` re-runs the role gate under the workspace lock for six actions
+ * (`memberships/rules.ex:12-17`); a policy that reads the role through `tx` runs inside the transaction, so it covers
+ * the rule. (`attempt.claimer`, Hyper's other rule that denies through `Role.deny`, is both a rule and the policy
+ * `attemptClaimer`, as in Hyper, and its cases are in RULES.)
+ */
+const POLICIES: Record<string, Case> = {
+  role: {
+    pass: async (w) => {
+      expect((await w.hyper.createTask({ title: "Mine" }, as(w.bot))).creatorId).toBe(w.bot.id);
+    },
+    fail: async (w) => {
+      const run = await running(w);
+      const attempt = await started(w, run);
+      await w.hyper.changeRoleMembership({ id: w.memberships.bot.id, role: "guest" }, as(w.alice));
+      // The six actions whose rules list `role` (claim.ex:56, task.ex:90-92, run.ex:49-50, invocation.ex:53-54,
+      // session_reference.ex:39, machine.ex:34), by a guest: each is refused by ownerOrMember, before any rule.
+      const guest = as(w.bot);
+      expect(await deniedBy(w.hyper.acquireClaim({ task: w.task.id }, guest))).toEqual(["ownerOrMember"]);
+      expect(await deniedBy(taskComplete({ id: w.task.id, fence: 1 }, guest, w.binding))).toEqual(["ownerOrMember"]);
+      expect(await deniedBy(w.hyper.startRun({ task: w.task.id }, guest))).toEqual(["ownerOrMember"]);
+      expect(await deniedBy(w.hyper.recordInvocation({ attempt: attempt.id, usageSource: "runtime" }, guest))).toEqual(["ownerOrMember"]);
+      expect(await deniedBy(sessionRecord({ runtime: "claude", runtimeSessionId: "s-9", availability: "complete", machine: "laptop", agentProfile: w.bot.id }, guest, w.binding))).toEqual(["ownerOrMember"]);
+      expect(await deniedBy(w.hyper.registerMachine({ name: "desktop" }, guest))).toEqual(["ownerOrMember"]);
+      // The refused session report rolled back the machine it recorded.
+      expect(await w.hyper.readMachine({}, as(w.alice))).toEqual([]);
+    },
+  },
+};
+
+/** Hyper's rules whose cases need plugins, with the milestone that brings them. */
 const NOT_PORTED: Record<string, string> = {
-  role: "a policy (`canWork(actor)`, `memberships/rules.ex:12`); policies run in M8 (G21)",
   "task.not-blocked": "asks the blocking-condition providers (`tasks/task/rules.ex:82`); providers arrive with the plugin hook points in M6 (G11)",
 };
 
@@ -857,7 +909,7 @@ const HYPER_RULES = [
 ];
 
 describe("roadmap M5 test 9: each of Hyper's rules, a passing and a failing case", () => {
-  for (const [code, { pass, fail }] of Object.entries({ ...RULES, ...PORT_ONLY })) {
+  for (const [code, { pass, fail }] of Object.entries({ ...RULES, ...PORT_ONLY, ...POLICIES })) {
     test(`${code}: passing case`, () => within(pass));
     test(`${code}: failing case`, () => within(fail));
   }
@@ -866,8 +918,9 @@ describe("roadmap M5 test 9: each of Hyper's rules, a passing and a failing case
     expect(HYPER_RULES).toHaveLength(57);
     expect(new Set(HYPER_RULES).size).toBe(57);
     expect(Object.keys(RULES)).toHaveLength(55);
-    expect(Object.keys(NOT_PORTED)).toEqual(["role", "task.not-blocked"]);
-    expect([...Object.keys(RULES), ...Object.keys(NOT_PORTED)].sort()).toEqual([...HYPER_RULES].sort());
+    expect(Object.keys(POLICIES)).toEqual(["role"]);
+    expect(Object.keys(NOT_PORTED)).toEqual(["task.not-blocked"]);
+    expect([...Object.keys(RULES), ...Object.keys(POLICIES), ...Object.keys(NOT_PORTED)].sort()).toEqual([...HYPER_RULES].sort());
     // Every entity file under the domain root (`mesh.config.ts`), at any depth.
     const domain = resolve(import.meta.dir, "../src/domain");
     const files = readdirSync(domain, { recursive: true, encoding: "utf8" }).filter((path) => path.endsWith(".mesh.mx"));
@@ -948,7 +1001,11 @@ describe("what the rules leave in place", () => {
   }));
 
   test("a rule that reads the record a create names reads it through tx, so an id that names no row fails the rule (ACT-27)", () => within(async (w) => {
-    // A create's checks see `self` before the input, so `claim.task-ready` reads the Task by `input.task` and finds none.
-    await refused(w.hyper.acquireClaim({ task: GHOST }, as(w.bot)), "claim.task-ready", { derivedState: null, reasons: [] });
+    // A caller's acquire of a Task that does not exist is not_found in the permission phase (PROTOCOL.md:110, PR #70 N4):
+    // policy claimAssignee throws NotFoundError before any rule runs.
+    await expect(w.hyper.acquireClaim({ task: GHOST }, as(w.bot))).rejects.toBeInstanceOf(NotFoundError);
+    // A call as the engine skips the policies: a create's checks see `self` before the input, so `claim.task-ready`
+    // reads the Task by `input.task` and finds none.
+    await refused(w.hyper.acquireClaim({ task: GHOST }, asSystem(w.bot)), "claim.task-ready", { derivedState: null, reasons: [] });
   }));
 });

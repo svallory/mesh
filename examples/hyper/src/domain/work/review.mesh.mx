@@ -1,6 +1,7 @@
 import { Submission } from "./submission.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
-import { reviewerRuleOf, submittedVersionsOf, taskUnchangedSinceSubmit } from "./work.helpers"
+import { reviewerRuleOf, reviewsSubmissionOf, submittedVersionsOf, taskUnchangedSinceSubmit } from "./work.helpers"
+import { memberOf, roleIn } from "../identity/identity.helpers"
 
 entity :Review table="reviews"
   attributes
@@ -41,8 +42,8 @@ entity :Review table="reviews"
           &reviewer=({ actor }) => actor.id
           &ruleApplied=({ tx }) => reviewerRuleOf(tx, &submission.taskId)
         run [after=:write] ({ self, context, actions }) {
-          const submission = await actions.settleSubmission({ id: self.submissionId, outcome: :accepted });
-          await actions.completeTask({ id: submission.taskId }, { ...context, completion: { rule: "review-accepted", submissionId: submission.id } });
+          const submission = await actions.settleSubmission({ id: self.submissionId, outcome: :accepted }, { ...context, system: true });
+          await actions.completeTask({ id: submission.taskId }, { ...context, system: true, completion: { rule: "review-accepted", submissionId: submission.id } });
         }
     create :return
       input
@@ -67,10 +68,16 @@ entity :Review table="reviews"
           &reasons=({ input }) => input.reasons
           &reviewer=({ actor }) => actor.id
           &ruleApplied=({ tx }) => reviewerRuleOf(tx, &submission.taskId)
-        run [after=:write] ({ self, actions }) {
-          const submission = await actions.settleSubmission({ id: self.submissionId, outcome: :returned });
-          await actions.touchTask({ id: submission.taskId });
+        run [after=:write] ({ self, context, actions }) {
+          const submission = await actions.settleSubmission({ id: self.submissionId, outcome: :returned }, { ...context, system: true });
+          await actions.touchTask({ id: submission.taskId }, { ...context, system: true });
         }
   policies
-    policy :untilM8b
-      authorize-if=() => true
+    policy :membersRead types=[:read]
+      authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
+    policy :isMember actions=[&accept, &return]
+      authorize-if=({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)
+    policy :ownerOrMember actions=[&accept, &return]
+      authorize-if=({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])
+    policy :reviewReviewer actions=[&accept, &return]
+      authorize-if=({ input, actor, context, tx }) => isSystem(context) || reviewsSubmissionOf(tx, input.submission, actor.id)

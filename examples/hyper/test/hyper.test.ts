@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { Database } from "bun:sqlite";
 import { FrameworkError, InvalidInputError } from "@meshfw/runtime";
 import { tables } from "#mesh";
-import { as, empty, eventOf, populate, setup } from "./world";
+import { as, asSystem, empty, eventOf, populate, setup } from "./world";
 
 const root = resolve(import.meta.dir, "..");
 const context = setup;
@@ -86,10 +86,11 @@ describe("one row of every entity round-trips through its generated functions", 
       expect(completion.rule).toBe("review-accepted");
       // The child's parent has no current assignment, so its creator reviews.
       expect(review.ruleApplied).toBe("parent-creator");
-      const second = await hyper.recordCompletion({ rule: "performer-is-reviewer", task: task.id }, as(alice));
+      // Completion :record is internal (only task.complete records one): the test calls it as the engine would.
+      const second = await hyper.recordCompletion({ rule: "performer-is-reviewer", task: task.id }, asSystem(alice));
       expect((await hyper.readCompletion({ filter: { rule: { in: ["performer-is-reviewer", "review-waived"] } } }, context)).map((c) => c.id)).toEqual([second.id]);
       // @ts-expect-error "reviewer" is not one of the spec's completion rules
-      await expect(hyper.recordCompletion({ rule: "reviewer", task: task.id, submission: submission.id }, as(alice))).rejects.toBeInstanceOf(InvalidInputError);
+      await expect(hyper.recordCompletion({ rule: "reviewer", task: task.id, submission: submission.id }, asSystem(alice))).rejects.toBeInstanceOf(InvalidInputError);
     } finally { await db.close(); }
   });
 
@@ -216,6 +217,7 @@ describe("reads of Hyper's list_tasks shape", () => {
     const { db, hyper } = fresh;
     try {
       const alice = await hyper.registerCollaborator({ kind: "human", name: "Alice" }, context);
+      await hyper.grantMembership({ role: "owner", collaborator: alice.id }, asSystem(alice));
       const parent = await hyper.createTask({ title: "parent" }, as(alice));
       const other = await hyper.createTask({ title: "other parent" }, as(alice));
       const mine: string[] = [];

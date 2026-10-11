@@ -118,14 +118,27 @@ export function bindCollaborator(
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Collaborator", "register", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOnly",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner])",
+              record: true,
+              run: $expressions["policy.ownerOnly.authorize-if.0"],
             },
           ],
         },
@@ -171,6 +184,8 @@ export function bindCollaborator(
             },
             { clock: $clock },
           ) as unknown as $Scope<RegisterCollaboratorInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -215,14 +230,27 @@ export function bindCollaborator(
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Collaborator", "update", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "collaboratorSelfOrOwner",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ self, actor, context, tx }) => isSystem(context) || self.id === actor.id || roleIn(tx, actor.id, [:owner])",
+              record: true,
+              run: $expressions["policy.collaboratorSelfOrOwner.authorize-if.0"],
             },
           ],
         },
@@ -271,6 +299,8 @@ export function bindCollaborator(
             },
             { clock: $clock },
           ) as unknown as $StoredScope<UpdateCollaboratorInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -355,14 +385,27 @@ export function bindCollaborator(
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Collaborator", "retire", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOnly",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner])",
+              record: true,
+              run: $expressions["policy.ownerOnly.authorize-if.0"],
             },
           ],
         },
@@ -411,6 +454,8 @@ export function bindCollaborator(
             },
             { clock: $clock },
           ) as unknown as $StoredScope<RetireCollaboratorInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -487,14 +532,14 @@ export function bindCollaborator(
       if (
         !(await $authorizer("Collaborator", "read", [
           {
-            name: "untilM8b",
+            name: "membersRead",
             when: null,
             checks: [
               {
                 kind: "authorize-if",
-                check: "() => true",
+                check: "({ actor, context }) => isSystem(context) || actor.role != null",
                 record: false,
-                run: $expressions["policy.untilM8b.authorize-if.0"],
+                run: $expressions["policy.membersRead.authorize-if.0"],
               },
             ],
           },

@@ -2,13 +2,49 @@
 // model; each names the Hyper change it follows. The ones whose names end in `Of` read through `tx`: a create's check
 // sees its `self` before the input is applied (ACT-27), so it reads the run, the machine or the attempt the caller
 // names by the id in `input` (POL-08).
+import { roleOf } from "../identity/identity.helpers";
 import { claimsOf, currentAssignment, type AssignmentFacts, type Reads } from "../work/work.helpers";
 
-/** `attempt.claimer` (`runs/attempt/rules.ex:15-30`): the actor holds a live claim on the run's Task. */
+/**
+ * Policy `attemptClaimer`, Hyper's `attempt.claimer` (`runs/checks/reporter.ex:35-41`, `:84-91`, and the rule
+ * `runs/attempt/rules.ex:15-30`, a permission denial through `Role.deny`): the actor holds a live claim on the run's
+ * Task. A run that does not exist passes, as in Hyper, and `attempt.run-running` reports it.
+ */
 export async function claimerOf(tx: Reads, runId: string, actorId: string, now: Date): Promise<boolean> {
   const [run] = await tx.readRun({ filter: { id: { eq: runId } }, limit: 1 });
-  if (!run) return false;
+  if (!run) return true;
   return (await claimsOf(tx, run.taskId)).some((claim) => claim.state === "active" && claim.expiresAt.getTime() > now.getTime() && claim.holderId === actorId);
+}
+
+/**
+ * Policy `runCanceler`, Hyper's `run.canceler` (`runs/checks/reporter.ex:71-82`): an owner, the run's responsible
+ * collaborator, its starter or the Task's current delegator.
+ */
+export async function cancelsRunOf(tx: Reads, run: { readonly taskId: string; readonly responsibleId: string; readonly startedById: string }, actorId: string): Promise<boolean> {
+  if ((await roleOf(tx, actorId)) === "owner") return true;
+  if (actorId === run.responsibleId || actorId === run.startedById) return true;
+  const assignments = await tx.readAssignment({ filter: { taskId: { eq: run.taskId }, endedAt: { nil: true } } });
+  return currentAssignment(assignments)?.delegatorId === actorId;
+}
+
+/**
+ * Policy `attemptPerformer` on `invocation.record`, Hyper's `attempt.performer` (`runs/checks/reporter.ex:43-50`):
+ * the actor performs the attempt. An attempt that does not exist passes, as in Hyper.
+ */
+export async function performsAttemptOf(tx: Reads, attemptId: string, actorId: string): Promise<boolean> {
+  const [attempt] = await tx.readAttempt({ filter: { id: { eq: attemptId } }, limit: 1 });
+  return attempt === undefined || attempt.performerId === actorId;
+}
+
+/**
+ * Policy `invocationRecorder`, Hyper's `invocation.recorder` (`runs/checks/reporter.ex:52-69`): the corrected
+ * invocation's recorder, or an owner. An invocation that does not exist, or none named, passes, as in Hyper.
+ */
+export async function correctsInvocationOf(tx: Reads, invocationId: string | null | undefined, actorId: string): Promise<boolean> {
+  if (invocationId == null) return true;
+  const [invocation] = await tx.readInvocation({ filter: { id: { eq: invocationId } }, limit: 1 });
+  if (invocation === undefined || invocation.recordedById === actorId) return true;
+  return (await roleOf(tx, actorId)) === "owner";
 }
 
 /** `attempt.run-running` and `run.parent-running`: the run exists and is running. */

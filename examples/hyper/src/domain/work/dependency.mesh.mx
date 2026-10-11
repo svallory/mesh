@@ -1,6 +1,7 @@
 import { Task } from "./task.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
 import { dependencyExistsOf, missingTasksOf, prerequisiteReachesOf, taskVersionOf } from "./work.helpers"
+import { memberOf, roleIn } from "../identity/identity.helpers"
 
 entity :Dependency table="dependencies"
   attributes
@@ -47,8 +48,8 @@ entity :Dependency table="dependencies"
       do
         set
           &createdBy=({ actor }) => actor.id
-        run [after=:write] ({ self, actions }) {
-          await actions.touchTask({ id: self.dependentId });
+        run [after=:write] ({ self, context, actions }) {
+          await actions.touchTask({ id: self.dependentId }, { ...context, system: true });
         }
     destroy :remove
       input
@@ -62,9 +63,13 @@ entity :Dependency table="dependencies"
           details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &dependent.version })
         ]
       do
-        run [after=:write] ({ self, actions }) {
-          await actions.touchTask({ id: self.dependentId });
+        run [after=:write] ({ self, context, actions }) {
+          await actions.touchTask({ id: self.dependentId }, { ...context, system: true });
         }
   policies
-    policy :untilM8b
-      authorize-if=() => true
+    policy :membersRead types=[:read]
+      authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
+    policy :isMember actions=[&add, &remove]
+      authorize-if=({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)
+    policy :ownerOrMember actions=[&add, &remove]
+      authorize-if=({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])

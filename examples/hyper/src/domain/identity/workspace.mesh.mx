@@ -1,3 +1,5 @@
+import { memberOf, roleIn } from "./identity.helpers"
+
 entity :Workspace table="workspaces"
   attributes
     uuid :id primary-key
@@ -30,5 +32,9 @@ entity :Workspace table="workspaces"
         set
           &version=() => &version + 1
   policies
-    policy :untilM8b
-      authorize-if=() => true
+    policy :membersRead types=[:read]
+      authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
+    policy :isMember actions=[&create, &rename]
+      authorize-if=({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)
+    policy :ownerOnly actions=[&create, &rename]
+      authorize-if=({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner])

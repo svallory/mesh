@@ -121,14 +121,40 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Claim", "acquire", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOrMember",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+              record: true,
+              run: $expressions["policy.ownerOrMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "claimAssignee",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ input, actor, context, tx }) => isSystem(context) || assigneeMayClaimOf(tx, input.task, actor.id)",
+              record: true,
+              run: $expressions["policy.claimAssignee.authorize-if.0"],
             },
           ],
         },
@@ -179,6 +205,8 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
             },
             { clock: $clock },
           ) as unknown as $Scope<AcquireClaimInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -186,7 +214,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
             label: "taskReady",
             code: "claim.task-ready",
             message: "the task is not ready to claim",
-            source: { file: "src/domain/work/claim.mesh.mx", line: 25, column: 9 },
+            source: { file: "src/domain/work/claim.mesh.mx", line: 26, column: 9 },
             that: $expressions["acquire.check.taskReady.that"],
             details: $expressions["acquire.check.taskReady.details"],
           });
@@ -194,7 +222,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
             label: "versionMatches",
             code: "expected-version",
             message: "the task is at another version; read it again and retry",
-            source: { file: "src/domain/work/claim.mesh.mx", line: 31, column: 9 },
+            source: { file: "src/domain/work/claim.mesh.mx", line: 32, column: 9 },
             that: $expressions["acquire.check.versionMatches.that"],
             details: $expressions["acquire.check.versionMatches.details"],
           });
@@ -207,7 +235,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
             const $value = await $expressions["acquire.step.1.set.holder"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &holder (src/domain/work/claim.mesh.mx:43:19) produced no value, and the relationship holder is required",
+                "set &holder (src/domain/work/claim.mesh.mx:44:19) produced no value, and the relationship holder is required",
               );
             $changes.holderId = $record.holderId = $value;
           }
@@ -216,7 +244,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
             const $value = await $expressions["acquire.step.1.set.fence"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &fence (src/domain/work/claim.mesh.mx:44:18) produced no value, and fence is required",
+                "set &fence (src/domain/work/claim.mesh.mx:45:18) produced no value, and fence is required",
               );
             $changes.fence = $record.fence = $value;
           }
@@ -224,7 +252,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
             const $value = await $expressions["acquire.step.1.set.acquiredAt"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &acquiredAt (src/domain/work/claim.mesh.mx:45:23) produced no value, and acquiredAt is required",
+                "set &acquiredAt (src/domain/work/claim.mesh.mx:46:23) produced no value, and acquiredAt is required",
               );
             $changes.acquiredAt = $record.acquiredAt = $value;
           }
@@ -232,7 +260,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
             const $value = await $expressions["acquire.step.1.set.expiresAt"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &expiresAt (src/domain/work/claim.mesh.mx:46:22) produced no value, and expiresAt is required",
+                "set &expiresAt (src/domain/work/claim.mesh.mx:47:22) produced no value, and expiresAt is required",
               );
             $changes.expiresAt = $record.expiresAt = $value;
           }
@@ -279,14 +307,40 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Claim", "renew", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOrMember",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+              record: true,
+              run: $expressions["policy.ownerOrMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "claimHolder",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ self, actor, context }) => isSystem(context) || self.holderId === actor.id",
+              record: true,
+              run: $expressions["policy.claimHolder.authorize-if.0"],
             },
           ],
         },
@@ -332,6 +386,8 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
             },
             { clock: $clock },
           ) as unknown as $StoredScope<RenewClaimInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -340,7 +396,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
             label: "currentFence",
             code: "claim.current-fence",
             message: "the fence is not the current claim's; claim the task again",
-            source: { file: "src/domain/work/claim.mesh.mx", line: 57, column: 9 },
+            source: { file: "src/domain/work/claim.mesh.mx", line: 58, column: 9 },
             that: $expressions["renew.check.currentFence.that"],
             details: $expressions["renew.check.currentFence.details"],
           });
@@ -348,21 +404,21 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
             label: "claimActive",
             code: "claim.active",
             message: "the claim has ended; claim the task again",
-            source: { file: "src/domain/work/claim.mesh.mx", line: 63, column: 9 },
+            source: { file: "src/domain/work/claim.mesh.mx", line: 64, column: 9 },
             that: $expressions["renew.check.claimActive.that"],
           });
           await $runCheck($issues, $checks, {
             label: "claimNotExpired",
             code: "claim.expired",
             message: "the lease has expired; claim the task again",
-            source: { file: "src/domain/work/claim.mesh.mx", line: 68, column: 9 },
+            source: { file: "src/domain/work/claim.mesh.mx", line: 69, column: 9 },
             that: $expressions["renew.check.claimNotExpired.that"],
           });
           await $runCheck($issues, $checks, {
             label: "versionMatches",
             code: "expected-version",
             message: "the task is at another version; read it again and retry",
-            source: { file: "src/domain/work/claim.mesh.mx", line: 73, column: 9 },
+            source: { file: "src/domain/work/claim.mesh.mx", line: 74, column: 9 },
             that: $expressions["renew.check.versionMatches.that"],
             details: $expressions["renew.check.versionMatches.details"],
           });
@@ -372,7 +428,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
             const $value = await $expressions["renew.step.0.set.expiresAt"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &expiresAt (src/domain/work/claim.mesh.mx:81:22) produced no value, and expiresAt is required",
+                "set &expiresAt (src/domain/work/claim.mesh.mx:82:22) produced no value, and expiresAt is required",
               );
             $changes.expiresAt = $record.expiresAt = $value;
           }
@@ -422,14 +478,40 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Claim", "release", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOrMember",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+              record: true,
+              run: $expressions["policy.ownerOrMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "claimHolder",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ self, actor, context }) => isSystem(context) || self.holderId === actor.id",
+              record: true,
+              run: $expressions["policy.claimHolder.authorize-if.0"],
             },
           ],
         },
@@ -475,6 +557,8 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
             },
             { clock: $clock },
           ) as unknown as $StoredScope<ReleaseClaimInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -483,7 +567,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
             label: "currentFence",
             code: "claim.current-fence",
             message: "the fence is not the current claim's; claim the task again",
-            source: { file: "src/domain/work/claim.mesh.mx", line: 91, column: 9 },
+            source: { file: "src/domain/work/claim.mesh.mx", line: 92, column: 9 },
             that: $expressions["release.check.currentFence.that"],
             details: $expressions["release.check.currentFence.details"],
           });
@@ -491,21 +575,21 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
             label: "claimActive",
             code: "claim.active",
             message: "the claim has ended; claim the task again",
-            source: { file: "src/domain/work/claim.mesh.mx", line: 97, column: 9 },
+            source: { file: "src/domain/work/claim.mesh.mx", line: 98, column: 9 },
             that: $expressions["release.check.claimActive.that"],
           });
           await $runCheck($issues, $checks, {
             label: "claimNotExpired",
             code: "claim.expired",
             message: "the lease has expired; claim the task again",
-            source: { file: "src/domain/work/claim.mesh.mx", line: 102, column: 9 },
+            source: { file: "src/domain/work/claim.mesh.mx", line: 103, column: 9 },
             that: $expressions["release.check.claimNotExpired.that"],
           });
           await $runCheck($issues, $checks, {
             label: "versionMatches",
             code: "expected-version",
             message: "the task is at another version; read it again and retry",
-            source: { file: "src/domain/work/claim.mesh.mx", line: 107, column: 9 },
+            source: { file: "src/domain/work/claim.mesh.mx", line: 108, column: 9 },
             that: $expressions["release.check.versionMatches.that"],
             details: $expressions["release.check.versionMatches.details"],
           });
@@ -566,14 +650,40 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Claim", "revoke", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOrMember",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+              record: true,
+              run: $expressions["policy.ownerOrMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "claimRevoker",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ self, actor, context, tx }) => isSystem(context) || revokesClaimOf(tx, self.taskId, actor.id)",
+              record: true,
+              run: $expressions["policy.claimRevoker.authorize-if.0"],
             },
           ],
         },
@@ -619,6 +729,8 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
             },
             { clock: $clock },
           ) as unknown as $StoredScope<RevokeClaimInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -627,14 +739,14 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
             label: "claimActive",
             code: "claim.active",
             message: "the claim has ended; claim the task again",
-            source: { file: "src/domain/work/claim.mesh.mx", line: 126, column: 9 },
+            source: { file: "src/domain/work/claim.mesh.mx", line: 127, column: 9 },
             that: $expressions["revoke.check.claimActive.that"],
           });
           await $runCheck($issues, $checks, {
             label: "versionMatches",
             code: "expected-version",
             message: "the task is at another version; read it again and retry",
-            source: { file: "src/domain/work/claim.mesh.mx", line: 131, column: 9 },
+            source: { file: "src/domain/work/claim.mesh.mx", line: 132, column: 9 },
             that: $expressions["revoke.check.versionMatches.that"],
             details: $expressions["revoke.check.versionMatches.details"],
           });
@@ -695,14 +807,14 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Claim", "expire", [
         {
-          name: "untilM8b",
+          name: "internal",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
+              check: "({ context }) => isSystem(context)",
               record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              run: $expressions["policy.internal.authorize-if.0"],
             },
           ],
         },
@@ -754,7 +866,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
             label: "claimActive",
             code: "claim.active",
             message: "the claim has ended; claim the task again",
-            source: { file: "src/domain/work/claim.mesh.mx", line: 149, column: 9 },
+            source: { file: "src/domain/work/claim.mesh.mx", line: 150, column: 9 },
             that: $expressions["expire.check.claimActive.that"],
           });
           if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -813,14 +925,14 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Claim", "end", [
         {
-          name: "untilM8b",
+          name: "internal",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
+              check: "({ context }) => isSystem(context)",
               record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              run: $expressions["policy.internal.authorize-if.0"],
             },
           ],
         },
@@ -872,7 +984,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
             label: "claimActive",
             code: "claim.active",
             message: "the claim has ended; claim the task again",
-            source: { file: "src/domain/work/claim.mesh.mx", line: 167, column: 9 },
+            source: { file: "src/domain/work/claim.mesh.mx", line: 168, column: 9 },
             that: $expressions["end.check.claimActive.that"],
           });
           if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -881,7 +993,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
             const $value = await $expressions["end.step.0.set.state"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &state (src/domain/work/claim.mesh.mx:174:18) produced no value, and state is required",
+                "set &state (src/domain/work/claim.mesh.mx:175:18) produced no value, and state is required",
               );
             $changes.state = $record.state = $value;
           }
@@ -926,14 +1038,14 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
       if (
         !(await $authorizer("Claim", "read", [
           {
-            name: "untilM8b",
+            name: "membersRead",
             when: null,
             checks: [
               {
                 kind: "authorize-if",
-                check: "() => true",
+                check: "({ actor, context }) => isSystem(context) || actor.role != null",
                 record: false,
-                run: $expressions["policy.untilM8b.authorize-if.0"],
+                run: $expressions["policy.membersRead.authorize-if.0"],
               },
             ],
           },

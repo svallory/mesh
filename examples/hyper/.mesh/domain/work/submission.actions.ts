@@ -120,14 +120,40 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Submission", "submit", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOrMember",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+              record: true,
+              run: $expressions["policy.ownerOrMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "claimHolder",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ input, actor, context, tx }) => isSystem(context) || heldAClaimOf(tx, input.task, actor.id)",
+              record: true,
+              run: $expressions["policy.claimHolder.authorize-if.0"],
             },
           ],
         },
@@ -174,6 +200,8 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
             },
             { clock: $clock },
           ) as unknown as $Scope<SubmitSubmissionInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -181,14 +209,14 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
             label: "taskOpen",
             code: "task.open",
             message: "the task is not open; reopen it first",
-            source: { file: "src/domain/work/submission.mesh.mx", line: 26, column: 9 },
+            source: { file: "src/domain/work/submission.mesh.mx", line: 27, column: 9 },
             that: $expressions["submit.check.taskOpen.that"],
           });
           await $runCheck($issues, $checks, {
             label: "currentFence",
             code: "claim.current-fence",
             message: "the fence is not your current claim; claim the task again",
-            source: { file: "src/domain/work/submission.mesh.mx", line: 31, column: 9 },
+            source: { file: "src/domain/work/submission.mesh.mx", line: 32, column: 9 },
             that: $expressions["submit.check.currentFence.that"],
             details: $expressions["submit.check.currentFence.details"],
           });
@@ -196,14 +224,14 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
             label: "nonePending",
             code: "submission.none-pending",
             message: "a submission is already pending; wait for its review or withdraw it",
-            source: { file: "src/domain/work/submission.mesh.mx", line: 37, column: 9 },
+            source: { file: "src/domain/work/submission.mesh.mx", line: 38, column: 9 },
             that: $expressions["submit.check.nonePending.that"],
           });
           await $runCheck($issues, $checks, {
             label: "evidenceExists",
             code: "evidence.exists",
             message: "an evidence reference does not exist",
-            source: { file: "src/domain/work/submission.mesh.mx", line: 42, column: 9 },
+            source: { file: "src/domain/work/submission.mesh.mx", line: 43, column: 9 },
             that: $expressions["submit.check.evidenceExists.that"],
             details: $expressions["submit.check.evidenceExists.details"],
           });
@@ -211,7 +239,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
             label: "versionMatches",
             code: "expected-version",
             message: "the task is at another version; read it again and retry",
-            source: { file: "src/domain/work/submission.mesh.mx", line: 48, column: 9 },
+            source: { file: "src/domain/work/submission.mesh.mx", line: 49, column: 9 },
             that: $expressions["submit.check.versionMatches.that"],
             details: $expressions["submit.check.versionMatches.details"],
           });
@@ -224,7 +252,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
             const $value = await $expressions["submit.step.0.set.submitter"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &submitter (src/domain/work/submission.mesh.mx:56:22) produced no value, and the relationship submitter is required",
+                "set &submitter (src/domain/work/submission.mesh.mx:57:22) produced no value, and the relationship submitter is required",
               );
             $changes.submitterId = $record.submitterId = $value;
           }
@@ -241,7 +269,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
             const $value = await $expressions["submit.step.0.set.taskVersion"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &taskVersion (src/domain/work/submission.mesh.mx:59:24) produced no value, and taskVersion is required",
+                "set &taskVersion (src/domain/work/submission.mesh.mx:60:24) produced no value, and taskVersion is required",
               );
             $changes.taskVersion = $record.taskVersion = $value;
           }
@@ -291,14 +319,40 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Submission", "withdraw", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOrMember",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+              record: true,
+              run: $expressions["policy.ownerOrMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "submissionSubmitter",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ self, actor, context }) => isSystem(context) || self.submitterId === actor.id",
+              record: true,
+              run: $expressions["policy.submissionSubmitter.authorize-if.0"],
             },
           ],
         },
@@ -348,6 +402,8 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
             },
             { clock: $clock },
           ) as unknown as $StoredScope<WithdrawSubmissionInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -356,14 +412,14 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
             label: "pending",
             code: "submission.pending",
             message: "the submission is not pending",
-            source: { file: "src/domain/work/submission.mesh.mx", line: 70, column: 9 },
+            source: { file: "src/domain/work/submission.mesh.mx", line: 71, column: 9 },
             that: $expressions["withdraw.check.pending.that"],
           });
           await $runCheck($issues, $checks, {
             label: "versionMatches",
             code: "expected-version",
             message: "the task is at another version; read it again and retry",
-            source: { file: "src/domain/work/submission.mesh.mx", line: 75, column: 9 },
+            source: { file: "src/domain/work/submission.mesh.mx", line: 76, column: 9 },
             that: $expressions["withdraw.check.versionMatches.that"],
             details: $expressions["withdraw.check.versionMatches.details"],
           });
@@ -426,14 +482,14 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Submission", "settle", [
         {
-          name: "untilM8b",
+          name: "internal",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
+              check: "({ context }) => isSystem(context)",
               record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              run: $expressions["policy.internal.authorize-if.0"],
             },
           ],
         },
@@ -485,7 +541,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
             label: "pending",
             code: "submission.pending",
             message: "the submission is not pending",
-            source: { file: "src/domain/work/submission.mesh.mx", line: 91, column: 9 },
+            source: { file: "src/domain/work/submission.mesh.mx", line: 92, column: 9 },
             that: $expressions["settle.check.pending.that"],
           });
           if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -494,7 +550,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
             const $value = await $expressions["settle.step.0.set.state"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &state (src/domain/work/submission.mesh.mx:98:18) produced no value, and state is required",
+                "set &state (src/domain/work/submission.mesh.mx:99:18) produced no value, and state is required",
               );
             $changes.state = $record.state = $value;
           }
@@ -531,14 +587,14 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Submission", "recordAccepted", [
         {
-          name: "untilM8b",
+          name: "internal",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
+              check: "({ context }) => isSystem(context)",
               record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              run: $expressions["policy.internal.authorize-if.0"],
             },
           ],
         },
@@ -600,7 +656,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
             const $value = await $expressions["recordAccepted.step.0.set.submitter"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &submitter (src/domain/work/submission.mesh.mx:108:22) produced no value, and the relationship submitter is required",
+                "set &submitter (src/domain/work/submission.mesh.mx:109:22) produced no value, and the relationship submitter is required",
               );
             $changes.submitterId = $record.submitterId = $value;
           }
@@ -635,14 +691,14 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
       if (
         !(await $authorizer("Submission", "read", [
           {
-            name: "untilM8b",
+            name: "membersRead",
             when: null,
             checks: [
               {
                 kind: "authorize-if",
-                check: "() => true",
+                check: "({ actor, context }) => isSystem(context) || actor.role != null",
                 record: false,
-                run: $expressions["policy.untilM8b.authorize-if.0"],
+                run: $expressions["policy.membersRead.authorize-if.0"],
               },
             ],
           },

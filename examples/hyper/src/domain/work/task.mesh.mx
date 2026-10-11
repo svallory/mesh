@@ -5,8 +5,8 @@ import { Claim } from "./claim.mesh.mx"
 import { Submission } from "./submission.mesh.mx"
 import { Completion } from "./completion.mesh.mx"
 import { Event } from "../audit/event.mesh.mx"
-import { acceptedSubmissionOf, assignmentChanges, claimNotInvalidated, claimToRelease, completionRule, currentAssignment, fenceDetails, fenceIsCurrent, invalidatedFences, missingEvidenceOf, movedParent, noContainmentCycleOf, openChildren, openClaims, ownPending, parentOpenOf, reviewerFor, reviewNotRequiredOf, taskChanges } from "./work.helpers"
-import { assignableOf, collaboratorActiveOf } from "../identity/identity.helpers"
+import { acceptedSubmissionOf, assignmentChanges, claimNotInvalidated, claimToRelease, completionRule, currentAssignment, fenceDetails, fenceIsCurrent, invalidatedFences, managesTaskOf, missingEvidenceOf, movedParent, noContainmentCycleOf, noOtherHolderOf, openChildren, openClaims, ownPending, parentOpenOf, reviewerFor, reviewNotRequiredOf, taskChanges } from "./work.helpers"
+import { assignableOf, collaboratorActiveOf, memberOf, roleIn } from "../identity/identity.helpers"
 
 entity :Task table="tasks"
   attributes
@@ -177,11 +177,11 @@ entity :Task table="tasks"
         set
           &state=:canceled
           &version=() => &version + 1
-        run [after=:write] ({ self, tx, actions }) {
+        run [after=:write] ({ self, context, tx, actions }) {
           for (const claim of openClaims(await tx.readClaim({ filter: { taskId: { eq: self.id } } })))
-            await actions.endClaim({ id: claim.id, outcome: :revoked, reason: "task canceled" });
+            await actions.endClaim({ id: claim.id, outcome: :revoked, reason: "task canceled" }, { ...context, system: true });
           for (const submission of await tx.readSubmission({ filter: { taskId: { eq: self.id }, state: { eq: :pending } } }))
-            await actions.settleSubmission({ id: submission.id, outcome: :withdrawn });
+            await actions.settleSubmission({ id: submission.id, outcome: :withdrawn }, { ...context, system: true });
         }
     update :complete
       input
@@ -252,19 +252,19 @@ entity :Task table="tasks"
           else {
             rule = completionRule(actor.id, await reviewerFor(tx, self));
             if (input.summary != null || input.evidence != null) {
-              const recorded = await actions.recordAcceptedSubmission({ task: self.id, summary: input.summary ?? null, evidence: input.evidence ?? [], fence: input.fence ?? null, taskVersion: before.version });
+              const recorded = await actions.recordAcceptedSubmission({ task: self.id, summary: input.summary ?? null, evidence: input.evidence ?? [], fence: input.fence ?? null, taskVersion: before.version }, { ...context, system: true });
               submission = recorded.id;
             } else {
               const own = ownPending(await tx.readSubmission({ filter: { taskId: { eq: self.id }, state: { eq: :pending } } }), actor.id);
               if (own) {
-                await actions.settleSubmission({ id: own.id, outcome: :accepted });
+                await actions.settleSubmission({ id: own.id, outcome: :accepted }, { ...context, system: true });
                 submission = own.id;
               }
             }
           }
-          await actions.recordCompletion({ task: self.id, submission, rule });
+          await actions.recordCompletion({ task: self.id, submission, rule }, { ...context, system: true });
           const live = claimToRelease(await tx.readClaim({ filter: { taskId: { eq: self.id } } }), now());
-          if (live) await actions.endClaim({ id: live.id, outcome: :released, reason: "completed" });
+          if (live) await actions.endClaim({ id: live.id, outcome: :released, reason: "completed" }, { ...context, system: true });
         }
     update :assign
       input
@@ -301,15 +301,15 @@ entity :Task table="tasks"
       do
         set
           &version=() => &version + 1
-        run [after=:write] ({ self, input, tx, actions }) {
+        run [after=:write] ({ self, input, context, tx, actions }) {
           const current = currentAssignment(await tx.readAssignment({ filter: { taskId: { eq: self.id }, endedAt: { nil: true } } }));
           if (current) {
             if (current.assigneeId !== input.assignee)
               for (const claim of openClaims(await tx.readClaim({ filter: { taskId: { eq: self.id } } }), current.assigneeId))
-                await actions.endClaim({ id: claim.id, outcome: :revoked, reason: "reassigned" });
-            await actions.finishAssignment({ id: current.id, reason: :reassigned });
+                await actions.endClaim({ id: claim.id, outcome: :revoked, reason: "reassigned" }, { ...context, system: true });
+            await actions.finishAssignment({ id: current.id, reason: :reassigned }, { ...context, system: true });
           }
-          await actions.startAssignment({ task: self.id, assignee: input.assignee, reviewWaived: input.waiveReview ?? false });
+          await actions.startAssignment({ task: self.id, assignee: input.assignee, reviewWaived: input.waiveReview ?? false }, { ...context, system: true });
         }
     update :unassign
       input
@@ -330,13 +330,27 @@ entity :Task table="tasks"
       do
         set
           &version=() => &version + 1
-        run [after=:write] ({ self, tx, actions }) {
+        run [after=:write] ({ self, context, tx, actions }) {
           const current = currentAssignment(await tx.readAssignment({ filter: { taskId: { eq: self.id }, endedAt: { nil: true } } }));
           if (!current) return;
           for (const claim of openClaims(await tx.readClaim({ filter: { taskId: { eq: self.id } } }), current.assigneeId))
-            await actions.endClaim({ id: claim.id, outcome: :revoked, reason: "unassigned" });
-          await actions.finishAssignment({ id: current.id, reason: :unassigned });
+            await actions.endClaim({ id: claim.id, outcome: :revoked, reason: "unassigned" }, { ...context, system: true });
+          await actions.finishAssignment({ id: current.id, reason: :unassigned }, { ...context, system: true });
         }
   policies
-    policy :untilM8b
-      authorize-if=() => true
+    policy :membersRead types=[:read]
+      authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
+    policy :isMember actions=[&create, &update, &setPriority, &move, &assign, &complete, &cancel, &reopen, &unassign]
+      authorize-if=({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)
+    policy :ownerOrMember actions=[&create, &update, &setPriority, &move, &assign, &complete, &cancel, &reopen, &unassign]
+      authorize-if=({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])
+    policy :taskManager actions=[&cancel, &reopen]
+      authorize-if=({ self, actor, context, tx }) => isSystem(context) || managesTaskOf(tx, self, actor.id, true)
+    policy :taskUnassigner actions=[&unassign]
+      authorize-if=({ self, actor, context, tx }) => isSystem(context) || managesTaskOf(tx, self, actor.id, false)
+    policy :claimHolder actions=[&complete]
+      authorize-if=({ self, input, actor, context, tx }) => isSystem(context) || noOtherHolderOf(tx, self.id, input.fence, actor.id, now())
+    policy :reviewCompletion actions=[&complete]
+      forbid-if=({ context }) => context.completion != null && !isSystem(context)
+    policy :internal actions=[&touch]
+      authorize-if=({ context }) => isSystem(context)

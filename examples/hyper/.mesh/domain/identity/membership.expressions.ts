@@ -10,7 +10,9 @@ import {
 import {
   collaboratorActiveOf,
   keepsAnOwnerOf,
+  memberOf,
   noActiveMembershipOf,
+  roleIn,
 } from "../../../src/domain/identity/identity.helpers";
 import type {
   ReadOnlyActions as $ReadOnlyActions,
@@ -128,10 +130,25 @@ export const expressions = {
   // set &version, translated (src/domain/identity/membership.mesh.mx:91:20)
   "revoke.step.0.set.version": ($s: MembershipStoredScope<RevokeMembershipInput>) =>
     $.add($s.self.version, 1),
-  // policy :untilM8b authorize-if, translated (src/domain/identity/membership.mesh.mx:94:20)
-  "policy.untilM8b.authorize-if.0": (
-    _$s: MembershipNewScope<
+  // policy :membersRead authorize-if, translated (src/domain/identity/membership.mesh.mx:94:20)
+  "policy.membersRead.authorize-if.0": ($s: MembershipCheckScope<unknown>) =>
+    $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
+  // policy :isMember authorize-if, plain (uses-tx) (src/domain/identity/membership.mesh.mx:96:20)
+  "policy.isMember.authorize-if.0": (
+    $s: MembershipNewScope<
       $SharedInput<GrantMembershipInput | ChangeRoleMembershipInput | RevokeMembershipInput>
     >,
-  ) => true,
+  ) => {
+    const isSystem = $.isSystem;
+    return (({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id))($s);
+  },
+  // policy :ownerOnly authorize-if, plain (uses-tx) (src/domain/identity/membership.mesh.mx:98:20)
+  "policy.ownerOnly.authorize-if.0": (
+    $s: MembershipNewScope<
+      $SharedInput<GrantMembershipInput | ChangeRoleMembershipInput | RevokeMembershipInput>
+    >,
+  ) => {
+    const isSystem = $.isSystem;
+    return (({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, ["owner"]))($s);
+  },
 } as const;

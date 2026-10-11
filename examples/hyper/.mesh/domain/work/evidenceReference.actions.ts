@@ -6,6 +6,7 @@ import {
   FrameworkError as $FrameworkError,
   authorizer as $authorizer,
   castInput as $castInput,
+  checkScope as $checkScope,
   composed as $composed,
   guarded as $guarded,
   loadRows as $loadRows,
@@ -111,14 +112,27 @@ export function bindEvidenceReference(
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("EvidenceReference", "record", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOrMember",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+              record: true,
+              run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
           ],
         },
@@ -166,6 +180,8 @@ export function bindEvidenceReference(
             },
             { clock: $clock },
           ) as unknown as $Scope<RecordEvidenceReferenceInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // the input: the member inputs the caller sent, applied now that the checks have passed
           if (parsed.kind !== undefined) $changes.kind = $record.kind = parsed.kind;
           if (parsed.locator !== undefined) $changes.locator = $record.locator = parsed.locator;
@@ -178,7 +194,7 @@ export function bindEvidenceReference(
             const $value = await $expressions["record.step.0.set.recordedBy"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &recordedBy (src/domain/work/evidence-reference.mesh.mx:22:23) produced no value, and the relationship recordedBy is required",
+                "set &recordedBy (src/domain/work/evidence-reference.mesh.mx:23:23) produced no value, and the relationship recordedBy is required",
               );
             $changes.recordedById = $record.recordedById = $value;
           }
@@ -212,14 +228,14 @@ export function bindEvidenceReference(
       if (
         !(await $authorizer("EvidenceReference", "read", [
           {
-            name: "untilM8b",
+            name: "membersRead",
             when: null,
             checks: [
               {
                 kind: "authorize-if",
-                check: "() => true",
+                check: "({ actor, context }) => isSystem(context) || actor.role != null",
                 record: false,
-                run: $expressions["policy.untilM8b.authorize-if.0"],
+                run: $expressions["policy.membersRead.authorize-if.0"],
               },
             ],
           },

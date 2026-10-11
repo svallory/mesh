@@ -87,14 +87,14 @@ export function bindEvent(layer: $DataLayer, options: $BindOptions = {}, _compos
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Event", "record", [
         {
-          name: "untilM8b",
+          name: "internal",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
+              check: "({ context }) => isSystem(context)",
               record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              run: $expressions["policy.internal.authorize-if.0"],
             },
           ],
         },
@@ -162,14 +162,14 @@ export function bindEvent(layer: $DataLayer, options: $BindOptions = {}, _compos
       if (
         !(await $authorizer("Event", "read", [
           {
-            name: "untilM8b",
+            name: "membersRead",
             when: null,
             checks: [
               {
                 kind: "authorize-if",
-                check: "() => true",
+                check: "({ actor, context }) => isSystem(context) || actor.role != null",
                 record: false,
-                run: $expressions["policy.untilM8b.authorize-if.0"],
+                run: $expressions["policy.membersRead.authorize-if.0"],
               },
             ],
           },

@@ -16,6 +16,7 @@ import type {
   SubmitSubmissionInput,
   Task,
 } from "#mesh/domain/work";
+import { nested } from "../../context";
 import { connected, type Binding } from "../binding";
 import { blockReasonsOf, staleClaim, type BlockReason, type Reads } from "./work.helpers";
 
@@ -93,13 +94,14 @@ export async function reviewAccept(input: AcceptReviewInput, context: ActionCont
 /**
  * `task.cancel` (`tasks/task/changes/settle_work.ex:14-33`): `cancelTask` revokes the claims and withdraws the
  * pending submission inside the Task aggregate; this function then cancels the Task's running runs, which belong to
- * the run aggregate.
+ * the run aggregate, as nested calls (`system`): a Task manager who may not cancel a run (`run.canceler`) still
+ * cancels the Task's, as Hyper's `nested_opts` does.
  */
 export async function taskCancel(input: CancelTaskInput, context: ActionContext, binding: Binding = connected): Promise<{ readonly task: Task }> {
   return binding.transaction(async ({ actions, tx }) => {
     const task = await actions.cancelTask(input);
     for (const run of await tx.readRun({ filter: { taskId: { eq: task.id }, state: { eq: "running" } } }))
-      await actions.cancelRun({ id: run.id, reason: "task canceled" });
+      await actions.cancelRun({ id: run.id, reason: "task canceled" }, nested(context));
     return { task };
   }, context);
 }

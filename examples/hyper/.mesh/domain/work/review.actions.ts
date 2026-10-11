@@ -100,14 +100,40 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Review", "accept", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOrMember",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+              record: true,
+              run: $expressions["policy.ownerOrMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "reviewReviewer",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ input, actor, context, tx }) => isSystem(context) || reviewsSubmissionOf(tx, input.submission, actor.id)",
+              record: true,
+              run: $expressions["policy.reviewReviewer.authorize-if.0"],
             },
           ],
         },
@@ -157,6 +183,8 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
             },
             { clock: $clock },
           ) as unknown as $Scope<AcceptReviewInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -164,14 +192,14 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
             label: "pending",
             code: "submission.pending",
             message: "the submission is not pending",
-            source: { file: "src/domain/work/review.mesh.mx", line: 21, column: 9 },
+            source: { file: "src/domain/work/review.mesh.mx", line: 22, column: 9 },
             that: $expressions["accept.check.pending.that"],
           });
           await $runCheck($issues, $checks, {
             label: "taskVersion",
             code: "submission.task-version",
             message: "the task changed since this was submitted; return it for rework",
-            source: { file: "src/domain/work/review.mesh.mx", line: 26, column: 9 },
+            source: { file: "src/domain/work/review.mesh.mx", line: 27, column: 9 },
             that: $expressions["accept.check.taskVersion.that"],
             details: $expressions["accept.check.taskVersion.details"],
           });
@@ -179,7 +207,7 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
             label: "versionMatches",
             code: "expected-version",
             message: "the task is at another version; read it again and retry",
-            source: { file: "src/domain/work/review.mesh.mx", line: 32, column: 9 },
+            source: { file: "src/domain/work/review.mesh.mx", line: 33, column: 9 },
             that: $expressions["accept.check.versionMatches.that"],
             details: $expressions["accept.check.versionMatches.details"],
           });
@@ -193,7 +221,7 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
             const $value = await $expressions["accept.step.0.set.reviewer"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &reviewer (src/domain/work/review.mesh.mx:41:21) produced no value, and the relationship reviewer is required",
+                "set &reviewer (src/domain/work/review.mesh.mx:42:21) produced no value, and the relationship reviewer is required",
               );
             $changes.reviewerId = $record.reviewerId = $value;
           }
@@ -202,7 +230,7 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
             const $value = await $expressions["accept.step.0.set.ruleApplied"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &ruleApplied (src/domain/work/review.mesh.mx:42:24) produced no value, and ruleApplied is required",
+                "set &ruleApplied (src/domain/work/review.mesh.mx:43:24) produced no value, and ruleApplied is required",
               );
             $changes.ruleApplied = $record.ruleApplied = $value;
           }
@@ -249,14 +277,40 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Review", "return", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOrMember",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+              record: true,
+              run: $expressions["policy.ownerOrMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "reviewReviewer",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ input, actor, context, tx }) => isSystem(context) || reviewsSubmissionOf(tx, input.submission, actor.id)",
+              record: true,
+              run: $expressions["policy.reviewReviewer.authorize-if.0"],
             },
           ],
         },
@@ -306,6 +360,8 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
             },
             { clock: $clock },
           ) as unknown as $Scope<ReturnReviewInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -313,14 +369,14 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
             label: "pending",
             code: "submission.pending",
             message: "the submission is not pending",
-            source: { file: "src/domain/work/review.mesh.mx", line: 53, column: 9 },
+            source: { file: "src/domain/work/review.mesh.mx", line: 54, column: 9 },
             that: $expressions["return.check.pending.that"],
           });
           await $runCheck($issues, $checks, {
             label: "versionMatches",
             code: "expected-version",
             message: "the task is at another version; read it again and retry",
-            source: { file: "src/domain/work/review.mesh.mx", line: 58, column: 9 },
+            source: { file: "src/domain/work/review.mesh.mx", line: 59, column: 9 },
             that: $expressions["return.check.versionMatches.that"],
             details: $expressions["return.check.versionMatches.details"],
           });
@@ -338,7 +394,7 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
             const $value = await $expressions["return.step.0.set.reviewer"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &reviewer (src/domain/work/review.mesh.mx:68:21) produced no value, and the relationship reviewer is required",
+                "set &reviewer (src/domain/work/review.mesh.mx:69:21) produced no value, and the relationship reviewer is required",
               );
             $changes.reviewerId = $record.reviewerId = $value;
           }
@@ -347,7 +403,7 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
             const $value = await $expressions["return.step.0.set.ruleApplied"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &ruleApplied (src/domain/work/review.mesh.mx:69:24) produced no value, and ruleApplied is required",
+                "set &ruleApplied (src/domain/work/review.mesh.mx:70:24) produced no value, and ruleApplied is required",
               );
             $changes.ruleApplied = $record.ruleApplied = $value;
           }
@@ -397,14 +453,14 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
       if (
         !(await $authorizer("Review", "read", [
           {
-            name: "untilM8b",
+            name: "membersRead",
             when: null,
             checks: [
               {
                 kind: "authorize-if",
-                check: "() => true",
+                check: "({ actor, context }) => isSystem(context) || actor.role != null",
                 record: false,
-                run: $expressions["policy.untilM8b.authorize-if.0"],
+                run: $expressions["policy.membersRead.authorize-if.0"],
               },
             ],
           },

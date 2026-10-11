@@ -42,6 +42,7 @@ import {
 import { tables } from "../../schema";
 import {
   expressions as $expressions,
+  type WorkspaceScope as $Scope,
   type WorkspaceStoredScope as $StoredScope,
 } from "./workspace.expressions";
 
@@ -89,14 +90,27 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Workspace", "create", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOnly",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner])",
+              record: true,
+              run: $expressions["policy.ownerOnly.authorize-if.0"],
             },
           ],
         },
@@ -124,6 +138,21 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
             state: "active",
             version: 1,
           };
+          const $record: $Row = { ...$changes };
+          const $self = $readOnlyRecord($record, "Workspace.create");
+          const $s = $scope(
+            {
+              self: $self,
+              input: $readOnlyRecord(parsed, "Workspace.create"),
+              actor: $actor,
+              context: $context,
+              before: null,
+              ...$composed(compose, tx, context, "Workspace.create", $clock),
+            },
+            { clock: $clock },
+          ) as unknown as $Scope<CreateWorkspaceInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // data layer
           const $stored = await tx.insert(tables.workspace, $changes);
           $noteWrite(tx);
@@ -151,14 +180,27 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Workspace", "rename", [
         {
-          name: "untilM8b",
+          name: "isMember",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "() => true",
-              record: false,
-              run: $expressions["policy.untilM8b.authorize-if.0"],
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
+          name: "ownerOnly",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check:
+                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner])",
+              record: true,
+              run: $expressions["policy.ownerOnly.authorize-if.0"],
             },
           ],
         },
@@ -197,6 +239,8 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
             },
             { clock: $clock },
           ) as unknown as $StoredScope<RenameWorkspaceInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -204,14 +248,14 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
             label: "workspaceActive",
             code: "workspace.active",
             message: "the workspace has moved; it can no longer be changed",
-            source: { file: "src/domain/identity/workspace.mesh.mx", line: 18, column: 9 },
+            source: { file: "src/domain/identity/workspace.mesh.mx", line: 20, column: 9 },
             that: $expressions["rename.check.workspaceActive.that"],
           });
           await $runCheck($issues, $checks, {
             label: "versionMatches",
             code: "expected-version",
             message: "the record is at another version; read it again and retry",
-            source: { file: "src/domain/identity/workspace.mesh.mx", line: 23, column: 9 },
+            source: { file: "src/domain/identity/workspace.mesh.mx", line: 25, column: 9 },
             that: $expressions["rename.check.versionMatches.that"],
             details: $expressions["rename.check.versionMatches.details"],
           });
@@ -223,7 +267,7 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
             const $value = await $expressions["rename.step.0.set.version"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &version (src/domain/identity/workspace.mesh.mx:31:20) produced no value, and version is required",
+                "set &version (src/domain/identity/workspace.mesh.mx:33:20) produced no value, and version is required",
               );
             $changes.version = $record.version = $value;
           }
@@ -257,14 +301,14 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
       if (
         !(await $authorizer("Workspace", "read", [
           {
-            name: "untilM8b",
+            name: "membersRead",
             when: null,
             checks: [
               {
                 kind: "authorize-if",
-                check: "() => true",
+                check: "({ actor, context }) => isSystem(context) || actor.role != null",
                 record: false,
-                run: $expressions["policy.untilM8b.authorize-if.0"],
+                run: $expressions["policy.membersRead.authorize-if.0"],
               },
             ],
           },
