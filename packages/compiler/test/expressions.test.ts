@@ -142,6 +142,32 @@ describe("free variables (acceptance test 2)", () => {
   });
 });
 
+describe("a name is a scope root only where it refers to the scope (small-fixes-2, item 1)", () => {
+  const make = (steps: string) => entity("").replace("      validate\n", "").replace("  actions auto=[:read]\n", `  actions auto=[:read]\n    create :make\n      input\n        &n\n      do\n${steps}`);
+  /** The roots the first run step of `make` reads from the scope. */
+  const rootsOf = (body: string) => {
+    const result = build(make(`        run (${"{ context }"}) ${body}\n`));
+    expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    const step = result.document!.entities[0]!.actions.find((a) => a.name === "make")!.do[0]!;
+    return step.kind === "run" ? step.fn.plain!.roots : undefined;
+  };
+  test("a loop variable, a nested parameter and a catch parameter shadow the root", () => {
+    expect(rootsOf("{ for (const input of [1, 2]) { console.log(input) } }")).toEqual([]);
+    expect(rootsOf("{ for (const input in { a: 1 }) { console.log(input) } }")).toEqual([]);
+    expect(rootsOf("{ [1].forEach((input) => console.log(input)) }")).toEqual([]);
+    expect(rootsOf("{ function f(input: number) { return input } console.log(f(1)) }")).toEqual([]);
+    expect(rootsOf("{ try { console.log(1) } catch (input) { console.log(input) } }")).toEqual([]);
+    expect(rootsOf("{ const input = 1; console.log(input) }")).toEqual([]);
+    expect(rootsOf("{ if (context) { var input = 1 } console.log(input) }")).toEqual([]);
+  });
+  test("the same name read as the root elsewhere is still a root", () => {
+    expect(rootsOf("{ for (const input of [1]) { console.log(input) } console.log(input) }")).toEqual(["input"]);
+    expect(rootsOf("{ console.log(input); [1].forEach((input) => console.log(input)) }")).toEqual(["input"]);
+    expect(rootsOf("{ try { console.log(input) } catch (input) { console.log(input) } }")).toEqual(["input"]);
+    expect(rootsOf("{ if (context) { const input = 1; console.log(input) } else { console.log(input) } }")).toEqual(["input"]);
+  });
+});
+
 describe("type rules", () => {
   test("a nullable receiver without ?. is an error with the fix", () => {
     const d = build(entity(check("() => &parent.n > 1"))).diagnostics.find((x) => x.code === "MESH_EXPR_NULLABLE_ACCESS")!;
@@ -427,6 +453,22 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(expressions["computed.plainNow"](scope({ self: {} }, at))).toBe(true);
     expect(expressions["go.check.c.that"](scope({ self: { dueAt: new Date(5) } }, at))).toBe(false);
     expect(expressions["go.check.c.that"](scope({ self: { dueAt: new Date(-5) } }, at))).toBe(true);
+  });
+
+  test("plain code that shadows a scope name declares no unused binding (TS6133 under noUnusedLocals)", async () => {
+    const plain = entity(check("() => true")) + [
+      "      do",
+      "        run ({ context }) { for (const input of [1, 2]) { console.log(input, context) } try { console.log(1) } catch (input) { console.log(input) } }",
+      "",
+    ].join("\n");
+    const { root } = await generated(plain);
+    expect(checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
+    const { expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
+    const log = console.log;
+    const logs: unknown[][] = [];
+    console.log = (...args: unknown[]) => { logs.push(args); };
+    try { await expressions["go.step.0.run"](scope({ context: "c" })); } finally { console.log = log; }
+    expect(logs).toEqual([[1, "c"], [2, "c"], [1]]);
   });
 
   test("plain code runs with the authored meaning, `&` and atoms desugared", async () => {
