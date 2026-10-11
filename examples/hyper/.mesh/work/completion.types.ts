@@ -22,7 +22,6 @@ export type RecordCompletionInput = {
   rule: "review-accepted" | "performer-is-reviewer" | "review-waived";
   task: Task["id"];
   submission?: Submission["id"] | null | undefined;
-  completedBy: Collaborator["id"];
 };
 
 export type ReadCompletionInput = {

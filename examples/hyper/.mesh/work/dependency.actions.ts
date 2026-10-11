@@ -3,6 +3,7 @@
 // Mesh's own imports carry a `$` so that no entity name can shadow them.
 
 import {
+  FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
   castInput as $castInput,
@@ -11,6 +12,7 @@ import {
   loadInto as $loadInto,
   noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
+  rescope as $rescope,
   runCheck as $runCheck,
   scope as $scope,
   type BindOptions as $BindOptions,
@@ -35,6 +37,7 @@ import { tables } from "../schema";
 import {
   expressions as $expressions,
   type DependencyScope as $Scope,
+  type DependencyStoredScope as $StoredScope,
 } from "./dependency.expressions";
 import { loadPlan as $loadPlan } from "../load";
 
@@ -79,10 +82,8 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
           createdAt: $now,
           dependentId: parsed.dependent,
           prerequisiteId: parsed.prerequisite,
-          createdById: parsed.createdBy,
         };
         const $record: $Row = { ...$changes };
-        const $load = { actor: $actor, context: $context, clock: options.clock };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Dependency", $record, "action function"),
           "Dependency.add",
@@ -100,33 +101,130 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
         ) as unknown as $Scope<AddDependencyInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $loadInto($loadPlan, "Dependency", tx, $record, ["dependent", "prerequisite"], $load);
+        await $runCheck($issues, $s, {
+          label: "exists",
+          code: "dependency.exists",
+          message: "a task of the dependency does not exist",
+          source: { file: "src/domain/work/dependency.mesh.mx", line: 20, column: 9 },
+          that: $expressions["add.check.exists.that"],
+          details: $expressions["add.check.exists.details"],
+        });
         await $runCheck($issues, $s, {
           label: "distinct",
           code: "dependency.distinct",
           message: "a task cannot depend on itself",
-          source: { file: "src/domain/work/dependency.mesh.mx", line: 19, column: 9 },
+          source: { file: "src/domain/work/dependency.mesh.mx", line: 26, column: 9 },
           that: $expressions["add.check.distinct.that"],
         });
+        await $runCheck($issues, $s, {
+          label: "duplicate",
+          code: "dependency.duplicate",
+          message: "the dependency already exists",
+          source: { file: "src/domain/work/dependency.mesh.mx", line: 31, column: 9 },
+          that: $expressions["add.check.duplicate.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "noCycle",
+          code: "dependency.no-cycle",
+          message: "the prerequisite already waits for the dependent",
+          source: { file: "src/domain/work/dependency.mesh.mx", line: 36, column: 9 },
+          that: $expressions["add.check.noCycle.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "versionMatches",
+          code: "expected-version",
+          message: "the task is at another version; read it again and retry",
+          source: { file: "src/domain/work/dependency.mesh.mx", line: 41, column: 9 },
+          that: $expressions["add.check.versionMatches.that"],
+          details: $expressions["add.check.versionMatches.details"],
+        });
         if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // do: the steps run in written order, each seeing the record as the ones before it left it
+        {
+          const $value = await $expressions["add.step.0.set.createdBy"]($s);
+          if ($value === undefined || $value === null)
+            throw new $FrameworkError(
+              "set &createdBy (src/domain/work/dependency.mesh.mx:49:22) produced no value, and the relationship createdBy is required",
+            );
+          $changes.createdById = $record.createdById = $value;
+        }
         // data layer
         const $stored = await tx.insert(tables.dependency, $changes);
         $noteWrite(tx);
-        return $stored as Dependency;
+        // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
+        const $written: $Row = { ...$stored };
+        const $after = $rescope($s, {
+          self: $readOnlyRecord(
+            $guarded($loadPlan, "Dependency", $written, "action function"),
+            "Dependency.add",
+          ),
+        });
+        await $expressions["add.step.1.run"]($after);
+        // the result: the row as the steps after the write left it, read again by key
+        const $result = await tx.selectByKey(tables.dependency, { id: $stored.id });
+        if ($result === undefined)
+          throw new $FrameworkError(
+            "Dependency.add: a step after the write deleted the row this action returns",
+          );
+        return $result as Dependency;
       });
     },
 
-    async remove(input: RemoveDependencyInput, ...[_context]: $ContextArgument): Promise<void> {
+    async remove(input: RemoveDependencyInput, ...[context]: $ContextArgument): Promise<void> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, removeDependencyInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        // plan: nothing in the body can see the record, so the row is deleted without being read
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $actor = $context.actor;
+        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
+        const $before = await tx.selectByKeyForUpdate(tables.dependency, $key);
+        if ($before === undefined) throw new $NotFoundError("Dependency", $key);
+        const $record: $Row = { ...$before };
+        const $load = { actor: $actor, context: $context, clock: options.clock };
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Dependency", $record, "action function"),
+          "Dependency.remove",
+        );
+        const $s = $scope(
+          {
+            self: $self,
+            input: $readOnlyRecord(parsed, "Dependency.remove"),
+            actor: $actor,
+            context: $context,
+            before: $readOnlyRecord(
+              $guarded($loadPlan, "Dependency", $before, "before"),
+              "Dependency.remove",
+            ) as unknown as Dependency,
+            ...$composed(compose, tx, context, "Dependency.remove"),
+          },
+          options,
+        ) as unknown as $StoredScope<RemoveDependencyInput>;
+        // validate: every check runs, and every failed check is reported together
+        const $issues: $Issue[] = [];
+        await $loadInto($loadPlan, "Dependency", tx, $record, ["dependent"], $load);
+        await $runCheck($issues, $s, {
+          label: "versionMatches",
+          code: "expected-version",
+          message: "the task is at another version; read it again and retry",
+          source: { file: "src/domain/work/dependency.mesh.mx", line: 58, column: 9 },
+          that: $expressions["remove.check.versionMatches.that"],
+          details: $expressions["remove.check.versionMatches.details"],
+        });
+        if ($issues.length > 0) throw new $InvalidInputError($issues);
         // data layer
         if (!(await tx.deleteByKey(tables.dependency, $key)))
           throw new $NotFoundError("Dependency", $key);
         $noteWrite(tx);
+        // after the write: the steps marked after=:write run here, inside the transaction, and see the deleted row as it was as self
+        const $after = $rescope($s, {
+          self: $readOnlyRecord(
+            $guarded($loadPlan, "Dependency", $record, "action function"),
+            "Dependency.remove",
+          ),
+        });
+        await $expressions["remove.step.0.run"]($after);
       });
     },
 

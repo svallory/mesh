@@ -3,17 +3,32 @@
 // Mesh's own imports carry a `$` so that no entity name can shadow them.
 
 import {
+  FrameworkError as $FrameworkError,
+  InvalidInputError as $InvalidInputError,
   castInput as $castInput,
+  composed as $composed,
+  guarded as $guarded,
+  loadInto as $loadInto,
   noteWrite as $noteWrite,
+  readOnlyRecord as $readOnlyRecord,
+  runCheck as $runCheck,
+  scope as $scope,
+  unloadFrom as $unloadFrom,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type Issue as $Issue,
   type Row as $Row,
 } from "@meshfw/runtime";
 import type { LateResult, RecordLateResultInput, ReadLateResultInput } from "./lateResult.types";
 import { recordLateResultInput, readLateResultInput } from "./lateResult.validators";
 import { tables } from "../schema";
+import {
+  expressions as $expressions,
+  type LateResultScope as $Scope,
+} from "./lateResult.expressions";
+import { loadPlan as $loadPlan } from "../load";
 
 /**
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
@@ -40,21 +55,19 @@ export function bindLateResultReads(layer: $DataLayer) {
  * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
  * `actions` and `tx`; the project's `bind` in the index passes it.
  */
-export function bindLateResult(
-  layer: $DataLayer,
-  options: $BindOptions = {},
-  _compose?: $Composer,
-) {
+export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
   const $reads = bindLateResultReads(layer);
   return Object.freeze({
     async record(
       input: RecordLateResultInput,
-      ...[_context]: $ContextArgument
+      ...[context]: $ContextArgument
     ): Promise<LateResult> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, recordLateResultInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $actor = $context.actor;
         const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
@@ -63,8 +76,53 @@ export function bindLateResult(
           evidence: parsed.evidence === undefined ? [] : parsed.evidence,
           recordedAt: $now,
           taskId: parsed.task,
-          submitterId: parsed.submitter,
         };
+        const $record: $Row = { ...$changes };
+        const $load = { actor: $actor, context: $context, clock: options.clock };
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "LateResult", $record, "action function"),
+          "LateResult.record",
+        );
+        const $s = $scope(
+          {
+            self: $self,
+            input: $readOnlyRecord(parsed, "LateResult.record"),
+            actor: $actor,
+            context: $context,
+            before: null,
+            ...$composed(compose, tx, context, "LateResult.record"),
+          },
+          options,
+        ) as unknown as $Scope<RecordLateResultInput>;
+        // validate: every check runs, and every failed check is reported together
+        const $issues: $Issue[] = [];
+        await $loadInto($loadPlan, "LateResult", tx, $record, ["task", "task.claims"], $load);
+        await $runCheck($issues, $s, {
+          label: "staleFence",
+          code: "claim.stale-fence",
+          message: "only a fence you held that expired or was revoked records a late result",
+          source: { file: "src/domain/work/late-result.mesh.mx", line: 23, column: 9 },
+          that: $expressions["record.check.staleFence.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "evidenceExists",
+          code: "evidence.exists",
+          message: "an evidence reference does not exist",
+          source: { file: "src/domain/work/late-result.mesh.mx", line: 28, column: 9 },
+          that: $expressions["record.check.evidenceExists.that"],
+          details: $expressions["record.check.evidenceExists.details"],
+        });
+        if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // do: the steps run in written order, each seeing the record as the ones before it left it
+        {
+          const $value = await $expressions["record.step.0.set.submitter"]($s);
+          if ($value === undefined || $value === null)
+            throw new $FrameworkError(
+              "set &submitter (src/domain/work/late-result.mesh.mx:36:22) produced no value, and the relationship submitter is required",
+            );
+          $changes.submitterId = $record.submitterId = $value;
+        }
+        $unloadFrom($loadPlan, "LateResult", $record);
         // data layer
         const $stored = await tx.insert(tables.lateResult, $changes);
         $noteWrite(tx);

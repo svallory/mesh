@@ -6,6 +6,7 @@ import { z } from "zod";
 import type {
   RegisterCollaboratorInput,
   UpdateCollaboratorInput,
+  RetireCollaboratorInput,
   ReadCollaboratorInput,
   CollaboratorFilter,
 } from "./collaborator.types";
@@ -90,6 +91,16 @@ export const updateCollaboratorInput = z.strictObject({
 
 export type UpdateCollaboratorInputShape = Assert<
   SameShape<z.output<typeof updateCollaboratorInput>, UpdateCollaboratorInput>
+>;
+
+export const retireCollaboratorInput = z.strictObject({
+  id: z.uuid(),
+  reason: z.string().nullable().optional(),
+  expectedVersion: z.int().nullable().optional(),
+}) satisfies z.ZodType<RetireCollaboratorInput>;
+
+export type RetireCollaboratorInputShape = Assert<
+  SameShape<z.output<typeof retireCollaboratorInput>, RetireCollaboratorInput>
 >;
 
 export const readCollaboratorInput = z.strictObject({

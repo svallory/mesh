@@ -3,29 +3,42 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { createSchema, sqlite } from "@meshfw/data-sqlite";
-import type { DataOperations } from "@meshfw/runtime";
-import { bind, loadCollaboratorFields, loadInvocationFields, loadRunFields, loadTaskFields, tables, type Task, type TaskWith } from "#mesh";
+import type { DataLayer, DataOperations } from "@meshfw/runtime";
+import { loadCollaboratorFields, loadInvocationFields, loadRunFields, loadTaskFields, tables, type Task, type TaskWith } from "#mesh";
+import { attemptStart } from "../src/domain/execution/execution.commands";
+import { as, codes, empty, issuesOf, minutes, NOW, setup, type Empty, type Hyper } from "./world";
 
 const root = resolve(import.meta.dir, "..");
-const context = { actor: { id: "00000000-0000-4000-8000-000000000001" } };
-const NOW = new Date("2026-10-10T12:00:00.000Z");
+const context = setup;
 const clock = () => NOW;
-const minutes = (n: number) => new Date(NOW.getTime() + n * 60_000);
 
-async function fresh() {
-  const db = sqlite({ file: ":memory:" });
-  await createSchema(db, tables);
-  return { db, hyper: bind(db) };
-}
-type Hyper = Awaited<ReturnType<typeof fresh>>["hyper"];
-const load = <T>(db: ReturnType<typeof sqlite>, work: (tx: DataOperations) => Promise<T>) => db.transaction(work);
+/** An empty database, bound with a fixed clock. */
+const fresh = empty;
+const load = <T>(db: DataLayer, work: (tx: DataOperations) => Promise<T>) => db.transaction(work);
 const ids = (rows: readonly { id: string }[]) => rows.map((row) => row.id);
 
 async function people(hyper: Hyper) {
-  const alice = await hyper.registerCollaborator({ kind: "human", name: "Alice" }, context);
-  const bot = await hyper.registerCollaborator({ kind: "agent", name: "Bot" }, context);
+  const alice = await hyper.registerCollaborator({ kind: "human", name: "Alice" }, setup);
+  const bot = await hyper.registerCollaborator({ kind: "agent", name: "Bot" }, setup);
   return { alice, bot };
+}
+
+/**
+ * Rows inserted as they are, for the states these tests read and no sequence of actions reaches (several active
+ * claims or pending submissions on one task, the same prerequisite twice). The actions that write them are tested in
+ * `composition.test.ts` and `rules.test.ts`.
+ */
+function rows(insert: Empty["insert"]) {
+  return {
+    claim: (taskId: string, holderId: string, fence: number, expiresAt: Date, state: "active" | "released" | "revoked" | "expired" = "active") =>
+      insert("claim", { taskId, holderId, fence, state, acquiredAt: minutes(-60), expiresAt, endedAt: state === "active" ? null : minutes(-1), endReason: null }),
+    submission: (taskId: string, submitterId: string, state: "pending" | "accepted" | "returned" | "withdrawn" = "pending") =>
+      insert("submission", { taskId, submitterId, state, summary: "s", evidence: [], fence: null, taskVersion: 1, submittedAt: minutes(-30) }),
+    assignment: (taskId: string, assigneeId: string, delegatorId: string) =>
+      insert("assignment", { taskId, assigneeId, delegatorId, reviewWaived: false, startedAt: minutes(-60), endedAt: null, endReason: null }),
+    dependency: (dependentId: string, prerequisiteId: string, createdById: string) =>
+      insert("dependency", { dependentId, prerequisiteId, createdById, createdAt: minutes(-60) }),
+  };
 }
 
 describe("acceptance 1: self-reference with no import, and the rows load", () => {
@@ -45,10 +58,10 @@ describe("acceptance 1: self-reference with no import, and the rows load", () =>
     const { db, hyper } = await fresh();
     try {
       const { alice } = await people(hyper);
-      const root = await hyper.createTask({ title: "root", creator: alice.id }, context);
-      const a = await hyper.createTask({ title: "a", creator: alice.id, parent: root.id }, context);
-      const b = await hyper.createTask({ title: "b", creator: alice.id, parent: root.id }, context);
-      const leaf = await hyper.createTask({ title: "leaf", creator: alice.id, parent: a.id }, context);
+      const root = await hyper.createTask({ title: "root" }, as(alice));
+      const a = await hyper.createTask({ title: "a", parent: root.id }, as(alice));
+      const b = await hyper.createTask({ title: "b", parent: root.id }, as(alice));
+      const leaf = await hyper.createTask({ title: "leaf", parent: a.id }, as(alice));
       const loaded = await load(db, async (tx) => loadTaskFields(tx, await tx.select(tables.task) as Task[], ["parent", "children"]));
       const byTitle = Object.fromEntries(loaded.map((task) => [task.title, task]));
       expect(byTitle.root!.parent).toBeNull();
@@ -61,11 +74,13 @@ describe("acceptance 1: self-reference with no import, and the rows load", () =>
   });
 
   test("a task that is its own parent loads itself, and its computed fields still finish", async () => {
-    const { db, hyper } = await fresh();
+    const { db, hyper, force } = await fresh();
     try {
       const { alice } = await people(hyper);
-      const task = await hyper.createTask({ title: "ouroboros", creator: alice.id }, context);
-      await hyper.moveTask({ id: task.id, parent: task.id }, context);
+      const task = await hyper.createTask({ title: "ouroboros" }, as(alice));
+      // task.no-cycle refuses the move, so the row is written as it is: a loader must still finish on it.
+      expect(codes(await issuesOf(hyper.moveTask({ id: task.id, parent: task.id }, as(alice))))).toEqual(["task.no-cycle"]);
+      await force("task", task.id, { parentId: task.id });
       const [loaded] = await load(db, async (tx) => loadTaskFields(tx, await tx.select(tables.task) as Task[], ["parent", "children", "childrenSettled", "derivedState"]));
       expect(loaded!.parent!.id).toBe(task.id);
       expect(ids(loaded!.children)).toEqual([task.id]);
@@ -79,10 +94,9 @@ describe("acceptance 1: self-reference with no import, and the rows load", () =>
     const { db, hyper } = await fresh();
     try {
       const { alice } = await people(hyper);
-      const task = await hyper.createTask({ title: "t", creator: alice.id }, context);
-      const base = { task: task.id, responsible: alice.id, startedBy: alice.id };
-      const parent = await hyper.startRun(base, context);
-      const child = await hyper.startRun({ ...base, parentRun: parent.id }, context);
+      const task = await hyper.createTask({ title: "t" }, as(alice));
+      const parent = await hyper.startRun({ task: task.id }, as(alice));
+      const child = await hyper.startRun({ task: task.id, parentRun: parent.id }, as(alice));
       const loaded = await load(db, async (tx) => loadRunFields(tx, [parent, child], ["parentRun", "attempts"]));
       expect(loaded.map((run) => run.parentRun?.id ?? null)).toEqual([null, parent.id]);
       expect(loaded.map((run) => run.attempts)).toEqual([[], []]);
@@ -90,14 +104,16 @@ describe("acceptance 1: self-reference with no import, and the rows load", () =>
   });
 
   test("Invocation.corrects", async () => {
-    const { db, hyper } = await fresh();
+    const { db, hyper, binding } = await fresh();
     try {
       const { alice, bot } = await people(hyper);
-      const task = await hyper.createTask({ title: "t", creator: alice.id }, context);
-      const run = await hyper.startRun({ task: task.id, responsible: alice.id, startedBy: alice.id }, context);
-      const attempt = await hyper.startAttempt({ number: 1, run: run.id, task: task.id, performer: bot.id, delegator: alice.id }, context);
-      const original = await hyper.recordInvocation({ usageSource: "runtime", attempt: attempt.id, task: task.id, recordedBy: bot.id }, context);
-      const correction = await hyper.correctInvocation({ reason: "wrong tokens", usageSource: "estimate", attempt: attempt.id, task: task.id, corrects: original.id, recordedBy: alice.id }, context);
+      const task = await hyper.createTask({ title: "t" }, as(alice));
+      const run = await hyper.startRun({ task: task.id }, as(alice));
+      await hyper.acquireClaim({ task: task.id }, as(bot));
+      const { attempt } = await attemptStart({ run: run.id }, as(bot), binding);
+      const original = await hyper.recordInvocation({ usageSource: "runtime", attempt: attempt.id }, as(bot));
+      const correction = await hyper.correctInvocation({ reason: "wrong tokens", usageSource: "estimate", corrects: original.id }, as(alice));
+      expect(correction).toMatchObject({ attemptId: attempt.id, taskId: task.id, recordedById: alice.id });
       const loaded = await load(db, async (tx) => loadInvocationFields(tx, [original, correction], ["corrects"]));
       expect(loaded.map((invocation) => invocation.corrects?.id ?? null)).toEqual([null, original.id]);
     } finally { await db.close(); }
@@ -110,10 +126,9 @@ describe("acceptance 2: Collaborator.memberships follows collaboratorId, not gra
     try {
       const { alice, bot } = await people(hyper);
       const carol = await hyper.registerCollaborator({ kind: "human", name: "Carol" }, context);
-      const at = new Date("2026-10-10T10:00:00.000Z");
       // Alice grants Bot membership; Bot grants Alice one; Carol has none and granted none.
-      const forBot = await hyper.grantMembership({ role: "member", grantedAt: at, collaborator: bot.id, grantedBy: alice.id }, context);
-      const forAlice = await hyper.grantMembership({ role: "owner", grantedAt: at, collaborator: alice.id, grantedBy: bot.id }, context);
+      const forBot = await hyper.grantMembership({ role: "member", collaborator: bot.id }, as(alice));
+      const forAlice = await hyper.grantMembership({ role: "owner", collaborator: alice.id }, as(bot));
       const loaded = await load(db, async (tx) => loadCollaboratorFields(tx, [alice, bot, carol], ["memberships"]));
       expect(loaded.map((c) => [c.name, ids(c.memberships)])).toEqual([["Alice", [forAlice.id]], ["Bot", [forBot.id]], ["Carol", []]]);
       expect(loaded[0]!.memberships[0]).toMatchObject({ collaboratorId: alice.id, grantedById: bot.id });
@@ -132,12 +147,12 @@ describe("acceptance 2: Collaborator.memberships follows collaboratorId, not gra
     const { db, hyper } = await fresh();
     try {
       const { alice } = await people(hyper);
-      const design = await hyper.createTask({ title: "design", creator: alice.id }, context);
-      const build = await hyper.createTask({ title: "build", creator: alice.id }, context);
-      const ship = await hyper.createTask({ title: "ship", creator: alice.id }, context);
+      const design = await hyper.createTask({ title: "design" }, as(alice));
+      const build = await hyper.createTask({ title: "build" }, as(alice));
+      const ship = await hyper.createTask({ title: "ship" }, as(alice));
       // build waits for design; ship waits for build.
-      const first = await hyper.addDependency({ dependent: build.id, prerequisite: design.id, createdBy: alice.id }, context);
-      const second = await hyper.addDependency({ dependent: ship.id, prerequisite: build.id, createdBy: alice.id }, context);
+      const first = await hyper.addDependency({ dependent: build.id, prerequisite: design.id }, as(alice));
+      const second = await hyper.addDependency({ dependent: ship.id, prerequisite: build.id }, as(alice));
       const loaded = await load(db, async (tx) => loadTaskFields(tx, [design, build, ship] as Task[], ["dependencies", "dependents"]));
       expect(loaded.map((t) => [t.title, ids(t.dependencies), ids(t.dependents)])).toEqual([
         ["design", [], [first.id]], ["build", [first.id], [second.id]], ["ship", [second.id], []],
@@ -148,19 +163,18 @@ describe("acceptance 2: Collaborator.memberships follows collaboratorId, not gra
 
 describe("acceptance 3: maxFence over claims returns the highest fence", () => {
   test("the highest of a task's claims, whatever their state; null with none; another task's claims do not count", async () => {
-    const { db, hyper } = await fresh();
+    const { db, hyper, insert } = await fresh();
     try {
       const { alice, bot } = await people(hyper);
-      const busy = await hyper.createTask({ title: "busy", creator: alice.id }, context);
-      const idle = await hyper.createTask({ title: "idle", creator: alice.id }, context);
-      const other = await hyper.createTask({ title: "other", creator: alice.id }, context);
-      const claim = (task: string, fence: number) => hyper.acquireClaim({ fence, acquiredAt: minutes(-10), expiresAt: minutes(10), task, holder: bot.id }, context);
-      await claim(busy.id, 2);
-      const seven = await claim(busy.id, 7);
-      await claim(busy.id, 3);
-      await claim(other.id, 99);
+      const busy = await hyper.createTask({ title: "busy" }, as(alice));
+      const idle = await hyper.createTask({ title: "idle" }, as(alice));
+      const other = await hyper.createTask({ title: "other" }, as(alice));
+      const claim = rows(insert).claim;
+      await claim(busy.id, bot.id, 2, minutes(10));
       // A released claim still counts: the fence never goes down.
-      await load(db, (tx) => tx.updateByKey(tables.claim, { id: seven.id }, { state: "released", endedAt: minutes(-1) }));
+      await claim(busy.id, bot.id, 7, minutes(10), "released");
+      await claim(busy.id, bot.id, 3, minutes(10));
+      await claim(other.id, bot.id, 99, minutes(10));
       const loaded = await load(db, async (tx) => loadTaskFields(tx, [busy, idle, other] as Task[], ["maxFence"]));
       expect(loaded.map((task) => [task.title, task.maxFence])).toEqual([["busy", 7], ["idle", null], ["other", 99]]);
     } finally { await db.close(); }
@@ -183,13 +197,14 @@ describe("acceptance 4: derivedState is Hyper's DerivedState for the same rows",
   const prerequisites = [[], ["done"], ["open"], ["canceled"], ["done", "open"]] as const;
 
   test("every combination of stored state, submission, claim and prerequisites, in one load", async () => {
-    const { db, hyper } = await fresh();
+    const { db, hyper, insert: raw } = await fresh();
+    const insert = rows(raw);
     try {
       const { alice, bot } = await people(hyper);
       const pre = {
-        open: await hyper.createTask({ title: "pre open", creator: alice.id }, context),
-        done: await hyper.createTask({ title: "pre done", creator: alice.id }, context),
-        canceled: await hyper.createTask({ title: "pre canceled", creator: alice.id }, context),
+        open: await hyper.createTask({ title: "pre open" }, as(alice)),
+        done: await hyper.createTask({ title: "pre done" }, as(alice)),
+        canceled: await hyper.createTask({ title: "pre canceled" }, as(alice)),
       };
       await load(db, async (tx) => {
         await tx.updateByKey(tables.task, { id: pre.done.id }, { state: "done" });
@@ -199,17 +214,11 @@ describe("acceptance 4: derivedState is Hyper's DerivedState for the same rows",
       let fence = 0;
       for (const state of stored) for (const submission of submissions) for (const claim of claims) for (const wait of prerequisites) {
         const title = `${state}/${submission}/${claim}/${wait.join("+") || "-"}`;
-        const task = await hyper.createTask({ title, creator: alice.id }, context);
+        const task = await hyper.createTask({ title }, as(alice));
         if (state !== "open") await load(db, (tx) => tx.updateByKey(tables.task, { id: task.id }, { state }));
-        if (submission !== "none") {
-          const made = await hyper.submitSubmission({ summary: "s", evidence: [], fence: null, taskVersion: 1, task: task.id, submitter: bot.id }, context);
-          if (submission === "settled") await load(db, (tx) => tx.updateByKey(tables.submission, { id: made.id }, { state: "accepted" }));
-        }
-        if (claim !== "none") {
-          const made = await hyper.acquireClaim({ fence: ++fence, acquiredAt: minutes(-30), expiresAt: claim === "lapsed" ? minutes(-5) : minutes(30), task: task.id, holder: bot.id }, context);
-          if (claim === "released") await load(db, (tx) => tx.updateByKey(tables.claim, { id: made.id }, { state: "released" }));
-        }
-        for (const prerequisite of wait) await hyper.addDependency({ dependent: task.id, prerequisite: pre[prerequisite].id, createdBy: alice.id }, context);
+        if (submission !== "none") await insert.submission(task.id, bot.id, submission === "settled" ? "accepted" : "pending");
+        if (claim !== "none") await insert.claim(task.id, bot.id, ++fence, claim === "lapsed" ? minutes(-5) : minutes(30), claim === "released" ? "released" : "active");
+        for (const prerequisite of wait) await hyper.addDependency({ dependent: task.id, prerequisite: pre[prerequisite].id }, as(alice));
         expected.set(task.id, specDerivedState({
           stored: state, pendingSubmission: submission === "pending",
           // "Active" is an active claim whose lease has not run out; a lapsed one is the sweeper's to expire.
@@ -240,11 +249,13 @@ describe("acceptance 4: derivedState is Hyper's DerivedState for the same rows",
     const { db, hyper } = await fresh();
     try {
       const { alice, bot } = await people(hyper);
-      const task = await hyper.createTask({ title: "leased", creator: alice.id }, context);
-      await hyper.acquireClaim({ fence: 1, acquiredAt: minutes(-5), expiresAt: minutes(5), task: task.id, holder: bot.id }, context);
+      const task = await hyper.createTask({ title: "leased" }, as(alice));
+      // The lease the server sets: ten minutes from the bound clock's now.
+      await hyper.acquireClaim({ task: task.id }, as(bot));
       const derived = (at: Date) => load(db, async (tx) => (await loadTaskFields(tx, [task] as Task[], ["derivedState", "claimed", "lapsedClaim"], { clock: () => at }))[0]!);
       expect(await derived(minutes(0))).toMatchObject({ derivedState: "claimed", claimed: true, lapsedClaim: false });
-      expect(await derived(minutes(5))).toMatchObject({ derivedState: "ready", claimed: false, lapsedClaim: true });
+      expect(await derived(minutes(9))).toMatchObject({ derivedState: "claimed", claimed: true, lapsedClaim: false });
+      expect(await derived(minutes(10))).toMatchObject({ derivedState: "ready", claimed: false, lapsedClaim: true });
       expect(await derived(minutes(60))).toMatchObject({ derivedState: "ready", claimed: false, lapsedClaim: true });
     } finally { await db.close(); }
   });
@@ -253,11 +264,11 @@ describe("acceptance 4: derivedState is Hyper's DerivedState for the same rows",
     const { db, hyper } = await fresh();
     try {
       const { alice } = await people(hyper);
-      const first = await hyper.createTask({ title: "first", creator: alice.id }, context);
-      const second = await hyper.createTask({ title: "second", creator: alice.id }, context);
-      const third = await hyper.createTask({ title: "third", creator: alice.id }, context);
-      await hyper.addDependency({ dependent: second.id, prerequisite: first.id, createdBy: alice.id }, context);
-      await hyper.addDependency({ dependent: third.id, prerequisite: second.id, createdBy: alice.id }, context);
+      const first = await hyper.createTask({ title: "first" }, as(alice));
+      const second = await hyper.createTask({ title: "second" }, as(alice));
+      const third = await hyper.createTask({ title: "third" }, as(alice));
+      await hyper.addDependency({ dependent: second.id, prerequisite: first.id }, as(alice));
+      await hyper.addDependency({ dependent: third.id, prerequisite: second.id }, as(alice));
       await load(db, (tx) => tx.updateByKey(tables.task, { id: second.id }, { state: "done" }));
       const loaded = await load(db, async (tx) => loadTaskFields(tx, await tx.select(tables.task) as Task[], ["derivedState", "blocked"]));
       // second is done (stored wins) though its own prerequisite is open; third waits for a done task, so it is ready.
@@ -271,7 +282,7 @@ describe("acceptance 5: an unloaded relationship is a type error; a load that ca
     const { db, hyper } = await fresh();
     try {
       const { alice } = await people(hyper);
-      const task = await hyper.createTask({ title: "t", creator: alice.id }, context);
+      const task = await hyper.createTask({ title: "t" }, as(alice));
       // @ts-expect-error children was not loaded
       void task.children;
       // @ts-expect-error nor was a computed field
@@ -309,18 +320,19 @@ describe("the cost of Claim :acquire's reads (the M7 risk: a computed field that
   // Hyper's LockedTask reads six values in one SELECT: in_review?, claimed?, assigned?, lapsed_claim?, open_prerequisite? and max_fence.
   const LOCKED = ["inReview", "claimed", "assigned", "lapsedClaim", "blocked", "maxFence"] as const;
 
-  async function world(hyper: Hyper, tasks: number, perTask: number) {
+  async function world({ hyper, insert: raw }: Empty, tasks: number, perTask: number) {
+    const insert = rows(raw);
     const { alice, bot } = await people(hyper);
-    const prerequisite = await hyper.createTask({ title: "prerequisite", creator: alice.id }, context);
+    const prerequisite = await hyper.createTask({ title: "prerequisite" }, as(alice));
     const made: Task[] = [];
     for (let n = 0; n < tasks; n++) {
-      const task = await hyper.createTask({ title: `task ${n}`, creator: alice.id }, context);
+      const task = await hyper.createTask({ title: `task ${n}` }, as(alice));
       made.push(task);
       for (let k = 0; k < perTask; k++) {
-        await hyper.acquireClaim({ fence: k + 1, acquiredAt: minutes(-60), expiresAt: minutes(-30), task: task.id, holder: bot.id }, context);
-        await hyper.startAssignment({ reviewWaived: false, startedAt: minutes(-60), task: task.id, assignee: bot.id, delegator: alice.id }, context);
-        await hyper.submitSubmission({ summary: "s", evidence: [], fence: null, taskVersion: 1, task: task.id, submitter: bot.id }, context);
-        await hyper.addDependency({ dependent: task.id, prerequisite: prerequisite.id, createdBy: alice.id }, context);
+        await insert.claim(task.id, bot.id, k + 1, minutes(-30));
+        await insert.assignment(task.id, bot.id, alice.id);
+        await insert.submission(task.id, bot.id);
+        await insert.dependency(task.id, prerequisite.id, alice.id);
       }
     }
     return made;
@@ -329,9 +341,10 @@ describe("the cost of Claim :acquire's reads (the M7 risk: a computed field that
   test("one task, the six values LockedTask reads, and derivedState: a fixed number of queries whatever the rows hold", async () => {
     const results: number[][] = [];
     for (const perTask of [0, 1, 20]) {
-      const { db, hyper } = await fresh();
+      const base = await fresh();
+      const { db } = base;
       try {
-        const [task] = await world(hyper, 1, perTask);
+        const [task] = await world(base, 1, perTask);
         const { calls } = await load(db, async (tx) => {
           const counting = counted(tx);
           await loadTaskFields(counting.tx, [task!], [...LOCKED, "derivedState"], { clock });
@@ -346,9 +359,10 @@ describe("the cost of Claim :acquire's reads (the M7 risk: a computed field that
   });
 
   test("N tasks: the same five queries, and no call per task, because the rollup reads the claims already loaded", async () => {
-    const { db, hyper } = await fresh();
+    const base = await fresh();
+    const { db } = base;
     try {
-      const tasks = await world(hyper, 50, 2);
+      const tasks = await world(base, 50, 2);
       const { calls, rows } = await load(db, async (tx) => {
         const counting = counted(tx);
         const rows = await loadTaskFields(counting.tx, tasks, [...LOCKED, "derivedState"], { clock });
@@ -389,13 +403,14 @@ describe("derivedState with several rows of each kind", () => {
   ];
 
   test("each case equals the specification's rule applied to the facts of its rows", async () => {
-    const { db, hyper } = await fresh();
+    const { db, hyper, insert: raw } = await fresh();
+    const insert = rows(raw);
     try {
       const { alice, bot } = await people(hyper);
       const pre = {
-        open: await hyper.createTask({ title: "pre open", creator: alice.id }, context),
-        done: await hyper.createTask({ title: "pre done", creator: alice.id }, context),
-        canceled: await hyper.createTask({ title: "pre canceled", creator: alice.id }, context),
+        open: await hyper.createTask({ title: "pre open" }, as(alice)),
+        done: await hyper.createTask({ title: "pre done" }, as(alice)),
+        canceled: await hyper.createTask({ title: "pre canceled" }, as(alice)),
       };
       await load(db, async (tx) => {
         await tx.updateByKey(tables.task, { id: pre.done.id }, { state: "done" });
@@ -404,17 +419,13 @@ describe("derivedState with several rows of each kind", () => {
       const expected = new Map<string, { name: string; state: string }>();
       let fence = 0;
       for (const item of cases) {
-        const task = await hyper.createTask({ title: item.name, creator: alice.id }, context);
+        const task = await hyper.createTask({ title: item.name }, as(alice));
         for (const [state, lease] of item.claims ?? []) {
-          const made = await hyper.acquireClaim({ fence: ++fence, acquiredAt: minutes(-30), expiresAt: lease === "past" ? minutes(-5) : minutes(30), task: task.id, holder: bot.id }, context);
-          if (state !== "active") await load(db, (tx) => tx.updateByKey(tables.claim, { id: made.id }, { state }));
+          await insert.claim(task.id, bot.id, ++fence, lease === "past" ? minutes(-5) : minutes(30), state);
         }
-        for (const state of item.submissions ?? []) {
-          const made = await hyper.submitSubmission({ summary: "s", evidence: [], fence: null, taskVersion: 1, task: task.id, submitter: bot.id }, context);
-          if (state !== "pending") await load(db, (tx) => tx.updateByKey(tables.submission, { id: made.id }, { state }));
-        }
+        for (const state of item.submissions ?? []) await insert.submission(task.id, bot.id, state);
         for (const prerequisite of item.prerequisites ?? [])
-          await hyper.addDependency({ dependent: task.id, prerequisite: (prerequisite === "open" ? pre.open : prerequisite === "done" ? pre.done : pre.canceled).id, createdBy: alice.id }, context);
+          await insert.dependency(task.id, (prerequisite === "open" ? pre.open : prerequisite === "done" ? pre.done : pre.canceled).id, alice.id);
         expected.set(task.id, {
           name: item.name,
           state: specDerivedState({

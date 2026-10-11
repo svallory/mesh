@@ -5,7 +5,9 @@ import { z } from "zod";
 
 import type {
   RegisterMachineInput,
+  ReportMachineInput,
   UpdateMachineInput,
+  RetireMachineInput,
   ReadMachineInput,
   MachineFilter,
 } from "./machine.types";
@@ -81,11 +83,18 @@ export const machineSort = z
 export const registerMachineInput = z.strictObject({
   name: z.string(),
   platform: z.string().nullable().optional(),
-  firstReportedBy: z.uuid().nullable().optional(),
 }) satisfies z.ZodType<RegisterMachineInput>;
 
 export type RegisterMachineInputShape = Assert<
   SameShape<z.output<typeof registerMachineInput>, RegisterMachineInput>
+>;
+
+export const reportMachineInput = z.strictObject({
+  name: z.string(),
+}) satisfies z.ZodType<ReportMachineInput>;
+
+export type ReportMachineInputShape = Assert<
+  SameShape<z.output<typeof reportMachineInput>, ReportMachineInput>
 >;
 
 export const updateMachineInput = z.strictObject({
@@ -96,6 +105,16 @@ export const updateMachineInput = z.strictObject({
 
 export type UpdateMachineInputShape = Assert<
   SameShape<z.output<typeof updateMachineInput>, UpdateMachineInput>
+>;
+
+export const retireMachineInput = z.strictObject({
+  id: z.uuid(),
+  reason: z.string().min(1),
+  expectedVersion: z.int().nullable().optional(),
+}) satisfies z.ZodType<RetireMachineInput>;
+
+export type RetireMachineInputShape = Assert<
+  SameShape<z.output<typeof retireMachineInput>, RetireMachineInput>
 >;
 
 export const readMachineInput = z.strictObject({

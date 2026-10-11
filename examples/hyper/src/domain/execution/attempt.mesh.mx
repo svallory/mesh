@@ -3,6 +3,8 @@ import { Task } from "../work/task.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
 import { Machine } from "./machine.mesh.mx"
 import { SessionReference } from "./session-reference.mesh.mx"
+import { heldFence, missingEvidenceOf } from "../work/work.helpers"
+import { attemptOutcome, delegatorFor, nextNumber, settlesRun } from "./execution.helpers"
 
 entity :Attempt table="attempts"
   attributes
@@ -26,13 +28,126 @@ entity :Attempt table="attempts"
   actions auto=[:read]
     create :start
       input
-        &step
-        &number
-        &claimFence
-        &runtime
         &run
-        &task
-        &performer
-        &delegator
+        &step
+        &runtime
         &machine
         &session
+      validate
+        check :claimer [
+          that=({ actor }) => &run.task.claims.some((c) => c.state === :active && c.expiresAt > now() && c.holderId === actor.id)
+          code="attempt.claimer"
+          message="the claim on the task is no longer the actor's; claim it again to report"
+        ]
+        check :runRunning [
+          that=() => &run.state === :running
+          code="attempt.run-running"
+          message="the run is not running"
+        ]
+        check :stepIdle [
+          that=() => !&run.attempts.some((a) => a.step === &step && a.state === :running)
+          code="attempt.step-idle"
+          message="an attempt of this step is already running"
+        ]
+        check :session [
+          that=async ({ input, tx }) => input.session == null || (await tx.readSessionReference({ filter: { id: { eq: input.session } }, limit: 1 })).length > 0
+          code="attempt.session"
+          message="the session reference does not exist"
+        ]
+        check :machineRetired [
+          that=() => &machine === null || &machine?.state === :active
+          code="machine.retired"
+          message="the machine is retired; report the host by a new name"
+        ]
+      do
+        set
+          &performer=({ actor }) => actor.id
+          &task=() => &run.taskId
+          &number=() => nextNumber(&run.attempts, &step)
+          &delegator=() => delegatorFor(&run.task.assignments, &run.startedById)
+          &claimFence=({ actor }) => heldFence(&run.task.claims, actor.id, now())
+    update :finish
+      input
+        enum :result values=[:succeeded, :failed]
+        json :outputs nullable
+        json :evidence nullable
+        json :error nullable
+        integer :expectedVersion nullable
+      validate
+        check :running [
+          that=() => &state === :running
+          code="attempt.running"
+          message="the attempt has ended"
+        ]
+        check :error [
+          that=({ input }) => input.result === :failed || input.error == null
+          code="attempt.error"
+          message="only a failed attempt reports an error"
+        ]
+        check :evidence [
+          that=async ({ input, tx }) => (await missingEvidenceOf(tx, input.evidence ?? [])).length === 0
+          code="attempt.evidence"
+          message="an evidence reference does not exist"
+          details=async ({ input, tx }) => ({ missing: await missingEvidenceOf(tx, input.evidence ?? []) })
+        ]
+        check :versionMatches [
+          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
+          code="expected-version"
+          message="the record is at another version; read it again and retry"
+          details=({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })
+        ]
+      do
+        set
+          &state=({ input }) => input.result
+          &endedAt=() => now()
+          &outcome=({ input }) => attemptOutcome({ outputs: input.outputs, evidence: input.evidence, error: input.error })
+          &version=() => &version + 1
+        run [after=:write] ({ self, input, tx, actions }) {
+          const [run] = await tx.readRun({ filter: { id: { eq: self.runId } } });
+          if (run && settlesRun(run.state, input.result, input.error))
+            await actions.settleRun({ id: run.id, result: input.result, outcome: self.outcome });
+        }
+    update :reportStopped
+      input
+        string :reason min=1
+        integer :expectedVersion nullable
+      validate
+        check :running [
+          that=() => &state === :running
+          code="attempt.running"
+          message="the attempt has ended"
+        ]
+        check :versionMatches [
+          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
+          code="expected-version"
+          message="the record is at another version; read it again and retry"
+          details=({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })
+        ]
+      do
+        set
+          &state=:stopped
+          &endedAt=() => now()
+          &outcome=({ input }) => attemptOutcome({ reason: input.reason })
+          &version=() => &version + 1
+    update :abandon
+      input
+        string :note nullable
+        integer :expectedVersion nullable
+      validate
+        check :running [
+          that=() => &state === :running
+          code="attempt.running"
+          message="the attempt has ended"
+        ]
+        check :versionMatches [
+          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
+          code="expected-version"
+          message="the record is at another version; read it again and retry"
+          details=({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })
+        ]
+      do
+        set
+          &state=:abandoned
+          &endedAt=() => now()
+          &outcome=({ input }) => attemptOutcome({ note: input.note })
+          &version=() => &version + 1

@@ -3,17 +3,43 @@
 // Mesh's own imports carry a `$` so that no entity name can shadow them.
 
 import {
+  FrameworkError as $FrameworkError,
+  InvalidInputError as $InvalidInputError,
+  NotFoundError as $NotFoundError,
   castInput as $castInput,
+  checkUnchanged as $checkUnchanged,
+  composed as $composed,
+  guarded as $guarded,
   noteWrite as $noteWrite,
+  readOnlyRecord as $readOnlyRecord,
+  runCheck as $runCheck,
+  scope as $scope,
+  writeCount as $writeCount,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type Issue as $Issue,
   type Row as $Row,
 } from "@meshfw/runtime";
-import type { Assignment, StartAssignmentInput, ReadAssignmentInput } from "./assignment.types";
-import { startAssignmentInput, readAssignmentInput } from "./assignment.validators";
+import type {
+  Assignment,
+  StartAssignmentInput,
+  FinishAssignmentInput,
+  ReadAssignmentInput,
+} from "./assignment.types";
+import {
+  startAssignmentInput,
+  finishAssignmentInput,
+  readAssignmentInput,
+} from "./assignment.validators";
 import { tables } from "../schema";
+import {
+  expressions as $expressions,
+  type AssignmentScope as $Scope,
+  type AssignmentStoredScope as $StoredScope,
+} from "./assignment.expressions";
+import { loadPlan as $loadPlan } from "../load";
 
 /**
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
@@ -40,30 +66,123 @@ export function bindAssignmentReads(layer: $DataLayer) {
  * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
  * `actions` and `tx`; the project's `bind` in the index passes it.
  */
-export function bindAssignment(
-  layer: $DataLayer,
-  _options: $BindOptions = {},
-  _compose?: $Composer,
-) {
+export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
   const $reads = bindAssignmentReads(layer);
   return Object.freeze({
-    async start(input: StartAssignmentInput, ...[_context]: $ContextArgument): Promise<Assignment> {
+    async start(input: StartAssignmentInput, ...[context]: $ContextArgument): Promise<Assignment> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, startAssignmentInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $actor = $context.actor;
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           reviewWaived: parsed.reviewWaived === undefined ? false : parsed.reviewWaived,
-          startedAt: parsed.startedAt,
           endedAt: null,
           endReason: null,
           taskId: parsed.task,
           assigneeId: parsed.assignee,
-          delegatorId: parsed.delegator,
         };
+        const $record: $Row = { ...$changes };
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Assignment", $record, "action function"),
+          "Assignment.start",
+        );
+        const $s = $scope(
+          {
+            self: $self,
+            input: $readOnlyRecord(parsed, "Assignment.start"),
+            actor: $actor,
+            context: $context,
+            before: null,
+            ...$composed(compose, tx, context, "Assignment.start"),
+          },
+          options,
+        ) as unknown as $Scope<StartAssignmentInput>;
+        // do: the steps run in written order, each seeing the record as the ones before it left it
+        {
+          const $value = await $expressions["start.step.0.set.delegator"]($s);
+          if ($value === undefined || $value === null)
+            throw new $FrameworkError(
+              "set &delegator (src/domain/work/assignment.mesh.mx:23:22) produced no value, and the relationship delegator is required",
+            );
+          $changes.delegatorId = $record.delegatorId = $value;
+        }
+        {
+          const $value = await $expressions["start.step.0.set.startedAt"]($s);
+          if ($value === undefined || $value === null)
+            throw new $FrameworkError(
+              "set &startedAt (src/domain/work/assignment.mesh.mx:24:22) produced no value, and startedAt is required",
+            );
+          $changes.startedAt = $record.startedAt = $value;
+        }
         // data layer
         const $stored = await tx.insert(tables.assignment, $changes);
+        $noteWrite(tx);
+        return $stored as Assignment;
+      });
+    },
+
+    async finish(
+      input: FinishAssignmentInput,
+      ...[context]: $ContextArgument
+    ): Promise<Assignment> {
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, finishAssignmentInput, input);
+      return layer.transaction(async (tx) => {
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $actor = $context.actor;
+        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        const $key = { id: parsed.id };
+        const $before = await tx.selectByKeyForUpdate(tables.assignment, $key);
+        if ($before === undefined) throw new $NotFoundError("Assignment", $key);
+        const $changes: $Row = {};
+        const $record: $Row = { ...$before };
+        const $writes = $writeCount(tx);
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Assignment", $record, "action function"),
+          "Assignment.finish",
+        );
+        const $s = $scope(
+          {
+            self: $self,
+            input: $readOnlyRecord(parsed, "Assignment.finish"),
+            actor: $actor,
+            context: $context,
+            before: $readOnlyRecord(
+              $guarded($loadPlan, "Assignment", $before, "before"),
+              "Assignment.finish",
+            ) as unknown as Assignment,
+            ...$composed(compose, tx, context, "Assignment.finish"),
+          },
+          options,
+        ) as unknown as $StoredScope<FinishAssignmentInput>;
+        // validate: every check runs, and every failed check is reported together
+        const $issues: $Issue[] = [];
+        await $runCheck($issues, $s, {
+          label: "current",
+          code: "assignment.current",
+          message: "the assignment has already ended",
+          source: { file: "src/domain/work/assignment.mesh.mx", line: 29, column: 9 },
+          that: $expressions["finish.check.current.that"],
+        });
+        if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // do: the steps run in written order, each seeing the record as the ones before it left it
+        {
+          const $value = await $expressions["finish.step.0.set.endedAt"]($s);
+          $changes.endedAt = $record.endedAt = $value === undefined ? null : $value;
+        }
+        {
+          const $value = await $expressions["finish.step.0.set.endReason"]($s);
+          $changes.endReason = $record.endReason = $value === undefined ? null : $value;
+        }
+        // data layer
+        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+        await $checkUnchanged(tx, $writes, tables.assignment, $key, $before, "Assignment.finish");
+        const $stored = await tx.updateByKey(tables.assignment, $key, $changes);
+        if ($stored === undefined) throw new $NotFoundError("Assignment", $key);
         $noteWrite(tx);
         return $stored as Assignment;
       });

@@ -1,4 +1,5 @@
 import { Membership } from "./membership.mesh.mx"
+import { nameFreeOf, retireKeepsAnOwnerOf } from "./identity.helpers"
 
 entity :Collaborator table="collaborators"
   attributes
@@ -14,6 +15,12 @@ entity :Collaborator table="collaborators"
       input
         &kind
         &name
+      validate
+        check :nameUnique [
+          that=({ tx }) => nameFreeOf(tx, &name, null)
+          code="collaborator.name-unique"
+          message="another active collaborator has that name"
+        ]
     update :update
       input
         &name
@@ -30,6 +37,11 @@ entity :Collaborator table="collaborators"
           code="collaborator.kind-immutable"
           message="a collaborator keeps its kind"
         ]
+        check :nameUnique [
+          that=({ tx }) => nameFreeOf(tx, &name, &id)
+          code="collaborator.name-unique"
+          message="another active collaborator has that name"
+        ]
         check :versionMatches [
           that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
           code="expected-version"
@@ -38,4 +50,29 @@ entity :Collaborator table="collaborators"
         ]
       do
         set
+          &version=() => &version + 1
+    update :retire
+      input
+        string :reason nullable
+        integer :expectedVersion nullable
+      validate
+        check :collaboratorActive [
+          that=() => &state === :active
+          code="collaborator.active"
+          message="the collaborator is retired"
+        ]
+        check :lastOwner [
+          that=({ tx }) => retireKeepsAnOwnerOf(tx, &id)
+          code="membership.last-owner"
+          message="the workspace would have no owner; grant another owner first"
+        ]
+        check :versionMatches [
+          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
+          code="expected-version"
+          message="the record is at another version; read it again and retry"
+          details=({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })
+        ]
+      do
+        set
+          &state=:retired
           &version=() => &version + 1

@@ -1,5 +1,6 @@
 import { Task } from "./task.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
+import { claimToRelease, fenceDetails, fenceIsCurrent, missingEvidenceOf } from "./work.helpers"
 
 entity :Submission table="submissions"
   attributes
@@ -16,9 +17,93 @@ entity :Submission table="submissions"
   actions auto=[:read]
     create :submit
       input
+        &task
+        integer :fence min=1
+        string :summary min=1
+        &evidence
+        integer :expectedVersion nullable
+      validate
+        check :taskOpen [
+          that=() => &task.state === :open
+          code="task.open"
+          message="the task is not open; reopen it first"
+        ]
+        check :currentFence [
+          that=({ input, actor }) => fenceIsCurrent(&task.claims, input.fence, actor.id, now())
+          code="claim.current-fence"
+          message="the fence is not your current claim; claim the task again"
+          details=({ input, actor }) => fenceDetails(&task.maxFence, &task.claims, input.fence, actor.id, now())
+        ]
+        check :nonePending [
+          that=() => !&task.inReview
+          code="submission.none-pending"
+          message="a submission is already pending; wait for its review or withdraw it"
+        ]
+        check :evidenceExists [
+          that=async ({ tx }) => (await missingEvidenceOf(tx, &evidence)).length === 0
+          code="evidence.exists"
+          message="an evidence reference does not exist"
+          details=async ({ tx }) => ({ missing: await missingEvidenceOf(tx, &evidence) })
+        ]
+        check :versionMatches [
+          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &task.version
+          code="expected-version"
+          message="the task is at another version; read it again and retry"
+          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &task.version })
+        ]
+      do
+        set
+          &submitter=({ actor }) => actor.id
+          &fence=({ input }) => input.fence
+          &summary=({ input }) => input.summary
+          &taskVersion=() => &task.version
+        run [after=:write] ({ self, tx, actions }) {
+          const live = claimToRelease(await tx.readClaim({ filter: { taskId: { eq: self.taskId } } }), now());
+          if (live) await actions.endClaim({ id: live.id, outcome: :released, reason: "submitted" });
+          await actions.touchTask({ id: self.taskId });
+        }
+    update :withdraw
+      input
+        string :reason nullable
+        integer :expectedVersion nullable
+      validate
+        check :pending [
+          that=() => &state === :pending
+          code="submission.pending"
+          message="the submission is not pending"
+        ]
+        check :versionMatches [
+          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &task.version
+          code="expected-version"
+          message="the task is at another version; read it again and retry"
+          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &task.version })
+        ]
+      do
+        set
+          &state=:withdrawn
+        run [after=:write] ({ self, actions }) {
+          await actions.touchTask({ id: self.taskId });
+        }
+    update :settle
+      input
+        enum :outcome values=[:accepted, :returned, :withdrawn]
+      validate
+        check :pending [
+          that=() => &state === :pending
+          code="submission.pending"
+          message="the submission is not pending"
+        ]
+      do
+        set
+          &state=({ input }) => input.outcome
+    create :recordAccepted
+      input
+        &task
         &summary
         &evidence
         &fence
         &taskVersion
-        &task
-        &submitter
+      do
+        set
+          &submitter=({ actor }) => actor.id
+          &state=:accepted

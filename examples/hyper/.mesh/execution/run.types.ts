@@ -25,11 +25,21 @@ export type Run = {
 };
 
 export type StartRunInput = {
-  inputs?: unknown | undefined;
   task: Task["id"];
-  responsible: Collaborator["id"];
-  startedBy: Collaborator["id"];
+  inputs?: unknown | undefined;
   parentRun?: Run["id"] | null | undefined;
+};
+
+export type CancelRunInput = {
+  id: string;
+  reason: string;
+  expectedVersion?: number | null | undefined;
+};
+
+export type SettleRunInput = {
+  id: string;
+  result: "succeeded" | "failed";
+  outcome?: unknown | undefined;
 };
 
 export type ReadRunInput = {

@@ -56,19 +56,72 @@ class Plain extends Error {
 
 const start = (n: N): number => n.start ?? n.loc?.start.index ?? 0;
 
+/** Adds to `names` the names a binding pattern (a parameter, a declarator's id, a catch parameter) binds. */
+function patternNames(p: N | null | undefined, names: Set<string>): void {
+  if (!p) return;
+  switch (p.type) {
+    case "Identifier": names.add(p.name!); break;
+    case "ObjectPattern": for (const prop of p.properties ?? []) patternNames((prop.type === "RestElement" ? prop.argument : prop.value) as N, names); break;
+    case "ArrayPattern": for (const e of p.elements ?? []) patternNames(e as N | null, names); break;
+    case "AssignmentPattern": patternNames(p.left as N, names); break;
+    case "RestElement": patternNames(p.argument as N, names); break;
+    case "TSParameterProperty": patternNames(p.parameter as N, names); break;
+  }
+}
+
+const FUNCTION_TYPES = new Set(["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression", "ObjectMethod", "ClassMethod", "ClassPrivateMethod"]);
+
+/** The `var` declarations of a function body, hoisted to the function: every one outside a nested function. */
+function hoistedVars(body: unknown, names: Set<string>): void {
+  if (!body || typeof body !== "object") return;
+  if (Array.isArray(body)) { for (const b of body) hoistedVars(b, names); return; }
+  const n = body as N;
+  if (typeof n.type === "string" && (n.type.startsWith("TS") || FUNCTION_TYPES.has(n.type))) return;
+  if (n.type === "VariableDeclaration" && n.kind === "var") for (const d of n.declarations ?? []) patternNames((d as N).id, names);
+  for (const [k, child] of Object.entries(n)) if (k !== "loc" && k !== "extra") hoistedVars(child, names);
+}
+
+/** The lexical declarations of a statement list: `let`, `const`, `using`, classes and functions. */
+function lexicalNames(statements: readonly N[], names: Set<string>): void {
+  for (const statement of statements) {
+    if (statement.type === "VariableDeclaration") for (const d of statement.declarations ?? []) patternNames((d as N).id, names);
+    if ((statement.type === "FunctionDeclaration" || statement.type === "ClassDeclaration") && statement.id) patternNames(statement.id as N, names);
+  }
+}
+
+/**
+ * The names a node declares for the code inside it, or undefined when it opens no scope: a function's parameters, its
+ * own name (an expression's) and its `var`s; a block's lexical declarations; a loop head's; a catch clause's parameter;
+ * a class expression's name. A reference resolves to the nearest of these that has its name.
+ *
+ * A function's `var`s share the scope of its parameters, so `function f(at = now()) { var now = 0 }` binds no clock.
+ * JavaScript gives that default the outer `now`, but Bun's engine does not when the outer binding is two or more
+ * functions up, which a printed function's clock always is: it throws `ReferenceError: now is not defined` (Bun
+ * 1.3.14; Node gives the outer one). Binding no clock keeps the failure at the type check (TS2304) instead of at run time.
+ */
+function scopeNames(n: N): Set<string> | undefined {
+  const names = new Set<string>();
+  if (FUNCTION_TYPES.has(n.type)) {
+    if (n.type === "FunctionExpression" && n.id) patternNames(n.id as N, names);
+    for (const p of n.params ?? []) patternNames(p as N, names);
+    if (n.body?.type === "BlockStatement") hoistedVars(n.body.body, names);
+    return names;
+  }
+  switch (n.type) {
+    case "BlockStatement": case "Program": case "StaticBlock": lexicalNames((n.body ?? []) as N[], names); return names;
+    case "SwitchStatement": lexicalNames(((n.cases ?? []) as N[]).flatMap((c) => (c.consequent ?? []) as N[]), names); return names;
+    case "ForStatement": if (n.init?.type === "VariableDeclaration") lexicalNames([n.init as N], names); return names;
+    case "ForInStatement": case "ForOfStatement": if (n.left?.type === "VariableDeclaration") lexicalNames([n.left as N], names); return names;
+    case "CatchClause": patternNames(n.param as N, names); return names;
+    case "ClassExpression": if (n.id) patternNames(n.id as N, names); return names;
+    default: return undefined;
+  }
+}
+
 /** Every name bound anywhere in the function. Flat on purpose: it never reports a false error. */
 function bindings(root: N): Set<string> {
   const names = new Set<string>();
-  const pattern = (p: N | null | undefined): void => {
-    if (!p) return;
-    switch (p.type) {
-      case "Identifier": names.add(p.name!); break;
-      case "ObjectPattern": for (const prop of p.properties ?? []) pattern((prop.type === "RestElement" ? prop.argument : prop.value) as N); break;
-      case "ArrayPattern": for (const e of p.elements ?? []) pattern(e as N | null); break;
-      case "AssignmentPattern": pattern(p.left as N); break;
-      case "RestElement": pattern(p.argument as N); break;
-    }
-  };
+  const pattern = (p: N | null | undefined): void => patternNames(p, names);
   const walk = (value: unknown): void => {
     if (!value || typeof value !== "object") return;
     if (Array.isArray(value)) { value.forEach(walk); return; }
@@ -93,16 +146,19 @@ function bindings(root: N): Set<string> {
  * Free-variable errors for one function, at the identifier. Returns the scope names the function reads as variables
  * that its parameters do not bind (`&name` is `self.name`, so it reads `self`), in a fixed order: what the printed
  * function takes from the scope. A name a nested binding shadows still counts, so the function is never short of one.
+ * Adds to `clock` each clock function (`now`, `today`) the function reads somewhere that no enclosing scope binds that
+ * name and the file does not import: each reference is resolved against its own scopes, so
+ * `[1].some((now) => now === 1) && now()` reads the clock (a function's `var`s count for its parameters: `scopeNames`).
  */
-function freeVariables(fn: N, ctx: ConvertContext): string[] {
+function freeVariables(fn: N, ctx: ConvertContext, clock: Set<string>): string[] {
   const bound = bindings(fn);
   const parameters = bindings({ type: "ArrowFunctionExpression", params: fn.params ?? [], body: null } as unknown as N);
   const roots = new Set<string>();
   const known = (name: string) =>
     bound.has(name) || ctx.imported.has(name) || SCOPE_NAMES.has(name) || GLOBALS.has(name) || name in REGISTERED_CALLS;
-  const walk = (value: unknown, parent?: N, key?: string): void => {
+  const walk = (value: unknown, parent: N | undefined, key: string | undefined, scope: ReadonlySet<string>): void => {
     if (!value || typeof value !== "object") return;
-    if (Array.isArray(value)) { for (const v of value) walk(v, parent, key); return; }
+    if (Array.isArray(value)) { for (const v of value) walk(v, parent, key, scope); return; }
     const n = value as N;
     if (typeof n.type === "string" && n.type.startsWith("TS")) return;
     if (n.type === "Identifier") {
@@ -110,6 +166,8 @@ function freeVariables(fn: N, ctx: ConvertContext): string[] {
       const objectKey = parent && (parent.type === "ObjectProperty" || parent.type === "ObjectMethod" || parent.type === "ClassMethod" || parent.type === "ClassProperty") && key === "key" && !parent.computed;
       const label = parent && /^(LabeledStatement|BreakStatement|ContinueStatement)$/.test(parent.type) && key === "label";
       if (!property && !objectKey && !label && SCOPE_NAMES.has(n.name!) && !parameters.has(n.name!)) roots.add(n.name!);
+      // An imported `now` or `today` is the import, as it is in translated code (`convert`).
+      if (!property && !objectKey && !label && n.name! in REGISTERED_CALLS && !scope.has(n.name!) && !ctx.helpers.has(n.name!)) clock.add(n.name!);
       if (!property && !objectKey && !label && !known(n.name!) && n.start !== undefined) {
         ctx.report({
           severity: "error",
@@ -121,10 +179,14 @@ function freeVariables(fn: N, ctx: ConvertContext): string[] {
       }
       return;
     }
-    for (const [k, child] of Object.entries(n)) if (k !== "loc" && k !== "extra") walk(child, n, k);
+    const opened = scopeNames(n);
+    const inner = opened && opened.size > 0 ? new Set([...scope, ...opened]) : scope;
+    for (const [k, child] of Object.entries(n)) if (k !== "loc" && k !== "extra") walk(child, n, k, inner);
   };
-  walk(fn.body);
-  for (const p of fn.params ?? []) walk(p);
+  // The function's own parameters, name and `var`s; its body block adds its lexical declarations when the walk enters it.
+  const own = scopeNames(fn) ?? new Set<string>();
+  walk(fn.body, fn, "body", own);
+  for (const p of fn.params ?? []) walk(p, fn, "params", own);
   return [...SCOPE_NAMES].filter((name) => roots.has(name));
 }
 
@@ -268,7 +330,7 @@ function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode 
       if (callee.type === "Identifier") {
         const name = callee.name!;
         const registered = REGISTERED_CALLS[name];
-        if (registered && !env.roots.has(name) && !ctx.helpers.has(name)) {
+        if (registered && !env.roots.has(name) && !env.locals.has(name) && !ctx.helpers.has(name)) {
           if (args.length !== registered.arity) throw new Plain("unsupported-construct", `\`${name}()\` takes no arguments`, n);
           return call(registered.fn, []);
         }
@@ -306,14 +368,18 @@ const PARAMETER_ERROR = (n: N) => new Plain("unsupported-parameter", "this param
 
 /** Translate one function (`fn` is its Babel node, `span` its authored extent). */
 /** What printing a translated expression as plain code needs, for the checker if it later demotes one: its edits and the scope names it reads. */
-export interface Demotion { edits: SourceEdit[]; roots: string[] }
+export interface Demotion { edits: SourceEdit[]; roots: string[]; clock?: ("now" | "today")[] }
 const demotions = new WeakMap<object, Demotion>();
 export const demotionOf = (expression: object): Demotion => demotions.get(expression) ?? { edits: [], roots: [] };
 export const rememberDemotion = (expression: object, demotion: Demotion): void => { demotions.set(expression, demotion); };
 
 export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd: number }, ctx: ConvertContext): { tree?: ExprNode; plain?: PlainReason; demotion?: Demotion } {
   const f = fn as N;
-  const free = freeVariables(f, ctx);
+  const called = new Set<string>();
+  const free = freeVariables(f, ctx, called);
+  // `now()` and `today()` in code Mesh does not translate read the same clock as a translated expression.
+  const clock = (["now", "today"] as const).filter((name) => called.has(name));
+  const clocked = clock.length ? { clock } : {};
   const roots = new Map<string, string>();
   /**
    * A body that is an object literal (a check's `details`) is plain only because of the literal. Each property value that Mesh can
@@ -335,7 +401,7 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
   const plain = (e: Plain): { plain: PlainReason } => {
     const object = objectParts();
     return {
-      plain: { why: e.why, detail: e.detail, position: ctx.at(start(e.node) || span.sourceStart), edits: editsFor(f, span.sourceStart), roots: free, ...((object ? hasDifferingOperator(object.rest) : hasDifferingOperator(f.body)) ? { operators: true as const } : {}), ...(object?.parts.length ? { parts: object.parts } : {}), ...(f.type === "FunctionExpression" ? { method: true as const } : {}) },
+      plain: { why: e.why, detail: e.detail, position: ctx.at(start(e.node) || span.sourceStart), edits: editsFor(f, span.sourceStart), roots: free, ...clocked, ...((object ? hasDifferingOperator(object.rest) : hasDifferingOperator(f.body)) ? { operators: true as const } : {}), ...(object?.parts.length ? { parts: object.parts } : {}), ...(f.type === "FunctionExpression" ? { method: true as const } : {}) },
     };
   };
   try {
@@ -363,7 +429,7 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
       body = statements[0]!.argument as N;
     }
     const tree = convert(body, { roots, locals: new Set(), reads: { record: false } }, ctx);
-    return { tree, demotion: { edits: editsFor(f, span.sourceStart), roots: free } };
+    return { tree, demotion: { edits: editsFor(f, span.sourceStart), roots: free, ...clocked } };
   } catch (e) {
     if (e instanceof Plain) return plain(e);
     throw e;

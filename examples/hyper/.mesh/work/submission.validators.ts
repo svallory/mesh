@@ -5,6 +5,9 @@ import { z } from "zod";
 
 import type {
   SubmitSubmissionInput,
+  WithdrawSubmissionInput,
+  SettleSubmissionInput,
+  RecordAcceptedSubmissionInput,
   ReadSubmissionInput,
   SubmissionFilter,
 } from "./submission.types";
@@ -81,6 +84,44 @@ export const submissionSort = z
   .readonly();
 
 export const submitSubmissionInput = z.strictObject({
+  task: z.uuid(),
+  fence: z.int().min(1),
+  summary: z.string().min(1),
+  evidence: (
+    z
+      .json()
+      .refine((value) => value !== null, {
+        message: "null is only allowed on a nullable attribute",
+      }) as z.ZodType<unknown>
+  ).optional(),
+  expectedVersion: z.int().nullable().optional(),
+}) satisfies z.ZodType<SubmitSubmissionInput>;
+
+export type SubmitSubmissionInputShape = Assert<
+  SameShape<z.output<typeof submitSubmissionInput>, SubmitSubmissionInput>
+>;
+
+export const withdrawSubmissionInput = z.strictObject({
+  id: z.uuid(),
+  reason: z.string().nullable().optional(),
+  expectedVersion: z.int().nullable().optional(),
+}) satisfies z.ZodType<WithdrawSubmissionInput>;
+
+export type WithdrawSubmissionInputShape = Assert<
+  SameShape<z.output<typeof withdrawSubmissionInput>, WithdrawSubmissionInput>
+>;
+
+export const settleSubmissionInput = z.strictObject({
+  id: z.uuid(),
+  outcome: z.enum(["accepted", "returned", "withdrawn"]),
+}) satisfies z.ZodType<SettleSubmissionInput>;
+
+export type SettleSubmissionInputShape = Assert<
+  SameShape<z.output<typeof settleSubmissionInput>, SettleSubmissionInput>
+>;
+
+export const recordAcceptedSubmissionInput = z.strictObject({
+  task: z.uuid(),
   summary: z.string().min(1).nullable().optional(),
   evidence: (
     z
@@ -91,12 +132,10 @@ export const submitSubmissionInput = z.strictObject({
   ).optional(),
   fence: z.int().nullable().optional(),
   taskVersion: z.int(),
-  task: z.uuid(),
-  submitter: z.uuid(),
-}) satisfies z.ZodType<SubmitSubmissionInput>;
+}) satisfies z.ZodType<RecordAcceptedSubmissionInput>;
 
-export type SubmitSubmissionInputShape = Assert<
-  SameShape<z.output<typeof submitSubmissionInput>, SubmitSubmissionInput>
+export type RecordAcceptedSubmissionInputShape = Assert<
+  SameShape<z.output<typeof recordAcceptedSubmissionInput>, RecordAcceptedSubmissionInput>
 >;
 
 export const readSubmissionInput = z.strictObject({

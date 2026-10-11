@@ -8,6 +8,8 @@ import type {
   RenewClaimInput,
   ReleaseClaimInput,
   RevokeClaimInput,
+  ExpireClaimInput,
+  EndClaimInput,
   ReadClaimInput,
   ClaimFilter,
 } from "./claim.types";
@@ -90,11 +92,8 @@ export const claimSort = z
   .readonly();
 
 export const acquireClaimInput = z.strictObject({
-  fence: z.int(),
-  acquiredAt: z.date(),
-  expiresAt: z.date(),
   task: z.uuid(),
-  holder: z.uuid(),
+  expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<AcquireClaimInput>;
 
 export type AcquireClaimInputShape = Assert<
@@ -104,7 +103,7 @@ export type AcquireClaimInputShape = Assert<
 export const renewClaimInput = z.strictObject({
   id: z.uuid(),
   fence: z.int(),
-  newExpiresAt: z.date(),
+  expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<RenewClaimInput>;
 
 export type RenewClaimInputShape = Assert<
@@ -115,6 +114,7 @@ export const releaseClaimInput = z.strictObject({
   id: z.uuid(),
   fence: z.int(),
   reason: z.string().nullable().optional(),
+  expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<ReleaseClaimInput>;
 
 export type ReleaseClaimInputShape = Assert<
@@ -123,12 +123,30 @@ export type ReleaseClaimInputShape = Assert<
 
 export const revokeClaimInput = z.strictObject({
   id: z.uuid(),
-  reason: z.string().nullable().optional(),
+  reason: z.string().min(1),
+  expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<RevokeClaimInput>;
 
 export type RevokeClaimInputShape = Assert<
   SameShape<z.output<typeof revokeClaimInput>, RevokeClaimInput>
 >;
+
+export const expireClaimInput = z.strictObject({
+  id: z.uuid(),
+  reason: z.string().nullable().optional(),
+}) satisfies z.ZodType<ExpireClaimInput>;
+
+export type ExpireClaimInputShape = Assert<
+  SameShape<z.output<typeof expireClaimInput>, ExpireClaimInput>
+>;
+
+export const endClaimInput = z.strictObject({
+  id: z.uuid(),
+  outcome: z.enum(["released", "revoked", "expired"]),
+  reason: z.string(),
+}) satisfies z.ZodType<EndClaimInput>;
+
+export type EndClaimInputShape = Assert<SameShape<z.output<typeof endClaimInput>, EndClaimInput>>;
 
 export const readClaimInput = z.strictObject({
   filter: claimFilter.optional(),

@@ -17,4 +17,6 @@ entity :EvidenceReference table="evidence_references"
         &locator
         &contentHash
         &description
-        &recordedBy
+      do
+        set
+          &recordedBy=({ actor }) => actor.id

@@ -25,6 +25,12 @@ export type UpdateCollaboratorInput = {
   expectedVersion?: number | null | undefined;
 };
 
+export type RetireCollaboratorInput = {
+  id: string;
+  reason?: string | null | undefined;
+  expectedVersion?: number | null | undefined;
+};
+
 export type ReadCollaboratorInput = {
   filter?: CollaboratorFilter | undefined;
   sort?: CollaboratorSort | undefined;

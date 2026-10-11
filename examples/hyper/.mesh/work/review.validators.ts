@@ -81,9 +81,8 @@ export const reviewSort = z
   .readonly();
 
 export const acceptReviewInput = z.strictObject({
-  ruleApplied: z.enum(["parent-assignee", "parent-creator", "task-creator"]),
   submission: z.uuid(),
-  reviewer: z.uuid(),
+  expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<AcceptReviewInput>;
 
 export type AcceptReviewInputShape = Assert<
@@ -91,10 +90,9 @@ export type AcceptReviewInputShape = Assert<
 >;
 
 export const returnReviewInput = z.strictObject({
-  reasons: z.string().nullable().optional(),
-  ruleApplied: z.enum(["parent-assignee", "parent-creator", "task-creator"]),
+  reasons: z.string().min(1),
   submission: z.uuid(),
-  reviewer: z.uuid(),
+  expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<ReturnReviewInput>;
 
 export type ReturnReviewInputShape = Assert<

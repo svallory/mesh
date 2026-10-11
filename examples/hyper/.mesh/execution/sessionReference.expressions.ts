@@ -11,6 +11,7 @@ import type { Actions as $Actions, Reads as $Reads } from "../composition";
 import type {
   SessionReference,
   SessionReferenceLoaded,
+  RecordSessionReferenceInput,
   RedactSessionReferenceInput,
   SetAvailabilitySessionReferenceInput,
 } from "./sessionReference.types";
@@ -31,19 +32,31 @@ export type SessionReferenceStoredScope<I = unknown> = SessionReferenceScope<I> 
 };
 
 export const expressions = {
-  // check :notRedacted that, translated (src/domain/execution/session-reference.mesh.mx:33:16)
+  // check :agentProfile that, plain (uses-tx) (src/domain/execution/session-reference.mesh.mx:28:16)
+  "record.check.agentProfile.that": ($s: SessionReferenceScope<RecordSessionReferenceInput>) => {
+    return (async ({ input, tx }) =>
+      (await tx.readCollaborator({ filter: { id: { eq: input.agentProfile } }, limit: 1 })).length >
+      0)($s);
+  },
+  // check :machineRetired that, translated (src/domain/execution/session-reference.mesh.mx:33:16)
+  "record.check.machineRetired.that": ($s: SessionReferenceScope<RecordSessionReferenceInput>) =>
+    $.eq($s.self.machine?.state, "active"),
+  // set &recordedBy, translated (src/domain/execution/session-reference.mesh.mx:39:23)
+  "record.step.0.set.recordedBy": ($s: SessionReferenceScope<RecordSessionReferenceInput>) =>
+    $s.actor?.id,
+  // check :notRedacted that, translated (src/domain/execution/session-reference.mesh.mx:48:16)
   "setAvailability.check.notRedacted.that": (
     $s: SessionReferenceStoredScope<SetAvailabilitySessionReferenceInput>,
   ) => $.ne($s.before?.availability, "redacted"),
-  // check :availabilityChanges that, translated (src/domain/execution/session-reference.mesh.mx:38:16)
-  "setAvailability.check.availabilityChanges.that": (
+  // check :availabilityKept that, translated (src/domain/execution/session-reference.mesh.mx:53:16)
+  "setAvailability.check.availabilityKept.that": (
     $s: SessionReferenceStoredScope<SetAvailabilitySessionReferenceInput>,
-  ) => $.ne($s.self.availability, $s.before?.availability),
-  // check :versionMatches that, translated (src/domain/execution/session-reference.mesh.mx:43:16)
+  ) => $.ne($s.self.availability, "redacted"),
+  // check :versionMatches that, translated (src/domain/execution/session-reference.mesh.mx:58:16)
   "setAvailability.check.versionMatches.that": (
     $s: SessionReferenceStoredScope<SetAvailabilitySessionReferenceInput>,
   ) => $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/session-reference.mesh.mx:46:19)
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/session-reference.mesh.mx:61:19)
   "setAvailability.check.versionMatches.details": (
     $s: SessionReferenceStoredScope<SetAvailabilitySessionReferenceInput>,
   ) => {
@@ -52,18 +65,18 @@ export const expressions = {
       actualVersion: before.version,
     }))($s);
   },
-  // set &version, translated (src/domain/execution/session-reference.mesh.mx:50:20)
+  // set &version, translated (src/domain/execution/session-reference.mesh.mx:65:20)
   "setAvailability.step.0.set.version": (
     $s: SessionReferenceStoredScope<SetAvailabilitySessionReferenceInput>,
   ) => $.add($s.self.version, 1),
-  // check :notRedacted that, translated (src/domain/execution/session-reference.mesh.mx:56:16)
+  // check :notRedacted that, translated (src/domain/execution/session-reference.mesh.mx:72:16)
   "redact.check.notRedacted.that": ($s: SessionReferenceStoredScope<RedactSessionReferenceInput>) =>
     $.ne($s.before?.availability, "redacted"),
-  // check :versionMatches that, translated (src/domain/execution/session-reference.mesh.mx:61:16)
+  // check :versionMatches that, translated (src/domain/execution/session-reference.mesh.mx:77:16)
   "redact.check.versionMatches.that": (
     $s: SessionReferenceStoredScope<RedactSessionReferenceInput>,
   ) => $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/session-reference.mesh.mx:64:19)
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/session-reference.mesh.mx:80:19)
   "redact.check.versionMatches.details": (
     $s: SessionReferenceStoredScope<RedactSessionReferenceInput>,
   ) => {
@@ -72,7 +85,7 @@ export const expressions = {
       actualVersion: before.version,
     }))($s);
   },
-  // set &version, translated (src/domain/execution/session-reference.mesh.mx:70:20)
+  // set &version, translated (src/domain/execution/session-reference.mesh.mx:86:20)
   "redact.step.0.set.version": ($s: SessionReferenceStoredScope<RedactSessionReferenceInput>) =>
     $.add($s.self.version, 1),
 } as const;

@@ -7,10 +7,14 @@ import {
   type ReadOnlyResults as $ReadOnlyResults,
   type Scope as $Scope,
 } from "@meshfw/runtime";
+import { leaseEnd, readinessOf } from "../../src/domain/work/work.helpers";
 import type { Actions as $Actions, Reads as $Reads } from "../composition";
 import type {
   Claim,
   ClaimLoaded,
+  AcquireClaimInput,
+  EndClaimInput,
+  ExpireClaimInput,
   ReleaseClaimInput,
   RenewClaimInput,
   RevokeClaimInput,
@@ -30,54 +34,190 @@ export type ClaimScope<I = unknown> = $Scope<{
 export type ClaimStoredScope<I = unknown> = ClaimScope<I> & { before: $DeepReadonly<Claim> };
 
 export const expressions = {
-  // computed lapsed, translated (src/domain/work/claim.mesh.mx:17:20)
+  // computed lapsed, translated (src/domain/work/claim.mesh.mx:18:20)
   "computed.lapsed": ($s: ClaimScope<unknown>) =>
     $.and($.eq($s.self.state, "active"), $.lte($s.self.expiresAt, $.now($s))),
-  // check :currentFence that, translated (src/domain/work/claim.mesh.mx:32:16)
-  "renew.check.currentFence.that": ($s: ClaimStoredScope<RenewClaimInput>) =>
-    $.eq($s.input?.fence, $s.self.fence),
-  // check :currentFence details, plain (unsupported-construct) (src/domain/work/claim.mesh.mx:35:19)
-  "renew.check.currentFence.details": ($s: ClaimStoredScope<RenewClaimInput>) => {
-    return (({ input, before }) => ({
-      currentFence: before.fence,
-      stale: input.fence < before.fence,
+  // check :taskReady that, translated (src/domain/work/claim.mesh.mx:26:16)
+  "acquire.check.taskReady.that": ($s: ClaimScope<AcquireClaimInput>) =>
+    $.eq($s.self.task?.derivedState, "ready"),
+  // check :taskReady details, plain (uses-tx) (src/domain/work/claim.mesh.mx:29:19)
+  "acquire.check.taskReady.details": ($s: ClaimScope<AcquireClaimInput>) => {
+    const { self } = $s;
+    return (({ tx }) => readinessOf(tx, self.task.id, self.task.derivedState))($s);
+  },
+  // check :versionMatches that, translated (src/domain/work/claim.mesh.mx:32:16)
+  "acquire.check.versionMatches.that": ($s: ClaimScope<AcquireClaimInput>) =>
+    $.or(
+      $.isNull($s.input?.expectedVersion),
+      $.eq($s.input?.expectedVersion, $s.self.task?.version),
+    ),
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/work/claim.mesh.mx:35:19)
+  "acquire.check.versionMatches.details": ($s: ClaimScope<AcquireClaimInput>) => {
+    const { self } = $s;
+    return (({ input }) => ({
+      expectedVersion: input.expectedVersion,
+      actualVersion: self.task.version,
     }))($s);
   },
-  // check :claimActive that, translated (src/domain/work/claim.mesh.mx:38:16)
+  // run, plain (run-step) (src/domain/work/claim.mesh.mx:38:12)
+  "acquire.step.0.run": ($s: ClaimScope<AcquireClaimInput>) => {
+    const now = () => $.now($s);
+    return (async function ({ input, tx, actions }) {
+      const lapsed = await tx.readClaim({
+        filter: { taskId: { eq: input.task }, state: { eq: "active" }, expiresAt: { lte: now() } },
+      });
+      for (const claim of lapsed)
+        await actions.endClaim({ id: claim.id, outcome: "expired", reason: "lease expired" });
+    })($s);
+  },
+  // set &holder, translated (src/domain/work/claim.mesh.mx:43:19)
+  "acquire.step.1.set.holder": ($s: ClaimScope<AcquireClaimInput>) => $s.actor?.id,
+  // set &fence, translated (src/domain/work/claim.mesh.mx:44:18)
+  "acquire.step.1.set.fence": ($s: ClaimScope<AcquireClaimInput>) =>
+    $.add($.coalesce($s.self.task?.maxFence, 0), 1),
+  // set &acquiredAt, translated (src/domain/work/claim.mesh.mx:45:23)
+  "acquire.step.1.set.acquiredAt": ($s: ClaimScope<AcquireClaimInput>) => $.now($s),
+  // set &expiresAt, translated (src/domain/work/claim.mesh.mx:46:22)
+  "acquire.step.1.set.expiresAt": ($s: ClaimScope<AcquireClaimInput>) => leaseEnd($.now($s)),
+  // run, plain (run-step) (src/domain/work/claim.mesh.mx:47:28)
+  "acquire.step.2.run": ($s: ClaimScope<AcquireClaimInput>) => {
+    return (async function ({ self, tx, actions }) {
+      const open = await tx.readAssignment({
+        filter: { taskId: { eq: self.taskId }, endedAt: { nil: true } },
+        limit: 1,
+      });
+      if (open.length === 0)
+        await actions.startAssignment({
+          task: self.taskId,
+          assignee: self.holderId,
+          reviewWaived: false,
+        });
+      await actions.touchTask({ id: self.taskId });
+    })($s);
+  },
+  // check :currentFence that, translated (src/domain/work/claim.mesh.mx:58:16)
+  "renew.check.currentFence.that": ($s: ClaimStoredScope<RenewClaimInput>) =>
+    $.and($.eq($s.input?.fence, $s.self.fence), $.eq($s.input?.fence, $s.self.task?.maxFence)),
+  // check :currentFence details, plain (unsupported-construct) (src/domain/work/claim.mesh.mx:61:19)
+  "renew.check.currentFence.details": ($s: ClaimStoredScope<RenewClaimInput>) => {
+    const { self } = $s;
+    return (() => ({ currentFence: self.task.maxFence, stale: false }))();
+  },
+  // check :claimActive that, translated (src/domain/work/claim.mesh.mx:64:16)
   "renew.check.claimActive.that": ($s: ClaimStoredScope<RenewClaimInput>) =>
     $.eq($s.self.state, "active"),
-  // check :claimNotExpired that, translated (src/domain/work/claim.mesh.mx:43:16)
+  // check :claimNotExpired that, translated (src/domain/work/claim.mesh.mx:69:16)
   "renew.check.claimNotExpired.that": ($s: ClaimStoredScope<RenewClaimInput>) =>
     $.gt($s.self.expiresAt, $.now($s)),
-  // set &expiresAt, translated (src/domain/work/claim.mesh.mx:49:22)
-  "renew.step.0.set.expiresAt": ($s: ClaimStoredScope<RenewClaimInput>) => $s.input?.newExpiresAt,
-  // check :currentFence that, translated (src/domain/work/claim.mesh.mx:56:16)
-  "release.check.currentFence.that": ($s: ClaimStoredScope<ReleaseClaimInput>) =>
-    $.eq($s.input?.fence, $s.self.fence),
-  // check :currentFence details, plain (unsupported-construct) (src/domain/work/claim.mesh.mx:59:19)
-  "release.check.currentFence.details": ($s: ClaimStoredScope<ReleaseClaimInput>) => {
-    return (({ input, before }) => ({
-      currentFence: before.fence,
-      stale: input.fence < before.fence,
+  // check :versionMatches that, translated (src/domain/work/claim.mesh.mx:74:16)
+  "renew.check.versionMatches.that": ($s: ClaimStoredScope<RenewClaimInput>) =>
+    $.or(
+      $.isNull($s.input?.expectedVersion),
+      $.eq($s.input?.expectedVersion, $s.self.task?.version),
+    ),
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/work/claim.mesh.mx:77:19)
+  "renew.check.versionMatches.details": ($s: ClaimStoredScope<RenewClaimInput>) => {
+    const { self } = $s;
+    return (({ input }) => ({
+      expectedVersion: input.expectedVersion,
+      actualVersion: self.task.version,
     }))($s);
   },
-  // check :claimActive that, translated (src/domain/work/claim.mesh.mx:62:16)
+  // set &expiresAt, translated (src/domain/work/claim.mesh.mx:81:22)
+  "renew.step.0.set.expiresAt": ($s: ClaimStoredScope<RenewClaimInput>) => leaseEnd($.now($s)),
+  // run, plain (run-step) (src/domain/work/claim.mesh.mx:82:28)
+  "renew.step.1.run": ($s: ClaimStoredScope<RenewClaimInput>) => {
+    return (async function ({ self, actions }) {
+      await actions.touchTask({ id: self.taskId });
+    })($s);
+  },
+  // check :currentFence that, translated (src/domain/work/claim.mesh.mx:92:16)
+  "release.check.currentFence.that": ($s: ClaimStoredScope<ReleaseClaimInput>) =>
+    $.and($.eq($s.input?.fence, $s.self.fence), $.eq($s.input?.fence, $s.self.task?.maxFence)),
+  // check :currentFence details, plain (unsupported-construct) (src/domain/work/claim.mesh.mx:95:19)
+  "release.check.currentFence.details": ($s: ClaimStoredScope<ReleaseClaimInput>) => {
+    const { self } = $s;
+    return (() => ({ currentFence: self.task.maxFence, stale: false }))();
+  },
+  // check :claimActive that, translated (src/domain/work/claim.mesh.mx:98:16)
   "release.check.claimActive.that": ($s: ClaimStoredScope<ReleaseClaimInput>) =>
     $.eq($s.self.state, "active"),
-  // check :claimNotExpired that, translated (src/domain/work/claim.mesh.mx:67:16)
+  // check :claimNotExpired that, translated (src/domain/work/claim.mesh.mx:103:16)
   "release.check.claimNotExpired.that": ($s: ClaimStoredScope<ReleaseClaimInput>) =>
     $.gt($s.self.expiresAt, $.now($s)),
-  // set &endedAt, translated (src/domain/work/claim.mesh.mx:74:20)
+  // check :versionMatches that, translated (src/domain/work/claim.mesh.mx:108:16)
+  "release.check.versionMatches.that": ($s: ClaimStoredScope<ReleaseClaimInput>) =>
+    $.or(
+      $.isNull($s.input?.expectedVersion),
+      $.eq($s.input?.expectedVersion, $s.self.task?.version),
+    ),
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/work/claim.mesh.mx:111:19)
+  "release.check.versionMatches.details": ($s: ClaimStoredScope<ReleaseClaimInput>) => {
+    const { self } = $s;
+    return (({ input }) => ({
+      expectedVersion: input.expectedVersion,
+      actualVersion: self.task.version,
+    }))($s);
+  },
+  // set &endedAt, translated (src/domain/work/claim.mesh.mx:116:20)
   "release.step.0.set.endedAt": ($s: ClaimStoredScope<ReleaseClaimInput>) => $.now($s),
-  // set &endReason, translated (src/domain/work/claim.mesh.mx:75:22)
+  // set &endReason, translated (src/domain/work/claim.mesh.mx:117:22)
   "release.step.0.set.endReason": ($s: ClaimStoredScope<ReleaseClaimInput>) =>
-    $.coalesce($s.input?.reason, null),
-  // check :claimActive that, translated (src/domain/work/claim.mesh.mx:81:16)
+    $.coalesce($s.input?.reason, "released"),
+  // run, plain (run-step) (src/domain/work/claim.mesh.mx:118:28)
+  "release.step.1.run": ($s: ClaimStoredScope<ReleaseClaimInput>) => {
+    return (async function ({ self, actions }) {
+      await actions.touchTask({ id: self.taskId });
+    })($s);
+  },
+  // check :claimActive that, translated (src/domain/work/claim.mesh.mx:127:16)
   "revoke.check.claimActive.that": ($s: ClaimStoredScope<RevokeClaimInput>) =>
     $.eq($s.self.state, "active"),
-  // set &endedAt, translated (src/domain/work/claim.mesh.mx:88:20)
+  // check :versionMatches that, translated (src/domain/work/claim.mesh.mx:132:16)
+  "revoke.check.versionMatches.that": ($s: ClaimStoredScope<RevokeClaimInput>) =>
+    $.or(
+      $.isNull($s.input?.expectedVersion),
+      $.eq($s.input?.expectedVersion, $s.self.task?.version),
+    ),
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/work/claim.mesh.mx:135:19)
+  "revoke.check.versionMatches.details": ($s: ClaimStoredScope<RevokeClaimInput>) => {
+    const { self } = $s;
+    return (({ input }) => ({
+      expectedVersion: input.expectedVersion,
+      actualVersion: self.task.version,
+    }))($s);
+  },
+  // set &endedAt, translated (src/domain/work/claim.mesh.mx:140:20)
   "revoke.step.0.set.endedAt": ($s: ClaimStoredScope<RevokeClaimInput>) => $.now($s),
-  // set &endReason, translated (src/domain/work/claim.mesh.mx:89:22)
-  "revoke.step.0.set.endReason": ($s: ClaimStoredScope<RevokeClaimInput>) =>
-    $.coalesce($s.input?.reason, null),
+  // set &endReason, translated (src/domain/work/claim.mesh.mx:141:22)
+  "revoke.step.0.set.endReason": ($s: ClaimStoredScope<RevokeClaimInput>) => $s.input?.reason,
+  // run, plain (run-step) (src/domain/work/claim.mesh.mx:142:28)
+  "revoke.step.1.run": ($s: ClaimStoredScope<RevokeClaimInput>) => {
+    return (async function ({ self, actions }) {
+      await actions.touchTask({ id: self.taskId });
+    })($s);
+  },
+  // check :claimActive that, translated (src/domain/work/claim.mesh.mx:150:16)
+  "expire.check.claimActive.that": ($s: ClaimStoredScope<ExpireClaimInput>) =>
+    $.eq($s.self.state, "active"),
+  // set &endedAt, translated (src/domain/work/claim.mesh.mx:157:20)
+  "expire.step.0.set.endedAt": ($s: ClaimStoredScope<ExpireClaimInput>) => $.now($s),
+  // set &endReason, translated (src/domain/work/claim.mesh.mx:158:22)
+  "expire.step.0.set.endReason": ($s: ClaimStoredScope<ExpireClaimInput>) =>
+    $.coalesce($s.input?.reason, "lease expired"),
+  // run, plain (run-step) (src/domain/work/claim.mesh.mx:159:28)
+  "expire.step.1.run": ($s: ClaimStoredScope<ExpireClaimInput>) => {
+    return (async function ({ self, actions }) {
+      await actions.touchTask({ id: self.taskId });
+    })($s);
+  },
+  // check :claimActive that, translated (src/domain/work/claim.mesh.mx:168:16)
+  "end.check.claimActive.that": ($s: ClaimStoredScope<EndClaimInput>) =>
+    $.eq($s.self.state, "active"),
+  // set &state, translated (src/domain/work/claim.mesh.mx:174:18)
+  "end.step.0.set.state": ($s: ClaimStoredScope<EndClaimInput>) => $s.input?.outcome,
+  // set &endedAt, translated (src/domain/work/claim.mesh.mx:175:20)
+  "end.step.0.set.endedAt": ($s: ClaimStoredScope<EndClaimInput>) => $.now($s),
+  // set &endReason, translated (src/domain/work/claim.mesh.mx:176:22)
+  "end.step.0.set.endReason": ($s: ClaimStoredScope<EndClaimInput>) => $s.input?.reason,
 } as const;

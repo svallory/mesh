@@ -97,7 +97,6 @@ export const recordSessionReferenceInput = z.strictObject({
   location: z.string().nullable().optional(),
   machine: z.uuid(),
   agentProfile: z.uuid(),
-  recordedBy: z.uuid(),
 }) satisfies z.ZodType<RecordSessionReferenceInput>;
 
 export type RecordSessionReferenceInputShape = Assert<
@@ -107,6 +106,8 @@ export type RecordSessionReferenceInputShape = Assert<
 export const setAvailabilitySessionReferenceInput = z.strictObject({
   id: z.uuid(),
   availability: z.enum(["complete", "partial", "unavailable", "redacted"]).optional(),
+  location: z.string().nullable().optional(),
+  reason: z.string().nullable().optional(),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<SetAvailabilitySessionReferenceInput>;
 
@@ -119,6 +120,7 @@ export type SetAvailabilitySessionReferenceInputShape = Assert<
 
 export const redactSessionReferenceInput = z.strictObject({
   id: z.uuid(),
+  reason: z.string().min(1),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<RedactSessionReferenceInput>;
 

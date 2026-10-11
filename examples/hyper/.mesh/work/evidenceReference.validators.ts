@@ -82,7 +82,6 @@ export const recordEvidenceReferenceInput = z.strictObject({
   locator: z.string(),
   contentHash: z.string().nullable().optional(),
   description: z.string().nullable().optional(),
-  recordedBy: z.uuid(),
 }) satisfies z.ZodType<RecordEvidenceReferenceInput>;
 
 export type RecordEvidenceReferenceInputShape = Assert<

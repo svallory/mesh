@@ -3,8 +3,13 @@
 // Mesh's own imports carry a `$` so that no entity name can shadow them.
 
 import {
+  FrameworkError as $FrameworkError,
   castInput as $castInput,
+  composed as $composed,
+  guarded as $guarded,
   noteWrite as $noteWrite,
+  readOnlyRecord as $readOnlyRecord,
+  scope as $scope,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
@@ -14,6 +19,11 @@ import {
 import type { Completion, RecordCompletionInput, ReadCompletionInput } from "./completion.types";
 import { recordCompletionInput, readCompletionInput } from "./completion.validators";
 import { tables } from "../schema";
+import {
+  expressions as $expressions,
+  type CompletionScope as $Scope,
+} from "./completion.expressions";
+import { loadPlan as $loadPlan } from "../load";
 
 /**
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
@@ -40,21 +50,19 @@ export function bindCompletionReads(layer: $DataLayer) {
  * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
  * `actions` and `tx`; the project's `bind` in the index passes it.
  */
-export function bindCompletion(
-  layer: $DataLayer,
-  options: $BindOptions = {},
-  _compose?: $Composer,
-) {
+export function bindCompletion(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
   const $reads = bindCompletionReads(layer);
   return Object.freeze({
     async record(
       input: RecordCompletionInput,
-      ...[_context]: $ContextArgument
+      ...[context]: $ContextArgument
     ): Promise<Completion> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, recordCompletionInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $actor = $context.actor;
         const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
@@ -62,8 +70,32 @@ export function bindCompletion(
           completedAt: $now,
           taskId: parsed.task,
           submissionId: parsed.submission === undefined ? null : parsed.submission,
-          completedById: parsed.completedBy,
         };
+        const $record: $Row = { ...$changes };
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Completion", $record, "action function"),
+          "Completion.record",
+        );
+        const $s = $scope(
+          {
+            self: $self,
+            input: $readOnlyRecord(parsed, "Completion.record"),
+            actor: $actor,
+            context: $context,
+            before: null,
+            ...$composed(compose, tx, context, "Completion.record"),
+          },
+          options,
+        ) as unknown as $Scope<RecordCompletionInput>;
+        // do: the steps run in written order, each seeing the record as the ones before it left it
+        {
+          const $value = await $expressions["record.step.0.set.completedBy"]($s);
+          if ($value === undefined || $value === null)
+            throw new $FrameworkError(
+              "set &completedBy (src/domain/work/completion.mesh.mx:22:24) produced no value, and the relationship completedBy is required",
+            );
+          $changes.completedById = $record.completedById = $value;
+        }
         // data layer
         const $stored = await tx.insert(tables.completion, $changes);
         $noteWrite(tx);

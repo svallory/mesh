@@ -3,12 +3,22 @@
 // Mesh's own imports carry a `$` so that no entity name can shadow them.
 
 import {
+  FrameworkError as $FrameworkError,
+  InvalidInputError as $InvalidInputError,
   castInput as $castInput,
+  composed as $composed,
+  guarded as $guarded,
+  loadInto as $loadInto,
   noteWrite as $noteWrite,
+  readOnlyRecord as $readOnlyRecord,
+  runCheck as $runCheck,
+  scope as $scope,
+  unloadFrom as $unloadFrom,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type Issue as $Issue,
   type Row as $Row,
 } from "@meshfw/runtime";
 import type {
@@ -23,6 +33,11 @@ import {
   readInvocationInput,
 } from "./invocation.validators";
 import { tables } from "../schema";
+import {
+  expressions as $expressions,
+  type InvocationScope as $Scope,
+} from "./invocation.expressions";
+import { loadPlan as $loadPlan } from "../load";
 
 /**
  * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
@@ -49,21 +64,19 @@ export function bindInvocationReads(layer: $DataLayer) {
  * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
  * `actions` and `tx`; the project's `bind` in the index passes it.
  */
-export function bindInvocation(
-  layer: $DataLayer,
-  options: $BindOptions = {},
-  _compose?: $Composer,
-) {
+export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
   const $reads = bindInvocationReads(layer);
   return Object.freeze({
     async record(
       input: RecordInvocationInput,
-      ...[_context]: $ContextArgument
+      ...[context]: $ContextArgument
     ): Promise<Invocation> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, recordInvocationInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $actor = $context.actor;
         const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
@@ -84,11 +97,63 @@ export function bindInvocation(
           reason: null,
           recordedAt: $now,
           attemptId: parsed.attempt,
-          taskId: parsed.task,
           sessionId: parsed.session === undefined ? null : parsed.session,
           correctsId: null,
-          recordedById: parsed.recordedBy,
         };
+        const $record: $Row = { ...$changes };
+        const $load = { actor: $actor, context: $context, clock: options.clock };
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Invocation", $record, "action function"),
+          "Invocation.record",
+        );
+        const $s = $scope(
+          {
+            self: $self,
+            input: $readOnlyRecord(parsed, "Invocation.record"),
+            actor: $actor,
+            context: $context,
+            before: null,
+            ...$composed(compose, tx, context, "Invocation.record"),
+          },
+          options,
+        ) as unknown as $Scope<RecordInvocationInput>;
+        // validate: every check runs, and every failed check is reported together
+        const $issues: $Issue[] = [];
+        await $loadInto($loadPlan, "Invocation", tx, $record, ["attempt", "session"], $load);
+        await $runCheck($issues, $s, {
+          label: "session",
+          code: "invocation.session",
+          message: "the session is not the attempt's session",
+          source: { file: "src/domain/execution/invocation.mesh.mx", line: 49, column: 9 },
+          that: $expressions["record.check.session.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "costUnknown",
+          code: "invocation.cost-unknown",
+          message: "the cost is unknown while a token count it needs is unknown",
+          source: { file: "src/domain/execution/invocation.mesh.mx", line: 54, column: 9 },
+          that: $expressions["record.check.costUnknown.that"],
+        });
+        if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // do: the steps run in written order, each seeing the record as the ones before it left it
+        await $loadInto($loadPlan, "Invocation", tx, $record, ["attempt"], $load);
+        {
+          const $value = await $expressions["record.step.0.set.task"]($s);
+          if ($value === undefined || $value === null)
+            throw new $FrameworkError(
+              "set &task (src/domain/execution/invocation.mesh.mx:61:17) produced no value, and the relationship task is required",
+            );
+          $changes.taskId = $record.taskId = $value;
+        }
+        {
+          const $value = await $expressions["record.step.0.set.recordedBy"]($s);
+          if ($value === undefined || $value === null)
+            throw new $FrameworkError(
+              "set &recordedBy (src/domain/execution/invocation.mesh.mx:62:23) produced no value, and the relationship recordedBy is required",
+            );
+          $changes.recordedById = $record.recordedById = $value;
+        }
+        $unloadFrom($loadPlan, "Invocation", $record);
         // data layer
         const $stored = await tx.insert(tables.invocation, $changes);
         $noteWrite(tx);
@@ -98,36 +163,101 @@ export function bindInvocation(
 
     async correct(
       input: CorrectInvocationInput,
-      ...[_context]: $ContextArgument
+      ...[context]: $ContextArgument
     ): Promise<Invocation> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, correctInvocationInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $actor = $context.actor;
         const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
-          requestedProvider: null,
-          requestedModel: null,
-          actualProvider: null,
-          actualModel: null,
-          inputTokens: null,
-          outputTokens: null,
-          cacheReadTokens: null,
-          cacheWriteTokens: null,
+          requestedProvider:
+            parsed.requestedProvider === undefined ? null : parsed.requestedProvider,
+          requestedModel: parsed.requestedModel === undefined ? null : parsed.requestedModel,
+          actualProvider: parsed.actualProvider === undefined ? null : parsed.actualProvider,
+          actualModel: parsed.actualModel === undefined ? null : parsed.actualModel,
+          inputTokens: parsed.inputTokens === undefined ? null : parsed.inputTokens,
+          outputTokens: parsed.outputTokens === undefined ? null : parsed.outputTokens,
+          cacheReadTokens: parsed.cacheReadTokens === undefined ? null : parsed.cacheReadTokens,
+          cacheWriteTokens: parsed.cacheWriteTokens === undefined ? null : parsed.cacheWriteTokens,
           usageSource: parsed.usageSource,
-          estimatedCost: null,
-          pricingBasis: null,
-          startedAt: null,
-          endedAt: null,
+          estimatedCost: parsed.estimatedCost === undefined ? null : parsed.estimatedCost,
+          pricingBasis: parsed.pricingBasis === undefined ? null : parsed.pricingBasis,
+          startedAt: parsed.startedAt === undefined ? null : parsed.startedAt,
+          endedAt: parsed.endedAt === undefined ? null : parsed.endedAt,
           reason: parsed.reason === undefined ? null : parsed.reason,
           recordedAt: $now,
-          attemptId: parsed.attempt,
-          taskId: parsed.task,
-          sessionId: null,
+          sessionId: parsed.session === undefined ? null : parsed.session,
           correctsId: parsed.corrects === undefined ? null : parsed.corrects,
-          recordedById: parsed.recordedBy,
         };
+        const $record: $Row = { ...$changes };
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Invocation", $record, "action function"),
+          "Invocation.correct",
+        );
+        const $s = $scope(
+          {
+            self: $self,
+            input: $readOnlyRecord(parsed, "Invocation.correct"),
+            actor: $actor,
+            context: $context,
+            before: null,
+            ...$composed(compose, tx, context, "Invocation.correct"),
+          },
+          options,
+        ) as unknown as $Scope<CorrectInvocationInput>;
+        // validate: every check runs, and every failed check is reported together
+        const $issues: $Issue[] = [];
+        await $runCheck($issues, $s, {
+          label: "notCorrected",
+          code: "invocation.not-corrected",
+          message: "the invocation is already corrected",
+          source: { file: "src/domain/execution/invocation.mesh.mx", line: 82, column: 9 },
+          that: $expressions["correct.check.notCorrected.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "reason",
+          code: "invocation.reason",
+          message: "a correction gives a reason",
+          source: { file: "src/domain/execution/invocation.mesh.mx", line: 87, column: 9 },
+          that: $expressions["correct.check.reason.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "costUnknown",
+          code: "invocation.cost-unknown",
+          message: "the cost is unknown while a token count it needs is unknown",
+          source: { file: "src/domain/execution/invocation.mesh.mx", line: 92, column: 9 },
+          that: $expressions["correct.check.costUnknown.that"],
+        });
+        if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // do: the steps run in written order, each seeing the record as the ones before it left it
+        {
+          const $value = await $expressions["correct.step.0.set.attempt"]($s);
+          if ($value === undefined || $value === null)
+            throw new $FrameworkError(
+              "set &attempt (src/domain/execution/invocation.mesh.mx:99:20) produced no value, and the relationship attempt is required",
+            );
+          $changes.attemptId = $record.attemptId = $value;
+        }
+        {
+          const $value = await $expressions["correct.step.0.set.task"]($s);
+          if ($value === undefined || $value === null)
+            throw new $FrameworkError(
+              "set &task (src/domain/execution/invocation.mesh.mx:100:17) produced no value, and the relationship task is required",
+            );
+          $changes.taskId = $record.taskId = $value;
+        }
+        {
+          const $value = await $expressions["correct.step.0.set.recordedBy"]($s);
+          if ($value === undefined || $value === null)
+            throw new $FrameworkError(
+              "set &recordedBy (src/domain/execution/invocation.mesh.mx:101:23) produced no value, and the relationship recordedBy is required",
+            );
+          $changes.recordedById = $record.recordedById = $value;
+        }
         // data layer
         const $stored = await tx.insert(tables.invocation, $changes);
         $noteWrite(tx);

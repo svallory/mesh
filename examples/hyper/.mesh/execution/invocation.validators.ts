@@ -121,6 +121,7 @@ export const invocationSort = z
   .readonly();
 
 export const recordInvocationInput = z.strictObject({
+  attempt: z.uuid(),
   requestedProvider: z.string().nullable().optional(),
   requestedModel: z.string().nullable().optional(),
   actualProvider: z.string().nullable().optional(),
@@ -134,10 +135,7 @@ export const recordInvocationInput = z.strictObject({
   pricingBasis: z.string().nullable().optional(),
   startedAt: z.date().nullable().optional(),
   endedAt: z.date().nullable().optional(),
-  attempt: z.uuid(),
-  task: z.uuid(),
   session: z.uuid().nullable().optional(),
-  recordedBy: z.uuid(),
 }) satisfies z.ZodType<RecordInvocationInput>;
 
 export type RecordInvocationInputShape = Assert<
@@ -145,12 +143,22 @@ export type RecordInvocationInputShape = Assert<
 >;
 
 export const correctInvocationInput = z.strictObject({
-  reason: z.string().nullable().optional(),
-  usageSource: z.enum(["runtime", "provider", "estimate"]),
-  attempt: z.uuid(),
-  task: z.uuid(),
   corrects: z.uuid().nullable().optional(),
-  recordedBy: z.uuid(),
+  reason: z.string().nullable().optional(),
+  requestedProvider: z.string().nullable().optional(),
+  requestedModel: z.string().nullable().optional(),
+  actualProvider: z.string().nullable().optional(),
+  actualModel: z.string().nullable().optional(),
+  inputTokens: z.int().min(0).nullable().optional(),
+  outputTokens: z.int().min(0).nullable().optional(),
+  cacheReadTokens: z.int().min(0).nullable().optional(),
+  cacheWriteTokens: z.int().min(0).nullable().optional(),
+  usageSource: z.enum(["runtime", "provider", "estimate"]),
+  estimatedCost: z.number().nullable().optional(),
+  pricingBasis: z.string().nullable().optional(),
+  startedAt: z.date().nullable().optional(),
+  endedAt: z.date().nullable().optional(),
+  session: z.uuid().nullable().optional(),
 }) satisfies z.ZodType<CorrectInvocationInput>;
 
 export type CorrectInvocationInputShape = Assert<

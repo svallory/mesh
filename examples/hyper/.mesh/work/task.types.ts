@@ -25,6 +25,7 @@ export type Task = {
   state: "open" | "done" | "canceled";
   version: number;
   createdAt: Date;
+  reopenedAt: Date | null;
   parentId: string | null;
   creatorId: string;
 };
@@ -34,7 +35,6 @@ export type CreateTaskInput = {
   intent?: string | null | undefined;
   parent?: Task["id"] | null | undefined;
   priority?: number | null | undefined;
-  creator: Collaborator["id"];
 };
 
 export type UpdateTaskInput = {
@@ -59,6 +59,37 @@ export type MoveTaskInput = {
 export type ReopenTaskInput = {
   id: string;
   reason: string;
+  expectedVersion?: number | null | undefined;
+};
+
+export type TouchTaskInput = {
+  id: string;
+};
+
+export type CancelTaskInput = {
+  id: string;
+  reason: string;
+  expectedVersion?: number | null | undefined;
+};
+
+export type CompleteTaskInput = {
+  id: string;
+  fence?: number | null | undefined;
+  summary?: string | null | undefined;
+  evidence?: unknown | undefined;
+  expectedVersion?: number | null | undefined;
+};
+
+export type AssignTaskInput = {
+  id: string;
+  assignee: string;
+  waiveReview?: boolean | null | undefined;
+  expectedVersion?: number | null | undefined;
+};
+
+export type UnassignTaskInput = {
+  id: string;
+  reason?: string | null | undefined;
   expectedVersion?: number | null | undefined;
 };
 
@@ -127,6 +158,7 @@ export type TaskFilter =
       state?: $Comparison<"open" | "done" | "canceled">;
       version?: $Comparison<number>;
       createdAt?: $Comparison<Date>;
+      reopenedAt?: $Comparison<Date>;
       parentId?: $Comparison<string>;
       creatorId?: $Comparison<string>;
       childrenSettled?: $Comparison<boolean>;
@@ -156,6 +188,8 @@ export type TaskSort = readonly (
   | "-version"
   | "createdAt"
   | "-createdAt"
+  | "reopenedAt"
+  | "-reopenedAt"
   | "parentId"
   | "-parentId"
   | "creatorId"

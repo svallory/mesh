@@ -25,6 +25,9 @@ import { bindAttempt, bindAttemptReads } from "./execution/attempt.actions";
 import type {
   Attempt,
   StartAttemptInput,
+  FinishAttemptInput,
+  ReportStoppedAttemptInput,
+  AbandonAttemptInput,
   ReadAttemptInput,
   AttemptFilter,
   AttemptSort,
@@ -46,7 +49,9 @@ import { bindMachine, bindMachineReads } from "./execution/machine.actions";
 import type {
   Machine,
   RegisterMachineInput,
+  ReportMachineInput,
   UpdateMachineInput,
+  RetireMachineInput,
   ReadMachineInput,
   MachineFilter,
   MachineSort,
@@ -57,6 +62,8 @@ import { bindRun, bindRunReads } from "./execution/run.actions";
 import type {
   Run,
   StartRunInput,
+  CancelRunInput,
+  SettleRunInput,
   ReadRunInput,
   RunFilter,
   RunSort,
@@ -83,6 +90,7 @@ import type {
   Collaborator,
   RegisterCollaboratorInput,
   UpdateCollaboratorInput,
+  RetireCollaboratorInput,
   ReadCollaboratorInput,
   CollaboratorFilter,
   CollaboratorSort,
@@ -94,6 +102,7 @@ import type {
   Membership,
   GrantMembershipInput,
   ChangeRoleMembershipInput,
+  RevokeMembershipInput,
   ReadMembershipInput,
   MembershipFilter,
   MembershipSort,
@@ -113,6 +122,7 @@ import { bindAssignment, bindAssignmentReads } from "./work/assignment.actions";
 import type {
   Assignment,
   StartAssignmentInput,
+  FinishAssignmentInput,
   ReadAssignmentInput,
   AssignmentFilter,
   AssignmentSort,
@@ -126,6 +136,8 @@ import type {
   RenewClaimInput,
   ReleaseClaimInput,
   RevokeClaimInput,
+  ExpireClaimInput,
+  EndClaimInput,
   ReadClaimInput,
   ClaimFilter,
   ClaimSort,
@@ -191,6 +203,9 @@ import { bindSubmission, bindSubmissionReads } from "./work/submission.actions";
 import type {
   Submission,
   SubmitSubmissionInput,
+  WithdrawSubmissionInput,
+  SettleSubmissionInput,
+  RecordAcceptedSubmissionInput,
   ReadSubmissionInput,
   SubmissionFilter,
   SubmissionSort,
@@ -205,6 +220,11 @@ import type {
   SetPriorityTaskInput,
   MoveTaskInput,
   ReopenTaskInput,
+  TouchTaskInput,
+  CancelTaskInput,
+  CompleteTaskInput,
+  AssignTaskInput,
+  UnassignTaskInput,
   ReadTaskInput,
   TaskFilter,
   TaskSort,
@@ -222,6 +242,9 @@ export type {
   EventWith,
   Attempt,
   StartAttemptInput,
+  FinishAttemptInput,
+  ReportStoppedAttemptInput,
+  AbandonAttemptInput,
   ReadAttemptInput,
   AttemptFilter,
   AttemptSort,
@@ -237,7 +260,9 @@ export type {
   InvocationWith,
   Machine,
   RegisterMachineInput,
+  ReportMachineInput,
   UpdateMachineInput,
+  RetireMachineInput,
   ReadMachineInput,
   MachineFilter,
   MachineSort,
@@ -245,6 +270,8 @@ export type {
   MachineWith,
   Run,
   StartRunInput,
+  CancelRunInput,
+  SettleRunInput,
   ReadRunInput,
   RunFilter,
   RunSort,
@@ -262,6 +289,7 @@ export type {
   Collaborator,
   RegisterCollaboratorInput,
   UpdateCollaboratorInput,
+  RetireCollaboratorInput,
   ReadCollaboratorInput,
   CollaboratorFilter,
   CollaboratorSort,
@@ -270,6 +298,7 @@ export type {
   Membership,
   GrantMembershipInput,
   ChangeRoleMembershipInput,
+  RevokeMembershipInput,
   ReadMembershipInput,
   MembershipFilter,
   MembershipSort,
@@ -283,6 +312,7 @@ export type {
   WorkspaceSort,
   Assignment,
   StartAssignmentInput,
+  FinishAssignmentInput,
   ReadAssignmentInput,
   AssignmentFilter,
   AssignmentSort,
@@ -293,6 +323,8 @@ export type {
   RenewClaimInput,
   ReleaseClaimInput,
   RevokeClaimInput,
+  ExpireClaimInput,
+  EndClaimInput,
   ReadClaimInput,
   ClaimFilter,
   ClaimSort,
@@ -337,6 +369,9 @@ export type {
   ReviewWith,
   Submission,
   SubmitSubmissionInput,
+  WithdrawSubmissionInput,
+  SettleSubmissionInput,
+  RecordAcceptedSubmissionInput,
   ReadSubmissionInput,
   SubmissionFilter,
   SubmissionSort,
@@ -348,6 +383,11 @@ export type {
   SetPriorityTaskInput,
   MoveTaskInput,
   ReopenTaskInput,
+  TouchTaskInput,
+  CancelTaskInput,
+  CompleteTaskInput,
+  AssignTaskInput,
+  UnassignTaskInput,
   ReadTaskInput,
   TaskFilter,
   TaskSort,
@@ -442,14 +482,21 @@ export {
     recordEvent: eventActions.record,
     readEvent: eventActions.read,
     startAttempt: attemptActions.start,
+    finishAttempt: attemptActions.finish,
+    reportStoppedAttempt: attemptActions.reportStopped,
+    abandonAttempt: attemptActions.abandon,
     readAttempt: attemptActions.read,
     recordInvocation: invocationActions.record,
     correctInvocation: invocationActions.correct,
     readInvocation: invocationActions.read,
     registerMachine: machineActions.register,
+    reportMachine: machineActions.report,
     updateMachine: machineActions.update,
+    retireMachine: machineActions.retire,
     readMachine: machineActions.read,
     startRun: runActions.start,
+    cancelRun: runActions.cancel,
+    settleRun: runActions.settle,
     readRun: runActions.read,
     recordSessionReference: sessionReferenceActions.record,
     setAvailabilitySessionReference: sessionReferenceActions.setAvailability,
@@ -457,19 +504,24 @@ export {
     readSessionReference: sessionReferenceActions.read,
     registerCollaborator: collaboratorActions.register,
     updateCollaborator: collaboratorActions.update,
+    retireCollaborator: collaboratorActions.retire,
     readCollaborator: collaboratorActions.read,
     grantMembership: membershipActions.grant,
     changeRoleMembership: membershipActions.changeRole,
+    revokeMembership: membershipActions.revoke,
     readMembership: membershipActions.read,
     createWorkspace: workspaceActions.create,
     renameWorkspace: workspaceActions.rename,
     readWorkspace: workspaceActions.read,
     startAssignment: assignmentActions.start,
+    finishAssignment: assignmentActions.finish,
     readAssignment: assignmentActions.read,
     acquireClaim: claimActions.acquire,
     renewClaim: claimActions.renew,
     releaseClaim: claimActions.release,
     revokeClaim: claimActions.revoke,
+    expireClaim: claimActions.expire,
+    endClaim: claimActions.end,
     readClaim: claimActions.read,
     recordCompletion: completionActions.record,
     readCompletion: completionActions.read,
@@ -484,12 +536,20 @@ export {
     returnReview: reviewActions.return,
     readReview: reviewActions.read,
     submitSubmission: submissionActions.submit,
+    withdrawSubmission: submissionActions.withdraw,
+    settleSubmission: submissionActions.settle,
+    recordAcceptedSubmission: submissionActions.recordAccepted,
     readSubmission: submissionActions.read,
     createTask: taskActions.create,
     updateTask: taskActions.update,
     setPriorityTask: taskActions.setPriority,
     moveTask: taskActions.move,
     reopenTask: taskActions.reopen,
+    touchTask: taskActions.touch,
+    cancelTask: taskActions.cancel,
+    completeTask: taskActions.complete,
+    assignTask: taskActions.assign,
+    unassignTask: taskActions.unassign,
     readTask: taskActions.read,
   });
   $composer.provide($functions, {
@@ -651,6 +711,29 @@ export async function startAttempt(
   return $delegate("startAttempt", (binding) => binding.startAttempt(input, ...context));
 }
 
+export async function finishAttempt(
+  input: FinishAttemptInput,
+  ...context: $ContextArgument
+): Promise<Attempt> {
+  return $delegate("finishAttempt", (binding) => binding.finishAttempt(input, ...context));
+}
+
+export async function reportStoppedAttempt(
+  input: ReportStoppedAttemptInput,
+  ...context: $ContextArgument
+): Promise<Attempt> {
+  return $delegate("reportStoppedAttempt", (binding) =>
+    binding.reportStoppedAttempt(input, ...context),
+  );
+}
+
+export async function abandonAttempt(
+  input: AbandonAttemptInput,
+  ...context: $ContextArgument
+): Promise<Attempt> {
+  return $delegate("abandonAttempt", (binding) => binding.abandonAttempt(input, ...context));
+}
+
 export async function readAttempt(
   input: ReadAttemptInput,
   ...context: $ContextArgument
@@ -686,11 +769,25 @@ export async function registerMachine(
   return $delegate("registerMachine", (binding) => binding.registerMachine(input, ...context));
 }
 
+export async function reportMachine(
+  input: ReportMachineInput,
+  ...context: $ContextArgument
+): Promise<Machine> {
+  return $delegate("reportMachine", (binding) => binding.reportMachine(input, ...context));
+}
+
 export async function updateMachine(
   input: UpdateMachineInput,
   ...context: $ContextArgument
 ): Promise<Machine> {
   return $delegate("updateMachine", (binding) => binding.updateMachine(input, ...context));
+}
+
+export async function retireMachine(
+  input: RetireMachineInput,
+  ...context: $ContextArgument
+): Promise<Machine> {
+  return $delegate("retireMachine", (binding) => binding.retireMachine(input, ...context));
 }
 
 export async function readMachine(
@@ -702,6 +799,14 @@ export async function readMachine(
 
 export async function startRun(input: StartRunInput, ...context: $ContextArgument): Promise<Run> {
   return $delegate("startRun", (binding) => binding.startRun(input, ...context));
+}
+
+export async function cancelRun(input: CancelRunInput, ...context: $ContextArgument): Promise<Run> {
+  return $delegate("cancelRun", (binding) => binding.cancelRun(input, ...context));
+}
+
+export async function settleRun(input: SettleRunInput, ...context: $ContextArgument): Promise<Run> {
+  return $delegate("settleRun", (binding) => binding.settleRun(input, ...context));
 }
 
 export async function readRun(input: ReadRunInput, ...context: $ContextArgument): Promise<Run[]> {
@@ -762,6 +867,15 @@ export async function updateCollaborator(
   );
 }
 
+export async function retireCollaborator(
+  input: RetireCollaboratorInput,
+  ...context: $ContextArgument
+): Promise<Collaborator> {
+  return $delegate("retireCollaborator", (binding) =>
+    binding.retireCollaborator(input, ...context),
+  );
+}
+
 export async function readCollaborator(
   input: ReadCollaboratorInput,
   ...context: $ContextArgument
@@ -783,6 +897,13 @@ export async function changeRoleMembership(
   return $delegate("changeRoleMembership", (binding) =>
     binding.changeRoleMembership(input, ...context),
   );
+}
+
+export async function revokeMembership(
+  input: RevokeMembershipInput,
+  ...context: $ContextArgument
+): Promise<Membership> {
+  return $delegate("revokeMembership", (binding) => binding.revokeMembership(input, ...context));
 }
 
 export async function readMembership(
@@ -820,6 +941,13 @@ export async function startAssignment(
   return $delegate("startAssignment", (binding) => binding.startAssignment(input, ...context));
 }
 
+export async function finishAssignment(
+  input: FinishAssignmentInput,
+  ...context: $ContextArgument
+): Promise<Assignment> {
+  return $delegate("finishAssignment", (binding) => binding.finishAssignment(input, ...context));
+}
+
 export async function readAssignment(
   input: ReadAssignmentInput,
   ...context: $ContextArgument
@@ -853,6 +981,17 @@ export async function revokeClaim(
   ...context: $ContextArgument
 ): Promise<Claim> {
   return $delegate("revokeClaim", (binding) => binding.revokeClaim(input, ...context));
+}
+
+export async function expireClaim(
+  input: ExpireClaimInput,
+  ...context: $ContextArgument
+): Promise<Claim> {
+  return $delegate("expireClaim", (binding) => binding.expireClaim(input, ...context));
+}
+
+export async function endClaim(input: EndClaimInput, ...context: $ContextArgument): Promise<Claim> {
+  return $delegate("endClaim", (binding) => binding.endClaim(input, ...context));
 }
 
 export async function readClaim(
@@ -957,6 +1096,31 @@ export async function submitSubmission(
   return $delegate("submitSubmission", (binding) => binding.submitSubmission(input, ...context));
 }
 
+export async function withdrawSubmission(
+  input: WithdrawSubmissionInput,
+  ...context: $ContextArgument
+): Promise<Submission> {
+  return $delegate("withdrawSubmission", (binding) =>
+    binding.withdrawSubmission(input, ...context),
+  );
+}
+
+export async function settleSubmission(
+  input: SettleSubmissionInput,
+  ...context: $ContextArgument
+): Promise<Submission> {
+  return $delegate("settleSubmission", (binding) => binding.settleSubmission(input, ...context));
+}
+
+export async function recordAcceptedSubmission(
+  input: RecordAcceptedSubmissionInput,
+  ...context: $ContextArgument
+): Promise<Submission> {
+  return $delegate("recordAcceptedSubmission", (binding) =>
+    binding.recordAcceptedSubmission(input, ...context),
+  );
+}
+
 export async function readSubmission(
   input: ReadSubmissionInput,
   ...context: $ContextArgument
@@ -994,6 +1158,41 @@ export async function reopenTask(
   ...context: $ContextArgument
 ): Promise<Task> {
   return $delegate("reopenTask", (binding) => binding.reopenTask(input, ...context));
+}
+
+export async function touchTask(
+  input: TouchTaskInput,
+  ...context: $ContextArgument
+): Promise<Task> {
+  return $delegate("touchTask", (binding) => binding.touchTask(input, ...context));
+}
+
+export async function cancelTask(
+  input: CancelTaskInput,
+  ...context: $ContextArgument
+): Promise<Task> {
+  return $delegate("cancelTask", (binding) => binding.cancelTask(input, ...context));
+}
+
+export async function completeTask(
+  input: CompleteTaskInput,
+  ...context: $ContextArgument
+): Promise<Task> {
+  return $delegate("completeTask", (binding) => binding.completeTask(input, ...context));
+}
+
+export async function assignTask(
+  input: AssignTaskInput,
+  ...context: $ContextArgument
+): Promise<Task> {
+  return $delegate("assignTask", (binding) => binding.assignTask(input, ...context));
+}
+
+export async function unassignTask(
+  input: UnassignTaskInput,
+  ...context: $ContextArgument
+): Promise<Task> {
+  return $delegate("unassignTask", (binding) => binding.unassignTask(input, ...context));
 }
 
 export async function readTask(

@@ -55,7 +55,8 @@ export function printExpression(e: Expression, scopeType: string, boolean: boole
   const authored = plain.method ? `function ${text}` : text;
   const fn = async && !/^\s*async\b/.test(authored) ? `async ${authored}` : authored;
   // The scope names the function reads without its parameters binding them (the front end found them in the syntax tree).
-  const declare = plain.roots.length ? `const { ${plain.roots.join(", ")} } = ${SCOPE}; ` : "";
+  const declare = (plain.roots.length ? `const { ${plain.roots.join(", ")} } = ${SCOPE}; ` : "") +
+    (plain.clock ?? []).map((name) => `const ${name} = () => $.${name}(${SCOPE}); `).join("");
   return withScope(`{ ${declare}return (${fn})(${e.params.length ? SCOPE : ""}); }`);
 }
 

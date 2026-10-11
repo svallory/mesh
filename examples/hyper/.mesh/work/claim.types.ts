@@ -20,28 +20,38 @@ export type Claim = {
 };
 
 export type AcquireClaimInput = {
-  fence: number;
-  acquiredAt: Date;
-  expiresAt: Date;
   task: Task["id"];
-  holder: Collaborator["id"];
+  expectedVersion?: number | null | undefined;
 };
 
 export type RenewClaimInput = {
   id: string;
   fence: number;
-  newExpiresAt: Date;
+  expectedVersion?: number | null | undefined;
 };
 
 export type ReleaseClaimInput = {
   id: string;
   fence: number;
   reason?: string | null | undefined;
+  expectedVersion?: number | null | undefined;
 };
 
 export type RevokeClaimInput = {
   id: string;
+  reason: string;
+  expectedVersion?: number | null | undefined;
+};
+
+export type ExpireClaimInput = {
+  id: string;
   reason?: string | null | undefined;
+};
+
+export type EndClaimInput = {
+  id: string;
+  outcome: "released" | "revoked" | "expired";
+  reason: string;
 };
 
 export type ReadClaimInput = {

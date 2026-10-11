@@ -7,10 +7,13 @@ import {
   type ReadOnlyResults as $ReadOnlyResults,
   type Scope as $Scope,
 } from "@meshfw/runtime";
+import { nameFreeOf, retireKeepsAnOwnerOf } from "../../src/domain/identity/identity.helpers";
 import type { Actions as $Actions, Reads as $Reads } from "../composition";
 import type {
   Collaborator,
   CollaboratorLoaded,
+  RegisterCollaboratorInput,
+  RetireCollaboratorInput,
   UpdateCollaboratorInput,
 } from "./collaborator.types";
 
@@ -30,23 +33,54 @@ export type CollaboratorStoredScope<I = unknown> = CollaboratorScope<I> & {
 };
 
 export const expressions = {
-  // check :collaboratorActive that, translated (src/domain/identity/collaborator.mesh.mx:24:16)
+  // check :nameUnique that, plain (uses-tx) (src/domain/identity/collaborator.mesh.mx:20:16)
+  "register.check.nameUnique.that": ($s: CollaboratorScope<RegisterCollaboratorInput>) => {
+    const { self } = $s;
+    return (({ tx }) => nameFreeOf(tx, self.name, null))($s);
+  },
+  // check :collaboratorActive that, translated (src/domain/identity/collaborator.mesh.mx:31:16)
   "update.check.collaboratorActive.that": ($s: CollaboratorStoredScope<UpdateCollaboratorInput>) =>
     $.eq($s.self.state, "active"),
-  // check :kindImmutable that, translated (src/domain/identity/collaborator.mesh.mx:29:16)
+  // check :kindImmutable that, translated (src/domain/identity/collaborator.mesh.mx:36:16)
   "update.check.kindImmutable.that": ($s: CollaboratorStoredScope<UpdateCollaboratorInput>) =>
     $.or($.isNull($s.input?.kind), $.eq($s.input?.kind, $s.self.kind)),
-  // check :versionMatches that, translated (src/domain/identity/collaborator.mesh.mx:34:16)
+  // check :nameUnique that, plain (uses-tx) (src/domain/identity/collaborator.mesh.mx:41:16)
+  "update.check.nameUnique.that": ($s: CollaboratorStoredScope<UpdateCollaboratorInput>) => {
+    const { self } = $s;
+    return (({ tx }) => nameFreeOf(tx, self.name, self.id))($s);
+  },
+  // check :versionMatches that, translated (src/domain/identity/collaborator.mesh.mx:46:16)
   "update.check.versionMatches.that": ($s: CollaboratorStoredScope<UpdateCollaboratorInput>) =>
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/identity/collaborator.mesh.mx:37:19)
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/identity/collaborator.mesh.mx:49:19)
   "update.check.versionMatches.details": ($s: CollaboratorStoredScope<UpdateCollaboratorInput>) => {
     return (({ input, before }) => ({
       expectedVersion: input.expectedVersion,
       actualVersion: before.version,
     }))($s);
   },
-  // set &version, translated (src/domain/identity/collaborator.mesh.mx:41:20)
+  // set &version, translated (src/domain/identity/collaborator.mesh.mx:53:20)
   "update.step.0.set.version": ($s: CollaboratorStoredScope<UpdateCollaboratorInput>) =>
+    $.add($s.self.version, 1),
+  // check :collaboratorActive that, translated (src/domain/identity/collaborator.mesh.mx:60:16)
+  "retire.check.collaboratorActive.that": ($s: CollaboratorStoredScope<RetireCollaboratorInput>) =>
+    $.eq($s.self.state, "active"),
+  // check :lastOwner that, plain (uses-tx) (src/domain/identity/collaborator.mesh.mx:65:16)
+  "retire.check.lastOwner.that": ($s: CollaboratorStoredScope<RetireCollaboratorInput>) => {
+    const { self } = $s;
+    return (({ tx }) => retireKeepsAnOwnerOf(tx, self.id))($s);
+  },
+  // check :versionMatches that, translated (src/domain/identity/collaborator.mesh.mx:70:16)
+  "retire.check.versionMatches.that": ($s: CollaboratorStoredScope<RetireCollaboratorInput>) =>
+    $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/identity/collaborator.mesh.mx:73:19)
+  "retire.check.versionMatches.details": ($s: CollaboratorStoredScope<RetireCollaboratorInput>) => {
+    return (({ input, before }) => ({
+      expectedVersion: input.expectedVersion,
+      actualVersion: before.version,
+    }))($s);
+  },
+  // set &version, translated (src/domain/identity/collaborator.mesh.mx:78:20)
+  "retire.step.0.set.version": ($s: CollaboratorStoredScope<RetireCollaboratorInput>) =>
     $.add($s.self.version, 1),
 } as const;

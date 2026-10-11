@@ -1,5 +1,6 @@
 import { Task } from "./task.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
+import { leaseEnd, readinessOf } from "./work.helpers"
 
 entity :Claim table="claims"
   attributes
@@ -18,72 +19,158 @@ entity :Claim table="claims"
   actions auto=[:read]
     create :acquire
       input
-        &fence
-        &acquiredAt
-        &expiresAt
         &task
-        &holder
+        integer :expectedVersion nullable
+      validate
+        check :taskReady [
+          that=() => &task.derivedState === :ready
+          code="claim.task-ready"
+          message="the task is not ready to claim"
+          details=({ tx }) => readinessOf(tx, &task.id, &task.derivedState)
+        ]
+        check :versionMatches [
+          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &task.version
+          code="expected-version"
+          message="the task is at another version; read it again and retry"
+          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &task.version })
+        ]
+      do
+        run({ input, tx, actions }) {
+          const lapsed = await tx.readClaim({ filter: { taskId: { eq: input.task }, state: { eq: :active }, expiresAt: { lte: now() } } });
+          for (const claim of lapsed) await actions.endClaim({ id: claim.id, outcome: :expired, reason: "lease expired" });
+        }
+        set
+          &holder=({ actor }) => actor.id
+          &fence=() => (&task.maxFence ?? 0) + 1
+          &acquiredAt=() => now()
+          &expiresAt=() => leaseEnd(now())
+        run [after=:write] ({ self, tx, actions }) {
+          const open = await tx.readAssignment({ filter: { taskId: { eq: self.taskId }, endedAt: { nil: true } }, limit: 1 });
+          if (open.length === 0) await actions.startAssignment({ task: self.taskId, assignee: self.holderId, reviewWaived: false });
+          await actions.touchTask({ id: self.taskId });
+        }
     update :renew
       input
         integer :fence
-        timestamp :newExpiresAt
+        integer :expectedVersion nullable
       validate
         check :currentFence [
-          that=({ input }) => input.fence === &fence
+          that=({ input }) => input.fence === &fence && input.fence === &task.maxFence
           code="claim.current-fence"
-          message="the fence is not this claim's; read the claim again"
-          details=({ input, before }) => ({ currentFence: before.fence, stale: input.fence < before.fence })
+          message="the fence is not the current claim's; claim the task again"
+          details=() => ({ currentFence: &task.maxFence, stale: false })
         ]
         check :claimActive [
           that=() => &state === :active
           code="claim.active"
-          message="the claim has ended"
+          message="the claim has ended; claim the task again"
         ]
         check :claimNotExpired [
           that=() => &expiresAt > now()
           code="claim.expired"
-          message="the lease has expired"
+          message="the lease has expired; claim the task again"
+        ]
+        check :versionMatches [
+          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &task.version
+          code="expected-version"
+          message="the task is at another version; read it again and retry"
+          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &task.version })
         ]
       do
         set
-          &expiresAt=({ input }) => input.newExpiresAt
+          &expiresAt=() => leaseEnd(now())
+        run [after=:write] ({ self, actions }) {
+          await actions.touchTask({ id: self.taskId });
+        }
     update :release
       input
         integer :fence
         string :reason nullable
+        integer :expectedVersion nullable
       validate
         check :currentFence [
-          that=({ input }) => input.fence === &fence
+          that=({ input }) => input.fence === &fence && input.fence === &task.maxFence
           code="claim.current-fence"
-          message="the fence is not this claim's; read the claim again"
-          details=({ input, before }) => ({ currentFence: before.fence, stale: input.fence < before.fence })
+          message="the fence is not the current claim's; claim the task again"
+          details=() => ({ currentFence: &task.maxFence, stale: false })
         ]
         check :claimActive [
           that=() => &state === :active
           code="claim.active"
-          message="the claim has ended"
+          message="the claim has ended; claim the task again"
         ]
         check :claimNotExpired [
           that=() => &expiresAt > now()
           code="claim.expired"
-          message="the lease has expired"
+          message="the lease has expired; claim the task again"
+        ]
+        check :versionMatches [
+          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &task.version
+          code="expected-version"
+          message="the task is at another version; read it again and retry"
+          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &task.version })
         ]
       do
         set
           &state=:released
           &endedAt=() => now()
-          &endReason=({ input }) => input.reason ?? null
+          &endReason=({ input }) => input.reason ?? "released"
+        run [after=:write] ({ self, actions }) {
+          await actions.touchTask({ id: self.taskId });
+        }
     update :revoke
+      input
+        string :reason min=1
+        integer :expectedVersion nullable
+      validate
+        check :claimActive [
+          that=() => &state === :active
+          code="claim.active"
+          message="the claim has ended; claim the task again"
+        ]
+        check :versionMatches [
+          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &task.version
+          code="expected-version"
+          message="the task is at another version; read it again and retry"
+          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &task.version })
+        ]
+      do
+        set
+          &state=:revoked
+          &endedAt=() => now()
+          &endReason=({ input }) => input.reason
+        run [after=:write] ({ self, actions }) {
+          await actions.touchTask({ id: self.taskId });
+        }
+    update :expire
       input
         string :reason nullable
       validate
         check :claimActive [
           that=() => &state === :active
           code="claim.active"
-          message="the claim has ended"
+          message="the claim has ended; claim the task again"
         ]
       do
         set
-          &state=:revoked
+          &state=:expired
           &endedAt=() => now()
-          &endReason=({ input }) => input.reason ?? null
+          &endReason=({ input }) => input.reason ?? "lease expired"
+        run [after=:write] ({ self, actions }) {
+          await actions.touchTask({ id: self.taskId });
+        }
+    update :end
+      input
+        enum :outcome values=[:released, :revoked, :expired]
+        string :reason
+      validate
+        check :claimActive [
+          that=() => &state === :active
+          code="claim.active"
+          message="the claim has ended; claim the task again"
+        ]
+      do
+        set
+          &state=({ input }) => input.outcome
+          &endedAt=() => now()
+          &endReason=({ input }) => input.reason

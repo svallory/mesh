@@ -19,11 +19,14 @@ export type Assignment = {
 };
 
 export type StartAssignmentInput = {
-  reviewWaived?: boolean | undefined;
-  startedAt: Date;
   task: Task["id"];
   assignee: Collaborator["id"];
-  delegator: Collaborator["id"];
+  reviewWaived?: boolean | undefined;
+};
+
+export type FinishAssignmentInput = {
+  id: string;
+  reason: "reassigned" | "unassigned";
 };
 
 export type ReadAssignmentInput = {

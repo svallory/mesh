@@ -80,7 +80,6 @@ export const recordCompletionInput = z.strictObject({
   rule: z.enum(["review-accepted", "performer-is-reviewer", "review-waived"]),
   task: z.uuid(),
   submission: z.uuid().nullable().optional(),
-  completedBy: z.uuid(),
 }) satisfies z.ZodType<RecordCompletionInput>;
 
 export type RecordCompletionInputShape = Assert<

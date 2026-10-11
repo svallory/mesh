@@ -18,11 +18,10 @@ export type LateResult = {
 };
 
 export type RecordLateResultInput = {
+  task: Task["id"];
   fence: number;
   summary?: string | null | undefined;
   evidence?: unknown | undefined;
-  task: Task["id"];
-  submitter: Collaborator["id"];
 };
 
 export type ReadLateResultInput = {

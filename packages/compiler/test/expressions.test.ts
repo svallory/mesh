@@ -353,6 +353,82 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(expressions["computed.c"](scope({ self: { n: 1 } }))).toBe(true);
   });
 
+  test("now() and today() in plain code read the injected clock, as in a translated expression; a local of that name is the author's", async () => {
+    const plain = entity(check("() => true")).replace("  actions auto", "  computed\n    boolean :stamped() { return Math.floor(now().getTime() / 1000) === &n }\n    boolean :daily() { return [today()].some((d) => d.getTime() === &n) }\n    boolean :own() { const now = () => 7; return now() === &n }\n  actions auto");
+    const { root, built } = await generated(plain);
+    const computed = built.document!.entities[0]!.computed;
+    expect(computed.map((c) => c.body?.plain?.clock)).toEqual([["now"], ["today"], undefined]);
+    expect(checkTypes(root, ["generated/task.expressions.ts", "generated/task.types.ts"])).toEqual({ code: 0, output: "" });
+    const { expressions } = await import(resolve(root, "generated/task.expressions.ts"));
+    const at = { clock: () => new Date(86_400_000 * 2 + 5_000) };
+    expect(expressions["computed.stamped"](scope({ self: { n: 86_400 * 2 + 5 } }, at))).toBe(true);
+    expect(expressions["computed.stamped"](scope({ self: { n: 1 } }, at))).toBe(false);
+    expect(expressions["computed.daily"](scope({ self: { n: 86_400_000 * 2 } }, at))).toBe(true);
+    expect(expressions["computed.own"](scope({ self: { n: 7 } }, at))).toBe(true);
+  });
+
+  test("each now() and today() resolves against its own enclosing scopes: a parameter of that name shadows only inside its function", async () => {
+    const plain = entity(check("() => true")).replace("  actions auto", [
+      "  computed",
+      // The review's case (PR #65, N7): the callback's parameter shadows `now` inside the callback only.
+      "    boolean :outer() { return [1].some((now) => now === 1) && now().getTime() === &n }",
+      // Only shadowed uses: no clock.
+      "    boolean :inner() { if ([&n].some((now) => now === 7)) { const today = () => 7; return today() === &n } return false }",
+      // Uses inside nested functions that bind no such name read the clock; a nested parameter of that name does not.
+      "    boolean :nested() { const stamp = () => now().getTime(); function day() { return today().getTime() } return [1].map((now) => now + 1)[0] === 2 && stamp() === &n && day() <= &n }",
+      "    boolean :cast() { return (now() as Date).getTime() === &n }",
+      "  actions auto",
+    ].join("\n"));
+    const { root, built } = await generated(plain);
+    expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    const computed = built.document!.entities[0]!.computed;
+    expect(computed.map((c) => [c.name, c.body?.plain?.clock])).toEqual([["outer", ["now"]], ["inner", undefined], ["nested", ["now", "today"]], ["cast", ["now"]]]);
+    expect(checkTypes(root, ["generated/task.expressions.ts", "generated/task.types.ts"])).toEqual({ code: 0, output: "" });
+    const { expressions } = await import(resolve(root, "generated/task.expressions.ts"));
+    const at = { clock: () => new Date(86_400_000 * 2 + 5_000) };
+    expect(expressions["computed.outer"](scope({ self: { n: 86_400_000 * 2 + 5_000 } }, at))).toBe(true);
+    expect(expressions["computed.outer"](scope({ self: { n: 1 } }, at))).toBe(false);
+    expect(expressions["computed.inner"](scope({ self: { n: 7 } }, at))).toBe(true);
+    expect(expressions["computed.nested"](scope({ self: { n: 86_400_000 * 2 + 5_000 } }, at))).toBe(true);
+  });
+
+  test("a parameter default beside a body `var` of the same name binds no clock, so the type check refuses it", () => {
+    // PR #65 round 2, N4. JavaScript gives `at = now()` the outer `now`, but Bun 1.3.14 throws "now is not defined"
+    // whenever that binding is two or more functions up, as a printed function's clock always is. Binding no clock
+    // keeps the failure at the type check (TS2304) instead of at run time; see `scopeNames`.
+    const source = entity(check("() => true")).replace("  actions auto",
+      "  computed\n    boolean :defaultVar() { function f(at = now()) { var now = 0; return [at, now] as const } return f()[0].getTime() > 0 }\n  actions auto");
+    const built = build(source);
+    expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    expect(built.document!.entities[0]!.computed[0]!.body?.plain?.clock).toBeUndefined();
+  });
+
+  test("an imported now() is the import in plain and translated code alike: no clock is bound over it", async () => {
+    // PR #65 round 2, F2: plain code bound the clock over the import while translated code called the import.
+    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-clock-import-"));
+    roots.push(root);
+    await writeFile(resolve(root, "clock.ts"), "export const now = (): Date => new Date(0);\n");
+    const source = entity(check("() => &dueAt < now()")).replace("import { Task }", 'import { now } from "./clock"\nimport { Task }')
+      .replace("  actions auto", "  computed\n    boolean :plainNow() { const at = now(); return at.getTime() === 0 }\n  actions auto");
+    const built = buildModel({ root, files: [{ file: "task.mesh.mx", source }] });
+    expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    const entityOf = built.document!.entities[0]!;
+    expect(entityOf.computed.find((c) => c.name === "plainNow")!.body?.plain?.clock).toBeUndefined();
+    expect(entityOf.actions.find((a) => a.name === "go")!.validate[0]!.that.tree).toBeDefined();
+    const config = configOf(root);
+    await writeGeneratedFiles(await generateFiles({ document: built.document!, config }), config);
+    await writeFile(resolve(root, "generated/schema.ts"), "export const tables = {};\n");
+    const printed = await Bun.file(resolve(root, "generated/task.expressions.ts")).text();
+    expect(printed).toContain('import { now } from "../clock"');
+    expect(printed).not.toContain("const now = () => $.now($s)");
+    const { expressions } = await import(resolve(root, "generated/task.expressions.ts"));
+    // The bound clock says two days in; the import says the epoch. Both paths answer as the import does.
+    const at = { clock: () => new Date(86_400_000 * 2) };
+    expect(expressions["computed.plainNow"](scope({ self: {} }, at))).toBe(true);
+    expect(expressions["go.check.c.that"](scope({ self: { dueAt: new Date(5) } }, at))).toBe(false);
+    expect(expressions["go.check.c.that"](scope({ self: { dueAt: new Date(-5) } }, at))).toBe(true);
+  });
+
   test("plain code runs with the authored meaning, `&` and atoms desugared", async () => {
     const { root } = await generated(source);
     const { expressions } = await import(resolve(root, "generated/task.expressions.ts"));

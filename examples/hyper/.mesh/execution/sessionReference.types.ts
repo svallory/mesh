@@ -27,17 +27,19 @@ export type RecordSessionReferenceInput = {
   location?: string | null | undefined;
   machine: Machine["id"];
   agentProfile: Collaborator["id"];
-  recordedBy: Collaborator["id"];
 };
 
 export type SetAvailabilitySessionReferenceInput = {
   id: string;
   availability?: "complete" | "partial" | "unavailable" | "redacted" | undefined;
+  location?: string | null | undefined;
+  reason?: string | null | undefined;
   expectedVersion?: number | null | undefined;
 };
 
 export type RedactSessionReferenceInput = {
   id: string;
+  reason: string;
   expectedVersion?: number | null | undefined;
 };
 

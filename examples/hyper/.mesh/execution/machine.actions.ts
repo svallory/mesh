@@ -10,10 +10,12 @@ import {
   checkUnchanged as $checkUnchanged,
   composed as $composed,
   guarded as $guarded,
+  loadInto as $loadInto,
   noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
+  unloadFrom as $unloadFrom,
   writeCount as $writeCount,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
@@ -25,13 +27,22 @@ import {
 import type {
   Machine,
   RegisterMachineInput,
+  ReportMachineInput,
   UpdateMachineInput,
+  RetireMachineInput,
   ReadMachineInput,
 } from "./machine.types";
-import { registerMachineInput, updateMachineInput, readMachineInput } from "./machine.validators";
+import {
+  registerMachineInput,
+  reportMachineInput,
+  updateMachineInput,
+  retireMachineInput,
+  readMachineInput,
+} from "./machine.validators";
 import { tables } from "../schema";
 import {
   expressions as $expressions,
+  type MachineScope as $Scope,
   type MachineStoredScope as $StoredScope,
 } from "./machine.expressions";
 import { loadPlan as $loadPlan } from "../load";
@@ -64,11 +75,13 @@ export function bindMachineReads(layer: $DataLayer) {
 export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
   const $reads = bindMachineReads(layer);
   return Object.freeze({
-    async register(input: RegisterMachineInput, ...[_context]: $ContextArgument): Promise<Machine> {
+    async register(input: RegisterMachineInput, ...[context]: $ContextArgument): Promise<Machine> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, registerMachineInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $actor = $context.actor;
         const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
@@ -77,8 +90,96 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           state: "active",
           version: 1,
           registeredAt: $now,
-          firstReportedById: parsed.firstReportedBy === undefined ? null : parsed.firstReportedBy,
+          firstReportedById: null,
         };
+        const $record: $Row = { ...$changes };
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Machine", $record, "action function"),
+          "Machine.register",
+        );
+        const $s = $scope(
+          {
+            self: $self,
+            input: $readOnlyRecord(parsed, "Machine.register"),
+            actor: $actor,
+            context: $context,
+            before: null,
+            ...$composed(compose, tx, context, "Machine.register"),
+          },
+          options,
+        ) as unknown as $Scope<RegisterMachineInput>;
+        // validate: every check runs, and every failed check is reported together
+        const $issues: $Issue[] = [];
+        await $runCheck($issues, $s, {
+          label: "nameFree",
+          code: "machine.name-free",
+          message: "a machine already has that name",
+          source: { file: "src/domain/execution/machine.mesh.mx", line: 21, column: 9 },
+          that: $expressions["register.check.nameFree.that"],
+        });
+        if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // do: the steps run in written order, each seeing the record as the ones before it left it
+        {
+          const $value = await $expressions["register.step.0.set.firstReportedBy"]($s);
+          $changes.firstReportedById = $record.firstReportedById =
+            $value === undefined ? null : $value;
+        }
+        // data layer
+        const $stored = await tx.insert(tables.machine, $changes);
+        $noteWrite(tx);
+        return $stored as Machine;
+      });
+    },
+
+    async report(input: ReportMachineInput, ...[context]: $ContextArgument): Promise<Machine> {
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, reportMachineInput, input);
+      return layer.transaction(async (tx) => {
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $actor = $context.actor;
+        const $now = options.clock?.() ?? new Date();
+        // plan: a create is one insert; nothing is read first
+        const $changes: $Row = {
+          name: parsed.name,
+          platform: null,
+          state: "active",
+          version: 1,
+          registeredAt: $now,
+          firstReportedById: null,
+        };
+        const $record: $Row = { ...$changes };
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Machine", $record, "action function"),
+          "Machine.report",
+        );
+        const $s = $scope(
+          {
+            self: $self,
+            input: $readOnlyRecord(parsed, "Machine.report"),
+            actor: $actor,
+            context: $context,
+            before: null,
+            ...$composed(compose, tx, context, "Machine.report"),
+          },
+          options,
+        ) as unknown as $Scope<ReportMachineInput>;
+        // validate: every check runs, and every failed check is reported together
+        const $issues: $Issue[] = [];
+        await $runCheck($issues, $s, {
+          label: "nameFree",
+          code: "machine.name-free",
+          message: "a machine already has that name",
+          source: { file: "src/domain/execution/machine.mesh.mx", line: 33, column: 9 },
+          that: $expressions["report.check.nameFree.that"],
+        });
+        if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // do: the steps run in written order, each seeing the record as the ones before it left it
+        {
+          const $value = await $expressions["report.step.0.set.firstReportedBy"]($s);
+          $changes.firstReportedById = $record.firstReportedById =
+            $value === undefined ? null : $value;
+        }
         // data layer
         const $stored = await tx.insert(tables.machine, $changes);
         $noteWrite(tx);
@@ -125,14 +226,14 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           label: "machineActive",
           code: "machine.active",
           message: "the machine is retired",
-          source: { file: "src/domain/execution/machine.mesh.mx", line: 26, column: 9 },
+          source: { file: "src/domain/execution/machine.mesh.mx", line: 46, column: 9 },
           that: $expressions["update.check.machineActive.that"],
         });
         await $runCheck($issues, $s, {
           label: "versionMatches",
           code: "expected-version",
           message: "the record is at another version; read it again and retry",
-          source: { file: "src/domain/execution/machine.mesh.mx", line: 31, column: 9 },
+          source: { file: "src/domain/execution/machine.mesh.mx", line: 51, column: 9 },
           that: $expressions["update.check.versionMatches.that"],
           details: $expressions["update.check.versionMatches.details"],
         });
@@ -142,13 +243,93 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           const $value = await $expressions["update.step.0.set.version"]($s);
           if ($value === undefined || $value === null)
             throw new $FrameworkError(
-              "set &version (src/domain/execution/machine.mesh.mx:39:20) produced no value, and version is required",
+              "set &version (src/domain/execution/machine.mesh.mx:59:20) produced no value, and version is required",
             );
           $changes.version = $record.version = $value;
         }
         // data layer
         // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
         await $checkUnchanged(tx, $writes, tables.machine, $key, $before, "Machine.update");
+        const $stored = await tx.updateByKey(tables.machine, $key, $changes);
+        if ($stored === undefined) throw new $NotFoundError("Machine", $key);
+        $noteWrite(tx);
+        return $stored as Machine;
+      });
+    },
+
+    async retire(input: RetireMachineInput, ...[context]: $ContextArgument): Promise<Machine> {
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, retireMachineInput, input);
+      return layer.transaction(async (tx) => {
+        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+        const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $actor = $context.actor;
+        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        const $key = { id: parsed.id };
+        const $before = await tx.selectByKeyForUpdate(tables.machine, $key);
+        if ($before === undefined) throw new $NotFoundError("Machine", $key);
+        const $changes: $Row = {};
+        const $record: $Row = { ...$before };
+        const $writes = $writeCount(tx);
+        const $load = { actor: $actor, context: $context, clock: options.clock };
+        const $self = $readOnlyRecord(
+          $guarded($loadPlan, "Machine", $record, "action function"),
+          "Machine.retire",
+        );
+        const $s = $scope(
+          {
+            self: $self,
+            input: $readOnlyRecord(parsed, "Machine.retire"),
+            actor: $actor,
+            context: $context,
+            before: $readOnlyRecord(
+              $guarded($loadPlan, "Machine", $before, "before"),
+              "Machine.retire",
+            ) as unknown as Machine,
+            ...$composed(compose, tx, context, "Machine.retire"),
+          },
+          options,
+        ) as unknown as $StoredScope<RetireMachineInput>;
+        // validate: every check runs, and every failed check is reported together
+        const $issues: $Issue[] = [];
+        await $loadInto($loadPlan, "Machine", tx, $record, ["attempts"], $load);
+        await $runCheck($issues, $s, {
+          label: "machineActive",
+          code: "machine.active",
+          message: "the machine is retired",
+          source: { file: "src/domain/execution/machine.mesh.mx", line: 65, column: 9 },
+          that: $expressions["retire.check.machineActive.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "machineIdle",
+          code: "machine.idle",
+          message: "an attempt on this machine is reported running",
+          source: { file: "src/domain/execution/machine.mesh.mx", line: 70, column: 9 },
+          that: $expressions["retire.check.machineIdle.that"],
+        });
+        await $runCheck($issues, $s, {
+          label: "versionMatches",
+          code: "expected-version",
+          message: "the record is at another version; read it again and retry",
+          source: { file: "src/domain/execution/machine.mesh.mx", line: 75, column: 9 },
+          that: $expressions["retire.check.versionMatches.that"],
+          details: $expressions["retire.check.versionMatches.details"],
+        });
+        if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // do: the steps run in written order, each seeing the record as the ones before it left it
+        $changes.state = $record.state = "retired";
+        {
+          const $value = await $expressions["retire.step.0.set.version"]($s);
+          if ($value === undefined || $value === null)
+            throw new $FrameworkError(
+              "set &version (src/domain/execution/machine.mesh.mx:84:20) produced no value, and version is required",
+            );
+          $changes.version = $record.version = $value;
+        }
+        $unloadFrom($loadPlan, "Machine", $record);
+        // data layer
+        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+        await $checkUnchanged(tx, $writes, tables.machine, $key, $before, "Machine.retire");
         const $stored = await tx.updateByKey(tables.machine, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Machine", $key);
         $noteWrite(tx);

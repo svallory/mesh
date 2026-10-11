@@ -5,13 +5,13 @@ import type { Comparison as $Comparison } from "@meshfw/runtime";
 
 import type { Run, RunLoaded } from "./run.types";
 
-import type { Task, TaskLoaded } from "../work/task.types";
-
-import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
-
 import type { Machine, MachineLoaded } from "./machine.types";
 
 import type { SessionReference, SessionReferenceLoaded } from "./sessionReference.types";
+
+import type { Task, TaskLoaded } from "../work/task.types";
+
+import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
 
 export type Attempt = {
   id: string;
@@ -33,16 +33,32 @@ export type Attempt = {
 };
 
 export type StartAttemptInput = {
-  step?: string | undefined;
-  number: number;
-  claimFence?: number | null | undefined;
-  runtime?: string | null | undefined;
   run: Run["id"];
-  task: Task["id"];
-  performer: Collaborator["id"];
-  delegator: Collaborator["id"];
+  step?: string | undefined;
+  runtime?: string | null | undefined;
   machine?: Machine["id"] | null | undefined;
   session?: SessionReference["id"] | null | undefined;
+};
+
+export type FinishAttemptInput = {
+  id: string;
+  result: "succeeded" | "failed";
+  outputs?: unknown | undefined;
+  evidence?: unknown | undefined;
+  error?: unknown | undefined;
+  expectedVersion?: number | null | undefined;
+};
+
+export type ReportStoppedAttemptInput = {
+  id: string;
+  reason: string;
+  expectedVersion?: number | null | undefined;
+};
+
+export type AbandonAttemptInput = {
+  id: string;
+  note?: string | null | undefined;
+  expectedVersion?: number | null | undefined;
 };
 
 export type ReadAttemptInput = {

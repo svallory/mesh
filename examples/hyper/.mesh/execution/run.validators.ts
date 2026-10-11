@@ -3,7 +3,13 @@
 
 import { z } from "zod";
 
-import type { StartRunInput, ReadRunInput, RunFilter } from "./run.types";
+import type {
+  StartRunInput,
+  CancelRunInput,
+  SettleRunInput,
+  ReadRunInput,
+  RunFilter,
+} from "./run.types";
 
 type Keys<T> = T extends Record<string, never> ? never : keyof T;
 
@@ -83,6 +89,7 @@ export const runSort = z
   .readonly();
 
 export const startRunInput = z.strictObject({
+  task: z.uuid(),
   inputs: (
     z
       .json()
@@ -90,13 +97,38 @@ export const startRunInput = z.strictObject({
         message: "null is only allowed on a nullable attribute",
       }) as z.ZodType<unknown>
   ).optional(),
-  task: z.uuid(),
-  responsible: z.uuid(),
-  startedBy: z.uuid(),
   parentRun: z.uuid().nullable().optional(),
 }) satisfies z.ZodType<StartRunInput>;
 
 export type StartRunInputShape = Assert<SameShape<z.output<typeof startRunInput>, StartRunInput>>;
+
+export const cancelRunInput = z.strictObject({
+  id: z.uuid(),
+  reason: z.string().min(1),
+  expectedVersion: z.int().nullable().optional(),
+}) satisfies z.ZodType<CancelRunInput>;
+
+export type CancelRunInputShape = Assert<
+  SameShape<z.output<typeof cancelRunInput>, CancelRunInput>
+>;
+
+export const settleRunInput = z.strictObject({
+  id: z.uuid(),
+  result: z.enum(["succeeded", "failed"]),
+  outcome: (
+    z
+      .json()
+      .refine((value) => value !== null, {
+        message: "null is only allowed on a nullable attribute",
+      }) as z.ZodType<unknown>
+  )
+    .nullable()
+    .optional(),
+}) satisfies z.ZodType<SettleRunInput>;
+
+export type SettleRunInputShape = Assert<
+  SameShape<z.output<typeof settleRunInput>, SettleRunInput>
+>;
 
 export const readRunInput = z.strictObject({
   filter: runFilter.optional(),

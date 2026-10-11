@@ -1,5 +1,6 @@
 import { Task } from "./task.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
+import { dependencyExistsOf, missingTasksOf, prerequisiteReachesOf, taskVersionOf } from "./work.helpers"
 
 entity :Dependency table="dependencies"
   attributes
@@ -14,11 +15,53 @@ entity :Dependency table="dependencies"
       input
         &dependent
         &prerequisite
-        &createdBy
+        integer :expectedVersion nullable
       validate
+        check :exists [
+          that=async ({ input, tx }) => (await missingTasksOf(tx, [input.dependent, input.prerequisite])).length === 0
+          code="dependency.exists"
+          message="a task of the dependency does not exist"
+          details=async ({ input, tx }) => ({ missing: await missingTasksOf(tx, [input.dependent, input.prerequisite]) })
+        ]
         check :distinct [
-          that=() => &dependent.id !== &prerequisite.id
+          that=({ input }) => input.dependent !== input.prerequisite
           code="dependency.distinct"
           message="a task cannot depend on itself"
         ]
+        check :duplicate [
+          that=async ({ input, tx }) => !(await dependencyExistsOf(tx, input.dependent, input.prerequisite))
+          code="dependency.duplicate"
+          message="the dependency already exists"
+        ]
+        check :noCycle [
+          that=async ({ input, tx }) => !(await prerequisiteReachesOf(tx, input.prerequisite, input.dependent))
+          code="dependency.no-cycle"
+          message="the prerequisite already waits for the dependent"
+        ]
+        check :versionMatches [
+          that=async ({ input, tx }) => input.expectedVersion == null || [input.expectedVersion, null].includes(await taskVersionOf(tx, input.dependent))
+          code="expected-version"
+          message="the task is at another version; read it again and retry"
+          details=async ({ input, tx }) => ({ expectedVersion: input.expectedVersion, actualVersion: await taskVersionOf(tx, input.dependent) })
+        ]
+      do
+        set
+          &createdBy=({ actor }) => actor.id
+        run [after=:write] ({ self, actions }) {
+          await actions.touchTask({ id: self.dependentId });
+        }
     destroy :remove
+      input
+        string :reason nullable
+        integer :expectedVersion nullable
+      validate
+        check :versionMatches [
+          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &dependent.version
+          code="expected-version"
+          message="the task is at another version; read it again and retry"
+          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &dependent.version })
+        ]
+      do
+        run [after=:write] ({ self, actions }) {
+          await actions.touchTask({ id: self.dependentId });
+        }

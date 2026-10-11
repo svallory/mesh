@@ -75,7 +75,8 @@ export const lateResultSort = z
   .readonly();
 
 export const recordLateResultInput = z.strictObject({
-  fence: z.int(),
+  task: z.uuid(),
+  fence: z.int().min(1),
   summary: z.string().nullable().optional(),
   evidence: (
     z
@@ -84,8 +85,6 @@ export const recordLateResultInput = z.strictObject({
         message: "null is only allowed on a nullable attribute",
       }) as z.ZodType<unknown>
   ).optional(),
-  task: z.uuid(),
-  submitter: z.uuid(),
 }) satisfies z.ZodType<RecordLateResultInput>;
 
 export type RecordLateResultInputShape = Assert<

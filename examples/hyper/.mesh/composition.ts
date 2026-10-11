@@ -4,7 +4,14 @@
 
 import type { ActionContext as $ActionContext } from "@meshfw/runtime";
 import type { Event, RecordEventInput, ReadEventInput } from "./audit/event.types";
-import type { Attempt, StartAttemptInput, ReadAttemptInput } from "./execution/attempt.types";
+import type {
+  Attempt,
+  StartAttemptInput,
+  FinishAttemptInput,
+  ReportStoppedAttemptInput,
+  AbandonAttemptInput,
+  ReadAttemptInput,
+} from "./execution/attempt.types";
 import type {
   Invocation,
   RecordInvocationInput,
@@ -14,10 +21,18 @@ import type {
 import type {
   Machine,
   RegisterMachineInput,
+  ReportMachineInput,
   UpdateMachineInput,
+  RetireMachineInput,
   ReadMachineInput,
 } from "./execution/machine.types";
-import type { Run, StartRunInput, ReadRunInput } from "./execution/run.types";
+import type {
+  Run,
+  StartRunInput,
+  CancelRunInput,
+  SettleRunInput,
+  ReadRunInput,
+} from "./execution/run.types";
 import type {
   SessionReference,
   RecordSessionReferenceInput,
@@ -29,12 +44,14 @@ import type {
   Collaborator,
   RegisterCollaboratorInput,
   UpdateCollaboratorInput,
+  RetireCollaboratorInput,
   ReadCollaboratorInput,
 } from "./identity/collaborator.types";
 import type {
   Membership,
   GrantMembershipInput,
   ChangeRoleMembershipInput,
+  RevokeMembershipInput,
   ReadMembershipInput,
 } from "./identity/membership.types";
 import type {
@@ -46,6 +63,7 @@ import type {
 import type {
   Assignment,
   StartAssignmentInput,
+  FinishAssignmentInput,
   ReadAssignmentInput,
 } from "./work/assignment.types";
 import type {
@@ -54,6 +72,8 @@ import type {
   RenewClaimInput,
   ReleaseClaimInput,
   RevokeClaimInput,
+  ExpireClaimInput,
+  EndClaimInput,
   ReadClaimInput,
 } from "./work/claim.types";
 import type {
@@ -86,6 +106,9 @@ import type {
 import type {
   Submission,
   SubmitSubmissionInput,
+  WithdrawSubmissionInput,
+  SettleSubmissionInput,
+  RecordAcceptedSubmissionInput,
   ReadSubmissionInput,
 } from "./work/submission.types";
 import type {
@@ -95,6 +118,11 @@ import type {
   SetPriorityTaskInput,
   MoveTaskInput,
   ReopenTaskInput,
+  TouchTaskInput,
+  CancelTaskInput,
+  CompleteTaskInput,
+  AssignTaskInput,
+  UnassignTaskInput,
   ReadTaskInput,
 } from "./work/task.types";
 
@@ -103,6 +131,15 @@ export interface Actions {
   readonly recordEvent: (input: RecordEventInput, context?: $ActionContext) => Promise<Event>;
   readonly readEvent: (input: ReadEventInput, context?: $ActionContext) => Promise<Event[]>;
   readonly startAttempt: (input: StartAttemptInput, context?: $ActionContext) => Promise<Attempt>;
+  readonly finishAttempt: (input: FinishAttemptInput, context?: $ActionContext) => Promise<Attempt>;
+  readonly reportStoppedAttempt: (
+    input: ReportStoppedAttemptInput,
+    context?: $ActionContext,
+  ) => Promise<Attempt>;
+  readonly abandonAttempt: (
+    input: AbandonAttemptInput,
+    context?: $ActionContext,
+  ) => Promise<Attempt>;
   readonly readAttempt: (input: ReadAttemptInput, context?: $ActionContext) => Promise<Attempt[]>;
   readonly recordInvocation: (
     input: RecordInvocationInput,
@@ -120,9 +157,13 @@ export interface Actions {
     input: RegisterMachineInput,
     context?: $ActionContext,
   ) => Promise<Machine>;
+  readonly reportMachine: (input: ReportMachineInput, context?: $ActionContext) => Promise<Machine>;
   readonly updateMachine: (input: UpdateMachineInput, context?: $ActionContext) => Promise<Machine>;
+  readonly retireMachine: (input: RetireMachineInput, context?: $ActionContext) => Promise<Machine>;
   readonly readMachine: (input: ReadMachineInput, context?: $ActionContext) => Promise<Machine[]>;
   readonly startRun: (input: StartRunInput, context?: $ActionContext) => Promise<Run>;
+  readonly cancelRun: (input: CancelRunInput, context?: $ActionContext) => Promise<Run>;
+  readonly settleRun: (input: SettleRunInput, context?: $ActionContext) => Promise<Run>;
   readonly readRun: (input: ReadRunInput, context?: $ActionContext) => Promise<Run[]>;
   readonly recordSessionReference: (
     input: RecordSessionReferenceInput,
@@ -148,6 +189,10 @@ export interface Actions {
     input: UpdateCollaboratorInput,
     context?: $ActionContext,
   ) => Promise<Collaborator>;
+  readonly retireCollaborator: (
+    input: RetireCollaboratorInput,
+    context?: $ActionContext,
+  ) => Promise<Collaborator>;
   readonly readCollaborator: (
     input: ReadCollaboratorInput,
     context?: $ActionContext,
@@ -158,6 +203,10 @@ export interface Actions {
   ) => Promise<Membership>;
   readonly changeRoleMembership: (
     input: ChangeRoleMembershipInput,
+    context?: $ActionContext,
+  ) => Promise<Membership>;
+  readonly revokeMembership: (
+    input: RevokeMembershipInput,
     context?: $ActionContext,
   ) => Promise<Membership>;
   readonly readMembership: (
@@ -180,6 +229,10 @@ export interface Actions {
     input: StartAssignmentInput,
     context?: $ActionContext,
   ) => Promise<Assignment>;
+  readonly finishAssignment: (
+    input: FinishAssignmentInput,
+    context?: $ActionContext,
+  ) => Promise<Assignment>;
   readonly readAssignment: (
     input: ReadAssignmentInput,
     context?: $ActionContext,
@@ -188,6 +241,8 @@ export interface Actions {
   readonly renewClaim: (input: RenewClaimInput, context?: $ActionContext) => Promise<Claim>;
   readonly releaseClaim: (input: ReleaseClaimInput, context?: $ActionContext) => Promise<Claim>;
   readonly revokeClaim: (input: RevokeClaimInput, context?: $ActionContext) => Promise<Claim>;
+  readonly expireClaim: (input: ExpireClaimInput, context?: $ActionContext) => Promise<Claim>;
+  readonly endClaim: (input: EndClaimInput, context?: $ActionContext) => Promise<Claim>;
   readonly readClaim: (input: ReadClaimInput, context?: $ActionContext) => Promise<Claim[]>;
   readonly recordCompletion: (
     input: RecordCompletionInput,
@@ -232,6 +287,18 @@ export interface Actions {
     input: SubmitSubmissionInput,
     context?: $ActionContext,
   ) => Promise<Submission>;
+  readonly withdrawSubmission: (
+    input: WithdrawSubmissionInput,
+    context?: $ActionContext,
+  ) => Promise<Submission>;
+  readonly settleSubmission: (
+    input: SettleSubmissionInput,
+    context?: $ActionContext,
+  ) => Promise<Submission>;
+  readonly recordAcceptedSubmission: (
+    input: RecordAcceptedSubmissionInput,
+    context?: $ActionContext,
+  ) => Promise<Submission>;
   readonly readSubmission: (
     input: ReadSubmissionInput,
     context?: $ActionContext,
@@ -244,6 +311,11 @@ export interface Actions {
   ) => Promise<Task>;
   readonly moveTask: (input: MoveTaskInput, context?: $ActionContext) => Promise<Task>;
   readonly reopenTask: (input: ReopenTaskInput, context?: $ActionContext) => Promise<Task>;
+  readonly touchTask: (input: TouchTaskInput, context?: $ActionContext) => Promise<Task>;
+  readonly cancelTask: (input: CancelTaskInput, context?: $ActionContext) => Promise<Task>;
+  readonly completeTask: (input: CompleteTaskInput, context?: $ActionContext) => Promise<Task>;
+  readonly assignTask: (input: AssignTaskInput, context?: $ActionContext) => Promise<Task>;
+  readonly unassignTask: (input: UnassignTaskInput, context?: $ActionContext) => Promise<Task>;
   readonly readTask: (input: ReadTaskInput, context?: $ActionContext) => Promise<Task[]>;
 }
 

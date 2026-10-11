@@ -8,7 +8,14 @@ import {
   type Scope as $Scope,
 } from "@meshfw/runtime";
 import type { Actions as $Actions, Reads as $Reads } from "../composition";
-import type { Machine, MachineLoaded, UpdateMachineInput } from "./machine.types";
+import type {
+  Machine,
+  MachineLoaded,
+  RegisterMachineInput,
+  ReportMachineInput,
+  RetireMachineInput,
+  UpdateMachineInput,
+} from "./machine.types";
 
 /** What every expression of Machine reads; `I` is the input of the action it runs in. */
 export type MachineScope<I = unknown> = $Scope<{
@@ -24,20 +31,55 @@ export type MachineScope<I = unknown> = $Scope<{
 export type MachineStoredScope<I = unknown> = MachineScope<I> & { before: $DeepReadonly<Machine> };
 
 export const expressions = {
-  // check :machineActive that, translated (src/domain/execution/machine.mesh.mx:27:16)
+  // check :nameFree that, plain (uses-tx) (src/domain/execution/machine.mesh.mx:22:16)
+  "register.check.nameFree.that": ($s: MachineScope<RegisterMachineInput>) => {
+    const { self } = $s;
+    return (async ({ tx }) =>
+      (await tx.readMachine({ filter: { name: { eq: self.name } }, limit: 1 })).length === 0)($s);
+  },
+  // set &firstReportedBy, translated (src/domain/execution/machine.mesh.mx:28:28)
+  "register.step.0.set.firstReportedBy": ($s: MachineScope<RegisterMachineInput>) => $s.actor?.id,
+  // check :nameFree that, plain (uses-tx) (src/domain/execution/machine.mesh.mx:34:16)
+  "report.check.nameFree.that": ($s: MachineScope<ReportMachineInput>) => {
+    const { self } = $s;
+    return (async ({ tx }) =>
+      (await tx.readMachine({ filter: { name: { eq: self.name } }, limit: 1 })).length === 0)($s);
+  },
+  // set &firstReportedBy, translated (src/domain/execution/machine.mesh.mx:40:28)
+  "report.step.0.set.firstReportedBy": ($s: MachineScope<ReportMachineInput>) => $s.actor?.id,
+  // check :machineActive that, translated (src/domain/execution/machine.mesh.mx:47:16)
   "update.check.machineActive.that": ($s: MachineStoredScope<UpdateMachineInput>) =>
     $.eq($s.self.state, "active"),
-  // check :versionMatches that, translated (src/domain/execution/machine.mesh.mx:32:16)
+  // check :versionMatches that, translated (src/domain/execution/machine.mesh.mx:52:16)
   "update.check.versionMatches.that": ($s: MachineStoredScope<UpdateMachineInput>) =>
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/machine.mesh.mx:35:19)
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/machine.mesh.mx:55:19)
   "update.check.versionMatches.details": ($s: MachineStoredScope<UpdateMachineInput>) => {
     return (({ input, before }) => ({
       expectedVersion: input.expectedVersion,
       actualVersion: before.version,
     }))($s);
   },
-  // set &version, translated (src/domain/execution/machine.mesh.mx:39:20)
+  // set &version, translated (src/domain/execution/machine.mesh.mx:59:20)
   "update.step.0.set.version": ($s: MachineStoredScope<UpdateMachineInput>) =>
+    $.add($s.self.version, 1),
+  // check :machineActive that, translated (src/domain/execution/machine.mesh.mx:66:16)
+  "retire.check.machineActive.that": ($s: MachineStoredScope<RetireMachineInput>) =>
+    $.eq($s.self.state, "active"),
+  // check :machineIdle that, translated (src/domain/execution/machine.mesh.mx:71:16)
+  "retire.check.machineIdle.that": ($s: MachineStoredScope<RetireMachineInput>) =>
+    $.not($.some($s.self.attempts, (l$a: any) => $.eq(l$a.state, "running"))),
+  // check :versionMatches that, translated (src/domain/execution/machine.mesh.mx:76:16)
+  "retire.check.versionMatches.that": ($s: MachineStoredScope<RetireMachineInput>) =>
+    $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/machine.mesh.mx:79:19)
+  "retire.check.versionMatches.details": ($s: MachineStoredScope<RetireMachineInput>) => {
+    return (({ input, before }) => ({
+      expectedVersion: input.expectedVersion,
+      actualVersion: before.version,
+    }))($s);
+  },
+  // set &version, translated (src/domain/execution/machine.mesh.mx:84:20)
+  "retire.step.0.set.version": ($s: MachineStoredScope<RetireMachineInput>) =>
     $.add($s.self.version, 1),
 } as const;

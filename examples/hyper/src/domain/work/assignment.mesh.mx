@@ -15,8 +15,23 @@ entity :Assignment table="assignments"
   actions auto=[:read]
     create :start
       input
-        &reviewWaived
-        &startedAt
         &task
         &assignee
-        &delegator
+        &reviewWaived
+      do
+        set
+          &delegator=({ actor }) => actor.id
+          &startedAt=() => now()
+    update :finish
+      input
+        enum :reason values=[:reassigned, :unassigned]
+      validate
+        check :current [
+          that=() => &endedAt === null
+          code="assignment.current"
+          message="the assignment has already ended"
+        ]
+      do
+        set
+          &endedAt=() => now()
+          &endReason=({ input }) => input.reason
