@@ -1,4 +1,4 @@
-# create-mesh
+# create-meshfw
 
 **Mesh is coming soon.**
 
@@ -8,7 +8,7 @@ Mesh derives the types, handlers, database schema, API, client and agent tools f
 This package is the starter. When Mesh ships, this creates a project:
 
 ```sh
-bun create mesh todo-app
+bun create meshfw todo-app
 ```
 
 Until then it prints a pointer to the site. Read about Mesh, its syntax and its roadmap at
