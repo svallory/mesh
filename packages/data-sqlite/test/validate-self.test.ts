@@ -203,6 +203,24 @@ entity :Card table="cards"
         check :scope that=({ context, ...rest }) => sawRest(context, "scrap", rest) code="scope" message="scope"
 `;
 
+// A check against a deadline and a step that stamps the time: both read the action's one instant.
+const offer = `entity :Offer table="offers"
+  attributes
+    uuid :id primary-key
+    timestamp :closesAt
+    timestamp :acceptedAt nullable
+  actions auto=[:read]
+    create :open
+      input
+        &closesAt
+    update :accept
+      validate
+        check :stillOpen that=() => now() < &closesAt code="offer.closed" message="the offer is closed"
+      do
+        set
+          &acceptedAt=() => now()
+`;
+
 const SQLITE: ResolvedConfig["data"] = {
   kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build",
   capabilities: { adapter: "sqlite", capabilities: ["aggregates", "integer-key-fill"] }, options: { file: ":memory:" },
@@ -214,7 +232,7 @@ beforeAll(async () => {
   dir = await mkdtemp(join(import.meta.dir, ".validate-self-"));
   const config: ResolvedConfig = { root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"), data: SQLITE };
   await Bun.write(join(dir, "src/domain/helpers.ts"), helpers);
-  const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: Object.entries({ person, note, event, tag, card }).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source })) });
+  const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: Object.entries({ person, note, event, tag, card, offer }).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source })) });
   expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   await writeGeneratedFiles(await generateFiles({ config, document: built.document as ModelDocument }, build), config);
   // `binding.ts` imports the project's config, which is not part of this fixture.
@@ -468,6 +486,25 @@ describe("a relationship a check loads", () => {
       const made = await world.mesh.makeCard({ title: "t", owner: world.bo.id }, ctx);
       expect(made).toMatchObject({ creatorId: world.ada.id, ownerId: world.bo.id, ownerName: "Bo" });
     } finally { await world.db.close(); }
+  });
+});
+
+describe("one instant per action", () => {
+  test("a check and a step read the same now(), even with a clock that moves on every read", async () => {
+    const db = sqlite({ file: ":memory:" });
+    try {
+      await createSchema(db, app.tables);
+      let reads = 0;
+      // Two hours later on every read: a second read would be past the deadline, and would stamp a different time.
+      const mesh = app.bind(db, { clock: () => new Date(NOW.getTime() + 2 * 3_600_000 * reads++) });
+      const made = await mesh.openOffer({ closesAt: new Date(NOW.getTime() + 3_600_000) }, {});
+      reads = 0;
+      const accepted = await mesh.acceptOffer({ id: made.id }, {});
+      expect(accepted.acceptedAt).toEqual(NOW);
+      expect(reads).toBe(1);
+      // The next call is a new instant, past the deadline.
+      expect(labels(await invalid(mesh.acceptOffer({ id: made.id }, {})))).toEqual(["stillOpen"]);
+    } finally { await db.close(); }
   });
 });
 
