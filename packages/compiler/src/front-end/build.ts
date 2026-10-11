@@ -7,7 +7,7 @@ import {
   resolveEntityFile,
 } from "../paths.ts";
 export { projectPath } from "../paths.ts";
-import { lowerSource, type IrDiagnostic } from "@mxlang/core";
+import { lowerMesh } from "./lower.ts";
 import {
   attributeTypeInfo,
   findNonJsonValue,
@@ -780,30 +780,17 @@ function buildEntity(
 }
 
 /**
- * The compiler's one MX call: `lowerSource` with closed contracts, Mesh's dialect (which carries
+ * The compiler's one MX call (`lowerMesh`, which is `lowerSource` plus the colon-name check) with closed contracts, Mesh's dialect (which carries
  * its tag rules) and rejection on. It never throws; every problem is a positioned diagnostic.
  */
 export function parseEntitySource(source: string, file: string) {
-  const lowered = lowerSource(source, file, {
+  return lowerMesh(source, file, {
     dialect: MESH_DIALECT,
     customTags: contracts,
     structural: "reject",
     unknownTags: "reject",
     imports: "pass",
   });
-  return { ...lowered, diagnostics: lowered.diagnostics.filter((d) => !selfDuplicate(d)) };
-}
-
-/**
- * MX 0.1.0-alpha.16 reads a method after an attribute group (`run [after=:write] ({ self }) { ... }`, the form
- * ADR-0068 documents) as two `value` attributes at one position, and warns that the first is dropped. Both are the one
- * function the author wrote, so that warning is dropped. A duplicate the author wrote sits at another position and is
- * still reported. The match is on MX's message text, like the unknown-tag match in `buildModel`, and stands until MX
- * stops producing the second attribute.
- */
-function selfDuplicate(d: IrDiagnostic): boolean {
-  const duplicate = /^duplicate attribute `value`: the later one at (\d+):(\d+) wins/.exec(d.message);
-  return !!duplicate && Number(duplicate[1]) === d.line && Number(duplicate[2]) - 1 === d.column;
 }
 
 /** Parse with closed MX contracts, then project the static tree without executing it. */
@@ -854,8 +841,8 @@ export function buildModel(project: ProjectDescription): BuildResult {
       ...parsed.diagnostics.filter((d, _, all) => {
         // MX reports both parent rejection and unknown-tag rejection for the
         // same unknown child. Keep the specific unknown-tag error only.
-        // The match is on MX's message text because MX 0.1.0-alpha.16's
-        // IrDiagnostic carries a `code` only from a dialect's `ctx.fail`. It stands
+        // The match is on MX's message text because MX 0.1.0-alpha.17's
+        // IrDiagnostic carries a `code` only from a dialect's `ctx.fail` and the duplicate-attribute warning. It stands
         // until MX fills diagnostic codes; do not replace it with an offset-only
         // rule, which would depend on MX's diagnostic order instead.
         const denied = /`<([^>]+)>` is not allowed here;/.exec(d.message)?.[1];

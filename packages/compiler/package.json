@@ -25,7 +25,7 @@
     "@jig-lang/jig": "1.0.1",
     "@meshfw/model": "workspace:*",
     "@meshfw/runtime": "workspace:*",
-    "@mxlang/core": "0.1.0-alpha.16",
+    "@mxlang/core": "0.1.0-alpha.17",
     "prettier": "3.6.2"
   },
   "devDependencies": {

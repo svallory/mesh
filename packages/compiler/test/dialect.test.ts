@@ -25,7 +25,7 @@ test("the extensions are one list", () => {
   expect(meshGlob).toBe("**/*.mesh.mx");
 });
 
-// MX #495 (alpha.16): `:name` as a whole attribute value is a dialect row. Mesh owns it (`syntax/mesh.ts`),
+// MX #495 (alpha.16, still true on alpha.17): `:name` as a whole attribute value is a dialect row. Mesh owns it (`syntax/mesh.ts`),
 // and it names the dialect id, so `MESH_DIALECT.id` has to stay `mesh`.
 test("the dialect carries the value-position atom row and the Atom node type, under the id mesh", () => {
   expect(MESH_DIALECT.id).toBe("mesh");
