@@ -228,7 +228,8 @@ export function expression(
         )
       : [],
   );
-  const rest = (n.params ?? []).some((p) => p.type === "ObjectPattern" && (p.properties ?? []).some((property) => !property.key?.name));
+  // A pattern with a rest element, or a plain parameter (`(s) => s.self.x`), can reach any name in the scope.
+  const rest = (n.params ?? []).some((p) => p.type !== "ObjectPattern" || (p.properties ?? []).some((property) => !property.key?.name));
   // Expr.code is printed (`self.x`); the authored text is the span's slice.
   const data: DynamicAttr["value"] = a.value;
   const translated = convert
@@ -239,6 +240,7 @@ export function expression(
     source: source.slice(data.span.sourceStart, data.span.sourceEnd),
     params,
     ...(rest ? { rest: true as const } : {}),
+    ...((n.params ?? []).length && !params.length ? { takesScope: true as const } : {}),
     position: at(data.span.sourceStart),
     ...fields,
   };

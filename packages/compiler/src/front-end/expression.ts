@@ -407,7 +407,8 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
     return { parts, rest };
   };
   const plain = (e: Plain): { plain: PlainReason } => {
-    const object = objectParts();
+    // A parameter Mesh does not translate (`(s) => ({ n: s.self.n })`) binds no scope name, so the parts cannot be read on their own.
+    const object = e.why === "unsupported-parameter" ? undefined : objectParts();
     return {
       plain: { why: e.why, detail: e.detail, position: ctx.at(start(e.node) || span.sourceStart), edits: editsFor(f, span.sourceStart), roots: free, ...clocked, ...((object ? hasDifferingOperator(object.rest) : hasDifferingOperator(f.body)) ? { operators: true as const } : {}), ...(object?.parts.length ? { parts: object.parts } : {}), ...(f.type === "FunctionExpression" ? { method: true as const } : {}) },
     };
