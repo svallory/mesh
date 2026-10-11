@@ -57,7 +57,7 @@ export function printExpression(e: Expression, scopeType: string, boolean: boole
   // The scope names the function reads without its parameters binding them (the front end found them in the syntax tree).
   const declare = (plain.roots.length ? `const { ${plain.roots.join(", ")} } = ${SCOPE}; ` : "") +
     (plain.clock ?? []).map((name) => `const ${name} = () => $.${name}(${SCOPE}); `).join("");
-  return withScope(`{ ${declare}return (${fn})(${e.params.length ? SCOPE : ""}); }`);
+  return withScope(`{ ${declare}return (${fn})(${e.takesScope || e.params.length ? SCOPE : ""}); }`);
 }
 
 /** Names in `names` that a plain expression's authored text mentions. */

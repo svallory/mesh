@@ -21,7 +21,7 @@ export function checkLifecycleLimits(document: ModelDocument, diagnostics: Diagn
     for (const field of entity.computed) {
       const body = field.body;
       if (!body) continue;
-      const root = (["actions", "tx"] as const).find((name) => body.params.includes(name) || body.plain?.roots.includes(name));
+      const root = (["actions", "tx"] as const).find((name) => body.params.includes(name) || body.plain?.roots.includes(name) || (body.rest && new RegExp(`\\b${name}\\b`).test(body.source)));
       if (root)
         diagnostics.push(error("MESH_COMPUTED_COMPOSES",
           `computed :${field.name} of :${entity.name} reads \`${root}\`, which only a function that runs inside an action has: a computed field is worked out whenever a record is loaded, outside any action`,

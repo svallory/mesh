@@ -525,6 +525,16 @@ describe("roadmap Jig port, acceptance 4: a project template overrides Mesh's", 
     expect(run(root, "inspect")).toEqual(expected);
   });
 
+  test("an override that loops over a view field that no longer exists fails every command, naming the template, the line and the field", async () => {
+    const root = await builtProject();
+    await mkdir(join(root, ".mesh-generators"));
+    const template = (await readFile(join(repo, "packages/compiler/src/typescript/templates/types.ts.jig"), "utf8")).replace("record.members", "record.fields");
+    await writeFile(join(root, ".mesh-generators/types.ts.jig"), template);
+    const line = template.split("\n").findIndex((text) => text.includes("record.fields")) + 1;
+    const expected = { code: 1, stdout: "", stderr: `.mesh-generators/types.ts.jig:${line}:1 error Generator "types" cannot render .mesh-generators/types.ts.jig: \`@each(member in record.fields)\` loops over \`record.fields\`, which the view does not have: the template is written for another version of this view\n  fix: Fix the template; it receives the view documented for this generator\n1 error, 0 warnings\n` };
+    for (const args of [["build"], ["build", "--check"], ["inspect"]]) expect(run(root, ...args)).toEqual(expected);
+  });
+
   test("an unreadable override is MESH_TEMPLATE_READ for every command", async () => {
     const root = await builtProject();
     await mkdir(join(root, ".mesh-generators/validators.ts.jig"), { recursive: true });
@@ -661,4 +671,19 @@ test("importing meshfw loads the runtime's defineConfig and no compiler code (AD
   const result = Bun.spawnSync([process.execPath, "--eval", probe], { cwd: join(import.meta.dir, ".."), stdout: "pipe", stderr: "pipe" });
   expect(result.stderr.toString()).toBe("");
   expect(result.stdout.toString()).toBe("[]\ntrue\n");
+});
+
+// MESH_EMIT_NAME comes from the emit stage, after the front end and the model passed. Every command that builds must
+// exit 1 with the diagnostic on stderr and nothing on stdout (a follow-up of PR #69 reported `inspect` exiting 0; it does not on main).
+test.each([["build"], ["build", "--check"], ["inspect"], ["inspect", "Item"], ["explain", "Item", "forUser"]].map((args) => ({ args })))("MESH_EMIT_NAME exits 1 with the diagnostic on stderr: mesh $args", async ({ args }) => {
+  const root = await project();
+  await mkdir(join(root, "domain/other"), { recursive: true });
+  await writeFile(join(root, "domain/todos/item.mesh.mx"), "entity :Item\n  attributes\n    uuid :id primary-key\n  actions\n    read :forUser\n");
+  await writeFile(join(root, "domain/other/user-item.mesh.mx"), "entity :UserItem\n  attributes\n    uuid :id primary-key\n  actions\n    read :for\n");
+  const result = run(root, ...args);
+  expect(result.code).toBe(1);
+  expect(result.stdout).toBe("");
+  expect(result.stderr).toContain("domain/todos/item.mesh.mx:5:5 error Action :forUser of :Item and Action :for of :UserItem (domain/other/user-item.mesh.mx:5:5) both become the top-level name `forUserItem`");
+  expect(result.stderr).toEndWith("1 error, 0 warnings\n");
+  expect(await Bun.file(join(root, "generated/model.json")).exists()).toBe(false);
 });

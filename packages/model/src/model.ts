@@ -39,8 +39,10 @@ export interface Import {
 export interface Expression {
   source: string;
   params: string[];
-  /** The parameter pattern has a rest element (`{ context, ...rest }`), which can reach any name in the scope. */
+  /** The parameter is a rest pattern (`{ context, ...rest }`) or a plain name (`(s) => ...`), which can reach any name in the scope. */
   rest?: true;
+  /** The authored function declares a parameter of any form (even `({})`), so the generated code calls it with the scope. Set only when `params` names nothing (`(s) => ...`, `({}) => ...`); a function that names scope members takes it anyway. */
+  takesScope?: true;
   position: SourcePosition;
   /** Present when Mesh translated the function: the tree the evaluators run (M4). */
   tree?: ExprNode;

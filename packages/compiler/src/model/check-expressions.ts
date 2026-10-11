@@ -154,6 +154,10 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
         : "this is unknown and the check fails on every create"}`, position,
       `write \`input.${name} ?? &${name}\` for the value the action will store, or \`input.${name}\` for the caller's`);
 
+  /** What an unknown value does in each part of a check (`runCheck`): `that` fails the check, `when` skips it, `details` is null. Elsewhere (a step, a computed field) the outcome depends on the position. */
+  const whenUnknown = (part: Scope["checkPart"]) =>
+    part === "that" ? "the check fails" : part === "when" ? "the check is skipped" : part === "details" ? "the details value is null" : "the check fails or the row is left out";
+
   function infer(n: ExprNode, scope: Scope): Ty {
     const fail = (detail: string): never => { throw new Demote(detail, n.position); };
     switch (n.kind) {
@@ -253,7 +257,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
                 "write `(a === b) || (a === null && b === null)` if two nulls should match");
             else if (n.fn === "ne" && nullable)
               report("warning", "MESH_EXPR_NEGATED_UNKNOWN",
-                "`!==` on a value that can be null is unknown when it is null, so the check fails or the row is left out (JavaScript says true)", n.position,
+                `\`!==\` on a value that can be null is unknown when it is null, so ${whenUnknown(scope.checkPart)} (JavaScript says true)`, n.position,
                 "write `x !== null && x !== value`");
             return { c: "boolean", nullable };
           }
@@ -269,7 +273,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
           case "not": {
             if (!bothClass(a[0]!, "boolean")) throw new Demote("a non-boolean operand of `!` (truthiness)", n.position, true);
             if (nullable) report("warning", "MESH_EXPR_NEGATED_UNKNOWN",
-              "`!` on a value that can be unknown is unknown, so the check fails or the row is left out (JavaScript says true for null)", n.position,
+              `\`!\` on a value that can be unknown is unknown, so ${whenUnknown(scope.checkPart)} (JavaScript says true for null)`, n.position,
               "test for null first: `x !== null && !x`");
             return { c: "boolean", nullable };
           }
