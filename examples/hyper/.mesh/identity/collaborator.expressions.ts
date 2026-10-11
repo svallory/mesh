@@ -4,39 +4,49 @@
 import {
   expr as $,
   type DeepReadonly as $DeepReadonly,
+  type ReadOnlyResults as $ReadOnlyResults,
   type Scope as $Scope,
 } from "@meshfw/runtime";
-import type { Collaborator } from "./collaborator.types";
+import type { Actions as $Actions, Reads as $Reads } from "../composition";
+import type {
+  Collaborator,
+  CollaboratorLoaded,
+  UpdateCollaboratorInput,
+} from "./collaborator.types";
 
-/** What every expression of Collaborator reads. */
-export type CollaboratorScope = $Scope<{
-  self: $DeepReadonly<Collaborator & { memberships: any[] }>;
-  input: any;
+/** What every expression of Collaborator reads; `I` is the input of the action it runs in. */
+export type CollaboratorScope<I = unknown> = $Scope<{
+  self: $DeepReadonly<CollaboratorLoaded>;
+  input: $DeepReadonly<I>;
   actor: any;
   context: any;
   before: $DeepReadonly<Collaborator> | null;
-  tx: any;
+  actions: $ReadOnlyResults<$Actions>;
+  tx: $ReadOnlyResults<$Reads>;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
-export type CollaboratorStoredScope = CollaboratorScope & { before: $DeepReadonly<Collaborator> };
+export type CollaboratorStoredScope<I = unknown> = CollaboratorScope<I> & {
+  before: $DeepReadonly<Collaborator>;
+};
 
 export const expressions = {
   // check :collaboratorActive that, translated (src/domain/identity/collaborator.mesh.mx:24:16)
-  "update.check.collaboratorActive.that": ($s: CollaboratorStoredScope) =>
+  "update.check.collaboratorActive.that": ($s: CollaboratorStoredScope<UpdateCollaboratorInput>) =>
     $.eq($s.self.state, "active"),
   // check :kindImmutable that, translated (src/domain/identity/collaborator.mesh.mx:29:16)
-  "update.check.kindImmutable.that": ($s: CollaboratorStoredScope) =>
+  "update.check.kindImmutable.that": ($s: CollaboratorStoredScope<UpdateCollaboratorInput>) =>
     $.or($.isNull($s.input?.kind), $.eq($s.input?.kind, $s.self.kind)),
   // check :versionMatches that, translated (src/domain/identity/collaborator.mesh.mx:34:16)
-  "update.check.versionMatches.that": ($s: CollaboratorStoredScope) =>
+  "update.check.versionMatches.that": ($s: CollaboratorStoredScope<UpdateCollaboratorInput>) =>
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/identity/collaborator.mesh.mx:37:19)
-  "update.check.versionMatches.details": ($s: CollaboratorStoredScope) => {
+  "update.check.versionMatches.details": ($s: CollaboratorStoredScope<UpdateCollaboratorInput>) => {
     return (({ input, before }) => ({
       expectedVersion: input.expectedVersion,
       actualVersion: before.version,
     }))($s);
   },
   // set &version, translated (src/domain/identity/collaborator.mesh.mx:41:20)
-  "update.step.0.set.version": ($s: CollaboratorStoredScope) => $.add($s.self.version, 1),
+  "update.step.0.set.version": ($s: CollaboratorStoredScope<UpdateCollaboratorInput>) =>
+    $.add($s.self.version, 1),
 } as const;

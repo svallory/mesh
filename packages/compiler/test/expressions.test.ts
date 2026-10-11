@@ -253,9 +253,26 @@ describe("type rules", () => {
     expect(codes(withAlways("go"))).toEqual([]);
     expect(codes(withAlways("make"))).toContain("error:MESH_BEFORE_IN_CREATE");
   });
-  test("a plain expression without operators does not warn; tx is plain, and a function that reads it is not available before action composition", () => {
-    expect(codes(entity(check("({ tx }) => tx.ok(&n)")))).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
-    expect(build(entity(check("({ tx }) => tx.ok(&n)"))).diagnostics[0]!.message).toContain("check :c (that) reads `tx`, which belongs to action composition");
+  test("a function that reads actions or tx builds as plain code, and records the scope names it reads", () => {
+    expect(codes(entity(check("({ tx }) => tx.ok(&n)")))).toEqual([]);
+    expect(exprOf(entity(check("({ tx }) => tx.ok(&n)"))).plain).toMatchObject({ why: "uses-tx", roots: ["self"] });
+    // Read without destructuring: the scope supplies them. A string or an object key that spells a scope name is not a read.
+    const read = exprOf(entity(check('() => actions.check({ actor: "before the write" }) && tx.ok(input)')));
+    expect(read.plain!.roots).toEqual(["input", "tx", "actions"]);
+    // A parameter that binds a scope name under another name does not stop `&n` from reading `self`.
+    expect(exprOf(entity(check("({ self: s, tx }) => tx.ok(s.n, &n)"))).plain!.roots).toEqual(["self"]);
+  });
+  test("a computed field that reads actions or tx is a build error: it is worked out outside any action", () => {
+    const computed = (body: string) => entity(check("() => true")).replace("  actions auto", `  computed\n    boolean :c${body}\n  actions auto`);
+    for (const body of ["({ tx }) { return tx.ok() }", "() { return actions.ok() }", "({ actions: a }) { return a.ok() }"]) {
+      const source = computed(body);
+      const d = build(source).diagnostics.filter((x) => x.code === "MESH_COMPUTED_COMPOSES");
+      expect(d, body).toHaveLength(1);
+      expect(d[0]!.message).toContain("computed :c of :Task reads `");
+      expect(d[0]!.position.offset, body).toBe(source.indexOf(body));
+    }
+    // A string or a property that spells the name is not a read.
+    expect(codes(computed('() { return { tx: "actions" }.tx === "x" }'))).not.toContain("error:MESH_COMPUTED_COMPOSES");
   });
   test("a helper that does not read the record is translated and imported; one given the record is plain", async () => {
     const root = await mkdtemp(resolve(import.meta.dir, "../mesh-helper-"));
@@ -327,8 +344,9 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(overdue(scope({ self: { dueAt: new Date(86_400_000 * 3 - 1) } }, { clock: () => new Date(86_400_000 * 3 + 100) }))).toBe(true);
   });
 
-  test("plain code type-checks strictly: quantifier callbacks, atoms without &, a bare self", async () => {
-    const plain = entity(check("() => true")).replace("  actions auto", "  computed\n    boolean :a() { return &children.some((c) => c.title.startsWith(\"a\")) }\n    boolean :b({ self }) { return self.state.toString() === :open }\n    boolean :c() { return self.n.toFixed(0) === \"1\" }\n  actions auto");
+  test("plain code type-checks strictly: quantifier callbacks, atoms without &, a bare self, and only the scope names read are declared", async () => {
+    // A string or an object key that spells a scope name declares nothing, so --noUnusedLocals finds nothing unused.
+    const plain = (entity(check("() => true")) + "      do\n        run ({ context }) { console.log({ actor: \"before the write\" }, context) }\n").replace("  actions auto", "  computed\n    boolean :a() { return &children.some((c) => (c.title ?? \"\").startsWith(\"a\")) }\n    boolean :b({ self }) { return self.state.toString() === :open }\n    boolean :c() { return self.n.toFixed(0) === \"1\" }\n  actions auto");
     const { root, files } = await generated(plain);
     expect(checkTypes(root, ["generated/task.expressions.ts", "generated/task.types.ts"])).toEqual({ code: 0, output: "" });
     const { expressions } = await import(resolve(root, "generated/task.expressions.ts"));
@@ -418,12 +436,58 @@ describe("review fixes (PR #63, round 1)", () => {
     for (const details of ["({ before }) => ({ v: before.n })", "({ before }) => { return { v: before.n } }"])
       expect(build(create(details)).diagnostics.filter((d) => d.code === "MESH_BEFORE_IN_CREATE"), details).toHaveLength(1);
   });
-  test("run after=:write is a positioned MESH_NOT_IMPLEMENTED that names action composition and the second half of M5", () => {
-    const source = entity("").replace("      validate\n", "").replace("  actions auto=[:read]\n", "  actions auto=[:read]\n    create :make\n      input\n        &n\n      do\n        run [after=:write] ({ self }) { console.log(self) }\n");
-    const d = build(source).diagnostics.filter((x) => x.code === "MESH_NOT_IMPLEMENTED");
-    expect(d).toHaveLength(1);
-    expect(d[0]!.message).toContain("second half of M5");
-    expect(d[0]!.position.offset).toBe(source.indexOf("after="));
+  describe("run after=:write (ADR-0068 decision 2)", () => {
+    const make = (steps: string) => entity("").replace("      validate\n", "").replace("  actions auto=[:read]\n", `  actions auto=[:read]\n    create :make\n      input\n        &n\n      do\n${steps}`);
+    const at = (source: string, offset: number) => {
+      const before = source.slice(0, offset).split("\n");
+      return { line: before.length, column: before.at(-1)!.length, offset };
+    };
+    test("builds a run step that runs after the write, and leaves a plain run before it", () => {
+      const result = build(make("        run ({ self }) { console.log(self) }\n        run [after=:write] ({ self }) { console.log(self) }\n"));
+      expect(result.diagnostics).toEqual([]);
+      expect(result.document!.entities[0]!.actions.find((a) => a.name === "make")!.do.map((s) => s.kind === "run" ? s.after ?? "before" : s.kind)).toEqual(["before", "write"]);
+    });
+    test("inside a when, the step still runs after the write", () => {
+      const result = build(make("        when=() => &n > 0\n          run [after=:write] ({ self }) { console.log(self) }\n"));
+      expect(result.diagnostics).toEqual([]);
+      const when = result.document!.entities[0]!.actions.find((a) => a.name === "make")!.do[0]!;
+      expect(when.kind === "when" && when.steps[0]).toMatchObject({ kind: "run", after: "write" });
+    });
+    test("an atom other than :write is an error at the value that lists the one allowed", () => {
+      const source = make("        run [after=:read] ({ self }) { console.log(self) }\n");
+      const d = build(source).diagnostics;
+      expect(d).toHaveLength(1);
+      expect(d[0]).toMatchObject({ severity: "error", message: expect.stringContaining("`:read` is not one of :write") });
+      expect(d[0]!.position).toMatchObject(at(source, source.indexOf("after=:read") + "after=".length));
+    });
+    test("a string is an error at the value: the value is an atom", () => {
+      const source = make('        run [after="write"] ({ self }) { console.log(self) }\n');
+      const d = build(source).diagnostics;
+      expect(d).toHaveLength(1);
+      expect(d[0]).toMatchObject({ severity: "error", message: expect.stringContaining("attribute `after` must be atom, got string (one of :write)") });
+      expect(d[0]!.position).toMatchObject(at(source, source.indexOf('"write"')));
+    });
+    test("only a run takes after: on set, load or when it is an error at the attribute", () => {
+      for (const [step, message] of [
+        ["        set [after=:write]\n          &n=1\n", "`<set>`: accepts no attributes"],
+        ["        load [after=:write] &parent\n", "`<load>`: unknown attribute `after`"],
+        ["        when [after=:write value=() => true]\n          run () { }\n", "`<when>`: unknown attribute `after`"],
+      ] as const) {
+        const source = make(step);
+        const d = build(source).diagnostics.filter((x) => x.severity === "error");
+        expect(d, step).toHaveLength(1);
+        expect(d[0]!.message, step).toContain(message);
+        expect(d[0]!.position, step).toMatchObject(at(source, source.indexOf("after=")));
+      }
+      // A check is not a step: it sits in validate, and after is unknown there too.
+      const check = entity("        check :c [\n          that=() => true\n          after=:write\n          code=\"c\"\n          message=\"m\"\n        ]\n");
+      expect(build(check).diagnostics.map((d) => [d.severity, d.position.offset])).toEqual([["error", check.indexOf("after=")]]);
+    });
+    test("the method after the attribute group is one value: no duplicate warning, while a duplicate the author wrote still warns", () => {
+      expect(build(make("        run [after=:write] ({ self }) { console.log(self) }\n")).diagnostics).toEqual([]);
+      const twice = make("        run [after=:write after=:write] ({ self }) { console.log(self) }\n");
+      expect(build(twice).diagnostics).toMatchObject([{ severity: "warning", message: expect.stringContaining("duplicate attribute `after`"), position: at(twice, twice.indexOf("after=")) }]);
+    });
   });
   test("details: a comparison of non-null operands does not warn; one that can see a null does", () => {
     const withDetails = (details: string) => entity(check("() => &n > 0").replace("          message=", `          details=${details}\n          message=`)).replace("      validate", "      input\n        integer :fence\n      validate");

@@ -6,12 +6,17 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
+  castInput as $castInput,
+  checkUnchanged as $checkUnchanged,
+  composed as $composed,
   guarded as $guarded,
-  parseInput,
+  noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
+  writeCount as $writeCount,
   type BindOptions as $BindOptions,
+  type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
   type Issue as $Issue,
@@ -37,14 +42,44 @@ import {
 } from "./sessionReference.expressions";
 import { loadPlan as $loadPlan } from "../load";
 
-export function bindSessionReference(layer: $DataLayer, options: $BindOptions = {}) {
+/**
+ * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
+ * The read actions below run the slot, then these.
+ */
+export function bindSessionReferenceReads(layer: $DataLayer) {
+  return Object.freeze({
+    async read(input: ReadSessionReferenceInput): Promise<SessionReference[]> {
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, readSessionReferenceInput, input);
+      return layer.transaction(async (tx) => {
+        return (await tx.select(tables.sessionReference, {
+          filter: parsed.filter,
+          sort: parsed.sort,
+          limit: parsed.limit,
+          offset: parsed.offset,
+        })) as SessionReference[];
+      });
+    },
+  });
+}
+
+/**
+ * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
+ * `actions` and `tx`; the project's `bind` in the index passes it.
+ */
+export function bindSessionReference(
+  layer: $DataLayer,
+  options: $BindOptions = {},
+  compose?: $Composer,
+) {
+  const $reads = bindSessionReferenceReads(layer);
   return Object.freeze({
     async record(
       input: RecordSessionReferenceInput,
       ...[_context]: $ContextArgument
     ): Promise<SessionReference> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(recordSessionReferenceInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, recordSessionReferenceInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $now = options.clock?.() ?? new Date();
@@ -62,6 +97,7 @@ export function bindSessionReference(layer: $DataLayer, options: $BindOptions = 
         };
         // data layer
         const $stored = await tx.insert(tables.sessionReference, $changes);
+        $noteWrite(tx);
         return $stored as SessionReference;
       });
     },
@@ -70,8 +106,8 @@ export function bindSessionReference(layer: $DataLayer, options: $BindOptions = 
       input: SetAvailabilitySessionReferenceInput,
       ...[context]: $ContextArgument
     ): Promise<SessionReference> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(setAvailabilitySessionReferenceInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, setAvailabilitySessionReferenceInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
@@ -84,6 +120,7 @@ export function bindSessionReference(layer: $DataLayer, options: $BindOptions = 
         const $record: $Row = { ...$before };
         if (parsed.availability !== undefined)
           $changes.availability = $record.availability = parsed.availability;
+        const $writes = $writeCount(tx);
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "SessionReference", $record, "action function"),
           "SessionReference.setAvailability",
@@ -98,10 +135,10 @@ export function bindSessionReference(layer: $DataLayer, options: $BindOptions = 
               $guarded($loadPlan, "SessionReference", $before, "before"),
               "SessionReference.setAvailability",
             ) as unknown as SessionReference,
-            tx: undefined,
+            ...$composed(compose, tx, context, "SessionReference.setAvailability"),
           },
           options,
-        ) as unknown as $StoredScope;
+        ) as unknown as $StoredScope<SetAvailabilitySessionReferenceInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
         await $runCheck($issues, $s, {
@@ -137,8 +174,18 @@ export function bindSessionReference(layer: $DataLayer, options: $BindOptions = 
           $changes.version = $record.version = $value;
         }
         // data layer
+        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+        await $checkUnchanged(
+          tx,
+          $writes,
+          tables.sessionReference,
+          $key,
+          $before,
+          "SessionReference.setAvailability",
+        );
         const $stored = await tx.updateByKey(tables.sessionReference, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("SessionReference", $key);
+        $noteWrite(tx);
         return $stored as SessionReference;
       });
     },
@@ -147,8 +194,8 @@ export function bindSessionReference(layer: $DataLayer, options: $BindOptions = 
       input: RedactSessionReferenceInput,
       ...[context]: $ContextArgument
     ): Promise<SessionReference> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(redactSessionReferenceInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, redactSessionReferenceInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
@@ -159,6 +206,7 @@ export function bindSessionReference(layer: $DataLayer, options: $BindOptions = 
         if ($before === undefined) throw new $NotFoundError("SessionReference", $key);
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
+        const $writes = $writeCount(tx);
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "SessionReference", $record, "action function"),
           "SessionReference.redact",
@@ -173,10 +221,10 @@ export function bindSessionReference(layer: $DataLayer, options: $BindOptions = 
               $guarded($loadPlan, "SessionReference", $before, "before"),
               "SessionReference.redact",
             ) as unknown as SessionReference,
-            tx: undefined,
+            ...$composed(compose, tx, context, "SessionReference.redact"),
           },
           options,
-        ) as unknown as $StoredScope;
+        ) as unknown as $StoredScope<RedactSessionReferenceInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
         await $runCheck($issues, $s, {
@@ -207,8 +255,18 @@ export function bindSessionReference(layer: $DataLayer, options: $BindOptions = 
           $changes.version = $record.version = $value;
         }
         // data layer
+        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+        await $checkUnchanged(
+          tx,
+          $writes,
+          tables.sessionReference,
+          $key,
+          $before,
+          "SessionReference.redact",
+        );
         const $stored = await tx.updateByKey(tables.sessionReference, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("SessionReference", $key);
+        $noteWrite(tx);
         return $stored as SessionReference;
       });
     },
@@ -217,16 +275,8 @@ export function bindSessionReference(layer: $DataLayer, options: $BindOptions = 
       input: ReadSessionReferenceInput,
       ...[_context]: $ContextArgument
     ): Promise<SessionReference[]> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(readSessionReferenceInput, input);
-      return layer.transaction(async (tx) => {
-        return (await tx.select(tables.sessionReference, {
-          filter: parsed.filter,
-          sort: parsed.sort,
-          limit: parsed.limit,
-          offset: parsed.offset,
-        })) as SessionReference[];
-      });
+      // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
+      return $reads.read(input);
     },
   });
 }

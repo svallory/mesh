@@ -602,6 +602,9 @@
                 "line": 23,
                 "offset": 696
               },
+              "roots": [
+                "self"
+              ],
               "why": "unsupported-construct"
             },
             "position": {

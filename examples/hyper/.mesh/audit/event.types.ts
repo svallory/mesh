@@ -3,7 +3,7 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Task } from "../work/task.types";
+import type { Task, TaskLoaded } from "../work/task.types";
 
 export type Event = {
   seq: number;
@@ -53,6 +53,11 @@ export type EventLoadable = {
 
 /** A Event with the relationships and computed fields named in N loaded. */
 export type EventWith<N extends keyof EventLoadable> = Event & Pick<EventLoadable, N>;
+
+/** A Event as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
+export type EventLoaded = Event & {
+  task: TaskLoaded | null;
+};
 
 export type EventFilter =
   | { and: readonly EventFilter[] }

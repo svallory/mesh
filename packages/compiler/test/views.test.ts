@@ -61,7 +61,7 @@ describe("typesView", () => {
   test("an entity with no actions and one reference: its import, no inputs, the record's members in order", () => {
     expect(types(documentOf(), "List")).toEqual({
       entityFile: "todo/list.mesh.mx",
-      imports: [{ name: "Todo", fromLiteral: '"./todo.types"' }],
+      imports: [{ name: "Todo", names: "Todo, TodoLoaded", fromLiteral: '"./todo.types"' }],
       record: {
         name: "List",
         members: [
@@ -76,16 +76,19 @@ describe("typesView", () => {
         name: "ListLoadable",
         withName: "ListWith",
         members: [{ name: "owner", optional: false, key: "owner", type: "Todo | null" }],
+        // What a function of the entity file sees as `self`: every relationship and computed field, related records loaded alike.
+        loadedName: "ListLoaded",
+        loadedMembers: [{ name: "owner", optional: false, key: "owner", type: "TodoLoaded | null" }],
       },
     });
   });
 
   test("imports: each referenced entity in another file once, with a relative quoted specifier", () => {
     const document = documentOf();
-    expect(types(document, "Todo").imports).toEqual([{ name: "List", fromLiteral: '"./list.types"' }]);
+    expect(types(document, "Todo").imports).toEqual([{ name: "List", names: "List, ListLoaded", fromLiteral: '"./list.types"' }]);
     entityOf(document, "List").module = "lists";
     entityOf(document, "Todo").module = "todos";
-    expect(types(document, "Todo").imports).toEqual([{ name: "List", fromLiteral: '"../lists/list.types"' }]);
+    expect(types(document, "Todo").imports).toEqual([{ name: "List", names: "List, ListLoaded", fromLiteral: '"../lists/list.types"' }]);
   });
 
   test("record: attributes then relationship key columns; nullable and enum types are printed in full", () => {

@@ -26,7 +26,7 @@ test("v4 record and input types preserve the legacy layout and action names", as
   const document = documentOf();
   const files = await generateFiles({ document, config: configOf("/project") });
   const output = files.find((f) => f.path.endsWith("/todo.types.ts"))!.contents;
-  expect(output).toContain('import type { List } from "./list.types"');
+  expect(output).toContain('import type { List, ListLoaded } from "./list.types"');
   expect(output).toContain("export type Todo");
   expect(output).toContain("title: string;");
   expect(output).toContain("rating: number | null;");
@@ -238,7 +238,7 @@ test("Date type shadows are diagnosed only where the global is used", async () =
   );
   expect(
     (await generateFiles({ document, config: configOf("/project") })).length,
-  ).toBe(7); // model.json, types, validators, expressions, load, actions and index for one entity
+  ).toBe(8); // model.json, types, validators, expressions, load, actions, composition and index for one entity
 });
 
 test("source path line terminators are escaped in headers", async () => {

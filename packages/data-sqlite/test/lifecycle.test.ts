@@ -56,6 +56,10 @@ entity :Task table="tasks"
           code="task.shouting"
           message="do not shout"
         ]
+    always actions=[&rankMake, &rankQuick]
+      do
+        set
+          &rank=({ input }) => input.rank
     create :open
       input
         &title
@@ -103,12 +107,24 @@ entity :Task table="tasks"
           &version=() => &version + 1
     update :annotate
       input
-        string :note nullable
+        &note
         &priority
       do
         set
           &note=({ input }) => input.note
           &priority=({ input }) => input.priority
+    update :annotateArg
+      input
+        string :note nullable
+      do
+        set
+          &note=({ input }) => input.note
+    update :annotateMemo
+      input
+        string :memo nullable
+      do
+        set
+          &note=({ input }) => input.memo
     update :start
       validate
         check :openOnly [
@@ -267,7 +283,6 @@ entity :Task table="tasks"
       do
         set
           &openedAt=() => now()
-          &rank=({ input }) => input.rank
     create :rankQuick
       input
         &title
@@ -276,7 +291,6 @@ entity :Task table="tasks"
       do
         set
           &openedAt=() => now()
-          &rank=({ input }) => input.rank
     update :peek
       do
         run({ before, context }) {
@@ -538,6 +552,18 @@ describe("update", () => {
       expect(changed).toMatchObject({ note: "hello", priority: 6 });
       const cleared = await world.mesh.annotateTask({ id: row.id, note: null }, world.ctx);
       expect(cleared.note).toBeNull();
+    } finally { await world.db.close(); }
+  });
+
+  test("an omitted input argument is no value whatever its name: the skip belongs to the member input &x alone (ADR-0012)", async () => {
+    const world = await fresh();
+    try {
+      const row = await openTask(world);
+      // Same name as the column, but an argument: omitted, it clears the nullable column like any other name does.
+      expect((await world.mesh.annotateArgTask({ id: row.id, note: "kept?" }, world.ctx)).note).toBe("kept?");
+      expect((await world.mesh.annotateArgTask({ id: row.id }, world.ctx)).note).toBeNull();
+      expect((await world.mesh.annotateMemoTask({ id: row.id, memo: "kept?" }, world.ctx)).note).toBe("kept?");
+      expect((await world.mesh.annotateMemoTask({ id: row.id }, world.ctx)).note).toBeNull();
     } finally { await world.db.close(); }
   });
 

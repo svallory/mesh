@@ -154,6 +154,8 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
       const value = await layer.transaction(async (outer) => {
         await outer.insert(table, sampleRow);
         const inner = await layer.transaction(async (tx) => {
+          // Action composition tells a call that joins from one made after its transaction ended by this identity.
+          assert(tx === outer, "a joined call must receive the same operations as the transaction it joins");
           rowEquals(await tx.selectByKey(table, key), sampleRow, "a joined call must see the outer transaction's uncommitted write");
           await tx.insert(table, secondRow);
           return "inner";
@@ -200,6 +202,19 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
         ]);
       });
       await layer.transaction(async (tx) => rowsEqual(await tx.select(table), [sampleRow, secondRow], "nested and parallel joined writes must commit"));
+    }),
+    "calls joined to one transaction run one at a time, and a nested join does not wait for itself": withLayer(async ({ layer, table, sampleRow, secondRow }) => {
+      // Each call yields between its start and its nested write: run together, the two would interleave.
+      const events: string[] = [];
+      const call = (name: string, row: Row) => layer.transaction(async () => {
+        events.push(`${name} start`);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        await layer.transaction(async (inner) => { events.push(`${name} nested`); await inner.insert(table, row); });
+        events.push(`${name} end`);
+      });
+      await layer.transaction(async () => { await Promise.all([call("a", sampleRow), call("b", secondRow)]); });
+      assert(events.join(",") === "a start,a nested,a end,b start,b nested,b end", `calls joined to one transaction must run one at a time, in the order they were made; got ${events.join(",")}`);
+      await layer.transaction(async (tx) => rowsEqual(await tx.select(table), [sampleRow, secondRow], "both joined writes must commit"));
     }),
     "a call after the transaction ended starts a new one": withLayer(async ({ layer, table, sampleRow, secondRow }) => {
       let late: Promise<void> | undefined;

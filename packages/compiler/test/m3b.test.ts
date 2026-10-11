@@ -182,7 +182,7 @@ describe("the key of a create", () => {
     const { document } = await generated({ "m/item.mesh.mx": items(key) });
     const statements = actionsView({ document, config: configOf("/p") }, document.entities[0]!).methods.find((m) => m.name === "create")!.statements;
     // The key is not in the proposed record: the data layer fills it inside the write transaction.
-    expect(statements.slice(2)).toEqual(["const $changes: $Row = {", "name: parsed.name,", "};", "// data layer", "const $stored = await tx.insert(tables.item, $changes);", "return $stored as Item;"]);
+    expect(statements.slice(2)).toEqual(["const $changes: $Row = {", "name: parsed.name,", "};", "// data layer", "const $stored = await tx.insert(tables.item, $changes);", "$noteWrite(tx);", "return $stored as Item;"]);
   });
 
   test("no generated file writes a random id", async () => {

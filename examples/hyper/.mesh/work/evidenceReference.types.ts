@@ -3,7 +3,7 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Collaborator } from "../identity/collaborator.types";
+import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
 
 export type EvidenceReference = {
   id: string;
@@ -38,6 +38,11 @@ export type EvidenceReferenceLoadable = {
 /** A EvidenceReference with the relationships and computed fields named in N loaded. */
 export type EvidenceReferenceWith<N extends keyof EvidenceReferenceLoadable> = EvidenceReference &
   Pick<EvidenceReferenceLoadable, N>;
+
+/** A EvidenceReference as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
+export type EvidenceReferenceLoaded = EvidenceReference & {
+  recordedBy: CollaboratorLoaded;
+};
 
 export type EvidenceReferenceFilter =
   | { and: readonly EvidenceReferenceFilter[] }

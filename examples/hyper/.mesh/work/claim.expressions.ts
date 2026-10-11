@@ -4,63 +4,80 @@
 import {
   expr as $,
   type DeepReadonly as $DeepReadonly,
+  type ReadOnlyResults as $ReadOnlyResults,
   type Scope as $Scope,
 } from "@meshfw/runtime";
-import type { Claim } from "./claim.types";
+import type { Actions as $Actions, Reads as $Reads } from "../composition";
+import type {
+  Claim,
+  ClaimLoaded,
+  ReleaseClaimInput,
+  RenewClaimInput,
+  RevokeClaimInput,
+} from "./claim.types";
 
-/** What every expression of Claim reads. */
-export type ClaimScope = $Scope<{
-  self: $DeepReadonly<Claim & { task: any; holder: any; lapsed: any }>;
-  input: any;
+/** What every expression of Claim reads; `I` is the input of the action it runs in. */
+export type ClaimScope<I = unknown> = $Scope<{
+  self: $DeepReadonly<ClaimLoaded>;
+  input: $DeepReadonly<I>;
   actor: any;
   context: any;
   before: $DeepReadonly<Claim> | null;
-  tx: any;
+  actions: $ReadOnlyResults<$Actions>;
+  tx: $ReadOnlyResults<$Reads>;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
-export type ClaimStoredScope = ClaimScope & { before: $DeepReadonly<Claim> };
+export type ClaimStoredScope<I = unknown> = ClaimScope<I> & { before: $DeepReadonly<Claim> };
 
 export const expressions = {
   // computed lapsed, translated (src/domain/work/claim.mesh.mx:17:20)
-  "computed.lapsed": ($s: ClaimScope) =>
+  "computed.lapsed": ($s: ClaimScope<unknown>) =>
     $.and($.eq($s.self.state, "active"), $.lte($s.self.expiresAt, $.now($s))),
   // check :currentFence that, translated (src/domain/work/claim.mesh.mx:32:16)
-  "renew.check.currentFence.that": ($s: ClaimStoredScope) => $.eq($s.input?.fence, $s.self.fence),
+  "renew.check.currentFence.that": ($s: ClaimStoredScope<RenewClaimInput>) =>
+    $.eq($s.input?.fence, $s.self.fence),
   // check :currentFence details, plain (unsupported-construct) (src/domain/work/claim.mesh.mx:35:19)
-  "renew.check.currentFence.details": ($s: ClaimStoredScope) => {
+  "renew.check.currentFence.details": ($s: ClaimStoredScope<RenewClaimInput>) => {
     return (({ input, before }) => ({
       currentFence: before.fence,
       stale: input.fence < before.fence,
     }))($s);
   },
   // check :claimActive that, translated (src/domain/work/claim.mesh.mx:38:16)
-  "renew.check.claimActive.that": ($s: ClaimStoredScope) => $.eq($s.self.state, "active"),
+  "renew.check.claimActive.that": ($s: ClaimStoredScope<RenewClaimInput>) =>
+    $.eq($s.self.state, "active"),
   // check :claimNotExpired that, translated (src/domain/work/claim.mesh.mx:43:16)
-  "renew.check.claimNotExpired.that": ($s: ClaimStoredScope) => $.gt($s.self.expiresAt, $.now($s)),
+  "renew.check.claimNotExpired.that": ($s: ClaimStoredScope<RenewClaimInput>) =>
+    $.gt($s.self.expiresAt, $.now($s)),
   // set &expiresAt, translated (src/domain/work/claim.mesh.mx:49:22)
-  "renew.step.0.set.expiresAt": ($s: ClaimStoredScope) => $s.input?.newExpiresAt,
+  "renew.step.0.set.expiresAt": ($s: ClaimStoredScope<RenewClaimInput>) => $s.input?.newExpiresAt,
   // check :currentFence that, translated (src/domain/work/claim.mesh.mx:56:16)
-  "release.check.currentFence.that": ($s: ClaimStoredScope) => $.eq($s.input?.fence, $s.self.fence),
+  "release.check.currentFence.that": ($s: ClaimStoredScope<ReleaseClaimInput>) =>
+    $.eq($s.input?.fence, $s.self.fence),
   // check :currentFence details, plain (unsupported-construct) (src/domain/work/claim.mesh.mx:59:19)
-  "release.check.currentFence.details": ($s: ClaimStoredScope) => {
+  "release.check.currentFence.details": ($s: ClaimStoredScope<ReleaseClaimInput>) => {
     return (({ input, before }) => ({
       currentFence: before.fence,
       stale: input.fence < before.fence,
     }))($s);
   },
   // check :claimActive that, translated (src/domain/work/claim.mesh.mx:62:16)
-  "release.check.claimActive.that": ($s: ClaimStoredScope) => $.eq($s.self.state, "active"),
+  "release.check.claimActive.that": ($s: ClaimStoredScope<ReleaseClaimInput>) =>
+    $.eq($s.self.state, "active"),
   // check :claimNotExpired that, translated (src/domain/work/claim.mesh.mx:67:16)
-  "release.check.claimNotExpired.that": ($s: ClaimStoredScope) =>
+  "release.check.claimNotExpired.that": ($s: ClaimStoredScope<ReleaseClaimInput>) =>
     $.gt($s.self.expiresAt, $.now($s)),
   // set &endedAt, translated (src/domain/work/claim.mesh.mx:74:20)
-  "release.step.0.set.endedAt": ($s: ClaimStoredScope) => $.now($s),
+  "release.step.0.set.endedAt": ($s: ClaimStoredScope<ReleaseClaimInput>) => $.now($s),
   // set &endReason, translated (src/domain/work/claim.mesh.mx:75:22)
-  "release.step.0.set.endReason": ($s: ClaimStoredScope) => $.coalesce($s.input?.reason, null),
+  "release.step.0.set.endReason": ($s: ClaimStoredScope<ReleaseClaimInput>) =>
+    $.coalesce($s.input?.reason, null),
   // check :claimActive that, translated (src/domain/work/claim.mesh.mx:81:16)
-  "revoke.check.claimActive.that": ($s: ClaimStoredScope) => $.eq($s.self.state, "active"),
+  "revoke.check.claimActive.that": ($s: ClaimStoredScope<RevokeClaimInput>) =>
+    $.eq($s.self.state, "active"),
   // set &endedAt, translated (src/domain/work/claim.mesh.mx:88:20)
-  "revoke.step.0.set.endedAt": ($s: ClaimStoredScope) => $.now($s),
+  "revoke.step.0.set.endedAt": ($s: ClaimStoredScope<RevokeClaimInput>) => $.now($s),
   // set &endReason, translated (src/domain/work/claim.mesh.mx:89:22)
-  "revoke.step.0.set.endReason": ($s: ClaimStoredScope) => $.coalesce($s.input?.reason, null),
+  "revoke.step.0.set.endReason": ($s: ClaimStoredScope<RevokeClaimInput>) =>
+    $.coalesce($s.input?.reason, null),
 } as const;

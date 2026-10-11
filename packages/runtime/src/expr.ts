@@ -22,6 +22,14 @@ export function scope<T extends object>(roots: T, options: { clock?: Clock | und
   return { ...roots, clock: options.clock ?? systemClock };
 }
 
+/**
+ * The same scope with some roots replaced: the functions that run after the write see the stored record as `self`.
+ * `now()` in the new scope is the instant of `from`, so one action reads one instant before and after its write.
+ */
+export function rescope<S extends { readonly clock: Clock }>(from: S, roots: object): S {
+  return { ...from, ...roots, clock: () => now(from as unknown as Scope) };
+}
+
 const isNull = (v: unknown): v is null | undefined => v === null || v === undefined;
 const key = (v: unknown): unknown => (v instanceof Date ? v.getTime() : v);
 

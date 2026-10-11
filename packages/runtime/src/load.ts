@@ -192,6 +192,7 @@ export function guarded(plan: LoadPlan, entity: string, row: Work, what = "compu
     },
   });
   guards.set(row, { plan, what, guard });
+  originals.set(guard, row);
   return guard;
 }
 
@@ -204,6 +205,8 @@ export type DeepReadonly<T> = 0 extends 1 & T ? T
           : T;
 
 const readOnlyViews = new WeakMap<object, { where: string; view: object }>();
+/** Every guard and read-only view handed to a function, mapped to the value it stands for, so `cloneValue` can copy it. */
+const originals = new WeakMap<object, object>();
 
 /**
  * A read-only view of a record (or of a value reached through one) that a plain action function is handed as `self` or
@@ -220,7 +223,7 @@ export function readOnlyRecord(row: Work, where: string): Work {
     if (value === null || typeof value !== "object") return value;
     if (value instanceof Date) {
       const copy = new Date(value.getTime());
-      return new Proxy(copy, {
+      const date = new Proxy(copy, {
         get(target, key) {
           const found = Reflect.get(target, key, target);
           if (typeof found !== "function") return found;
@@ -228,6 +231,8 @@ export function readOnlyRecord(row: Work, where: string): Work {
         },
         set: refuse, defineProperty: refuse, deleteProperty: refuse, preventExtensions: refuse, setPrototypeOf: refuse,
       });
+      originals.set(date, copy);
+      return date;
     }
     return readOnlyRecord(value as Work, where);
   };
@@ -246,7 +251,46 @@ export function readOnlyRecord(row: Work, where: string): Work {
     set: refuse, defineProperty: refuse, deleteProperty: refuse, preventExtensions: refuse, setPrototypeOf: refuse,
   });
   readOnlyViews.set(row, { where, view });
+  originals.set(view, row);
   return view;
+}
+
+/**
+ * A plain, mutable deep copy of a value a function was handed: what `structuredClone` means inside the functions of an
+ * entity file (the generated expressions file binds that name to this function). The read-only views Mesh hands out are
+ * proxies, which the global `structuredClone` refuses to copy; this copies the values they stand for, at any depth,
+ * with the same options. Anything else is copied as `structuredClone` copies it.
+ */
+export function cloneValue<T>(value: T, options?: Parameters<typeof structuredClone>[1]): Writable<T> {
+  return structuredClone(unwrapped(value, new Map()), options) as Writable<T>;
+}
+
+/** What `cloneValue` returns: the type with `DeepReadonly` taken off, since the copy is the function's own to change. */
+export type Writable<T> = 0 extends 1 & T ? T
+  : T extends Date | Readonly<Omit<Date, `set${string}`>> ? Date
+    : T extends (...args: never[]) => unknown ? T
+      : T extends readonly (infer U)[] ? Writable<U>[]
+        : T extends object ? { -readonly [K in keyof T]: Writable<T[K]> }
+          : T;
+
+/** The value without Mesh's views: arrays and plain objects are rebuilt around unwrapped members, the rest kept as is. */
+function unwrapped(value: unknown, seen: Map<object, unknown>): unknown {
+  if (value === null || typeof value !== "object") return value;
+  let original: object = value;
+  for (let next = originals.get(original); next !== undefined; next = originals.get(original)) original = next;
+  if (seen.has(original)) return seen.get(original);
+  if (Array.isArray(original)) {
+    const list: unknown[] = [];
+    seen.set(original, list);
+    for (const item of original) list.push(unwrapped(item, seen));
+    return list;
+  }
+  const prototype: unknown = Object.getPrototypeOf(original);
+  if (prototype !== Object.prototype && prototype !== null) return original;
+  const object: Record<string, unknown> = {};
+  seen.set(original, object);
+  for (const [key, member] of Object.entries(original)) object[key] = unwrapped(member, seen);
+  return object;
 }
 
 /** Load the first segment on `rows`, then the rest of the path on the rows it brought in. */

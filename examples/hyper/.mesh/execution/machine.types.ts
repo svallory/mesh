@@ -3,9 +3,9 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Collaborator } from "../identity/collaborator.types";
+import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
 
-import type { Attempt } from "./attempt.types";
+import type { Attempt, AttemptLoaded } from "./attempt.types";
 
 export type Machine = {
   id: string;
@@ -44,6 +44,12 @@ export type MachineLoadable = {
 
 /** A Machine with the relationships and computed fields named in N loaded. */
 export type MachineWith<N extends keyof MachineLoadable> = Machine & Pick<MachineLoadable, N>;
+
+/** A Machine as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
+export type MachineLoaded = Machine & {
+  firstReportedBy: CollaboratorLoaded | null;
+  attempts: AttemptLoaded[];
+};
 
 export type MachineFilter =
   | { and: readonly MachineFilter[] }

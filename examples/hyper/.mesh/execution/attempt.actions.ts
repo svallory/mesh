@@ -3,8 +3,10 @@
 // Mesh's own imports carry a `$` so that no entity name can shadow them.
 
 import {
-  parseInput,
+  castInput as $castInput,
+  noteWrite as $noteWrite,
   type BindOptions as $BindOptions,
+  type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
   type Row as $Row,
@@ -13,11 +15,37 @@ import type { Attempt, StartAttemptInput, ReadAttemptInput } from "./attempt.typ
 import { startAttemptInput, readAttemptInput } from "./attempt.validators";
 import { tables } from "../schema";
 
-export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}) {
+/**
+ * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
+ * The read actions below run the slot, then these.
+ */
+export function bindAttemptReads(layer: $DataLayer) {
+  return Object.freeze({
+    async read(input: ReadAttemptInput): Promise<Attempt[]> {
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, readAttemptInput, input);
+      return layer.transaction(async (tx) => {
+        return (await tx.select(tables.attempt, {
+          filter: parsed.filter,
+          sort: parsed.sort,
+          limit: parsed.limit,
+          offset: parsed.offset,
+        })) as Attempt[];
+      });
+    },
+  });
+}
+
+/**
+ * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
+ * `actions` and `tx`; the project's `bind` in the index passes it.
+ */
+export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, _compose?: $Composer) {
+  const $reads = bindAttemptReads(layer);
   return Object.freeze({
     async start(input: StartAttemptInput, ...[_context]: $ContextArgument): Promise<Attempt> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(startAttemptInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, startAttemptInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $now = options.clock?.() ?? new Date();
@@ -41,21 +69,14 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}) {
         };
         // data layer
         const $stored = await tx.insert(tables.attempt, $changes);
+        $noteWrite(tx);
         return $stored as Attempt;
       });
     },
 
     async read(input: ReadAttemptInput, ...[_context]: $ContextArgument): Promise<Attempt[]> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(readAttemptInput, input);
-      return layer.transaction(async (tx) => {
-        return (await tx.select(tables.attempt, {
-          filter: parsed.filter,
-          sort: parsed.sort,
-          limit: parsed.limit,
-          offset: parsed.offset,
-        })) as Attempt[];
-      });
+      // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
+      return $reads.read(input);
     },
   });
 }

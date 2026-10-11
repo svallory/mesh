@@ -6,12 +6,17 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
+  castInput as $castInput,
+  checkUnchanged as $checkUnchanged,
+  composed as $composed,
   guarded as $guarded,
-  parseInput,
+  noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
+  writeCount as $writeCount,
   type BindOptions as $BindOptions,
+  type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
   type Issue as $Issue,
@@ -31,11 +36,37 @@ import {
 } from "./machine.expressions";
 import { loadPlan as $loadPlan } from "../load";
 
-export function bindMachine(layer: $DataLayer, options: $BindOptions = {}) {
+/**
+ * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
+ * The read actions below run the slot, then these.
+ */
+export function bindMachineReads(layer: $DataLayer) {
+  return Object.freeze({
+    async read(input: ReadMachineInput): Promise<Machine[]> {
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, readMachineInput, input);
+      return layer.transaction(async (tx) => {
+        return (await tx.select(tables.machine, {
+          filter: parsed.filter,
+          sort: parsed.sort,
+          limit: parsed.limit,
+          offset: parsed.offset,
+        })) as Machine[];
+      });
+    },
+  });
+}
+
+/**
+ * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
+ * `actions` and `tx`; the project's `bind` in the index passes it.
+ */
+export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
+  const $reads = bindMachineReads(layer);
   return Object.freeze({
     async register(input: RegisterMachineInput, ...[_context]: $ContextArgument): Promise<Machine> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(registerMachineInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, registerMachineInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $now = options.clock?.() ?? new Date();
@@ -50,13 +81,14 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}) {
         };
         // data layer
         const $stored = await tx.insert(tables.machine, $changes);
+        $noteWrite(tx);
         return $stored as Machine;
       });
     },
 
     async update(input: UpdateMachineInput, ...[context]: $ContextArgument): Promise<Machine> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(updateMachineInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, updateMachineInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
@@ -68,6 +100,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}) {
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
         if (parsed.platform !== undefined) $changes.platform = $record.platform = parsed.platform;
+        const $writes = $writeCount(tx);
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Machine", $record, "action function"),
           "Machine.update",
@@ -82,10 +115,10 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}) {
               $guarded($loadPlan, "Machine", $before, "before"),
               "Machine.update",
             ) as unknown as Machine,
-            tx: undefined,
+            ...$composed(compose, tx, context, "Machine.update"),
           },
           options,
-        ) as unknown as $StoredScope;
+        ) as unknown as $StoredScope<UpdateMachineInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
         await $runCheck($issues, $s, {
@@ -114,23 +147,18 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}) {
           $changes.version = $record.version = $value;
         }
         // data layer
+        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+        await $checkUnchanged(tx, $writes, tables.machine, $key, $before, "Machine.update");
         const $stored = await tx.updateByKey(tables.machine, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Machine", $key);
+        $noteWrite(tx);
         return $stored as Machine;
       });
     },
 
     async read(input: ReadMachineInput, ...[_context]: $ContextArgument): Promise<Machine[]> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(readMachineInput, input);
-      return layer.transaction(async (tx) => {
-        return (await tx.select(tables.machine, {
-          filter: parsed.filter,
-          sort: parsed.sort,
-          limit: parsed.limit,
-          offset: parsed.offset,
-        })) as Machine[];
-      });
+      // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
+      return $reads.read(input);
     },
   });
 }

@@ -4,36 +4,49 @@
 import {
   expr as $,
   type DeepReadonly as $DeepReadonly,
+  type ReadOnlyResults as $ReadOnlyResults,
   type Scope as $Scope,
+  type SharedInput as $SharedInput,
 } from "@meshfw/runtime";
-import type { Post } from "./post.types";
+import type { Actions as $Actions, Reads as $Reads } from "../composition";
+import type {
+  Post,
+  PostLoaded,
+  ArchivePostInput,
+  PublishPostInput,
+  PublishedPostInput,
+} from "./post.types";
 
-/** What every expression of Post reads. */
-export type PostScope = $Scope<{
-  self: $DeepReadonly<Post & { author: any; comments: any[]; excerpt: any; commentCount: any }>;
-  input: any;
+/** What every expression of Post reads; `I` is the input of the action it runs in. */
+export type PostScope<I = unknown> = $Scope<{
+  self: $DeepReadonly<PostLoaded>;
+  input: $DeepReadonly<I>;
   actor: any;
   context: any;
   before: $DeepReadonly<Post> | null;
-  tx: any;
+  actions: $ReadOnlyResults<$Actions>;
+  tx: $ReadOnlyResults<$Reads>;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
-export type PostStoredScope = PostScope & { before: $DeepReadonly<Post> };
+export type PostStoredScope<I = unknown> = PostScope<I> & { before: $DeepReadonly<Post> };
 
 export const expressions = {
   // computed excerpt, plain (unsupported-construct) (src/domain/blog/post.mesh.mx:23:20)
-  "computed.excerpt": ($s: PostScope) => {
+  "computed.excerpt": ($s: PostScope<unknown>) => {
     const { self } = $s;
     return (function () {
       return (self.body ?? "").slice(0, 200);
     })();
   },
   // check :titlePresent that, translated (src/domain/blog/post.mesh.mx:34:34)
-  "publish.check.titlePresent.that": ($s: PostStoredScope) => $.gt($.length($s.self.title), 0),
+  "publish.check.titlePresent.that": ($s: PostStoredScope<PublishPostInput>) =>
+    $.gt($.length($s.self.title), 0),
   // published filter, translated (src/domain/blog/post.mesh.mx:41:14)
-  "published.filter": ($s: PostScope) => $.eq($s.self.state, "published"),
+  "published.filter": ($s: PostScope<PublishedPostInput>) => $.eq($s.self.state, "published"),
   // policy :public authorize-if, translated (src/domain/blog/post.mesh.mx:46:20)
-  "policy.public.authorize-if.0": ($s: PostScope) => $.eq($s.self.state, "published"),
+  "policy.public.authorize-if.0": ($s: PostScope<unknown>) => $.eq($s.self.state, "published"),
   // policy :owner authorize-if, translated (src/domain/blog/post.mesh.mx:48:20)
-  "policy.owner.authorize-if.0": ($s: PostScope) => $.eq($s.self.author?.id, $s.actor?.id),
+  "policy.owner.authorize-if.0": (
+    $s: PostScope<$SharedInput<PublishPostInput | ArchivePostInput>>,
+  ) => $.eq($s.self.author?.id, $s.actor?.id),
 } as const;

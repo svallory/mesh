@@ -41,3 +41,19 @@ export async function runCheck(issues: Issue[], scope: object, spec: CheckSpec):
     details: details === undefined ? null : details,
   });
 }
+
+/** The named keys of each member of `U`; an action that takes nothing has none (its input type is `{ [key: string]: never }`). */
+type KeysOf<U> = U extends unknown ? (string extends keyof U ? never : keyof U) : never;
+/** True for a member that takes `K` and requires it. */
+type RequiredIn<U, K extends PropertyKey> = U extends unknown
+  ? (string extends keyof U ? false : K extends keyof U ? ({} extends Pick<U, K> ? false : true) : false) : never;
+/** What `input[K]` holds in each member: its type there, `undefined` where the member does not take it. */
+type FieldOf<U, K extends PropertyKey> = U extends unknown ? (string extends keyof U ? undefined : K extends keyof U ? U[K] : undefined) : never;
+
+/**
+ * What `input` is in a function that runs for several actions (an `always` block, a policy), given the union of their
+ * input types: every field one of them takes, required where every one of them requires it and optional otherwise.
+ */
+export type SharedInput<U> =
+  & { [K in KeysOf<U> as false extends RequiredIn<U, K> ? never : K]: FieldOf<U, K> }
+  & { [K in KeysOf<U> as false extends RequiredIn<U, K> ? K : never]?: FieldOf<U, K> };

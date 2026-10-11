@@ -186,7 +186,11 @@ const contracts: ContractMap = {
     attributes: { value: { ...members(), required: true } },
     analyze: references(["value"]),
   }),
-  run: closed({ parents: ["do", "when"], attributes: { value: fn(true) } }),
+  run: closed({
+    parents: ["do", "when"],
+    // `after=:write` moves the step after the action's own row is written (ADR-0068 decision 2).
+    attributes: { value: fn(true), after: { type: "atom", values: ["write"] } },
+  }),
   filter: closed({ parents: ["read"], attributes: { value: fn(true) } }),
   sort: closed({ parents: ["read"], children: children("asc", "desc") }),
   policies: closed({ parents: ["entity"], children: children("policy") }),

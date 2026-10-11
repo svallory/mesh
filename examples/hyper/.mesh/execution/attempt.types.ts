@@ -3,15 +3,15 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Run } from "./run.types";
+import type { Run, RunLoaded } from "./run.types";
 
-import type { Task } from "../work/task.types";
+import type { Task, TaskLoaded } from "../work/task.types";
 
-import type { Collaborator } from "../identity/collaborator.types";
+import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
 
-import type { Machine } from "./machine.types";
+import type { Machine, MachineLoaded } from "./machine.types";
 
-import type { SessionReference } from "./sessionReference.types";
+import type { SessionReference, SessionReferenceLoaded } from "./sessionReference.types";
 
 export type Attempt = {
   id: string;
@@ -64,6 +64,16 @@ export type AttemptLoadable = {
 
 /** A Attempt with the relationships and computed fields named in N loaded. */
 export type AttemptWith<N extends keyof AttemptLoadable> = Attempt & Pick<AttemptLoadable, N>;
+
+/** A Attempt as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
+export type AttemptLoaded = Attempt & {
+  run: RunLoaded;
+  task: TaskLoaded;
+  performer: CollaboratorLoaded;
+  delegator: CollaboratorLoaded;
+  machine: MachineLoaded | null;
+  session: SessionReferenceLoaded | null;
+};
 
 export type AttemptFilter =
   | { and: readonly AttemptFilter[] }

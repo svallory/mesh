@@ -3,9 +3,9 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Task } from "./task.types";
+import type { Task, TaskLoaded } from "./task.types";
 
-import type { Collaborator } from "../identity/collaborator.types";
+import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
 
 export type Dependency = {
   id: string;
@@ -42,6 +42,13 @@ export type DependencyLoadable = {
 /** A Dependency with the relationships and computed fields named in N loaded. */
 export type DependencyWith<N extends keyof DependencyLoadable> = Dependency &
   Pick<DependencyLoadable, N>;
+
+/** A Dependency as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
+export type DependencyLoaded = Dependency & {
+  dependent: TaskLoaded;
+  prerequisite: TaskLoaded;
+  createdBy: CollaboratorLoaded;
+};
 
 export type DependencyFilter =
   | { and: readonly DependencyFilter[] }

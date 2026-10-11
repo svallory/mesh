@@ -3,9 +3,9 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Task } from "./task.types";
+import type { Task, TaskLoaded } from "./task.types";
 
-import type { Collaborator } from "../identity/collaborator.types";
+import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
 
 export type Claim = {
   id: string;
@@ -60,6 +60,13 @@ export type ClaimLoadable = {
 
 /** A Claim with the relationships and computed fields named in N loaded. */
 export type ClaimWith<N extends keyof ClaimLoadable> = Claim & Pick<ClaimLoadable, N>;
+
+/** A Claim as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
+export type ClaimLoaded = Claim & {
+  task: TaskLoaded;
+  holder: CollaboratorLoaded;
+  lapsed: boolean;
+};
 
 export type ClaimFilter =
   | { and: readonly ClaimFilter[] }

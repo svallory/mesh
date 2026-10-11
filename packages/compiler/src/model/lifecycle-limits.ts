@@ -12,19 +12,20 @@ function createOnly(entity: Entity, owner: ActionExpression["owner"]): boolean {
 }
 
 /**
- * What the action lifecycle (M5) does not run yet is a build error that names the milestone (ADR-0018), never a
- * silent skip: a function that reads `actions` or `tx` (action composition, the second half of M5), and a `validate`
- * or `do` on a read, which has no record to check or change.
+ * What the action lifecycle (M5) cannot run is a build error, never a silent skip (ADR-0018): `before` in a create,
+ * a `validate` or `do` on a read, which has no record to check or change, and a `set` or `load` in a destroy.
  */
 export function checkLifecycleLimits(document: ModelDocument, diagnostics: Diagnostic[]): void {
   for (const entity of document.entities) {
-    for (const { expression, what } of actionExpressions(entity)) {
-      const reads = expression.params.find((param) => param === "actions" || param === "tx")
-        ?? (expression.plain?.why === "uses-tx" ? "tx" : undefined);
-      if (reads)
-        diagnostics.push(error("MESH_NOT_IMPLEMENTED",
-          `${what} reads \`${reads}\`, which belongs to action composition: \`actions\` and \`tx\` arrive in the second half of M5`,
-          expression.position, "Remove it for now; an action can do its single-entity work with `check`, `set`, `when`, `load` and `run`"));
+    // A computed field is worked out when a record is loaded, outside any action, so it has no transaction to compose in.
+    for (const field of entity.computed) {
+      const body = field.body;
+      if (!body) continue;
+      const root = (["actions", "tx"] as const).find((name) => body.params.includes(name) || body.plain?.roots.includes(name));
+      if (root)
+        diagnostics.push(error("MESH_COMPUTED_COMPOSES",
+          `computed :${field.name} of :${entity.name} reads \`${root}\`, which only a function that runs inside an action has: a computed field is worked out whenever a record is loaded, outside any action`,
+          body.position, "Compute it from the record, its relationships and other computed fields; work that needs other actions belongs in a `run` step"));
     }
     // A plain function (a `run`, or a body that is not one expression) is not type-checked by the expression pass, so a create's
     // `before` parameter is caught here: a create has no stored record.
@@ -51,7 +52,7 @@ export function checkLifecycleLimits(document: ModelDocument, diagnostics: Diagn
         if (step.kind === "set" || step.kind === "load")
           diagnostics.push(error("MESH_DESTROY_STEP",
             `${where} has a \`${step.kind}\` step, and a destroy returns nothing and writes nothing, so it would do nothing`,
-            step.position, step.kind === "set" ? "Remove it. A destroy can `check` the record, and `run` work that happens before the delete" : "Remove it. A destroy returns nothing for a loaded record to appear on"));
+            step.position, step.kind === "set" ? "Remove it. A destroy can `check` the record, and `run` work before the delete or, with `after=:write`, after it" : "Remove it. A destroy returns nothing for a loaded record to appear on"));
         else if (step.kind === "when") refuseDestroyStep(step.steps, where);
       }
     };

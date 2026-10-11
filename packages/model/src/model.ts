@@ -127,7 +127,8 @@ export type Step = (
     }
   | { kind: "when"; condition: Expression; steps: Step[] }
   | { kind: "load"; members: MemberRef[] }
-  | { kind: "run"; fn: Expression }
+  /** `after: "write"` (`run [after=:write]`) runs the step after the action's own row is written, with the stored record as `self` (ADR-0068). */
+  | { kind: "run"; fn: Expression; after?: "write" }
 ) & { position: SourcePosition };
 export interface Action {
   kind: ActionType;

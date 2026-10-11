@@ -1,5 +1,5 @@
 import type { SpannedIr } from "@mxlang/core";
-import { rememberEdits, translate, type ConvertContext } from "./expression.ts";
+import { rememberDemotion, translate, type ConvertContext, type Demotion } from "./expression.ts";
 import type {
   Atom,
   Diagnostic,
@@ -234,7 +234,7 @@ export function expression(
   const translated = convert
     ? translate(n, data.span, { ...convert, source, at })
     : {};
-  const { edits, ...fields } = translated as { edits?: SourceEdit[] };
+  const { demotion, ...fields } = translated as { demotion?: Demotion };
   const result: Expression = {
     source: source.slice(data.span.sourceStart, data.span.sourceEnd),
     params,
@@ -242,7 +242,7 @@ export function expression(
     position: at(data.span.sourceStart),
     ...fields,
   };
-  if (edits) rememberEdits(result, edits);
+  if (demotion) rememberDemotion(result, demotion);
   return result;
 }
 /** The members an assignment or update writes to or through (`&a`, `&a.b`,

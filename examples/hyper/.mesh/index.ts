@@ -4,12 +4,14 @@
 // Mesh's own imports and internal names carry a `$` so that no entity or action name can collide with them.
 
 import {
+  composer as $makeComposer,
   FrameworkError as $FrameworkError,
   type BindOptions as $BindOptions,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
 } from "@meshfw/runtime";
-import { bindEvent } from "./audit/event.actions";
+import type { Actions, Reads } from "./composition";
+import { bindEvent, bindEventReads } from "./audit/event.actions";
 import type {
   Event,
   RecordEventInput,
@@ -19,7 +21,7 @@ import type {
   EventLoadable,
   EventWith,
 } from "./audit/event.types";
-import { bindAttempt } from "./execution/attempt.actions";
+import { bindAttempt, bindAttemptReads } from "./execution/attempt.actions";
 import type {
   Attempt,
   StartAttemptInput,
@@ -29,7 +31,7 @@ import type {
   AttemptLoadable,
   AttemptWith,
 } from "./execution/attempt.types";
-import { bindInvocation } from "./execution/invocation.actions";
+import { bindInvocation, bindInvocationReads } from "./execution/invocation.actions";
 import type {
   Invocation,
   RecordInvocationInput,
@@ -40,7 +42,7 @@ import type {
   InvocationLoadable,
   InvocationWith,
 } from "./execution/invocation.types";
-import { bindMachine } from "./execution/machine.actions";
+import { bindMachine, bindMachineReads } from "./execution/machine.actions";
 import type {
   Machine,
   RegisterMachineInput,
@@ -51,7 +53,7 @@ import type {
   MachineLoadable,
   MachineWith,
 } from "./execution/machine.types";
-import { bindRun } from "./execution/run.actions";
+import { bindRun, bindRunReads } from "./execution/run.actions";
 import type {
   Run,
   StartRunInput,
@@ -61,7 +63,10 @@ import type {
   RunLoadable,
   RunWith,
 } from "./execution/run.types";
-import { bindSessionReference } from "./execution/sessionReference.actions";
+import {
+  bindSessionReference,
+  bindSessionReferenceReads,
+} from "./execution/sessionReference.actions";
 import type {
   SessionReference,
   RecordSessionReferenceInput,
@@ -73,7 +78,7 @@ import type {
   SessionReferenceLoadable,
   SessionReferenceWith,
 } from "./execution/sessionReference.types";
-import { bindCollaborator } from "./identity/collaborator.actions";
+import { bindCollaborator, bindCollaboratorReads } from "./identity/collaborator.actions";
 import type {
   Collaborator,
   RegisterCollaboratorInput,
@@ -84,7 +89,7 @@ import type {
   CollaboratorLoadable,
   CollaboratorWith,
 } from "./identity/collaborator.types";
-import { bindMembership } from "./identity/membership.actions";
+import { bindMembership, bindMembershipReads } from "./identity/membership.actions";
 import type {
   Membership,
   GrantMembershipInput,
@@ -95,7 +100,7 @@ import type {
   MembershipLoadable,
   MembershipWith,
 } from "./identity/membership.types";
-import { bindWorkspace } from "./identity/workspace.actions";
+import { bindWorkspace, bindWorkspaceReads } from "./identity/workspace.actions";
 import type {
   Workspace,
   CreateWorkspaceInput,
@@ -104,7 +109,7 @@ import type {
   WorkspaceFilter,
   WorkspaceSort,
 } from "./identity/workspace.types";
-import { bindAssignment } from "./work/assignment.actions";
+import { bindAssignment, bindAssignmentReads } from "./work/assignment.actions";
 import type {
   Assignment,
   StartAssignmentInput,
@@ -114,7 +119,7 @@ import type {
   AssignmentLoadable,
   AssignmentWith,
 } from "./work/assignment.types";
-import { bindClaim } from "./work/claim.actions";
+import { bindClaim, bindClaimReads } from "./work/claim.actions";
 import type {
   Claim,
   AcquireClaimInput,
@@ -127,7 +132,7 @@ import type {
   ClaimLoadable,
   ClaimWith,
 } from "./work/claim.types";
-import { bindCompletion } from "./work/completion.actions";
+import { bindCompletion, bindCompletionReads } from "./work/completion.actions";
 import type {
   Completion,
   RecordCompletionInput,
@@ -137,7 +142,7 @@ import type {
   CompletionLoadable,
   CompletionWith,
 } from "./work/completion.types";
-import { bindDependency } from "./work/dependency.actions";
+import { bindDependency, bindDependencyReads } from "./work/dependency.actions";
 import type {
   Dependency,
   AddDependencyInput,
@@ -148,7 +153,10 @@ import type {
   DependencyLoadable,
   DependencyWith,
 } from "./work/dependency.types";
-import { bindEvidenceReference } from "./work/evidenceReference.actions";
+import {
+  bindEvidenceReference,
+  bindEvidenceReferenceReads,
+} from "./work/evidenceReference.actions";
 import type {
   EvidenceReference,
   RecordEvidenceReferenceInput,
@@ -158,7 +166,7 @@ import type {
   EvidenceReferenceLoadable,
   EvidenceReferenceWith,
 } from "./work/evidenceReference.types";
-import { bindLateResult } from "./work/lateResult.actions";
+import { bindLateResult, bindLateResultReads } from "./work/lateResult.actions";
 import type {
   LateResult,
   RecordLateResultInput,
@@ -168,7 +176,7 @@ import type {
   LateResultLoadable,
   LateResultWith,
 } from "./work/lateResult.types";
-import { bindReview } from "./work/review.actions";
+import { bindReview, bindReviewReads } from "./work/review.actions";
 import type {
   Review,
   AcceptReviewInput,
@@ -179,7 +187,7 @@ import type {
   ReviewLoadable,
   ReviewWith,
 } from "./work/review.types";
-import { bindSubmission } from "./work/submission.actions";
+import { bindSubmission, bindSubmissionReads } from "./work/submission.actions";
 import type {
   Submission,
   SubmitSubmissionInput,
@@ -189,7 +197,7 @@ import type {
   SubmissionLoadable,
   SubmissionWith,
 } from "./work/submission.types";
-import { bindTask } from "./work/task.actions";
+import { bindTask, bindTaskReads } from "./work/task.actions";
 import type {
   Task,
   CreateTaskInput,
@@ -346,6 +354,7 @@ export type {
   TaskLoadable,
   TaskWith,
 };
+export type { Actions, Reads } from "./composition";
 export {
   tables,
   assignmentTable,
@@ -388,29 +397,48 @@ export {
 } from "./load";
 
 /**
- * Every action function, bound to `layer`. Opens nothing and creates no table:
+ * Every action function, bound to `layer`, and `transaction`. Opens nothing and creates no table:
  * the caller owns the layer and closes it.
- */
-export function bind(layer: $DataLayer, options: $BindOptions = {}) {
-  const eventActions = bindEvent(layer, options);
-  const attemptActions = bindAttempt(layer, options);
-  const invocationActions = bindInvocation(layer, options);
-  const machineActions = bindMachine(layer, options);
-  const runActions = bindRun(layer, options);
-  const sessionReferenceActions = bindSessionReference(layer, options);
-  const collaboratorActions = bindCollaborator(layer, options);
-  const membershipActions = bindMembership(layer, options);
-  const workspaceActions = bindWorkspace(layer, options);
-  const assignmentActions = bindAssignment(layer, options);
-  const claimActions = bindClaim(layer, options);
-  const completionActions = bindCompletion(layer, options);
-  const dependencyActions = bindDependency(layer, options);
-  const evidenceReferenceActions = bindEvidenceReference(layer, options);
-  const lateResultActions = bindLateResult(layer, options);
-  const reviewActions = bindReview(layer, options);
-  const submissionActions = bindSubmission(layer, options);
-  const taskActions = bindTask(layer, options);
-  return Object.freeze({
+ */ export function bind(layer: $DataLayer, options: $BindOptions = {}) {
+  // `actions` and `tx` in a function of an entity file come from this composer, which holds this binding's functions.
+  const $composer = $makeComposer(layer);
+  const eventActions = bindEvent(layer, options, $composer);
+  const eventReads = bindEventReads(layer);
+  const attemptActions = bindAttempt(layer, options, $composer);
+  const attemptReads = bindAttemptReads(layer);
+  const invocationActions = bindInvocation(layer, options, $composer);
+  const invocationReads = bindInvocationReads(layer);
+  const machineActions = bindMachine(layer, options, $composer);
+  const machineReads = bindMachineReads(layer);
+  const runActions = bindRun(layer, options, $composer);
+  const runReads = bindRunReads(layer);
+  const sessionReferenceActions = bindSessionReference(layer, options, $composer);
+  const sessionReferenceReads = bindSessionReferenceReads(layer);
+  const collaboratorActions = bindCollaborator(layer, options, $composer);
+  const collaboratorReads = bindCollaboratorReads(layer);
+  const membershipActions = bindMembership(layer, options, $composer);
+  const membershipReads = bindMembershipReads(layer);
+  const workspaceActions = bindWorkspace(layer, options, $composer);
+  const workspaceReads = bindWorkspaceReads(layer);
+  const assignmentActions = bindAssignment(layer, options, $composer);
+  const assignmentReads = bindAssignmentReads(layer);
+  const claimActions = bindClaim(layer, options, $composer);
+  const claimReads = bindClaimReads(layer);
+  const completionActions = bindCompletion(layer, options, $composer);
+  const completionReads = bindCompletionReads(layer);
+  const dependencyActions = bindDependency(layer, options, $composer);
+  const dependencyReads = bindDependencyReads(layer);
+  const evidenceReferenceActions = bindEvidenceReference(layer, options, $composer);
+  const evidenceReferenceReads = bindEvidenceReferenceReads(layer);
+  const lateResultActions = bindLateResult(layer, options, $composer);
+  const lateResultReads = bindLateResultReads(layer);
+  const reviewActions = bindReview(layer, options, $composer);
+  const reviewReads = bindReviewReads(layer);
+  const submissionActions = bindSubmission(layer, options, $composer);
+  const submissionReads = bindSubmissionReads(layer);
+  const taskActions = bindTask(layer, options, $composer);
+  const taskReads = bindTaskReads(layer);
+  const $functions = Object.freeze({
     recordEvent: eventActions.record,
     readEvent: eventActions.read,
     startAttempt: attemptActions.start,
@@ -464,6 +492,43 @@ export function bind(layer: $DataLayer, options: $BindOptions = {}) {
     reopenTask: taskActions.reopen,
     readTask: taskActions.read,
   });
+  $composer.provide($functions, {
+    readEvent: eventReads.read,
+    readAttempt: attemptReads.read,
+    readInvocation: invocationReads.read,
+    readMachine: machineReads.read,
+    readRun: runReads.read,
+    readSessionReference: sessionReferenceReads.read,
+    readCollaborator: collaboratorReads.read,
+    readMembership: membershipReads.read,
+    readWorkspace: workspaceReads.read,
+    readAssignment: assignmentReads.read,
+    readClaim: claimReads.read,
+    readCompletion: completionReads.read,
+    readDependency: dependencyReads.read,
+    readEvidenceReference: evidenceReferenceReads.read,
+    readLateResult: lateResultReads.read,
+    readReview: reviewReads.read,
+    readSubmission: submissionReads.read,
+    readTask: taskReads.read,
+  });
+  return Object.freeze({
+    ...$functions,
+    /**
+     * Open a transaction, or join the running one, and call `fn` with every action function and every read bound to it.
+     * Resolves with what `fn` resolves with. A call through them that fails fails the transaction, even when `fn` catches it.
+     */
+    transaction<T>(
+      fn: (composition: { readonly actions: Actions; readonly tx: Reads }) => Promise<T>,
+      ...[context]: $ContextArgument
+    ): Promise<T> {
+      return $composer.transaction(
+        (composition) =>
+          fn(composition as unknown as { readonly actions: Actions; readonly tx: Reads }),
+        context,
+      );
+    },
+  });
 }
 
 let $defaultBinding: ReturnType<typeof bind> | undefined;
@@ -478,6 +543,7 @@ function $isDataLayer(value: unknown): value is $DataLayer {
     typeof value === "object" &&
     value !== null &&
     typeof (value as Partial<$DataLayer>).transaction === "function" &&
+    typeof (value as Partial<$DataLayer>).refuseIfFailed === "function" &&
     typeof (value as Partial<$DataLayer>).close === "function"
   );
 }
@@ -495,7 +561,7 @@ export async function connect(): Promise<void> {
   const data: unknown = config.data;
   if (!$isDataLayer(data))
     throw new $FrameworkError(
-      `The data adapter "${config.data.name}" configured in mesh.config.ts has no run-time half: connect() needs a data layer with transaction() and close()`,
+      `The data adapter "${config.data.name}" configured in mesh.config.ts has no run-time half: connect() needs a data layer with transaction(), refuseIfFailed() and close()`,
     );
   if ($defaultLayer)
     throw new $FrameworkError("connect() was called while connected; call disconnect() first");
@@ -550,6 +616,18 @@ async function $delegate<T>(
     $inFlight--;
     if ($inFlight === 0) for (const resolve of $idle.splice(0)) resolve();
   }
+}
+
+/**
+ * Open a transaction on the connected layer, or join the running one, and call `fn({ actions, tx })`: every action
+ * function and every read, bound to it, carrying `context` unless a call passes its own. Resolves with what `fn`
+ * resolves with. A call through `actions` or `tx` that fails fails the whole transaction, even when `fn` catches it.
+ */
+export async function transaction<T>(
+  fn: (composition: { readonly actions: Actions; readonly tx: Reads }) => Promise<T>,
+  ...context: $ContextArgument
+): Promise<T> {
+  return $delegate("transaction", (binding) => binding.transaction(fn, ...context));
 }
 
 export async function recordEvent(

@@ -6,13 +6,18 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
+  castInput as $castInput,
+  checkUnchanged as $checkUnchanged,
+  composed as $composed,
   guarded as $guarded,
-  parseInput,
+  noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
   rejectComputedQuery,
   runCheck as $runCheck,
   scope as $scope,
+  writeCount as $writeCount,
   type BindOptions as $BindOptions,
+  type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
   type Issue as $Issue,
@@ -40,11 +45,38 @@ import {
 } from "./claim.expressions";
 import { loadPlan as $loadPlan } from "../load";
 
-export function bindClaim(layer: $DataLayer, options: $BindOptions = {}) {
+/**
+ * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
+ * The read actions below run the slot, then these.
+ */
+export function bindClaimReads(layer: $DataLayer) {
+  return Object.freeze({
+    async read(input: ReadClaimInput): Promise<Claim[]> {
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, readClaimInput, input);
+      return layer.transaction(async (tx) => {
+        rejectComputedQuery("Claim", ["lapsed"], parsed);
+        return (await tx.select(tables.claim, {
+          filter: parsed.filter,
+          sort: parsed.sort,
+          limit: parsed.limit,
+          offset: parsed.offset,
+        })) as Claim[];
+      });
+    },
+  });
+}
+
+/**
+ * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
+ * `actions` and `tx`; the project's `bind` in the index passes it.
+ */
+export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
+  const $reads = bindClaimReads(layer);
   return Object.freeze({
     async acquire(input: AcquireClaimInput, ...[_context]: $ContextArgument): Promise<Claim> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(acquireClaimInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, acquireClaimInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         // plan: a create is one insert; nothing is read first
@@ -60,13 +92,14 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}) {
         };
         // data layer
         const $stored = await tx.insert(tables.claim, $changes);
+        $noteWrite(tx);
         return $stored as Claim;
       });
     },
 
     async renew(input: RenewClaimInput, ...[context]: $ContextArgument): Promise<Claim> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(renewClaimInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, renewClaimInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
@@ -77,6 +110,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}) {
         if ($before === undefined) throw new $NotFoundError("Claim", $key);
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
+        const $writes = $writeCount(tx);
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Claim", $record, "action function"),
           "Claim.renew",
@@ -91,10 +125,10 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}) {
               $guarded($loadPlan, "Claim", $before, "before"),
               "Claim.renew",
             ) as unknown as Claim,
-            tx: undefined,
+            ...$composed(compose, tx, context, "Claim.renew"),
           },
           options,
-        ) as unknown as $StoredScope;
+        ) as unknown as $StoredScope<RenewClaimInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
         await $runCheck($issues, $s, {
@@ -130,15 +164,18 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}) {
           $changes.expiresAt = $record.expiresAt = $value;
         }
         // data layer
+        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+        await $checkUnchanged(tx, $writes, tables.claim, $key, $before, "Claim.renew");
         const $stored = await tx.updateByKey(tables.claim, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Claim", $key);
+        $noteWrite(tx);
         return $stored as Claim;
       });
     },
 
     async release(input: ReleaseClaimInput, ...[context]: $ContextArgument): Promise<Claim> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(releaseClaimInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, releaseClaimInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
@@ -149,6 +186,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}) {
         if ($before === undefined) throw new $NotFoundError("Claim", $key);
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
+        const $writes = $writeCount(tx);
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Claim", $record, "action function"),
           "Claim.release",
@@ -163,10 +201,10 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}) {
               $guarded($loadPlan, "Claim", $before, "before"),
               "Claim.release",
             ) as unknown as Claim,
-            tx: undefined,
+            ...$composed(compose, tx, context, "Claim.release"),
           },
           options,
-        ) as unknown as $StoredScope;
+        ) as unknown as $StoredScope<ReleaseClaimInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
         await $runCheck($issues, $s, {
@@ -203,15 +241,18 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}) {
           $changes.endReason = $record.endReason = $value === undefined ? null : $value;
         }
         // data layer
+        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+        await $checkUnchanged(tx, $writes, tables.claim, $key, $before, "Claim.release");
         const $stored = await tx.updateByKey(tables.claim, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Claim", $key);
+        $noteWrite(tx);
         return $stored as Claim;
       });
     },
 
     async revoke(input: RevokeClaimInput, ...[context]: $ContextArgument): Promise<Claim> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(revokeClaimInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, revokeClaimInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
@@ -222,6 +263,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}) {
         if ($before === undefined) throw new $NotFoundError("Claim", $key);
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
+        const $writes = $writeCount(tx);
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Claim", $record, "action function"),
           "Claim.revoke",
@@ -236,10 +278,10 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}) {
               $guarded($loadPlan, "Claim", $before, "before"),
               "Claim.revoke",
             ) as unknown as Claim,
-            tx: undefined,
+            ...$composed(compose, tx, context, "Claim.revoke"),
           },
           options,
-        ) as unknown as $StoredScope;
+        ) as unknown as $StoredScope<RevokeClaimInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
         await $runCheck($issues, $s, {
@@ -261,24 +303,18 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}) {
           $changes.endReason = $record.endReason = $value === undefined ? null : $value;
         }
         // data layer
+        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+        await $checkUnchanged(tx, $writes, tables.claim, $key, $before, "Claim.revoke");
         const $stored = await tx.updateByKey(tables.claim, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Claim", $key);
+        $noteWrite(tx);
         return $stored as Claim;
       });
     },
 
     async read(input: ReadClaimInput, ...[_context]: $ContextArgument): Promise<Claim[]> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(readClaimInput, input);
-      return layer.transaction(async (tx) => {
-        rejectComputedQuery("Claim", ["lapsed"], parsed);
-        return (await tx.select(tables.claim, {
-          filter: parsed.filter,
-          sort: parsed.sort,
-          limit: parsed.limit,
-          offset: parsed.offset,
-        })) as Claim[];
-      });
+      // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
+      return $reads.read(input);
     },
   });
 }

@@ -3,9 +3,9 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Task } from "./task.types";
+import type { Task, TaskLoaded } from "./task.types";
 
-import type { Collaborator } from "../identity/collaborator.types";
+import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
 
 export type Assignment = {
   id: string;
@@ -43,6 +43,13 @@ export type AssignmentLoadable = {
 /** A Assignment with the relationships and computed fields named in N loaded. */
 export type AssignmentWith<N extends keyof AssignmentLoadable> = Assignment &
   Pick<AssignmentLoadable, N>;
+
+/** A Assignment as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
+export type AssignmentLoaded = Assignment & {
+  task: TaskLoaded;
+  assignee: CollaboratorLoaded;
+  delegator: CollaboratorLoaded;
+};
 
 export type AssignmentFilter =
   | { and: readonly AssignmentFilter[] }

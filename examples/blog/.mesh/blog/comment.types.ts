@@ -3,7 +3,7 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Post } from "./post.types";
+import type { Post, PostLoaded } from "./post.types";
 
 export type Comment = {
   id: string;
@@ -25,6 +25,11 @@ export type CommentLoadable = {
 
 /** A Comment with the relationships and computed fields named in N loaded. */
 export type CommentWith<N extends keyof CommentLoadable> = Comment & Pick<CommentLoadable, N>;
+
+/** A Comment as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
+export type CommentLoaded = Comment & {
+  post: PostLoaded;
+};
 
 export type CommentFilter =
   | { and: readonly CommentFilter[] }

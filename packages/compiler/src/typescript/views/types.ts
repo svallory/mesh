@@ -2,6 +2,7 @@ import { dirname, relative, resolve } from "node:path";
 import { attributeTypeInfo, type Entity } from "@meshfw/model";
 import { emitError } from "../emit-error.ts";
 import type { EmitInput } from "../emit.ts";
+import { hasLoader } from "./load.ts";
 import {
   baseType,
   entityInputs,
@@ -48,6 +49,10 @@ export interface LoadableDeclaration {
   readonly withName: string;
   /** One member per relationship (the related record, a list of them, or `| null`) and per computed field, in authored order; never optional. */
   readonly members: readonly TypeMember[];
+  /** The fully loaded record's name, e.g. `TaskLoaded`: what the functions of the entity file see as `self`. */
+  readonly loadedName: string;
+  /** The members of `loadedName`: as `members`, with each related record itself fully loaded (`TaskLoaded`, `MemberLoaded[]`). */
+  readonly loadedMembers: readonly TypeMember[];
 }
 
 /** `export type <filterName> = ...` and `export type <sortName> = ...`: what a caller of a read may filter and sort by. */
@@ -62,10 +67,12 @@ export interface QueryDeclaration {
   readonly sortKeys: readonly string[];
 }
 
-/** `import type { <name> } from <fromLiteral>;` */
+/** `import type { <names> } from <fromLiteral>;` */
 export interface TypeImport {
   /** The imported record type's name, PascalCase. */
   readonly name: string;
+  /** What the import names, as printed: the record type, then its fully loaded type when the file needs it, e.g. `Member, MemberLoaded`. */
+  readonly names: string;
   /** The module specifier as a quoted string literal, e.g. `"./user.types"`. */
   readonly fromLiteral: string;
 }
@@ -110,7 +117,7 @@ export function typesView({ document }: EmitInput, entity: Entity): TypesView {
     declared.add(input.name);
   }
   if (entity.relationships.length + entity.computed.length > 0)
-    for (const name of [`${recordName}Loadable`, `${recordName}With`]) {
+    for (const name of [`${recordName}Loadable`, `${recordName}With`, `${recordName}Loaded`]) {
       if (declared.has(name)) throw emitError("MESH_EMIT_NAME", `Duplicate generated type ${name}`, entity.position);
       declared.add(name);
     }
@@ -124,6 +131,8 @@ export function typesView({ document }: EmitInput, entity: Entity): TypesView {
         referenced.set(name, field.reference);
       }
   // A relationship's record type is imported when the target is another file; its own type needs no import.
+  // So is its fully loaded type, which this entity's own fully loaded type names.
+  const loadedImports = new Set<string>();
   for (const relation of entity.relationships) {
     const target = relationTarget(document, entity, relation);
     if (target.file === entity.file) continue;
@@ -131,7 +140,11 @@ export function typesView({ document }: EmitInput, entity: Entity): TypesView {
     if (declared.has(name) || (referenced.has(name) && referenced.get(name)!.file !== target.file))
       throw emitError("MESH_EMIT_NAME", `Imported type ${name} conflicts with another generated type`, entity.position);
     referenced.set(name, target);
+    if (hasLoader(target)) loadedImports.add(name);
   }
+  for (const name of loadedImports)
+    if (declared.has(`${name}Loaded`) || referenced.has(`${name}Loaded`))
+      throw emitError("MESH_EMIT_NAME", `Imported type ${name}Loaded conflicts with another generated type`, entity.position);
   const allFields = [...entity.attributes, ...inputs.flatMap((i) => i.fields.map((f) => f.attribute))];
   if (allFields.some((f) => attributeTypeInfo(f.type).tsType === "Date") && (declared.has("Date") || referenced.has("Date")))
     throw emitError("MESH_EMIT_NAME", "Generated Date would shadow the Date type", entity.position);
@@ -139,7 +152,7 @@ export function typesView({ document }: EmitInput, entity: Entity): TypesView {
   const imports = [...referenced].map(([name, target]): TypeImport => {
     let path = relative(dirname(entityPath(entity)), entityPath(target)).replace(/\\/g, "/");
     if (!path.startsWith(".")) path = `./${path}`;
-    return { name, fromLiteral: JSON.stringify(`${path}.types`) };
+    return { name, names: loadedImports.has(name) ? `${name}, ${name}Loaded` : name, fromLiteral: JSON.stringify(`${path}.types`) };
   });
   const recordMembers = entity.attributes.map((attribute) => member({ attribute, optional: false }, entity));
   for (const relation of entity.relationships)
@@ -170,20 +183,27 @@ export function relationTarget(document: EmitInput["document"], entity: Entity, 
 
 function loadableDeclaration(document: EmitInput["document"], entity: Entity, recordName: string): LoadableDeclaration | null {
   const members: TypeMember[] = [];
+  const loadedMembers: TypeMember[] = [];
+  const related = (relation: Entity["relationships"][number], target: string) =>
+    relation.kind === "has-many" ? `${target}[]` : relation.kind === "has-one" || relation.nullable ? `${target} | null` : target;
   for (const relation of entity.relationships) {
-    const target = typeName(relationTarget(document, entity, relation).name, relation.position);
-    const type = relation.kind === "has-many" ? `${target}[]`
-      : relation.kind === "has-one" || relation.nullable ? `${target} | null` : target;
-    members.push({ name: relation.name, optional: false, key: propertyName(relation.name), type });
+    const entityTarget = relationTarget(document, entity, relation);
+    const target = typeName(entityTarget.name, relation.position);
+    members.push({ name: relation.name, optional: false, key: propertyName(relation.name), type: related(relation, target) });
+    // A target with no relationship and no computed field is loaded when its record is.
+    loadedMembers.push({ name: relation.name, optional: false, key: propertyName(relation.name), type: related(relation, hasLoader(entityTarget) ? `${target}Loaded` : target) });
   }
-  for (const field of entity.computed)
-    members.push({
+  for (const field of entity.computed) {
+    const member = {
       name: field.name, optional: false, key: propertyName(field.name),
       // An enum that lists no values is a string, not `never`.
       type: field.type === "enum" && !field.values?.length ? `string${field.nullable ? " | null" : ""}` : valueType({ ...field, nullable: field.nullable ?? false }),
-    });
+    };
+    members.push(member);
+    loadedMembers.push(member);
+  }
   if (members.length === 0) return null;
-  return { name: `${recordName}Loadable`, withName: `${recordName}With`, members };
+  return { name: `${recordName}Loadable`, withName: `${recordName}With`, members, loadedName: `${recordName}Loaded`, loadedMembers };
 }
 
 /** The columns a caller of a read may name. An attribute called `and` or `or` cannot be filtered: the contract reads those keys as combinators. */

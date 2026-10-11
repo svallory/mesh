@@ -34,7 +34,7 @@ for (const kind of ["memory", "file"] as const) {
       try { await createSchema(layer, { table }); }
       catch (error) { await layer.close(); if (dir) rmSync(dir, { recursive: true, force: true }); throw error; }
       return {
-        layer: { transaction: layer.transaction, close: layer.close },
+        layer: { transaction: layer.transaction, refuseIfFailed: layer.refuseIfFailed, close: layer.close },
         table, sampleRow, secondRow, key: { id: sampleRow.id }, secondKey: { id: secondRow.id },
         changes: { title: "Changed", active: true, at: new Date("2026-02-01T00:00:00.456Z") },
       };
@@ -131,7 +131,7 @@ test("createSchema refuses data-losing statements and preserves existing rows", 
 });
 
 test("createSchema rejects a foreign layer and invalid table handles", async () => {
-  await expect(createSchema({ transaction: async () => { throw new Error("must not run"); }, close: async () => {} }, {})).rejects.toThrow("made by sqlite()");
+  await expect(createSchema({ transaction: async () => { throw new Error("must not run"); }, refuseIfFailed: () => false, close: async () => {} }, {})).rejects.toThrow("made by sqlite()");
   await withLayer(async (layer) => {
     const postgres = pgTable("wrong", { id: pgText("id") });
     for (const invalid of [{}, postgres]) {

@@ -6,12 +6,17 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
+  castInput as $castInput,
+  checkUnchanged as $checkUnchanged,
+  composed as $composed,
   guarded as $guarded,
-  parseInput,
+  noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
+  writeCount as $writeCount,
   type BindOptions as $BindOptions,
+  type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
   type Issue as $Issue,
@@ -35,14 +40,44 @@ import {
 } from "./collaborator.expressions";
 import { loadPlan as $loadPlan } from "../load";
 
-export function bindCollaborator(layer: $DataLayer, options: $BindOptions = {}) {
+/**
+ * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
+ * The read actions below run the slot, then these.
+ */
+export function bindCollaboratorReads(layer: $DataLayer) {
+  return Object.freeze({
+    async read(input: ReadCollaboratorInput): Promise<Collaborator[]> {
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, readCollaboratorInput, input);
+      return layer.transaction(async (tx) => {
+        return (await tx.select(tables.collaborator, {
+          filter: parsed.filter,
+          sort: parsed.sort,
+          limit: parsed.limit,
+          offset: parsed.offset,
+        })) as Collaborator[];
+      });
+    },
+  });
+}
+
+/**
+ * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
+ * `actions` and `tx`; the project's `bind` in the index passes it.
+ */
+export function bindCollaborator(
+  layer: $DataLayer,
+  options: $BindOptions = {},
+  compose?: $Composer,
+) {
+  const $reads = bindCollaboratorReads(layer);
   return Object.freeze({
     async register(
       input: RegisterCollaboratorInput,
       ...[_context]: $ContextArgument
     ): Promise<Collaborator> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(registerCollaboratorInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, registerCollaboratorInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         // plan: a create is one insert; nothing is read first
@@ -54,6 +89,7 @@ export function bindCollaborator(layer: $DataLayer, options: $BindOptions = {}) 
         };
         // data layer
         const $stored = await tx.insert(tables.collaborator, $changes);
+        $noteWrite(tx);
         return $stored as Collaborator;
       });
     },
@@ -62,8 +98,8 @@ export function bindCollaborator(layer: $DataLayer, options: $BindOptions = {}) 
       input: UpdateCollaboratorInput,
       ...[context]: $ContextArgument
     ): Promise<Collaborator> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(updateCollaboratorInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, updateCollaboratorInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
@@ -75,6 +111,7 @@ export function bindCollaborator(layer: $DataLayer, options: $BindOptions = {}) 
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
         if (parsed.name !== undefined) $changes.name = $record.name = parsed.name;
+        const $writes = $writeCount(tx);
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Collaborator", $record, "action function"),
           "Collaborator.update",
@@ -89,10 +126,10 @@ export function bindCollaborator(layer: $DataLayer, options: $BindOptions = {}) 
               $guarded($loadPlan, "Collaborator", $before, "before"),
               "Collaborator.update",
             ) as unknown as Collaborator,
-            tx: undefined,
+            ...$composed(compose, tx, context, "Collaborator.update"),
           },
           options,
-        ) as unknown as $StoredScope;
+        ) as unknown as $StoredScope<UpdateCollaboratorInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
         await $runCheck($issues, $s, {
@@ -128,8 +165,18 @@ export function bindCollaborator(layer: $DataLayer, options: $BindOptions = {}) 
           $changes.version = $record.version = $value;
         }
         // data layer
+        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+        await $checkUnchanged(
+          tx,
+          $writes,
+          tables.collaborator,
+          $key,
+          $before,
+          "Collaborator.update",
+        );
         const $stored = await tx.updateByKey(tables.collaborator, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Collaborator", $key);
+        $noteWrite(tx);
         return $stored as Collaborator;
       });
     },
@@ -138,16 +185,8 @@ export function bindCollaborator(layer: $DataLayer, options: $BindOptions = {}) 
       input: ReadCollaboratorInput,
       ...[_context]: $ContextArgument
     ): Promise<Collaborator[]> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(readCollaboratorInput, input);
-      return layer.transaction(async (tx) => {
-        return (await tx.select(tables.collaborator, {
-          filter: parsed.filter,
-          sort: parsed.sort,
-          limit: parsed.limit,
-          offset: parsed.offset,
-        })) as Collaborator[];
-      });
+      // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
+      return $reads.read(input);
     },
   });
 }

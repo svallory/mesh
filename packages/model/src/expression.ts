@@ -32,6 +32,7 @@ export type PlainWhy =
   | "unsupported-construct"
   | "reads-record-in-helper"
   | "uses-tx"
+  | "uses-actions"
   | "unsupported-parameter";
 
 /** Replace `source.slice(from, to)` with `text` to turn the authored function into TypeScript (`&name` to `self.name`, `:atom` to a string). */
@@ -46,6 +47,11 @@ export interface PlainReason {
   detail: string;
   position: SourcePosition;
   edits: SourceEdit[];
+  /**
+   * The scope names (`self`, `input`, `actor`, `context`, `before`, `actions`, `tx`) the authored text reads as variables that its
+   * parameters do not bind, `self` included when `&name` stands for `self.name`; the printed function takes these from the scope.
+   */
+  roots: string[];
   /** The authored text is a method (`(params) { body }`), so TypeScript needs `function` before it. */
   method?: true;
   /** The authored code uses an operator whose null rule differs from Mesh's (comparison, `!`, `&&`, `||`, arithmetic), so the build warns. */

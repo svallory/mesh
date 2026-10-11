@@ -8,6 +8,7 @@ import {
   {{ name }},
   @end
   type BindOptions as $BindOptions,
+  type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
   @each(name in runtimeTypes)
@@ -37,26 +38,28 @@ import {
 import { loadPlan as $loadPlan } from {{ loadFromLiteral }};
 @end
 
-export function {{ bindName }}(layer: $DataLayer, {{ optionsName }}: $BindOptions = {}) {
+@if(readsBindName)
+/**
+ * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
+ * The read actions below run the slot, then these.
+ */
+export function {{ readsBindName }}(layer: $DataLayer) {
   return Object.freeze({
-    @each(method in methods)
-    async {{ method.name }}(input: {{ method.inputType }}, ...[{{ method.contextName }}]: $ContextArgument): Promise<{{ method.returnType }}> {
-      @if(method.notRun)
-      // {{ method.notRun }}
-      @end
-      @if(method.unsupported)
-      await parseInput({{ method.validator }}, input);
-      throw new $FrameworkError({{ method.unsupported }});
+    @each(body in reads)
+    async {{ body.name }}(input: {{ body.inputType }}): Promise<{{ body.returnType }}> {
+      @if(body.unsupported)
+      await $castInput(layer, {{ body.validator }}, input);
+      return $failJoined(layer, new $FrameworkError({{ body.unsupported }}));
       @else
-      @if(method.usesParsed)~
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput({{ method.validator }}, input);
+      @if(body.usesParsed)~
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, {{ body.validator }}, input);
       @else~
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      await parseInput({{ method.validator }}, input);
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
+      await $castInput(layer, {{ body.validator }}, input);
       @end~
       return layer.transaction(async (tx) => {
-        @each(statement in method.statements)
+        @each(statement in body.statements)
         {{ statement }}
         @end
       });
@@ -66,10 +69,53 @@ export function {{ bindName }}(layer: $DataLayer, {{ optionsName }}: $BindOption
     @end
   });
 }
-@else
-import type { BindOptions as $BindOptions, DataLayer as $DataLayer } from "@meshfw/runtime";
 
-export function {{ bindName }}(_layer: $DataLayer, _options: $BindOptions = {}) {
+@end
+/**
+ * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
+ * `actions` and `tx`; the project's `bind` in the index passes it.
+ */
+export function {{ bindName }}(layer: $DataLayer, {{ optionsName }}: $BindOptions = {}, {{ composeName }}?: $Composer) {
+  @if(readsBindName)
+  const $reads = {{ readsBindName }}(layer);
+  @end
+  return Object.freeze({
+    @each(method in methods)
+    async {{ method.name }}(input: {{ method.inputType }}, ...[{{ method.contextName }}]: $ContextArgument): Promise<{{ method.returnType }}> {
+      @if(method.notRun)
+      // {{ method.notRun }}
+      @end
+      @if(method.readsCall)
+      // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
+      return {{ method.readsCall }};
+      @else
+      @if(method.unsupported)
+      await $castInput(layer, {{ method.validator }}, input);
+      return $failJoined(layer, new $FrameworkError({{ method.unsupported }}));
+      @else
+      @if(method.usesParsed)~
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, {{ method.validator }}, input);
+      @else~
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      await $castInput(layer, {{ method.validator }}, input);
+      @end~
+      return layer.transaction(async (tx) => {
+        @each(statement in method.statements)
+        {{ statement }}
+        @end
+      });
+      @end
+      @end
+    },
+
+    @end
+  });
+}
+@else
+import type { BindOptions as $BindOptions, Composer as $Composer, DataLayer as $DataLayer } from "@meshfw/runtime";
+
+export function {{ bindName }}(_layer: $DataLayer, _options: $BindOptions = {}, _compose?: $Composer) {
   return Object.freeze({});
 }
 @end

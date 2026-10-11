@@ -1,9 +1,10 @@
-import { dirname, posix } from "node:path";
-import type { Entity, Expression, ExprNode, Step } from "@meshfw/model";
+import { dirname, posix, relative } from "node:path";
+import type { Action, Entity, Expression, ExprNode, Step } from "@meshfw/model";
 import type { EmitInput } from "../emit.ts";
 import { mentioned, printExpression } from "../expression-printer.ts";
+import { hasLoader } from "./load.ts";
 import { entityFileComment } from "./types.ts";
-import { entitySegment, typeName } from "./inputs.ts";
+import { effectiveActions, entityInputs, entityPath, entitySegment, typeName } from "./inputs.ts";
 
 /**
  * What `expressions.ts.jig` renders for one entity: every expression in its entity file as
@@ -15,13 +16,21 @@ export interface ExpressionsView {
   readonly entityFile: string;
   /** True when some entry is a translated tree, so the file calls `$`. */
   readonly usesExpr: boolean;
+  /** True when a scope names `$SharedInput`: an `always` block or a policy covers actions with different inputs. */
+  readonly usesSharedInput: boolean;
   /** The entity's record type name, e.g. `Invoice`. */
   readonly recordName: string;
   /** The module specifier of the entity's types file as a quoted string literal. */
   readonly typesFromLiteral: string;
-  /** The scope type's exported name, e.g. `InvoiceScope`. */
+  /** What the file imports from the types file: the record type, its fully loaded type and the input types the scopes name. */
+  readonly typeImports: readonly string[];
+  /** The module specifier of the project's `composition.ts` (the `Actions` and `Reads` types) as a quoted string literal. */
+  readonly compositionFromLiteral: string;
+  /** True when an expression mentions `structuredClone`: the file then shadows it with `cloneValue`, which copies a read-only record. */
+  readonly shadowsStructuredClone: boolean;
+  /** The scope type's exported name, e.g. `InvoiceScope`; it takes the input type as its parameter. */
   readonly scopeName: string;
-  /** The scope type's definition. */
+  /** The scope type's definition, a generic over `I`, the input. */
   readonly scopeType: string;
   /** The scope of an expression that only runs on a stored record (an update or a destroy): the same, with `before` not null. */
   readonly storedScopeName: string;
@@ -35,16 +44,20 @@ export interface ExpressionEntry {
   readonly key: string;
   /** One line saying what it is and where it was written. */
   readonly comment: string;
-  /** `(s: InvoiceScope) => ...`. */
+  /** `(s: InvoiceScope<PayInvoiceInput>) => ...`. */
   readonly code: string;
 }
 
-interface Found { id: string; what: string; expression: Expression; boolean: boolean; run?: true; stored?: true }
+/** `actions`: the actions whose input the expression reads as `input`; none (a computed field) reads no input. */
+interface Found { id: string; what: string; expression: Expression; boolean: boolean; run?: true; stored?: true; actions: readonly Action[] }
 
 function collect(entity: Entity): Found[] {
   const found: Found[] = [];
   let stored = false;
-  const add = (id: string, what: string, expression: Expression, boolean: boolean, run?: true) => found.push({ id, what, expression, boolean, ...(run ? { run } : {}), ...(stored ? { stored: true as const } : {}) });
+  let actions: readonly Action[] = [];
+  const add = (id: string, what: string, expression: Expression, boolean: boolean, run?: true) => found.push({ id, what, expression, boolean, actions, ...(run ? { run } : {}), ...(stored ? { stored: true as const } : {}) });
+  const covers = (scope: { types?: readonly string[]; actions?: readonly { name: string }[] }) => effectiveActions(entity).filter((action) => action.kind !== "read"
+    && ((!scope.types && !scope.actions) || scope.types?.includes(action.kind) || scope.actions?.some((ref) => ref.name === action.name)));
   entity.computed.forEach((c) => { if (c.body) add(`computed.${c.name}`, `computed ${c.name}`, c.body, false); });
   const checks = (prefix: string, list: { label: string; that: Expression; when?: Expression; details?: Expression }[]) => {
     for (const check of list) {
@@ -68,6 +81,7 @@ function collect(entity: Entity): Found[] {
   };
   for (const action of entity.actions) {
     stored = action.kind === "update" || action.kind === "destroy";
+    actions = [action];
     if (action.filter) add(`${action.name}.filter`, `${action.name} filter`, action.filter, true);
     checks(action.name, action.validate);
     steps(action.name, action.do, "");
@@ -79,11 +93,13 @@ function collect(entity: Entity): Found[] {
       ...(block.actions ?? []).map((ref) => entity.actions.find((a) => a.name === ref.name)?.kind ?? ref.name),
     ]);
     stored = kinds.size > 0 && !kinds.has("create");
+    actions = covers(block);
     checks(`always.${i}`, block.validate);
     steps(`always.${i}`, block.do, "");
   });
   stored = false;
   for (const policy of entity.policies) {
+    actions = covers(policy);
     policy.authorizeIf.forEach((e, i) => add(`policy.${policy.name}.authorize-if.${i}`, `policy :${policy.name} authorize-if`, e, true));
     policy.forbidIf.forEach((e, i) => add(`policy.${policy.name}.forbid-if.${i}`, `policy :${policy.name} forbid-if`, e, true));
     if (policy.when) add(`policy.${policy.name}.when`, `policy :${policy.name} when`, policy.when, true);
@@ -111,17 +127,28 @@ export function hasExpressions(entity: Entity): boolean {
   return collect(entity).length > 0;
 }
 
-export function expressionsView({ config }: EmitInput, entity: Entity, generatedPath: string): ExpressionsView {
+export function expressionsView({ document }: EmitInput, entity: Entity, generatedPath: string): ExpressionsView {
   const recordName = typeName(entity.name, entity.position);
   const scopeName = `${recordName}Scope`;
   const storedScopeName = `${recordName}StoredScope`;
-  // Relationships and computed fields are loaded onto the record when an expression reads them (M7); a list is `any[]` so a callback parameter is typed.
-  const loaded = [
-    ...entity.relationships.map((r) => `${JSON.stringify(r.name)}: ${r.kind === "has-many" ? "any[]" : "any"}`),
-    ...entity.computed.map((c) => `${JSON.stringify(c.name)}: any`),
-  ];
-  const scopeType = `$Scope<{ self: $DeepReadonly<${recordName}${loaded.length ? ` & { ${loaded.join("; ")} }` : ""}>; input: any; actor: any; context: any; before: $DeepReadonly<${recordName}> | null; tx: any }>`;
+  // `self` carries every relationship and computed field, each related record the same way (M7): the action loads what
+  // a function reads before calling it, and a member that was not loaded throws instead of being undefined.
+  const selfType = hasLoader(entity) ? `${recordName}Loaded` : recordName;
+  const scopeType = `$Scope<{ self: $DeepReadonly<${selfType}>; input: $DeepReadonly<I>; actor: any; context: any; before: $DeepReadonly<${recordName}> | null; actions: $ReadOnlyResults<$Actions>; tx: $ReadOnlyResults<$Reads> }>`;
   const found = collect(entity);
+  // The input an expression reads: its action's, the fields the covered actions share for an `always` block or a policy, none for a computed field.
+  const inputs = entityInputs(entity, document);
+  const inputNames = new Map(effectiveActions(entity).map((action, index) => [action.name, inputs[index]!.name]));
+  const usedInputs = new Set<string>();
+  let shared = false;
+  const inputOf = (actions: readonly Action[]): string => {
+    const names = [...new Set(actions.map((action) => inputNames.get(action.name)!))];
+    names.forEach((name) => usedInputs.add(name));
+    if (names.length === 0) return "unknown";
+    if (names.length === 1) return names[0]!;
+    shared = true;
+    return `$SharedInput<${names.join(" | ")}>`;
+  };
   // Helper imports: the entity file's non-entity imports, rewritten relative to the generated file.
   const helperFrom = new Map<string, string>();
   for (const imported of entity.imports)
@@ -134,23 +161,30 @@ export function expressionsView({ config }: EmitInput, entity: Entity, generated
   const byModule = new Map<string, string[]>();
   for (const name of [...used].filter((n) => helperFrom.has(n)).sort()) {
     const absolute = posix.join(dirname(entity.file), helperFrom.get(name)!);
-    let relative = posix.relative(dirname(generatedPath), absolute);
-    if (!relative.startsWith(".")) relative = `./${relative}`;
-    byModule.set(relative, [...(byModule.get(relative) ?? []), name]);
+    let relativePath = posix.relative(dirname(generatedPath), absolute);
+    if (!relativePath.startsWith(".")) relativePath = `./${relativePath}`;
+    byModule.set(relativePath, [...(byModule.get(relativePath) ?? []), name]);
   }
   const entries = found.map((f) => ({
       key: JSON.stringify(f.id),
       comment: `${f.what}, ${f.expression.tree ? "translated" : `plain (${f.expression.plain!.why})`} (${entity.file}:${f.expression.position.line}:${f.expression.position.column + 1})`
         .replace(/[\r\n\u2028\u2029]/g, " "),
-      code: printExpression(f.expression, f.stored ? storedScopeName : scopeName, f.boolean, f.run === true),
+      code: printExpression(f.expression, `${f.stored ? storedScopeName : scopeName}<${inputOf(f.actions)}>`, f.boolean, f.run === true),
     }));
   const usesExpr = entries.some((e) => e.code.includes("$."));
-  void config;
+  // `structuredClone` cannot copy the read-only views a function is handed (they are proxies), so the file shadows it.
+  const shadowsStructuredClone = found.some(({ expression }) => !expression.tree && mentioned(expression, ["structuredClone"]).length > 0);
+  let composition = relative(dirname(entityPath(entity)), "composition").replace(/\\/g, "/");
+  if (!composition.startsWith(".")) composition = `./${composition}`;
   return {
     entityFile: entityFileComment(entity),
     usesExpr,
+    usesSharedInput: shared,
     recordName,
     typesFromLiteral: JSON.stringify(`./${entitySegment(entity)}.types`),
+    typeImports: [recordName, ...(selfType === recordName ? [] : [selfType]), ...[...usedInputs].sort()],
+    compositionFromLiteral: JSON.stringify(composition),
+    shadowsStructuredClone,
     scopeName,
     scopeType,
     storedScopeName,

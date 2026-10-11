@@ -4,24 +4,29 @@
 import {
   expr as $,
   type DeepReadonly as $DeepReadonly,
+  type ReadOnlyResults as $ReadOnlyResults,
   type Scope as $Scope,
 } from "@meshfw/runtime";
-import type { Dependency } from "./dependency.types";
+import type { Actions as $Actions, Reads as $Reads } from "../composition";
+import type { Dependency, DependencyLoaded, AddDependencyInput } from "./dependency.types";
 
-/** What every expression of Dependency reads. */
-export type DependencyScope = $Scope<{
-  self: $DeepReadonly<Dependency & { dependent: any; prerequisite: any; createdBy: any }>;
-  input: any;
+/** What every expression of Dependency reads; `I` is the input of the action it runs in. */
+export type DependencyScope<I = unknown> = $Scope<{
+  self: $DeepReadonly<DependencyLoaded>;
+  input: $DeepReadonly<I>;
   actor: any;
   context: any;
   before: $DeepReadonly<Dependency> | null;
-  tx: any;
+  actions: $ReadOnlyResults<$Actions>;
+  tx: $ReadOnlyResults<$Reads>;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
-export type DependencyStoredScope = DependencyScope & { before: $DeepReadonly<Dependency> };
+export type DependencyStoredScope<I = unknown> = DependencyScope<I> & {
+  before: $DeepReadonly<Dependency>;
+};
 
 export const expressions = {
   // check :distinct that, translated (src/domain/work/dependency.mesh.mx:20:16)
-  "add.check.distinct.that": ($s: DependencyScope) =>
+  "add.check.distinct.that": ($s: DependencyScope<AddDependencyInput>) =>
     $.ne($s.self.dependent?.id, $s.self.prerequisite?.id),
 } as const;

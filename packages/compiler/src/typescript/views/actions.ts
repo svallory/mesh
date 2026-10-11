@@ -46,8 +46,32 @@ export interface ActionsView {
   readonly loadFromLiteral: string | null;
   /** What `bind<Entity>` names its second parameter: `options`, or `_options` when no action reads it. */
   readonly optionsName: string;
+  /** What `bind<Entity>` names its third parameter, the binding's composer (ADR-0068): `compose`, or `_compose` when no function of the entity can reach `actions` or `tx`. */
+  readonly composeName: string;
   /** One method per effective action: declared actions in authored order, then the `auto` ones. */
   readonly methods: readonly ActionMethod[];
+  /** The exported function that binds the read bodies, e.g. `bindPostReads`, or `null` when the entity has no read action. */
+  readonly readsBindName: string | null;
+  /** One body per read action, without the authorizer slot: what `tx` calls and what the read method calls after that slot. */
+  readonly reads: readonly ReadBody[];
+}
+
+/** `async <name>(input: <inputType>): Promise<<returnType>> { ... }` inside `bind<Entity>Reads`: a read without its authorizer slot. */
+export interface ReadBody {
+  /** The method key: the action name, lowerCamel, e.g. `read`. */
+  readonly name: string;
+  /** The read's input type, e.g. `ReadPostInput`. */
+  readonly inputType: string;
+  /** The validator constant, e.g. `readPostInput`. */
+  readonly validator: string;
+  /** The resolved type, e.g. `Post[]`. */
+  readonly returnType: string;
+  /** As on `ActionMethod`: when not `null`, the body validates its input and then throws a `FrameworkError` with this message. */
+  readonly unsupported: string | null;
+  /** True when the statements read the validated input, bound to `parsed`. */
+  readonly usesParsed: boolean;
+  /** The statements inside `layer.transaction(async (tx) => { ... })`. */
+  readonly statements: readonly string[];
 }
 
 /** `async <name>(input: <inputType>, ...[context]: ContextArgument): Promise<<returnType>> { ... }` */
@@ -72,6 +96,10 @@ export interface ActionMethod {
   readonly usesParsed: boolean;
   /** The statements inside `layer.transaction(async (tx) => { ... })`, in order, each printed in full; a line comment names the phase it starts. */
   readonly statements: readonly string[];
+  /** True for a read action. */
+  readonly isRead: boolean;
+  /** For a read, the call of its body in `bind<Entity>Reads` that the method returns after the authorizer slot, e.g. `$reads.read(input)`; `null` otherwise, when `statements` hold the body. */
+  readonly readsCall: string | null;
 }
 
 /** How the actions file reaches each other generated file; fixed by the other generators' paths. */
@@ -167,15 +195,20 @@ function columnOf(entity: Entity, name: string, position: SourcePosition): { nam
 export const GLOBAL_TYPES: readonly string[] = Object.freeze(["Partial", "Promise", "ReturnType"]);
 
 /** Names that stay unprefixed in the actions file, as they were before the lifecycle added the others. */
-const PLAIN_IMPORTS: ReadonlySet<string> = new Set(["parseInput", "rejectComputedQuery"]);
+const PLAIN_IMPORTS: ReadonlySet<string> = new Set(["rejectComputedQuery"]);
 
-/** `NotFoundError as $NotFoundError`; the two functions generated code has always imported keep their names. */
+/** `NotFoundError as $NotFoundError`; `rejectComputedQuery`, which generated code has always imported, keeps its name. */
 const runtimeImport = (name: string) => (PLAIN_IMPORTS.has(name) ? name : `${name} as $${name}`);
 
-/** `set &x=({ input }) => input.x`: the one form ADR-0012 exempts from the null-to-required error; when the caller omits `x`, the step is skipped. */
-function isPassthrough(action: Action, name: string, value: Expression, nullable: boolean): boolean {
-  // For a required column only the member input `&x` is "unchanged when omitted"; an argument that happens to share the name is not.
-  if (!nullable && action.input.some((field) => field.kind === "argument" && field.name === name)) return false;
+/**
+ * `set &x=({ input }) => input.x` for the member input `&x`: the one form ADR-0012 exempts from the null-to-required
+ * error; when the caller omits `x`, the step is skipped and the stored value stays. The same holds for an action that
+ * does not take `&x` at all (an `always` block shared by actions of which only some take it). An input argument that
+ * happens to share the column's name is not the member input, nullable column or not: an omitted argument is no value,
+ * as it is under any other name.
+ */
+function isPassthrough(action: Action, name: string, value: Expression): boolean {
+  if (inputArgument(action, name)) return false;
   const tree = value.tree;
   return tree?.kind === "member" && tree.object.kind === "var" && tree.object.name === "input" && tree.name === name;
 }
@@ -201,6 +234,8 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
   const scopes = new Set<string>();
   let planUsed = false;
   let optionsUsed = false;
+  let composeUsed = false;
+  const readBodies: ReadBody[] = [];
   const methods = actions.map((action, index): ActionMethod => {
     const input = inputs[index]!;
     const name = valueName(action.name, action.position);
@@ -211,7 +246,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       inputType: input.name,
       validator,
     };
-    runtime.add("parseInput");
+    runtime.add("castInput");
     const keyRead = read("parsed", key.name);
     const keyObject = `{ ${propertyName(key.name)}: ${keyRead} }`;
     const notRun = (parts: string[]) => {
@@ -221,21 +256,28 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       return parts.length ? `Not run in this version: ${parts.join("; ")}` : null;
     };
     if (action.kind === "read") {
+      // The body goes to `bind<Entity>Reads`, which `tx` calls; the method runs the authorizer slot, then the body.
+      const body = { name, inputType: input.name, validator, returnType: `${recordName}[]` };
+      const method = { ...base, returnType: `${recordName}[]`, contextName: "_context", notRun: notRun([]), unsupported: null, usesParsed: false,
+        statements: [], isRead: true, readsCall: `$reads.${name}(input)` };
       if (action.filter || action.sort) {
         runtime.add("FrameworkError");
+        runtime.add("failJoined");
         const parts = [action.filter ? "filter" : null, action.sort ? "sort" : null].filter(Boolean).join(" and ");
-        return { ...base, returnType: `${recordName}[]`, contextName: "_context", notRun: notRun([]), usesParsed: false, unsupported: JSON.stringify(
-          `${base.functionName} cannot run in this version: its ${parts} ${action.filter && action.sort ? "are" : "is"} evaluated by the SQL evaluator, which arrives in M10`), statements: [] };
+        readBodies.push({ ...body, usesParsed: false, unsupported: JSON.stringify(
+          `${base.functionName} cannot run in this version: its ${parts} ${action.filter && action.sort ? "are" : "is"} evaluated by the SQL evaluator, which arrives in M10`), statements: [] });
+        return method;
       }
       const query = ["filter", "sort", "limit", "offset"].map((name) => `${name}: ${read("parsed", name)}`).join(", ");
       // A filter or sort by a computed field or rollup is the SQL evaluator's job (M10): say so before touching the database.
       const computed = computedColumns(entity).map((column) => JSON.stringify(column.name));
       if (computed.length) runtime.add("rejectComputedQuery");
-      return { ...base, returnType: `${recordName}[]`, contextName: "_context", notRun: notRun([]), unsupported: null, usesParsed: true,
+      readBodies.push({ ...body, unsupported: null, usesParsed: true,
         statements: [
           ...(computed.length ? [`rejectComputedQuery(${JSON.stringify(entity.name)}, [${computed.join(", ")}], parsed);`] : []),
           `return (await tx.select(${table}, { ${query} })) as ${recordName}[];`,
-        ] };
+        ] });
+      return method;
     }
 
     // ---- create, update, destroy: the lifecycle --------------------------------------------------
@@ -279,15 +321,25 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     const head: string[] = [];
     const body: string[] = [];
     const emit = (...lines: string[]) => body.push(...lines);
-    /** `$expressions["id"]($s)` */
-    const call = (expression: Expression) => { used.scope = true; usesExpressions = true; return `${idOf(expression)}($s)`; };
-    const loadFor = (paths: readonly string[]) => {
+    /** `$expressions["id"]($s)`, or with the scope after the write. */
+    const call = (expression: Expression, scope = "$s") => { used.scope = true; usesExpressions = true; return `${idOf(expression)}(${scope})`; };
+    const loadFor = (paths: readonly string[], record = "$record") => {
       if (!paths.length) return;
       used.load = true;
       used.plan = true;
       runtime.add("loadInto");
-      emit(`await $loadInto($loadPlan, ${JSON.stringify(entity.name)}, tx, $record, ${JSON.stringify(paths)}, $load);`);
+      emit(`await $loadInto($loadPlan, ${JSON.stringify(entity.name)}, tx, ${record}, ${JSON.stringify(paths)}, $load);`);
     };
+    // A `when` that holds a step after the write keeps what its condition gave, so that step runs after the write only if it held.
+    const whenFlags = new Map<Step, string>();
+    const flagWhens = (list: readonly Step[]) => {
+      for (const step of list)
+        if (step.kind === "when") {
+          if (hasAfterWrite(step.steps)) whenFlags.set(step, `$when${whenFlags.size}`);
+          flagWhens(step.steps);
+        }
+    };
+    flagWhens(steps);
 
     if (action.kind === "create") {
       // the proposed record: the accepted input over the declared defaults
@@ -386,7 +438,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
             if (isExpression(value)) {
               loadFor(value.needs ?? []);
               const nullable = column.relation ? entity.relationships.find((r) => r.name === column.relation)!.nullable : entity.attributes.find((a) => a.name === column.name)!.nullable;
-              if (isPassthrough(action, member.name, value, nullable)) {
+              if (isPassthrough(action, member.name, value)) {
                 // `set &x=({ input }) => input.x`: the caller omitted x, so the stored value stays (ADR-0012).
                 // A null for a required column is the caller's mistake, so it is an invalid input and not a database error.
                 if (nullable || !writes) emit(`{ const $value = await ${call(value)}; if ($value !== undefined) ${target(column.name)} = $value; }`);
@@ -413,34 +465,91 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
           }
         } else if (step.kind === "when") {
           loadFor(step.condition.needs ?? []);
-          emit(`if (await ${call(step.condition)}) {`);
+          const flag = whenFlags.get(step);
+          if (flag === undefined) emit(`if (await ${call(step.condition)}) {`);
+          else {
+            emit(`${flag} = Boolean(await ${call(step.condition)});`);
+            if (!hasBeforeWrite(step.steps)) continue;
+            emit(`if (${flag}) {`);
+          }
           emitSteps(step.steps);
           emit("}");
         } else if (step.kind === "load") {
           emit(step.members.map((member) => `$loads.add(${JSON.stringify(member.name)});`).join(" "));
-        } else {
+        } else if (step.after !== "write") {
           loadFor(step.fn.needs ?? []);
           emit(`await ${call(step.fn)};`);
         }
       }
     };
+    /** The `run [after=:write]` steps, in written order, under the `when` blocks they were written in. */
+    const emitAfterWrite = (list: readonly Step[], record: string) => {
+      for (const step of list) {
+        if (step.kind === "when" && whenFlags.has(step)) {
+          emit(`if (${whenFlags.get(step)}) {`);
+          emitAfterWrite(step.steps, record);
+          emit("}");
+        } else if (step.kind === "run" && step.after === "write") {
+          loadFor(step.fn.needs ?? [], record);
+          emit(`await ${call(step.fn, "$after")};`);
+        }
+      }
+    };
     if (anyLoad) emit("const $loads = new Set<string>();");
-    if (steps.length > 0) {
+    if (hasBeforeWrite(steps) || whenFlags.size > 0) {
       emit("// do: the steps run in written order, each seeing the record as the ones before it left it");
+      emit(...[...whenFlags.values()].map((flag) => `let ${flag} = false;`));
       emitSteps(steps);
     }
 
     // data layer, commit
     let returnType = writes ? recordName : "void";
+    const where = JSON.stringify(`${entity.name}.${action.name}`);
     emit("// data layer");
     if (action.kind === "create") {
       emit(`const $stored = await tx.insert(${table}, $changes);`);
     } else if (action.kind === "update") {
       for (const attribute of stamped) { used.now = true; emit(`${read("$changes", attribute.name)} = $now;`); }
+      if (used.scope) {
+        // A call a function made before this write may have changed this very row; the action must not write after deciding on a stale copy.
+        runtime.add("writeCount");
+        runtime.add("checkUnchanged");
+        head.push("const $writes = $writeCount(tx);");
+        emit("// a call made before this write must not have changed this row: the checks and steps above decided on the row as read");
+        emit(`await $checkUnchanged(tx, $writes, ${table}, ${KEY}, $before, ${where});`);
+      }
       emit(`const $stored = await tx.updateByKey(${table}, ${KEY}, $changes);`);
       emit(`if ($stored === undefined) throw new $NotFoundError(${JSON.stringify(entity.name)}, ${KEY});`);
     } else {
       emit(`if (!(await tx.deleteByKey(${table}, ${KEY}))) throw new $NotFoundError(${JSON.stringify(entity.name)}, ${KEY});`);
+    }
+    runtime.add("noteWrite");
+    emit("$noteWrite(tx);");
+    let result = "$stored";
+    // after the write: still inside the transaction, with the stored record (a destroy: the row as it was) as `self`
+    if (hasAfterWrite(steps)) {
+      runtime.add("readOnlyRecord");
+      runtime.add("rescope");
+      if (writes) {
+        runtimeTypes.add("Row");
+        emit("// after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self");
+        emit("const $written: $Row = { ...$stored };");
+      } else emit("// after the write: the steps marked after=:write run here, inside the transaction, and see the deleted row as it was as self");
+      const record = writes ? "$written" : "$record";
+      if (loader) {
+        used.plan = true;
+        runtime.add("guarded");
+        emit(`const $after = $rescope($s, { self: $readOnlyRecord($guarded($loadPlan, ${JSON.stringify(entity.name)}, ${record}, "action function"), ${where}) });`);
+      } else emit(`const $after = $rescope($s, { self: $readOnlyRecord(${record}, ${where}) });`);
+      emitAfterWrite(steps, record);
+      if (writes) {
+        // A step after the write may have changed the row through `actions`: the result is the row as the steps left it.
+        runtime.add("FrameworkError");
+        emit("// the result: the row as the steps after the write left it, read again by key");
+        emit(`const $result = await tx.selectByKey(${table}, { ${propertyName(key.name)}: ${read("$stored", key.name)} });`);
+        emit(`if ($result === undefined) throw new $FrameworkError(${JSON.stringify(`${entity.name}.${action.name}: a step after the write deleted the row this action returns`)});`);
+        result = "$result";
+      }
     }
     // The transaction commits when this callback returns. The typed result carries anything a `load` step named.
     if (writes) {
@@ -455,8 +564,8 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
           const present = loadNames.length ? `${recordName}With<${loadNames.map((name) => JSON.stringify(name)).join(" | ")}>` : recordName;
           returnType = maybeLoadNames.length ? `${present} & Partial<Pick<${recordName}Loadable, ${maybeLoadNames.map((name) => JSON.stringify(name)).join(" | ")}>>` : present;
         }
-        emit(`return (await $loadRows($loadPlan, ${JSON.stringify(entity.name)}, tx, [$stored], [...$loads], $load))[0] as unknown as ${returnType};`);
-      } else emit(`return $stored as ${recordName};`);
+        emit(`return (await $loadRows($loadPlan, ${JSON.stringify(entity.name)}, tx, [${result}], [...$loads], $load))[0] as unknown as ${returnType};`);
+      } else emit(`return ${result} as ${recordName};`);
     }
 
     // The declarations the body turned out to need, in front of it.
@@ -476,7 +585,6 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       const scopeAlias = stored ? "$StoredScope" : "$Scope";
       scopes.add(stored ? `${recordName}StoredScope as $StoredScope` : `${recordName}Scope as $Scope`);
       runtime.add("readOnlyRecord");
-      const where = JSON.stringify(`${entity.name}.${action.name}`);
       if (loader) {
         used.plan = true;
         runtime.add("guarded");
@@ -486,7 +594,10 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       const beforeView = action.kind === "create" ? "null"
         : loader ? `$readOnlyRecord($guarded($loadPlan, ${JSON.stringify(entity.name)}, $before, "before"), ${where}) as unknown as ${recordName}`
           : `$readOnlyRecord($before, ${where}) as unknown as ${recordName}`;
-      afterHead.push(`const $s = $scope({ self: $self, input: $readOnlyRecord(parsed, ${where}), actor: $actor, context: $context, before: ${beforeView}, tx: undefined }, options) as unknown as ${scopeAlias};`);
+      // `actions` and `tx` come from the binding's composer, bound to this transaction and carrying this call's context (ADR-0068).
+      runtime.add("composed");
+      composeUsed = true;
+      afterHead.push(`const $s = $scope({ self: $self, input: $readOnlyRecord(parsed, ${where}), actor: $actor, context: $context, before: ${beforeView}, ...$composed(compose, tx, context, ${where}) }, options) as unknown as ${scopeAlias}<${input.name}>;`);
     }
     if (used.plan) planUsed = true;
     if (used.options) optionsUsed = true;
@@ -495,7 +606,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     // The working copy of the record is declared only when something reads it.
     const declared = statements.findIndex((line) => line.startsWith("const $record:"));
     if (declared >= 0 && !statements.some((line, at) => at !== declared && line.includes("$record"))) statements.splice(declared, 1);
-    return { ...base, returnType, contextName: usesContext ? "context" : "_context", notRun: notRun([]), unsupported: null, usesParsed: true, statements };
+    return { ...base, returnType, contextName: usesContext ? "context" : "_context", notRun: notRun([]), unsupported: null, usesParsed: true, statements, isRead: false, readsCall: null };
   });
   return {
     entityFile: entityFileComment(entity),
@@ -512,8 +623,21 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     scopeImports: [...scopes].sort(compareCode),
     loadFromLiteral: planUsed ? fromLiteral(entity, "load") : null,
     optionsName: optionsUsed ? "options" : "_options",
+    composeName: composeUsed ? "compose" : "_compose",
     methods,
+    readsBindName: readBodies.length ? `bind${recordName}Reads` : null,
+    reads: readBodies,
   };
+}
+
+/** True when a `run [after=:write]` is among the steps, at any depth. */
+export function hasAfterWrite(steps: readonly Step[]): boolean {
+  return steps.some((step) => (step.kind === "run" && step.after === "write") || (step.kind === "when" && hasAfterWrite(step.steps)));
+}
+
+/** True when something among the steps runs before the write: a `set`, a `load`, a plain `run`, or a `when` holding one. */
+function hasBeforeWrite(steps: readonly Step[]): boolean {
+  return steps.some((step) => (step.kind === "run" ? step.after !== "write" : step.kind === "when" ? hasBeforeWrite(step.steps) : true));
 }
 
 /** True when `name` is a typed input argument of the action, which is not stored. */

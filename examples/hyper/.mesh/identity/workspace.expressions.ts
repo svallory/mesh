@@ -4,35 +4,42 @@
 import {
   expr as $,
   type DeepReadonly as $DeepReadonly,
+  type ReadOnlyResults as $ReadOnlyResults,
   type Scope as $Scope,
 } from "@meshfw/runtime";
-import type { Workspace } from "./workspace.types";
+import type { Actions as $Actions, Reads as $Reads } from "../composition";
+import type { Workspace, RenameWorkspaceInput } from "./workspace.types";
 
-/** What every expression of Workspace reads. */
-export type WorkspaceScope = $Scope<{
+/** What every expression of Workspace reads; `I` is the input of the action it runs in. */
+export type WorkspaceScope<I = unknown> = $Scope<{
   self: $DeepReadonly<Workspace>;
-  input: any;
+  input: $DeepReadonly<I>;
   actor: any;
   context: any;
   before: $DeepReadonly<Workspace> | null;
-  tx: any;
+  actions: $ReadOnlyResults<$Actions>;
+  tx: $ReadOnlyResults<$Reads>;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
-export type WorkspaceStoredScope = WorkspaceScope & { before: $DeepReadonly<Workspace> };
+export type WorkspaceStoredScope<I = unknown> = WorkspaceScope<I> & {
+  before: $DeepReadonly<Workspace>;
+};
 
 export const expressions = {
   // check :workspaceActive that, translated (src/domain/identity/workspace.mesh.mx:19:16)
-  "rename.check.workspaceActive.that": ($s: WorkspaceStoredScope) => $.eq($s.self.state, "active"),
+  "rename.check.workspaceActive.that": ($s: WorkspaceStoredScope<RenameWorkspaceInput>) =>
+    $.eq($s.self.state, "active"),
   // check :versionMatches that, translated (src/domain/identity/workspace.mesh.mx:24:16)
-  "rename.check.versionMatches.that": ($s: WorkspaceStoredScope) =>
+  "rename.check.versionMatches.that": ($s: WorkspaceStoredScope<RenameWorkspaceInput>) =>
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/identity/workspace.mesh.mx:27:19)
-  "rename.check.versionMatches.details": ($s: WorkspaceStoredScope) => {
+  "rename.check.versionMatches.details": ($s: WorkspaceStoredScope<RenameWorkspaceInput>) => {
     return (({ input, before }) => ({
       expectedVersion: input.expectedVersion,
       actualVersion: before.version,
     }))($s);
   },
   // set &version, translated (src/domain/identity/workspace.mesh.mx:31:20)
-  "rename.step.0.set.version": ($s: WorkspaceStoredScope) => $.add($s.self.version, 1),
+  "rename.step.0.set.version": ($s: WorkspaceStoredScope<RenameWorkspaceInput>) =>
+    $.add($s.self.version, 1),
 } as const;

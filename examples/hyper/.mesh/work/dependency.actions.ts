@@ -5,13 +5,16 @@
 import {
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
+  castInput as $castInput,
+  composed as $composed,
   guarded as $guarded,
   loadInto as $loadInto,
-  parseInput,
+  noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
   type BindOptions as $BindOptions,
+  type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
   type Issue as $Issue,
@@ -35,11 +38,37 @@ import {
 } from "./dependency.expressions";
 import { loadPlan as $loadPlan } from "../load";
 
-export function bindDependency(layer: $DataLayer, options: $BindOptions = {}) {
+/**
+ * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
+ * The read actions below run the slot, then these.
+ */
+export function bindDependencyReads(layer: $DataLayer) {
+  return Object.freeze({
+    async read(input: ReadDependencyInput): Promise<Dependency[]> {
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, readDependencyInput, input);
+      return layer.transaction(async (tx) => {
+        return (await tx.select(tables.dependency, {
+          filter: parsed.filter,
+          sort: parsed.sort,
+          limit: parsed.limit,
+          offset: parsed.offset,
+        })) as Dependency[];
+      });
+    },
+  });
+}
+
+/**
+ * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
+ * `actions` and `tx`; the project's `bind` in the index passes it.
+ */
+export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
+  const $reads = bindDependencyReads(layer);
   return Object.freeze({
     async add(input: AddDependencyInput, ...[context]: $ContextArgument): Promise<Dependency> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(addDependencyInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, addDependencyInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
@@ -65,10 +94,10 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}) {
             actor: $actor,
             context: $context,
             before: null,
-            tx: undefined,
+            ...$composed(compose, tx, context, "Dependency.add"),
           },
           options,
-        ) as unknown as $Scope;
+        ) as unknown as $Scope<AddDependencyInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
         await $loadInto($loadPlan, "Dependency", tx, $record, ["dependent", "prerequisite"], $load);
@@ -82,13 +111,14 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}) {
         if ($issues.length > 0) throw new $InvalidInputError($issues);
         // data layer
         const $stored = await tx.insert(tables.dependency, $changes);
+        $noteWrite(tx);
         return $stored as Dependency;
       });
     },
 
     async remove(input: RemoveDependencyInput, ...[_context]: $ContextArgument): Promise<void> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(removeDependencyInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, removeDependencyInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         // plan: nothing in the body can see the record, so the row is deleted without being read
@@ -96,20 +126,13 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}) {
         // data layer
         if (!(await tx.deleteByKey(tables.dependency, $key)))
           throw new $NotFoundError("Dependency", $key);
+        $noteWrite(tx);
       });
     },
 
     async read(input: ReadDependencyInput, ...[_context]: $ContextArgument): Promise<Dependency[]> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(readDependencyInput, input);
-      return layer.transaction(async (tx) => {
-        return (await tx.select(tables.dependency, {
-          filter: parsed.filter,
-          sort: parsed.sort,
-          limit: parsed.limit,
-          offset: parsed.offset,
-        })) as Dependency[];
-      });
+      // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
+      return $reads.read(input);
     },
   });
 }

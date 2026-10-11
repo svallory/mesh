@@ -3,9 +3,9 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Task } from "./task.types";
+import type { Task, TaskLoaded } from "./task.types";
 
-import type { Collaborator } from "../identity/collaborator.types";
+import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
 
 export type LateResult = {
   id: string;
@@ -41,6 +41,12 @@ export type LateResultLoadable = {
 /** A LateResult with the relationships and computed fields named in N loaded. */
 export type LateResultWith<N extends keyof LateResultLoadable> = LateResult &
   Pick<LateResultLoadable, N>;
+
+/** A LateResult as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
+export type LateResultLoaded = LateResult & {
+  task: TaskLoaded;
+  submitter: CollaboratorLoaded;
+};
 
 export type LateResultFilter =
   | { and: readonly LateResultFilter[] }

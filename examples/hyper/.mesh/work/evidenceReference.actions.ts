@@ -3,8 +3,10 @@
 // Mesh's own imports carry a `$` so that no entity name can shadow them.
 
 import {
-  parseInput,
+  castInput as $castInput,
+  noteWrite as $noteWrite,
   type BindOptions as $BindOptions,
+  type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
   type Row as $Row,
@@ -20,14 +22,44 @@ import {
 } from "./evidenceReference.validators";
 import { tables } from "../schema";
 
-export function bindEvidenceReference(layer: $DataLayer, options: $BindOptions = {}) {
+/**
+ * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
+ * The read actions below run the slot, then these.
+ */
+export function bindEvidenceReferenceReads(layer: $DataLayer) {
+  return Object.freeze({
+    async read(input: ReadEvidenceReferenceInput): Promise<EvidenceReference[]> {
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, readEvidenceReferenceInput, input);
+      return layer.transaction(async (tx) => {
+        return (await tx.select(tables.evidenceReference, {
+          filter: parsed.filter,
+          sort: parsed.sort,
+          limit: parsed.limit,
+          offset: parsed.offset,
+        })) as EvidenceReference[];
+      });
+    },
+  });
+}
+
+/**
+ * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
+ * `actions` and `tx`; the project's `bind` in the index passes it.
+ */
+export function bindEvidenceReference(
+  layer: $DataLayer,
+  options: $BindOptions = {},
+  _compose?: $Composer,
+) {
+  const $reads = bindEvidenceReferenceReads(layer);
   return Object.freeze({
     async record(
       input: RecordEvidenceReferenceInput,
       ...[_context]: $ContextArgument
     ): Promise<EvidenceReference> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(recordEvidenceReferenceInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, recordEvidenceReferenceInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $now = options.clock?.() ?? new Date();
@@ -42,6 +74,7 @@ export function bindEvidenceReference(layer: $DataLayer, options: $BindOptions =
         };
         // data layer
         const $stored = await tx.insert(tables.evidenceReference, $changes);
+        $noteWrite(tx);
         return $stored as EvidenceReference;
       });
     },
@@ -50,16 +83,8 @@ export function bindEvidenceReference(layer: $DataLayer, options: $BindOptions =
       input: ReadEvidenceReferenceInput,
       ...[_context]: $ContextArgument
     ): Promise<EvidenceReference[]> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(readEvidenceReferenceInput, input);
-      return layer.transaction(async (tx) => {
-        return (await tx.select(tables.evidenceReference, {
-          filter: parsed.filter,
-          sort: parsed.sort,
-          limit: parsed.limit,
-          offset: parsed.offset,
-        })) as EvidenceReference[];
-      });
+      // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
+      return $reads.read(input);
     },
   });
 }

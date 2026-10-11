@@ -6,7 +6,7 @@ import type { Comparison as $Comparison } from "@meshfw/runtime";
 
 @end
 @each(type in imports)
-import type { {{ type.name }} } from {{ type.fromLiteral }};
+import type { {{ type.names }} } from {{ type.fromLiteral }};
 
 @end
 export type {{ record.name }} = {
@@ -40,6 +40,13 @@ export type {{ loadable.name }} = {
 
 /** A {{ record.name }} with the relationships and computed fields named in N loaded. */
 export type {{ loadable.withName }}<N extends keyof {{ loadable.name }}> = {{ record.name }} & Pick<{{ loadable.name }}, N>;
+
+/** A {{ record.name }} as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
+export type {{ loadable.loadedName }} = {{ record.name }} & {
+  @each(member in loadable.loadedMembers)
+  {{ member.key }}: {{ member.type }};
+  @end
+};
 
 @end
 @if(query)

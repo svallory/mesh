@@ -6,15 +6,20 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
+  castInput as $castInput,
+  checkUnchanged as $checkUnchanged,
+  composed as $composed,
   guarded as $guarded,
   loadInto as $loadInto,
-  parseInput,
+  noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
   rejectComputedQuery,
   runCheck as $runCheck,
   scope as $scope,
   unloadFrom as $unloadFrom,
+  writeCount as $writeCount,
   type BindOptions as $BindOptions,
+  type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
   type Issue as $Issue,
@@ -45,11 +50,51 @@ import {
 } from "./task.expressions";
 import { loadPlan as $loadPlan } from "../load";
 
-export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
+/**
+ * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
+ * The read actions below run the slot, then these.
+ */
+export function bindTaskReads(layer: $DataLayer) {
+  return Object.freeze({
+    async read(input: ReadTaskInput): Promise<Task[]> {
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, readTaskInput, input);
+      return layer.transaction(async (tx) => {
+        rejectComputedQuery(
+          "Task",
+          [
+            "childrenSettled",
+            "claimed",
+            "lapsedClaim",
+            "inReview",
+            "assigned",
+            "blocked",
+            "maxFence",
+            "derivedState",
+          ],
+          parsed,
+        );
+        return (await tx.select(tables.task, {
+          filter: parsed.filter,
+          sort: parsed.sort,
+          limit: parsed.limit,
+          offset: parsed.offset,
+        })) as Task[];
+      });
+    },
+  });
+}
+
+/**
+ * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
+ * `actions` and `tx`; the project's `bind` in the index passes it.
+ */
+export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
+  const $reads = bindTaskReads(layer);
   return Object.freeze({
     async create(input: CreateTaskInput, ...[context]: $ContextArgument): Promise<Task> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(createTaskInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, createTaskInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
@@ -79,10 +124,10 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
             actor: $actor,
             context: $context,
             before: null,
-            tx: undefined,
+            ...$composed(compose, tx, context, "Task.create"),
           },
           options,
-        ) as unknown as $Scope;
+        ) as unknown as $Scope<CreateTaskInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
         await $loadInto($loadPlan, "Task", tx, $record, ["parent"], $load);
@@ -96,13 +141,14 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
         if ($issues.length > 0) throw new $InvalidInputError($issues);
         // data layer
         const $stored = await tx.insert(tables.task, $changes);
+        $noteWrite(tx);
         return $stored as Task;
       });
     },
 
     async update(input: UpdateTaskInput, ...[context]: $ContextArgument): Promise<Task> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(updateTaskInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, updateTaskInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
@@ -115,6 +161,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
         const $record: $Row = { ...$before };
         if (parsed.title !== undefined) $changes.title = $record.title = parsed.title;
         if (parsed.intent !== undefined) $changes.intent = $record.intent = parsed.intent;
+        const $writes = $writeCount(tx);
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Task", $record, "action function"),
           "Task.update",
@@ -129,10 +176,10 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
               $guarded($loadPlan, "Task", $before, "before"),
               "Task.update",
             ) as unknown as Task,
-            tx: undefined,
+            ...$composed(compose, tx, context, "Task.update"),
           },
           options,
-        ) as unknown as $StoredScope;
+        ) as unknown as $StoredScope<UpdateTaskInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
         await $runCheck($issues, $s, {
@@ -168,15 +215,18 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
           $changes.version = $record.version = $value;
         }
         // data layer
+        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+        await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.update");
         const $stored = await tx.updateByKey(tables.task, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Task", $key);
+        $noteWrite(tx);
         return $stored as Task;
       });
     },
 
     async setPriority(input: SetPriorityTaskInput, ...[context]: $ContextArgument): Promise<Task> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(setPriorityTaskInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, setPriorityTaskInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
@@ -188,6 +238,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
         if (parsed.priority !== undefined) $changes.priority = $record.priority = parsed.priority;
+        const $writes = $writeCount(tx);
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Task", $record, "action function"),
           "Task.setPriority",
@@ -202,10 +253,10 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
               $guarded($loadPlan, "Task", $before, "before"),
               "Task.setPriority",
             ) as unknown as Task,
-            tx: undefined,
+            ...$composed(compose, tx, context, "Task.setPriority"),
           },
           options,
-        ) as unknown as $StoredScope;
+        ) as unknown as $StoredScope<SetPriorityTaskInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
         await $runCheck($issues, $s, {
@@ -234,15 +285,18 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
           $changes.version = $record.version = $value;
         }
         // data layer
+        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+        await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.setPriority");
         const $stored = await tx.updateByKey(tables.task, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Task", $key);
+        $noteWrite(tx);
         return $stored as Task;
       });
     },
 
     async move(input: MoveTaskInput, ...[context]: $ContextArgument): Promise<Task> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(moveTaskInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, moveTaskInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
@@ -254,6 +308,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
         if (parsed.parent !== undefined) $changes.parentId = $record.parentId = parsed.parent;
+        const $writes = $writeCount(tx);
         const $load = { actor: $actor, context: $context, clock: options.clock };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Task", $record, "action function"),
@@ -269,10 +324,10 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
               $guarded($loadPlan, "Task", $before, "before"),
               "Task.move",
             ) as unknown as Task,
-            tx: undefined,
+            ...$composed(compose, tx, context, "Task.move"),
           },
           options,
-        ) as unknown as $StoredScope;
+        ) as unknown as $StoredScope<MoveTaskInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
         await $loadInto($loadPlan, "Task", tx, $record, ["claimed", "parent"], $load);
@@ -317,15 +372,18 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
         }
         $unloadFrom($loadPlan, "Task", $record);
         // data layer
+        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+        await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.move");
         const $stored = await tx.updateByKey(tables.task, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Task", $key);
+        $noteWrite(tx);
         return $stored as Task;
       });
     },
 
     async reopen(input: ReopenTaskInput, ...[context]: $ContextArgument): Promise<Task> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(reopenTaskInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, reopenTaskInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
@@ -336,6 +394,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
         if ($before === undefined) throw new $NotFoundError("Task", $key);
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
+        const $writes = $writeCount(tx);
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Task", $record, "action function"),
           "Task.reopen",
@@ -350,10 +409,10 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
               $guarded($loadPlan, "Task", $before, "before"),
               "Task.reopen",
             ) as unknown as Task,
-            tx: undefined,
+            ...$composed(compose, tx, context, "Task.reopen"),
           },
           options,
-        ) as unknown as $StoredScope;
+        ) as unknown as $StoredScope<ReopenTaskInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
         await $runCheck($issues, $s, {
@@ -383,37 +442,18 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}) {
           $changes.version = $record.version = $value;
         }
         // data layer
+        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+        await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.reopen");
         const $stored = await tx.updateByKey(tables.task, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Task", $key);
+        $noteWrite(tx);
         return $stored as Task;
       });
     },
 
     async read(input: ReadTaskInput, ...[_context]: $ContextArgument): Promise<Task[]> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(readTaskInput, input);
-      return layer.transaction(async (tx) => {
-        rejectComputedQuery(
-          "Task",
-          [
-            "childrenSettled",
-            "claimed",
-            "lapsedClaim",
-            "inReview",
-            "assigned",
-            "blocked",
-            "maxFence",
-            "derivedState",
-          ],
-          parsed,
-        );
-        return (await tx.select(tables.task, {
-          filter: parsed.filter,
-          sort: parsed.sort,
-          limit: parsed.limit,
-          offset: parsed.offset,
-        })) as Task[];
-      });
+      // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
+      return $reads.read(input);
     },
   });
 }

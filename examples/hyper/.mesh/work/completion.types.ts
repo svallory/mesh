@@ -3,11 +3,11 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Task } from "./task.types";
+import type { Task, TaskLoaded } from "./task.types";
 
-import type { Submission } from "./submission.types";
+import type { Submission, SubmissionLoaded } from "./submission.types";
 
-import type { Collaborator } from "../identity/collaborator.types";
+import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
 
 export type Completion = {
   id: string;
@@ -42,6 +42,13 @@ export type CompletionLoadable = {
 /** A Completion with the relationships and computed fields named in N loaded. */
 export type CompletionWith<N extends keyof CompletionLoadable> = Completion &
   Pick<CompletionLoadable, N>;
+
+/** A Completion as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
+export type CompletionLoaded = Completion & {
+  task: TaskLoaded;
+  submission: SubmissionLoaded | null;
+  completedBy: CollaboratorLoaded;
+};
 
 export type CompletionFilter =
   | { and: readonly CompletionFilter[] }

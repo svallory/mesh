@@ -4,16 +4,20 @@
 // Mesh's own imports and internal names carry a `$` so that no entity or action name can collide with them.
 
 import {
+  composer as $makeComposer,
   FrameworkError as $FrameworkError,
   type BindOptions as $BindOptions,
-  @if(hasFunctions)~
   type ContextArgument as $ContextArgument,
-  @end~
   type DataLayer as $DataLayer,
 } from "@meshfw/runtime";
+import type { Actions, Reads } from "./composition";
 @each(entity in entities)
 @if(entity.hasActions)~
+@if(entity.readsBindName)~
+import { {{ entity.bindName }}, {{ entity.readsBindName }} } from {{ entity.actionsFromLiteral }};
+@else~
 import { {{ entity.bindName }} } from {{ entity.actionsFromLiteral }};
+@end~
 @end~
 import type {
   @each(name in entity.types)
@@ -27,6 +31,7 @@ export type {
   {{ name }},
   @end
 };
+export type { Actions, Reads } from "./composition";
 export {
   @each(name in schemaExports)
   {{ name }},
@@ -41,27 +46,45 @@ export {
 @end
 
 /**
- * Every action function, bound to `layer`. Opens nothing and creates no table:
+ * Every action function, bound to `layer`, and `transaction`. Opens nothing and creates no table:
  * the caller owns the layer and closes it.
  */
-@if(hasFunctions)
+@if(hasFunctions)~
 export function bind(layer: $DataLayer, options: $BindOptions = {}) {
+@else~
+export function bind(layer: $DataLayer, _options: $BindOptions = {}) {
+@end~
+  // `actions` and `tx` in a function of an entity file come from this composer, which holds this binding's functions.
+  const $composer = $makeComposer(layer);
   @each(entity in entities)
   @if(entity.hasActions)~
-  const {{ entity.local }} = {{ entity.bindName }}(layer, options);
+  const {{ entity.local }} = {{ entity.bindName }}(layer, options, $composer);
+  @end~
+  @if(entity.readsBindName)~
+  const {{ entity.readsLocal }} = {{ entity.readsBindName }}(layer);
   @end~
   @end
-  return Object.freeze({
+  const $functions = Object.freeze({
     @each(fn in functions)
     {{ fn.name }}: {{ fn.method }},
     @end
   });
+  $composer.provide($functions, {
+    @each(read in reads)
+    {{ read.name }}: {{ read.method }},
+    @end
+  });
+  return Object.freeze({
+    ...$functions,
+    /**
+     * Open a transaction, or join the running one, and call `fn` with every action function and every read bound to it.
+     * Resolves with what `fn` resolves with. A call through them that fails fails the transaction, even when `fn` catches it.
+     */
+    transaction<T>(fn: (composition: { readonly actions: Actions; readonly tx: Reads }) => Promise<T>, ...[context]: $ContextArgument): Promise<T> {
+      return $composer.transaction((composition) => fn(composition as unknown as { readonly actions: Actions; readonly tx: Reads }), context);
+    },
+  });
 }
-@else
-export function bind(_layer: $DataLayer, _options: $BindOptions = {}) {
-  return Object.freeze({});
-}
-@end
 
 let $defaultBinding: ReturnType<typeof bind> | undefined;
 let $defaultLayer: $DataLayer | undefined;
@@ -73,6 +96,7 @@ const $idle: (() => void)[] = [];
 function $isDataLayer(value: unknown): value is $DataLayer {
   return typeof value === "object" && value !== null
     && typeof (value as Partial<$DataLayer>).transaction === "function"
+    && typeof (value as Partial<$DataLayer>).refuseIfFailed === "function"
     && typeof (value as Partial<$DataLayer>).close === "function";
 }
 
@@ -88,7 +112,7 @@ export async function connect(): Promise<void> {
   const data: unknown = config.data;
   if (!$isDataLayer(data))
     throw new $FrameworkError(
-      `The data adapter "${config.data.name}" configured in mesh.config.ts has no run-time half: connect() needs a data layer with transaction() and close()`,
+      `The data adapter "${config.data.name}" configured in mesh.config.ts has no run-time half: connect() needs a data layer with transaction(), refuseIfFailed() and close()`,
     );
   if ($defaultLayer) throw new $FrameworkError("connect() was called while connected; call disconnect() first");
   $defaultBinding = bind(data);
@@ -126,7 +150,6 @@ export async function disconnect(): Promise<void> {
   }
 }
 
-@if(hasFunctions)
 /** Run one call on the default binding, counted so that `disconnect()` waits for it. */
 async function $delegate<T>(name: string, call: (binding: ReturnType<typeof bind>) => Promise<T>): Promise<T> {
   if (!$defaultBinding)
@@ -140,7 +163,15 @@ async function $delegate<T>(name: string, call: (binding: ReturnType<typeof bind
   }
 }
 
-@end
+/**
+ * Open a transaction on the connected layer, or join the running one, and call `fn({ actions, tx })`: every action
+ * function and every read, bound to it, carrying `context` unless a call passes its own. Resolves with what `fn`
+ * resolves with. A call through `actions` or `tx` that fails fails the whole transaction, even when `fn` catches it.
+ */
+export async function transaction<T>(fn: (composition: { readonly actions: Actions; readonly tx: Reads }) => Promise<T>, ...context: $ContextArgument): Promise<T> {
+  return $delegate("transaction", (binding) => binding.transaction(fn, ...context));
+}
+
 @each(fn in functions)
 export async function {{ fn.name }}(input: {{ fn.inputType }}, ...context: $ContextArgument): Promise<{{ fn.returnType }}> {
   return $delegate({{ fn.nameLiteral }}, (binding) => binding.{{ fn.name }}(input, ...context));
