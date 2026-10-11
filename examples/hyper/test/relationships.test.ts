@@ -139,11 +139,11 @@ describe("acceptance 2: Collaborator.memberships follows collaboratorId, not gra
   });
 
   test("the model records the key", () => {
-    const model = JSON.parse(readFileSync(resolve(root, ".mesh/model.json"), "utf8")) as { entities: { name: string; relationships: { name: string; via?: string }[] }[] };
+    const model = JSON.parse(readFileSync(resolve(root, ".mesh/model.json"), "utf8")) as { entities: { name: string; relationships: { name: string; inverse?: string }[] }[] };
     const relationships = (name: string) => model.entities.find((entity) => entity.name === name)!.relationships;
-    expect(relationships("Collaborator").find((r) => r.name === "memberships")!.via).toBe("collaborator");
-    expect(relationships("Task").filter((r) => r.name === "dependencies" || r.name === "dependents").map((r) => [r.name, r.via])).toEqual([["dependencies", "dependent"], ["dependents", "prerequisite"]]);
-    expect(relationships("Task").find((r) => r.name === "children")!.via).toBe("parent");
+    expect(relationships("Collaborator").find((r) => r.name === "memberships")!.inverse).toBe("collaborator");
+    expect(relationships("Task").filter((r) => r.name === "dependencies" || r.name === "dependents").map((r) => [r.name, r.inverse])).toEqual([["dependencies", "dependent"], ["dependents", "prerequisite"]]);
+    expect(relationships("Task").find((r) => r.name === "children")!.inverse).toBe("parent");
   });
 
   test("Task.dependencies and Task.dependents follow the two keys Dependency holds to Task", async () => {

@@ -63,7 +63,7 @@ test('home line count and the planted typo position match its file', () => {
 
 test('cards name real sections and the same groups; the headline keeps its two blocks', async () => {
   const { FLOW_SECTIONS } = await import('../plugins/mesh-home.js');
-  const boxes = [...page.matchAll(/<div class="mh-box" data-box="([a-z]+)" data-from="([a-z ]+)"(?: data-via="[^"]*")? data-group="([^"]+)"/g)];
+  const boxes = [...page.matchAll(/<div class="mh-box" data-box="([a-z]+)" data-from="([a-z ]+)"(?: data-inverse="[^"]*")? data-group="([^"]+)"/g)];
   expect(boxes.map((m) => m[1])).toEqual(['types', 'functions', 'validation', 'authorization', 'table', 'migrations', 'rules', 'model']);
   for (const [, , from] of boxes) for (const part of from.split(' ')) expect(FLOW_SECTIONS).toContain(part);
   expect([...new Set(boxes.map((m) => m[3]))]).toEqual(['Your app', 'The database', 'For your tools']);

@@ -22,8 +22,8 @@ entity :Task table="tasks"
     belongs-to :parent entity=Task nullable
     belongs-to :creator entity=Collaborator
     has-many :children entity=Task
-    has-many :dependencies entity=Dependency via=:dependent
-    has-many :dependents entity=Dependency via=:prerequisite
+    has-many :dependencies entity=Dependency inverse=:dependent
+    has-many :dependents entity=Dependency inverse=:prerequisite
     has-many :assignments entity=Assignment
     has-many :claims entity=Claim
     has-many :submissions entity=Submission

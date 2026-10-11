@@ -36,7 +36,7 @@ entity :Post table="posts"
   relationships
     belongs-to :author entity=Author
     belongs-to :replyTo entity=Post nullable
-    has-many :replies entity=Post via=:replyTo
+    has-many :replies entity=Post inverse=:replyTo
   actions auto=[:read]
 `;
 const lonely = "entity :Lonely table=\"lonelies\"\n  attributes\n    uuid :id primary-key\n";

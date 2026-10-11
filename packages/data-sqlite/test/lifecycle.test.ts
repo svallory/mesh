@@ -16,7 +16,7 @@ entity :Member table="members"
     string :name min=1
     enum :plan values=[:free, :paid] default=:free
   relationships
-    has-many :tasks entity=Task via=:owner
+    has-many :tasks entity=Task inverse=:owner
   computed
     count :taskCount of="tasks"
   actions auto=[:read]

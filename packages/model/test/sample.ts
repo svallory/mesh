@@ -138,7 +138,7 @@ export const postDocument: ModelDocument = {
           name: "lines",
           entity: { identifier: "InvoiceLine", from: "./invoice-line.mesh.mx" },
           nullable: false,
-          via: "invoice",
+          inverse: "invoice",
           position: at("has-many"),
         },
         {
@@ -146,7 +146,7 @@ export const postDocument: ModelDocument = {
           name: "payment",
           entity: { identifier: "Payment", from: "./payment.mesh.mx" },
           nullable: false,
-          via: "invoice",
+          inverse: "invoice",
           position: at("has-one"),
         },
       ],

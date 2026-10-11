@@ -16,12 +16,12 @@ const task = `entity :Task
     belongs-to :parent entity=Task nullable
     has-many :children entity=Task
 `;
-const collaborator = (via = "") => `import { Membership } from "./membership.mesh.mx"
+const collaborator = (inverse = "") => `import { Membership } from "./membership.mesh.mx"
 entity :Collaborator
   attributes
     uuid :id primary-key
   relationships
-    has-many :memberships entity=Membership${via}
+    has-many :memberships entity=Membership${inverse}
 `;
 const membership = (extra = "") => `import { Collaborator } from "./collaborator.mesh.mx"
 entity :Membership
@@ -39,14 +39,14 @@ describe("self-reference (acceptance 1)", () => {
     expect(result.diagnostics).toEqual([]);
     const [parent, children] = entityOf(result, "Task").relationships;
     expect(parent).toMatchObject({ kind: "belongs-to", entity: { identifier: "Task", from: "./task.mesh.mx" }, keyColumn: "parentId", keyType: "uuid" });
-    expect(children).toMatchObject({ kind: "has-many", entity: { identifier: "Task", from: "./task.mesh.mx" }, via: "parent" });
+    expect(children).toMatchObject({ kind: "has-many", entity: { identifier: "Task", from: "./task.mesh.mx" }, inverse: "parent" });
     expect(entityOf(result, "Task").imports).toEqual([]);
   });
 
   test("a self-import is still accepted and means the same", () => {
     const result = build({ "task.mesh.mx": `import { Task } from "./task.mesh.mx"\n${task}` });
     expect(result.diagnostics).toEqual([]);
-    expect(entityOf(result, "Task").relationships[1]).toMatchObject({ via: "parent" });
+    expect(entityOf(result, "Task").relationships[1]).toMatchObject({ inverse: "parent" });
   });
 
   test("a self-cycle (a record that is its own parent) is data, not a build error", () => {
@@ -59,13 +59,13 @@ describe("self-reference (acceptance 1)", () => {
     expect(result.diagnostics).toEqual([expect.objectContaining({ code: "MESH_UNKNOWN_ENTITY", message: "Tsak is not an imported entity. Did you mean Task?", position: expect.objectContaining({ line: 5 }) })]);
   });
 
-  test("two belongs-to to the same type make a has-many ask for via", () => {
+  test("two belongs-to to the same type make a has-many ask for inverse", () => {
     const source = task.replace("    has-many", "    belongs-to :corrects entity=Task nullable\n    has-many");
     const result = build({ "task.mesh.mx": source });
-    expect(result.diagnostics).toEqual([expect.objectContaining({ code: "MESH_VIA_REQUIRED", message: expect.stringContaining(":parent, :corrects") })]);
-    const fixed = build({ "task.mesh.mx": source.replace("has-many :children entity=Task", "has-many :children entity=Task via=:parent") });
+    expect(result.diagnostics).toEqual([expect.objectContaining({ code: "MESH_INVERSE_REQUIRED", message: expect.stringContaining(":parent, :corrects") })]);
+    const fixed = build({ "task.mesh.mx": source.replace("has-many :children entity=Task", "has-many :children entity=Task inverse=:parent") });
     expect(fixed.diagnostics).toEqual([]);
-    expect(entityOf(fixed, "Task").relationships[2]).toMatchObject({ via: "parent" });
+    expect(entityOf(fixed, "Task").relationships[2]).toMatchObject({ inverse: "parent" });
   });
 });
 
@@ -88,48 +88,78 @@ describe("a relationship to an unknown entity (acceptance 6)", () => {
   });
 });
 
-describe("via (acceptance 2, ADR-0070)", () => {
-  test("without via, the build lists the candidates", () => {
+// Membership with three belongs-to back to Collaborator, none named `collaborator`: the ladder cannot guess.
+const unnamed = () => membership().replace("belongs-to :collaborator", "belongs-to :holder");
+
+describe("inverse (acceptance 2, ADR-0070, DOM-32)", () => {
+  test("several candidates, one named after the entity: it is followed with no option", () => {
     const result = build({ "collaborator.mesh.mx": collaborator(), "membership.mesh.mx": membership() });
+    expect(result.diagnostics).toEqual([]);
+    expect(entityOf(result, "Collaborator").relationships[0]).toMatchObject({ inverse: "collaborator" });
+  });
+
+  test("several candidates, none named after the entity: the build lists all of them", () => {
+    const result = build({ "collaborator.mesh.mx": collaborator(), "membership.mesh.mx": unnamed() });
     expect(result.diagnostics).toEqual([expect.objectContaining({
-      code: "MESH_VIA_REQUIRED",
-      message: "has-many :memberships of :Collaborator could follow any of 3 belongs-to of :Membership back to :Collaborator (:collaborator, :grantedBy, :revokedBy)",
-      fix: "Choose one: `via=:collaborator`",
+      code: "MESH_INVERSE_REQUIRED",
+      message: "has-many :memberships of :Collaborator could follow any of 3 belongs-to of :Membership back to :Collaborator (:holder, :grantedBy, :revokedBy)",
+      fix: "Choose one: `inverse=:holder`",
     })]);
   });
 
-  test("with via, the model records the key that has-many follows", () => {
-    const result = build({ "collaborator.mesh.mx": collaborator(" via=:collaborator"), "membership.mesh.mx": membership() });
+  test("an authored inverse wins over the ladder", () => {
+    const result = build({ "collaborator.mesh.mx": collaborator(" inverse=:grantedBy"), "membership.mesh.mx": membership() });
     expect(result.diagnostics).toEqual([]);
-    expect(entityOf(result, "Collaborator").relationships[0]).toMatchObject({ via: "collaborator" });
-    const other = build({ "collaborator.mesh.mx": collaborator(" via=:grantedBy"), "membership.mesh.mx": membership() });
-    expect(entityOf(other, "Collaborator").relationships[0]).toMatchObject({ via: "grantedBy" });
+    expect(entityOf(result, "Collaborator").relationships[0]).toMatchObject({ inverse: "grantedBy" });
+    const other = build({ "collaborator.mesh.mx": collaborator(" inverse=:revokedBy"), "membership.mesh.mx": unnamed() });
+    expect(entityOf(other, "Collaborator").relationships[0]).toMatchObject({ inverse: "revokedBy" });
   });
 
-  test("with exactly one belongs-to back, via may be left out", () => {
-    const one = membership().replace(/    belongs-to :grantedBy.*\n/, "").replace(/    belongs-to :revokedBy.*/, "");
+  test("an authored inverse equal to the ladder's pick is legal and silent", () => {
+    const result = build({ "collaborator.mesh.mx": collaborator(" inverse=:collaborator"), "membership.mesh.mx": membership() });
+    expect(result.diagnostics).toEqual([]);
+    expect(entityOf(result, "Collaborator").relationships[0]).toMatchObject({ inverse: "collaborator" });
+  });
+
+  test("the entity's name is matched in lower camel case", () => {
+    const worker = `import { Shift } from "./shift.mesh.mx"\nentity :WorkItem\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :shifts entity=Shift\n`;
+    const shift = `import { WorkItem } from "./work-item.mesh.mx"\nentity :Shift\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :workItem entity=WorkItem\n    belongs-to :swappedFor entity=WorkItem\n`;
+    const result = build({ "work-item.mesh.mx": worker, "shift.mesh.mx": shift });
+    expect(result.diagnostics).toEqual([]);
+    expect(entityOf(result, "WorkItem").relationships[0]).toMatchObject({ inverse: "workItem" });
+  });
+
+  test("with exactly one belongs-to back, inverse may be left out", () => {
+    const one = membership().replace(/    belongs-to :grantedBy.*\n/, "").replace(/    belongs-to :revokedBy.*/, "").replace("belongs-to :collaborator", "belongs-to :holder");
     const result = build({ "collaborator.mesh.mx": collaborator(), "membership.mesh.mx": one });
     expect(result.diagnostics).toEqual([]);
-    expect(entityOf(result, "Collaborator").relationships[0]).toMatchObject({ via: "collaborator" });
+    expect(entityOf(result, "Collaborator").relationships[0]).toMatchObject({ inverse: "holder" });
   });
 
-  test("a via that names no belongs-to of the other entity is an error at the option, with a suggestion", () => {
-    const result = build({ "collaborator.mesh.mx": collaborator(" via=:collaborater"), "membership.mesh.mx": membership() });
+  test("via is not a Mesh word: it is an unknown option", () => {
+    const result = build({ "collaborator.mesh.mx": collaborator(` ${"vi"}a=:collaborator`), "membership.mesh.mx": membership() });
+    expect(result.document).toBeNull();
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics.map((d) => d.message).join("\n")).toContain("via");
+  });
+
+  test("an inverse that names no belongs-to of the other entity is an error at the option, with a suggestion", () => {
+    const result = build({ "collaborator.mesh.mx": collaborator(" inverse=:collaborater"), "membership.mesh.mx": membership() });
     expect(result.diagnostics).toEqual([expect.objectContaining({
-      code: "MESH_VIA_UNKNOWN",
-      message: "via=:collaborater names no belongs-to of :Membership. Did you mean via=:collaborator?",
+      code: "MESH_INVERSE_UNKNOWN",
+      message: "inverse=:collaborater names no belongs-to of :Membership. Did you mean inverse=:collaborator?",
       position: expect.objectContaining({ file: "app/collaborator.mesh.mx", line: 6 }),
     })]);
     expect(result.document).toBeNull();
   });
 
-  test("a via that names an attribute is not a belongs-to", () => {
+  test("an inverse that names an attribute is not a belongs-to", () => {
     const source = membership().replace("uuid :id primary-key", "uuid :id primary-key\n    string :role");
-    const result = build({ "collaborator.mesh.mx": collaborator(" via=:role"), "membership.mesh.mx": source });
-    expect(codes(result)).toEqual(["MESH_VIA_UNKNOWN"]);
+    const result = build({ "collaborator.mesh.mx": collaborator(" inverse=:role"), "membership.mesh.mx": source });
+    expect(codes(result)).toEqual(["MESH_INVERSE_UNKNOWN"]);
   });
 
-  test("a via that names a belongs-to to a different entity says where it points", () => {
+  test("an inverse that names a belongs-to to a different entity says where it points", () => {
     const source = `import { Collaborator } from "./collaborator.mesh.mx"\nimport { Workspace } from "./workspace.mesh.mx"
 entity :Membership
   attributes
@@ -139,28 +169,34 @@ entity :Membership
     belongs-to :workspace entity=Workspace
 `;
     const workspace = "entity :Workspace\n  attributes\n    uuid :id primary-key\n";
-    const result = build({ "collaborator.mesh.mx": collaborator(" via=:workspace"), "membership.mesh.mx": source, "workspace.mesh.mx": workspace });
+    const result = build({ "collaborator.mesh.mx": collaborator(" inverse=:workspace"), "membership.mesh.mx": source, "workspace.mesh.mx": workspace });
     expect(result.diagnostics).toEqual([expect.objectContaining({
-      code: "MESH_VIA_ENTITY",
-      message: "via=:workspace is a belongs-to of :Membership that points at :Workspace, not at :Collaborator. The belongs-to from :Membership to :Collaborator: :collaborator.",
+      code: "MESH_INVERSE_ENTITY",
+      message: "inverse=:workspace is a belongs-to of :Membership that points at :Workspace, not at :Collaborator. The belongs-to from :Membership to :Collaborator: :collaborator.",
     })]);
   });
 
-  test("via names a belongs-to, not a member of this entity: &name is not accepted", () => {
-    const result = build({ "collaborator.mesh.mx": collaborator(" via=&collaborator"), "membership.mesh.mx": membership() });
+  test("inverse names a belongs-to, not a member of this entity: &name is not accepted", () => {
+    const result = build({ "collaborator.mesh.mx": collaborator(" inverse=&collaborator"), "membership.mesh.mx": membership() });
     expect(result.document).toBeNull();
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
-  test("has-one takes no via", () => {
-    const result = build({ "collaborator.mesh.mx": collaborator(" via=:collaborator").replace("has-many", "has-one"), "membership.mesh.mx": membership() });
+  test("has-one takes no inverse", () => {
+    const result = build({ "collaborator.mesh.mx": collaborator(" inverse=:collaborator").replace("has-many", "has-one"), "membership.mesh.mx": membership() });
     expect(result.document).toBeNull();
-    expect(result.diagnostics[0]!.message).toContain("via");
+    expect(result.diagnostics[0]!.message).toContain("inverse");
   });
 
-  test("a has-one with several belongs-to back cannot choose, and says so", () => {
+  test("a has-one follows the belongs-to named after the entity, like a has-many", () => {
     const result = build({ "collaborator.mesh.mx": collaborator().replace("has-many", "has-one"), "membership.mesh.mx": membership() });
-    expect(result.diagnostics).toEqual([expect.objectContaining({ code: "MESH_VIA_REQUIRED", message: expect.stringContaining("a has-one takes no via") })]);
+    expect(result.diagnostics).toEqual([]);
+    expect(entityOf(result, "Collaborator").relationships[0]).toMatchObject({ kind: "has-one", inverse: "collaborator" });
+  });
+
+  test("a has-one with several belongs-to back and none named after the entity cannot choose, and says so", () => {
+    const result = build({ "collaborator.mesh.mx": collaborator().replace("has-many", "has-one"), "membership.mesh.mx": unnamed() });
+    expect(result.diagnostics).toEqual([expect.objectContaining({ code: "MESH_INVERSE_REQUIRED", message: expect.stringContaining("a has-one takes no inverse") })]);
   });
 
   test("no belongs-to back is not a build error: cross-file inverse checks come after 1.0, and loading it fails at run time", () => {
@@ -169,10 +205,10 @@ entity :Membership
       "membership.mesh.mx": "entity :Membership\n  attributes\n    uuid :id primary-key\n",
     });
     expect(result.diagnostics).toEqual([]);
-    expect(entityOf(result, "Collaborator").relationships[0]!.via).toBeUndefined();
+    expect(entityOf(result, "Collaborator").relationships[0]!.inverse).toBeUndefined();
   });
 
-  test("several has-many to the same entity, each with its own via", () => {
+  test("several has-many to the same entity, each with its own inverse", () => {
     const dependency = (extra: string) => `import { Task } from "./task.mesh.mx"
 entity :Dependency
   attributes
@@ -186,12 +222,12 @@ entity :Task
   attributes
     uuid :id primary-key
   relationships
-    has-many :dependencies entity=Dependency via=:dependent
-    has-many :dependents entity=Dependency via=:prerequisite
+    has-many :dependencies entity=Dependency inverse=:dependent
+    has-many :dependents entity=Dependency inverse=:prerequisite
 `;
     const result = build({ "task.mesh.mx": owner, "dependency.mesh.mx": dependency("") });
     expect(result.diagnostics).toEqual([]);
-    expect(entityOf(result, "Task").relationships.map((r) => r.via)).toEqual(["dependent", "prerequisite"]);
+    expect(entityOf(result, "Task").relationships.map((r) => r.inverse)).toEqual(["dependent", "prerequisite"]);
   });
 });
 
@@ -251,7 +287,7 @@ entity :User
     uuid :id primary-key
     string :name
   relationships
-    has-many :docs entity=Doc via=:owner
+    has-many :docs entity=Doc inverse=:owner
   computed
     count :docCount of="docs"
 `;
@@ -402,31 +438,31 @@ describe("a computed enum names its values", () => {
   });
 });
 
-describe("a used has-many with several candidates and no via lists them", () => {
+describe("a used has-many with several candidates and no inverse lists them", () => {
   const withUse = (use: string) => collaborator().replace("    has-many :memberships entity=Membership\n", `    has-many :memberships entity=Membership\n  computed\n${use}\n`);
 
   test("a body that reads it names the candidates, not a missing belongs-to", () => {
-    const result = build({ "collaborator.mesh.mx": withUse("    boolean :member() { return &memberships.length > 0 }"), "membership.mesh.mx": membership() });
+    const result = build({ "collaborator.mesh.mx": withUse("    boolean :member() { return &memberships.length > 0 }"), "membership.mesh.mx": unnamed() });
     const read = result.diagnostics.filter((d) => d.message.startsWith("&member "));
     expect(read).toEqual([expect.objectContaining({
-      code: "MESH_VIA_REQUIRED",
-      message: "&member reads has-many :memberships, which cannot be loaded: :Membership has 3 belongs-to back to :Collaborator (:collaborator, :grantedBy, :revokedBy) and has-many :memberships does not say which it follows",
-      fix: "Choose one: `via=:collaborator`",
+      code: "MESH_INVERSE_REQUIRED",
+      message: "&member reads has-many :memberships, which cannot be loaded: :Membership has 3 belongs-to back to :Collaborator (:holder, :grantedBy, :revokedBy) and has-many :memberships does not say which it follows",
+      fix: "Choose one: `inverse=:holder`",
     })]);
     expect(result.diagnostics.some((d) => d.code === "MESH_NO_INVERSE")).toBe(false);
   });
 
   test("a rollup that reads it names them too", () => {
-    const result = build({ "collaborator.mesh.mx": withUse('    count :membershipCount of="memberships"'), "membership.mesh.mx": membership() });
+    const result = build({ "collaborator.mesh.mx": withUse('    count :membershipCount of="memberships"'), "membership.mesh.mx": unnamed() });
     expect(result.diagnostics.filter((d) => d.message.startsWith("count :membershipCount"))).toEqual([expect.objectContaining({
-      code: "MESH_VIA_REQUIRED",
-      message: expect.stringContaining("(:collaborator, :grantedBy, :revokedBy)"),
+      code: "MESH_INVERSE_REQUIRED",
+      message: expect.stringContaining("(:holder, :grantedBy, :revokedBy)"),
     })]);
     expect(result.diagnostics.some((d) => d.code === "MESH_NO_INVERSE")).toBe(false);
   });
 
-  test("choosing one with via clears both", () => {
-    const result = build({ "collaborator.mesh.mx": withUse("    boolean :member() { return &memberships.length > 0 }").replace("entity=Membership", "entity=Membership via=:collaborator"), "membership.mesh.mx": membership() });
+  test("choosing one with inverse clears both", () => {
+    const result = build({ "collaborator.mesh.mx": withUse("    boolean :member() { return &memberships.length > 0 }").replace("entity=Membership", "entity=Membership inverse=:holder"), "membership.mesh.mx": unnamed() });
     expect(result.diagnostics).toEqual([]);
   });
 });

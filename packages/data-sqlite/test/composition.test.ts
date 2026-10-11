@@ -20,7 +20,7 @@ entity :Account table="accounts"
     boolean :closed default=false
     json :meta
   relationships
-    has-many :entries entity=Entry via=:account
+    has-many :entries entity=Entry inverse=:account
   actions auto=[:read]
     create :open
       input

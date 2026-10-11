@@ -159,7 +159,7 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `has-many` | `has-many :related entity=Line` | `has-many` | on main |
 | `has-many.name` | `has-many :related entity=Line` | `has-many.name` | on main |
 | `has-many.entity` | `has-many :related entity=Line` | `has-many.entity` | on main |
-| `has-many.via` | `has-many :related entity=Line via=:owner` | `has-many.via` | on main |
+| `has-many.inverse` | `has-many :related entity=Line inverse=:owner` | `has-many.inverse` | on main |
 | `has-one` | `has-one :related entity=Line` | `has-one` | on main |
 | `has-one.name` | `has-one :related entity=Line` | `has-one.name` | on main |
 | `has-one.entity` | `has-one :related entity=Line` | `has-one.entity` | on main |

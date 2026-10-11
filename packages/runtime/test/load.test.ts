@@ -101,7 +101,7 @@ describe("loadRows", () => {
 
   test("a has-many with no key back says what to declare", async () => {
     const { tx, handle } = memory({});
-    await expect(loadRows(plan(handle), "Node", tx, [{ id: 1 }], ["loose"])).rejects.toThrow("has-many :loose of :Node cannot be loaded: :Badge has no belongs-to back to :Node. Declare one in :Badge, and name it with via=:name if there are several");
+    await expect(loadRows(plan(handle), "Node", tx, [{ id: 1 }], ["loose"])).rejects.toThrow("has-many :loose of :Node cannot be loaded: :Badge has no belongs-to back to :Node. Declare one in :Badge, and name it with inverse=:name if there are several");
   });
 
   test("more keys than a chunk are several queries, and every row is served", async () => {
