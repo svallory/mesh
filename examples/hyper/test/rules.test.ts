@@ -1,10 +1,11 @@
 // Roadmap M5 acceptance test 9: each of Hyper's 57 named rules (gap analysis, Appendix A) has a passing and a failing
 // case through the generated actions, named by Hyper's rule name as the issue `code`. A command whose effect crosses
 // aggregates is called through its function in `src/domain/<module>/<module>.commands.ts`, never through the generated
-// action alone (PORTING.md). The two rules that are permission checks in Hyper (`role`, `attempt.claimer`) are policies
-// since M8b: their cases, in POLICIES, fail with `ForbiddenError` naming the policy. The rule whose case needs plugins is
-// listed in NOT_PORTED with the reason and the milestone; the last test checks that the three lists together are the
-// 57, and that every code an entity file reports, at any depth under the domain root, has its cases here.
+// action alone (PORTING.md). The rule `role`, a permission check in Hyper, is a policy since M8b: its cases, in
+// POLICIES, fail with `ForbiddenError` naming the policy; `attempt.claimer` is both a rule and a policy, as in Hyper.
+// The rule whose case needs plugins is listed in NOT_PORTED with the reason and the milestone; the last test checks
+// that the three lists together are the 57, and that every code an entity file reports, at any depth under the domain
+// root, has its cases here.
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -81,7 +82,9 @@ const RULES: Record<string, Case> = {
     },
     fail: async (w) => {
       await collaboratorRetire({ id: w.bob.id, reason: "left" }, as(w.alice), w.binding);
-      await refused(w.hyper.updateCollaborator({ id: w.bob.id, name: "Ghost" }, as(w.bob)), "collaborator.active");
+      // Retiring revoked Bob's membership, so his own update is refused by isMember (PROTOCOL.md:88); an owner's reaches the rule.
+      expect(await deniedBy(w.hyper.updateCollaborator({ id: w.bob.id, name: "Ghost" }, as(w.bob)))).toEqual(["isMember"]);
+      await refused(w.hyper.updateCollaborator({ id: w.bob.id, name: "Ghost" }, as(w.alice)), "collaborator.active");
       await refused(w.hyper.retireCollaborator({ id: w.bob.id }, as(w.alice)), "collaborator.active");
       await refused(w.hyper.grantMembership({ collaborator: w.bob.id, role: "member" }, as(w.alice)), "collaborator.active");
       await refused(w.hyper.assignTask({ id: w.task.id, assignee: w.bob.id }, as(w.alice)), "collaborator.active");
@@ -696,6 +699,23 @@ const RULES: Record<string, Case> = {
       await refused(w.hyper.cancelRun({ id: run.id, reason: "again" }, as(w.alice)), "run.cancelable");
     },
   },
+  "attempt.claimer": {
+    pass: async (w) => {
+      expect(await started(w, await running(w))).toMatchObject({ performerId: w.bot.id, claimFence: 1, number: 1 });
+    },
+    fail: async (w) => {
+      // Hyper keeps both a policy and this rule (`runs/checks/reporter.ex:35-41`, `runs/attempt/rules.ex:15-30`): a
+      // caller is refused by the policy attemptClaimer first, and a call made as `system`, which every policy admits,
+      // still fails the rule.
+      const run = await running(w);
+      expect(await deniedBy(attemptStart({ run: run.id }, as(w.bob), w.binding))).toEqual(["attemptClaimer"]);
+      await refused(attemptStart({ run: run.id }, asSystem(w.bob), w.binding), "attempt.claimer");
+      // A lapsed claim is not the actor's any more.
+      w.advance(10);
+      expect(await deniedBy(attemptStart({ run: run.id }, as(w.bot), w.binding))).toEqual(["attemptClaimer"]);
+      await refused(attemptStart({ run: run.id }, asSystem(w.bot), w.binding), "attempt.claimer");
+    },
+  },
   "attempt.run-running": {
     pass: async (w) => {
       expect((await started(w, await running(w))).state).toBe("running");
@@ -838,11 +858,11 @@ const PORT_ONLY: Record<string, Case> = {
 };
 
 /**
- * Hyper's rules that are permission checks, ported as policies (M8b): the passing case is a call the policy admits, the
+ * Hyper's rule that is a permission check, ported as a policy (M8b): the passing case is a call the policy admits, the
  * failing one a `ForbiddenError` naming the policy. `role` re-runs the role gate under the workspace lock for six actions
  * (`memberships/rules.ex:12-17`); a policy that reads the role through `tx` runs inside the transaction, so it covers
- * the rule. `attempt.claimer` denies through `Role.deny` (`runs/attempt/rules.ex:15-30`), as the policy
- * `attemptClaimer` (`runs/checks/reporter.ex:35-41`).
+ * the rule. (`attempt.claimer`, Hyper's other rule that denies through `Role.deny`, is both a rule and the policy
+ * `attemptClaimer`, as in Hyper, and its cases are in RULES.)
  */
 const POLICIES: Record<string, Case> = {
   role: {
@@ -864,18 +884,6 @@ const POLICIES: Record<string, Case> = {
       expect(await deniedBy(w.hyper.registerMachine({ name: "desktop" }, guest))).toEqual(["ownerOrMember"]);
       // The refused session report rolled back the machine it recorded.
       expect(await w.hyper.readMachine({}, as(w.alice))).toEqual([]);
-    },
-  },
-  "attempt.claimer": {
-    pass: async (w) => {
-      expect(await started(w, await running(w))).toMatchObject({ performerId: w.bot.id, claimFence: 1, number: 1 });
-    },
-    fail: async (w) => {
-      const run = await running(w);
-      expect(await deniedBy(attemptStart({ run: run.id }, as(w.bob), w.binding))).toEqual(["attemptClaimer"]);
-      // A lapsed claim is not the actor's any more.
-      w.advance(10);
-      expect(await deniedBy(attemptStart({ run: run.id }, as(w.bot), w.binding))).toEqual(["attemptClaimer"]);
     },
   },
 };
@@ -909,8 +917,8 @@ describe("roadmap M5 test 9: each of Hyper's rules, a passing and a failing case
   test("the rules run here and the ones not ported are Hyper's 57, and every code an entity file reports is run here", () => {
     expect(HYPER_RULES).toHaveLength(57);
     expect(new Set(HYPER_RULES).size).toBe(57);
-    expect(Object.keys(RULES)).toHaveLength(54);
-    expect(Object.keys(POLICIES)).toEqual(["role", "attempt.claimer"]);
+    expect(Object.keys(RULES)).toHaveLength(55);
+    expect(Object.keys(POLICIES)).toEqual(["role"]);
     expect(Object.keys(NOT_PORTED)).toEqual(["task.not-blocked"]);
     expect([...Object.keys(RULES), ...Object.keys(POLICIES), ...Object.keys(NOT_PORTED)].sort()).toEqual([...HYPER_RULES].sort());
     // Every entity file under the domain root (`mesh.config.ts`), at any depth.

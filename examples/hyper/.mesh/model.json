@@ -596,8 +596,8 @@
                     "position": {
                       "column": 10,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 60,
-                      "offset": 2315
+                      "line": 68,
+                      "offset": 2896
                     }
                   },
                   "value": {
@@ -607,8 +607,8 @@
                     "position": {
                       "column": 21,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 60,
-                      "offset": 2326
+                      "line": 68,
+                      "offset": 2907
                     },
                     "source": "({ actor }) => actor.id",
                     "tree": {
@@ -620,16 +620,16 @@
                         "position": {
                           "column": 36,
                           "file": "src/domain/execution/attempt.mesh.mx",
-                          "line": 60,
-                          "offset": 2341
+                          "line": 68,
+                          "offset": 2922
                         }
                       },
                       "optional": false,
                       "position": {
                         "column": 36,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 60,
-                        "offset": 2341
+                        "line": 68,
+                        "offset": 2922
                       }
                     }
                   }
@@ -640,8 +640,8 @@
                     "position": {
                       "column": 10,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 61,
-                      "offset": 2360
+                      "line": 69,
+                      "offset": 2941
                     }
                   },
                   "value": {
@@ -652,8 +652,8 @@
                     "position": {
                       "column": 16,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 61,
-                      "offset": 2366
+                      "line": 69,
+                      "offset": 2947
                     },
                     "source": "() => &run.taskId",
                     "tree": {
@@ -668,24 +668,24 @@
                           "position": {
                             "column": 22,
                             "file": "src/domain/execution/attempt.mesh.mx",
-                            "line": 61,
-                            "offset": 2372
+                            "line": 69,
+                            "offset": 2953
                           }
                         },
                         "optional": false,
                         "position": {
                           "column": 22,
                           "file": "src/domain/execution/attempt.mesh.mx",
-                          "line": 61,
-                          "offset": 2372
+                          "line": 69,
+                          "offset": 2953
                         }
                       },
                       "optional": false,
                       "position": {
                         "column": 22,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 61,
-                        "offset": 2372
+                        "line": 69,
+                        "offset": 2953
                       }
                     }
                   }
@@ -696,8 +696,8 @@
                     "position": {
                       "column": 10,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 62,
-                      "offset": 2394
+                      "line": 70,
+                      "offset": 2975
                     }
                   },
                   "value": {
@@ -723,8 +723,8 @@
                       "position": {
                         "column": 24,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 62,
-                        "offset": 2408
+                        "line": 70,
+                        "offset": 2989
                       },
                       "roots": [
                         "self"
@@ -734,8 +734,8 @@
                     "position": {
                       "column": 18,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 62,
-                      "offset": 2402
+                      "line": 70,
+                      "offset": 2983
                     },
                     "source": "() => nextNumber(&run.attempts, &step)"
                   }
@@ -746,8 +746,8 @@
                     "position": {
                       "column": 10,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 63,
-                      "offset": 2451
+                      "line": 71,
+                      "offset": 3032
                     }
                   },
                   "value": {
@@ -774,8 +774,8 @@
                       "position": {
                         "column": 27,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 63,
-                        "offset": 2468
+                        "line": 71,
+                        "offset": 3049
                       },
                       "roots": [
                         "self"
@@ -785,8 +785,8 @@
                     "position": {
                       "column": 21,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 63,
-                      "offset": 2462
+                      "line": 71,
+                      "offset": 3043
                     },
                     "source": "() => delegatorFor(&run.task.assignments, &run.startedById)"
                   }
@@ -797,8 +797,8 @@
                     "position": {
                       "column": 10,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 64,
-                      "offset": 2532
+                      "line": 72,
+                      "offset": 3113
                     }
                   },
                   "value": {
@@ -825,8 +825,8 @@
                       "position": {
                         "column": 37,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 64,
-                        "offset": 2559
+                        "line": 72,
+                        "offset": 3140
                       },
                       "roots": [
                         "self"
@@ -836,8 +836,8 @@
                     "position": {
                       "column": 22,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 64,
-                      "offset": 2544
+                      "line": 72,
+                      "offset": 3125
                     },
                     "source": "({ actor }) => heldFence(&run.task.claims, actor.id, now())"
                   }
@@ -847,8 +847,8 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 59,
-                "offset": 2301
+                "line": 67,
+                "offset": 2882
               }
             }
           ],
@@ -924,14 +924,54 @@
           },
           "validate": [
             {
+              "code": "attempt.claimer",
+              "label": "claimer",
+              "message": "the claim on the task is no longer the actor's; claim it again to report",
+              "position": {
+                "column": 8,
+                "file": "src/domain/execution/attempt.mesh.mx",
+                "line": 41,
+                "offset": 1693
+              },
+              "that": {
+                "params": [
+                  "input",
+                  "actor",
+                  "tx"
+                ],
+                "plain": {
+                  "clock": [
+                    "now"
+                  ],
+                  "detail": "reads the transaction",
+                  "edits": [],
+                  "position": {
+                    "column": 15,
+                    "file": "src/domain/execution/attempt.mesh.mx",
+                    "line": 42,
+                    "offset": 1725
+                  },
+                  "roots": [],
+                  "why": "uses-tx"
+                },
+                "position": {
+                  "column": 15,
+                  "file": "src/domain/execution/attempt.mesh.mx",
+                  "line": 42,
+                  "offset": 1725
+                },
+                "source": "({ input, actor, tx }) => claimerOf(tx, input.run, actor.id, now())"
+              }
+            },
+            {
               "code": "attempt.run-running",
               "label": "runRunning",
               "message": "the run is not running",
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 38,
-                "offset": 1356
+                "line": 46,
+                "offset": 1937
               },
               "that": {
                 "params": [
@@ -944,8 +984,8 @@
                   "position": {
                     "column": 15,
                     "file": "src/domain/execution/attempt.mesh.mx",
-                    "line": 39,
-                    "offset": 1391
+                    "line": 47,
+                    "offset": 1972
                   },
                   "roots": [],
                   "why": "uses-tx"
@@ -953,8 +993,8 @@
                 "position": {
                   "column": 15,
                   "file": "src/domain/execution/attempt.mesh.mx",
-                  "line": 39,
-                  "offset": 1391
+                  "line": 47,
+                  "offset": 1972
                 },
                 "source": "({ input, tx }) => runRunningOf(tx, input.run)"
               }
@@ -966,8 +1006,8 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 43,
-                "offset": 1536
+                "line": 51,
+                "offset": 2117
               },
               "that": {
                 "params": [
@@ -987,8 +1027,8 @@
                   "position": {
                     "column": 15,
                     "file": "src/domain/execution/attempt.mesh.mx",
-                    "line": 44,
-                    "offset": 1569
+                    "line": 52,
+                    "offset": 2150
                   },
                   "roots": [
                     "self"
@@ -998,8 +1038,8 @@
                 "position": {
                   "column": 15,
                   "file": "src/domain/execution/attempt.mesh.mx",
-                  "line": 44,
-                  "offset": 1569
+                  "line": 52,
+                  "offset": 2150
                 },
                 "source": "({ input, tx }) => stepIdleOf(tx, input.run, input.step ?? &step)"
               }
@@ -1011,8 +1051,8 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 48,
-                "offset": 1751
+                "line": 56,
+                "offset": 2332
               },
               "that": {
                 "params": [
@@ -1026,8 +1066,8 @@
                   "position": {
                     "column": 15,
                     "file": "src/domain/execution/attempt.mesh.mx",
-                    "line": 49,
-                    "offset": 1783
+                    "line": 57,
+                    "offset": 2364
                   },
                   "roots": [],
                   "why": "uses-tx"
@@ -1035,8 +1075,8 @@
                 "position": {
                   "column": 15,
                   "file": "src/domain/execution/attempt.mesh.mx",
-                  "line": 49,
-                  "offset": 1783
+                  "line": 57,
+                  "offset": 2364
                 },
                 "source": "async ({ input, tx }) => input.session == null || (await tx.readSessionReference({ filter: { id: { eq: input.session } }, limit: 1 })).length > 0"
               }
@@ -1048,8 +1088,8 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 53,
-                "offset": 2037
+                "line": 61,
+                "offset": 2618
               },
               "that": {
                 "params": [
@@ -1063,8 +1103,8 @@
                   "position": {
                     "column": 15,
                     "file": "src/domain/execution/attempt.mesh.mx",
-                    "line": 54,
-                    "offset": 2076
+                    "line": 62,
+                    "offset": 2657
                   },
                   "roots": [],
                   "why": "uses-tx"
@@ -1072,8 +1112,8 @@
                 "position": {
                   "column": 15,
                   "file": "src/domain/execution/attempt.mesh.mx",
-                  "line": 54,
-                  "offset": 2076
+                  "line": 62,
+                  "offset": 2657
                 },
                 "source": "async ({ input, tx }) => input.machine == null || await machineActiveOf(tx, input.machine)"
               }
@@ -1090,8 +1130,8 @@
                     "position": {
                       "column": 10,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 97,
-                      "offset": 3885
+                      "line": 105,
+                      "offset": 4466
                     }
                   },
                   "value": {
@@ -1101,8 +1141,8 @@
                     "position": {
                       "column": 17,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 97,
-                      "offset": 3892
+                      "line": 105,
+                      "offset": 4473
                     },
                     "source": "({ input }) => input.result",
                     "tree": {
@@ -1114,16 +1154,16 @@
                         "position": {
                           "column": 32,
                           "file": "src/domain/execution/attempt.mesh.mx",
-                          "line": 97,
-                          "offset": 3907
+                          "line": 105,
+                          "offset": 4488
                         }
                       },
                       "optional": false,
                       "position": {
                         "column": 32,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 97,
-                        "offset": 3907
+                        "line": 105,
+                        "offset": 4488
                       }
                     }
                   }
@@ -1134,8 +1174,8 @@
                     "position": {
                       "column": 10,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 98,
-                      "offset": 3930
+                      "line": 106,
+                      "offset": 4511
                     }
                   },
                   "value": {
@@ -1143,8 +1183,8 @@
                     "position": {
                       "column": 19,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 98,
-                      "offset": 3939
+                      "line": 106,
+                      "offset": 4520
                     },
                     "source": "() => now()",
                     "tree": {
@@ -1154,8 +1194,8 @@
                       "position": {
                         "column": 25,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 98,
-                        "offset": 3945
+                        "line": 106,
+                        "offset": 4526
                       }
                     }
                   }
@@ -1166,8 +1206,8 @@
                     "position": {
                       "column": 10,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 99,
-                      "offset": 3961
+                      "line": 107,
+                      "offset": 4542
                     }
                   },
                   "value": {
@@ -1180,8 +1220,8 @@
                       "position": {
                         "column": 49,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 99,
-                        "offset": 4000
+                        "line": 107,
+                        "offset": 4581
                       },
                       "roots": [],
                       "why": "unsupported-construct"
@@ -1189,8 +1229,8 @@
                     "position": {
                       "column": 19,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 99,
-                      "offset": 3970
+                      "line": 107,
+                      "offset": 4551
                     },
                     "source": "({ input }) => attemptOutcome({ outputs: input.outputs, evidence: input.evidence, error: input.error })"
                   }
@@ -1201,8 +1241,8 @@
                     "position": {
                       "column": 10,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 100,
-                      "offset": 4084
+                      "line": 108,
+                      "offset": 4665
                     }
                   },
                   "value": {
@@ -1210,8 +1250,8 @@
                     "position": {
                       "column": 19,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 100,
-                      "offset": 4093
+                      "line": 108,
+                      "offset": 4674
                     },
                     "source": "() => &version + 1",
                     "tree": {
@@ -1225,16 +1265,16 @@
                             "position": {
                               "column": 25,
                               "file": "src/domain/execution/attempt.mesh.mx",
-                              "line": 100,
-                              "offset": 4099
+                              "line": 108,
+                              "offset": 4680
                             }
                           },
                           "optional": false,
                           "position": {
                             "column": 25,
                             "file": "src/domain/execution/attempt.mesh.mx",
-                            "line": 100,
-                            "offset": 4099
+                            "line": 108,
+                            "offset": 4680
                           }
                         },
                         {
@@ -1242,8 +1282,8 @@
                           "position": {
                             "column": 36,
                             "file": "src/domain/execution/attempt.mesh.mx",
-                            "line": 100,
-                            "offset": 4110
+                            "line": 108,
+                            "offset": 4691
                           },
                           "value": 1
                         }
@@ -1253,8 +1293,8 @@
                       "position": {
                         "column": 25,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 100,
-                        "offset": 4099
+                        "line": 108,
+                        "offset": 4680
                       }
                     }
                   }
@@ -1264,8 +1304,8 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 96,
-                "offset": 3871
+                "line": 104,
+                "offset": 4452
               }
             },
             {
@@ -1286,8 +1326,8 @@
                   "position": {
                     "column": 27,
                     "file": "src/domain/execution/attempt.mesh.mx",
-                    "line": 101,
-                    "offset": 4139
+                    "line": 109,
+                    "offset": 4720
                   },
                   "roots": [],
                   "why": "run-step"
@@ -1295,8 +1335,8 @@
                 "position": {
                   "column": 27,
                   "file": "src/domain/execution/attempt.mesh.mx",
-                  "line": 101,
-                  "offset": 4139
+                  "line": 109,
+                  "offset": 4720
                 },
                 "source": "({ self, input, context, tx, actions }) {\n          const [run] = await tx.readRun({ filter: { id: { eq: self.runId } } });\n          if (run && settlesRun(run.state, input.result, input.error))\n            await actions.settleRun({ id: run.id, result: input.result, outcome: self.outcome }, { ...context, system: true });\n        }"
               },
@@ -1304,8 +1344,8 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 101,
-                "offset": 4120
+                "line": 109,
+                "offset": 4701
               }
             }
           ],
@@ -1317,8 +1357,8 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 67,
-                "offset": 2643
+                "line": 75,
+                "offset": 3224
               },
               "type": "enum",
               "values": [
@@ -1337,8 +1377,8 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 68,
-                "offset": 2693
+                "line": 76,
+                "offset": 3274
               },
               "type": "json"
             },
@@ -1349,8 +1389,8 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 69,
-                "offset": 2715
+                "line": 77,
+                "offset": 3296
               },
               "type": "json"
             },
@@ -1361,8 +1401,8 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 70,
-                "offset": 2738
+                "line": 78,
+                "offset": 3319
               },
               "type": "json"
             },
@@ -1373,8 +1413,8 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 71,
-                "offset": 2758
+                "line": 79,
+                "offset": 3339
               },
               "type": "integer"
             }
@@ -1384,8 +1424,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/execution/attempt.mesh.mx",
-            "line": 65,
-            "offset": 2608
+            "line": 73,
+            "offset": 3189
           },
           "validate": [
             {
@@ -1395,16 +1435,16 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 73,
-                "offset": 2815
+                "line": 81,
+                "offset": 3396
               },
               "that": {
                 "params": [],
                 "position": {
                   "column": 15,
                   "file": "src/domain/execution/attempt.mesh.mx",
-                  "line": 74,
-                  "offset": 2847
+                  "line": 82,
+                  "offset": 3428
                 },
                 "source": "() => &state === :running",
                 "tree": {
@@ -1418,16 +1458,16 @@
                         "position": {
                           "column": 21,
                           "file": "src/domain/execution/attempt.mesh.mx",
-                          "line": 74,
-                          "offset": 2853
+                          "line": 82,
+                          "offset": 3434
                         }
                       },
                       "optional": false,
                       "position": {
                         "column": 21,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 74,
-                        "offset": 2853
+                        "line": 82,
+                        "offset": 3434
                       }
                     },
                     {
@@ -1435,8 +1475,8 @@
                       "position": {
                         "column": 32,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 74,
-                        "offset": 2864
+                        "line": 82,
+                        "offset": 3445
                       },
                       "value": "running"
                     }
@@ -1446,8 +1486,8 @@
                   "position": {
                     "column": 21,
                     "file": "src/domain/execution/attempt.mesh.mx",
-                    "line": 74,
-                    "offset": 2853
+                    "line": 82,
+                    "offset": 3434
                   }
                 }
               }
@@ -1459,8 +1499,8 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 78,
-                "offset": 2966
+                "line": 86,
+                "offset": 3547
               },
               "that": {
                 "params": [
@@ -1469,8 +1509,8 @@
                 "position": {
                   "column": 15,
                   "file": "src/domain/execution/attempt.mesh.mx",
-                  "line": 79,
-                  "offset": 2996
+                  "line": 87,
+                  "offset": 3577
                 },
                 "source": "({ input }) => input.result === :failed || input.error == null",
                 "tree": {
@@ -1486,16 +1526,16 @@
                             "position": {
                               "column": 30,
                               "file": "src/domain/execution/attempt.mesh.mx",
-                              "line": 79,
-                              "offset": 3011
+                              "line": 87,
+                              "offset": 3592
                             }
                           },
                           "optional": false,
                           "position": {
                             "column": 30,
                             "file": "src/domain/execution/attempt.mesh.mx",
-                            "line": 79,
-                            "offset": 3011
+                            "line": 87,
+                            "offset": 3592
                           }
                         },
                         {
@@ -1503,8 +1543,8 @@
                           "position": {
                             "column": 47,
                             "file": "src/domain/execution/attempt.mesh.mx",
-                            "line": 79,
-                            "offset": 3028
+                            "line": 87,
+                            "offset": 3609
                           },
                           "value": "failed"
                         }
@@ -1514,8 +1554,8 @@
                       "position": {
                         "column": 30,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 79,
-                        "offset": 3011
+                        "line": 87,
+                        "offset": 3592
                       }
                     },
                     {
@@ -1529,16 +1569,16 @@
                             "position": {
                               "column": 58,
                               "file": "src/domain/execution/attempt.mesh.mx",
-                              "line": 79,
-                              "offset": 3039
+                              "line": 87,
+                              "offset": 3620
                             }
                           },
                           "optional": false,
                           "position": {
                             "column": 58,
                             "file": "src/domain/execution/attempt.mesh.mx",
-                            "line": 79,
-                            "offset": 3039
+                            "line": 87,
+                            "offset": 3620
                           }
                         }
                       ],
@@ -1547,8 +1587,8 @@
                       "position": {
                         "column": 58,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 79,
-                        "offset": 3039
+                        "line": 87,
+                        "offset": 3620
                       }
                     }
                   ],
@@ -1557,8 +1597,8 @@
                   "position": {
                     "column": 30,
                     "file": "src/domain/execution/attempt.mesh.mx",
-                    "line": 79,
-                    "offset": 3011
+                    "line": 87,
+                    "offset": 3592
                   }
                 }
               }
@@ -1576,8 +1616,8 @@
                   "position": {
                     "column": 18,
                     "file": "src/domain/execution/attempt.mesh.mx",
-                    "line": 87,
-                    "offset": 3399
+                    "line": 95,
+                    "offset": 3980
                   },
                   "roots": [],
                   "why": "uses-tx"
@@ -1585,8 +1625,8 @@
                 "position": {
                   "column": 18,
                   "file": "src/domain/execution/attempt.mesh.mx",
-                  "line": 87,
-                  "offset": 3399
+                  "line": 95,
+                  "offset": 3980
                 },
                 "source": "async ({ input, tx }) => ({ missing: await missingEvidenceOf(tx, input.evidence ?? []) })"
               },
@@ -1595,8 +1635,8 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 83,
-                "offset": 3167
+                "line": 91,
+                "offset": 3748
               },
               "that": {
                 "params": [
@@ -1610,8 +1650,8 @@
                   "position": {
                     "column": 15,
                     "file": "src/domain/execution/attempt.mesh.mx",
-                    "line": 84,
-                    "offset": 3200
+                    "line": 92,
+                    "offset": 3781
                   },
                   "roots": [],
                   "why": "uses-tx"
@@ -1619,8 +1659,8 @@
                 "position": {
                   "column": 15,
                   "file": "src/domain/execution/attempt.mesh.mx",
-                  "line": 84,
-                  "offset": 3200
+                  "line": 92,
+                  "offset": 3781
                 },
                 "source": "async ({ input, tx }) => (await missingEvidenceOf(tx, input.evidence ?? [])).length === 0"
               }
@@ -1643,8 +1683,8 @@
                   "position": {
                     "column": 34,
                     "file": "src/domain/execution/attempt.mesh.mx",
-                    "line": 93,
-                    "offset": 3775
+                    "line": 101,
+                    "offset": 4356
                   },
                   "roots": [
                     "self"
@@ -1654,8 +1694,8 @@
                 "position": {
                   "column": 18,
                   "file": "src/domain/execution/attempt.mesh.mx",
-                  "line": 93,
-                  "offset": 3759
+                  "line": 101,
+                  "offset": 4340
                 },
                 "source": "({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })"
               },
@@ -1664,8 +1704,8 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 89,
-                "offset": 3507
+                "line": 97,
+                "offset": 4088
               },
               "that": {
                 "params": [
@@ -1674,8 +1714,8 @@
                 "position": {
                   "column": 15,
                   "file": "src/domain/execution/attempt.mesh.mx",
-                  "line": 90,
-                  "offset": 3546
+                  "line": 98,
+                  "offset": 4127
                 },
                 "source": "({ input }) => input.expectedVersion == null || input.expectedVersion === &version",
                 "tree": {
@@ -1691,16 +1731,16 @@
                             "position": {
                               "column": 30,
                               "file": "src/domain/execution/attempt.mesh.mx",
-                              "line": 90,
-                              "offset": 3561
+                              "line": 98,
+                              "offset": 4142
                             }
                           },
                           "optional": false,
                           "position": {
                             "column": 30,
                             "file": "src/domain/execution/attempt.mesh.mx",
-                            "line": 90,
-                            "offset": 3561
+                            "line": 98,
+                            "offset": 4142
                           }
                         }
                       ],
@@ -1709,8 +1749,8 @@
                       "position": {
                         "column": 30,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 90,
-                        "offset": 3561
+                        "line": 98,
+                        "offset": 4142
                       }
                     },
                     {
@@ -1724,16 +1764,16 @@
                             "position": {
                               "column": 63,
                               "file": "src/domain/execution/attempt.mesh.mx",
-                              "line": 90,
-                              "offset": 3594
+                              "line": 98,
+                              "offset": 4175
                             }
                           },
                           "optional": false,
                           "position": {
                             "column": 63,
                             "file": "src/domain/execution/attempt.mesh.mx",
-                            "line": 90,
-                            "offset": 3594
+                            "line": 98,
+                            "offset": 4175
                           }
                         },
                         {
@@ -1745,16 +1785,16 @@
                             "position": {
                               "column": 89,
                               "file": "src/domain/execution/attempt.mesh.mx",
-                              "line": 90,
-                              "offset": 3620
+                              "line": 98,
+                              "offset": 4201
                             }
                           },
                           "optional": false,
                           "position": {
                             "column": 89,
                             "file": "src/domain/execution/attempt.mesh.mx",
-                            "line": 90,
-                            "offset": 3620
+                            "line": 98,
+                            "offset": 4201
                           }
                         }
                       ],
@@ -1763,8 +1803,8 @@
                       "position": {
                         "column": 63,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 90,
-                        "offset": 3594
+                        "line": 98,
+                        "offset": 4175
                       }
                     }
                   ],
@@ -1773,8 +1813,8 @@
                   "position": {
                     "column": 30,
                     "file": "src/domain/execution/attempt.mesh.mx",
-                    "line": 90,
-                    "offset": 3561
+                    "line": 98,
+                    "offset": 4142
                   }
                 }
               }
@@ -1791,8 +1831,8 @@
                     "position": {
                       "column": 10,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 124,
-                      "offset": 5133
+                      "line": 132,
+                      "offset": 5714
                     }
                   },
                   "value": {
@@ -1805,8 +1845,8 @@
                     "position": {
                       "column": 10,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 125,
-                      "offset": 5159
+                      "line": 133,
+                      "offset": 5740
                     }
                   },
                   "value": {
@@ -1814,8 +1854,8 @@
                     "position": {
                       "column": 19,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 125,
-                      "offset": 5168
+                      "line": 133,
+                      "offset": 5749
                     },
                     "source": "() => now()",
                     "tree": {
@@ -1825,8 +1865,8 @@
                       "position": {
                         "column": 25,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 125,
-                        "offset": 5174
+                        "line": 133,
+                        "offset": 5755
                       }
                     }
                   }
@@ -1837,8 +1877,8 @@
                     "position": {
                       "column": 10,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 126,
-                      "offset": 5190
+                      "line": 134,
+                      "offset": 5771
                     }
                   },
                   "value": {
@@ -1851,8 +1891,8 @@
                       "position": {
                         "column": 49,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 126,
-                        "offset": 5229
+                        "line": 134,
+                        "offset": 5810
                       },
                       "roots": [],
                       "why": "unsupported-construct"
@@ -1860,8 +1900,8 @@
                     "position": {
                       "column": 19,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 126,
-                      "offset": 5199
+                      "line": 134,
+                      "offset": 5780
                     },
                     "source": "({ input }) => attemptOutcome({ reason: input.reason })"
                   }
@@ -1872,8 +1912,8 @@
                     "position": {
                       "column": 10,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 127,
-                      "offset": 5265
+                      "line": 135,
+                      "offset": 5846
                     }
                   },
                   "value": {
@@ -1881,8 +1921,8 @@
                     "position": {
                       "column": 19,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 127,
-                      "offset": 5274
+                      "line": 135,
+                      "offset": 5855
                     },
                     "source": "() => &version + 1",
                     "tree": {
@@ -1896,16 +1936,16 @@
                             "position": {
                               "column": 25,
                               "file": "src/domain/execution/attempt.mesh.mx",
-                              "line": 127,
-                              "offset": 5280
+                              "line": 135,
+                              "offset": 5861
                             }
                           },
                           "optional": false,
                           "position": {
                             "column": 25,
                             "file": "src/domain/execution/attempt.mesh.mx",
-                            "line": 127,
-                            "offset": 5280
+                            "line": 135,
+                            "offset": 5861
                           }
                         },
                         {
@@ -1913,8 +1953,8 @@
                           "position": {
                             "column": 36,
                             "file": "src/domain/execution/attempt.mesh.mx",
-                            "line": 127,
-                            "offset": 5291
+                            "line": 135,
+                            "offset": 5872
                           },
                           "value": 1
                         }
@@ -1924,8 +1964,8 @@
                       "position": {
                         "column": 25,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 127,
-                        "offset": 5280
+                        "line": 135,
+                        "offset": 5861
                       }
                     }
                   }
@@ -1935,8 +1975,8 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 123,
-                "offset": 5119
+                "line": 131,
+                "offset": 5700
               }
             }
           ],
@@ -1949,8 +1989,8 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 108,
-                "offset": 4518
+                "line": 116,
+                "offset": 5099
               },
               "type": "string"
             },
@@ -1961,8 +2001,8 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 109,
-                "offset": 4547
+                "line": 117,
+                "offset": 5128
               },
               "type": "integer"
             }
@@ -1972,8 +2012,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/execution/attempt.mesh.mx",
-            "line": 106,
-            "offset": 4476
+            "line": 114,
+            "offset": 5057
           },
           "validate": [
             {
@@ -1983,16 +2023,16 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 111,
-                "offset": 4604
+                "line": 119,
+                "offset": 5185
               },
               "that": {
                 "params": [],
                 "position": {
                   "column": 15,
                   "file": "src/domain/execution/attempt.mesh.mx",
-                  "line": 112,
-                  "offset": 4636
+                  "line": 120,
+                  "offset": 5217
                 },
                 "source": "() => &state === :running",
                 "tree": {
@@ -2006,16 +2046,16 @@
                         "position": {
                           "column": 21,
                           "file": "src/domain/execution/attempt.mesh.mx",
-                          "line": 112,
-                          "offset": 4642
+                          "line": 120,
+                          "offset": 5223
                         }
                       },
                       "optional": false,
                       "position": {
                         "column": 21,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 112,
-                        "offset": 4642
+                        "line": 120,
+                        "offset": 5223
                       }
                     },
                     {
@@ -2023,8 +2063,8 @@
                       "position": {
                         "column": 32,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 112,
-                        "offset": 4653
+                        "line": 120,
+                        "offset": 5234
                       },
                       "value": "running"
                     }
@@ -2034,8 +2074,8 @@
                   "position": {
                     "column": 21,
                     "file": "src/domain/execution/attempt.mesh.mx",
-                    "line": 112,
-                    "offset": 4642
+                    "line": 120,
+                    "offset": 5223
                   }
                 }
               }
@@ -2058,8 +2098,8 @@
                   "position": {
                     "column": 34,
                     "file": "src/domain/execution/attempt.mesh.mx",
-                    "line": 120,
-                    "offset": 5023
+                    "line": 128,
+                    "offset": 5604
                   },
                   "roots": [
                     "self"
@@ -2069,8 +2109,8 @@
                 "position": {
                   "column": 18,
                   "file": "src/domain/execution/attempt.mesh.mx",
-                  "line": 120,
-                  "offset": 5007
+                  "line": 128,
+                  "offset": 5588
                 },
                 "source": "({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })"
               },
@@ -2079,8 +2119,8 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 116,
-                "offset": 4755
+                "line": 124,
+                "offset": 5336
               },
               "that": {
                 "params": [
@@ -2089,8 +2129,8 @@
                 "position": {
                   "column": 15,
                   "file": "src/domain/execution/attempt.mesh.mx",
-                  "line": 117,
-                  "offset": 4794
+                  "line": 125,
+                  "offset": 5375
                 },
                 "source": "({ input }) => input.expectedVersion == null || input.expectedVersion === &version",
                 "tree": {
@@ -2106,16 +2146,16 @@
                             "position": {
                               "column": 30,
                               "file": "src/domain/execution/attempt.mesh.mx",
-                              "line": 117,
-                              "offset": 4809
+                              "line": 125,
+                              "offset": 5390
                             }
                           },
                           "optional": false,
                           "position": {
                             "column": 30,
                             "file": "src/domain/execution/attempt.mesh.mx",
-                            "line": 117,
-                            "offset": 4809
+                            "line": 125,
+                            "offset": 5390
                           }
                         }
                       ],
@@ -2124,8 +2164,8 @@
                       "position": {
                         "column": 30,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 117,
-                        "offset": 4809
+                        "line": 125,
+                        "offset": 5390
                       }
                     },
                     {
@@ -2139,16 +2179,16 @@
                             "position": {
                               "column": 63,
                               "file": "src/domain/execution/attempt.mesh.mx",
-                              "line": 117,
-                              "offset": 4842
+                              "line": 125,
+                              "offset": 5423
                             }
                           },
                           "optional": false,
                           "position": {
                             "column": 63,
                             "file": "src/domain/execution/attempt.mesh.mx",
-                            "line": 117,
-                            "offset": 4842
+                            "line": 125,
+                            "offset": 5423
                           }
                         },
                         {
@@ -2160,16 +2200,16 @@
                             "position": {
                               "column": 89,
                               "file": "src/domain/execution/attempt.mesh.mx",
-                              "line": 117,
-                              "offset": 4868
+                              "line": 125,
+                              "offset": 5449
                             }
                           },
                           "optional": false,
                           "position": {
                             "column": 89,
                             "file": "src/domain/execution/attempt.mesh.mx",
-                            "line": 117,
-                            "offset": 4868
+                            "line": 125,
+                            "offset": 5449
                           }
                         }
                       ],
@@ -2178,8 +2218,8 @@
                       "position": {
                         "column": 63,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 117,
-                        "offset": 4842
+                        "line": 125,
+                        "offset": 5423
                       }
                     }
                   ],
@@ -2188,8 +2228,8 @@
                   "position": {
                     "column": 30,
                     "file": "src/domain/execution/attempt.mesh.mx",
-                    "line": 117,
-                    "offset": 4809
+                    "line": 125,
+                    "offset": 5390
                   }
                 }
               }
@@ -2206,8 +2246,8 @@
                     "position": {
                       "column": 10,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 146,
-                      "offset": 5949
+                      "line": 154,
+                      "offset": 6530
                     }
                   },
                   "value": {
@@ -2220,8 +2260,8 @@
                     "position": {
                       "column": 10,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 147,
-                      "offset": 5977
+                      "line": 155,
+                      "offset": 6558
                     }
                   },
                   "value": {
@@ -2229,8 +2269,8 @@
                     "position": {
                       "column": 19,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 147,
-                      "offset": 5986
+                      "line": 155,
+                      "offset": 6567
                     },
                     "source": "() => now()",
                     "tree": {
@@ -2240,8 +2280,8 @@
                       "position": {
                         "column": 25,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 147,
-                        "offset": 5992
+                        "line": 155,
+                        "offset": 6573
                       }
                     }
                   }
@@ -2252,8 +2292,8 @@
                     "position": {
                       "column": 10,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 148,
-                      "offset": 6008
+                      "line": 156,
+                      "offset": 6589
                     }
                   },
                   "value": {
@@ -2266,8 +2306,8 @@
                       "position": {
                         "column": 49,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 148,
-                        "offset": 6047
+                        "line": 156,
+                        "offset": 6628
                       },
                       "roots": [],
                       "why": "unsupported-construct"
@@ -2275,8 +2315,8 @@
                     "position": {
                       "column": 19,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 148,
-                      "offset": 6017
+                      "line": 156,
+                      "offset": 6598
                     },
                     "source": "({ input }) => attemptOutcome({ note: input.note })"
                   }
@@ -2287,8 +2327,8 @@
                     "position": {
                       "column": 10,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 149,
-                      "offset": 6079
+                      "line": 157,
+                      "offset": 6660
                     }
                   },
                   "value": {
@@ -2296,8 +2336,8 @@
                     "position": {
                       "column": 19,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 149,
-                      "offset": 6088
+                      "line": 157,
+                      "offset": 6669
                     },
                     "source": "() => &version + 1",
                     "tree": {
@@ -2311,16 +2351,16 @@
                             "position": {
                               "column": 25,
                               "file": "src/domain/execution/attempt.mesh.mx",
-                              "line": 149,
-                              "offset": 6094
+                              "line": 157,
+                              "offset": 6675
                             }
                           },
                           "optional": false,
                           "position": {
                             "column": 25,
                             "file": "src/domain/execution/attempt.mesh.mx",
-                            "line": 149,
-                            "offset": 6094
+                            "line": 157,
+                            "offset": 6675
                           }
                         },
                         {
@@ -2328,8 +2368,8 @@
                           "position": {
                             "column": 36,
                             "file": "src/domain/execution/attempt.mesh.mx",
-                            "line": 149,
-                            "offset": 6105
+                            "line": 157,
+                            "offset": 6686
                           },
                           "value": 1
                         }
@@ -2339,8 +2379,8 @@
                       "position": {
                         "column": 25,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 149,
-                        "offset": 6094
+                        "line": 157,
+                        "offset": 6675
                       }
                     }
                   }
@@ -2350,8 +2390,8 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 145,
-                "offset": 5935
+                "line": 153,
+                "offset": 6516
               }
             }
           ],
@@ -2363,8 +2403,8 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 130,
-                "offset": 5333
+                "line": 138,
+                "offset": 5914
               },
               "type": "string"
             },
@@ -2375,8 +2415,8 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 131,
-                "offset": 5363
+                "line": 139,
+                "offset": 5944
               },
               "type": "integer"
             }
@@ -2386,8 +2426,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/execution/attempt.mesh.mx",
-            "line": 128,
-            "offset": 5297
+            "line": 136,
+            "offset": 5878
           },
           "validate": [
             {
@@ -2397,16 +2437,16 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 133,
-                "offset": 5420
+                "line": 141,
+                "offset": 6001
               },
               "that": {
                 "params": [],
                 "position": {
                   "column": 15,
                   "file": "src/domain/execution/attempt.mesh.mx",
-                  "line": 134,
-                  "offset": 5452
+                  "line": 142,
+                  "offset": 6033
                 },
                 "source": "() => &state === :running",
                 "tree": {
@@ -2420,16 +2460,16 @@
                         "position": {
                           "column": 21,
                           "file": "src/domain/execution/attempt.mesh.mx",
-                          "line": 134,
-                          "offset": 5458
+                          "line": 142,
+                          "offset": 6039
                         }
                       },
                       "optional": false,
                       "position": {
                         "column": 21,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 134,
-                        "offset": 5458
+                        "line": 142,
+                        "offset": 6039
                       }
                     },
                     {
@@ -2437,8 +2477,8 @@
                       "position": {
                         "column": 32,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 134,
-                        "offset": 5469
+                        "line": 142,
+                        "offset": 6050
                       },
                       "value": "running"
                     }
@@ -2448,8 +2488,8 @@
                   "position": {
                     "column": 21,
                     "file": "src/domain/execution/attempt.mesh.mx",
-                    "line": 134,
-                    "offset": 5458
+                    "line": 142,
+                    "offset": 6039
                   }
                 }
               }
@@ -2472,8 +2512,8 @@
                   "position": {
                     "column": 34,
                     "file": "src/domain/execution/attempt.mesh.mx",
-                    "line": 142,
-                    "offset": 5839
+                    "line": 150,
+                    "offset": 6420
                   },
                   "roots": [
                     "self"
@@ -2483,8 +2523,8 @@
                 "position": {
                   "column": 18,
                   "file": "src/domain/execution/attempt.mesh.mx",
-                  "line": 142,
-                  "offset": 5823
+                  "line": 150,
+                  "offset": 6404
                 },
                 "source": "({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })"
               },
@@ -2493,8 +2533,8 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 138,
-                "offset": 5571
+                "line": 146,
+                "offset": 6152
               },
               "that": {
                 "params": [
@@ -2503,8 +2543,8 @@
                 "position": {
                   "column": 15,
                   "file": "src/domain/execution/attempt.mesh.mx",
-                  "line": 139,
-                  "offset": 5610
+                  "line": 147,
+                  "offset": 6191
                 },
                 "source": "({ input }) => input.expectedVersion == null || input.expectedVersion === &version",
                 "tree": {
@@ -2520,16 +2560,16 @@
                             "position": {
                               "column": 30,
                               "file": "src/domain/execution/attempt.mesh.mx",
-                              "line": 139,
-                              "offset": 5625
+                              "line": 147,
+                              "offset": 6206
                             }
                           },
                           "optional": false,
                           "position": {
                             "column": 30,
                             "file": "src/domain/execution/attempt.mesh.mx",
-                            "line": 139,
-                            "offset": 5625
+                            "line": 147,
+                            "offset": 6206
                           }
                         }
                       ],
@@ -2538,8 +2578,8 @@
                       "position": {
                         "column": 30,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 139,
-                        "offset": 5625
+                        "line": 147,
+                        "offset": 6206
                       }
                     },
                     {
@@ -2553,16 +2593,16 @@
                             "position": {
                               "column": 63,
                               "file": "src/domain/execution/attempt.mesh.mx",
-                              "line": 139,
-                              "offset": 5658
+                              "line": 147,
+                              "offset": 6239
                             }
                           },
                           "optional": false,
                           "position": {
                             "column": 63,
                             "file": "src/domain/execution/attempt.mesh.mx",
-                            "line": 139,
-                            "offset": 5658
+                            "line": 147,
+                            "offset": 6239
                           }
                         },
                         {
@@ -2574,16 +2614,16 @@
                             "position": {
                               "column": 89,
                               "file": "src/domain/execution/attempt.mesh.mx",
-                              "line": 139,
-                              "offset": 5684
+                              "line": 147,
+                              "offset": 6265
                             }
                           },
                           "optional": false,
                           "position": {
                             "column": 89,
                             "file": "src/domain/execution/attempt.mesh.mx",
-                            "line": 139,
-                            "offset": 5684
+                            "line": 147,
+                            "offset": 6265
                           }
                         }
                       ],
@@ -2592,8 +2632,8 @@
                       "position": {
                         "column": 63,
                         "file": "src/domain/execution/attempt.mesh.mx",
-                        "line": 139,
-                        "offset": 5658
+                        "line": 147,
+                        "offset": 6239
                       }
                     }
                   ],
@@ -2602,8 +2642,8 @@
                   "position": {
                     "column": 30,
                     "file": "src/domain/execution/attempt.mesh.mx",
-                    "line": 139,
-                    "offset": 5625
+                    "line": 147,
+                    "offset": 6206
                   }
                 }
               }
@@ -2895,8 +2935,8 @@
               "position": {
                 "column": 19,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 152,
-                "offset": 6175
+                "line": 160,
+                "offset": 6756
               },
               "source": "({ actor, context }) => isSystem(context) || actor.role != null",
               "tree": {
@@ -2909,8 +2949,8 @@
                         "position": {
                           "column": 52,
                           "file": "src/domain/execution/attempt.mesh.mx",
-                          "line": 152,
-                          "offset": 6208
+                          "line": 160,
+                          "offset": 6789
                         }
                       }
                     ],
@@ -2919,8 +2959,8 @@
                     "position": {
                       "column": 43,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 152,
-                      "offset": 6199
+                      "line": 160,
+                      "offset": 6780
                     }
                   },
                   {
@@ -2934,16 +2974,16 @@
                           "position": {
                             "column": 64,
                             "file": "src/domain/execution/attempt.mesh.mx",
-                            "line": 152,
-                            "offset": 6220
+                            "line": 160,
+                            "offset": 6801
                           }
                         },
                         "optional": false,
                         "position": {
                           "column": 64,
                           "file": "src/domain/execution/attempt.mesh.mx",
-                          "line": 152,
-                          "offset": 6220
+                          "line": 160,
+                          "offset": 6801
                         }
                       }
                     ],
@@ -2952,8 +2992,8 @@
                     "position": {
                       "column": 64,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 152,
-                      "offset": 6220
+                      "line": 160,
+                      "offset": 6801
                     }
                   }
                 ],
@@ -2962,8 +3002,8 @@
                 "position": {
                   "column": 43,
                   "file": "src/domain/execution/attempt.mesh.mx",
-                  "line": 152,
-                  "offset": 6199
+                  "line": 160,
+                  "offset": 6780
                 }
               }
             }
@@ -2973,8 +3013,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/execution/attempt.mesh.mx",
-            "line": 151,
-            "offset": 6122
+            "line": 159,
+            "offset": 6703
           },
           "types": [
             "read"
@@ -2987,8 +3027,8 @@
               "position": {
                 "column": 30,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 153,
-                "offset": 6269
+                "line": 161,
+                "offset": 6850
               }
             }
           ],
@@ -3007,8 +3047,8 @@
                 "position": {
                   "column": 19,
                   "file": "src/domain/execution/attempt.mesh.mx",
-                  "line": 154,
-                  "offset": 6296
+                  "line": 162,
+                  "offset": 6877
                 },
                 "roots": [],
                 "why": "uses-tx"
@@ -3016,8 +3056,8 @@
               "position": {
                 "column": 19,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 154,
-                "offset": 6296
+                "line": 162,
+                "offset": 6877
               },
               "source": "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)"
             }
@@ -3027,8 +3067,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/execution/attempt.mesh.mx",
-            "line": 153,
-            "offset": 6243
+            "line": 161,
+            "offset": 6824
           }
         },
         {
@@ -3038,8 +3078,8 @@
               "position": {
                 "column": 35,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 155,
-                "offset": 6403
+                "line": 163,
+                "offset": 6984
               }
             }
           ],
@@ -3069,8 +3109,8 @@
                 "position": {
                   "column": 19,
                   "file": "src/domain/execution/attempt.mesh.mx",
-                  "line": 156,
-                  "offset": 6430
+                  "line": 164,
+                  "offset": 7011
                 },
                 "roots": [],
                 "why": "uses-tx"
@@ -3078,8 +3118,8 @@
               "position": {
                 "column": 19,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 156,
-                "offset": 6430
+                "line": 164,
+                "offset": 7011
               },
               "source": "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])"
             }
@@ -3089,8 +3129,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/execution/attempt.mesh.mx",
-            "line": 155,
-            "offset": 6372
+            "line": 163,
+            "offset": 6953
           }
         },
         {
@@ -3100,8 +3140,8 @@
               "position": {
                 "column": 36,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 157,
-                "offset": 6555
+                "line": 166,
+                "offset": 7224
               }
             }
           ],
@@ -3124,8 +3164,8 @@
                 "position": {
                   "column": 19,
                   "file": "src/domain/execution/attempt.mesh.mx",
-                  "line": 158,
-                  "offset": 6582
+                  "line": 167,
+                  "offset": 7251
                 },
                 "roots": [],
                 "why": "uses-tx"
@@ -3133,8 +3173,8 @@
               "position": {
                 "column": 19,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 158,
-                "offset": 6582
+                "line": 167,
+                "offset": 7251
               },
               "source": "({ input, actor, context, tx }) => isSystem(context) || claimerOf(tx, input.run, actor.id, now())"
             }
@@ -3144,8 +3184,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/execution/attempt.mesh.mx",
-            "line": 157,
-            "offset": 6523
+            "line": 166,
+            "offset": 7192
           }
         },
         {
@@ -3155,8 +3195,8 @@
               "position": {
                 "column": 38,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 159,
-                "offset": 6718
+                "line": 168,
+                "offset": 7387
               }
             },
             {
@@ -3164,8 +3204,8 @@
               "position": {
                 "column": 47,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 159,
-                "offset": 6727
+                "line": 168,
+                "offset": 7396
               }
             },
             {
@@ -3173,8 +3213,8 @@
               "position": {
                 "column": 63,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 159,
-                "offset": 6743
+                "line": 168,
+                "offset": 7412
               }
             }
           ],
@@ -3188,8 +3228,8 @@
               "position": {
                 "column": 19,
                 "file": "src/domain/execution/attempt.mesh.mx",
-                "line": 160,
-                "offset": 6772
+                "line": 169,
+                "offset": 7441
               },
               "source": "({ self, actor, context }) => isSystem(context) || self.performerId === actor.id",
               "tree": {
@@ -3202,8 +3242,8 @@
                         "position": {
                           "column": 58,
                           "file": "src/domain/execution/attempt.mesh.mx",
-                          "line": 160,
-                          "offset": 6811
+                          "line": 169,
+                          "offset": 7480
                         }
                       }
                     ],
@@ -3212,8 +3252,8 @@
                     "position": {
                       "column": 49,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 160,
-                      "offset": 6802
+                      "line": 169,
+                      "offset": 7471
                     }
                   },
                   {
@@ -3227,16 +3267,16 @@
                           "position": {
                             "column": 70,
                             "file": "src/domain/execution/attempt.mesh.mx",
-                            "line": 160,
-                            "offset": 6823
+                            "line": 169,
+                            "offset": 7492
                           }
                         },
                         "optional": false,
                         "position": {
                           "column": 70,
                           "file": "src/domain/execution/attempt.mesh.mx",
-                          "line": 160,
-                          "offset": 6823
+                          "line": 169,
+                          "offset": 7492
                         }
                       },
                       {
@@ -3248,16 +3288,16 @@
                           "position": {
                             "column": 91,
                             "file": "src/domain/execution/attempt.mesh.mx",
-                            "line": 160,
-                            "offset": 6844
+                            "line": 169,
+                            "offset": 7513
                           }
                         },
                         "optional": false,
                         "position": {
                           "column": 91,
                           "file": "src/domain/execution/attempt.mesh.mx",
-                          "line": 160,
-                          "offset": 6844
+                          "line": 169,
+                          "offset": 7513
                         }
                       }
                     ],
@@ -3266,8 +3306,8 @@
                     "position": {
                       "column": 70,
                       "file": "src/domain/execution/attempt.mesh.mx",
-                      "line": 160,
-                      "offset": 6823
+                      "line": 169,
+                      "offset": 7492
                     }
                   }
                 ],
@@ -3276,8 +3316,8 @@
                 "position": {
                   "column": 49,
                   "file": "src/domain/execution/attempt.mesh.mx",
-                  "line": 160,
-                  "offset": 6802
+                  "line": 169,
+                  "offset": 7471
                 }
               }
             }
@@ -3287,8 +3327,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/execution/attempt.mesh.mx",
-            "line": 159,
-            "offset": 6684
+            "line": 168,
+            "offset": 7353
           }
         }
       ],
@@ -11215,12 +11255,21 @@
               }
             },
             {
-              "name": "retire",
+              "name": "update",
               "position": {
                 "column": 41,
                 "file": "src/domain/identity/collaborator.mesh.mx",
                 "line": 82,
                 "offset": 3017
+              }
+            },
+            {
+              "name": "retire",
+              "position": {
+                "column": 50,
+                "file": "src/domain/identity/collaborator.mesh.mx",
+                "line": 82,
+                "offset": 3026
               }
             }
           ],
@@ -11240,7 +11289,7 @@
                   "column": 19,
                   "file": "src/domain/identity/collaborator.mesh.mx",
                   "line": 83,
-                  "offset": 3045
+                  "offset": 3054
                 },
                 "roots": [],
                 "why": "uses-tx"
@@ -11249,7 +11298,7 @@
                 "column": 19,
                 "file": "src/domain/identity/collaborator.mesh.mx",
                 "line": 83,
-                "offset": 3045
+                "offset": 3054
               },
               "source": "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)"
             }
@@ -11271,7 +11320,7 @@
                 "column": 31,
                 "file": "src/domain/identity/collaborator.mesh.mx",
                 "line": 84,
-                "offset": 3148
+                "offset": 3157
               }
             },
             {
@@ -11280,7 +11329,7 @@
                 "column": 42,
                 "file": "src/domain/identity/collaborator.mesh.mx",
                 "line": 84,
-                "offset": 3159
+                "offset": 3168
               }
             }
           ],
@@ -11306,7 +11355,7 @@
                   "column": 19,
                   "file": "src/domain/identity/collaborator.mesh.mx",
                   "line": 85,
-                  "offset": 3187
+                  "offset": 3196
                 },
                 "roots": [],
                 "why": "uses-tx"
@@ -11315,7 +11364,7 @@
                 "column": 19,
                 "file": "src/domain/identity/collaborator.mesh.mx",
                 "line": 85,
-                "offset": 3187
+                "offset": 3196
               },
               "source": "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner])"
             }
@@ -11326,7 +11375,7 @@
             "column": 4,
             "file": "src/domain/identity/collaborator.mesh.mx",
             "line": 84,
-            "offset": 3121
+            "offset": 3130
           }
         },
         {
@@ -11337,7 +11386,7 @@
                 "column": 45,
                 "file": "src/domain/identity/collaborator.mesh.mx",
                 "line": 86,
-                "offset": 3312
+                "offset": 3321
               }
             }
           ],
@@ -11364,7 +11413,7 @@
                   "column": 19,
                   "file": "src/domain/identity/collaborator.mesh.mx",
                   "line": 87,
-                  "offset": 3340
+                  "offset": 3349
                 },
                 "roots": [],
                 "why": "uses-tx"
@@ -11373,7 +11422,7 @@
                 "column": 19,
                 "file": "src/domain/identity/collaborator.mesh.mx",
                 "line": 87,
-                "offset": 3340
+                "offset": 3349
               },
               "source": "({ self, actor, context, tx }) => isSystem(context) || self.id === actor.id || roleIn(tx, actor.id, [:owner])"
             }
@@ -11384,7 +11433,7 @@
             "column": 4,
             "file": "src/domain/identity/collaborator.mesh.mx",
             "line": 86,
-            "offset": 3271
+            "offset": 3280
           }
         }
       ],

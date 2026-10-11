@@ -35,6 +35,14 @@ entity :Attempt table="attempts"
         &machine
         &session
       validate
+        // The claimer test is both this rule and the policy attemptClaimer, as Hyper keeps both: the policy
+        // (`runs/checks/reporter.ex:35-41`) refuses a caller that holds no live claim on the run's Task, and the rule
+        // (`runs/attempt/rules.ex:15-30`) still runs on a call made as `system`, which every policy admits.
+        check :claimer [
+          that=({ input, actor, tx }) => claimerOf(tx, input.run, actor.id, now())
+          code="attempt.claimer"
+          message="the claim on the task is no longer the actor's; claim it again to report"
+        ]
         check :runRunning [
           that=({ input, tx }) => runRunningOf(tx, input.run)
           code="attempt.run-running"
@@ -154,6 +162,7 @@ entity :Attempt table="attempts"
       authorize-if=({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)
     policy :ownerOrMember actions=[&start]
       authorize-if=({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])
+    // `start`'s rule `attempt.claimer` repeats this check for a call made as `system`.
     policy :attemptClaimer actions=[&start]
       authorize-if=({ input, actor, context, tx }) => isSystem(context) || claimerOf(tx, input.run, actor.id, now())
     policy :attemptPerformer actions=[&finish, &reportStopped, &abandon]

@@ -462,11 +462,14 @@ export async function managesTaskOf(tx: Reads, task: { readonly id: string; read
 
 /**
  * Policy `claimAssignee`, the spec's `claim.assignee` (`tasks/claim/checks/assignee.ex:12-30`, PROTOCOL.md:248): a
- * Task assigned to someone else is claimed only by its assignee; owners are not exempt. A Task that does not exist is
- * `NotFoundError` here, in the permission phase, as the spec's `exists` check answers (PROTOCOL.md:110); Hyper's
- * check passes it and its rules report it as not found.
+ * Task assigned to someone else is claimed only by its assignee; owners are not exempt. For an actor with a
+ * membership, a Task that does not exist is `NotFoundError` here, in the permission phase, as the spec's `exists` check
+ * answers (PROTOCOL.md:110); Hyper's check passes it and its rules report it as not found. An actor with no membership
+ * passes, and `isMember` and `ownerOrMember` refuse it: it may read no Task, so a missing Task must answer exactly as
+ * an existing one (PROTOCOL.md:110, `02:42`), as Hyper's `Role` policy refuses it before any rule runs.
  */
 export async function assigneeMayClaimOf(tx: Reads, taskId: string, actorId: string): Promise<boolean> {
+  if ((await roleOf(tx, actorId)) === null) return true;
   if (!(await taskOf(tx, taskId))) throw new NotFoundError("Task", taskId);
   const current = await currentAssignmentOf(tx, taskId);
   return current === undefined || current.assigneeId === actorId;

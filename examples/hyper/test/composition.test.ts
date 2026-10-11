@@ -409,7 +409,7 @@ describe("effects across aggregates in the execution commands: the machine named
   }));
 
   test("a report that fails after recording a new machine leaves no machine", () => within(async (w) => {
-    // Bob holds no claim on the task, so attempt.claimer (a policy) refuses, and the machine the call recorded rolls back.
+    // Bob holds no claim on the task, so the policy attemptClaimer refuses, and the machine the call recorded rolls back.
     const run = await w.hyper.startRun({ task: w.task.id }, as(w.bob));
     expect(await deniedBy(attemptStart({ run: run.id, machine: "desktop" }, as(w.bob), w.binding))).toEqual(["attemptClaimer"]);
     expect(await w.hyper.readMachine({}, as(w.alice))).toEqual([]);

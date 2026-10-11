@@ -230,6 +230,18 @@ export function bindCollaborator(
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Collaborator", "update", [
         {
+          name: "isMember",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              record: true,
+              run: $expressions["policy.isMember.authorize-if.0"],
+            },
+          ],
+        },
+        {
           name: "collaboratorSelfOrOwner",
           when: null,
           checks: [

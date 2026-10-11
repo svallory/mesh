@@ -107,7 +107,9 @@ export const expressions = {
     $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
   // policy :isMember authorize-if, plain (uses-tx) (src/domain/identity/collaborator.mesh.mx:83:20)
   "policy.isMember.authorize-if.0": (
-    $s: CollaboratorNewScope<$SharedInput<RegisterCollaboratorInput | RetireCollaboratorInput>>,
+    $s: CollaboratorNewScope<
+      $SharedInput<RegisterCollaboratorInput | UpdateCollaboratorInput | RetireCollaboratorInput>
+    >,
   ) => {
     const isSystem = $.isSystem;
     return (({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id))($s);

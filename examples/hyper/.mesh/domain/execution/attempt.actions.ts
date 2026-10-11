@@ -215,31 +215,38 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
           await $runCheck($issues, $checks, {
+            label: "claimer",
+            code: "attempt.claimer",
+            message: "the claim on the task is no longer the actor's; claim it again to report",
+            source: { file: "src/domain/execution/attempt.mesh.mx", line: 41, column: 9 },
+            that: $expressions["start.check.claimer.that"],
+          });
+          await $runCheck($issues, $checks, {
             label: "runRunning",
             code: "attempt.run-running",
             message: "the run is not running",
-            source: { file: "src/domain/execution/attempt.mesh.mx", line: 38, column: 9 },
+            source: { file: "src/domain/execution/attempt.mesh.mx", line: 46, column: 9 },
             that: $expressions["start.check.runRunning.that"],
           });
           await $runCheck($issues, $checks, {
             label: "stepIdle",
             code: "attempt.step-idle",
             message: "an attempt of this step is already running",
-            source: { file: "src/domain/execution/attempt.mesh.mx", line: 43, column: 9 },
+            source: { file: "src/domain/execution/attempt.mesh.mx", line: 51, column: 9 },
             that: $expressions["start.check.stepIdle.that"],
           });
           await $runCheck($issues, $checks, {
             label: "session",
             code: "attempt.session",
             message: "the session reference does not exist",
-            source: { file: "src/domain/execution/attempt.mesh.mx", line: 48, column: 9 },
+            source: { file: "src/domain/execution/attempt.mesh.mx", line: 56, column: 9 },
             that: $expressions["start.check.session.that"],
           });
           await $runCheck($issues, $checks, {
             label: "machineRetired",
             code: "machine.retired",
             message: "the machine is retired; report the host by a new name",
-            source: { file: "src/domain/execution/attempt.mesh.mx", line: 53, column: 9 },
+            source: { file: "src/domain/execution/attempt.mesh.mx", line: 61, column: 9 },
             that: $expressions["start.check.machineRetired.that"],
           });
           if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -254,7 +261,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
             const $value = await $expressions["start.step.0.set.performer"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &performer (src/domain/execution/attempt.mesh.mx:60:22) produced no value, and the relationship performer is required",
+                "set &performer (src/domain/execution/attempt.mesh.mx:68:22) produced no value, and the relationship performer is required",
               );
             $changes.performerId = $record.performerId = $value;
           }
@@ -263,7 +270,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
             const $value = await $expressions["start.step.0.set.task"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &task (src/domain/execution/attempt.mesh.mx:61:17) produced no value, and the relationship task is required",
+                "set &task (src/domain/execution/attempt.mesh.mx:69:17) produced no value, and the relationship task is required",
               );
             $changes.taskId = $record.taskId = $value;
           }
@@ -272,7 +279,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
             const $value = await $expressions["start.step.0.set.number"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &number (src/domain/execution/attempt.mesh.mx:62:19) produced no value, and number is required",
+                "set &number (src/domain/execution/attempt.mesh.mx:70:19) produced no value, and number is required",
               );
             $changes.number = $record.number = $value;
           }
@@ -288,7 +295,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
             const $value = await $expressions["start.step.0.set.delegator"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &delegator (src/domain/execution/attempt.mesh.mx:63:22) produced no value, and the relationship delegator is required",
+                "set &delegator (src/domain/execution/attempt.mesh.mx:71:22) produced no value, and the relationship delegator is required",
               );
             $changes.delegatorId = $record.delegatorId = $value;
           }
@@ -394,21 +401,21 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
             label: "running",
             code: "attempt.running",
             message: "the attempt has ended",
-            source: { file: "src/domain/execution/attempt.mesh.mx", line: 73, column: 9 },
+            source: { file: "src/domain/execution/attempt.mesh.mx", line: 81, column: 9 },
             that: $expressions["finish.check.running.that"],
           });
           await $runCheck($issues, $checks, {
             label: "error",
             code: "attempt.error",
             message: "only a failed attempt reports an error",
-            source: { file: "src/domain/execution/attempt.mesh.mx", line: 78, column: 9 },
+            source: { file: "src/domain/execution/attempt.mesh.mx", line: 86, column: 9 },
             that: $expressions["finish.check.error.that"],
           });
           await $runCheck($issues, $checks, {
             label: "evidence",
             code: "attempt.evidence",
             message: "an evidence reference does not exist",
-            source: { file: "src/domain/execution/attempt.mesh.mx", line: 83, column: 9 },
+            source: { file: "src/domain/execution/attempt.mesh.mx", line: 91, column: 9 },
             that: $expressions["finish.check.evidence.that"],
             details: $expressions["finish.check.evidence.details"],
           });
@@ -416,7 +423,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
             label: "versionMatches",
             code: "expected-version",
             message: "the record is at another version; read it again and retry",
-            source: { file: "src/domain/execution/attempt.mesh.mx", line: 89, column: 9 },
+            source: { file: "src/domain/execution/attempt.mesh.mx", line: 97, column: 9 },
             that: $expressions["finish.check.versionMatches.that"],
             details: $expressions["finish.check.versionMatches.details"],
           });
@@ -426,7 +433,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
             const $value = await $expressions["finish.step.0.set.state"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &state (src/domain/execution/attempt.mesh.mx:97:18) produced no value, and state is required",
+                "set &state (src/domain/execution/attempt.mesh.mx:105:18) produced no value, and state is required",
               );
             $changes.state = $record.state = $value;
           }
@@ -442,7 +449,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
             const $value = await $expressions["finish.step.0.set.version"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &version (src/domain/execution/attempt.mesh.mx:100:20) produced no value, and version is required",
+                "set &version (src/domain/execution/attempt.mesh.mx:108:20) produced no value, and version is required",
               );
             $changes.version = $record.version = $value;
           }
@@ -560,14 +567,14 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
             label: "running",
             code: "attempt.running",
             message: "the attempt has ended",
-            source: { file: "src/domain/execution/attempt.mesh.mx", line: 111, column: 9 },
+            source: { file: "src/domain/execution/attempt.mesh.mx", line: 119, column: 9 },
             that: $expressions["reportStopped.check.running.that"],
           });
           await $runCheck($issues, $checks, {
             label: "versionMatches",
             code: "expected-version",
             message: "the record is at another version; read it again and retry",
-            source: { file: "src/domain/execution/attempt.mesh.mx", line: 116, column: 9 },
+            source: { file: "src/domain/execution/attempt.mesh.mx", line: 124, column: 9 },
             that: $expressions["reportStopped.check.versionMatches.that"],
             details: $expressions["reportStopped.check.versionMatches.details"],
           });
@@ -586,7 +593,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
             const $value = await $expressions["reportStopped.step.0.set.version"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &version (src/domain/execution/attempt.mesh.mx:127:20) produced no value, and version is required",
+                "set &version (src/domain/execution/attempt.mesh.mx:135:20) produced no value, and version is required",
               );
             $changes.version = $record.version = $value;
           }
@@ -689,14 +696,14 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
             label: "running",
             code: "attempt.running",
             message: "the attempt has ended",
-            source: { file: "src/domain/execution/attempt.mesh.mx", line: 133, column: 9 },
+            source: { file: "src/domain/execution/attempt.mesh.mx", line: 141, column: 9 },
             that: $expressions["abandon.check.running.that"],
           });
           await $runCheck($issues, $checks, {
             label: "versionMatches",
             code: "expected-version",
             message: "the record is at another version; read it again and retry",
-            source: { file: "src/domain/execution/attempt.mesh.mx", line: 138, column: 9 },
+            source: { file: "src/domain/execution/attempt.mesh.mx", line: 146, column: 9 },
             that: $expressions["abandon.check.versionMatches.that"],
             details: $expressions["abandon.check.versionMatches.details"],
           });
@@ -715,7 +722,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
             const $value = await $expressions["abandon.step.0.set.version"]($s);
             if ($value === undefined || $value === null)
               throw new $FrameworkError(
-                "set &version (src/domain/execution/attempt.mesh.mx:149:20) produced no value, and version is required",
+                "set &version (src/domain/execution/attempt.mesh.mx:157:20) produced no value, and version is required",
               );
             $changes.version = $record.version = $value;
           }

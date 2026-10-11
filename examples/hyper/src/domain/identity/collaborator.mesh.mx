@@ -79,7 +79,7 @@ entity :Collaborator table="collaborators"
   policies
     policy :membersRead types=[:read]
       authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
-    policy :isMember actions=[&register, &retire]
+    policy :isMember actions=[&register, &update, &retire]
       authorize-if=({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)
     policy :ownerOnly actions=[&register, &retire]
       authorize-if=({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner])

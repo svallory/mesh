@@ -9,15 +9,18 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Glob } from "bun";
 import { buildModel } from "@meshfw/compiler";
-import { authorizer, ForbiddenError, NotFoundError, type DataLayer, type PolicyCheckSpec, type PolicySpec } from "@meshfw/runtime";
+import { authorizer, ForbiddenError, NotFoundError, type ActionContext, type DataLayer, type PolicyCheckSpec, type PolicySpec } from "@meshfw/runtime";
 import { expressions as claimExpressions } from "../.mesh/domain/work/claim.expressions";
 import { expressions as taskExpressions } from "../.mesh/domain/work/task.expressions";
 import { attemptStart, sessionRecord } from "../src/domain/execution/execution.commands";
 import { collaboratorRetire, membershipRevoke } from "../src/domain/identity/identity.commands";
 import { reviewAccept, submissionSubmit, taskCancel, taskComplete } from "../src/domain/work/work.commands";
-import { as, asSystem, codes, deniedBy, issuesOf, one, within, type World } from "./world";
+import { as, asSystem, codes, deniedBy, empty, eventOf, issuesOf, one, populate, within, type Empty, type World } from "./world";
 
 type Role = "owner" | "member" | "guest";
+
+/** A Task id no row has. */
+const GHOST = "00000000-0000-4000-8000-00000000dead";
 
 /** A collaborator Alice, the owner, registers and grants `role`; with no `role`, it has no membership. */
 async function join(w: World, name: string, role?: Role, kind: "human" | "agent" = "human") {
@@ -84,7 +87,7 @@ describe("roadmap M8 acceptance tests on Hyper", () => {
     expect(await deniedBy(w.hyper.acquireClaim({ task: w.task.id }, as(w.alice)))).toEqual(["claimAssignee"]);
     expect((await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot))).holderId).toBe(w.bot.id);
     // A Task that does not exist is not found, in the permission phase (PROTOCOL.md:110; PR #70 N4).
-    await expect(w.hyper.acquireClaim({ task: "00000000-0000-4000-8000-00000000dead" }, as(w.bot))).rejects.toBeInstanceOf(NotFoundError);
+    await expect(w.hyper.acquireClaim({ task: GHOST }, as(w.bot))).rejects.toBeInstanceOf(NotFoundError);
   }));
 
   test("(4) a non-member's readTask returns no rows and no error; a guest's and a member's return the rows", () => within(async (w) => {
@@ -92,8 +95,10 @@ describe("roadmap M8 acceptance tests on Hyper", () => {
     // read and returns that error; the read itself, as Mesh runs it, is a filter (ADR-0022).
     const outsider = await join(w, "Otto");
     const guest = await join(w, "Gail", "guest");
+    const held = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
     expect(await w.hyper.readTask({}, as(outsider))).toEqual([]);
     expect(await w.hyper.readClaim({}, as(outsider))).toEqual([]);
+    expect((await w.hyper.readClaim({}, as(guest))).map((claim) => claim.id)).toEqual([held.id]);
     expect((await w.hyper.readTask({}, as(guest))).map((task) => task.id)).toEqual([w.task.id]);
     expect((await w.hyper.readTask({}, as(w.bob))).map((task) => task.id)).toEqual([w.task.id]);
   }));
@@ -179,9 +184,11 @@ describe("roadmap M8 acceptance tests on Hyper", () => {
       return table;
     }, asSystem(w.alice));
     // One answer per actor in every order, and the answers are Hyper's. The forged completion is refused before the
-    // transaction by its actor-only check, so the record-reading claimHolder never runs for it (M8a: `before`).
+    // transaction by its actor-only check, so the record-reading claimHolder never runs for it (M8a: `before`). The
+    // outsider passes claimAssignee, which leaves a collaborator with no membership to isMember and ownerOrMember, so a
+    // missing Task answers it as an existing one does (02:42 below).
     expect(decisions).toEqual({
-      "Claim.acquire": ["outsider: isMember,ownerOrMember,claimAssignee", "guest: ownerOrMember,claimAssignee", "member: claimAssignee", "owner: claimAssignee", "holder: allowed", "system: allowed", "forged: claimAssignee"],
+      "Claim.acquire": ["outsider: isMember,ownerOrMember", "guest: ownerOrMember,claimAssignee", "member: claimAssignee", "owner: claimAssignee", "holder: allowed", "system: allowed", "forged: claimAssignee"],
       "Claim.renew": ["outsider: isMember,ownerOrMember,claimHolder", "guest: ownerOrMember,claimHolder", "member: claimHolder", "owner: claimHolder", "holder: allowed", "system: allowed", "forged: claimHolder"],
       "Claim.revoke": ["outsider: isMember,ownerOrMember,claimRevoker", "guest: ownerOrMember,claimRevoker", "member: claimRevoker", "owner: allowed", "holder: claimRevoker", "system: allowed", "forged: allowed"],
       "Task.complete": ["outsider: isMember,ownerOrMember,claimHolder", "guest: ownerOrMember,claimHolder", "member: claimHolder", "owner: claimHolder", "holder: allowed", "system: allowed", "forged: reviewCompletion"],
@@ -232,6 +239,22 @@ describe("group 02.1: guests", () => {
     expect(await deniedBy(w.hyper.createTask({ title: "x" }, as(outsider)))).toEqual(["isMember", "ownerOrMember"]);
     // The spec's permission_denied on the query is HA's (it checks the membership first); the read gives no rows.
     expect(await w.hyper.readTask({}, as(outsider))).toEqual([]);
+  }));
+
+  test("02:42 a non-member's claim answers the same for a missing Task as for an existing one (PROTOCOL.md:110)", () => within(async (w) => {
+    // A target the actor cannot see is not_found exactly as a missing one, so a caller cannot tell the two apart; a
+    // collaborator with no membership sees no Task, so both answer `membership` (isMember), as Hyper's Role policy does.
+    const outsider = await join(w, "Otto");
+    const assigned = await w.hyper.createTask({ title: "Assigned" }, as(w.alice));
+    await w.hyper.assignTask({ id: assigned.id, assignee: w.bot.id }, as(w.alice));
+    const answers = [];
+    for (const task of [GHOST, w.task.id, assigned.id]) answers.push(await denialOf(w.hyper.acquireClaim({ task }, as(outsider))));
+    expect(answers[0]).toMatchObject({ entity: "Claim", action: "acquire", policies: ["isMember", "ownerOrMember"], reason: "failed" });
+    expect(answers[1]).toEqual(answers[0]);
+    expect(answers[2]).toEqual(answers[0]);
+    // A guest may read every Task, so a missing one is not found for it, in the permission phase.
+    const guest = await join(w, "Gail", "guest");
+    await expect(w.hyper.acquireClaim({ task: GHOST }, as(guest))).rejects.toBeInstanceOf(NotFoundError);
   }));
 });
 
@@ -298,9 +321,14 @@ describe("group 02.2: only owners manage memberships and collaborators", () => {
     const guest = await join(w, "self-guest", "guest");
     expect((await w.hyper.updateCollaborator({ id: guest.id, name: "self-guest-x" }, as(guest))).name).toBe("self-guest-x");
     expect(await deniedBy(w.hyper.updateCollaborator({ id: w.bob.id, name: "renamed" }, as(guest)))).toEqual(["collaboratorSelfOrOwner"]);
-    // Even with no membership at all: the policy admits the collaborator itself (`role.ex:22-23`, any role or none).
+    // Not with no membership: the spec checks every command against the actor's active membership (PROTOCOL.md:88,
+    // :246), and the self-update is "in any role" (:254), so isMember refuses. Hyper's Role check lets the collaborator
+    // itself through before its membership test (`role.ex:22-23`); the port follows the spec (POL-20).
     const outsider = await join(w, "outsider");
-    expect((await w.hyper.updateCollaborator({ id: outsider.id, name: "outsider-x" }, as(outsider))).name).toBe("outsider-x");
+    expect(await deniedBy(w.hyper.updateCollaborator({ id: outsider.id, name: "outsider-x" }, as(outsider)))).toEqual(["isMember"]);
+    // Nor once its membership is revoked.
+    await membershipRevoke({ id: w.memberships.bob.id, reason: "left" }, as(w.alice), w.binding);
+    expect(await deniedBy(w.hyper.updateCollaborator({ id: w.bob.id, name: "Bob-x" }, as(w.bob)))).toEqual(["isMember"]);
   }));
 
   test("02:135 changing a role to the one it already has is rejected (rule membership.unchanged)", () => within(async (w) => {
@@ -478,6 +506,18 @@ describe("the permission cases of the other groups", () => {
     await restore();
     expect((await w.hyper.withdrawSubmission({ id: result.submission.id }, as(w.bot))).state).toBe("withdrawn");
   }));
+
+  test("a holder demoted to guest cannot record a late result (ownerOrMember on LateResult :record)", () => within(async (w) => {
+    const held = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
+    await w.hyper.changeRoleMembership({ id: w.memberships.bot.id, role: "guest" }, as(w.alice));
+    w.advance(10);
+    // The lapsed fence turns both commands into a late result, which only its role keeps the guest from recording.
+    expect(await deniedBy(taskComplete({ id: w.task.id, fence: held.fence }, as(w.bot), w.binding))).toEqual(["ownerOrMember"]);
+    expect(await deniedBy(submissionSubmit({ task: w.task.id, fence: held.fence, summary: "late" }, as(w.bot), w.binding))).toEqual(["ownerOrMember"]);
+    expect(await w.hyper.readLateResult({}, as(w.alice))).toEqual([]);
+    await w.hyper.changeRoleMembership({ id: w.memberships.bot.id, role: "member" }, as(w.alice));
+    expect((await taskComplete({ id: w.task.id, fence: held.fence }, as(w.bot), w.binding)).outcome).toBe("late-result-recorded");
+  }));
 });
 
 describe("the execution entities' permissions (no conformance group; Hyper's `runs/checks/reporter.ex`)", () => {
@@ -492,6 +532,17 @@ describe("the execution entities' permissions (no conformance group; Hyper's `ru
     const { run } = await attempt(w);
     expect(await deniedBy(w.hyper.cancelRun({ id: run.id, reason: "stop" }, as(w.bob)))).toEqual(["runCanceler"]);
     expect((await w.hyper.cancelRun({ id: run.id, reason: "stop" }, as(w.bot))).state).toBe("canceled");
+  }));
+
+  test("a claim holder demoted to guest cannot start an attempt (ownerOrMember on Attempt :start)", () => within(async (w) => {
+    await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
+    const run = await w.hyper.startRun({ task: w.task.id }, as(w.bot));
+    await w.hyper.changeRoleMembership({ id: w.memberships.bot.id, role: "guest" }, as(w.alice));
+    // A change of role leaves the claim live, so attemptClaimer passes, and only the role refuses.
+    expect((await claimsOf(w)).map((claim) => claim.state)).toEqual(["active"]);
+    expect(await deniedBy(attemptStart({ run: run.id }, as(w.bot), w.binding))).toEqual(["ownerOrMember"]);
+    await w.hyper.changeRoleMembership({ id: w.memberships.bot.id, role: "member" }, as(w.alice));
+    expect((await attemptStart({ run: run.id }, as(w.bot), w.binding)).attempt.performerId).toBe(w.bot.id);
   }));
 
   test("attempt.performer and invocation.recorder: the performer reports, the recorder or an owner corrects", () => within(async (w) => {
@@ -517,6 +568,144 @@ describe("the execution entities' permissions (no conformance group; Hyper's `ru
     expect(await deniedBy(w.hyper.reportMachine({ name: "desktop" }, as(w.bot)))).toEqual(["internal"]);
   }));
 });
+
+describe("every read, every internal action and every gated write, over a workspace with a row of every entity", () => {
+  test("every read: a collaborator with no membership gets no rows; a guest, and a call made as `system`, get them (membersRead)", () => populated(async (p) => {
+    const entities = model.entities.map((entity) => entity.name);
+    expect(entities).toHaveLength(18);
+    for (const entity of entities) {
+      const read = p.call(`read${entity}`);
+      expect(await read({}, as(p.otto)), entity).toEqual([]);
+      expect(((await read({}, as(p.gail))) as unknown[]).length, entity).toBeGreaterThan(0);
+      expect(((await read({}, asSystem(p.otto))) as unknown[]).length, entity).toBeGreaterThan(0);
+    }
+  }));
+
+  test("every internal action, called by an owner or a member without `system`, is forbidden by internal", () => populated(async (p) => {
+    expect(Object.keys(INTERNAL).sort()).toEqual(coveredBy("internal"));
+    expect(Object.keys(INTERNAL)).toHaveLength(11);
+    for (const [key, input] of Object.entries(INTERNAL))
+      for (const who of [p.alice, p.bot])
+        expect(await deniedBy(p.call(functionOf(key))(await input(p), as(who))), `${key} by ${who.name}`).toEqual(["internal"]);
+  }));
+
+  test("every gated write by a collaborator with no membership is refused by isMember, and by every other policy that fails it", () => populated(async (p) => {
+    expect(Object.keys(GATED).sort()).toEqual(coveredBy("isMember"));
+    for (const [key, { input, denied }] of Object.entries(GATED))
+      expect(await deniedBy(p.call(functionOf(key))(await input(p), as(p.otto))), key).toEqual(denied);
+  }));
+});
+
+type Call = (input: object, context: ActionContext) => Promise<unknown>;
+type Populated = Empty & Awaited<ReturnType<typeof populate>> & {
+  /** A collaborator with no membership. */
+  readonly otto: { readonly id: string };
+  /** A guest. */
+  readonly gail: { readonly id: string };
+  /** The action or read function named `name`. */
+  readonly call: (name: string) => Call;
+};
+
+/** `populate`'s workspace, a row of every entity, with Otto (no membership) and Gail (a guest); the database closes after `body`. */
+async function populated<T>(body: (p: Populated) => Promise<T>): Promise<T> {
+  const base = await empty();
+  try {
+    const rows = await populate(base);
+    const otto = await base.hyper.registerCollaborator({ kind: "human", name: "Otto" }, as(rows.alice));
+    const gail = await base.hyper.registerCollaborator({ kind: "human", name: "Gail" }, as(rows.alice));
+    await base.hyper.grantMembership({ collaborator: gail.id, role: "guest" }, as(rows.alice));
+    const functions = base.hyper as unknown as Record<string, Call | undefined>;
+    const call = (name: string): Call => functions[name] ?? ((): never => { throw new Error(`no function ${name}`); });
+    return await body({ ...base, ...rows, otto, gail, call });
+  } finally {
+    await base.db.close();
+  }
+}
+
+/** The generated function of `Entity.action`: `completeTask` for `Task.complete`. */
+const functionOf = (key: string) => {
+  const [entity, action] = key.split(".") as [string, string];
+  return `${action}${entity}`;
+};
+
+/** Every `Entity.action` that the policy `name` covers, sorted. */
+const coveredBy = (name: string) => model.entities.flatMap((entity) => entity.actions
+  .filter((action) => covering(entity.name, action.name).some((policy) => policy.name === name))
+  .map((action) => `${entity.name}.${action.name}`)).sort();
+
+/** The input of each internal action over `populate`'s rows; any input that casts would do, since `internal` reads only `context`. */
+const INTERNAL: Record<string, (p: Populated) => object | Promise<object>> = {
+  "Event.record": (p) => eventOf(2, { recordId: p.task.id }),
+  "Machine.report": () => ({ name: "desktop" }),
+  "Run.settle": (p) => ({ id: p.run.id, result: "succeeded" }),
+  "Assignment.start": (p) => ({ task: p.task.id, assignee: p.bot.id }),
+  "Assignment.finish": async (p) => ({ id: (await one(p.hyper.readAssignment({ filter: { taskId: { eq: p.child.id } } }, asSystem(p.alice)))).id, reason: "unassigned" }),
+  "Claim.expire": (p) => ({ id: p.claim.id }),
+  "Claim.end": (p) => ({ id: p.claim.id, outcome: "expired", reason: "lease expired" }),
+  "Completion.record": (p) => ({ rule: "performer-is-reviewer", task: p.task.id }),
+  "Submission.settle": (p) => ({ id: p.submission.id, outcome: "returned" }),
+  "Submission.recordAccepted": (p) => ({ task: p.task.id, taskVersion: 1 }),
+  "Task.touch": (p) => ({ id: p.task.id }),
+};
+
+const GATE = ["isMember", "ownerOrMember"];
+const OWNERS = ["isMember", "ownerOnly"];
+
+/**
+ * Every write `isMember` covers, with an input over `populate`'s rows and the full list of policies that refuse a
+ * collaborator with no membership (N2): the gate, and each relationship check it fails too (the port's checks fail
+ * closed). `claimAssignee` admits it, so a missing Task answers as an existing one; Task `complete` without a fence
+ * and with no live claim passes `claimHolder`.
+ */
+const GATED: Record<string, { readonly input: (p: Populated) => object; readonly denied: readonly string[] }> = {
+  "Workspace.create": { input: () => ({ name: "Mine" }), denied: OWNERS },
+  "Workspace.rename": { input: (p) => ({ id: p.workspace.id, name: "Mine" }), denied: OWNERS },
+  "Collaborator.register": { input: () => ({ kind: "agent", name: "sneaky" }), denied: OWNERS },
+  "Collaborator.update": { input: (p) => ({ id: p.alice.id, name: "hijack" }), denied: ["isMember", "collaboratorSelfOrOwner"] },
+  "Collaborator.retire": { input: (p) => ({ id: p.bot.id }), denied: OWNERS },
+  "Membership.grant": { input: (p) => ({ collaborator: p.otto.id, role: "owner" }), denied: OWNERS },
+  "Membership.changeRole": { input: (p) => ({ id: p.botMembership.id, role: "owner" }), denied: OWNERS },
+  "Membership.revoke": { input: (p) => ({ id: p.botMembership.id }), denied: OWNERS },
+  "Task.create": { input: () => ({ title: "x" }), denied: GATE },
+  "Task.update": { input: (p) => ({ id: p.task.id, title: "x" }), denied: GATE },
+  "Task.setPriority": { input: (p) => ({ id: p.task.id, priority: 1 }), denied: GATE },
+  "Task.move": { input: (p) => ({ id: p.child.id, parent: null }), denied: GATE },
+  "Task.assign": { input: (p) => ({ id: p.task.id, assignee: p.otto.id }), denied: GATE },
+  "Task.complete": { input: (p) => ({ id: p.task.id }), denied: GATE },
+  "Task.cancel": { input: (p) => ({ id: p.task.id, reason: "x" }), denied: [...GATE, "taskManager"] },
+  "Task.reopen": { input: (p) => ({ id: p.child.id, reason: "x" }), denied: [...GATE, "taskManager"] },
+  "Task.unassign": { input: (p) => ({ id: p.child.id }), denied: [...GATE, "taskUnassigner"] },
+  "Claim.acquire": { input: (p) => ({ task: p.task.id }), denied: GATE },
+  "Claim.renew": { input: (p) => ({ id: p.claim.id, fence: p.claim.fence }), denied: [...GATE, "claimHolder"] },
+  "Claim.release": { input: (p) => ({ id: p.claim.id, fence: p.claim.fence }), denied: [...GATE, "claimHolder"] },
+  "Claim.revoke": { input: (p) => ({ id: p.claim.id, reason: "x" }), denied: [...GATE, "claimRevoker"] },
+  "Submission.submit": { input: (p) => ({ task: p.task.id, fence: p.claim.fence, summary: "x" }), denied: [...GATE, "claimHolder"] },
+  "Submission.withdraw": { input: (p) => ({ id: p.submission.id }), denied: [...GATE, "submissionSubmitter"] },
+  "Review.accept": { input: (p) => ({ submission: p.submission.id }), denied: [...GATE, "reviewReviewer"] },
+  "Review.return": { input: (p) => ({ submission: p.submission.id, reasons: "x" }), denied: [...GATE, "reviewReviewer"] },
+  "Dependency.add": { input: (p) => ({ dependent: p.child.id, prerequisite: p.task.id }), denied: GATE },
+  "Dependency.remove": { input: (p) => ({ id: p.dependency.id }), denied: GATE },
+  "EvidenceReference.record": { input: () => ({ kind: "link", locator: "https://example.com" }), denied: GATE },
+  "LateResult.record": { input: (p) => ({ task: p.task.id, fence: p.claim.fence }), denied: GATE },
+  "Run.start": { input: (p) => ({ task: p.task.id }), denied: GATE },
+  "Run.cancel": { input: (p) => ({ id: p.run.id, reason: "x" }), denied: [...GATE, "runCanceler"] },
+  "Attempt.start": { input: (p) => ({ run: p.run.id }), denied: [...GATE, "attemptClaimer"] },
+  "Invocation.record": { input: (p) => ({ attempt: p.attempt.id, usageSource: "runtime" }), denied: [...GATE, "attemptPerformer"] },
+  "Invocation.correct": { input: (p) => ({ corrects: p.invocation.id, reason: "x", usageSource: "estimate" }), denied: [...GATE, "invocationRecorder"] },
+  "SessionReference.record": { input: (p) => ({ runtime: "claude", runtimeSessionId: "s-9", availability: "complete", machine: p.machine.id, agentProfile: p.bot.id }), denied: GATE },
+  "SessionReference.redact": { input: (p) => ({ id: p.session.id, reason: "x" }), denied: OWNERS },
+  "Machine.register": { input: () => ({ name: "desktop" }), denied: GATE },
+  "Machine.update": { input: (p) => ({ id: p.machine.id, platform: "mac" }), denied: OWNERS },
+  "Machine.retire": { input: (p) => ({ id: p.machine.id, reason: "x" }), denied: OWNERS },
+};
+
+/** Everything a refused call's `ForbiddenError` says, to compare two refusals; any other outcome fails the test. */
+async function denialOf(call: Promise<unknown>) {
+  const error = await call.then(() => null, (cause: unknown) => cause);
+  if (!(error instanceof ForbiddenError)) throw new Error(`expected a ForbiddenError, got ${String(error)}`);
+  const { name, code, message, entity, action, policies, reason, breakdown } = error;
+  return { name, code, message, entity, action, policies, reason, breakdown };
+}
 
 // Hyper's policies as the generated actions pass them to `authorizer`, rebuilt from `.mesh/model.json` and the entity's
 // expressions module, for acceptance tests (2) and (7).
