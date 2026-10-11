@@ -4,6 +4,7 @@ import type { EmitInput } from "../emit.ts";
 import { compareText, orderedEntities } from "../emitters/order.ts";
 import { actionsView } from "./actions.ts";
 import { hasLoader, loaderName } from "./load.ts";
+import { hasTxLoadable } from "./types.ts";
 import { entityInputs, entitySegment, filterTypeName, hasRead, modulePath, moduleSpecifier, sortTypeName, typeName } from "./inputs.ts";
 
 /**
@@ -87,6 +88,7 @@ export function moduleView(input: EmitInput, module: string, entities: readonly 
       ...entityInputs(entity, document).map((i) => i.name),
       ...(hasRead(entity) ? [filterTypeName(entity), sortTypeName(entity)] : []),
       ...(hasLoader(entity) ? [`${record}Loadable`, `${record}With`, `${record}LoadNames`, `${record}LoadArg`] : []),
+      ...(hasTxLoadable(entity) ? [`${record}TxLoadable`, `${record}TxWith`] : []),
     ];
     types.push(...entityTypes);
     imports.push({ types: entityTypes, typesFromLiteral: JSON.stringify(`./${entitySegment(entity)}.types`) });

@@ -3,30 +3,43 @@
 // Mesh's own imports carry a `$` so that no entity name can shadow them.
 
 import {
+  authorizer as $authorizer,
   castInput as $castInput,
   noteWrite as $noteWrite,
+  pinClock as $pinClock,
+  readOnlyRecord as $readOnlyRecord,
   recordWrite as $recordWrite,
   runAction as $runAction,
+  scope as $scope,
   uuidv7 as $uuidv7,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type CastOutput as $CastOutput,
   type Row as $Row,
 } from "@meshfw/runtime";
 import type { User, CreateUserInput, ReadUserInput } from "./user.types";
 import { createUserInput, readUserInput } from "./user.validators";
 import { tables } from "../../schema";
+import { expressions as $expressions } from "./user.expressions";
 
 /**
- * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
- * The read actions below run the slot, then these.
+ * The reads of this entity without their policies: what `tx` holds in a function of an entity file (ADR-0068).
+ * The read actions below evaluate the read's policies, then call these.
  */
 export function bindUserReads(layer: $DataLayer, _options: $BindOptions = {}) {
   return Object.freeze({
-    async read(input: ReadUserInput): Promise<User[]> {
-      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, readUserInput, input);
+    async read(
+      input: ReadUserInput,
+      _context?: unknown,
+      _clock?: () => Date,
+      _policies?: boolean,
+      cast?: $CastOutput<typeof readUserInput>,
+    ): Promise<User[]> {
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
+      // for its policies and hands it over as `cast`; a read through `tx` casts it here.
+      const parsed = cast ?? (await $castInput(layer, readUserInput, input));
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.user, {
           filter: parsed.filter,
@@ -49,6 +62,31 @@ export function bindUser(layer: $DataLayer, options: $BindOptions = {}, _compose
     async create(input: CreateUserInput, ...[context]: $ContextArgument): Promise<User> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, createUserInput, input);
+      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      const $context = (context ?? {}) as unknown as Record<string, unknown>;
+      const $actor = $context.actor;
+      const $clock = $pinClock(options.clock);
+      const $policies = $authorizer("User", "create", [
+        {
+          name: "signedIn",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check: "({ actor }) => actor.id !== null",
+              record: false,
+              run: $expressions["policy.signedIn.authorize-if.0"],
+            },
+          ],
+        },
+      ]);
+      await $policies.before(
+        layer,
+        $scope(
+          { input: $readOnlyRecord(parsed, "User.create"), actor: $actor, context: $context },
+          { clock: $clock },
+        ),
+      );
       return $runAction(
         layer,
         options.seams,
@@ -56,7 +94,7 @@ export function bindUser(layer: $DataLayer, options: $BindOptions = {}, _compose
         parsed,
         context,
         async (tx) => {
-          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+          // transaction: opens here; what follows commits together or not at all
           // plan: a create is one insert; nothing is read first
           const $changes: $Row = {
             id: $uuidv7(),
@@ -80,9 +118,40 @@ export function bindUser(layer: $DataLayer, options: $BindOptions = {}, _compose
       );
     },
 
-    async read(input: ReadUserInput, ...[_context]: $ContextArgument): Promise<User[]> {
-      // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
-      return $reads.read(input);
+    async read(input: ReadUserInput, ...[context]: $ContextArgument): Promise<User[]> {
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a read through `tx` skips them
+      const $context = (context ?? {}) as unknown as Record<string, unknown>;
+      const $actor = $context.actor;
+      const $clock = $pinClock(options.clock);
+      const $parsed = await $castInput(layer, readUserInput, input);
+      if (
+        !(await $authorizer("User", "read", [
+          {
+            name: "signedIn",
+            when: null,
+            checks: [
+              {
+                kind: "authorize-if",
+                check: "({ actor }) => actor.id !== null",
+                record: false,
+                run: $expressions["policy.signedIn.authorize-if.0"],
+              },
+            ],
+          },
+        ]).filter(
+          layer,
+          $scope(
+            {
+              input: $readOnlyRecord($parsed as never, "User.read"),
+              actor: $actor,
+              context: $context,
+            },
+            { clock: $clock },
+          ),
+        ))
+      )
+        return [] as unknown as User[];
+      return $reads.read(input, context, $clock, true, $parsed);
     },
   });
 }

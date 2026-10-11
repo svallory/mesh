@@ -23,7 +23,7 @@ test.each(["sum", "avg", "min", "max"])("fix3: %s must cross a relationship", (f
 });
 
 test("fix4: duplicate policy and check names use member diagnostics", () => {
-  const policies = build(keyed + "  policies\n    policy :p\n    policy :p\n");
+  const policies = build(keyed + "  policies\n    policy :p authorize-if=() => true\n    policy :p authorize-if=() => true\n");
   expect(policies.diagnostics).toEqual([expect.objectContaining({ code: "MESH_DUPLICATE_MEMBER", message: "Duplicate member :p", position: expect.objectContaining({ line: 6, column: 4 }) })]);
   const check = '        check :a that=() => true code="bad" message="bad"\n';
   const prefix = keyed + "  actions\n    update :change\n      validate\n";

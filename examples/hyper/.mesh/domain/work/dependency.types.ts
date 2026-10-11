@@ -35,16 +35,32 @@ export type ReadDependencyInput<N extends keyof DependencyLoadable = never> = {
   load?: readonly N[] | undefined;
 };
 
-/** What `load` attaches to a Dependency. The record has none of it, so reading one that was not loaded is a type error. */
+/**
+ * What a caller's `load` attaches to a Dependency. The record has none of it, so reading one that was not loaded is a type error.
+ * A caller's load runs the read policies of the entity it reaches: a related record the caller may not read is null, a list of them empty.
+ * A computed field's body does not (POL-19): it is the entity's own rule, so it reads every related record, and what it
+ * returns is shown to every caller who may read a Dependency. Return only what each such caller may see.
+ */
 export type DependencyLoadable = {
-  dependent: Task;
-  prerequisite: Task;
-  createdBy: Collaborator;
+  dependent: Task | null;
+  prerequisite: Task | null;
+  createdBy: Collaborator | null;
 };
 
 /** A Dependency with the relationships and computed fields named in N loaded. */
 export type DependencyWith<N extends keyof DependencyLoadable> = Dependency &
   Pick<DependencyLoadable, N>;
+
+/** What a load through `tx` attaches to a Dependency: it runs no policy, so every related record the key names is there. */
+export type DependencyTxLoadable = {
+  dependent: Task;
+  prerequisite: Task;
+  createdBy: Collaborator;
+};
+
+/** A Dependency loaded through `tx`, with the relationships and computed fields named in N. */
+export type DependencyTxWith<N extends keyof DependencyLoadable> = Dependency &
+  Pick<DependencyTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type DependencyLoadNames<L extends readonly (keyof DependencyLoadable)[]> =

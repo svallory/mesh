@@ -45,10 +45,19 @@ export interface TypesView {
  * a type error; a loaded record is the record `<withName><"parent" | "children">`.
  */
 export interface LoadableDeclaration {
-  /** The map's name, e.g. `TaskLoadable`. */
+  /**
+   * The map's name, e.g. `TaskLoadable`: what a caller's `load` attaches. A caller's load runs the read policies of the
+   * entity it reaches (POL-17), so a relationship to a record the caller may not read is `[]` or `null`: a `belongs-to`
+   * is `| null` here even when its column is not.
+   */
   readonly name: string;
   /** The loaded record's name, e.g. `TaskWith`. */
   readonly withName: string;
+  /**
+   * What a load through `tx` attaches, which runs no policy (ADR-0068), so a `belongs-to` that is not nullable is always
+   * there: `TaskTxLoadable` and `TaskTxWith`. `null` when that is the caller's map (the entity has no such `belongs-to`).
+   */
+  readonly tx: { readonly name: string; readonly withName: string; readonly members: readonly TypeMember[] } | null;
   /** `TaskLoadNames<L>`: the names of a `load` tuple `L`, none for a list that does not say which (a widened array). */
   readonly namesName: string;
   /** `TaskLoadArg<L>`: the `load` member of a read called with `L`, required when `L` names something. */
@@ -125,7 +134,7 @@ export function typesView({ document }: EmitInput, entity: Entity): TypesView {
     declared.add(input.name);
   }
   if (entity.relationships.length + entity.computed.length > 0)
-    for (const name of [`${recordName}Loadable`, `${recordName}With`, `${recordName}LoadNames`, `${recordName}LoadArg`, `${recordName}Loaded`]) {
+    for (const name of [`${recordName}Loadable`, `${recordName}With`, `${recordName}LoadNames`, `${recordName}LoadArg`, `${recordName}Loaded`, ...(hasTxLoadable(entity) ? [`${recordName}TxLoadable`, `${recordName}TxWith`] : [])]) {
       if (declared.has(name)) throw emitError("MESH_EMIT_NAME", `Duplicate generated type ${name}`, entity.position);
       declared.add(name);
     }
@@ -189,15 +198,28 @@ export function relationTarget(document: EmitInput["document"], entity: Entity, 
   return target;
 }
 
+/** Does a caller's load type a relationship differently from a load through `tx`? Where a `belongs-to` is not nullable (POL-17). */
+export const hasTxLoadable = (entity: Entity): boolean => entity.relationships.some((relation) => relation.kind === "belongs-to" && !relation.nullable);
+
+/** The `Loadable` and `With` names that type a load through `tx`, which runs no policy: the `Tx` pair, or the caller's when they are the same. */
+export function txLoadTypes(entity: Entity): { loadable: string; with: string } {
+  const record = typeName(entity.name, entity.position);
+  return hasTxLoadable(entity) ? { loadable: `${record}TxLoadable`, with: `${record}TxWith` } : { loadable: `${record}Loadable`, with: `${record}With` };
+}
+
 function loadableDeclaration(document: EmitInput["document"], entity: Entity, recordName: string): LoadableDeclaration | null {
   const members: TypeMember[] = [];
+  const txMembers: TypeMember[] = [];
   const loadedMembers: TypeMember[] = [];
   const related = (relation: Entity["relationships"][number], target: string) =>
     relation.kind === "has-many" ? `${target}[]` : relation.kind === "has-one" || relation.nullable ? `${target} | null` : target;
+  // A caller's load gives null for a record the caller may not read (POL-17).
+  const forCaller = (relation: Entity["relationships"][number], target: string) => relation.kind === "has-many" ? `${target}[]` : `${target} | null`;
   for (const relation of entity.relationships) {
     const entityTarget = relationTarget(document, entity, relation);
     const target = typeName(entityTarget.name, relation.position);
-    members.push({ name: relation.name, optional: false, key: propertyName(relation.name), type: related(relation, target) });
+    members.push({ name: relation.name, optional: false, key: propertyName(relation.name), type: forCaller(relation, target) });
+    txMembers.push({ name: relation.name, optional: false, key: propertyName(relation.name), type: related(relation, target) });
     // A target with no relationship and no computed field is loaded when its record is.
     loadedMembers.push({ name: relation.name, optional: false, key: propertyName(relation.name), type: related(relation, hasLoader(entityTarget) ? `${target}Loaded` : target) });
   }
@@ -208,10 +230,12 @@ function loadableDeclaration(document: EmitInput["document"], entity: Entity, re
       type: field.type === "enum" && !field.values?.length ? `string${field.nullable ? " | null" : ""}` : valueType({ ...field, nullable: field.nullable ?? false }),
     };
     members.push(member);
+    txMembers.push(member);
     loadedMembers.push(member);
   }
   if (members.length === 0) return null;
-  return { name: `${recordName}Loadable`, withName: `${recordName}With`, namesName: `${recordName}LoadNames`, argName: `${recordName}LoadArg`, members, loadedName: `${recordName}Loaded`, loadedMembers };
+  const tx = hasTxLoadable(entity) ? { name: `${recordName}TxLoadable`, withName: `${recordName}TxWith`, members: txMembers } : null;
+  return { name: `${recordName}Loadable`, withName: `${recordName}With`, tx, namesName: `${recordName}LoadNames`, argName: `${recordName}LoadArg`, members, loadedName: `${recordName}Loaded`, loadedMembers };
 }
 
 /** The columns a caller of a read may name. An attribute called `and` or `or` cannot be filtered: the contract reads those keys as combinators. */

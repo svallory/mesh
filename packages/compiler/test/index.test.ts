@@ -28,6 +28,9 @@ const note = `entity :Note table="notes"
     update :edit
       input
         &text
+  policies
+    policy :open
+      authorize-if=() => true
 `;
 const tag = "entity :Tag\n  attributes\n    uuid :id primary-key\n";
 
@@ -262,7 +265,7 @@ describe("entity names never break the generated files", () => {
   // `:default` on Binding is `defaultBinding`.
   const extra: Record<string, string> = { Flight: "    read :in\n", Binding: "    read :default\n" };
   const files = Object.fromEntries(names.map((name) => [`${name.toLowerCase()}.mesh.mx`,
-    `entity :${name}\n  attributes\n    uuid :id primary-key\n    string :label\n  actions auto=[:read, :destroy]\n    create :create\n      input\n        &label\n    update :edit\n      input\n        &label\n${extra[name] ?? ""}`]));
+    `entity :${name}\n  attributes\n    uuid :id primary-key\n    string :label\n  actions auto=[:read, :destroy]\n    create :create\n      input\n        &label\n    update :edit\n      input\n        &label\n${extra[name] ?? ""}  policies\n    policy :open\n      authorize-if=() => true\n`]));
   const key = (name: string) => name[0]!.toLowerCase() + name.slice(1);
 
   test("they build, type-check strictly and run", async () => {

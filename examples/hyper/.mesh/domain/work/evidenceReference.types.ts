@@ -30,14 +30,28 @@ export type ReadEvidenceReferenceInput<N extends keyof EvidenceReferenceLoadable
   load?: readonly N[] | undefined;
 };
 
-/** What `load` attaches to a EvidenceReference. The record has none of it, so reading one that was not loaded is a type error. */
+/**
+ * What a caller's `load` attaches to a EvidenceReference. The record has none of it, so reading one that was not loaded is a type error.
+ * A caller's load runs the read policies of the entity it reaches: a related record the caller may not read is null, a list of them empty.
+ * A computed field's body does not (POL-19): it is the entity's own rule, so it reads every related record, and what it
+ * returns is shown to every caller who may read a EvidenceReference. Return only what each such caller may see.
+ */
 export type EvidenceReferenceLoadable = {
-  recordedBy: Collaborator;
+  recordedBy: Collaborator | null;
 };
 
 /** A EvidenceReference with the relationships and computed fields named in N loaded. */
 export type EvidenceReferenceWith<N extends keyof EvidenceReferenceLoadable> = EvidenceReference &
   Pick<EvidenceReferenceLoadable, N>;
+
+/** What a load through `tx` attaches to a EvidenceReference: it runs no policy, so every related record the key names is there. */
+export type EvidenceReferenceTxLoadable = {
+  recordedBy: Collaborator;
+};
+
+/** A EvidenceReference loaded through `tx`, with the relationships and computed fields named in N. */
+export type EvidenceReferenceTxWith<N extends keyof EvidenceReferenceLoadable> = EvidenceReference &
+  Pick<EvidenceReferenceTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type EvidenceReferenceLoadNames<L extends readonly (keyof EvidenceReferenceLoadable)[]> =

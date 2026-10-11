@@ -37,16 +37,32 @@ export type ReadAssignmentInput<N extends keyof AssignmentLoadable = never> = {
   load?: readonly N[] | undefined;
 };
 
-/** What `load` attaches to a Assignment. The record has none of it, so reading one that was not loaded is a type error. */
+/**
+ * What a caller's `load` attaches to a Assignment. The record has none of it, so reading one that was not loaded is a type error.
+ * A caller's load runs the read policies of the entity it reaches: a related record the caller may not read is null, a list of them empty.
+ * A computed field's body does not (POL-19): it is the entity's own rule, so it reads every related record, and what it
+ * returns is shown to every caller who may read a Assignment. Return only what each such caller may see.
+ */
 export type AssignmentLoadable = {
-  task: Task;
-  assignee: Collaborator;
-  delegator: Collaborator;
+  task: Task | null;
+  assignee: Collaborator | null;
+  delegator: Collaborator | null;
 };
 
 /** A Assignment with the relationships and computed fields named in N loaded. */
 export type AssignmentWith<N extends keyof AssignmentLoadable> = Assignment &
   Pick<AssignmentLoadable, N>;
+
+/** What a load through `tx` attaches to a Assignment: it runs no policy, so every related record the key names is there. */
+export type AssignmentTxLoadable = {
+  task: Task;
+  assignee: Collaborator;
+  delegator: Collaborator;
+};
+
+/** A Assignment loaded through `tx`, with the relationships and computed fields named in N. */
+export type AssignmentTxWith<N extends keyof AssignmentLoadable> = Assignment &
+  Pick<AssignmentTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type AssignmentLoadNames<L extends readonly (keyof AssignmentLoadable)[]> =

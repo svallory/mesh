@@ -56,7 +56,8 @@ export function printExpression(e: Expression, scopeType: string, boolean: boole
   const fn = async && !/^\s*async\b/.test(authored) ? `async ${authored}` : authored;
   // The scope names the function reads without its parameters binding them (the front end found them in the syntax tree).
   const declare = (plain.roots.length ? `const { ${plain.roots.join(", ")} } = ${SCOPE}; ` : "") +
-    (plain.clock ?? []).map((name) => `const ${name} = () => $.${name}(${SCOPE}); `).join("");
+    (plain.clock ?? []).map((name) => `const ${name} = () => $.${name}(${SCOPE}); `).join("") +
+    (plain.isSystem ? "const isSystem = $.isSystem; " : "");
   return withScope(`{ ${declare}return (${fn})(${e.takesScope || e.params.length ? SCOPE : ""}); }`);
 }
 

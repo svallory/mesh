@@ -6,6 +6,7 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
+import { openPolicies } from "./open-policy.ts";
 import { FrameworkError, InvalidInputError, type DataOperations } from "@meshfw/runtime";
 import build from "../src/build.ts";
 import { createSchema, sqlite } from "../src/index.ts";
@@ -64,7 +65,7 @@ const SQLITE: ResolvedConfig["data"] = {
 async function generate(prefix: string, sources: Record<string, string>): Promise<string> {
   const dir = await mkdtemp(join(import.meta.dir, prefix));
   const config: ResolvedConfig = { root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"), data: SQLITE };
-  const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: Object.entries(sources).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source })) });
+  const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: openPolicies(Object.entries(sources).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source }))) });
   expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   await writeGeneratedFiles(await generateFiles({ config, document: built.document as ModelDocument }, build), config);
   await Bun.write(join(dir, "mesh.config.ts"), "export default { data: { name: 'sqlite', transaction: async () => undefined, close: async () => undefined } };\n");
@@ -164,7 +165,11 @@ describe("the generated files", () => {
       "  }, context);",
       "  // An entity with a relationship and nothing else takes `load` too; Task has both.",
       "  const [t] = await mesh.readTask({ load: ['project', 'shout'] }, context);",
-      "  const projectName: string = t!.project.name;",
+      "  // A caller's load runs Project's read policies, so the project can be null (POL-17); through tx it cannot.",
+      "  // @ts-expect-error a caller's belongs-to can be null",
+      "  void t!.project.name;",
+      "  const projectName: string | undefined = t!.project?.name;",
+      "  await mesh.transaction(async ({ tx }) => { const [inside] = await tx.readTask({ load: ['project'] }); const sure: string = inside!.project.name; void sure; }, context);",
       "  void name; void tasks; void label; void count; void same; void input; void wrong; void projectName;",
       "}",
       "",
@@ -243,7 +248,13 @@ describe("the generated files", () => {
       "  // @ts-expect-error and so is a loaded list",
       "  (await tx.readProject({ load: ['tasks'] }))[0]!.tasks.push((await tx.readTask({}))[0]!);",
       "  const [t] = await roa.readTask({ load: ['project'] });",
-      "  const projectName: string = t!.project.name;",
+      "  // A caller's belongs-to can be null; the read-only reads keep the tx typing, where it cannot.",
+      "  // @ts-expect-error a caller's belongs-to can be null",
+      "  void t!.project.name;",
+      "  const projectName: string | undefined = t!.project?.name;",
+      "  const [u] = await tx.readTask({ load: ['project'] });",
+      "  const sure: string = u!.project.name;",
+      "  void sure;",
       "  // @ts-expect-error a name that is not loadable",
       "  await tx.readProject({ load: ['nope'] });",
       "  void label; void projectName;",

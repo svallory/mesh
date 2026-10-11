@@ -78,17 +78,28 @@ test(
         source: fixture(`src/domain/billing/${name}.mesh.mx`).source,
       }),
     );
-    const result = buildModel({
+    const buildWith = (source: string) => buildModel({
       root: fixtureDir,
       domainRoot: "src/domain",
-      files: [{ file: postFile, source: postSource }, ...dependencies],
+      files: [{ file: postFile, source }, ...dependencies],
     });
-    // `label` concatenates strings and calls a helper with the record: plain code, so the build warns (M4).
-    expect(result.diagnostics.map((d) => d.code)).toEqual(["MESH_EXPR_PLAIN"]);
+    // The read policy `:staffOrOwnerReads` reads the record (`&customer.userId`): a filter the SQL evaluator folds,
+    // refused until M10 (lead ruling 2 of M8a).
+    const refused = buildWith(postSource);
+    expect(refused.diagnostics.map((d) => d.code)).toEqual(["MESH_EXPR_PLAIN", "MESH_NOT_IMPLEMENTED"]);
+    expect(refused.diagnostics[1]!.message).toContain("policy :staffOrOwnerReads");
+    // Scoped to the updates (and renamed so that every offset stays put), the same policy builds; the rest of the model
+    // is the hand-built one.
+    const scoped = "policy :ownerStaffEdits types=[:update]";
+    const result = buildWith(postSource.replace("policy :staffOrOwnerReads types=[:read]", scoped));
+    // `label` concatenates strings and calls a helper with the record: plain code, so the build warns (M4). With no
+    // policy left on its read, an Invoice is loaded by no caller, which each relationship that reaches it says (R2-N2).
+    expect(result.diagnostics.map((d) => d.code)).toEqual(["MESH_LOAD_NO_POLICY", "MESH_EXPR_PLAIN", "MESH_LOAD_NO_POLICY"]);
+    const expected = postDocument.entities[0]!;
     // The hand-built model predates M4: compare it without the trees (expressions.test.ts covers those).
     expect(
       withoutTrees(result.document!.entities.find((entity) => entity.name === "Invoice")),
-    ).toStrictEqual(postDocument.entities[0]);
+    ).toStrictEqual({ ...expected, policies: expected.policies.map((policy) => (policy.name === "staffOrOwnerReads" ? { ...policy, name: "ownerStaffEdits", types: ["update"] } : policy)) });
   },
 );
 test("empty and multiple entities fail positioned", () => {

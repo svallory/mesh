@@ -16,6 +16,8 @@ import type {
   CommentWith,
   CommentLoadNames,
   CommentLoadArg,
+  CommentTxLoadable,
+  CommentTxWith,
 } from "./comment.types";
 import type {
   Post,
@@ -31,6 +33,8 @@ import type {
   PostWith,
   PostLoadNames,
   PostLoadArg,
+  PostTxLoadable,
+  PostTxWith,
 } from "./post.types";
 import type { User, CreateUserInput, ReadUserInput, UserFilter, UserSort } from "./user.types";
 
@@ -43,6 +47,8 @@ export type {
   CommentWith,
   CommentLoadNames,
   CommentLoadArg,
+  CommentTxLoadable,
+  CommentTxWith,
   Post,
   CreatePostInput,
   PublishPostInput,
@@ -56,6 +62,8 @@ export type {
   PostWith,
   PostLoadNames,
   PostLoadArg,
+  PostTxLoadable,
+  PostTxWith,
   User,
   CreateUserInput,
   ReadUserInput,

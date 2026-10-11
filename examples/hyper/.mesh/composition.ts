@@ -26,6 +26,8 @@ import type {
   AttemptWith,
   AttemptLoadNames,
   AttemptLoadArg,
+  AttemptTxLoadable,
+  AttemptTxWith,
 } from "./domain/execution/attempt.types";
 import type {
   Invocation,
@@ -36,6 +38,8 @@ import type {
   InvocationWith,
   InvocationLoadNames,
   InvocationLoadArg,
+  InvocationTxLoadable,
+  InvocationTxWith,
 } from "./domain/execution/invocation.types";
 import type {
   Machine,
@@ -59,6 +63,8 @@ import type {
   RunWith,
   RunLoadNames,
   RunLoadArg,
+  RunTxLoadable,
+  RunTxWith,
 } from "./domain/execution/run.types";
 import type {
   SessionReference,
@@ -70,6 +76,8 @@ import type {
   SessionReferenceWith,
   SessionReferenceLoadNames,
   SessionReferenceLoadArg,
+  SessionReferenceTxLoadable,
+  SessionReferenceTxWith,
 } from "./domain/execution/sessionReference.types";
 import type {
   Collaborator,
@@ -92,6 +100,8 @@ import type {
   MembershipWith,
   MembershipLoadNames,
   MembershipLoadArg,
+  MembershipTxLoadable,
+  MembershipTxWith,
 } from "./domain/identity/membership.types";
 import type {
   Workspace,
@@ -108,6 +118,8 @@ import type {
   AssignmentWith,
   AssignmentLoadNames,
   AssignmentLoadArg,
+  AssignmentTxLoadable,
+  AssignmentTxWith,
 } from "./domain/work/assignment.types";
 import type {
   Claim,
@@ -122,6 +134,8 @@ import type {
   ClaimWith,
   ClaimLoadNames,
   ClaimLoadArg,
+  ClaimTxLoadable,
+  ClaimTxWith,
 } from "./domain/work/claim.types";
 import type {
   Completion,
@@ -131,6 +145,8 @@ import type {
   CompletionWith,
   CompletionLoadNames,
   CompletionLoadArg,
+  CompletionTxLoadable,
+  CompletionTxWith,
 } from "./domain/work/completion.types";
 import type {
   Dependency,
@@ -141,6 +157,8 @@ import type {
   DependencyWith,
   DependencyLoadNames,
   DependencyLoadArg,
+  DependencyTxLoadable,
+  DependencyTxWith,
 } from "./domain/work/dependency.types";
 import type {
   EvidenceReference,
@@ -150,6 +168,8 @@ import type {
   EvidenceReferenceWith,
   EvidenceReferenceLoadNames,
   EvidenceReferenceLoadArg,
+  EvidenceReferenceTxLoadable,
+  EvidenceReferenceTxWith,
 } from "./domain/work/evidenceReference.types";
 import type {
   LateResult,
@@ -159,6 +179,8 @@ import type {
   LateResultWith,
   LateResultLoadNames,
   LateResultLoadArg,
+  LateResultTxLoadable,
+  LateResultTxWith,
 } from "./domain/work/lateResult.types";
 import type {
   Review,
@@ -169,6 +191,8 @@ import type {
   ReviewWith,
   ReviewLoadNames,
   ReviewLoadArg,
+  ReviewTxLoadable,
+  ReviewTxWith,
 } from "./domain/work/review.types";
 import type {
   Submission,
@@ -181,6 +205,8 @@ import type {
   SubmissionWith,
   SubmissionLoadNames,
   SubmissionLoadArg,
+  SubmissionTxLoadable,
+  SubmissionTxWith,
 } from "./domain/work/submission.types";
 import type {
   Task,
@@ -199,6 +225,8 @@ import type {
   TaskWith,
   TaskLoadNames,
   TaskLoadArg,
+  TaskTxLoadable,
+  TaskTxWith,
 } from "./domain/work/task.types";
 
 /** Every action function of the project, bound to the running transaction: a call joins it, and carries the caller's context unless it passes its own. */
@@ -428,21 +456,21 @@ export interface Reads {
   ) => Promise<L extends unknown ? EventWith<EventLoadNames<L>>[] : never>;
   readonly readAttempt: <const L extends readonly (keyof AttemptLoadable)[] = readonly []>(
     input: Omit<ReadAttemptInput, "load"> & AttemptLoadArg<L>,
-  ) => Promise<L extends unknown ? AttemptWith<AttemptLoadNames<L>>[] : never>;
+  ) => Promise<L extends unknown ? AttemptTxWith<AttemptLoadNames<L>>[] : never>;
   readonly readInvocation: <const L extends readonly (keyof InvocationLoadable)[] = readonly []>(
     input: Omit<ReadInvocationInput, "load"> & InvocationLoadArg<L>,
-  ) => Promise<L extends unknown ? InvocationWith<InvocationLoadNames<L>>[] : never>;
+  ) => Promise<L extends unknown ? InvocationTxWith<InvocationLoadNames<L>>[] : never>;
   readonly readMachine: <const L extends readonly (keyof MachineLoadable)[] = readonly []>(
     input: Omit<ReadMachineInput, "load"> & MachineLoadArg<L>,
   ) => Promise<L extends unknown ? MachineWith<MachineLoadNames<L>>[] : never>;
   readonly readRun: <const L extends readonly (keyof RunLoadable)[] = readonly []>(
     input: Omit<ReadRunInput, "load"> & RunLoadArg<L>,
-  ) => Promise<L extends unknown ? RunWith<RunLoadNames<L>>[] : never>;
+  ) => Promise<L extends unknown ? RunTxWith<RunLoadNames<L>>[] : never>;
   readonly readSessionReference: <
     const L extends readonly (keyof SessionReferenceLoadable)[] = readonly [],
   >(
     input: Omit<ReadSessionReferenceInput, "load"> & SessionReferenceLoadArg<L>,
-  ) => Promise<L extends unknown ? SessionReferenceWith<SessionReferenceLoadNames<L>>[] : never>;
+  ) => Promise<L extends unknown ? SessionReferenceTxWith<SessionReferenceLoadNames<L>>[] : never>;
   readonly readCollaborator: <
     const L extends readonly (keyof CollaboratorLoadable)[] = readonly [],
   >(
@@ -450,37 +478,39 @@ export interface Reads {
   ) => Promise<L extends unknown ? CollaboratorWith<CollaboratorLoadNames<L>>[] : never>;
   readonly readMembership: <const L extends readonly (keyof MembershipLoadable)[] = readonly []>(
     input: Omit<ReadMembershipInput, "load"> & MembershipLoadArg<L>,
-  ) => Promise<L extends unknown ? MembershipWith<MembershipLoadNames<L>>[] : never>;
+  ) => Promise<L extends unknown ? MembershipTxWith<MembershipLoadNames<L>>[] : never>;
   readonly readWorkspace: (input: ReadWorkspaceInput) => Promise<Workspace[]>;
   readonly readAssignment: <const L extends readonly (keyof AssignmentLoadable)[] = readonly []>(
     input: Omit<ReadAssignmentInput, "load"> & AssignmentLoadArg<L>,
-  ) => Promise<L extends unknown ? AssignmentWith<AssignmentLoadNames<L>>[] : never>;
+  ) => Promise<L extends unknown ? AssignmentTxWith<AssignmentLoadNames<L>>[] : never>;
   readonly readClaim: <const L extends readonly (keyof ClaimLoadable)[] = readonly []>(
     input: Omit<ReadClaimInput, "load"> & ClaimLoadArg<L>,
-  ) => Promise<L extends unknown ? ClaimWith<ClaimLoadNames<L>>[] : never>;
+  ) => Promise<L extends unknown ? ClaimTxWith<ClaimLoadNames<L>>[] : never>;
   readonly readCompletion: <const L extends readonly (keyof CompletionLoadable)[] = readonly []>(
     input: Omit<ReadCompletionInput, "load"> & CompletionLoadArg<L>,
-  ) => Promise<L extends unknown ? CompletionWith<CompletionLoadNames<L>>[] : never>;
+  ) => Promise<L extends unknown ? CompletionTxWith<CompletionLoadNames<L>>[] : never>;
   readonly readDependency: <const L extends readonly (keyof DependencyLoadable)[] = readonly []>(
     input: Omit<ReadDependencyInput, "load"> & DependencyLoadArg<L>,
-  ) => Promise<L extends unknown ? DependencyWith<DependencyLoadNames<L>>[] : never>;
+  ) => Promise<L extends unknown ? DependencyTxWith<DependencyLoadNames<L>>[] : never>;
   readonly readEvidenceReference: <
     const L extends readonly (keyof EvidenceReferenceLoadable)[] = readonly [],
   >(
     input: Omit<ReadEvidenceReferenceInput, "load"> & EvidenceReferenceLoadArg<L>,
-  ) => Promise<L extends unknown ? EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[] : never>;
+  ) => Promise<
+    L extends unknown ? EvidenceReferenceTxWith<EvidenceReferenceLoadNames<L>>[] : never
+  >;
   readonly readLateResult: <const L extends readonly (keyof LateResultLoadable)[] = readonly []>(
     input: Omit<ReadLateResultInput, "load"> & LateResultLoadArg<L>,
-  ) => Promise<L extends unknown ? LateResultWith<LateResultLoadNames<L>>[] : never>;
+  ) => Promise<L extends unknown ? LateResultTxWith<LateResultLoadNames<L>>[] : never>;
   readonly readReview: <const L extends readonly (keyof ReviewLoadable)[] = readonly []>(
     input: Omit<ReadReviewInput, "load"> & ReviewLoadArg<L>,
-  ) => Promise<L extends unknown ? ReviewWith<ReviewLoadNames<L>>[] : never>;
+  ) => Promise<L extends unknown ? ReviewTxWith<ReviewLoadNames<L>>[] : never>;
   readonly readSubmission: <const L extends readonly (keyof SubmissionLoadable)[] = readonly []>(
     input: Omit<ReadSubmissionInput, "load"> & SubmissionLoadArg<L>,
-  ) => Promise<L extends unknown ? SubmissionWith<SubmissionLoadNames<L>>[] : never>;
+  ) => Promise<L extends unknown ? SubmissionTxWith<SubmissionLoadNames<L>>[] : never>;
   readonly readTask: <const L extends readonly (keyof TaskLoadable)[] = readonly []>(
     input: Omit<ReadTaskInput, "load"> & TaskLoadArg<L>,
-  ) => Promise<L extends unknown ? TaskWith<TaskLoadNames<L>>[] : never>;
+  ) => Promise<L extends unknown ? TaskTxWith<TaskLoadNames<L>>[] : never>;
 }
 
 /**
@@ -880,7 +910,7 @@ export interface ReadOnlyReads {
   ) => Promise<
     L extends unknown
       ? readonly ($DeepReadonly<Attempt> &
-          Pick<$DeepReadonly<AttemptLoadable>, AttemptLoadNames<L>>)[]
+          Pick<$DeepReadonly<AttemptTxLoadable>, AttemptLoadNames<L>>)[]
       : never
   >;
   readonly readInvocation: <const L extends readonly (keyof InvocationLoadable)[] = readonly []>(
@@ -888,7 +918,7 @@ export interface ReadOnlyReads {
   ) => Promise<
     L extends unknown
       ? readonly ($DeepReadonly<Invocation> &
-          Pick<$DeepReadonly<InvocationLoadable>, InvocationLoadNames<L>>)[]
+          Pick<$DeepReadonly<InvocationTxLoadable>, InvocationLoadNames<L>>)[]
       : never
   >;
   readonly readMachine: <const L extends readonly (keyof MachineLoadable)[] = readonly []>(
@@ -903,7 +933,7 @@ export interface ReadOnlyReads {
     input: Omit<ReadRunInput, "load"> & RunLoadArg<L>,
   ) => Promise<
     L extends unknown
-      ? readonly ($DeepReadonly<Run> & Pick<$DeepReadonly<RunLoadable>, RunLoadNames<L>>)[]
+      ? readonly ($DeepReadonly<Run> & Pick<$DeepReadonly<RunTxLoadable>, RunLoadNames<L>>)[]
       : never
   >;
   readonly readSessionReference: <
@@ -913,7 +943,7 @@ export interface ReadOnlyReads {
   ) => Promise<
     L extends unknown
       ? readonly ($DeepReadonly<SessionReference> &
-          Pick<$DeepReadonly<SessionReferenceLoadable>, SessionReferenceLoadNames<L>>)[]
+          Pick<$DeepReadonly<SessionReferenceTxLoadable>, SessionReferenceLoadNames<L>>)[]
       : never
   >;
   readonly readCollaborator: <
@@ -931,7 +961,7 @@ export interface ReadOnlyReads {
   ) => Promise<
     L extends unknown
       ? readonly ($DeepReadonly<Membership> &
-          Pick<$DeepReadonly<MembershipLoadable>, MembershipLoadNames<L>>)[]
+          Pick<$DeepReadonly<MembershipTxLoadable>, MembershipLoadNames<L>>)[]
       : never
   >;
   readonly readWorkspace: (input: ReadWorkspaceInput) => Promise<$DeepReadonly<Workspace[]>>;
@@ -940,14 +970,14 @@ export interface ReadOnlyReads {
   ) => Promise<
     L extends unknown
       ? readonly ($DeepReadonly<Assignment> &
-          Pick<$DeepReadonly<AssignmentLoadable>, AssignmentLoadNames<L>>)[]
+          Pick<$DeepReadonly<AssignmentTxLoadable>, AssignmentLoadNames<L>>)[]
       : never
   >;
   readonly readClaim: <const L extends readonly (keyof ClaimLoadable)[] = readonly []>(
     input: Omit<ReadClaimInput, "load"> & ClaimLoadArg<L>,
   ) => Promise<
     L extends unknown
-      ? readonly ($DeepReadonly<Claim> & Pick<$DeepReadonly<ClaimLoadable>, ClaimLoadNames<L>>)[]
+      ? readonly ($DeepReadonly<Claim> & Pick<$DeepReadonly<ClaimTxLoadable>, ClaimLoadNames<L>>)[]
       : never
   >;
   readonly readCompletion: <const L extends readonly (keyof CompletionLoadable)[] = readonly []>(
@@ -955,7 +985,7 @@ export interface ReadOnlyReads {
   ) => Promise<
     L extends unknown
       ? readonly ($DeepReadonly<Completion> &
-          Pick<$DeepReadonly<CompletionLoadable>, CompletionLoadNames<L>>)[]
+          Pick<$DeepReadonly<CompletionTxLoadable>, CompletionLoadNames<L>>)[]
       : never
   >;
   readonly readDependency: <const L extends readonly (keyof DependencyLoadable)[] = readonly []>(
@@ -963,7 +993,7 @@ export interface ReadOnlyReads {
   ) => Promise<
     L extends unknown
       ? readonly ($DeepReadonly<Dependency> &
-          Pick<$DeepReadonly<DependencyLoadable>, DependencyLoadNames<L>>)[]
+          Pick<$DeepReadonly<DependencyTxLoadable>, DependencyLoadNames<L>>)[]
       : never
   >;
   readonly readEvidenceReference: <
@@ -973,7 +1003,7 @@ export interface ReadOnlyReads {
   ) => Promise<
     L extends unknown
       ? readonly ($DeepReadonly<EvidenceReference> &
-          Pick<$DeepReadonly<EvidenceReferenceLoadable>, EvidenceReferenceLoadNames<L>>)[]
+          Pick<$DeepReadonly<EvidenceReferenceTxLoadable>, EvidenceReferenceLoadNames<L>>)[]
       : never
   >;
   readonly readLateResult: <const L extends readonly (keyof LateResultLoadable)[] = readonly []>(
@@ -981,14 +1011,15 @@ export interface ReadOnlyReads {
   ) => Promise<
     L extends unknown
       ? readonly ($DeepReadonly<LateResult> &
-          Pick<$DeepReadonly<LateResultLoadable>, LateResultLoadNames<L>>)[]
+          Pick<$DeepReadonly<LateResultTxLoadable>, LateResultLoadNames<L>>)[]
       : never
   >;
   readonly readReview: <const L extends readonly (keyof ReviewLoadable)[] = readonly []>(
     input: Omit<ReadReviewInput, "load"> & ReviewLoadArg<L>,
   ) => Promise<
     L extends unknown
-      ? readonly ($DeepReadonly<Review> & Pick<$DeepReadonly<ReviewLoadable>, ReviewLoadNames<L>>)[]
+      ? readonly ($DeepReadonly<Review> &
+          Pick<$DeepReadonly<ReviewTxLoadable>, ReviewLoadNames<L>>)[]
       : never
   >;
   readonly readSubmission: <const L extends readonly (keyof SubmissionLoadable)[] = readonly []>(
@@ -996,14 +1027,14 @@ export interface ReadOnlyReads {
   ) => Promise<
     L extends unknown
       ? readonly ($DeepReadonly<Submission> &
-          Pick<$DeepReadonly<SubmissionLoadable>, SubmissionLoadNames<L>>)[]
+          Pick<$DeepReadonly<SubmissionTxLoadable>, SubmissionLoadNames<L>>)[]
       : never
   >;
   readonly readTask: <const L extends readonly (keyof TaskLoadable)[] = readonly []>(
     input: Omit<ReadTaskInput, "load"> & TaskLoadArg<L>,
   ) => Promise<
     L extends unknown
-      ? readonly ($DeepReadonly<Task> & Pick<$DeepReadonly<TaskLoadable>, TaskLoadNames<L>>)[]
+      ? readonly ($DeepReadonly<Task> & Pick<$DeepReadonly<TaskTxLoadable>, TaskLoadNames<L>>)[]
       : never
   >;
 }

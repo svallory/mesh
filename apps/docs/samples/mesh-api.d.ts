@@ -56,11 +56,12 @@ declare module "@meshfw/runtime" {
   /**
    * The project adds its keys, `actor` included, by declaration merging in
    * `src/context.ts`. Declaring `actor` here would make the project's own
-   * declaration a duplicate-property error. The reserved `system` key is
-   * declared in the augmentation at the end of this file, outside the part of
-   * the file that the runtime-reference test compares with the real runtime.
+   * declaration a duplicate-property error.
    */
-  export interface ActionContext {}
+  export interface ActionContext {
+    /** Reserved: the application marks a call it makes on its own behalf. Mesh skips no policy for it; a policy admits it with `isSystem(context)`. */
+    system?: boolean;
+  }
 
   /**
    * One failure. A failure a declared rule produced carries the label and the code
@@ -77,11 +78,16 @@ declare module "@meshfw/runtime" {
     details: unknown;
   }
 
-  /** One check from a policy's breakdown, as `can` returns it. */
+  /**
+   * One check from a policy's breakdown, as `ForbiddenError` (and `can`) carry it: plain data. `result` is `null` when
+   * the check was unknown; `kind` is `"when"` only for a policy whose `when=` was unknown, or was false when no covering
+   * policy applied. Only the checks that ran are listed.
+   */
   export interface PolicyCheck {
     policy: string;
+    kind: "authorize-if" | "forbid-if" | "when";
     check: string;
-    result: boolean;
+    result: boolean | null;
     decisive: boolean;
   }
 
@@ -101,7 +107,13 @@ declare module "@meshfw/runtime" {
 
   export class ForbiddenError extends MeshError {
     override code: "forbidden";
-    breakdown: PolicyCheck[];
+    entity: string;
+    action: string;
+    /** The covering policies that failed, or with `reason` `not-applied` those whose `when` was false; empty when none covers. */
+    policies: readonly string[];
+    /** Why: a covering policy failed, no policy covers the action, or none of the covering policies applies to the call. */
+    reason: "failed" | "not-covered" | "not-applied";
+    breakdown: readonly PolicyCheck[];
   }
 
   export class FrameworkError extends MeshError {
@@ -131,15 +143,6 @@ declare module "@meshfw/data-postgres" {
   }
 
   export function postgres(options: { url: string | undefined }): PostgresDataLayer;
-}
-
-// Declared apart from the runtime section above, which `packages/compiler/test/runtime-reference.test.ts`
-// compares member for member with the real runtime: the runtime does not have these yet.
-declare module "@meshfw/runtime" {
-  interface ActionContext {
-    /** Reserved: the application marks a call it makes on its own behalf. Mesh skips no policy for it. */
-    system?: boolean;
-  }
 }
 
 declare module "meshfw" {

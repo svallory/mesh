@@ -283,7 +283,7 @@ Signature: `(string | list) -> number`. Null behaviour: null string: null; a lis
 | `"\u{1f600}"` | `1` |
 | `null` | `null` |
 | `[]` | `0` |
-| `[{…}, {…}]` | `2` |
+| `[{}, {}]` | `2` |
 
 ## `now()` (now)
 
@@ -327,6 +327,20 @@ Signature: `(boolean, T, T) -> T`. Null behaviour: unknown test: the else branch
 | `null` | `1` | `2` | `2` |
 | `true` | `null` | `2` | `null` |
 | `false` | `1` | `null` | `null` |
+
+## `isSystem(context)` (isSystem)
+
+Signature: `(any) -> boolean`. Null behaviour: never unknown: true only when the value is an object whose `system` is `true`.
+
+| Argument 1 | Result |
+|:--|:--|
+| `{ system: true }` | `true` |
+| `{ system: false }` | `false` |
+| `{ system: "true" }` | `false` |
+| `{ actor: { id: "a" } }` | `false` |
+| `{}` | `false` |
+| `null` | `false` |
+| `true` | `false` |
 
 ## Quantifiers over a loaded has-many
 

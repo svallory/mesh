@@ -7,6 +7,7 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
+import { openPolicies } from "./open-policy.ts";
 import { FrameworkError, InvalidInputError } from "@meshfw/runtime";
 import build from "../src/build.ts";
 import { createSchema } from "../src/index.ts";
@@ -167,7 +168,7 @@ beforeAll(async () => {
     root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"),
     data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: ["aggregates"] }, options: { file: ":memory:" } },
   };
-  const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: Object.entries(SOURCES).map(([name, source]) => ({ file: `src/domain/${name}`, source })) });
+  const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: openPolicies(Object.entries(SOURCES).map(([name, source]) => ({ file: `src/domain/${name}`, source }))) });
   expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   await writeGeneratedFiles(await generateFiles({ config, document: built.document as ModelDocument }, build), config);
   await Bun.write(join(dir, "package.json"), `${JSON.stringify(PACKAGE, null, 2)}\n`);

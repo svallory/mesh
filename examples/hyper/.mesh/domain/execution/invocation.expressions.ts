@@ -5,6 +5,7 @@ import {
   expr as $,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
+  type SharedInput as $SharedInput,
 } from "@meshfw/runtime";
 import { attemptSessionOf } from "../../../src/domain/execution/execution.helpers";
 import type {
@@ -101,4 +102,8 @@ export const expressions = {
   },
   // set &recordedBy, translated (src/domain/execution/invocation.mesh.mx:102:23)
   "correct.step.0.set.recordedBy": ($s: InvocationScope<CorrectInvocationInput>) => $s.actor?.id,
+  // policy :untilM8b authorize-if, translated (src/domain/execution/invocation.mesh.mx:105:20)
+  "policy.untilM8b.authorize-if.0": (
+    _$s: InvocationNewScope<$SharedInput<RecordInvocationInput | CorrectInvocationInput>>,
+  ) => true,
 } as const;

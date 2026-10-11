@@ -71,3 +71,6 @@ entity :Review table="reviews"
           const submission = await actions.settleSubmission({ id: self.submissionId, outcome: :returned });
           await actions.touchTask({ id: submission.taskId });
         }
+  policies
+    policy :untilM8b
+      authorize-if=() => true

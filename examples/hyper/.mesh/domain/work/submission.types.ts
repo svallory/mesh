@@ -54,15 +54,30 @@ export type ReadSubmissionInput<N extends keyof SubmissionLoadable = never> = {
   load?: readonly N[] | undefined;
 };
 
-/** What `load` attaches to a Submission. The record has none of it, so reading one that was not loaded is a type error. */
+/**
+ * What a caller's `load` attaches to a Submission. The record has none of it, so reading one that was not loaded is a type error.
+ * A caller's load runs the read policies of the entity it reaches: a related record the caller may not read is null, a list of them empty.
+ * A computed field's body does not (POL-19): it is the entity's own rule, so it reads every related record, and what it
+ * returns is shown to every caller who may read a Submission. Return only what each such caller may see.
+ */
 export type SubmissionLoadable = {
-  task: Task;
-  submitter: Collaborator;
+  task: Task | null;
+  submitter: Collaborator | null;
 };
 
 /** A Submission with the relationships and computed fields named in N loaded. */
 export type SubmissionWith<N extends keyof SubmissionLoadable> = Submission &
   Pick<SubmissionLoadable, N>;
+
+/** What a load through `tx` attaches to a Submission: it runs no policy, so every related record the key names is there. */
+export type SubmissionTxLoadable = {
+  task: Task;
+  submitter: Collaborator;
+};
+
+/** A Submission loaded through `tx`, with the relationships and computed fields named in N. */
+export type SubmissionTxWith<N extends keyof SubmissionLoadable> = Submission &
+  Pick<SubmissionTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type SubmissionLoadNames<L extends readonly (keyof SubmissionLoadable)[]> =

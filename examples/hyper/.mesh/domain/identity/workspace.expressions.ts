@@ -5,12 +5,13 @@ import {
   expr as $,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
+  type SharedInput as $SharedInput,
 } from "@meshfw/runtime";
 import type {
   ReadOnlyActions as $ReadOnlyActions,
   ReadOnlyReads as $ReadOnlyReads,
 } from "../../composition";
-import type { Workspace, RenameWorkspaceInput } from "./workspace.types";
+import type { Workspace, CreateWorkspaceInput, RenameWorkspaceInput } from "./workspace.types";
 
 /** What every expression of Workspace reads; `I` is the input of the action it runs in. */
 export type WorkspaceScope<I = unknown> = $Scope<{
@@ -47,4 +48,8 @@ export const expressions = {
   // set &version, translated (src/domain/identity/workspace.mesh.mx:31:20)
   "rename.step.0.set.version": ($s: WorkspaceStoredScope<RenameWorkspaceInput>) =>
     $.add($s.self.version, 1),
+  // policy :untilM8b authorize-if, translated (src/domain/identity/workspace.mesh.mx:34:20)
+  "policy.untilM8b.authorize-if.0": (
+    _$s: WorkspaceCheckScope<$SharedInput<CreateWorkspaceInput | RenameWorkspaceInput>>,
+  ) => true,
 } as const;

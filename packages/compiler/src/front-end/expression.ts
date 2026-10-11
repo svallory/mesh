@@ -45,6 +45,7 @@ const GLOBALS = new Set([
 const REGISTERED_CALLS: Record<string, { fn: FunctionId; arity: number }> = {
   now: { fn: "now", arity: 0 },
   today: { fn: "today", arity: 0 },
+  isSystem: { fn: "isSystem", arity: 1 },
 };
 const BINARY: Record<string, FunctionId> = {
   "<": "lt", "<=": "lte", ">": "gt", ">=": "gte", "+": "add", "-": "sub", "*": "mul", "/": "div",
@@ -174,13 +175,24 @@ function freeVariables(fn: N, ctx: ConvertContext, clock: Set<string>): string[]
         ctx.report({
           severity: "error",
           code: "MESH_EXPR_FREE_VARIABLE",
-          message: `\`${n.name}\` is not defined here: a function in an entity file may use its parameters, \`&members\`, imported helpers, \`now()\` and \`today()\``,
+          message: `\`${n.name}\` is not defined here: a function in an entity file may use its parameters, \`&members\`, imported helpers, \`now()\`, \`today()\` and \`isSystem()\``,
           position: ctx.at(start(n)),
           fix: "import it from a helper module, or pass it in through `context`",
         });
       }
       return;
     }
+    // A registered function called with the wrong number of arguments is an error, translated or plain (N3 of the M8a review).
+    const callee = n.type === "CallExpression" ? n.callee as N : undefined;
+    const registered = callee?.type === "Identifier" ? REGISTERED_CALLS[callee.name!] : undefined;
+    if (registered && !scope.has(callee!.name!) && !ctx.imported.has(callee!.name!) && !ctx.helpers.has(callee!.name!) && (n.arguments ?? []).length !== registered.arity)
+      ctx.report({
+        severity: "error",
+        code: "MESH_EXPR_ARITY",
+        message: `\`${callee!.name}()\` takes ${registered.arity === 0 ? "no arguments" : `${registered.arity} argument${registered.arity === 1 ? "" : "s"}`}, and this call passes ${(n.arguments ?? []).length}`,
+        position: ctx.at(start(n)),
+        fix: registered.arity === 0 ? `write \`${callee!.name}()\`` : `write \`${callee!.name}(context)\``,
+      });
     const opened = scopeNames(n);
     const inner = opened && opened.size > 0 ? new Set([...scope, ...opened]) : scope;
     for (const [k, child] of Object.entries(n)) if (k !== "loc" && k !== "extra") walk(child, n, k, inner);
@@ -284,7 +296,7 @@ function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode 
         ctx.report({
           severity: "error",
           code: "MESH_EXPR_FREE_VARIABLE",
-          message: `\`${name}\` is not defined here: a function in an entity file may use its parameters, \`&members\`, imported helpers, \`now()\` and \`today()\``,
+          message: `\`${name}\` is not defined here: a function in an entity file may use its parameters, \`&members\`, imported helpers, \`now()\`, \`today()\` and \`isSystem()\``,
           position: ctx.at(start(n)),
           fix: "import it from a helper module, or pass it in through `context`",
         });
@@ -341,8 +353,9 @@ function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode 
         const name = callee.name!;
         const registered = REGISTERED_CALLS[name];
         if (registered && !env.roots.has(name) && !env.locals.has(name) && !ctx.helpers.has(name)) {
-          if (args.length !== registered.arity) throw new Plain("unsupported-construct", `\`${name}()\` takes no arguments`, n);
-          return call(registered.fn, []);
+          if (args.length !== registered.arity)
+            throw new Plain("unsupported-construct", registered.arity === 0 ? `\`${name}()\` takes no arguments` : `\`${name}()\` takes ${registered.arity} argument`, n);
+          return call(registered.fn, args.map((arg) => sub(arg)));
         }
         const from = ctx.helpers.get(name);
         if (from !== undefined) {
@@ -378,7 +391,7 @@ const PARAMETER_ERROR = (n: N) => new Plain("unsupported-parameter", "this param
 
 /** Translate one function (`fn` is its Babel node, `span` its authored extent). */
 /** What printing a translated expression as plain code needs, for the checker if it later demotes one: its edits and the scope names it reads. */
-export interface Demotion { edits: SourceEdit[]; roots: string[]; clock?: ("now" | "today")[] }
+export interface Demotion { edits: SourceEdit[]; roots: string[]; clock?: ("now" | "today")[]; isSystem?: true }
 const demotions = new WeakMap<object, Demotion>();
 export const demotionOf = (expression: object): Demotion => demotions.get(expression) ?? { edits: [], roots: [] };
 export const rememberDemotion = (expression: object, demotion: Demotion): void => { demotions.set(expression, demotion); };
@@ -389,7 +402,8 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
   const free = freeVariables(f, ctx, called);
   // `now()` and `today()` in code Mesh does not translate read the same clock as a translated expression.
   const clock = (["now", "today"] as const).filter((name) => called.has(name));
-  const clocked = clock.length ? { clock } : {};
+  // `isSystem(context)` in code Mesh does not translate is Mesh's own function, as in a translated expression.
+  const clocked = { ...(clock.length ? { clock } : {}), ...(called.has("isSystem") ? { isSystem: true as const } : {}) };
   const roots = new Map<string, string>();
   /**
    * A body that is an object literal (a check's `details`) is plain only because of the literal. Each property value that Mesh can

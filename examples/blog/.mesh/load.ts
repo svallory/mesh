@@ -9,11 +9,16 @@ import {
   type LoadPlan as $LoadPlan,
 } from "@meshfw/runtime";
 import { tables } from "./schema";
+import { expressions as commentExpressions } from "./domain/blog/comment.expressions";
 import { expressions as postExpressions } from "./domain/blog/post.expressions";
-import type { Comment, CommentLoadable, CommentWith } from "./domain/blog/comment.types";
-import type { Post, PostLoadable, PostWith } from "./domain/blog/post.types";
+import { expressions as userExpressions } from "./domain/blog/user.expressions";
+import type { Comment, CommentLoadable, CommentTxWith } from "./domain/blog/comment.types";
+import type { Post, PostLoadable, PostTxWith } from "./domain/blog/post.types";
 
-/** What `loadRows` follows: each entity's table and key, its relationships and its computed fields. */
+/**
+ * What `loadRows` follows: each entity's table and key, its relationships and its computed fields, and the read policies
+ * a caller's load of it runs (none listed: a caller loads none of its records).
+ */
 export const loadPlan = {
   Comment: {
     table: tables.comment,
@@ -22,6 +27,20 @@ export const loadPlan = {
       post: { kind: "belongs-to", target: "Post", column: "postId", nullable: false },
     },
     computed: {},
+    reads: [
+      {
+        name: "signedIn",
+        when: null,
+        checks: [
+          {
+            kind: "authorize-if",
+            check: "({ actor }) => actor.id !== null",
+            record: false,
+            run: commentExpressions["policy.signedIn.authorize-if.0"],
+          },
+        ],
+      },
+    ],
   },
   Post: {
     table: tables.post,
@@ -39,39 +58,75 @@ export const loadPlan = {
       },
       commentCount: { kind: "rollup", fn: "count", of: ["comments"] },
     },
+    reads: [
+      {
+        name: "public",
+        when: null,
+        checks: [
+          {
+            kind: "authorize-if",
+            check: "() => true",
+            record: false,
+            run: postExpressions["policy.public.authorize-if.0"],
+          },
+        ],
+      },
+    ],
   },
   User: {
     table: tables.user,
     key: "id",
     relations: {},
     computed: {},
+    reads: [
+      {
+        name: "signedIn",
+        when: null,
+        checks: [
+          {
+            kind: "authorize-if",
+            check: "({ actor }) => actor.id !== null",
+            record: false,
+            run: userExpressions["policy.signedIn.authorize-if.0"],
+          },
+        ],
+      },
+    ],
   },
 } as const satisfies $LoadPlan;
 
 /**
  * Load relationships and computed fields onto Comment rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type CommentWith<"name" | ...>.
+ * the result is new rows of type CommentTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadCommentFields<const N extends keyof CommentLoadable>(
   tx: $DataOperations,
   rows: readonly Comment[],
   names: readonly N[],
-  options?: $LoadOptions,
-): Promise<CommentWith<N>[]> {
-  return (await $loadRows(loadPlan, "Comment", tx, rows, names, options)) as CommentWith<N>[];
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
+): Promise<CommentTxWith<N>[]> {
+  return (await $loadRows(loadPlan, "Comment", tx, rows, names, {
+    ...options,
+    policies: false,
+  })) as CommentTxWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto Post rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type PostWith<"name" | ...>.
+ * the result is new rows of type PostTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadPostFields<const N extends keyof PostLoadable>(
   tx: $DataOperations,
   rows: readonly Post[],
   names: readonly N[],
-  options?: $LoadOptions,
-): Promise<PostWith<N>[]> {
-  return (await $loadRows(loadPlan, "Post", tx, rows, names, options)) as PostWith<N>[];
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
+): Promise<PostTxWith<N>[]> {
+  return (await $loadRows(loadPlan, "Post", tx, rows, names, {
+    ...options,
+    policies: false,
+  })) as PostTxWith<N>[];
 }

@@ -60,4 +60,6 @@ export const expressions = {
   },
   // set &submitter, translated (src/domain/work/late-result.mesh.mx:36:22)
   "record.step.0.set.submitter": ($s: LateResultScope<RecordLateResultInput>) => $s.actor?.id,
+  // policy :untilM8b authorize-if, translated (src/domain/work/late-result.mesh.mx:39:20)
+  "policy.untilM8b.authorize-if.0": (_$s: LateResultNewScope<RecordLateResultInput>) => true,
 } as const;

@@ -133,6 +133,9 @@ export async function castInput<T>(layer: DataLayer, schema: StandardSchemaV1<un
   }
 }
 
+/** What `castInput` gives for a schema: a read action that has cast its input for its policies hands it to the read's body, which does not cast it again. */
+export type CastOutput<S> = S extends StandardSchemaV1<unknown, infer T> ? T : never;
+
 const writes = new WeakMap<DataOperations, number>();
 
 /** Count one write a generated action made through `operations`, the running transaction's. */

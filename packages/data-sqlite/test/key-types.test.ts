@@ -4,6 +4,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
+import { openPolicies } from "./open-policy.ts";
 import { InvalidInputError } from "@meshfw/runtime";
 import build from "../src/build.ts";
 import { createSchema, sqlite } from "../src/index.ts";
@@ -38,8 +39,8 @@ beforeAll(async () => {
     root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"),
     data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: ["integer-key-fill"] }, options: { file: ":memory:" } },
   };
-  const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: [
-    { file: "src/domain/order.mesh.mx", source: order }, { file: "src/domain/line.mesh.mx", source: line }] });
+  const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: openPolicies([
+    { file: "src/domain/order.mesh.mx", source: order }, { file: "src/domain/line.mesh.mx", source: line }]) });
   expect(built.diagnostics).toEqual([]);
   await writeGeneratedFiles(await generateFiles({ config, document: built.document as ModelDocument }, build), config);
 });

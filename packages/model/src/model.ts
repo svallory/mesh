@@ -51,7 +51,7 @@ export interface Expression {
   /**
    * What an action runs before this function (M5): dotted paths of relationships and computed fields on `self`,
    * such as `owner` or `owner.todoCount`, that the function reads, so the action loads them first. Sorted, without
-   * duplicates. Set on the functions of actions and `always` blocks that read any; absent when they read none.
+   * duplicates. Set on the functions of actions, `always` blocks and policies that read any; absent when they read none.
    */
   needs?: string[];
 }

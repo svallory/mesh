@@ -101,10 +101,15 @@ export type ReadTaskInput<N extends keyof TaskLoadable = never> = {
   load?: readonly N[] | undefined;
 };
 
-/** What `load` attaches to a Task. The record has none of it, so reading one that was not loaded is a type error. */
+/**
+ * What a caller's `load` attaches to a Task. The record has none of it, so reading one that was not loaded is a type error.
+ * A caller's load runs the read policies of the entity it reaches: a related record the caller may not read is null, a list of them empty.
+ * A computed field's body does not (POL-19): it is the entity's own rule, so it reads every related record, and what it
+ * returns is shown to every caller who may read a Task. Return only what each such caller may see.
+ */
 export type TaskLoadable = {
   parent: Task | null;
-  creator: Collaborator;
+  creator: Collaborator | null;
   children: Task[];
   dependencies: Dependency[];
   dependents: Dependency[];
@@ -125,6 +130,31 @@ export type TaskLoadable = {
 
 /** A Task with the relationships and computed fields named in N loaded. */
 export type TaskWith<N extends keyof TaskLoadable> = Task & Pick<TaskLoadable, N>;
+
+/** What a load through `tx` attaches to a Task: it runs no policy, so every related record the key names is there. */
+export type TaskTxLoadable = {
+  parent: Task | null;
+  creator: Collaborator;
+  children: Task[];
+  dependencies: Dependency[];
+  dependents: Dependency[];
+  assignments: Assignment[];
+  claims: Claim[];
+  submissions: Submission[];
+  completions: Completion[];
+  events: Event[];
+  childrenSettled: boolean;
+  claimed: boolean;
+  lapsedClaim: boolean;
+  inReview: boolean;
+  assigned: boolean;
+  blocked: boolean;
+  maxFence: number | null;
+  derivedState: "ready" | "blocked" | "claimed" | "in-review" | "done" | "canceled";
+};
+
+/** A Task loaded through `tx`, with the relationships and computed fields named in N. */
+export type TaskTxWith<N extends keyof TaskLoadable> = Task & Pick<TaskTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type TaskLoadNames<L extends readonly (keyof TaskLoadable)[]> = number extends L["length"]

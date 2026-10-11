@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { CHUNK, FrameworkError, loadRows, rejectComputedQuery, scope, type DataOperations, type LoadPlan, type Row } from "../src/index.ts";
+import { CHUNK, FrameworkError, loadRows, rejectComputedQuery, scope, type DataOperations, type LoadPlan, type PolicySpec, type Row } from "../src/index.ts";
 
 /** An in-memory data layer that understands the two filters loading uses (`eq`, `in`) and records every call. */
 function memory(tables: Record<string, Row[]>) {
@@ -191,5 +191,86 @@ describe("rejectComputedQuery", () => {
     expect(() => rejectComputedQuery("Doc", names, { filter: { totals: { eq: 1 } }, sort: ["-totals"] })).not.toThrow();
     expect(() => rejectComputedQuery("Doc", names, { filter: { and: [] }, sort: [] })).not.toThrow();
     expect(() => rejectComputedQuery("Doc", [], { filter: { total: { eq: 1 } } })).not.toThrow();
+  });
+});
+
+describe("what a caller loads runs the read policies of the entity it reaches (POL-17)", () => {
+  /** A read policy that admits a caller whose actor id is `admin`. */
+  const adminOnly: PolicySpec = { name: "admins", when: null, checks: [{ kind: "authorize-if", check: "({ actor }) => actor.id === \"admin\"", record: false,
+    run: ((s: { actor: { id?: string } }) => s.actor?.id === "admin") as never }] };
+  const open: PolicySpec = { name: "anyone", when: null, checks: [{ kind: "authorize-if", check: "() => true", record: false, run: (() => true) as never }] };
+  const guarded = (handle: (name: string) => never) => {
+    const base = plan(handle);
+    return { ...base, Node: { ...base.Node!, reads: [open] }, Owner: { ...base.Owner!, reads: [adminOnly] }, Badge: { ...base.Badge! } } as LoadPlan;
+  };
+  const data = () => memory({
+    nodes: [{ id: 1, parentId: null, ownerId: 10 }, { id: 2, parentId: 1, ownerId: 10, rank: 5 }],
+    owners: [{ id: 10 }],
+    badges: [{ id: 7, nodeId: 1 }],
+  });
+
+  test("not admitted: a belongs-to or has-one is null, a has-many []; what they admit is loaded; tx (no `policies`) sees everything", async () => {
+    const { tx, handle } = data();
+    const rows = (await tx.select(handle("nodes"))) as Row[];
+    const guest = await loadRows(guarded(handle), "Node", tx, rows, ["owner", "children", "badge"], { actor: { id: "guest" }, policies: true });
+    // Owner admits only the admin; Badge declares no read policy, so no one; Node admits anyone.
+    expect(guest.map((row) => [row.owner, row.badge])).toEqual([[null, null], [null, null]]);
+    expect((guest[0]!.children as Row[]).map((row) => row.id)).toEqual([2]);
+    const admin = await loadRows(guarded(handle), "Node", tx, rows, ["owner"], { actor: { id: "admin" }, policies: true });
+    expect(admin[0]!.owner).toEqual({ id: 10 });
+    const unfiltered = await loadRows(guarded(handle), "Node", tx, rows, ["owner", "badge"], { actor: { id: "guest" } });
+    expect(unfiltered[0]).toMatchObject({ owner: { id: 10 }, badge: { id: 7, nodeId: 1 } });
+  });
+
+  test("POL-19: a rollup over an entity the caller may not read counts no row; a computed field's body still reads every related row", async () => {
+    const { tx, handle } = data();
+    const withChildren = guarded(handle);
+    const closed = { ...withChildren, Node: { ...withChildren.Node!, reads: [adminOnly] } } as LoadPlan;
+    const rows = (await tx.select(handle("nodes"))) as Row[];
+    const guest = await loadRows(closed, "Node", tx, rows, ["kids", "maxRank", "childCount", "children"], { actor: { id: "guest" }, policies: true });
+    expect(guest[0]).toMatchObject({ kids: 0, maxRank: null, childCount: 1, children: [] });
+    // Two rows never share one emptied list.
+    expect(guest[0]!.children).not.toBe(guest[1]!.children);
+    const admin = await loadRows(closed, "Node", tx, rows, ["kids", "maxRank"], { actor: { id: "admin" }, policies: true });
+    expect(admin[0]).toMatchObject({ kids: 1, maxRank: 5 });
+  });
+
+  test("the policies are decided before loading: a denied name is not queried, unless a computed body the caller named reads it", async () => {
+    const { tx, calls, handle } = data();
+    const rows = (await tx.select(handle("nodes"))) as Row[];
+    const closed = { ...guarded(handle), Node: { ...guarded(handle).Node!, reads: [adminOnly] } } as LoadPlan;
+    calls.length = 0;
+    const guest = await loadRows(closed, "Node", tx, rows, ["owner", "badge", "children", "kids", "maxRank"], { actor: { id: "guest" }, policies: true });
+    expect(guest[0]).toMatchObject({ owner: null, badge: null, children: [], kids: 0, maxRank: null });
+    expect(calls).toEqual([]);
+    // `childCount` reads `children` for itself (POL-19): the children are selected once, for the body, and still taken off.
+    const counted = await loadRows(closed, "Node", tx, rows, ["childCount", "children"], { actor: { id: "guest" }, policies: true });
+    expect(calls).toEqual(["select nodes"]);
+    expect(counted[0]).toMatchObject({ childCount: 1, children: [] });
+    // Admitted, each is queried as before.
+    calls.length = 0;
+    await loadRows(closed, "Node", tx, rows, ["owner", "kids"], { actor: { id: "admin" }, policies: true });
+    expect(calls).toEqual(["select owners", "count nodes.id", "count nodes.id"]);
+  });
+
+  test("a required belongs-to pointing at a row that is gone gives a denied caller null, not the error an admitted one gets", async () => {
+    const { tx, handle } = memory({ nodes: [{ id: 1, parentId: null, ownerId: 99 }], owners: [], badges: [] });
+    const rows = (await tx.select(handle("nodes"))) as Row[];
+    const guest = await loadRows(guarded(handle), "Node", tx, rows, ["owner"], { actor: { id: "guest" }, policies: true });
+    expect(guest[0]!.owner).toBeNull();
+    await expect(loadRows(guarded(handle), "Node", tx, rows, ["owner"], { actor: { id: "admin" }, policies: true }))
+      .rejects.toThrow("belongs-to :owner of :Node points at Owner 99, which does not exist");
+    // A load that cannot be served is an error for every caller: a denied one is told so too, with no query.
+    const unserved = await loadRows(guarded(handle), "Node", tx, rows, ["looseCount"], { actor: { id: "guest" }, policies: true }).catch((error: unknown) => error);
+    expect(unserved).toBeInstanceOf(FrameworkError);
+    await expect(loadRows(guarded(handle), "Node", tx, rows, ["loose"], { actor: { id: "guest" }, policies: true })).rejects.toThrow(/has no belongs-to back/);
+  });
+
+  test("a read policy that reads the record is the M10 error", async () => {
+    const { tx, handle } = data();
+    const base = guarded(handle);
+    const reading: PolicySpec = { ...open, checks: [{ ...open.checks[0]!, record: true }] };
+    const rows = (await tx.select(handle("nodes"))) as Row[];
+    await expect(loadRows({ ...base, Owner: { ...base.Owner!, reads: [reading] } }, "Node", tx, rows, ["owner"], { policies: true })).rejects.toThrow(/M10/);
   });
 });

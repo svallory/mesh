@@ -35,3 +35,6 @@ entity :Assignment table="assignments"
         set
           &endedAt=() => now()
           &endReason=({ input }) => input.reason
+  policies
+    policy :untilM8b
+      authorize-if=() => true

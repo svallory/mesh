@@ -3,13 +3,15 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, 
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createSchema, sqlite, type SQLiteLayer } from "@meshfw/data-sqlite";
-import { FrameworkError, InvalidInputError, NotFoundError, type Change, type DataLayer, type DataOperations, type Seams } from "@meshfw/runtime";
+import { ForbiddenError, FrameworkError, InvalidInputError, NotFoundError, type Change, type DataLayer, type DataOperations, type Seams } from "@meshfw/runtime";
 import { bind, connect, disconnect, tables } from "#mesh";
 import { createPost, createUser, readPost, type PostFilter, type PostSort } from "#mesh/domain/blog";
 import config from "../mesh.config";
 import { alice } from "../src/context";
 
 const context = { actor: alice };
+/** The context of a call made by `user`: the post's `:owner` policy lets only its author publish, archive or destroy it. */
+const as = (user: { id: string }) => ({ actor: { id: user.id } });
 
 async function fresh() {
   const db = sqlite({ file: ":memory:" });
@@ -25,12 +27,13 @@ test("acceptance 1: create, read, update, destroy, and a write after destroy is 
     expect(post).toMatchObject({ title: "Hello", body: null, views: 0, price: 0, featured: false, state: "draft", authorId: author.id });
     expect(await blog.readPost({}, context)).toEqual([post]);
 
-    const published = await blog.publishPost({ id: post.id }, context);
+    const published = await blog.publishPost({ id: post.id }, as(author));
     expect(published.state).toBe("published");
     expect(published.insertedAt).toEqual(post.insertedAt);
 
-    await blog.destroyPost({ id: post.id }, context);
+    await blog.destroyPost({ id: post.id }, as(author));
     expect(await blog.readPost({}, context)).toEqual([]);
+    // Not found comes before forbidden (POL-18): `context` is not the author, and the row is gone.
     await expect(blog.publishPost({ id: post.id }, context)).rejects.toBeInstanceOf(NotFoundError);
     await expect(blog.destroyPost({ id: post.id }, context)).rejects.toBeInstanceOf(NotFoundError);
     await expect(blog.archivePost({ id: post.id }, context)).rejects.toBeInstanceOf(NotFoundError);
@@ -50,7 +53,9 @@ function counting(layer: DataLayer, counter: { locked: number }): DataLayer {
   };
 }
 
-describe("a destroy whose body cannot see the row reads it first only for a seam that wants the change (M6 ruling 4)", () => {
+// What a destroy with no policy that reads the record does (no read without a seam, TXN-13) is in
+// packages/data-sqlite/test/lifecycle.test.ts. Here `:owner` reads the post's author, so every destroy reads the row.
+describe("a destroy the :owner policy covers reads the row once under the lock, and a seam that wants the change reads it no second time (M6 ruling 4)", () => {
   const destroyOne = async (seams: Seams | undefined) => {
     const db = sqlite({ file: ":memory:" });
     await createSchema(db, tables);
@@ -60,22 +65,24 @@ describe("a destroy whose body cannot see the row reads it first only for a seam
       const author = await blog.createUser({ name: "Alice" }, context);
       const post = await blog.createPost({ title: "Hello", author: author.id }, context);
       const before = counter.locked;
-      await blog.destroyPost({ id: post.id }, context);
-      const gone = await blog.destroyPost({ id: post.id }, context).catch((cause: unknown) => cause);
+      await blog.destroyPost({ id: post.id }, as(author));
+      const first = counter.locked - before;
+      const gone = await blog.destroyPost({ id: post.id }, as(author)).catch((cause: unknown) => cause);
       expect(gone).toBeInstanceOf(NotFoundError);
       // two destroys: the first of a row that is there, the second of one that is not
-      return { locked: counter.locked - before, post };
+      return { locked: counter.locked - before, first, post };
     } finally { await db.close(); }
   };
 
-  test("no seam, or one that wants no change: the plan is unchanged, one delete by key", async () => {
-    expect((await destroyOne(undefined)).locked).toBe(0);
-    expect((await destroyOne({ beforeTransaction() {} })).locked).toBe(0);
+  test("no seam, or one that wants no change: one locked read per destroy, which the policy needs", async () => {
+    expect(await destroyOne(undefined)).toMatchObject({ first: 1, locked: 2 });
+    expect(await destroyOne({ beforeTransaction() {} })).toMatchObject({ first: 1, locked: 2 });
   });
 
-  test("afterWrite or afterCommit registered: the locked row is read first, so before is the deleted row", async () => {
+  test("afterWrite or afterCommit registered: the same one read, and before is the deleted row", async () => {
     const seen: Change[] = [];
-    const { locked, post } = await destroyOne({ afterWrite: (_db, event) => { if (event.action === "destroy") seen.push({ entity: event.entity, action: event.action, before: event.before, after: event.after }); } });
+    const { locked, first, post } = await destroyOne({ afterWrite: (_db, event) => { if (event.action === "destroy") seen.push({ entity: event.entity, action: event.action, before: event.before, after: event.after }); } });
+    expect(first).toBe(1);
     expect(locked).toBe(2);
     expect(seen).toEqual([{ entity: "Post", action: "destroy", before: post, after: null }]);
     const committed: Change[] = [];
@@ -93,7 +100,7 @@ test("a create fills timestamps from one clock reading, and an update moves only
     expect(post.insertedAt).toBeInstanceOf(Date);
     expect(post.insertedAt.getTime()).toBe(post.updatedAt.getTime());
     await Bun.sleep(5);
-    const published = await blog.publishPost({ id: post.id }, context);
+    const published = await blog.publishPost({ id: post.id }, as(author));
     expect(published.insertedAt.getTime()).toBe(post.insertedAt.getTime());
     expect(published.updatedAt.getTime()).toBeGreaterThan(post.updatedAt.getTime());
   } finally { await db.close(); }
@@ -129,7 +136,7 @@ test("a constant set is applied: publishPost sets state to published", async () 
   try {
     const author = await blog.createUser({ name: "Alice" }, context);
     const post = await blog.createPost({ title: "Hello", author: author.id }, context);
-    await blog.publishPost({ id: post.id }, context);
+    await blog.publishPost({ id: post.id }, as(author));
     expect((await blog.readPost({}, context))[0]?.state).toBe("published");
   } finally { await db.close(); }
 });
@@ -152,6 +159,90 @@ async function seeded(titles: string[]) {
   return { ...world, author, posts };
 }
 const titlesOf = (posts: { title: string }[]) => posts.map((post) => post.title);
+
+describe("policies (M8a): every action is covered, and a caller the policies do not admit is forbidden", () => {
+  test("only the author publishes, archives or destroys a post; anyone else gets ForbiddenError and nothing is written", async () => {
+    const { db, blog } = await fresh();
+    try {
+      const author = await blog.createUser({ name: "Alice" }, context);
+      const post = await blog.createPost({ title: "Hello", author: author.id }, context);
+      const error = await blog.publishPost({ id: post.id }, context).catch((cause: unknown) => cause);
+      expect(error).toBeInstanceOf(ForbiddenError);
+      expect(error).toMatchObject({ code: "forbidden", entity: "Post", action: "publish", policies: ["owner"], message: "Post.publish is forbidden by policy :owner" });
+      // The breakdown is plain data: it survives JSON unchanged.
+      const breakdown = (error as ForbiddenError).breakdown;
+      expect(breakdown).toEqual([{ policy: "owner", kind: "authorize-if", check: "({ actor }) => &author.id === actor.id", result: false, decisive: true }]);
+      expect(JSON.parse(JSON.stringify(breakdown))).toEqual(breakdown);
+      await expect(blog.archivePost({ id: post.id }, context)).rejects.toBeInstanceOf(ForbiddenError);
+      await expect(blog.destroyPost({ id: post.id }, context)).rejects.toMatchObject({ code: "forbidden", policies: ["owner"] });
+      expect(await blog.readPost({}, context)).toEqual([post]);
+      // A post that does not exist is not found, whoever asks (POL-18): the row is read before the policy that reads it.
+      await expect(blog.publishPost({ id: crypto.randomUUID() }, context)).rejects.toBeInstanceOf(NotFoundError);
+      await expect(blog.destroyPost({ id: crypto.randomUUID() }, context)).rejects.toBeInstanceOf(NotFoundError);
+    } finally { await db.close(); }
+  });
+
+  test("the policy runs before validate: a stranger is told they may not publish, not that the title is missing", async () => {
+    const { db, blog } = await fresh();
+    try {
+      const author = await blog.createUser({ name: "Alice" }, context);
+      const post = await blog.createPost({ title: "Hello", author: author.id }, context);
+      // A title `titlePresent` rejects, which no create can store (`min=1`): written past the actions.
+      await db.transaction((tx) => tx.updateByKey(tables.post, { id: post.id }, { title: "" }));
+      const other = await blog.createUser({ name: "Bob" }, context);
+      await expect(blog.publishPost({ id: post.id }, as(other))).rejects.toBeInstanceOf(ForbiddenError);
+      // The author passes the policy and meets validate.
+      await expect(blog.publishPost({ id: post.id }, as(author))).rejects.toMatchObject({ issues: [expect.objectContaining({ code: "title_required" })] });
+      expect((await blog.readPost({}, context))[0]).toMatchObject({ title: "", state: "draft" });
+    } finally { await db.close(); }
+  });
+
+  test("what a caller loads runs the read policies of the entity it reaches (POL-17); through tx nothing is filtered", async () => {
+    const { db, blog } = await fresh();
+    try {
+      const author = await blog.createUser({ name: "Alice" }, context);
+      const post = await blog.createPost({ title: "Hello", author: author.id }, context);
+      // Comment has no create action: the row is written past the actions.
+      await db.transaction((tx) => tx.insert(tables.comment, { id: crypto.randomUUID(), body: "First", postId: post.id }));
+      const load = ["comments", "author", "commentCount"] as const;
+      // A guest may read posts (`:public`) but not users or comments (`:signedIn`).
+      const guest = { actor: {} } as unknown as typeof context;
+      const [seen] = await blog.readPost({ load }, guest);
+      expect(seen).toMatchObject({ id: post.id, comments: [], author: null, commentCount: 0 });
+      const [signedIn] = await blog.readPost({ load }, context);
+      expect(signedIn).toMatchObject({ comments: [{ body: "First" }], author: { name: "Alice" }, commentCount: 1 });
+      // Inside a transaction, `tx` runs no policy (ADR-0068): the same guest's read sees everything.
+      const [inside] = await blog.transaction(({ tx }) => tx.readPost({ load }), guest);
+      expect(inside).toMatchObject({ comments: [{ body: "First" }], author: { name: "Alice" }, commentCount: 1 });
+      // The types say the same: a caller's author may be null, while through `tx` the key always finds it.
+      const typed = (caller: NonNullable<typeof seen>, inTx: NonNullable<typeof inside>): string[] => [
+        // @ts-expect-error a caller's `author` is `User | null`
+        caller.author.name,
+        inTx.author.name,
+      ];
+      void typed;
+      // A write's `load` step gives the caller the result, so it runs the same policies.
+      expect((await blog.publishPost({ id: post.id }, as(author))).comments).toEqual([expect.objectContaining({ body: "First" })]);
+    } finally { await db.close(); }
+  });
+
+  test("a call whose actor has no id reads every post, may not create a user or a post, and reads no user or comment", async () => {
+    const { db, blog } = await fresh();
+    try {
+      const author = await blog.createUser({ name: "Alice" }, context);
+      await blog.createPost({ title: "Hello", author: author.id }, context);
+      const anonymous = { actor: {} } as unknown as typeof context;
+      expect(await blog.readPost({}, anonymous)).toHaveLength(1);
+      await expect(blog.createUser({ name: "Eve" }, anonymous)).rejects.toMatchObject({ code: "forbidden", policies: ["signedIn"] });
+      await expect(blog.createPost({ title: "Spam", author: author.id }, anonymous)).rejects.toBeInstanceOf(ForbiddenError);
+      // A read whose policies do not admit the caller gives no rows, never an error.
+      expect(await blog.readUser({}, anonymous)).toEqual([]);
+      expect(await blog.readComment({}, anonymous)).toEqual([]);
+      expect(await blog.readUser({}, context)).toHaveLength(1);
+      expect(await blog.readPost({}, context)).toHaveLength(1);
+    } finally { await db.close(); }
+  });
+});
 
 describe("ids (UUIDv7, filled when Mesh builds the new record, ACT-27)", () => {
   test("a create's id is a UUIDv7, and ids sort in creation order", async () => {
@@ -271,7 +362,7 @@ describe("reads take a filter, sort, limit and offset", () => {
   test("booleans, enums and the key column of a relationship", async () => {
     const { db, blog, author, posts } = await seeded(titles);
     try {
-      await blog.publishPost({ id: posts[1]!.id }, context);
+      await blog.publishPost({ id: posts[1]!.id }, as(author));
       expect(titlesOf(await blog.readPost({ filter: { state: { eq: "published" } } }, context))).toEqual(["alpha"]);
       expect(await blog.readPost({ filter: { featured: { eq: true } } }, context)).toEqual([]);
       expect(await blog.readPost({ filter: { authorId: { eq: author.id } } }, context)).toHaveLength(5);

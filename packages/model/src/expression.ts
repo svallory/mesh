@@ -9,7 +9,7 @@ import type { SourcePosition } from "./position.ts";
 export type FunctionId =
   | "eq" | "ne" | "isNull" | "isNotNull" | "lt" | "lte" | "gt" | "gte"
   | "and" | "or" | "not" | "add" | "sub" | "mul" | "div" | "idiv" | "neg"
-  | "length" | "now" | "today" | "coalesce" | "cond";
+  | "length" | "now" | "today" | "coalesce" | "cond" | "isSystem";
 
 export type QuantifierId = "some" | "every" | "find" | "filter";
 
@@ -56,6 +56,8 @@ export interface PlainReason {
   roots: string[];
   /** The clock functions (`now`, `today`) the authored text calls; the printed function binds them to the scope's clock. */
   clock?: ("now" | "today")[];
+  /** The authored text calls `isSystem(context)`; the printed function binds it to Mesh's own. */
+  isSystem?: true;
   /** The authored text is a method (`(params) { body }`), so TypeScript needs `function` before it. */
   method?: true;
   /** The authored code uses an operator whose null rule differs from Mesh's (comparison, `!`, `&&`, `||`, arithmetic), so the build warns. */
@@ -108,6 +110,7 @@ export const FUNCTIONS: readonly FunctionSpec[] = Object.freeze([
   { id: "today", spelling: "today()", arity: 0, signature: "() -> date", nulls: "never null; now() at 00:00 UTC", nullResult: "never" },
   { id: "coalesce", spelling: "a ?? b", arity: 2, signature: "(T, T) -> T", nulls: "a unless a is null, else b", nullResult: "all-operands" },
   { id: "cond", spelling: "c ? a : b", arity: 3, signature: "(boolean, T, T) -> T", nulls: "unknown test: the else branch", nullResult: "branches" },
+  { id: "isSystem", spelling: "isSystem(context)", arity: 1, signature: "(any) -> boolean", nulls: "never unknown: true only when the value is an object whose `system` is `true`", nullResult: "never" },
 ] satisfies FunctionSpec[]);
 
 export const FUNCTION_IDS: ReadonlySet<string> = new Set(FUNCTIONS.map((f) => f.id));

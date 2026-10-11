@@ -32,6 +32,8 @@ import type {
   MembershipWith,
   MembershipLoadNames,
   MembershipLoadArg,
+  MembershipTxLoadable,
+  MembershipTxWith,
 } from "./membership.types";
 import type {
   Workspace,
@@ -65,6 +67,8 @@ export type {
   MembershipWith,
   MembershipLoadNames,
   MembershipLoadArg,
+  MembershipTxLoadable,
+  MembershipTxWith,
   Workspace,
   CreateWorkspaceInput,
   RenameWorkspaceInput,

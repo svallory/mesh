@@ -9,7 +9,7 @@ test.each([
   [new FrameworkError("misconfigured", { cause }), "FrameworkError", "framework", "misconfigured"],
   [new InvalidInputError([issue(["items", 0, "name"], "required"), issue([], "bad input")], { cause }), "InvalidInputError", "invalid_input", "items.0.name: required\n(input): bad input"],
   [new NotFoundError("post", { tenant: "one", id: 2 }, { cause }), "NotFoundError", "not_found", 'Entity post not found for {"tenant":"one","id":2}'],
-  [new ForbiddenError([], { cause }), "ForbiddenError", "forbidden", "Action forbidden by policy"],
+  [new ForbiddenError({ entity: "Post", action: "publish", policies: ["owner"], breakdown: [] }, { cause }), "ForbiddenError", "forbidden", "Post.publish is forbidden by policy :owner"],
 ] as const)("errors preserve name, code, message, cause and inheritance: %s", (error, name, code, message) => {
   expect(error.name).toBe(name);
   expect(error.code).toBe(code);
@@ -49,15 +49,30 @@ test("NotFoundError exposes entity and composite key", () => {
   expect(error.key).toEqual({ tenant: "a", id: 3 });
 });
 
-test("ForbiddenError copies and freezes its policy breakdown", () => {
-  const checks: PolicyCheck[] = [{ policy: "owner", check: "actor.id === self.ownerId", result: false, decisive: true }];
-  const error = new ForbiddenError(checks);
+test("ForbiddenError copies and freezes its policy breakdown, and names the entity, the action and the failed policies", () => {
+  const checks: PolicyCheck[] = [
+    { policy: "owner", kind: "authorize-if", check: "({ actor }) => &ownerId === actor.id", result: false, decisive: true },
+    { policy: "notPaid", kind: "forbid-if", check: "() => &paid", result: null, decisive: true },
+  ];
+  const error = new ForbiddenError({ entity: "Invoice", action: "pay", policies: ["owner", "notPaid"], breakdown: checks });
+  expect(error.message).toBe("Invoice.pay is forbidden by policies :owner, :notPaid");
+  expect([error.entity, error.action, error.policies]).toEqual(["Invoice", "pay", ["owner", "notPaid"]]);
   expect(error.breakdown).toEqual(checks);
   expect(error.breakdown).not.toBe(checks);
   expect(Object.isFrozen(error.breakdown)).toBe(true);
+  expect(Object.isFrozen(error.breakdown[0])).toBe(true);
+  expect(Object.isFrozen(error.policies)).toBe(true);
   checks.pop();
-  expect(error.breakdown).toHaveLength(1);
+  expect(error.breakdown).toHaveLength(2);
   expect(() => (error.breakdown as PolicyCheck[]).pop()).toThrow(TypeError);
+  // Plain data: it survives a JSON round trip unchanged.
+  expect(JSON.parse(JSON.stringify(error.breakdown))).toEqual(error.breakdown);
+});
+
+test("ForbiddenError for an action no policy covers shows an open policy to copy", () => {
+  const error = new ForbiddenError({ entity: "Post", action: "archive", policies: [], breakdown: [] });
+  expect(error.message).toBe("Post.archive is forbidden: no policy of :Post covers it, and an action no policy covers is denied. "
+    + "To let every caller run it, add to the entity's `policies`:\n  policy :open actions=[&archive] authorize-if=() => true");
 });
 
 test.each(["id", 42, null, undefined, 1n, Symbol("key")])("NotFoundError accepts an unknown scalar key %s", (key) => {

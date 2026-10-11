@@ -6,3 +6,6 @@ entity :User table="users"
     create :create
       input
         &name
+  policies
+    policy :signedIn
+      authorize-if=({ actor }) => actor.id !== null

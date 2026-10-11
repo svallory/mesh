@@ -274,6 +274,8 @@ await disconnect();
 `load` takes relationship names (`load: ["list"]`) and computed names (`load: ["label"]` on a todo, `load: ["todoCount"]` on a list). Reading one that was not loaded is a **type error**, not `undefined`, and a load that cannot be served at run time is an error, never silently skipped.
 A loaded `has-many` comes back in primary-key order, which is creation order for the keys Mesh generates (UUIDv7 and integers). The type follows the names as written in the call, so pass the list itself: `load` is required whenever it names something, and a list that Mesh cannot read as a tuple (a widened `string[]`) types as loading nothing. A list that is one of several (`flag ? ["label"] : []`, or a variable of a union-of-tuples type) gives a union of results, one per possible list, so you read `label` only after narrowing (`"label" in row`). The reads that `tx` gives a function of an entity file take the same `load`, typed the same way: `tx.readTask({ filter, load: ["derivedState"] })` reads the computed field inside the check's transaction.
 
+What you load runs the read policies of the entity it reaches, with your context: a relationship whose entity's read policies do not admit you comes back empty, never as an error. A `has-many` is `[]`, a `belongs-to` or `has-one` is `null`, a `count` is `0` and the other rollups are `null`. So the type of a loaded `belongs-to` is `T | null` even when the relationship is required: `todo.list?.name`. The same holds for a write's `load=` step and for a read nested through `actions`. Through `tx` no policy runs, and the type of a required `belongs-to` stays `T`. Neither does a computed field's body: it is the entity's own rule, worked out the same whoever asks, so what it reads through a relationship is every related record, as through `tx`, and its value is shown to everyone who may read the record. On a list, `count :todoCount of="todos"` counts the todos you may read, while a body that returns `&todos.length` counts every todo: write a body to return only what each caller who may read the record may see.
+
 Three things meet in `load`, and they are not one thing:
 
 - A **relationship** runs in the query, as a join or a second query.
@@ -288,7 +290,7 @@ Every action throws on failure. All four classes come from `@meshfw/runtime`, ex
 |:--|:--|:--|
 | `InvalidInputError` | `invalid_input` | The input does not fit the action, or a `check` failed |
 | `NotFoundError` | `not_found` | The row the call names does not exist, or is not visible to this actor |
-| `ForbiddenError` | `forbidden` | A policy denied the call. Carries a `breakdown` of every check |
+| `ForbiddenError` | `forbidden` | A policy denied the call, no policy covers the action, or none of the policies that cover it applies (each one's `when` was false). Names the `entity`, the `action` and the `policies`, says which of the three in `reason` (`failed`, `not-covered` or `not-applied`), and carries a `breakdown` of the checks that ran |
 | `FrameworkError` | `framework` | A mistake in the program: an action called before `connect`, a load that cannot be served |
 
 `InvalidInputError.issues` holds every failure it collected, one entry each. An entry has a `label` (the label you gave the `check`), the `code` and `message` you wrote, the `details` the check returned (or `null`), a `path` into the input, and, when the failure came from a rule you declared, the file, line and column of the declaration that carried it. The code you declared is on the issue rather than on the error because several checks can fail in one call, and one code on the error could only name one of them.
@@ -372,13 +374,7 @@ for (const todo of open) {
 await disconnect();
 ```
 
-Mesh does nothing with `system` by itself: no policy is skipped. A policy admits an internal write by testing the key, in a helper you write:
-
-```text "src/domain/work/work.helpers.ts (excerpt)"
-export function isSystem(context: { system?: boolean }): boolean {
-  return context.system === true;
-}
-```
+Mesh does nothing with `system` by itself: no policy is skipped. A policy admits an internal write by testing the key with `isSystem(context)`, a built-in function that is true only when `context.system` is the boolean `true`:
 
 ```text "src/domain/work/completion.mesh.mx (excerpt)"
 policy :recordedByCascade types=[:create]
@@ -437,6 +433,8 @@ What a throw does:
 - In `afterWrite`, the whole outermost transaction rolls back and the call rejects with your error, as a failed call inside a transaction does (when the throw is in a call that another action made and caught, the outermost call rejects with a `FrameworkError` whose `cause` is your error). That includes the rows written by calls the action made through `actions`, and by seams through `db`.
 - In `afterCommit`, nothing is undone: the data is committed and the call resolves with its result. Mesh reports the error with `console.error`, naming the seam, and does not retry. Put anything that must not be lost in the transaction (an `afterWrite` that writes through `db`), not here. The call waits for `afterCommit` before it resolves, so a slow seam delays the call, and `disconnect()`, which waits for calls in flight.
 
+The policies run before the seams that a denial would skip. A policy check that reads only the caller and the input runs before `beforeTransaction`, so a call it denies runs no seam: nothing is written. A check that reads the record runs inside the transaction, before the row is written, so a call it denies has run `beforeTransaction` and runs neither `afterWrite` nor `afterCommit`.
+
 A call that another action makes through `actions` runs the seams for its own writes, with the caller's `context`, so a `commandId` or `caller` you put in the context reaches every seam call. Such a call joins the caller's transaction, so it has no "before the transaction": `beforeTransaction` runs only for the call that opens the transaction, a call you make at top level, and `afterCommit` runs once for the transaction as a whole, with the changes of the outer action and of every call nested in it, in the order the rows were written. The `transaction(fn, context)` you import from `#mesh` is such a transaction too: `afterCommit` runs once when it commits, with every change made inside it, and the actions you call there are joined, so none of them runs `beforeTransaction`. If it rolls back, or writes nothing, `afterCommit` does not run. `mesh explain <entity> <action>` lists where the three seams run in an action's plan. Each binding (each `bind` call) tracks the changes made through its own seams, so a call through a second binding on the same layer, made inside the first binding's transaction, is not in the first binding's `afterCommit`. A seam receives deeply frozen copies of the input, `before` and `after` (a date in them is read-only), so it cannot change what Mesh writes or what another seam sees. The context is the application's own: a seam gets a frozen copy of its top level (it cannot swap `actor` or `commandId` for what runs next), and what it holds, such as a logger, a class instance or a buffer, is passed as the same objects, never copied and never frozen.
 
 ## Asking instead of calling: `can`
@@ -465,14 +463,15 @@ false
 [
   {
     policy: "owner",
-    check: "&list.ownerId === actor.id",
+    kind: "authorize-if",
+    check: "({ actor }) => &list.ownerId === actor.id",
     result: false,
     decisive: true,
   },
 ]
 ```
 
-`breakdown` is a list, one entry per check: `{ policy, check, result, decisive }`. `policy` is the name of the policy that carried the check, `check` is the check as written, `result` is whether it held, and `decisive` marks the one that decided the answer. It is data, so a test can assert on it. Prefer it to asserting on an error class: when a call is denied on an action that runs as one statement, the row is reported as not found, and `can` is where the reason is.
+`breakdown` is a list, one entry per check that ran: `{ policy, kind, check, result, decisive }`. `policy` is the name of the policy that carried the check, `kind` is `authorize-if`, `forbid-if` or `when`, `check` is the function as written, `result` is whether it held (`true`, `false`, or `null` when the answer was unknown, which fails closed), and `decisive` marks the checks that decided the answer. Only the checks that ran are listed: a check the call never reached, because an earlier one already denied it or because its policy's `when` was false, is not in the list. A check written as plain code that returns anything but `true` or `false` counts as unknown. A `ForbiddenError` carries the same list. It is data, so a test can assert on it. Prefer it to asserting on an error class: when a call is denied on an action that runs as one statement, the row is reported as not found, and `can` is where the reason is.
 
 **What `can` means for a read.** A read's policies usually read the stored row, and that makes them part of the query rather than a per-row decision, so there is no row for `can` to rule on: `canPendingTodo({}, { actor: bob })` answers whether the read is allowed at all, which for the tutorial's todo it is. What Bob does not get is Alice's rows — `pendingTodo({}, { actor: bob })` returns an empty array, not an error. The denials worth asking about are the ones on an action that writes, or a read policy that cannot be folded into the query; use `can` there, and assert on the empty result for a read.
 

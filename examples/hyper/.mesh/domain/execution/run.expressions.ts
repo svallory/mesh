@@ -5,6 +5,7 @@ import {
   expr as $,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
+  type SharedInput as $SharedInput,
 } from "@meshfw/runtime";
 import { responsibleFor, runRunningOf } from "../../../src/domain/execution/execution.helpers";
 import { taskOpenOf } from "../../../src/domain/work/work.helpers";
@@ -85,4 +86,8 @@ export const expressions = {
   "settle.step.0.set.endedAt": ($s: RunStoredScope<SettleRunInput>) => $.now($s),
   // set &version, translated (src/domain/execution/run.mesh.mx:74:20)
   "settle.step.0.set.version": ($s: RunStoredScope<SettleRunInput>) => $.add($s.self.version, 1),
+  // policy :untilM8b authorize-if, translated (src/domain/execution/run.mesh.mx:77:20)
+  "policy.untilM8b.authorize-if.0": (
+    _$s: RunNewScope<$SharedInput<StartRunInput | CancelRunInput | SettleRunInput>>,
+  ) => true,
 } as const;

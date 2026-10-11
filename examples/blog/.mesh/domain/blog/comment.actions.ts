@@ -3,17 +3,22 @@
 // Mesh's own imports carry a `$` so that no entity name can shadow them.
 
 import {
+  authorizer as $authorizer,
   castInput as $castInput,
   loadRows as $loadRows,
   pinClock as $pinClock,
+  readOnlyRecord as $readOnlyRecord,
+  scope as $scope,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type CastOutput as $CastOutput,
 } from "@meshfw/runtime";
 import type {
   Comment,
   CommentWith,
+  CommentTxWith,
   CommentLoadNames,
   CommentLoadArg,
   CommentLoadable,
@@ -21,11 +26,12 @@ import type {
 } from "./comment.types";
 import { readCommentInput } from "./comment.validators";
 import { tables } from "../../schema";
+import { expressions as $expressions } from "./comment.expressions";
 import { loadPlan as $loadPlan } from "../../load";
 
 /**
- * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
- * The read actions below run the slot, then these.
+ * The reads of this entity without their policies: what `tx` holds in a function of an entity file (ADR-0068).
+ * The read actions below evaluate the read's policies, then call these.
  */
 export function bindCommentReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
@@ -33,9 +39,12 @@ export function bindCommentReads(layer: $DataLayer, options: $BindOptions = {}) 
       input: Omit<ReadCommentInput, "load"> & CommentLoadArg<L>,
       context?: unknown,
       clock?: () => Date,
-    ): Promise<L extends unknown ? CommentWith<CommentLoadNames<L>>[] : never> {
-      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, readCommentInput, input);
+      policies?: boolean,
+      cast?: $CastOutput<typeof readCommentInput>,
+    ): Promise<L extends unknown ? CommentTxWith<CommentLoadNames<L>>[] : never> {
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
+      // for its policies and hands it over as `cast`; a read through `tx` casts it here.
+      const parsed = cast ?? (await $castInput(layer, readCommentInput, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.comment, {
           filter: parsed.filter,
@@ -44,14 +53,17 @@ export function bindCommentReads(layer: $DataLayer, options: $BindOptions = {}) 
           offset: parsed.offset,
         })) as Comment[];
         if (!parsed.load?.length)
-          return $rows as unknown as L extends unknown ? CommentWith<CommentLoadNames<L>>[] : never;
+          return $rows as unknown as L extends unknown
+            ? CommentTxWith<CommentLoadNames<L>>[]
+            : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "Comment", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
-        })) as unknown as L extends unknown ? CommentWith<CommentLoadNames<L>>[] : never;
+          policies,
+        })) as unknown as L extends unknown ? CommentTxWith<CommentLoadNames<L>>[] : never;
       });
     },
   });
@@ -68,8 +80,45 @@ export function bindComment(layer: $DataLayer, options: $BindOptions = {}, _comp
       input: Omit<ReadCommentInput, "load"> & CommentLoadArg<L>,
       ...[context]: $ContextArgument
     ): Promise<L extends unknown ? CommentWith<CommentLoadNames<L>>[] : never> {
-      // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
-      return $reads.read(input, context);
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a read through `tx` skips them
+      const $context = (context ?? {}) as unknown as Record<string, unknown>;
+      const $actor = $context.actor;
+      const $clock = $pinClock(options.clock);
+      const $parsed = await $castInput(layer, readCommentInput, input);
+      if (
+        !(await $authorizer("Comment", "read", [
+          {
+            name: "signedIn",
+            when: null,
+            checks: [
+              {
+                kind: "authorize-if",
+                check: "({ actor }) => actor.id !== null",
+                record: false,
+                run: $expressions["policy.signedIn.authorize-if.0"],
+              },
+            ],
+          },
+        ]).filter(
+          layer,
+          $scope(
+            {
+              input: $readOnlyRecord($parsed as never, "Comment.read"),
+              actor: $actor,
+              context: $context,
+            },
+            { clock: $clock },
+          ),
+        ))
+      )
+        return [] as unknown as L extends unknown ? CommentWith<CommentLoadNames<L>>[] : never;
+      return (await $reads.read(
+        input,
+        context,
+        $clock,
+        true,
+        $parsed,
+      )) as unknown as L extends unknown ? CommentWith<CommentLoadNames<L>>[] : never;
     },
   });
 }

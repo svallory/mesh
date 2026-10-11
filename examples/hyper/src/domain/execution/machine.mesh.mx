@@ -82,3 +82,6 @@ entity :Machine table="machines"
         set
           &state=:retired
           &version=() => &version + 1
+  policies
+    policy :untilM8b
+      authorize-if=() => true

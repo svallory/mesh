@@ -77,6 +77,9 @@ function references(lists: string[]): NonNullable<CustomTag["analyze"]> {
         const n = node(a);
         if (n?.type !== "ArrayExpression" || !n.elements?.every(isMember))
           ctx.fail(`\`${key}\` requires a list of member references`, { at: a.loc, code: "MESH_MEMBER_REFERENCE" });
+        // As `types=[]`: an empty list names no action, so what it scopes would cover none.
+        else if (!n.elements.length)
+          ctx.fail(`\`${key}\` must name at least one action: an empty list covers none`, { at: a.loc, code: "MESH_MEMBER_REFERENCE" });
       }
     }
   };

@@ -5,6 +5,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
+import { openPolicies } from "./open-policy.ts";
 import { CHUNK, FrameworkError, type DataOperations } from "@meshfw/runtime";
 import build from "../src/build.ts";
 import { createSchema, sqlite } from "../src/index.ts";
@@ -120,7 +121,7 @@ beforeAll(async () => {
     data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: ["aggregates", "integer-key-fill"] }, options: { file: ":memory:" } },
   };
   const files = { author, post, comment, profile, orphan, ticket };
-  const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: Object.entries(files).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source })) });
+  const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: openPolicies(Object.entries(files).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source }))) });
   expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   await writeGeneratedFiles(await generateFiles({ config, document: built.document as ModelDocument }, build), config);
   // `bind` and `tables` are `#mesh`'s; the load functions are the root module's (`#mesh/domain`).
@@ -614,7 +615,7 @@ describe("types", () => {
   test("reading a relationship or a computed field that was not loaded is a type error", async () => {
     // The module's index reaches `.mesh/binding.ts`, which imports the project's config: a stand-in is enough here.
     await writeFile(join(dir, "mesh.config.ts"), "export default { data: { name: \"sqlite\" } };\n");
-    await writeFile(join(dir, "check.ts"), `import type { Post, PostWith, PostLoadable } from "./.mesh/domain/index.ts";
+    await writeFile(join(dir, "check.ts"), `import type { Post, PostTxWith, PostWith, PostLoadable } from "./.mesh/domain/index.ts";
 import { loadPostFields, loadAuthorFields } from "./.mesh/domain/index.ts";
 import type { DataOperations } from "@meshfw/runtime";
 declare const tx: DataOperations;
@@ -623,8 +624,13 @@ declare const post: Post;
 export const a = post.author;
 // @ts-expect-error nor was a computed field
 export const b = post.answered;
-declare const loaded: PostWith<"author" | "answered">;
+declare const loaded: PostTxWith<"author" | "answered">;
 export const author: string = loaded.author.name;
+// A caller's load runs Author's read policies, so the author it gets can be null (POL-17); through tx it cannot.
+declare const called: PostWith<"author">;
+// @ts-expect-error a caller's belongs-to can be null
+export const calledAuthor: string = called.author.name;
+export const calledAuthorName: string | undefined = called.author?.name;
 export const answered: boolean = loaded.answered;
 // @ts-expect-error only what was named is there
 export const comments = loaded.comments;

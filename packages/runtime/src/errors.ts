@@ -27,12 +27,34 @@ export interface Issue {
   details: unknown;
 }
 
-/** One evaluated policy check, as reported by a denial or a can-action query. */
+/**
+ * One check of a policy that covered a denied call, as plain data. `check` is the function as written in the entity file;
+ * `result` is what it gave: `true`, `false`, or `null` for unknown (ADR-0012). `decisive` marks the checks that made their
+ * policy fail: a `forbid-if` that held or was unknown, or, when none did, every `authorize-if` of a policy none of whose
+ * `authorize-if` held. A policy's `when` is listed only when it was unknown, which fails the policy.
+ */
 export interface PolicyCheck {
   policy: string;
+  kind: "authorize-if" | "forbid-if" | "when";
   check: string;
-  result: boolean;
+  result: boolean | null;
   decisive: boolean;
+}
+
+/**
+ * Why a call is forbidden: `failed`, a covering policy failed; `not-covered`, no policy covers the action by its scope
+ * (`types=`/`actions=`); `not-applied`, policies cover it, but the `when=` of each was false for this call.
+ */
+export type DenialReason = "failed" | "not-covered" | "not-applied";
+
+/** What a `ForbiddenError` reports: the action, the policies that decided (none when no policy covers it) and the checks that ran. */
+export interface PolicyDenial {
+  entity: string;
+  action: string;
+  policies: readonly string[];
+  breakdown: readonly PolicyCheck[];
+  /** Taken from `policies` when left out: `not-covered` when it is empty, else `failed`. */
+  reason?: DenialReason;
 }
 
 /** A programming or configuration mistake, rather than invalid caller input. */
@@ -56,15 +78,45 @@ export class InvalidInputError extends MeshError {
   }
 }
 
-/** A policy denied the action. */
+/**
+ * A policy denied the call (POL-03), or no policy covers the action (deny by default, ADR-0055). The message names the
+ * entity, the action and each covering policy that failed; with no covering policy it shows an open policy to copy.
+ */
 export class ForbiddenError extends MeshError {
   readonly code = "forbidden";
+  /** The entity, e.g. `Post`. */
+  readonly entity: string;
+  /** The action, e.g. `publish`. */
+  readonly action: string;
+  /**
+   * The covering policies that failed, in the order the entity file declares them; with `reason` `not-applied`, the covering
+   * policies whose `when` was false; empty when no policy covers the action.
+   */
+  readonly policies: readonly string[];
+  /** Why the call is forbidden. */
+  readonly reason: DenialReason;
+  /** Every check that ran, of every covering policy, as frozen plain data. */
   readonly breakdown: readonly PolicyCheck[];
 
-  constructor(breakdown: readonly PolicyCheck[], options?: ErrorOptions) {
-    super("Action forbidden by policy", options);
-    this.breakdown = Object.freeze([...breakdown]);
+  constructor(denial: PolicyDenial, options?: ErrorOptions) {
+    super(denialMessage(denial), options);
+    this.entity = denial.entity;
+    this.action = denial.action;
+    this.policies = Object.freeze([...denial.policies]);
+    this.reason = denial.reason ?? (denial.policies.length ? "failed" : "not-covered");
+    this.breakdown = Object.freeze(denial.breakdown.map((check) => Object.freeze({ ...check })));
   }
+}
+
+function denialMessage({ entity, action, policies, reason }: PolicyDenial): string {
+  const names = policies.map((name) => `:${name}`);
+  if (reason === "not-applied")
+    return `${entity}.${action} is forbidden: ${names.length === 1 ? "policy" : "policies"} ${names.join(", ")} cover${names.length === 1 ? "s" : ""} it, `
+      + `but the \`when\` of each was false for this call, so none applies, and a call no policy applies to is denied`;
+  if (policies.length === 0)
+    return `${entity}.${action} is forbidden: no policy of :${entity} covers it, and an action no policy covers is denied. `
+      + `To let every caller run it, add to the entity's \`policies\`:\n  policy :open actions=[&${action}] authorize-if=() => true`;
+  return `${entity}.${action} is forbidden by ${names.length === 1 ? "policy" : "policies"} ${names.join(", ")}`;
 }
 
 function describeKey(key: unknown): string {

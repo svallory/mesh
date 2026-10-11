@@ -5,6 +5,7 @@ import {
   expr as $,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
+  type SharedInput as $SharedInput,
 } from "@meshfw/runtime";
 import type {
   ReadOnlyActions as $ReadOnlyActions,
@@ -33,6 +34,24 @@ export type AssignmentStoredScope<I = unknown> = AssignmentScope<I> & {
 };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
 export type AssignmentCheckScope<I = unknown> = Omit<AssignmentScope<I>, "before">;
+/** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
+export type AssignmentNewScope<I = unknown> = Omit<AssignmentCheckScope<I>, "self"> & {
+  self: $DeepReadonly<
+    Omit<
+      AssignmentLoaded,
+      "startedAt" | "taskId" | "task" | "assigneeId" | "assignee" | "delegatorId" | "delegator"
+    > & {
+      [K in
+        | "startedAt"
+        | "taskId"
+        | "task"
+        | "assigneeId"
+        | "assignee"
+        | "delegatorId"
+        | "delegator"]: AssignmentLoaded[K] | null;
+    }
+  >;
+};
 
 export const expressions = {
   // set &delegator, translated (src/domain/work/assignment.mesh.mx:23:22)
@@ -47,4 +66,8 @@ export const expressions = {
   // set &endReason, translated (src/domain/work/assignment.mesh.mx:37:22)
   "finish.step.0.set.endReason": ($s: AssignmentStoredScope<FinishAssignmentInput>) =>
     $s.input?.reason,
+  // policy :untilM8b authorize-if, translated (src/domain/work/assignment.mesh.mx:40:20)
+  "policy.untilM8b.authorize-if.0": (
+    _$s: AssignmentNewScope<$SharedInput<StartAssignmentInput | FinishAssignmentInput>>,
+  ) => true,
 } as const;

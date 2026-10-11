@@ -31,6 +31,8 @@ Mesh is at milestone M2 ([roadmap](../../apps/docs/docs/architecture/roadmap/roa
 - `validate` checks, and `do` steps other than a `set` whose values are literals or atoms (M4, M5): `publishPost` sets `state` to `published` but does not check `titlePresent`;
 - a read with `filter` or `sort` (M4): `publishedPost` throws a `FrameworkError` rather than return unfiltered rows;
 - `load`, computed fields and `on:load` (M7);
-- policies and `can<Action>` (M8): nothing checks who calls.
+- `can<Action>` (M8b), and a read policy that reads the record (M10): the read policy `:public` cannot yet keep drafts out (`&state === :published` would be a filter on the query), so it lets every caller read every post.
+
+The policies run (M8a). Each entity file's `policies` section says who may call what, and a call no policy covers is forbidden: `:signedIn` lets a caller whose actor has an id create a user or a post and read users and comments, and `:owner` lets only a post's author publish, archive or destroy it. A post's author is a User the program created, so `src/main.ts` publishes as `{ actor: { id: author.id } }`, and the test calls those actions with `as(author)`, which builds that context. What a caller loads runs the read policies of the entity it reaches: a caller whose actor has no id reads posts, but their `comments` load as `[]`, their `author` as `null` and `commentCount` as 0.
 
 Each generated method starts with a comment naming what it does not run yet.

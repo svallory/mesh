@@ -22,8 +22,22 @@ export type CompletionScope<I = unknown> = $Scope<{
 export type CompletionStoredScope<I = unknown> = CompletionScope<I> & {
   before: $DeepReadonly<Completion>;
 };
+/** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
+export type CompletionCheckScope<I = unknown> = Omit<CompletionScope<I>, "before">;
+/** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
+export type CompletionNewScope<I = unknown> = Omit<CompletionCheckScope<I>, "self"> & {
+  self: $DeepReadonly<
+    Omit<CompletionLoaded, "rule" | "taskId" | "task" | "completedById" | "completedBy"> & {
+      [K in "rule" | "taskId" | "task" | "completedById" | "completedBy"]:
+        | CompletionLoaded[K]
+        | null;
+    }
+  >;
+};
 
 export const expressions = {
   // set &completedBy, translated (src/domain/work/completion.mesh.mx:22:24)
   "record.step.0.set.completedBy": ($s: CompletionScope<RecordCompletionInput>) => $s.actor?.id,
+  // policy :untilM8b authorize-if, translated (src/domain/work/completion.mesh.mx:25:20)
+  "policy.untilM8b.authorize-if.0": (_$s: CompletionNewScope<RecordCompletionInput>) => true,
 } as const;

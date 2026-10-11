@@ -6,12 +6,14 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
+  authorizer as $authorizer,
   castInput as $castInput,
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
   composed as $composed,
   failJoined as $failJoined,
   guarded as $guarded,
+  loadInto as $loadInto,
   loadRows as $loadRows,
   noteWrite as $noteWrite,
   pinClock as $pinClock,
@@ -21,19 +23,21 @@ import {
   runAction as $runAction,
   runCheck as $runCheck,
   scope as $scope,
+  unloadFrom as $unloadFrom,
   uuidv7 as $uuidv7,
-  wantsChanges as $wantsChanges,
   writeCount as $writeCount,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type CastOutput as $CastOutput,
   type Issue as $Issue,
   type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   Post,
   PostWith,
+  PostTxWith,
   PostLoadNames,
   PostLoadArg,
   PostLoadable,
@@ -60,15 +64,15 @@ import {
 import { loadPlan as $loadPlan } from "../../load";
 
 /**
- * The reads of this entity without the authorizer slot: what `tx` holds in a function of an entity file (ADR-0068).
- * The read actions below run the slot, then these.
+ * The reads of this entity without their policies: what `tx` holds in a function of an entity file (ADR-0068).
+ * The read actions below evaluate the read's policies, then call these.
  */
 export function bindPostReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
     async published<const L extends readonly (keyof PostLoadable)[] = readonly []>(
       input: Omit<PublishedPostInput, "load"> & PostLoadArg<L>,
       _context?: unknown,
-    ): Promise<L extends unknown ? PostWith<PostLoadNames<L>>[] : never> {
+    ): Promise<L extends unknown ? PostTxWith<PostLoadNames<L>>[] : never> {
       await $castInput(layer, publishedPostInput, input);
       return $failJoined(
         layer,
@@ -82,9 +86,12 @@ export function bindPostReads(layer: $DataLayer, options: $BindOptions = {}) {
       input: Omit<ReadPostInput, "load"> & PostLoadArg<L>,
       context?: unknown,
       clock?: () => Date,
-    ): Promise<L extends unknown ? PostWith<PostLoadNames<L>>[] : never> {
-      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, readPostInput, input);
+      policies?: boolean,
+      cast?: $CastOutput<typeof readPostInput>,
+    ): Promise<L extends unknown ? PostTxWith<PostLoadNames<L>>[] : never> {
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
+      // for its policies and hands it over as `cast`; a read through `tx` casts it here.
+      const parsed = cast ?? (await $castInput(layer, readPostInput, input));
       return layer.transaction(async (tx) => {
         rejectComputedQuery("Post", ["excerpt", "commentCount"], parsed);
         const $rows = (await tx.select(tables.post, {
@@ -94,14 +101,15 @@ export function bindPostReads(layer: $DataLayer, options: $BindOptions = {}) {
           offset: parsed.offset,
         })) as Post[];
         if (!parsed.load?.length)
-          return $rows as unknown as L extends unknown ? PostWith<PostLoadNames<L>>[] : never;
+          return $rows as unknown as L extends unknown ? PostTxWith<PostLoadNames<L>>[] : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "Post", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
-        })) as unknown as L extends unknown ? PostWith<PostLoadNames<L>>[] : never;
+          policies,
+        })) as unknown as L extends unknown ? PostTxWith<PostLoadNames<L>>[] : never;
       });
     },
   });
@@ -119,6 +127,31 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
 
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, createPostInput, input);
+      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      const $context = (context ?? {}) as unknown as Record<string, unknown>;
+      const $actor = $context.actor;
+      const $clock = $pinClock(options.clock);
+      const $policies = $authorizer("Post", "create", [
+        {
+          name: "signedIn",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check: "({ actor }) => actor.id !== null",
+              record: false,
+              run: $expressions["policy.signedIn.authorize-if.0"],
+            },
+          ],
+        },
+      ]);
+      await $policies.before(
+        layer,
+        $scope(
+          { input: $readOnlyRecord(parsed, "Post.create"), actor: $actor, context: $context },
+          { clock: $clock },
+        ),
+      );
       return $runAction(
         layer,
         options.seams,
@@ -126,8 +159,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
         parsed,
         context,
         async (tx) => {
-          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-          const $clock = $pinClock(options.clock);
+          // transaction: opens here; what follows commits together or not at all
           const $now = $clock();
           // plan: a create is one insert; nothing is read first
           const $changes: $Row = {
@@ -168,10 +200,35 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
       input: PublishPostInput,
       ...[context]: $ContextArgument
     ): Promise<PostWith<"comments" | "excerpt">> {
-      // Not run in this version: on:load published; policies owner
+      // Not run in this version: on:load published
 
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, publishPostInput, input);
+      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      const $context = (context ?? {}) as unknown as Record<string, unknown>;
+      const $actor = $context.actor;
+      const $clock = $pinClock(options.clock);
+      const $policies = $authorizer("Post", "publish", [
+        {
+          name: "owner",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check: "({ actor }) => &author.id === actor.id",
+              record: true,
+              run: $expressions["policy.owner.authorize-if.0"],
+            },
+          ],
+        },
+      ]);
+      await $policies.before(
+        layer,
+        $scope(
+          { input: $readOnlyRecord(parsed, "Post.publish"), actor: $actor, context: $context },
+          { clock: $clock },
+        ),
+      );
       return $runAction(
         layer,
         options.seams,
@@ -179,10 +236,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
         parsed,
         context,
         async (tx) => {
-          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-          const $context = (context ?? {}) as unknown as Record<string, unknown>;
-          const $actor = $context.actor;
-          const $clock = $pinClock(options.clock);
+          // transaction: opens here; what follows commits together or not at all
           const $now = $clock();
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
@@ -210,6 +264,9 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
             },
             { clock: $clock },
           ) as unknown as $StoredScope<PublishPostInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $loadInto($loadPlan, "Post", tx, $record, ["author"], $load);
+          await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
@@ -224,6 +281,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
           const $loads = new Set<string>();
           // do: the steps run in written order, each seeing the record as the ones before it left it
           $changes.state = $record.state = "published";
+          $unloadFrom($loadPlan, "Post", $record);
           $loads.add("comments");
           $loads.add("excerpt");
           // data layer
@@ -245,17 +303,43 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
           );
           // still inside the transaction: the result, with what a load step named
           return (
-            await $loadRows($loadPlan, "Post", tx, [$stored], [...$loads], $load)
+            await $loadRows($loadPlan, "Post", tx, [$stored], [...$loads], {
+              ...$load,
+              policies: true,
+            })
           )[0] as unknown as PostWith<"comments" | "excerpt">;
         },
       );
     },
 
     async archive(input: ArchivePostInput, ...[context]: $ContextArgument): Promise<void> {
-      // Not run in this version: policies owner
-
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, archivePostInput, input);
+      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      const $context = (context ?? {}) as unknown as Record<string, unknown>;
+      const $actor = $context.actor;
+      const $clock = $pinClock(options.clock);
+      const $policies = $authorizer("Post", "archive", [
+        {
+          name: "owner",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check: "({ actor }) => &author.id === actor.id",
+              record: true,
+              run: $expressions["policy.owner.authorize-if.0"],
+            },
+          ],
+        },
+      ]);
+      await $policies.before(
+        layer,
+        $scope(
+          { input: $readOnlyRecord(parsed, "Post.archive"), actor: $actor, context: $context },
+          { clock: $clock },
+        ),
+      );
       return $runAction(
         layer,
         options.seams,
@@ -263,14 +347,34 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
         parsed,
         context,
         async (tx) => {
-          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-          // plan: nothing in the body can see the record, so the row is deleted without being read, unless a seam wants it: then it is read under the lock first, so the seam gets `before`
+          // transaction: opens here; what follows commits together or not at all
+          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = $wantsChanges(options.seams)
-            ? await tx.selectByKeyForUpdate(tables.post, $key)
-            : undefined;
-          if ($wantsChanges(options.seams) && $before === undefined)
-            throw new $NotFoundError("Post", $key);
+          const $before = await tx.selectByKeyForUpdate(tables.post, $key);
+          if ($before === undefined) throw new $NotFoundError("Post", $key);
+          const $record: $Row = { ...$before };
+          const $load = { actor: $actor, context: $context, clock: $clock };
+          const $self = $readOnlyRecord(
+            $guarded($loadPlan, "Post", $record, "action function"),
+            "Post.archive",
+          );
+          const $s = $scope(
+            {
+              self: $self,
+              input: $readOnlyRecord(parsed, "Post.archive"),
+              actor: $actor,
+              context: $context,
+              before: $readOnlyRecord(
+                $guarded($loadPlan, "Post", $before, "before"),
+                "Post.archive",
+              ) as unknown as Post,
+              ...$composed(compose, tx, context, "Post.archive", $clock),
+            },
+            { clock: $clock },
+          ) as unknown as $StoredScope<ArchivePostInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $loadInto($loadPlan, "Post", tx, $record, ["author"], $load);
+          await $policies.inside($checkScope($s));
           // data layer
           if (!(await tx.deleteByKey(tables.post, $key))) throw new $NotFoundError("Post", $key);
           $noteWrite(tx);
@@ -279,7 +383,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
             tx,
             options.seams,
             { entity: "Post", action: "archive" },
-            $before ?? null,
+            $before,
             null,
             parsed,
             context,
@@ -292,8 +396,8 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
       input: Omit<PublishedPostInput, "load"> & PostLoadArg<L>,
       ...[context]: $ContextArgument
     ): Promise<L extends unknown ? PostWith<PostLoadNames<L>>[] : never> {
-      // Not run in this version: on:load published; policies public
-      // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
+      // Not run in this version: on:load published
+
       return $reads.published(input, context);
     },
 
@@ -301,14 +405,77 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
       input: Omit<ReadPostInput, "load"> & PostLoadArg<L>,
       ...[context]: $ContextArgument
     ): Promise<L extends unknown ? PostWith<PostLoadNames<L>>[] : never> {
-      // Not run in this version: on:load published; policies public
-      // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
-      return $reads.read(input, context);
+      // Not run in this version: on:load published
+
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a read through `tx` skips them
+      const $context = (context ?? {}) as unknown as Record<string, unknown>;
+      const $actor = $context.actor;
+      const $clock = $pinClock(options.clock);
+      const $parsed = await $castInput(layer, readPostInput, input);
+      if (
+        !(await $authorizer("Post", "read", [
+          {
+            name: "public",
+            when: null,
+            checks: [
+              {
+                kind: "authorize-if",
+                check: "() => true",
+                record: false,
+                run: $expressions["policy.public.authorize-if.0"],
+              },
+            ],
+          },
+        ]).filter(
+          layer,
+          $scope(
+            {
+              input: $readOnlyRecord($parsed as never, "Post.read"),
+              actor: $actor,
+              context: $context,
+            },
+            { clock: $clock },
+          ),
+        ))
+      )
+        return [] as unknown as L extends unknown ? PostWith<PostLoadNames<L>>[] : never;
+      return (await $reads.read(
+        input,
+        context,
+        $clock,
+        true,
+        $parsed,
+      )) as unknown as L extends unknown ? PostWith<PostLoadNames<L>>[] : never;
     },
 
     async destroy(input: DestroyPostInput, ...[context]: $ContextArgument): Promise<void> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, destroyPostInput, input);
+      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      const $context = (context ?? {}) as unknown as Record<string, unknown>;
+      const $actor = $context.actor;
+      const $clock = $pinClock(options.clock);
+      const $policies = $authorizer("Post", "destroy", [
+        {
+          name: "owner",
+          when: null,
+          checks: [
+            {
+              kind: "authorize-if",
+              check: "({ actor }) => &author.id === actor.id",
+              record: true,
+              run: $expressions["policy.owner.authorize-if.0"],
+            },
+          ],
+        },
+      ]);
+      await $policies.before(
+        layer,
+        $scope(
+          { input: $readOnlyRecord(parsed, "Post.destroy"), actor: $actor, context: $context },
+          { clock: $clock },
+        ),
+      );
       return $runAction(
         layer,
         options.seams,
@@ -316,14 +483,34 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
         parsed,
         context,
         async (tx) => {
-          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-          // plan: nothing in the body can see the record, so the row is deleted without being read, unless a seam wants it: then it is read under the lock first, so the seam gets `before`
+          // transaction: opens here; what follows commits together or not at all
+          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = $wantsChanges(options.seams)
-            ? await tx.selectByKeyForUpdate(tables.post, $key)
-            : undefined;
-          if ($wantsChanges(options.seams) && $before === undefined)
-            throw new $NotFoundError("Post", $key);
+          const $before = await tx.selectByKeyForUpdate(tables.post, $key);
+          if ($before === undefined) throw new $NotFoundError("Post", $key);
+          const $record: $Row = { ...$before };
+          const $load = { actor: $actor, context: $context, clock: $clock };
+          const $self = $readOnlyRecord(
+            $guarded($loadPlan, "Post", $record, "action function"),
+            "Post.destroy",
+          );
+          const $s = $scope(
+            {
+              self: $self,
+              input: $readOnlyRecord(parsed, "Post.destroy"),
+              actor: $actor,
+              context: $context,
+              before: $readOnlyRecord(
+                $guarded($loadPlan, "Post", $before, "before"),
+                "Post.destroy",
+              ) as unknown as Post,
+              ...$composed(compose, tx, context, "Post.destroy", $clock),
+            },
+            { clock: $clock },
+          ) as unknown as $StoredScope<DestroyPostInput>;
+          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+          await $loadInto($loadPlan, "Post", tx, $record, ["author"], $load);
+          await $policies.inside($checkScope($s));
           // data layer
           if (!(await tx.deleteByKey(tables.post, $key))) throw new $NotFoundError("Post", $key);
           $noteWrite(tx);
@@ -332,7 +519,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
             tx,
             options.seams,
             { entity: "Post", action: "destroy" },
-            $before ?? null,
+            $before,
             null,
             parsed,
             context,

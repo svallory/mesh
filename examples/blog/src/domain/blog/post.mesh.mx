@@ -43,6 +43,8 @@ entity :Post table="posts"
         desc &insertedAt
   policies
     policy :public types=[:read]
-      authorize-if=() => &state === :published
-    policy :owner actions=[&publish, &archive]
+      authorize-if=() => true
+    policy :signedIn types=[:create]
+      authorize-if=({ actor }) => actor.id !== null
+    policy :owner actions=[&publish, &archive, &destroy]
       authorize-if=({ actor }) => &author.id === actor.id

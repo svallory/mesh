@@ -5,6 +5,7 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
+import { openPolicies } from "./open-policy.ts";
 import { FrameworkError, InvalidInputError, NotFoundError, type Issue } from "@meshfw/runtime";
 import build from "../src/build.ts";
 import { createSchema, sqlite } from "../src/index.ts";
@@ -326,7 +327,7 @@ beforeAll(async () => {
     data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: ["aggregates", "integer-key-fill"] }, options: { file: ":memory:" } },
   };
   const files = { member, task };
-  const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: Object.entries(files).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source })) });
+  const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: openPolicies(Object.entries(files).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source }))) });
   expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   await writeGeneratedFiles(await generateFiles({ config, document: built.document as ModelDocument }, build), config);
   app = await import(join(dir, ".mesh/index.ts"));
@@ -358,7 +359,14 @@ describe("the generated files", () => {
       "// @ts-expect-error owner may be absent, because its load is under a when",
       "export const a: string = maybe.owner.name;",
       "export const b: string | undefined = maybe.owner?.name;",
+      "// A caller's top-level load is there, but runs the owner's read policies, so it can be null (POL-17).",
+      "// @ts-expect-error a caller's belongs-to can be null",
       "export const c: string = always.owner.name;",
+      "export const d: string | undefined = always.owner?.name;",
+      "// Present means the key is there: null when not admitted, never undefined.",
+      "export const e: { name: string } | null = always.owner;",
+      "// @ts-expect-error a load under a when may be undefined",
+      "export const f: { name: string } | null = maybe.owner;",
       "",
     ].join("\n"));
     const files = (await readdir(join(dir, ".mesh"), { recursive: true })).filter((name) => name.endsWith(".ts")).map((name) => join(".mesh", name));
@@ -838,5 +846,32 @@ describe("destroy", () => {
       await world.mesh.wipeTask({ id: row.id }, world.ctx);
       expect(await failure(world.mesh.wipeTask({ id: row.id }, world.ctx))).toBeInstanceOf(NotFoundError);
     } finally { await world.db.close(); }
+  });
+
+  // TXN-13 (M6 ruling 4): what reads the row is the body, a policy that reads the record, or a seam that wants the change.
+  // The fixture's policy is open and reads only the actor, so here nothing but the seam does.
+  test("a destroy nothing needs the row for reads none; a seam that wants the change reads it once under the lock", async () => {
+    const wipeTwice = async (seams?: Record<string, unknown>) => {
+      const world = await fresh();
+      const locked = { count: 0 };
+      const counting = {
+        transaction: (run: (tx: any) => Promise<unknown>) => world.db.transaction((tx: any) => run({
+          ...tx, selectByKeyForUpdate: (table: unknown, key: unknown) => { locked.count++; return tx.selectByKeyForUpdate(table, key); },
+        })),
+        refuseIfFailed: () => world.db.refuseIfFailed(),
+        close: () => world.db.close(),
+      };
+      try {
+        const mesh = app.bind(counting, { clock: () => clockNow, seams });
+        const row = await openTask(world);
+        await mesh.wipeTask({ id: row.id }, world.ctx);
+        expect(await failure(mesh.wipeTask({ id: row.id }, world.ctx))).toBeInstanceOf(NotFoundError);
+        return locked.count;
+      } finally { await world.db.close(); }
+    };
+    expect(await wipeTwice()).toBe(0);
+    expect(await wipeTwice({ beforeTransaction() {} })).toBe(0);
+    // One read per destroy: the row that is there, and the one that is not (NotFoundError before the delete).
+    expect(await wipeTwice({ afterWrite() {} })).toBe(2);
   });
 });

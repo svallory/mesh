@@ -69,8 +69,26 @@ export type ReadAttemptInput<N extends keyof AttemptLoadable = never> = {
   load?: readonly N[] | undefined;
 };
 
-/** What `load` attaches to a Attempt. The record has none of it, so reading one that was not loaded is a type error. */
+/**
+ * What a caller's `load` attaches to a Attempt. The record has none of it, so reading one that was not loaded is a type error.
+ * A caller's load runs the read policies of the entity it reaches: a related record the caller may not read is null, a list of them empty.
+ * A computed field's body does not (POL-19): it is the entity's own rule, so it reads every related record, and what it
+ * returns is shown to every caller who may read a Attempt. Return only what each such caller may see.
+ */
 export type AttemptLoadable = {
+  run: Run | null;
+  task: Task | null;
+  performer: Collaborator | null;
+  delegator: Collaborator | null;
+  machine: Machine | null;
+  session: SessionReference | null;
+};
+
+/** A Attempt with the relationships and computed fields named in N loaded. */
+export type AttemptWith<N extends keyof AttemptLoadable> = Attempt & Pick<AttemptLoadable, N>;
+
+/** What a load through `tx` attaches to a Attempt: it runs no policy, so every related record the key names is there. */
+export type AttemptTxLoadable = {
   run: Run;
   task: Task;
   performer: Collaborator;
@@ -79,8 +97,8 @@ export type AttemptLoadable = {
   session: SessionReference | null;
 };
 
-/** A Attempt with the relationships and computed fields named in N loaded. */
-export type AttemptWith<N extends keyof AttemptLoadable> = Attempt & Pick<AttemptLoadable, N>;
+/** A Attempt loaded through `tx`, with the relationships and computed fields named in N. */
+export type AttemptTxWith<N extends keyof AttemptLoadable> = Attempt & Pick<AttemptTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type AttemptLoadNames<L extends readonly (keyof AttemptLoadable)[]> =

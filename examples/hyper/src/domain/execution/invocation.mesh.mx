@@ -100,3 +100,6 @@ entity :Invocation table="invocations"
           &attempt=async ({ input, tx }) => (await tx.readInvocation({ filter: { id: { eq: input.corrects ?? "" } } })).map((corrected) => corrected.attemptId)[0]
           &task=async ({ input, tx }) => (await tx.readInvocation({ filter: { id: { eq: input.corrects ?? "" } } })).map((corrected) => corrected.taskId)[0]
           &recordedBy=({ actor }) => actor.id
+  policies
+    policy :untilM8b
+      authorize-if=() => true

@@ -32,15 +32,30 @@ export type ReadLateResultInput<N extends keyof LateResultLoadable = never> = {
   load?: readonly N[] | undefined;
 };
 
-/** What `load` attaches to a LateResult. The record has none of it, so reading one that was not loaded is a type error. */
+/**
+ * What a caller's `load` attaches to a LateResult. The record has none of it, so reading one that was not loaded is a type error.
+ * A caller's load runs the read policies of the entity it reaches: a related record the caller may not read is null, a list of them empty.
+ * A computed field's body does not (POL-19): it is the entity's own rule, so it reads every related record, and what it
+ * returns is shown to every caller who may read a LateResult. Return only what each such caller may see.
+ */
 export type LateResultLoadable = {
-  task: Task;
-  submitter: Collaborator;
+  task: Task | null;
+  submitter: Collaborator | null;
 };
 
 /** A LateResult with the relationships and computed fields named in N loaded. */
 export type LateResultWith<N extends keyof LateResultLoadable> = LateResult &
   Pick<LateResultLoadable, N>;
+
+/** What a load through `tx` attaches to a LateResult: it runs no policy, so every related record the key names is there. */
+export type LateResultTxLoadable = {
+  task: Task;
+  submitter: Collaborator;
+};
+
+/** A LateResult loaded through `tx`, with the relationships and computed fields named in N. */
+export type LateResultTxWith<N extends keyof LateResultLoadable> = LateResult &
+  Pick<LateResultTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type LateResultLoadNames<L extends readonly (keyof LateResultLoadable)[]> =

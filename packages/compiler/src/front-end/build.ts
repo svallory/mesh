@@ -749,7 +749,13 @@ function buildEntity(
                     ...entity.computed,
                   ];
     const candidates = new Set(allowed.map((m) => m.name));
-    if (!candidates.has(ref.name))
+    if (!candidates.has(ref.name) && scope === "actions") {
+      // `actions=[...]` on a policy or an `always` block names actions (roadmap M8, acceptance test 8).
+      const member = unknownMember(entity, ref, candidates);
+      const names = [...candidates].map((name) => `&${name}`).join(", ");
+      diagnostics.push({ ...member, code: "MESH_UNKNOWN_ACTION",
+        message: `&${ref.name} is not an action of :${entity.name}: \`actions=\` names the entity's own actions${names ? ` (${names})` : ", and it has none"}.${member.message.includes("Did you mean") ? member.message.slice(member.message.indexOf(" Did you mean")) : ""}` });
+    } else if (!candidates.has(ref.name))
       diagnostics.push(unknownMember(entity, ref, candidates));
     else if (scope === "sort" || scope === "filter") {
       const used = [...entity.attributes, ...entity.computed].find((m) => m.name === ref.name);

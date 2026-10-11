@@ -72,3 +72,6 @@ entity :Run table="runs"
           &state=({ input }) => input.result
           &endedAt=() => now()
           &version=() => &version + 1
+  policies
+    policy :untilM8b
+      authorize-if=() => true
