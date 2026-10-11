@@ -5,6 +5,8 @@ description: "Decision record 0079: `command` and `event` files, `handles=`, `pu
 
 # 0079. Commands and events are files; `publish` writes to a core outbox; M6 builds it
 
+> **Amendment, 2026-10-11 (the outbox is a permanent log).** In item 4 below, the outbox is core, and it is a permanent, ordered log of the events, not the table the transactional-outbox pattern usually describes, which is emptied after delivery. It replaces Hyper's event table (DOM-06, DOM-18), and Hyper reads the whole log back, in order, from any cursor (`events.read`, `PROTOCOL.md` section 8, in the Hyper specification repository, branch `feat/protocol-phases`, commit `ccc00f9`), so a row is never deleted once delivered. The decisions below do not change.
+
 ## Status
 
 Accepted. Amends [ADR-0023](./0023-workflows-and-jobs-deferred.md) (the outbox is not after 1.0), [ADR-0053](./0053-validate-then-do.md) (no `after-commit` step), [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) (M6 builds domain events and the outbox) and [ADR-0075](./0075-seams-use-the-extension-hosts-names.md) (the `afterCommit` seam is not the route for after-commit effects).
@@ -28,7 +30,7 @@ Hyper's engine keeps an event table by hand and delivers events from application
 1. **`command` and `event` declarations live in their own files**, and an action names the commands it answers with `handles=[...]` (DOM-17). A command is a serialised request to run a write action; a query is a serialised read request.
 2. **Declaring and raising are separate syntax** (DOM-19). An action raises an event with `publish :task-completed`.
 3. **`publish` writes the event to the outbox**, in the action's transaction, and an event bus delivers it from there (DOM-02, DOM-06). A surface lists what it sends out with `publishes` ([ADR-0077](./0077-surfaces-and-file-kinds.md)).
-4. **The outbox is core** (DOM-06). It comes with domain events in M6 (DOM-18), so [ADR-0023](./0023-workflows-and-jobs-deferred.md)'s "after 1.0" no longer covers it. Jobs and workflows stay after 1.0 (ARC-14).
+4. **The outbox is core** (DOM-06). It is a permanent, ordered log of the events, not a table emptied after delivery (see the amendment at the top). It comes with domain events in M6 (DOM-18), so [ADR-0023](./0023-workflows-and-jobs-deferred.md)'s "after 1.0" no longer covers it. Jobs and workflows stay after 1.0 (ARC-14).
 5. **HA's hand-written event table is dropped** (DOM-18). HA keeps `@meshfw/jsonrpc` with a hand-written method table ([ADR-0077](./0077-surfaces-and-file-kinds.md)).
 6. **There is no `after-commit` step**, and the `afterCommit` seam is not used for it either (DOM-25). An effect after commit is a `publish` and a listener.
 7. **Handler words** (DOM-05): a handler that updates a read-model row is `apply`; a handler that runs commands is `process`.

@@ -7,6 +7,8 @@ description: "Decision record 0075: code the application may run before the tran
 
 > **Amendment, 2026-10-11 (DOM-18, DOM-25).** Hyper's typed events are no longer an application table over the seams: domain events and an outbox are built in M6 ([ADR-0079](./0079-commands-events-and-the-outbox.md)). The `afterCommit` seam stays as built; it is not the route for effects after commit (DOM-25): a `publish` plus a listener is.
 
+> **Amendment, 2026-10-11 (idempotency record).** The Context paragraph below says Hyper's idempotency record is code at the seams. The `afterWrite` seam cannot write it: the record stores the command's whole result (`PROTOCOL.md` section 4.3; the Hyper specification repository, branch `feat/protocol-phases`, commit `ccc00f9`), which exists only when the command ends, and `afterWrite` runs after each row. HA (the Hyper application) writes the record in the application `transaction`, after the action returns, in the same transaction. The decisions below do not change; `afterWrite` still serves per-row work.
+
 ## Status
 
 Accepted. Amends [ADR-0020](./0020-extension-contributions-through-declared-points.md) (the first run-time points are built before the host).
