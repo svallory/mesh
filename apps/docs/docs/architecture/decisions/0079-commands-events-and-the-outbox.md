@@ -5,7 +5,7 @@ description: "Decision record 0079: `command` and `event` files, `handles=`, `pu
 
 # 0079. Commands and events are files; `publish` writes to a core outbox; M6 builds it
 
-> **Amendment, 2026-10-11 (the outbox is a permanent log).** In item 4 below, the outbox is core, and it is a permanent, ordered log of the events, not the table the transactional-outbox pattern usually describes, which is emptied after delivery. It replaces Hyper's event table (DOM-06, DOM-18), and Hyper reads the whole log back, in order, from any cursor (`events.read`, [PROTOCOL section 8](https://github.com/svallory/hyper-engine-spec/blob/ccc00f9/PROTOCOL.md)), so a row is never deleted once delivered. The decisions below do not change.
+> **Amendment, 2026-10-11 (the outbox is a permanent log).** In item 4 below, the outbox is core, and it is a permanent, ordered log of the events, not the table the transactional-outbox pattern usually describes, which is emptied after delivery. It replaces Hyper's event table (DOM-06, DOM-18), and Hyper reads the whole log back, in order, from any cursor (`events.read`, `PROTOCOL.md` section 8 (the Hyper specification repository, branch `feat/protocol-phases`, commit `ccc00f9`)), so a row is never deleted once delivered. The decisions below do not change.
 
 ## Status
 
