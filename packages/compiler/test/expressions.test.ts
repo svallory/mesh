@@ -874,10 +874,10 @@ export const state: "open" | "done" = fresh.self.state;
       expect(checkTypes(root, [...paths, "generated/schema.ts", "check.ts"])).toEqual({ code: 0, output: "" });
     });
     test("a computed field that reads a member the new instance has not filled is null there, in the type: directly, through another computed field or through a relationship; the others keep their type", async () => {
-      const computed = "  computed\n    integer :double() { return &n * 2 }\n    integer :twice() { return &double + 1 }\n    integer :viaOwner() { return &owner.n }\n    boolean :isOpen() { return &state === :open }\n    integer :plain({ self }) { const q = self.n; return q + 1 }\n  actions auto=[:read]";
-      const source = item(make(checkOf("() => &double > 0")) + go("")).replace("  actions auto=[:read]", computed);
+      const computed = "  computed\n    integer :double() { return &n * 2 }\n    integer :twice() { return &double + 1 }\n    integer :viaOwner() { return &owner.n }\n    boolean :isUnset() { return &n === null }\n    integer :orZero() { return &n ?? 0 }\n    integer :orSelf() { return &n ?? &double }\n    boolean :isOpen() { return &state === :open }\n    integer :plain({ self }) { const q = self.n; return q + 1 }\n  actions auto=[:read]";
+      const source = item(make(checkOf("({ input }) => input.n > 0")) + go("")).replace("  actions auto=[:read]", computed);
       const { root, text, files } = await generated(source);
-      expect(squash(text)).toContain(squash('self: $DeepReadonly<Omit<ItemLoaded, "n" | "ownerId" | "owner" | "double" | "twice" | "viaOwner"> & { [K in "n" | "ownerId" | "owner" | "double" | "twice" | "viaOwner"]: ItemLoaded[K] | null }>'));
+      expect(squash(text).replace(":|", ":")).toContain(squash('self: $DeepReadonly<Omit<ItemLoaded, "n" | "ownerId" | "owner" | "double" | "twice" | "viaOwner" | "orSelf"> & { [K in "n" | "ownerId" | "owner" | "double" | "twice" | "viaOwner" | "orSelf"]: ItemLoaded[K] | null }>'));
       await writeFile(resolve(root, "check.ts"), `import type { ItemNewScope, ItemScope } from "./generated/domain/item.expressions";
 declare const fresh: ItemNewScope<unknown>;
 declare const stored: ItemScope<unknown>;
@@ -890,6 +890,11 @@ export const notYet: number = fresh.self.double;
 export const notYetTwice: number = fresh.self.twice;
 // @ts-expect-error viaOwner reads owner
 export const notYetOwner: number = fresh.self.viaOwner;
+// isNull is never unknown, and ?? with a literal fallback is never null; ?? of two operands that can both be null is
+export const unset: boolean = fresh.self.isUnset;
+export const orZero: number = fresh.self.orZero;
+// @ts-expect-error orSelf reads n and double, both null on a create
+export const notYetOrSelf: number = fresh.self.orSelf;
 export const open: boolean = fresh.self.isOpen;
 export const plain: number = fresh.self.plain;
 export const set: number = stored.self.double;

@@ -13,7 +13,7 @@ import type {
   Step,
   TypeClass,
 } from "@meshfw/model";
-import { newInstanceGaps, newInstanceMembers } from "./new-instance.ts";
+import { newInstanceComputed, newInstanceGaps, newInstanceMembers } from "./new-instance.ts";
 
 /**
  * Types every translated expression across the whole model (M4, ADR-0012 option A).
@@ -104,7 +104,8 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     if (owner.c === "input") return owner.entity ? { c: "any", nullable: false } : { ...scopeInput(scope, name), ...(scope.args?.has(name) ? {} : { input: name }) };
     const result = ownMemberTy(owner, name);
     // On a create, `self` is the new instance: a member with no default holds null until the input or a step fills it.
-    return owner.fresh?.has(name) && !result.nullable ? { ...result, nullable: true, unfilled: name } : result;
+    // A computed field `newInstanceComputed` lists is null there too, whatever its declared nullability says (it is the same set the generated type uses).
+    return owner.fresh?.has(name) && (!result.nullable || owner.entity?.computed.some((c) => c.name === name)) ? { ...result, nullable: true, unfilled: name } : result;
   }
   function ownMemberTy(owner: Ty, name: string): Ty {
     if (owner.c === "any") return { c: "any", nullable: false };
@@ -411,8 +412,9 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     const accepted = creates.map((action) => new Set(action.input.flatMap((field) => (field.kind === "member" ? [field.ref.name] : []))));
     const keyColumn = (name: string) => entity.relationships.find((relation) => relation.name === name && relation.kind === "belongs-to")?.keyColumn;
     const pending = new Set(accepted.flatMap((set) => [...set].flatMap((name) => [name, ...(keyColumn(name) ? [keyColumn(name)!] : [])])));
+    const members = newInstanceMembers(gaps, true);
     const checks: Scope = creates.length
-      ? { ...scope, validate: true, fresh: new Set(newInstanceMembers(gaps, true)), pending, acceptedOnCreate: new Set([...accepted[0]!].filter((name) => accepted.every((set) => set.has(name)))) }
+      ? { ...scope, validate: true, fresh: new Set([...members, ...newInstanceComputed(entity, new Set(members))]), pending, acceptedOnCreate: new Set([...accepted[0]!].filter((name) => accepted.every((set) => set.has(name)))) }
       : { ...scope, validate: true };
     for (const check of validate) {
       for (const [e, part] of check.when ? [[check.that, "that"], [check.when, "when"]] as const : [[check.that, "that"]] as const) {
