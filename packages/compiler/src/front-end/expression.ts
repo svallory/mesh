@@ -93,6 +93,11 @@ function lexicalNames(statements: readonly N[], names: Set<string>): void {
  * The names a node declares for the code inside it, or undefined when it opens no scope: a function's parameters, its
  * own name (an expression's) and its `var`s; a block's lexical declarations; a loop head's; a catch clause's parameter;
  * a class expression's name. A reference resolves to the nearest of these that has its name.
+ *
+ * A function's `var`s share the scope of its parameters, so `function f(at = now()) { var now = 0 }` binds no clock.
+ * JavaScript gives that default the outer `now`, but Bun's engine does not when the outer binding is two or more
+ * functions up, which a printed function's clock always is: it throws `ReferenceError: now is not defined` (Bun
+ * 1.3.14; Node gives the outer one). Binding no clock keeps the failure at the type check (TS2304) instead of at run time.
  */
 function scopeNames(n: N): Set<string> | undefined {
   const names = new Set<string>();
@@ -142,7 +147,8 @@ function bindings(root: N): Set<string> {
  * that its parameters do not bind (`&name` is `self.name`, so it reads `self`), in a fixed order: what the printed
  * function takes from the scope. A name a nested binding shadows still counts, so the function is never short of one.
  * Adds to `clock` each clock function (`now`, `today`) the function reads somewhere that no enclosing scope binds that
- * name: each reference is resolved against its own scopes, so `[1].some((now) => now === 1) && now()` reads the clock.
+ * name and the file does not import: each reference is resolved against its own scopes, so
+ * `[1].some((now) => now === 1) && now()` reads the clock (a function's `var`s count for its parameters: `scopeNames`).
  */
 function freeVariables(fn: N, ctx: ConvertContext, clock: Set<string>): string[] {
   const bound = bindings(fn);
@@ -160,7 +166,8 @@ function freeVariables(fn: N, ctx: ConvertContext, clock: Set<string>): string[]
       const objectKey = parent && (parent.type === "ObjectProperty" || parent.type === "ObjectMethod" || parent.type === "ClassMethod" || parent.type === "ClassProperty") && key === "key" && !parent.computed;
       const label = parent && /^(LabeledStatement|BreakStatement|ContinueStatement)$/.test(parent.type) && key === "label";
       if (!property && !objectKey && !label && SCOPE_NAMES.has(n.name!) && !parameters.has(n.name!)) roots.add(n.name!);
-      if (!property && !objectKey && !label && n.name! in REGISTERED_CALLS && !scope.has(n.name!)) clock.add(n.name!);
+      // An imported `now` or `today` is the import, as it is in translated code (`convert`).
+      if (!property && !objectKey && !label && n.name! in REGISTERED_CALLS && !scope.has(n.name!) && !ctx.helpers.has(n.name!)) clock.add(n.name!);
       if (!property && !objectKey && !label && !known(n.name!) && n.start !== undefined) {
         ctx.report({
           severity: "error",
