@@ -7,7 +7,7 @@ description: "Decision record 0080: the `aggregate` file with `root` and `entiti
 
 ## Status
 
-Accepted. DOM-31 is the lead's reading, for operator review. No row is open.
+Accepted. No row is open. DOM-31 is the operator's ruling; the warning note attached to it is a lead reading, for operator review.
 
 Rows: DOM-03, DOM-23, DOM-26, DOM-27, DOM-31.
 
@@ -29,7 +29,9 @@ Hyper's Task and its Dependency rows form one consistency boundary, which Mesh c
 2. **An aggregate contains concepts through its entities' attributes** (DOM-23).
 3. **`concept` is a shared understanding of something with no identity**, with as many fields as it needs (Country: name, abbreviation, population, flag, languages) (DOM-26). It is the same thing as a value object, so it is one construct; it replaces the study's `value`.
 4. **A repository is allowed as a pattern, and is no construct for now** (DOM-27). A construct may come later.
-5. **Mesh does not prevent an entity from being a part of two aggregates** (DOM-31, lead reading). The architecture rule ([ADR-0084](./0084-architecture-rules-are-core.md)) may warn about it, switchable off in `architecture.mesh.mx`; it is never a build error. Different views of the same tasks (Gantt, list, board) are read models, which may share entities freely.
+5. **Mesh does not prevent an entity from being a part of two aggregates** (DOM-31, ruled). Different views of the same tasks (Gantt, list, board) are read models, which may share entities freely.
+
+   **Lead reading, for operator review:** the architecture rule ([ADR-0084](./0084-architecture-rules-are-core.md)) may warn about an entity in two aggregates, the warning switchable off in `architecture.mesh.mx`, and it is never a build error. This note is not ruled.
 
 ```mx "work.mesh.mx (illustration)"
 aggregate :TaskAggregate
@@ -41,7 +43,7 @@ aggregate :TaskAggregate
 
 ## Options considered
 
-D13: an `aggregate` option on each entity (a), an `aggregate` section in the root entity (b), an aggregate file (c, chosen). D17: `value` and `concept` as separate constructs (rejected: one idea, two words), a single `concept` (chosen), nothing; repository: a construct or a pattern (chosen for now).
+D13 in the study: (a) a `part-of` flag on the `belongs-to` (recommended); (b) `part-of=&rel` on the entity line; (c) nothing. The ruling replaced them with the aggregate file (DOM-03, DOM-23), which is a new option the study did not list. D17: `value` and `concept` as separate constructs (rejected: one idea, two words), a single `concept` (chosen), nothing; repository: a construct or a pattern (chosen for now).
 
 ## Trade-off analysis
 
@@ -51,7 +53,7 @@ A file puts the boundary in one place and lets a reader see a whole aggregate. I
 
 - No existing record is superseded. [ADR-0057](./0057-one-domain-modules-as-folders.md) is unchanged: an aggregate file sits in its module folder.
 - The concept tag has its own file under a `concepts` folder in the tag-discovery design ([ADR-0085](./0085-tag-discovery-for-dialect-tags.md)).
-- Aggregates and concepts are not built and are after 1.0 unless the port needs them (RDM-01).
+- Aggregates and concepts are not built. No row dates them. RDM-01 applies: not before the port unless the port needs them, and as many planned constructs as possible before 1.0.
 
 ## Action items
 

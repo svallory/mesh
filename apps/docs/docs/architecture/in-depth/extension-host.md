@@ -27,7 +27,7 @@ An extension declares itself through one typed manifest ([roadmap](../roadmap/ro
 | Emitters | Each a typed view of the model plus a Jig template ([ADR-0061](../decisions/0061-generators-are-jig-templates.md)). |
 | Expression functions | Each with its in-memory implementation and its SQL form per data adapter ([expressions](./expressions.md)). |
 | Attribute types | A new type tag, with a validator and a column type per adapter. |
-| Steps (planned) | Reusable steps an entity file uses as tags. Their definitions are `step :name` files in `.mesh.mx`, with an `options` section and a body; Mesh derives the tag's contract from the definition. Extensions contribute steps the same way projects do ([ADR-0053](../decisions/0053-validate-then-do.md)). Not in v1. |
+| Steps (dropped) | Reusable step files are dropped. Reuse is a TypeScript helper or a `mixin` included with `use`, and named checks are a core, entity-level `checks` section ([ADR-0082](../decisions/0082-named-checks-and-mixins.md)). |
 | Context keys read | The keys of the action context the extension reads (for example a multitenancy extension's `tenantId`). Two extensions claiming one key fail the build ([ADR-0059](../decisions/0059-action-context.md)). |
 | Tooling hooks | A `mesh` subcommand. |
 | Adapter requirements | What the extension requires from adapters. |

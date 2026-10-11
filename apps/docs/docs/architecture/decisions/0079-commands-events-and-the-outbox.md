@@ -33,7 +33,7 @@ Hyper's engine keeps an event table by hand and delivers events from application
 6. **There is no `after-commit` step**, and the `afterCommit` seam is not used for it either (DOM-25). An effect after commit is a `publish` and a listener.
 7. **Handler words** (DOM-05): a handler that updates a read-model row is `apply`; a handler that runs commands is `process`.
 
-An illustration (the files are the study's proposal; the ruled words are `command`, `event`, `handles=`, `publish`, `apply` and `process`):
+An illustration. The files, `handles=` and `publish` are ruled; the lines inside them are the study's sketch:
 
 ```mx "An event file and an action that raises it (illustration)"
 event :task-completed
@@ -51,17 +51,17 @@ entity :Task
 
 ## Options considered
 
-D7 (commands): inside the action, a separate file (chosen), or none. D8 (when): M6 (chosen), after 1.0 with a hand-written table. D9 (declaring and raising): one syntax that does both, or two (chosen: reading ii). D15 (outbox): core (chosen), an extension, or after 1.0. D16 (after-commit): a step, the `afterCommit` seam, or `publish` plus a listener (chosen).
+The study's D7 (a command in core): (a) generated only, as `Command` and `Query` unions with a `dispatch()` per surface; (b) a `command` declaration per entity action. The ruling is closer to (b): commands are declared in their own files and an action names them with `handles=`. D8 (domain events): the form, (a) an `events` section and an `emit` step, (b) an `emits=` option on the action line, (c) application code on seams only; the timing, (i) after 1.0 with Hyper keeping its table, (ii) before the gate. The ruling is before the gate (M6) and, per DOM-19, declaring and raising are separate syntax. D9 (seam payloads now): (a) reserve an `events` field on `afterWrite` and `afterCommit`; (b) declared events get their own seam later; (c) decide later. (a) was not taken: with events delivered from the outbox, the seams need no `events` field (a consequence, not a ruling; the payloads are settled in M6's design). D15 (outbox): (a) an extension; (b) core (chosen). D16 (after-commit): (a) drop the `after-commit` step; (b) keep it for one-off side effects (the ruling is (a), and the `afterCommit` seam is not the route either).
 
 ## Trade-off analysis
 
-An outbox written in the action's transaction means an event exists if and only if the write committed, which an after-commit step cannot promise. Delivery is at least once, so a listener must tolerate repeats. Core owns the table, so the Hyper port does not carry its own. The cost is a core table and a bus contract in M6, which the roadmap size does not yet reflect.
+An outbox written in the action's transaction means an event exists if and only if the write committed, which an after-commit step cannot promise. Delivery from an outbox is usually at least once, so a listener should tolerate repeats; that is a design assumption of this record, not a ruling. Core owns the table, so the Hyper port does not carry its own. The cost is a core table and a bus contract in M6, which the roadmap size does not yet reflect.
 
 ## Consequences
 
 - [ADR-0023](./0023-workflows-and-jobs-deferred.md) is amended: the outbox is not deferred.
 - [ADR-0053](./0053-validate-then-do.md) is amended with [ADR-0082](./0082-named-checks-and-mixins.md): no `after-commit` step.
-- [ADR-0075](./0075-seams-use-the-extension-hosts-names.md): its note that Hyper's typed events are an application table is replaced by the outbox. The `afterCommit` seam stays as a seam for extensions; it is not how effects after commit are written.
+- [ADR-0075](./0075-seams-use-the-extension-hosts-names.md): its note that Hyper's typed events are an application table is replaced by the outbox. The `afterCommit` seam stays as built; it is not the route for effects after commit (DOM-25).
 - The roadmap's M6 becomes "domain events and the outbox", and HA drops its event table. The roadmap size for M6 is unchanged here; it is probably too small.
 - `apply` also names state folding in the study's event-sourcing sketch. [ADR-0081](./0081-event-sourcing-and-cqrs-are-extensions.md) leaves that to the extension, which may use another word.
 

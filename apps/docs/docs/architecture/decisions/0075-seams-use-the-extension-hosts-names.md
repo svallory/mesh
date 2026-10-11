@@ -5,7 +5,7 @@ description: "Decision record 0075: code the application may run before the tran
 
 # 0075. Three lifecycle seams, named and shaped as the extension host's run-time points
 
-> **Amendment, 2026-10-11 (DOM-18, DOM-25).** Hyper's typed events are no longer an application table over the seams: domain events and an outbox are built in M6 ([ADR-0079](./0079-commands-events-and-the-outbox.md)). The `afterCommit` seam stays a seam for extensions; it is not the route for effects after commit (a `publish` plus a listener is).
+> **Amendment, 2026-10-11 (DOM-18, DOM-25).** Hyper's typed events are no longer an application table over the seams: domain events and an outbox are built in M6 ([ADR-0079](./0079-commands-events-and-the-outbox.md)). The `afterCommit` seam stays as built; it is not the route for effects after commit (DOM-25): a `publish` plus a listener is.
 
 ## Status
 

@@ -17,7 +17,7 @@ Rows: DOM-11, DOM-12, DOM-20, DOM-21, DOM-22 and the `publishes` half of DOM-02 
 
 ## Deciders
 
-operator (Saulo Vallory), on 2026-10-10 (D1 and D3 of the [domain concepts study](../research/domain-concepts.md)) and 2026-10-11 (the rest). The study is the evidence; this record states the ruling.
+operator (Saulo Vallory), on 2026-10-10 (D1 of the [domain concepts study](../research/domain-concepts.md)) and 2026-10-11 (the rest). The study is the evidence; this record states the ruling.
 
 ## Context
 
@@ -76,7 +76,7 @@ A separate file per audience keeps exposure in one reviewable place, and it keep
 - [ADR-0051](./0051-mesh-mx-files-and-the-mesh-host.md) said entity and step files end in `.mesh.mx`: now every file does, and there are no step files ([ADR-0082](./0082-named-checks-and-mixins.md)).
 - The roadmap changes: principle 8 ("how a program is exposed" is no longer wholly the application's business: core declares exposure as data and transports are adapters), the after-1.0 table (the admin interface and the command-line adapter read a surface), and HA (it keeps `@meshfw/jsonrpc` with a hand-written method table). [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) carries the matching note.
 - Surfaces themselves are not built before the gate. Only the format and the adapters named above are ruled; the syntax inside a surface beyond the lines above is the study's proposal and gets its own design when the first adapter reads it.
-- User docs: [Project structure](../../docs/project-structure.md) says "Mesh prescribes nothing under `src/`" and [Using your domain](../../docs/using-your-domain.md) shows hand-written command-line and HTTP integrations. Both need a section on surfaces when the construct is built (see the report of the pull request that published this record).
+- User docs: [Project structure](../../docs/project-structure.md) says "Mesh prescribes nothing under `src/`" and [Using your domain](../../docs/using-your-domain.md) shows hand-written command-line and HTTP integrations. Both need a section on surfaces when the construct is built.
 
 ## Action items
 

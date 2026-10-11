@@ -42,9 +42,11 @@ The code on `main` uses these records' names since the realignment task (PR #47,
 
 ## What changed on 2026-10-10
 
-Records 0077 to 0085 hold the rulings of the [domain concepts study](../research/domain-concepts.md): the `surface` file ([0077](./0077-surfaces-and-file-kinds.md)), where effects go and what a service is ([0078](./0078-services-and-where-effects-go.md)), commands, events and the core outbox ([0079](./0079-commands-events-and-the-outbox.md)), aggregates and concepts ([0080](./0080-aggregates-and-concepts.md)), event sourcing and CQRS as extensions ([0081](./0081-event-sourcing-and-cqrs-are-extensions.md)), named checks and mixins ([0082](./0082-named-checks-and-mixins.md)), names ([0083](./0083-names-for-the-new-constructs.md)), architecture rules ([0084](./0084-architecture-rules-are-core.md)) and tag discovery ([0085](./0085-tag-discovery-for-dialect-tags.md)). They supersede 0035 and amend 0023, 0027, 0050, 0051, 0053, 0068, 0072 and 0075.
-
 The operator accepted [roadmap revision 5](../roadmap/roadmap.md), which ends Mesh 1.0 at the point where the Hyper engine can be ported to Mesh. Records 0068 to 0075 hold it: the gate and the cut it makes ([0072](./0072-mesh-1-0-is-the-port-gate.md), which merges six decisions of the draft: the contract, SQLite, the gate's scope, SQL translation, the extension host, and tracing with `on:load`), actions that call actions ([0068](./0068-actions-compose-through-actions-and-tx.md)), the `json` type ([0069](./0069-json-attribute-type.md)), `inverse=` ([0070](./0070-has-many-via.md)), the `system` context key ([0071](./0071-system-key-on-the-action-context.md)), plugins ([0073](./0073-plugins-follow-the-specs-single-hook.md)), write policies that read ([0074](./0074-write-policies-may-read-through-tx.md)) and the lifecycle seams ([0075](./0075-seams-use-the-extension-hosts-names.md)). Fourteen earlier records carry a note at the top and a new status: 0010, 0017, 0019, 0020, 0021, 0022, 0029, 0052, 0053, 0054, 0055, 0059, 0062 and 0063. The evidence is the [Hyper gap analysis](../research/hyper-port-gap-analysis.md).
+
+## What changed on 2026-10-11
+
+Records 0077 to 0085 hold the rulings of the [domain concepts study](../research/domain-concepts.md): the `surface` file ([0077](./0077-surfaces-and-file-kinds.md)), where effects go and what a service is ([0078](./0078-services-and-where-effects-go.md)), commands, events and the core outbox ([0079](./0079-commands-events-and-the-outbox.md)), aggregates and concepts ([0080](./0080-aggregates-and-concepts.md)), event sourcing and CQRS as extensions ([0081](./0081-event-sourcing-and-cqrs-are-extensions.md)), named checks and mixins ([0082](./0082-named-checks-and-mixins.md)), names ([0083](./0083-names-for-the-new-constructs.md)), architecture rules ([0084](./0084-architecture-rules-are-core.md)) and tag discovery ([0085](./0085-tag-discovery-for-dialect-tags.md)). They supersede 0035 and amend 0023, 0027, 0050, 0051, 0053, 0068, 0072 and 0075.
 
 ## Current records
 
@@ -117,7 +119,7 @@ The operator accepted [roadmap revision 5](../roadmap/roadmap.md), which ends Me
 | [0077](./0077-surfaces-and-file-kinds.md) | A `surface` file lists what an audience may reach; the root tag decides a file's kind; fields fail closed | Accepted | operator |
 | [0078](./0078-services-and-where-effects-go.md) | Effects are split three ways; services follow Vernon's definition; `uses`; the service shape and general publish-subscribe are open | Accepted, two items open | operator |
 | [0079](./0079-commands-events-and-the-outbox.md) | Commands and events are files; `publish` writes to a core outbox built in M6; no `after-commit` step | Accepted | operator |
-| [0080](./0080-aggregates-and-concepts.md) | An aggregate is a file; `concept` is a value object; a repository is a pattern | Accepted | operator; lead reading for DOM-31 |
+| [0080](./0080-aggregates-and-concepts.md) | An aggregate is a file; `concept` is a value object; a repository is a pattern | Accepted | operator; one lead note on DOM-31, for operator review |
 | [0081](./0081-event-sourcing-and-cqrs-are-extensions.md) | Event sourcing and CQRS are two extensions | Accepted | operator |
 | [0082](./0082-named-checks-and-mixins.md) | Named checks in a `checks` section; `mixin` files with `use`; step files dropped | Accepted | operator; lead reading for DOM-33 |
 | [0083](./0083-names-for-the-new-constructs.md) | The name-clash table is accepted for the port | Accepted | operator |
@@ -137,8 +139,8 @@ The operator accepted [roadmap revision 5](../roadmap/roadmap.md), which ends Me
 | [0024](./0024-in-process-runner-first.md) | The in-process workflow runner is the first adapter | [0023](./0023-workflows-and-jobs-deferred.md) | operator |
 | [0026](./0026-node-parity.md) | Mesh runs on Bun and Node | [0025](./0025-bun-only.md) | operator |
 | [0034](./0034-vocabulary-copies-ash-dsl.md) | The vocabulary copies Ash's DSL for v1 | [0049](./0049-vocabulary-is-meshs-own.md) | operator; lead for the spelling |
-| [0036](./0036-deny-by-default-arrives-with-policies.md) | Deny by default arrives with the policies extension | [0055](./0055-policies-are-core.md) | lead |
 | [0035](./0035-meaning-of-public.md) | What `public` on an attribute means (was Proposed) | [0077](./0077-surfaces-and-file-kinds.md) | operator |
+| [0036](./0036-deny-by-default-arrives-with-policies.md) | Deny by default arrives with the policies extension | [0055](./0055-policies-are-core.md) | lead |
 | [0040](./0040-package-and-command-names.md) | Package scope and command name (was Proposed) | [0060](./0060-meshfw-package-scope.md) | operator |
 
 ## Open decisions at a glance

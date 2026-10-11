@@ -28,7 +28,7 @@ operator (Saulo Vallory), 2026-10-11 (DOM-04 at 07:07; DOM-33 at 07:57).
 1. **Named checks are an entity-level `checks` section**, referenced by a bare `check :name` in `validate` (DOM-28).
 2. **Importable fragments are `mixin` files**: the root is `mixin :name`, and an entity includes one with `use :name` (DOM-04, DOM-28). `use` is the include word for all reusable blocks.
 3. **Mesh ships `:timestamps` and `:versioned` mixins**, and a project may define its own, including ones named like Mesh's (DOM-33). Lead's reading, for operator review: the project's own mixin wins over Mesh's of the same name.
-4. **Step files and reusable steps are dropped** ([ADR-0053](./0053-validate-then-do.md)). Reuse is a TypeScript helper, or a mixin.
+4. **Step files and reusable steps are dropped** ([ADR-0053](./0053-validate-then-do.md)); no DOM row states this. Reuse is a TypeScript helper, or a mixin.
 
 ```mx "An illustration; the section and the keywords are ruled, the inner lines follow Entities"
 entity :Invoice
@@ -47,7 +47,7 @@ entity :Invoice
 
 ## Options considered
 
-Reusable steps in files (ADR-0053's plan, dropped); named checks as separate files; a `checks` section in the entity (chosen); `include` or `import` instead of `use`; a mixin kind versus a TypeScript helper only (both kept: helper for logic, mixin for declarations).
+The study's D18: (a) named checks as an extension-host run-time point written in TypeScript, after the host exists (the documented form); (b) the ADR-0053 step model, with MX `check` definition files that extensions can also contribute (recommended). The ruling took neither: named checks are an entity-level `checks` section (DOM-28), and step files were dropped, with reuse by a TypeScript helper or a mixin. That drop was ruled on 2026-10-11 with the study's answers; no DOM row states it, so this record is its source.
 
 ## Trade-off analysis
 

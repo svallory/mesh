@@ -35,8 +35,8 @@ Most applications need neither. As extensions they cost nothing to those who do 
 
 ## Consequences
 
-- The `apply` word: the study's event-sourcing sketch folds events into state with `apply`, while [ADR-0079](./0079-commands-events-and-the-outbox.md) uses `apply` for a handler that updates a read-model row. The extension decides its own words; core's `apply` is the read-model one. The lead may want to confirm.
-- Not built, and not before 1.0.
+- The `apply` word: the study's event-sourcing sketch folds events into state with `apply`, while [ADR-0079](./0079-commands-events-and-the-outbox.md) uses `apply` for a handler that updates a read-model row. The extension decides its own words; core's `apply` is the read-model one. This is not yet confirmed and stays an open question.
+- Not built. No row dates them. RDM-01 applies: not before the port unless the port needs them, and as many planned constructs as possible before 1.0.
 
 ## Action items
 

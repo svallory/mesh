@@ -19,7 +19,9 @@ operator (Saulo Vallory), 2026-10-10 and 2026-10-11. DOM-10 is open.
 
 ## Context
 
-Several rulings above end in "Mesh warns": an entity action that calls another aggregate's action ([ADR-0078](./0078-services-and-where-effects-go.md)), a service that touches one entity, an entity in two aggregates ([ADR-0080](./0080-aggregates-and-concepts.md)), the domain importing a surface. They need one home. The [study](../research/domain-concepts.md) (D21 to D24, section 2.24) proposed rules as an extension on a third-party library such as ts-arch.
+Several rulings need a place to check them: Mesh warns when an entity action calls another aggregate's action ([ADR-0078](./0078-services-and-where-effects-go.md), DOM-15) and when a service operation touches one entity (DOM-16, switchable in `architecture.mesh.mx`); the domain never imports a surface (DOM-13, absolute). The [study](../research/domain-concepts.md) (D21 to D24, section 2.24) proposed an extension, `@meshfw/architecture`, with Mesh's own checker over the import graph and the model (ts-arch was inspiration, not a dependency), the built-in invariants staying in core. DOM-30 moved the whole of it into core.
+
+A lead proposal, for operator review and not ruled: a warning for an entity that belongs to two aggregates ([ADR-0080](./0080-aggregates-and-concepts.md)).
 
 ## Decision
 
@@ -37,11 +39,11 @@ architecture :project
 
 ## Open
 
-**DOM-10: when the architecture rules are built.** The study's "after 1.0" belonged to the extension option that was rejected. Options: with the first construct that needs a rule (so the warnings above have a home), at the gate, or after 1.0. Not decided.
+**DOM-10: when the architecture rules are built.** The study's "after 1.0" belonged to the extension option that was not taken. Not decided; RDM-01 (no new construct before the port unless the port needs it; as many planned constructs as possible before 1.0) is the general rule.
 
 ## Options considered
 
-An extension on a library (rejected), core with a third-party checker (rejected: a dependency for a small graph walk, [ADR-0062](./0062-direct-dependencies-zod-drizzle-opentelemetry.md)), core with Mesh's own checker (chosen).
+The study's D21: (a) built-in invariants in core, and the rule language, engine and presets as an extension, after 1.0; (b) everything in core (chosen by DOM-30). Either way the checker is Mesh's own, with no third-party rule library. D22 (file name and root): `architecture.mesh.mx` with root `architecture :name` (chosen), `arch.mesh.mx`, or a `rule-set` root. D23 (presets): `use :mesh-recommended` with per-rule `severity` and `disable` (chosen), or a pre-filled copy in the project. D24 (tiers): built-in errors no file can remove plus a file of recommendations (chosen), or every rule changeable.
 
 ## Trade-off analysis
 
@@ -49,8 +51,8 @@ Core keeps the rules next to the model they read and keeps the warnings consiste
 
 ## Consequences
 
-- The warnings in [ADR-0078](./0078-services-and-where-effects-go.md) and [ADR-0080](./0080-aggregates-and-concepts.md) are switched off here, not in the entity.
-- Nothing is built. Until DOM-10 is ruled, those warnings have no date.
+- Rules are switched off or re-graded here, not in the entity. Which rules are built-in invariants and which can be disabled is ruled only for the one-entity service warning (DOM-16, switchable); the others are not yet ruled.
+- Nothing is built. Until DOM-10 is ruled, the rules have no date.
 
 ## Action items
 

@@ -5,7 +5,7 @@ description: "Which DDD, CQRS and event-sourcing ideas Mesh should model, and th
 
 # Domain concepts: which DDD, CQRS and event-sourcing ideas Mesh should model, and the project structure that leaves room for them
 
-Date: 2026-10-10 (revision 3 of the study); rulings 2026-10-10 and 2026-10-11. This page is a study written before the decisions were taken. It proposes twenty-four decisions, D1 to D24 (section 7). The project then ruled on most of them, in some places differently from what the study recommended. **The decision records are the source of truth, and the table below says which record holds each outcome.** Where a proposal in the text was replaced, a note under it says so and names the replacement; the analysis and its citations stay as written, because they were checked against the sources and still explain why the options looked as they did. A few ruled points in the records are marked "lead reading": they are one reading of a ruling, still awaiting the operator's review.
+Date: 2026-10-10 (revision 3 of the study); rulings 2026-10-10 and 2026-10-11. This page is a study written before the decisions were taken. It proposes twenty-four decisions, D1 to D24 (section 7). The project then ruled on most of them, in some places differently from what the study recommended. **The decision records are the source of truth, and the table below says which record holds each outcome.** Where a proposal in the text was replaced, a note under it says so and names the replacement; the analysis and its citations stay as written, because they were checked against the sources and still explain why the options looked as they did. A few points in the records are marked "lead reading": they are one reading of a ruling and are not yet confirmed.
 
 ## What was decided
 
@@ -16,12 +16,12 @@ Each row is one proposed decision. "Row" is the id the decision records cite for
 | D1 | Name of the audience-specific entry-point file | **Ruled as proposed:** `surface`, not `app` | DOM-11 | [ADR-0077](../decisions/0077-surfaces-and-file-kinds.md) |
 | D2 | How a file's kind is recognised | **Ruled as proposed:** the root tag decides; every file keeps `.mesh.mx` | DOM-12 | [ADR-0077](../decisions/0077-surfaces-and-file-kinds.md) |
 | D3 | Where services live | **Ruled as proposed:** domain services in their module folder, application services with their surface; the domain never imports a surface | DOM-13 | [ADR-0078](../decisions/0078-services-and-where-effects-go.md) |
-| D4 | Services (options A to D) | **Partly ruled:** services follow Vernon's definition (domain service, application service). The construct's shape and when it is built are **open**; no new construct comes before the port unless the port needs it | DOM-14, DOM-09 (open), RDM-01 | [ADR-0078](../decisions/0078-services-and-where-effects-go.md), [ADR-0072](../decisions/0072-mesh-1-0-is-the-port-gate.md) |
+| D4 | Services (options A to D) | **Partly ruled:** services follow Vernon's definition (domain service, application service). The construct's shape and when it is built are **open**; no new construct comes before the port unless the port needs it, and as many planned constructs as possible come before 1.0 | DOM-14, DOM-09 (open), RDM-01 | [ADR-0078](../decisions/0078-services-and-where-effects-go.md), [ADR-0072](../decisions/0072-mesh-1-0-is-the-port-gate.md) |
 | D5 | Cascade or service command | **Ruled, differently:** a three-way split. The root writes its own parts in the entity file; an effect across aggregates is a service (plain code over `transaction` until services exist); effects that may happen later are publish and listen. A core rule warns when an entity action calls another aggregate's action. Whether Mesh supports publish-subscribe in general is **open** | DOM-15, DOM-08 (open) | [ADR-0078](../decisions/0078-services-and-where-effects-go.md), [ADR-0068](../decisions/0068-actions-compose-through-actions-and-tx.md) (amended) |
 | D6 | The single-entity check | **Ruled as proposed, with a new keyword:** declared dependencies stay (they narrow the handles and `tsc` enforces them), the warning can be switched off, and the dependency line starts with `uses`, not `call` | DOM-16, DOM-01 | [ADR-0078](../decisions/0078-services-and-where-effects-go.md) |
 | D7 | Command in core | **Ruled, differently:** `command` and `event` are declarations in their own files, and an action names the commands it answers with `handles=[...]`. A command is a serialised request to run a write action; a query is a serialised read request | DOM-17 | [ADR-0079](../decisions/0079-commands-events-and-the-outbox.md) |
 | D8 | Domain events: form and timing | **Ruled, differently:** domain events are built in milestone M6, before the gate, and the Hyper application's hand-written event table is dropped | DOM-18 | [ADR-0079](../decisions/0079-commands-events-and-the-outbox.md) |
-| D9 | Seam payloads and declared events | **Ruled, differently:** declaring events and publishing them are separate syntax. An action says `publish :task-completed`; a surface lists what leaves with `publishes events=[...]`. No `events` field on the seams | DOM-19, DOM-02 | [ADR-0079](../decisions/0079-commands-events-and-the-outbox.md), [ADR-0077](../decisions/0077-surfaces-and-file-kinds.md) |
+| D9 | Seam payloads and declared events | **Ruled, differently:** declaring events and publishing them are separate syntax. An action says `publish :task-completed`; a surface lists what leaves with `publishes events=[...]`. Option (a), an `events` field on the seams, was not taken; with events delivered from the outbox the seams need no such field (a consequence, not a ruling; the payloads are settled in M6's design) | DOM-19, DOM-02 | [ADR-0079](../decisions/0079-commands-events-and-the-outbox.md), [ADR-0077](../decisions/0077-surfaces-and-file-kinds.md) |
 | D10 | The JSON-RPC adapter and surfaces | **Ruled as proposed:** option (c), `@meshfw/jsonrpc` before the gate with a hand-written method table; surfaces generate the table after 1.0 | DOM-20 | [ADR-0077](../decisions/0077-surfaces-and-file-kinds.md) |
 | D11 | The surface format in core | **Ruled as proposed:** core owns the format, view and manifest; readers are adapters | DOM-21 | [ADR-0077](../decisions/0077-surfaces-and-file-kinds.md) |
 | D12 | Fields through a surface | **Ruled as proposed:** fail closed (`fields=[...]` or `fields=:all`); replaces the proposed `public` flag of [ADR-0035](../decisions/0035-meaning-of-public.md) | DOM-22 | [ADR-0077](../decisions/0077-surfaces-and-file-kinds.md) |
@@ -32,7 +32,7 @@ Each row is one proposed decision. "Row" is the id the decision records cite for
 | D17 | Value types | **Ruled, differently:** `concept`, one construct that is both the value object and the Concepts library idea: a shared understanding of something with no identity and as many fields as it needs. A repository is allowed as a pattern, with no construct | DOM-26, DOM-27 | [ADR-0080](../decisions/0080-aggregates-and-concepts.md) |
 | D18 | Named checks | **Ruled, differently:** an entity-level `checks` section, referenced by a bare `check :name`, in core (not MX check files, and not an extension-host point). Reusable blocks are `mixin` files included with `use`; Mesh ships `:timestamps` and `:versioned`. Step files (reusable steps) are dropped | DOM-28, DOM-04, DOM-33 | [ADR-0082](../decisions/0082-named-checks-and-mixins.md), [ADR-0053](../decisions/0053-validate-then-do.md) (amended) |
 | D19 | Name clashes | **Ruled as proposed for the port:** the table in section 5 is accepted, with the changed words (`publish`, `apply`, `process`, `uses`) | DOM-29 | [ADR-0083](../decisions/0083-names-for-the-new-constructs.md) |
-| D20 | Decide now: flat namespace, the meaning of `&`, seam payloads | **Ruled, and mostly built:** generated imports follow folder modules (`#mesh/domain/<module>`); `&name` always refers to a member declared by the type it sits in; the seam payloads get no `events` field (see D9) | CMP-12, CMP-16, CMP-17, SYN-19 | [ADR-0058](../decisions/0058-generated-code-in-mesh-imported-as-hash-mesh.md) (amended), [ADR-0067](../decisions/0067-members-imports-input-static-files.md) |
+| D20 | Decide now: flat namespace, the meaning of `&`, seam payloads | **Partly ruled differently:** item 1 recommended one flat namespace, and the ruling is folder modules, not a flat namespace (`#mesh/domain/<module>`); `&name` always refers to a member declared by the type it sits in; item 3 (seam payloads) follows D9: no `events` field is needed once events come from the outbox | CMP-12, CMP-16, CMP-17, SYN-19 | [ADR-0058](../decisions/0058-generated-code-in-mesh-imported-as-hash-mesh.md) (amended), [ADR-0067](../decisions/0067-members-imports-input-static-files.md) |
 | D21 | Architecture rules: ring | **Ruled, differently:** the rule language, the engine and the presets are core, not an extension. Mesh uses them to guide users and agents. When they are built is **open** | DOM-30, DOM-10 (open) | [ADR-0084](../decisions/0084-architecture-rules-are-core.md) |
 | D22 | Architecture rules: file name and root tag | **Ruled as proposed:** `architecture.mesh.mx`, root `architecture :name` | DOM-30 | [ADR-0084](../decisions/0084-architecture-rules-are-core.md) |
 | D23 | Presets | **Ruled as proposed:** `use :mesh-recommended`, with per-rule `severity` and `disable` | DOM-30 | [ADR-0084](../decisions/0084-architecture-rules-are-core.md) |
@@ -274,7 +274,7 @@ This reverses §6's "manual and generic actions: not planned" (decision D4).
   to by name" ([extension host][a-ext-host]; roadmap §6 and M11), that is, TypeScript contributed
   through the host.
 - **Form.** The computed boolean is the specification. For named checks, the documented form stands
-  unless the [ADR-0053] model used for reusable steps: is preferred: MX definition files
+  unless the [ADR-0053] model used for reusable steps is preferred: MX definition files
   (`check :taskOpen` with options and a body) that extensions contribute *the same way*, so user-written
   and extension-contributed checks share one contract and one home (decision D18). Under that option a
   root `check` and the `check` line inside `validate` share a tag name in two roles; root-tag dispatch
@@ -329,7 +329,7 @@ This reverses §6's "manual and generic actions: not planned" (decision D4).
     seam, the outbox extension or the event-sourcing extension.
   - **One way.** After D8, declared events are *the* way to produce typed events. A mapping table on
     the seam stays legal application code, as any seam code is, and the docs say so.
-  - **Replaced by a ruling.** Events are declared in `event` files, separate from the action that raises one, and an action raises one with `publish :task-completed`; `publish` writes the event to the outbox in the action's transaction, and an event bus delivers from there. There is no `emit` step, no `events` section in the entity and no `events` field on the seam payloads. Domain events and the outbox are built in M6. See [ADR-0079] (DOM-19, DOM-02, DOM-06, DOM-18). The timing analysis above (which row write records an event, and in what order the events of a call come out) is the reasoning the Hyper event order must still satisfy.
+  - **Replaced by a ruling.** Events are declared in `event` files, separate from the action that raises one, and an action raises one with `publish :task-completed`; `publish` writes the event to the outbox in the action's transaction, and an event bus delivers from there. There is no `emit` step and no `events` section in the entity. With events delivered from the outbox, the seam payloads need no `events` field (a consequence of these rows, not a ruling of its own; the payloads are settled in M6's design). Domain events and the outbox are built in M6. See [ADR-0079] (DOM-19, DOM-02, DOM-06, DOM-18). The timing analysis above (which row write records an event, and in what order the events of a call come out) is the reasoning the Hyper event order must still satisfy.
   - **Names.** Events would be members (`&completed`), beside attributes, relationships, computed
     fields, actions, checks and policies, so an event cannot share a name with an action. Past-tense
     names (`complete`/`completed`) avoid it; `cancel`/`canceled` too. Decision D8 includes this.
@@ -944,7 +944,7 @@ Two ruled records assume a whole-model view and need reconciling:
 
 | Name | For | Against |
 |:--|:--|:--|
-| `app` | The brief's working name and its location sketch (`src/apps/<name>/`) | Clashes with the monorepo's `apps/`, with "your app" and "one domain per app" ([ADR-0057], [project structure][d-structure]), and with the separate user-facing app the operator excludes |
+| `app` | The brief's working name and its location sketch (`src/apps/<name>/`) | Clashes with the monorepo's `apps/`, with "your app" and "one domain per app" ([ADR-0057], [project structure][d-structure]), and with the separate user-facing app that is out of scope for Mesh |
 | **`surface`** | Already the docs' loose word ("agent surface" in [ADR-0027], "RPC surface" in the gap analysis); no clash in TypeScript, DDD or the repo | Less familiar; abstract |
 | `interface` | Accurate | TypeScript's `interface` keyword |
 | `api` | Familiar | Implies HTTP; a CLI or admin UI is not usually called an API |
@@ -972,7 +972,7 @@ lists which have been edited and which wait for their user-docs pages, [ADR-0077
 
 ## 5. Name clashes (decision D19)
 
-> **Ruled.** The table is accepted for the port, with the words that changed (`publish` for `emit`, `apply` and `process` for `react` and `handle`, `uses` for `call`, `concept` for `value`, `mixin` for fragments). A repository construct may come later. See [ADR-0083] (DOM-29, DOM-27).
+> **Ruled.** The table is accepted for the port, with the words that changed (`publish` for `emit`, `process` for `react` and `apply` for `handle`, `uses` for `call`, `concept` for `value`, `mixin` for fragments). A repository construct may come later. See [ADR-0083] (DOM-29, DOM-27).
 
 | Word | Meanings in play | Resolution |
 |:--|:--|:--|
@@ -989,14 +989,14 @@ lists which have been edited and which wait for their user-docs pages, [ADR-0077
 | **module** | Mesh folder; Evans's Module; ES modules | Same as Evans's; no change |
 | **adapter / port** | Mesh ring; hexagonal; the Hyper port | Name nothing "port" |
 | **step** | `do` step; `step` file; workflow step | Decide with the workflows ADR |
-| **on** | `on=:create`; `on:load`; proposed reactions and projection handlers | Use `apply` and `process` (proposed as `react` and `handle`), not `on` ([ADR-0083]) |
+| **on** | `on=:create`; `on:load`; proposed reactions and projection handlers | Use `process` and `apply` (proposed as `react` and `handle`, in that order), not `on` ([ADR-0083]) |
 | **check** | Mesh validation; Hyper's checks, which are every named rule across its four phases (§4.4, §7.1: `claim.assignee`, `expected-version`, ...) | Hyper's checks map to Mesh `check`s, policies and named checks (G04); the shared word is accurate |
 
 ## 6. The target project structure
 
 ### 6.1 File kinds
 
-> **Ruled file kinds** (each record is the reference): `entity`, `aggregate`, `concept`, `mixin`, `command`, `event`, `service`, `surface` and `architecture` ([ADR-0077], [ADR-0078], [ADR-0079], [ADR-0080], [ADR-0082], [ADR-0084]); `projection` and `workflow` stay extension kinds ([ADR-0081]). The table below is the study's.
+> **Ruled file kinds** (each record is the reference): `entity`, `aggregate`, `concept`, `mixin`, `command`, `event`, `surface` and `architecture` ([ADR-0077], [ADR-0079], [ADR-0080], [ADR-0082], [ADR-0084]). `service` is proposed, and its shape is open ([ADR-0078]). No record rules on `projection` and `workflow`. The table below is the study's.
 
 | Kind (root tag) | Where | Ring | Owner | When |
 |:--|:--|:--|:--|:--|
@@ -1078,7 +1078,7 @@ The extension host is after 1.0 (M11).
 
 ### 6.5 Decide now, or wait
 
-> **Outcome.** Item 1 was ruled and built (generated imports follow folder modules). Item 2 was ruled (`&name` always refers to a member declared by the type it sits in). Item 3 was not taken: declared events get no `events` field on the seams, and are published through the outbox ([ADR-0079]).
+> **Outcome.** Item 1 was ruled differently: the study recommended one flat namespace, and the ruling is folder modules, not a flat namespace (CMP-17, built). Item 2 was ruled (`&name` always refers to a member declared by the type it sits in). Item 3 was not taken: events are published through the outbox, so the seams need no `events` field (a consequence, not a ruling; [ADR-0079]).
 
 **Decide now**, because each forces a refactor later:
 
@@ -1152,7 +1152,7 @@ The list below is the study's text, kept as proposed. The table at the top says 
    [ADR-0075] today, defined as in 2.8 (recorded at the action's own row write; `afterCommit` in
    emission order; `afterWrite` timing unchanged; no `emit` after the write); (b) declared events get their own seam later; (c) decide later and accept a
    breaking change. Recommendation: (a).
-   *Outcome: Not taken. Declaring events and publishing them are separate syntax, and the seams get no `events` field ([ADR-0079], DOM-19, DOM-02).*
+   *Outcome: Not taken. Declaring events and publishing them are separate syntax, and with events delivered from the outbox the seams need no `events` field (a consequence, not a ruling; [ADR-0079], DOM-19, DOM-02).*
 10. **D10. The JSON-RPC adapter and surfaces.** (a) both after 1.0, Hyper writes its server and method
     table in `examples/hyper`; (b) both before the gate; (c) the adapter before the gate,
     `@meshfw/jsonrpc`: newline-delimited JSON-RPC 2.0 over a Unix socket taking a hand-written method
@@ -1200,7 +1200,7 @@ The list below is the study's text, kept as proposed. The table at the top says 
 20. **D20. Decide now** the three items of 6.5 (namespace, `&` meaning, seam payloads), in one ADR with
     the doc edits they carry: the configuration sentence, the `&` sentence in Entities (names and
     references), [ADR-0067] §1, and [ADR-0075]'s payloads. Recommendation: yes.
-   *Outcome: Ruled as recommended, and built; the third item is superseded by D9's outcome ([ADR-0058] amended, CMP-12, CMP-16, CMP-17, SYN-19).*
+   *Outcome: Item 1 ruled differently (folder modules, not a flat namespace, CMP-17, built); item 2 ruled as recommended (CMP-12, SYN-19); item 3 follows D9's outcome ([ADR-0058] amended).*
 21. **D21. Architecture rules: ring.** (a) built-in invariants in core, the rule language, engine and
     presets as an extension (`@meshfw/architecture`), after 1.0; (b) all in core. Recommendation: (a). Either way the engine is Mesh's own checker over the import
     graph and the model (ruled, [ADR-0084]); no third-party rule library.

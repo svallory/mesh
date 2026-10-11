@@ -29,38 +29,40 @@ operator (Saulo Vallory): DOM-13 and DOM-14 on 2026-10-10; DOM-16 on 2026-10-10 
    - The root writes its own parts in the entity file, through `actions`.
    - An effect across aggregates goes in a service. Until services exist, it is plain code that uses `transaction` from `#mesh`.
    - An effect that may happen later uses `publish` and a listener ([ADR-0079](./0079-commands-events-and-the-outbox.md)).
-   - A core architecture rule ([ADR-0084](./0084-architecture-rules-are-core.md)) **warns** when an entity action calls another aggregate's action. It is a warning, not a restriction: `architecture.mesh.mx` can switch it off.
+   - An architecture rule ([ADR-0084](./0084-architecture-rules-are-core.md), DOM-30) **warns** when an entity action calls another aggregate's action. It is a warning, not a restriction. Whether the warning can be switched off is not ruled.
 2. **Where service files live** (DOM-13): domain services in their module folder (`src/domain/<module>/`), application services with their surface (`src/surfaces/<name>/services/`). The domain never imports a surface.
 3. **What a service is** (DOM-14), after Vernon: a domain service is stateless, cross-entity domain logic; an application service coordinates use cases (transactions, security, orchestration).
 4. **The dependency line is `uses`** (DOM-01). It replaces the study's `call`, because the line also lists entities that are only read.
 5. **Declared dependencies stay** (DOM-16). They narrow the handles a service receives, and `tsc` enforces them. Mesh warns when a service operation touches only one entity (it belongs on that entity), and `architecture.mesh.mx` can switch that warning off.
 
-An illustration (the service construct is Open, so the member names are the study's proposal, and only `uses` is ruled):
+An illustration (the service construct is Open, so the members are the study's proposal, and only the keyword `uses` is ruled; the line shape follows the study's `call` line):
 
 ```mx "A service (illustration; DOM-09 is open)"
 service :Work
-  uses Task, Dependency, Notification
   command :complete-task
+    uses entity=Task actions=[:complete]
+    uses entity=Dependency actions=[:release]
+    uses entity=Notification actions=[:create]
 ```
 
 ## Open
 
-- **DOM-09: the shape of the service construct and when it is built.** The study proposed `service :Name` with `command` and `query` members after 1.0. [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) bars new constructs before the port unless the port needs one. Options: (a) as proposed, after 1.0; (b) built before the gate if the Hyper port needs it; (c) never a construct, plain code over `transaction` for good. Not decided.
+- **DOM-09: the shape of the service construct and when it is built.** The study's section 3.4 gave four options: A, nothing new (cascades plus application code over `transaction`); B, `service :Name` with `command` and `query` members, grouping allowed; C, as B but one `command` or `query` per file with no `service` word; D, a `service` that groups any operations, single-entity ones included. DOM-16 (Mesh warns when a service operation touches one entity) excludes D. The study recommended A for 1.0 and B after. The roadmap principle (RDM-01) is that no new construct is added before the port unless the port needs it, and that as many planned constructs as possible are added before 1.0. So the open part is the shape (B or C) and the milestone. Not decided.
 - **DOM-08: whether Mesh supports publish-subscribe in general**, beyond what Hyper needs. Not decided. M6 builds only what Hyper needs ([ADR-0079](./0079-commands-events-and-the-outbox.md)).
 
 ## Options considered
 
-The study's D3 (where service files live): by module and surface (chosen) or one `services/` folder. D4 (what a service is): Vernon's split (chosen), one undifferentiated kind, or no service concept. D5 (cross-aggregate effects): actions that call actions (rejected as the answer for cross-aggregate effects), a service, publish and listen (chosen: all three, by case). D6 (the dependency line): `call`, `uses` (chosen), `needs`, or none with a runtime check.
+The study's D3 (where services live): (a) `src/domain/services/` for domain services and `src/apps/<name>/services/` for application services; (b) domain services in their module folder and application services with their surface, the domain never importing a surface (chosen). D4: options A to D above (the ruling fixes Vernon's definition, and the construct is Open). D5 (cascade or service): (a) an operation whose core is a write to one entity's own row is that entity's action with cascades, and one with no leading row or a non-record result is a service command; (b) service commands for every cross-entity write; (c) no rule. The ruling replaced these with the three-way split above. D6 (the single-entity check): (a) a warning computed from the dependency lines; (b) an error; (c) no check (the ruling is (a), switchable in `architecture.mesh.mx`).
 
 ## Trade-off analysis
 
-Three homes for an effect keep each aggregate's invariants in one place and make a cross-aggregate write visible. The price is that a beginner must pick among three. A warning, not a ban, because actions that call actions across aggregates are sometimes right, and a lead-set rule that cannot be switched off would not be Mesh's habit.
+Three homes for an effect keep each aggregate's invariants in one place and make a cross-aggregate write visible. The price is that a beginner must pick among three. The rule is a warning, not a ban.
 
 ## Consequences
 
 - [ADR-0068](./0068-actions-compose-through-actions-and-tx.md) is amended: `actions` in an entity file is for the root writing its own parts. [ADR-0074](./0074-write-policies-may-read-through-tx.md) is not changed.
 - Services are not built. Until they are, the plain-code route is the supported one, and [Using your domain](../../docs/using-your-domain.md) already shows it.
-- DOM-09 stays Open, so no row says when services arrive; the roadmap keeps them after 1.0 (RDM-01).
+- DOM-09 stays Open, so no row says when services arrive. RDM-01 applies: not before the port unless the port needs them, and as many planned constructs as possible before 1.0.
 
 ## Action items
 
