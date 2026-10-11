@@ -1,5 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { afterWrite, commit, composer, runAction, wantsChanges, type Change, type DataLayer, type DataOperations, type Seams } from "../src/index.ts";
+import { afterWrite, composer, runAction, wantsChanges, type Change, type DataLayer, type DataOperations, type Seams } from "../src/index.ts";
 
 /**
  * The seams on their own, over a layer that is told whether a call joins a running transaction. The joining rules belong
@@ -124,9 +124,34 @@ describe("afterWrite", () => {
     const { ops } = fake();
     await afterWrite(ops, undefined, target, null, { id: 1 }, {}, {});
     await afterWrite(ops, { beforeTransaction() {} }, target, null, { id: 1 }, {}, {});
-    const calls: unknown[] = [];
-    await commit(ops, { afterCommit: (event) => { calls.push(event); } });
-    expect(calls).toEqual([]);
+  });
+
+  test("records nothing for afterCommit when only afterWrite is registered", async () => {
+    const { layer } = fake();
+    const seen: unknown[] = [];
+    await runAction(layer, { afterWrite: (_db, event) => { seen.push(event.after); } }, target, {}, {}, async (tx) => {
+      await afterWrite(tx, { afterWrite: (_db, event) => { seen.push(event.after); } }, target, null, { id: 1 }, {}, {});
+    });
+    expect(seen).toEqual([{ id: 1 }]);
+  });
+
+  test("hands out deeply frozen payloads: a seam cannot change the input, the context or what another seam sees", async () => {
+    const { layer } = fake();
+    const input = { title: "a", tags: ["x"] };
+    const context = { actor: { id: 1 } };
+    const attempts: string[] = [];
+    const tryTo = (label: string, edit: () => void) => { try { edit(); attempts.push(`${label}: edited`); } catch { attempts.push(`${label}: refused`); } };
+    let committed: readonly Change[] = [];
+    const seams: Seams = {
+      beforeTransaction: (event) => { tryTo("input", () => { (event.input as { title: string }).title = ""; }); tryTo("context", () => { (event.context as { actor: { id: number } }).actor.id = 2; }); },
+      afterWrite: (_db, event) => { tryTo("after", () => { (event.after as { n: number }).n = 0; }); tryTo("nested", () => { (event.after as { list: number[] }).list.push(9); }); },
+      afterCommit: ({ changes }) => { committed = changes; },
+    };
+    await runAction(layer, seams, target, input, context, async (tx) => { await afterWrite(tx, seams, target, null, { n: 1, list: [1] }, input, context); });
+    expect(attempts).toEqual(["input: refused", "context: refused", "after: refused", "nested: refused"]);
+    expect(input).toEqual({ title: "a", tags: ["x"] });
+    expect(context).toEqual({ actor: { id: 1 } });
+    expect(committed[0]!.after).toEqual({ n: 1, list: [1] });
   });
 });
 
@@ -155,5 +180,54 @@ describe("the composer's transaction", () => {
     made.provide({}, {});
     await expect(made.transaction(async () => { await afterWrite(ops, seams, target, null, { id: 1 }, {}, {}); throw new Error("no"); })).rejects.toThrow("no");
     expect(calls).toEqual([]);
+  });
+});
+
+describe("a layer that hands every transaction the same operations object", () => {
+  /** Transactions queue one after the other, and the promise settles a few ticks after the next one may start. */
+  function reusing() {
+    const ops = { insert: async (_t: unknown, row: unknown) => row, selectByKey: async () => undefined, updateByKey: async () => undefined, deleteByKey: async () => true } as unknown as DataOperations;
+    let tail: Promise<unknown> = Promise.resolve();
+    const layer = {
+      refuseIfFailed: () => false,
+      transaction: async <T>(run: (tx: DataOperations) => Promise<T>): Promise<T> => {
+        const turn = tail.then(() => run(ops));
+        tail = turn.catch(() => undefined);
+        const result = await turn;
+        await new Promise((resolve) => setTimeout(resolve, 2));
+        return result;
+      },
+      close: async () => {},
+    } as unknown as DataLayer;
+    return { layer, ops };
+  }
+
+  test("concurrent top-level calls and application transactions each report exactly their own changes", async () => {
+    const { layer, ops } = reusing();
+    const reported: string[] = [];
+    const seams: Seams = {
+      afterWrite: async () => { await new Promise((resolve) => setTimeout(resolve, 1)); },
+      afterCommit: ({ changes }) => { reported.push(changes.map((change) => change.action).join("+")); },
+    };
+    const made = composer(layer, seams);
+    made.provide({}, {});
+    const write = (action: string) => afterWrite(ops, seams, { entity: "Thing", action }, null, { id: 1 }, {}, {});
+    await Promise.all([
+      runAction(layer, seams, target, {}, {}, () => write("A")),
+      runAction(layer, seams, target, {}, {}, () => write("B")),
+      made.transaction(async () => { await write("C1"); await write("C2"); }),
+      runAction(layer, seams, target, {}, {}, () => write("D")),
+    ]);
+    expect(reported.sort()).toEqual(["A", "B", "C1+C2", "D"]);
+  });
+
+  test("a call that rolled back leaves nothing for the next one", async () => {
+    const { layer, ops } = reusing();
+    const reported: string[] = [];
+    const seams: Seams = { afterCommit: ({ changes }) => { reported.push(changes.map((change) => change.action).join("+")); } };
+    const write = (action: string) => afterWrite(ops, seams, { entity: "Thing", action }, null, { id: 1 }, {}, {});
+    await expect(runAction(layer, seams, target, {}, {}, async () => { await write("lost"); throw new Error("no"); })).rejects.toThrow("no");
+    await runAction(layer, seams, target, {}, {}, () => write("kept"));
+    expect(reported).toEqual(["kept"]);
   });
 });

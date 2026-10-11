@@ -3,7 +3,7 @@
 // leaves the call resolved, a destroy's `before` is the deleted row, the application `transaction` is an outermost
 // transaction, and `db` is the four by-key operations.
 import { describe, expect, spyOn, test } from "bun:test";
-import { type AfterCommitEvent, type AfterWriteEvent, type BeforeTransactionEvent, type SeamDb, type Seams } from "@meshfw/runtime";
+import { FrameworkError, type AfterCommitEvent, type AfterWriteEvent, type BeforeTransactionEvent, type SeamDb, type Seams } from "@meshfw/runtime";
 import { bind, tables } from "#mesh";
 import { submissionSubmit } from "../src/domain/work/work.commands";
 import { as, empty, populate, setup, world } from "./world";
@@ -161,7 +161,24 @@ describe("acceptance 3: a throw in afterWrite rolls back the whole outermost tra
     } finally { await w.db.close(); }
   });
 
-  test("a throw in a call a function made through actions rolls the caller back, even when the function catches it", async () => {
+  test("a throw in a nested call rolls the caller back, even when the caller catches it: the call rejects with a FrameworkError whose cause is the throw", async () => {
+    const w = await world();
+    try {
+      const untouched = await state(w);
+      const rec = recorder({ afterWrite(_db, { input }) { if ((input as { title?: string }).title === "Never") throw boom; } });
+      const watched = bind(w.db, { clock: w.clock, seams: rec.seams });
+      const failure = await watched.transaction(async ({ actions }) => {
+        await actions.createTask({ title: "Kept" });
+        await actions.createTask({ title: "Never" }).catch(() => undefined);
+      }, as(w.alice)).then(() => undefined, (error: unknown) => error);
+      expect(failure).toBeInstanceOf(FrameworkError);
+      expect((failure as FrameworkError).cause).toBe(boom);
+      expect(await state(w)).toEqual(untouched);
+      expect(rec.commits).toEqual([]);
+    } finally { await w.db.close(); }
+  });
+
+  test("a throw in a call a step made through actions rolls the whole review back", async () => {
     const w = await world();
     try {
       const submission = await pending(w);

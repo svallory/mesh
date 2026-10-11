@@ -480,6 +480,44 @@ test.each(["domain/blog/post.actions.ts", "domain/blog/index.ts", "binding.ts", 
   expect(check().exitCode).toBe(0);
 });
 
+test("a mesh.config.ts that declares seams passes mesh build and build --check, and connect() runs them (ADR-0075)", async () => {
+  // On a copy of the project, inside the example so its node_modules resolve; the copy's config names the seams for real.
+  const project = resolve(import.meta.dir, "..");
+  const copy = mkdtempSync(join(import.meta.dir, ".seams-"));
+  const cwd = process.cwd();
+  try {
+    for (const entry of ["package.json", "src", ".mesh"]) cpSync(join(project, entry), join(copy, entry), { recursive: true });
+    writeFileSync(join(copy, "mesh.config.ts"), readFileSync(join(project, "mesh.config.ts"), "utf8").replace(
+      "  data:", `  seams: {
+    beforeTransaction: ({ entity, action }) => { (globalThis as any).__seamLog.push(\`before \${entity}.\${action}\`); },
+    afterWrite: (_db, { entity, action }) => { (globalThis as any).__seamLog.push(\`write \${entity}.\${action}\`); },
+    afterCommit: ({ changes }) => { (globalThis as any).__seamLog.push(\`commit \${changes.length}\`); },
+  },
+  data:`));
+    const run = (...args: string[]) => Bun.spawnSync([process.execPath, "x", "mesh", "build", ...args], { cwd: copy });
+    expect(run("--check").stderr.toString()).toBe("0 errors, 0 warnings\n");
+    expect(run("--check").exitCode).toBe(0);
+    expect(run().exitCode).toBe(0);
+    const log: string[] = [];
+    (globalThis as any).__seamLog = log;
+    process.chdir(copy);
+    const mesh = await import(join(copy, ".mesh/index.ts")) as typeof import("#mesh");
+    const blog = await import(join(copy, ".mesh/domain/blog/index.ts")) as typeof import("#mesh/domain/blog");
+    await mesh.connect();
+    try {
+      const configured = (await import(join(copy, "mesh.config.ts"))).default as { data: SQLiteLayer };
+      await createSchema(configured.data, mesh.tables);
+      await blog.createUser({ name: "Configured" }, context);
+      await blog.readPost({}, context);
+    } finally { await mesh.disconnect(); }
+    expect(log).toEqual(["before User.create", "write User.create", "commit 1"]);
+  } finally {
+    process.chdir(cwd);
+    delete (globalThis as any).__seamLog;
+    rmSync(copy, { recursive: true, force: true });
+  }
+});
+
 test("acceptance 6: mesh build --check fails on a deleted module index, and mesh build writes it back", () => {
   // On a copy of the project, so a failure here never leaves the committed .mesh/ tree changed. The copy
   // sits inside the example, where the example's node_modules resolve meshfw and the adapter.

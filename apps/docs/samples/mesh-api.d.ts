@@ -44,9 +44,9 @@ declare module "@meshfw/runtime" {
   /** Code the application runs at three points of every generated action. Payloads are plain data. */
   export type Seams = {
     /** Before the transaction opens, for the call that opens it; throw to refuse the call. */
-    beforeTransaction?(call: { entity: string; action: string; input: unknown; context: ActionContext }): void | Promise<void>;
+    beforeTransaction?(call: { entity: string; action: string; input: unknown; context: Readonly<ActionContext> }): void | Promise<void>;
     /** Inside the transaction, right after each row is written; a throw rolls back the whole call. */
-    afterWrite?(db: SeamDb, write: Change & { input: unknown; context: ActionContext }): void | Promise<void>;
+    afterWrite?(db: SeamDb, write: Change & { input: unknown; context: Readonly<ActionContext> }): void | Promise<void>;
     /** Once, after the outermost transaction commits; not called on rollback; a throw is reported and does not fail the call. */
     afterCommit?(commit: { changes: Change[] }): void | Promise<void>;
   };

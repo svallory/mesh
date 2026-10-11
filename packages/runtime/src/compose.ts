@@ -3,7 +3,7 @@ import { FrameworkError } from "./errors.ts";
 import type { Clock } from "./expr.ts";
 import { parseInput } from "./input.ts";
 import { readOnlyRecord } from "./load.ts";
-import { begin, commit, type Seams } from "./seams.ts";
+import { outermost, type Seams } from "./seams.ts";
 import type { StandardSchemaV1 } from "./standard-schema.ts";
 
 /**
@@ -81,11 +81,8 @@ export function composer(layer: DataLayer, seams?: Seams): Composer {
     async transaction<T>(fn: (composition: Composition) => Promise<T>, context?: unknown): Promise<T> {
       // The application's `transaction` is an outermost transaction like any action's: `afterCommit` runs once when it
       // commits, with every change made inside it. A call that joins a running transaction leaves that to the outer one.
-      const joined = layer.refuseIfFailed();
-      let operations: DataOperations | undefined;
-      const result = await layer.transaction((current) => { operations = joined ? current : begin(current); return fn(bound(current, context)); });
-      if (!joined) await commit(operations, seams);
-      return result;
+      if (layer.refuseIfFailed()) return layer.transaction((current) => fn(bound(current, context)));
+      return outermost(layer, seams, (current) => fn(bound(current, context)));
     },
   });
 }

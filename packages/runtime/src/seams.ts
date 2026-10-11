@@ -1,4 +1,5 @@
 import type { DataLayer, DataOperations, Row } from "./data-layer.ts";
+import type { ActionContext } from "./index.ts";
 import { cloneValue } from "./load.ts";
 
 /**
@@ -8,8 +9,8 @@ import { cloneValue } from "./load.ts";
  * Payloads are plain data; a seam never receives a read handle, a data layer or a function of the entity files.
  */
 
-/** The context a call carries (`ActionContext`), as a seam sees it: plain data, `{}` when the call passed none. */
-export type SeamContext = Readonly<Record<string, unknown>>;
+/** The context a call carries (`ActionContext`, the project's own type), as a seam sees it: a read-only copy, `{}` when the call passed none. */
+export type SeamContext = Readonly<ActionContext>;
 
 /** One row an action wrote: the row as it was (`null` for a create) and as written (`null` for a destroy). */
 export interface Change {
@@ -80,14 +81,36 @@ export function wantsChanges(seams: Seams | undefined): boolean {
   return seams?.afterWrite !== undefined || seams?.afterCommit !== undefined;
 }
 
+/** A deeply frozen copy: what a seam receives can neither change what Mesh writes nor what another seam sees. */
+function frozenCopy<T>(value: T): T {
+  let copy: unknown;
+  try { copy = cloneValue(value); } catch { copy = Array.isArray(value) ? [...value] : value !== null && typeof value === "object" ? { ...value } : value; }
+  return deepFreeze(copy) as T;
+}
+
+function deepFreeze(value: unknown): unknown {
+  if (value === null || typeof value !== "object" || Object.isFrozen(value)) return value;
+  Object.freeze(value);
+  // A Date, Map or class instance is frozen as an object; its members are not reachable as properties anyway.
+  for (const member of Object.values(value)) deepFreeze(member);
+  return value;
+}
+
 /**
- * Mark `operations` as the start of an outermost transaction: whatever an earlier transaction that rolled back left
- * for them is dropped, so a data layer that hands out one operations object for every transaction cannot leak a change
- * into the next commit.
+ * Run the outermost transaction of a call: `body` runs inside `layer.transaction`, and the changes its writes recorded
+ * are taken inside that callback, once every call joined to it has settled, so a layer that hands every transaction the
+ * same operations object cannot mix the changes of two calls. `afterCommit` then runs once, after the commit, when the
+ * transaction wrote something. A throw in `body` rolls back and rejects without running it.
  */
-export function begin(operations: DataOperations): DataOperations {
-  changesOf.delete(operations);
-  return operations;
+export async function outermost<T>(layer: DataLayer, seams: Seams | undefined, body: (tx: DataOperations) => Promise<T>): Promise<T> {
+  let taken: Change[] | undefined;
+  const result = await layer.transaction(async (tx) => {
+    changesOf.delete(tx);
+    try { return await body(tx); }
+    finally { taken = changesOf.get(tx); changesOf.delete(tx); }
+  });
+  await report(taken, seams);
+  return result;
 }
 
 /**
@@ -100,23 +123,14 @@ export async function runAction<T>(
   body: (tx: DataOperations) => Promise<T>,
 ): Promise<T> {
   const joined = layer.refuseIfFailed();
-  if (!joined && seams?.beforeTransaction)
-    await seams.beforeTransaction({ ...target, input: input as BeforeTransactionEvent["input"], context: (context ?? {}) as SeamContext });
   if (joined) return layer.transaction(body);
-  let operations: DataOperations | undefined;
-  const result = await layer.transaction((tx) => { operations = begin(tx); return body(tx); });
-  await commit(operations, seams);
-  return result;
+  if (seams?.beforeTransaction)
+    await seams.beforeTransaction({ ...target, input: frozenCopy(input) as BeforeTransactionEvent["input"], context: frozenCopy(context ?? {}) as SeamContext });
+  return outermost(layer, seams, body);
 }
 
-/**
- * Run `afterCommit` for the transaction whose operations are `operations`, after it committed, with the changes it
- * collected. Nothing runs when it wrote nothing. A throw is reported and swallowed: the data is committed.
- */
-export async function commit(operations: DataOperations | undefined, seams: Seams | undefined): Promise<void> {
-  if (!operations) return;
-  const changes = changesOf.get(operations);
-  changesOf.delete(operations);
+/** Run `afterCommit` with the changes of a transaction that committed. A throw is reported and swallowed: the data is committed. */
+async function report(changes: Change[] | undefined, seams: Seams | undefined): Promise<void> {
   if (!seams?.afterCommit || !changes?.length) return;
   try {
     await seams.afterCommit({ changes });
@@ -136,17 +150,20 @@ function dbOf(tx: DataOperations): SeamDb {
 }
 
 /**
- * Called by a generated write action right after it wrote its row: records the change for `afterCommit` and runs
- * `afterWrite`. `before` and `after` are copied, so the seams see the row as it was written whatever a step does next.
+ * Called by a generated write action right after it wrote its row: records the change for `afterCommit` (only when one
+ * is registered) and runs `afterWrite`. `before` and `after` are frozen copies, so the seams see the row as it was
+ * written whatever a step does next, and none can change what another sees.
  */
 export async function afterWrite(
   tx: DataOperations, seams: Seams | undefined, target: SeamTarget, before: Row | null, after: Row | null,
   input: unknown, context: unknown,
 ): Promise<void> {
   if (!wantsChanges(seams)) return;
-  const change: Change = Object.freeze({ ...target, before: before && cloneValue(before), after: after && cloneValue(after) });
-  const list = changesOf.get(tx);
-  if (list) list.push(change); else changesOf.set(tx, [change]);
+  const change: Change = Object.freeze({ ...target, before: before && frozenCopy(before), after: after && frozenCopy(after) });
+  if (seams?.afterCommit) {
+    const list = changesOf.get(tx);
+    if (list) list.push(change); else changesOf.set(tx, [change]);
+  }
   if (seams?.afterWrite)
-    await seams.afterWrite(dbOf(tx), { ...change, input: input as AfterWriteEvent["input"], context: (context ?? {}) as SeamContext });
+    await seams.afterWrite(dbOf(tx), { ...change, input: frozenCopy(input) as AfterWriteEvent["input"], context: frozenCopy(context ?? {}) as SeamContext });
 }

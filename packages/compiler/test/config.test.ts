@@ -77,6 +77,26 @@ test.each([
   expect(result.diagnostics.every((d) => d.position.file === "mesh.config.ts")).toBe(true);
   expect(JSON.stringify(result.diagnostics)).not.toContain(root);
 });
+test("seams are accepted: the three seam names, each a function", async () => {
+  const root = await project(`export default { domain: "src/domain", output: ".mesh", data: ${adapter}, seams: { beforeTransaction() {}, afterWrite: async () => {}, afterCommit: () => {} } }`);
+  const result = await loadConfig(root);
+  expect(result.diagnostics).toEqual([]);
+  expect(result.config).not.toBeNull();
+  const none = await project(`export default { domain: "src/domain", output: ".mesh", data: ${adapter}, seams: {} }`);
+  expect((await loadConfig(none)).diagnostics).toEqual([]);
+});
+test.each([
+  ["a non-object", "seams: 1", "Configuration field `seams` must be an object of seam functions"],
+  ["an array", "seams: []", "Configuration field `seams` must be an object of seam functions"],
+  ["null", "seams: null", "Configuration field `seams` must be an object of seam functions"],
+  ["a misspelled seam", "seams: { afterwrite() {} }", 'Unknown seam "afterwrite" in configuration field `seams`; the seams are beforeTransaction, afterWrite, afterCommit'],
+  ["a seam that is not a function", "seams: { afterCommit: true }", "Seam `afterCommit` in configuration field `seams` must be a function"],
+])("seams are rejected with MESH_CONFIG for %s", async (_label, field, message) => {
+  const root = await project(`export default { domain: "src/domain", output: ".mesh", data: ${adapter}, ${field} }`);
+  const result = await loadConfig(root);
+  expect(result.config).toBeNull();
+  expect(result.diagnostics).toMatchObject([{ code: "MESH_CONFIG", message }]);
+});
 test("the removed resources key has its exact rename hint", async () => {
   const root = await project(`export default { resources: "src/domain", domain: "src/domain", output: ".mesh", data: ${adapter} }`);
   expect((await loadConfig(root)).diagnostics).toMatchObject([{
