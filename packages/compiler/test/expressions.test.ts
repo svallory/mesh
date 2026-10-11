@@ -748,7 +748,7 @@ ${actions}`;
       expect(codesOf(item(make("      do\n        when=() => &n > 0 && &owner.n > 0\n          set\n            &m=1\n", takesAll)))).toEqual([]);
     });
 
-    test("an operator over a required member no input fills yet is a MESH_VALIDATE_UNFILLED warning at the member: in that the check fails on every create, in when it is skipped on every create", () => {
+    test("an operator over a required member no input fills yet is a MESH_VALIDATE_UNFILLED warning at the member: in that the check fails when the result depends on it, in when it is skipped, in details the value is null", () => {
       for (const that of ["() => &n !== 5", "() => &n > 0", "() => &n === 5", "() => &n + 1 > 0", "({ input }) => input.owner !== \"\" && &n > 0", "() => (&n > 0 ? 1 : 2) > 0"]) {
         const source = item(setsN(checkOf(that)));
         const found = unfilled(source);
@@ -760,17 +760,19 @@ ${actions}`;
       // A bare read of a boolean no input fills is the same.
       expect(codesOf(item(make(checkOf("() => &b"), "        &n\n        &owner\n")).replace("integer :n\n", "integer :n\n    boolean :b\n"))).toEqual(["warning:MESH_VALIDATE_UNFILLED"]);
       const [found] = unfilled(item(setsN(checkOf("() => &n > 0"))));
-      expect(found!.message).toBe("`&n` is null here on a create: `validate` sees the new instance before the input is applied, so this is unknown and the check fails on every create");
+      expect(found!.message).toBe("`&n` is null on every create here: `validate` sees the new instance before the input is applied, so a result that depends on it is unknown and the check fails");
       expect(found!.fix).toBe("write `input.n ?? &n` for the value the action will store, or `input.n` for the caller's");
       // In `when` the condition is unknown, and an unknown `when` skips the check (`runCheck`): it never runs on a create.
       for (const when of ["() => &n > 0", "() => &b"]) {
         const source = item(setsN(checkOf("() => true", `          when=${when}\n`))).replace("integer :n\n", "integer :n\n    boolean :b\n");
         const [inWhen] = unfilled(source);
         expect(codesOf(source), when).toEqual(["warning:MESH_VALIDATE_UNFILLED"]);
-        expect(inWhen!.message, when).toBe(`\`${when.slice(6, 8)}\` is null here on a create: \`validate\` sees the new instance before the input is applied, so this condition is unknown on every create and the check is skipped on every create`);
+        expect(inWhen!.message, when).toBe(`\`${when.slice(6, 8)}\` is null on every create here: \`validate\` sees the new instance before the input is applied, so a result that depends on it is unknown and the check is skipped`);
       }
+      // Not decisive: `&n > 0 || true` is true whatever `&n` is. The wording says "a result that depends on it", true here too.
+      expect(unfilled(item(setsN(checkOf("() => &n > 0 || true"))))[0]!.message).toBe(found!.message);
       // In `details` it is only a null value.
-      expect(unfilled(item(setsN(checkOf("() => true", "          details=() => ({ more: &n + 1 })\n"))))[0]!.message).toEndWith("so this value is null on every create");
+      expect(unfilled(item(setsN(checkOf("() => true", "          details=() => ({ more: &n + 1 })\n"))))[0]!.message).toEndWith("so a result that depends on it is unknown and the details value is null");
       // A null test, `??`, `?:` branches, an update and a member with a default are fine.
       for (const that of ["() => &n === null", "() => &n !== null", "() => (&n ?? 0) > 0", "({ input }) => (input.owner === \"\" ? &n : 1) === 1"])
         expect(unfilled(item(setsN(checkOf(that)))), that).toEqual([]);

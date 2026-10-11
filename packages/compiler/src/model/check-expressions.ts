@@ -146,17 +146,14 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       });
     }
   };
-  const unfilled = (name: string, position: SourcePosition, part: Scope["checkPart"]) =>
-    report("warning", "MESH_VALIDATE_UNFILLED",
-      `\`&${name}\` is null here on a create: \`validate\` sees the new instance before the input is applied, so ${
-        part === "when" ? "this condition is unknown on every create and the check is skipped on every create"
-        : part === "details" ? "this value is null on every create"
-        : "this is unknown and the check fails on every create"}`, position,
-      `write \`input.${name} ?? &${name}\` for the value the action will store, or \`input.${name}\` for the caller's`);
-
   /** What an unknown value does in each part of a check (`runCheck`): `that` fails the check, `when` skips it, `details` is null. Elsewhere (a step, a computed field) the outcome depends on the position. */
   const whenUnknown = (part: Scope["checkPart"]) =>
     part === "that" ? "the check fails" : part === "when" ? "the check is skipped" : part === "details" ? "the details value is null" : "the check fails or the row is left out";
+  // No reachability analysis: `&n > 0 || true` is not unknown, so the wording says what happens when the result depends on the read.
+  const unfilled = (name: string, position: SourcePosition, part: Scope["checkPart"]) =>
+    report("warning", "MESH_VALIDATE_UNFILLED",
+      `\`&${name}\` is null on every create here: \`validate\` sees the new instance before the input is applied, so a result that depends on it is unknown and ${whenUnknown(part)}`, position,
+      `write \`input.${name} ?? &${name}\` for the value the action will store, or \`input.${name}\` for the caller's`);
 
   function infer(n: ExprNode, scope: Scope): Ty {
     const fail = (detail: string): never => { throw new Demote(detail, n.position); };
