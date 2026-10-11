@@ -17,6 +17,7 @@ import {
   rejectComputedQuery,
   runCheck as $runCheck,
   scope as $scope,
+  uuidv7 as $uuidv7,
   writeCount as $writeCount,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
@@ -99,6 +100,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
         const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
+          id: $uuidv7(),
           title: parsed.title,
           body: parsed.body === undefined ? null : parsed.body,
           views: 0,
@@ -133,7 +135,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
         const $now = options.clock?.() ?? new Date();
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.post, $key);
         if ($before === undefined) throw new $NotFoundError("Post", $key);

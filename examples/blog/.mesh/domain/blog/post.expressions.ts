@@ -29,6 +29,8 @@ export type PostScope<I = unknown> = $Scope<{
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
 export type PostStoredScope<I = unknown> = PostScope<I> & { before: $DeepReadonly<Post> };
+/** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
+export type PostCheckScope<I = unknown> = Omit<PostScope<I>, "before">;
 
 export const expressions = {
   // computed excerpt, plain (unsupported-construct) (src/domain/blog/post.mesh.mx:23:20)
@@ -39,7 +41,7 @@ export const expressions = {
     })();
   },
   // check :titlePresent that, translated (src/domain/blog/post.mesh.mx:34:34)
-  "publish.check.titlePresent.that": ($s: PostStoredScope<PublishPostInput>) =>
+  "publish.check.titlePresent.that": ($s: PostCheckScope<PublishPostInput>) =>
     $.gt($.length($s.self.title), 0),
   // published filter, translated (src/domain/blog/post.mesh.mx:41:14)
   "published.filter": ($s: PostScope<PublishedPostInput>) => $.eq($s.self.state, "published"),

@@ -5,6 +5,7 @@
 import {
   castInput as $castInput,
   noteWrite as $noteWrite,
+  uuidv7 as $uuidv7,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
@@ -50,6 +51,7 @@ export function bindUser(layer: $DataLayer, _options: $BindOptions = {}, _compos
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
+          id: $uuidv7(),
           name: parsed.name,
         };
         // data layer
