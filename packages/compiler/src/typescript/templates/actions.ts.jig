@@ -52,8 +52,9 @@ export function {{ readsBindName }}(layer: $DataLayer, {{ readsOptionsName }}: $
       return $failJoined(layer, new $FrameworkError({{ body.unsupported }}));
       @else
       @if(body.usesParsed)~
-      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, {{ body.validator }}, input);
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
+      // for its policies and hands it over as `cast`; a read through `tx` casts it here.
+      const parsed = cast ?? (await $castInput(layer, {{ body.validator }}, input));
       @else~
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       await $castInput(layer, {{ body.validator }}, input);

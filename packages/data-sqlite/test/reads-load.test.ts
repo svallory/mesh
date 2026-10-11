@@ -249,6 +249,8 @@ describe("the generated files", () => {
       "  (await tx.readProject({ load: ['tasks'] }))[0]!.tasks.push((await tx.readTask({}))[0]!);",
       "  const [t] = await roa.readTask({ load: ['project'] });",
       "  // A caller's belongs-to can be null; the read-only reads keep the tx typing, where it cannot.",
+      "  // @ts-expect-error a caller's belongs-to can be null",
+      "  void t!.project.name;",
       "  const projectName: string | undefined = t!.project?.name;",
       "  const [u] = await tx.readTask({ load: ['project'] });",
       "  const sure: string = u!.project.name;",

@@ -20,6 +20,7 @@ import {
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type CastOutput as $CastOutput,
   type Row as $Row,
 } from "@meshfw/runtime";
 import type {
@@ -51,9 +52,11 @@ export function bindCompletionReads(layer: $DataLayer, options: $BindOptions = {
       context?: unknown,
       clock?: () => Date,
       policies?: boolean,
+      cast?: $CastOutput<typeof readCompletionInput>,
     ): Promise<L extends unknown ? CompletionTxWith<CompletionLoadNames<L>>[] : never> {
-      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, readCompletionInput, input);
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
+      // for its policies and hands it over as `cast`; a read through `tx` casts it here.
+      const parsed = cast ?? (await $castInput(layer, readCompletionInput, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.completion, {
           filter: parsed.filter,
@@ -217,9 +220,13 @@ export function bindCompletion(layer: $DataLayer, options: $BindOptions = {}, co
         return [] as unknown as L extends unknown
           ? CompletionWith<CompletionLoadNames<L>>[]
           : never;
-      return (await $reads.read(input, context, $clock, true)) as unknown as L extends unknown
-        ? CompletionWith<CompletionLoadNames<L>>[]
-        : never;
+      return (await $reads.read(
+        input,
+        context,
+        $clock,
+        true,
+        $parsed,
+      )) as unknown as L extends unknown ? CompletionWith<CompletionLoadNames<L>>[] : never;
     },
   });
 }

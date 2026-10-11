@@ -47,15 +47,16 @@ export const loadPlan = {
 /**
  * Load relationships and computed fields onto {{ entity.loader.record }} rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type {{ entity.loader.with }}<"name" | ...>.
+ * the result is new rows of type {{ entity.loader.with }}<"name" | ...>. It loads as `tx` does, running no policy, so
+ * it takes no `policies` option: every related record the key names is there.
  */
 export async function {{ entity.loader.name }}<const N extends keyof {{ entity.loader.loadable }}>(
   tx: $DataOperations,
   rows: readonly {{ entity.loader.record }}[],
   names: readonly N[],
-  options?: $LoadOptions,
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<{{ entity.loader.with }}<N>[]> {
-  return (await $loadRows(loadPlan, {{ entity.loader.entityLiteral }}, tx, rows, names, options)) as {{ entity.loader.with }}<N>[];
+  return (await $loadRows(loadPlan, {{ entity.loader.entityLiteral }}, tx, rows, names, { ...options, policies: false })) as {{ entity.loader.with }}<N>[];
 }
 @end
 @end

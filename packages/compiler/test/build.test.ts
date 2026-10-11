@@ -92,8 +92,9 @@ test(
     // is the hand-built one.
     const scoped = "policy :ownerStaffEdits types=[:update]";
     const result = buildWith(postSource.replace("policy :staffOrOwnerReads types=[:read]", scoped));
-    // `label` concatenates strings and calls a helper with the record: plain code, so the build warns (M4).
-    expect(result.diagnostics.map((d) => d.code)).toEqual(["MESH_EXPR_PLAIN"]);
+    // `label` concatenates strings and calls a helper with the record: plain code, so the build warns (M4). With no
+    // policy left on its read, an Invoice is loaded by no caller, which each relationship that reaches it says (R2-N2).
+    expect(result.diagnostics.map((d) => d.code)).toEqual(["MESH_LOAD_NO_POLICY", "MESH_EXPR_PLAIN", "MESH_LOAD_NO_POLICY"]);
     const expected = postDocument.entities[0]!;
     // The hand-built model predates M4: compare it without the trees (expressions.test.ts covers those).
     expect(

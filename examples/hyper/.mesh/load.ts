@@ -681,307 +681,305 @@ export const loadPlan = {
 /**
  * Load relationships and computed fields onto Event rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type EventWith<"name" | ...>.
+ * the result is new rows of type EventWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadEventFields<const N extends keyof EventLoadable>(
   tx: $DataOperations,
   rows: readonly Event[],
   names: readonly N[],
-  options?: $LoadOptions,
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<EventWith<N>[]> {
-  return (await $loadRows(loadPlan, "Event", tx, rows, names, options)) as EventWith<N>[];
+  return (await $loadRows(loadPlan, "Event", tx, rows, names, {
+    ...options,
+    policies: false,
+  })) as EventWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto Attempt rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type AttemptTxWith<"name" | ...>.
+ * the result is new rows of type AttemptTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadAttemptFields<const N extends keyof AttemptLoadable>(
   tx: $DataOperations,
   rows: readonly Attempt[],
   names: readonly N[],
-  options?: $LoadOptions,
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<AttemptTxWith<N>[]> {
-  return (await $loadRows(loadPlan, "Attempt", tx, rows, names, options)) as AttemptTxWith<N>[];
+  return (await $loadRows(loadPlan, "Attempt", tx, rows, names, {
+    ...options,
+    policies: false,
+  })) as AttemptTxWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto Invocation rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type InvocationTxWith<"name" | ...>.
+ * the result is new rows of type InvocationTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadInvocationFields<const N extends keyof InvocationLoadable>(
   tx: $DataOperations,
   rows: readonly Invocation[],
   names: readonly N[],
-  options?: $LoadOptions,
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<InvocationTxWith<N>[]> {
-  return (await $loadRows(
-    loadPlan,
-    "Invocation",
-    tx,
-    rows,
-    names,
-    options,
-  )) as InvocationTxWith<N>[];
+  return (await $loadRows(loadPlan, "Invocation", tx, rows, names, {
+    ...options,
+    policies: false,
+  })) as InvocationTxWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto Machine rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type MachineWith<"name" | ...>.
+ * the result is new rows of type MachineWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadMachineFields<const N extends keyof MachineLoadable>(
   tx: $DataOperations,
   rows: readonly Machine[],
   names: readonly N[],
-  options?: $LoadOptions,
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<MachineWith<N>[]> {
-  return (await $loadRows(loadPlan, "Machine", tx, rows, names, options)) as MachineWith<N>[];
+  return (await $loadRows(loadPlan, "Machine", tx, rows, names, {
+    ...options,
+    policies: false,
+  })) as MachineWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto Run rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type RunTxWith<"name" | ...>.
+ * the result is new rows of type RunTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadRunFields<const N extends keyof RunLoadable>(
   tx: $DataOperations,
   rows: readonly Run[],
   names: readonly N[],
-  options?: $LoadOptions,
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<RunTxWith<N>[]> {
-  return (await $loadRows(loadPlan, "Run", tx, rows, names, options)) as RunTxWith<N>[];
+  return (await $loadRows(loadPlan, "Run", tx, rows, names, {
+    ...options,
+    policies: false,
+  })) as RunTxWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto SessionReference rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type SessionReferenceTxWith<"name" | ...>.
+ * the result is new rows of type SessionReferenceTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadSessionReferenceFields<const N extends keyof SessionReferenceLoadable>(
   tx: $DataOperations,
   rows: readonly SessionReference[],
   names: readonly N[],
-  options?: $LoadOptions,
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<SessionReferenceTxWith<N>[]> {
-  return (await $loadRows(
-    loadPlan,
-    "SessionReference",
-    tx,
-    rows,
-    names,
-    options,
-  )) as SessionReferenceTxWith<N>[];
+  return (await $loadRows(loadPlan, "SessionReference", tx, rows, names, {
+    ...options,
+    policies: false,
+  })) as SessionReferenceTxWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto Collaborator rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type CollaboratorWith<"name" | ...>.
+ * the result is new rows of type CollaboratorWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadCollaboratorFields<const N extends keyof CollaboratorLoadable>(
   tx: $DataOperations,
   rows: readonly Collaborator[],
   names: readonly N[],
-  options?: $LoadOptions,
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<CollaboratorWith<N>[]> {
-  return (await $loadRows(
-    loadPlan,
-    "Collaborator",
-    tx,
-    rows,
-    names,
-    options,
-  )) as CollaboratorWith<N>[];
+  return (await $loadRows(loadPlan, "Collaborator", tx, rows, names, {
+    ...options,
+    policies: false,
+  })) as CollaboratorWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto Membership rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type MembershipTxWith<"name" | ...>.
+ * the result is new rows of type MembershipTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadMembershipFields<const N extends keyof MembershipLoadable>(
   tx: $DataOperations,
   rows: readonly Membership[],
   names: readonly N[],
-  options?: $LoadOptions,
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<MembershipTxWith<N>[]> {
-  return (await $loadRows(
-    loadPlan,
-    "Membership",
-    tx,
-    rows,
-    names,
-    options,
-  )) as MembershipTxWith<N>[];
+  return (await $loadRows(loadPlan, "Membership", tx, rows, names, {
+    ...options,
+    policies: false,
+  })) as MembershipTxWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto Assignment rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type AssignmentTxWith<"name" | ...>.
+ * the result is new rows of type AssignmentTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadAssignmentFields<const N extends keyof AssignmentLoadable>(
   tx: $DataOperations,
   rows: readonly Assignment[],
   names: readonly N[],
-  options?: $LoadOptions,
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<AssignmentTxWith<N>[]> {
-  return (await $loadRows(
-    loadPlan,
-    "Assignment",
-    tx,
-    rows,
-    names,
-    options,
-  )) as AssignmentTxWith<N>[];
+  return (await $loadRows(loadPlan, "Assignment", tx, rows, names, {
+    ...options,
+    policies: false,
+  })) as AssignmentTxWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto Claim rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type ClaimTxWith<"name" | ...>.
+ * the result is new rows of type ClaimTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadClaimFields<const N extends keyof ClaimLoadable>(
   tx: $DataOperations,
   rows: readonly Claim[],
   names: readonly N[],
-  options?: $LoadOptions,
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<ClaimTxWith<N>[]> {
-  return (await $loadRows(loadPlan, "Claim", tx, rows, names, options)) as ClaimTxWith<N>[];
+  return (await $loadRows(loadPlan, "Claim", tx, rows, names, {
+    ...options,
+    policies: false,
+  })) as ClaimTxWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto Completion rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type CompletionTxWith<"name" | ...>.
+ * the result is new rows of type CompletionTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadCompletionFields<const N extends keyof CompletionLoadable>(
   tx: $DataOperations,
   rows: readonly Completion[],
   names: readonly N[],
-  options?: $LoadOptions,
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<CompletionTxWith<N>[]> {
-  return (await $loadRows(
-    loadPlan,
-    "Completion",
-    tx,
-    rows,
-    names,
-    options,
-  )) as CompletionTxWith<N>[];
+  return (await $loadRows(loadPlan, "Completion", tx, rows, names, {
+    ...options,
+    policies: false,
+  })) as CompletionTxWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto Dependency rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type DependencyTxWith<"name" | ...>.
+ * the result is new rows of type DependencyTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadDependencyFields<const N extends keyof DependencyLoadable>(
   tx: $DataOperations,
   rows: readonly Dependency[],
   names: readonly N[],
-  options?: $LoadOptions,
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<DependencyTxWith<N>[]> {
-  return (await $loadRows(
-    loadPlan,
-    "Dependency",
-    tx,
-    rows,
-    names,
-    options,
-  )) as DependencyTxWith<N>[];
+  return (await $loadRows(loadPlan, "Dependency", tx, rows, names, {
+    ...options,
+    policies: false,
+  })) as DependencyTxWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto EvidenceReference rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type EvidenceReferenceTxWith<"name" | ...>.
+ * the result is new rows of type EvidenceReferenceTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadEvidenceReferenceFields<const N extends keyof EvidenceReferenceLoadable>(
   tx: $DataOperations,
   rows: readonly EvidenceReference[],
   names: readonly N[],
-  options?: $LoadOptions,
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<EvidenceReferenceTxWith<N>[]> {
-  return (await $loadRows(
-    loadPlan,
-    "EvidenceReference",
-    tx,
-    rows,
-    names,
-    options,
-  )) as EvidenceReferenceTxWith<N>[];
+  return (await $loadRows(loadPlan, "EvidenceReference", tx, rows, names, {
+    ...options,
+    policies: false,
+  })) as EvidenceReferenceTxWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto LateResult rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type LateResultTxWith<"name" | ...>.
+ * the result is new rows of type LateResultTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadLateResultFields<const N extends keyof LateResultLoadable>(
   tx: $DataOperations,
   rows: readonly LateResult[],
   names: readonly N[],
-  options?: $LoadOptions,
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<LateResultTxWith<N>[]> {
-  return (await $loadRows(
-    loadPlan,
-    "LateResult",
-    tx,
-    rows,
-    names,
-    options,
-  )) as LateResultTxWith<N>[];
+  return (await $loadRows(loadPlan, "LateResult", tx, rows, names, {
+    ...options,
+    policies: false,
+  })) as LateResultTxWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto Review rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type ReviewTxWith<"name" | ...>.
+ * the result is new rows of type ReviewTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadReviewFields<const N extends keyof ReviewLoadable>(
   tx: $DataOperations,
   rows: readonly Review[],
   names: readonly N[],
-  options?: $LoadOptions,
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<ReviewTxWith<N>[]> {
-  return (await $loadRows(loadPlan, "Review", tx, rows, names, options)) as ReviewTxWith<N>[];
+  return (await $loadRows(loadPlan, "Review", tx, rows, names, {
+    ...options,
+    policies: false,
+  })) as ReviewTxWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto Submission rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type SubmissionTxWith<"name" | ...>.
+ * the result is new rows of type SubmissionTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadSubmissionFields<const N extends keyof SubmissionLoadable>(
   tx: $DataOperations,
   rows: readonly Submission[],
   names: readonly N[],
-  options?: $LoadOptions,
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<SubmissionTxWith<N>[]> {
-  return (await $loadRows(
-    loadPlan,
-    "Submission",
-    tx,
-    rows,
-    names,
-    options,
-  )) as SubmissionTxWith<N>[];
+  return (await $loadRows(loadPlan, "Submission", tx, rows, names, {
+    ...options,
+    policies: false,
+  })) as SubmissionTxWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto Task rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type TaskTxWith<"name" | ...>.
+ * the result is new rows of type TaskTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadTaskFields<const N extends keyof TaskLoadable>(
   tx: $DataOperations,
   rows: readonly Task[],
   names: readonly N[],
-  options?: $LoadOptions,
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<TaskTxWith<N>[]> {
-  return (await $loadRows(loadPlan, "Task", tx, rows, names, options)) as TaskTxWith<N>[];
+  return (await $loadRows(loadPlan, "Task", tx, rows, names, {
+    ...options,
+    policies: false,
+  })) as TaskTxWith<N>[];
 }

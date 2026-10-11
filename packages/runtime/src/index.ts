@@ -31,6 +31,7 @@ export type { BindOptions, CheckSpec, SharedInput } from "./lifecycle.ts";
 export type { Clock, Scope } from "./expr.ts";
 export { loadRows, loadInto, unloadFrom, guarded, readOnlyRecord, cloneValue, type DeepReadonly, type Writable, rejectComputedQuery, CHUNK } from "./load.ts";
 export { castInput, checkUnchanged, composer, composed, failJoined, noteWrite, writeCount } from "./compose.ts";
+export type { CastOutput } from "./compose.ts";
 export type { Composer, Composition } from "./compose.ts";
 export type { LoadPlan, EntityPlan, RelationPlan, BelongsToPlan, HasPlan, ComputedPlan, LoadOptions } from "./load.ts";
 export { recordWrite, runAction, wantsChanges } from "./seams.ts";

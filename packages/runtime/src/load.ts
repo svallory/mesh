@@ -19,8 +19,9 @@ import { authorizer, type PolicySpec } from "./policy.ts";
  *   per row until M10 translates rollups into one statement.
  * - What a caller loads (`policies: true`: a read's `load`, a write's `load` step) runs the read policies of each entity it
  *   reaches, with the caller's scope (POL-17): a relationship to an entity they do not admit is `[]` (has-many) or `null`
- *   (belongs-to, has-one), and a rollup over one counts no row (`0`, or `null` for `max`). What a computed field loads to
- *   work itself out, and anything read through `tx`, runs no policy (ADR-0068).
+ *   (belongs-to, has-one), and a rollup over one counts no row (`0`, or `null` for `max`). The policies are decided first,
+ *   so a denied name is not queried at all. What a computed field's body reads, and anything read through `tx`, runs no
+ *   policy (POL-19, ADR-0068): a body is the entity's own rule, so it sees every related row.
  */
 export interface BelongsToPlan {
   kind: "belongs-to";
@@ -108,18 +109,57 @@ export async function loadRows(
   for (const name of names)
     if (!Object.hasOwn(entityPlan.relations, name) && !Object.hasOwn(entityPlan.computed, name))
       throw new FrameworkError(unknownName(plan, entity, name));
+  // Decided before anything loads: a name the caller is not admitted to is not queried, so a denied caller learns
+  // nothing from it, not even that a required belongs-to points at a row that is gone.
+  const denied = options.policies ? await deniedNames(plan, entity, names, options) : new Map<string, unknown>();
+  // Unless a computed body the caller named reads it for itself (POL-19): it is loaded for the body, and taken off below.
+  const forBodies = denied.size ? readByBodies(entityPlan, names) : new Set<string>();
+  if (rows.length) for (const name of names) if (denied.has(name) && !forBodies.has(name)) assertServable(plan, entity, entityPlan, name);
+  const loads = names.filter((name) => !denied.has(name) || forBodies.has(name));
   // Work on copies: the caller's rows are never changed, and a field a path loads only to evaluate a body stays off them.
   const work: Work[] = rows.map((row) => ({ ...row }));
   // Rollups last: one over a has-many that the same call loaded is worked out from those rows (below), with no query of its own.
   const isRollup = (name: string) => entityPlan.computed[name]?.kind === "rollup" && !Object.hasOwn(entityPlan.relations, name);
-  for (const name of [...names.filter((n) => !isRollup(n)), ...names.filter(isRollup)]) await ensureField(plan, entity, tx, work, name, options, 0);
-  // Loaded in full first, since a computed field may read the same relationship for itself; what the caller is not admitted to is then taken off.
-  const denied = options.policies ? await deniedNames(plan, entity, names, options) : new Map<string, unknown>();
+  for (const name of [...loads.filter((n) => !isRollup(n)), ...loads.filter(isRollup)]) await ensureField(plan, entity, tx, work, name, options, 0);
   return rows.map((row, index) => {
     const loaded: Row = { ...row };
     for (const name of names) loaded[name] = denied.has(name) ? emptied(denied.get(name)) : work[index]![name];
     return loaded;
   });
+}
+
+/**
+ * The names of this entity that the computed bodies among `names` read for themselves: the first step of each of their
+ * `needs`, followed through the entity's own computed bodies.
+ */
+function readByBodies(entityPlan: EntityPlan, names: readonly string[]): Set<string> {
+  const read = new Set<string>();
+  const visit = (name: string) => {
+    const computed = Object.hasOwn(entityPlan.computed, name) ? entityPlan.computed[name] : undefined;
+    if (computed?.kind !== "body") return;
+    for (const path of computed.needs) {
+      const head = path.split(".")[0]!;
+      if (read.has(head)) continue;
+      read.add(head);
+      visit(head);
+    }
+  };
+  for (const name of names) visit(name);
+  return read;
+}
+
+/**
+ * The errors a load of `name` gives whatever the rows hold. A denied name skips its query, but a load that cannot be
+ * served is still an error, never skipped, for every caller alike.
+ */
+function assertServable(plan: LoadPlan, entity: string, entityPlan: EntityPlan, name: string): void {
+  const relation = Object.hasOwn(entityPlan.relations, name) ? entityPlan.relations[name] : undefined;
+  if (relation) {
+    if (relation.kind !== "belongs-to" && relation.column === null) throw new FrameworkError(noBelongsToBack(entity, name, relation));
+    return;
+  }
+  const computed = entityPlan.computed[name];
+  if (computed?.kind === "rollup") rollupShape(plan, entity, entityPlan, name, computed);
 }
 
 /** A fresh empty value for each row, so that no two rows share one list. */
@@ -373,6 +413,8 @@ async function ensurePath(
 }
 
 const describe = (entity: string, name: string, relation: RelationPlan) => `${relation.kind} :${name} of :${entity}`;
+const noBelongsToBack = (entity: string, name: string, relation: RelationPlan) =>
+  `${describe(entity, name, relation)} cannot be loaded: :${relation.target} has no belongs-to back to :${entity}. Declare one in :${relation.target}, and name it with inverse=:name if there are several`;
 
 function chunks<T>(list: readonly T[]): T[][] {
   const out: T[][] = [];
@@ -402,8 +444,7 @@ async function loadRelation(
     }
     return;
   }
-  if (relation.column === null)
-    throw new FrameworkError(`${describe(entity, name, relation)} cannot be loaded: :${relation.target} has no belongs-to back to :${entity}. Declare one in :${relation.target}, and name it with inverse=:name if there are several`);
+  if (relation.column === null) throw new FrameworkError(noBelongsToBack(entity, name, relation));
   // A row with no key yet (a create's pending record) has nothing pointing at it.
   const keys = [...new Set(rows.map((row) => row[entityPlan.key]).filter((key) => key !== null && key !== undefined))];
   const grouped = new Map<unknown, Work[]>();
@@ -422,9 +463,10 @@ async function loadRelation(
   }
 }
 
-async function rollup(
-  plan: LoadPlan, entity: string, entityPlan: EntityPlan, name: string, computed: Extract<ComputedPlan, { kind: "rollup" }>, tx: DataOperations, row: Work,
-): Promise<unknown> {
+/** What a rollup counts over, or the error that says why it cannot be loaded (the same for every row and every caller). */
+function rollupShape(
+  plan: LoadPlan, entity: string, entityPlan: EntityPlan, name: string, computed: Extract<ComputedPlan, { kind: "rollup" }>,
+): { path: string; relation: HasPlan & { column: string }; target: EntityPlan; column: string } {
   const label = `${computed.fn} :${name} of="${computed.of.join(".")}" on :${entity}`;
   if (computed.fn !== "count" && computed.fn !== "max")
     throw new FrameworkError(`${label} cannot be loaded: only count and max rollups run before Mesh 1.0; sum, avg and min come after it`);
@@ -437,7 +479,13 @@ async function rollup(
   if (relation.column === null)
     throw new FrameworkError(`${label} cannot be loaded: :${relation.target} has no belongs-to back to :${entity}`);
   const target = planOf(plan, relation.target);
-  const column = attribute ?? target.key;
+  return { path, relation: relation as HasPlan & { column: string }, target, column: attribute ?? target.key };
+}
+
+async function rollup(
+  plan: LoadPlan, entity: string, entityPlan: EntityPlan, name: string, computed: Extract<ComputedPlan, { kind: "rollup" }>, tx: DataOperations, row: Work,
+): Promise<unknown> {
+  const { path, relation, target, column } = rollupShape(plan, entity, entityPlan, name, computed);
   // The rows are already here: the same answer the data layer gives (nulls are skipped; none is null, a count is 0), with no query.
   if (path in row) {
     const loaded = row[path];

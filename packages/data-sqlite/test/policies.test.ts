@@ -629,6 +629,10 @@ entity :Item table="items"
       const { loadShelfFields } = (await import(join(loadsDir, ".mesh/load.ts"))) as { loadShelfFields: (tx: unknown, rows: object[], names: string[]) => Promise<{ keeper: unknown }[]> };
       const rows = await db.transaction((tx) => loadShelfFields(tx, [{ ...inside }], ["items", "keeper"]));
       expect(rows[0]).toMatchObject({ keeper: { name: "Kay" } });
+      // Its type takes no `policies` (R2-N1); one forced past it is ignored: the loader always loads as `tx` does.
+      const forced = await db.transaction((tx) => (loadShelfFields as (tx: unknown, rows: object[], names: string[], options: object) => Promise<{ keeper: unknown }[]>)(
+        tx, [{ ...inside }], ["keeper"], { actor: alice.actor, context: alice, policies: true }));
+      expect(forced[0]).toMatchObject({ keeper: { name: "Kay" } });
     } finally { await db.close(); }
   });
 
@@ -652,8 +656,10 @@ entity :Item table="items"
   });
 
   test("the types say so: a caller's belongs-to is `| null`, through tx it is not, and the generated tree type-checks", async () => {
-    await Bun.write(join(loadsDir, "use.ts"), `import { transaction } from "./.mesh/index.ts";
+    await Bun.write(join(loadsDir, "use.ts"), `import type { DataOperations, LoadOptions } from "@meshfw/runtime";
+import { transaction } from "./.mesh/index.ts";
 import { readShelf, showShelf } from "./.mesh/domain/index.ts";
+import { loadShelfFields } from "./.mesh/load.ts";
 export async function use(): Promise<string[]> {
   const [shelf] = await readShelf({ load: ["keeper", "items"] }, { actor: { id: "a" } });
   // @ts-expect-error a caller's keeper may be one it may not read
@@ -664,6 +670,15 @@ export async function use(): Promise<string[]> {
   shown.keeper.name;
   const inside = await transaction(async ({ tx }) => (await tx.readShelf({ load: ["keeper"] }))[0]!.keeper.name, { actor: { id: "a" } });
   return [name, maybe ?? "", inside, String(shelf!.items.length)];
+}
+// The loader a \`run\` or a test calls runs no policy, so its options have no \`policies\` (R2-N1).
+export async function direct(ops: DataOperations, given: LoadOptions): Promise<string> {
+  // @ts-expect-error the loader takes no \`policies\` option
+  await loadShelfFields(ops, [], ["keeper"], { policies: true });
+  // @ts-expect-error nor the runtime's options, which may carry one
+  await loadShelfFields(ops, [], ["keeper"], given);
+  const [row] = await loadShelfFields(ops, [], ["keeper"], { actor: { id: "a" }, context: {} });
+  return row!.keeper.name;
 }
 `);
     const files = (await readdir(join(loadsDir, ".mesh"), { recursive: true })).filter((name) => name.endsWith(".ts")).map((name) => join(".mesh", name));

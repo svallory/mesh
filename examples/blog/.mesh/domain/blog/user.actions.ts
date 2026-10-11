@@ -16,6 +16,7 @@ import {
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type CastOutput as $CastOutput,
   type Row as $Row,
 } from "@meshfw/runtime";
 import type { User, CreateUserInput, ReadUserInput } from "./user.types";
@@ -29,9 +30,16 @@ import { expressions as $expressions } from "./user.expressions";
  */
 export function bindUserReads(layer: $DataLayer, _options: $BindOptions = {}) {
   return Object.freeze({
-    async read(input: ReadUserInput): Promise<User[]> {
-      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, readUserInput, input);
+    async read(
+      input: ReadUserInput,
+      _context?: unknown,
+      _clock?: () => Date,
+      _policies?: boolean,
+      cast?: $CastOutput<typeof readUserInput>,
+    ): Promise<User[]> {
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
+      // for its policies and hands it over as `cast`; a read through `tx` casts it here.
+      const parsed = cast ?? (await $castInput(layer, readUserInput, input));
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.user, {
           filter: parsed.filter,
@@ -143,7 +151,7 @@ export function bindUser(layer: $DataLayer, options: $BindOptions = {}, _compose
         ))
       )
         return [] as unknown as User[];
-      return $reads.read(input);
+      return $reads.read(input, context, $clock, true, $parsed);
     },
   });
 }

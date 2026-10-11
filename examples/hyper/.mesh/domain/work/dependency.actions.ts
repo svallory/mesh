@@ -26,6 +26,7 @@ import {
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type CastOutput as $CastOutput,
   type Issue as $Issue,
   type Row as $Row,
 } from "@meshfw/runtime";
@@ -64,9 +65,11 @@ export function bindDependencyReads(layer: $DataLayer, options: $BindOptions = {
       context?: unknown,
       clock?: () => Date,
       policies?: boolean,
+      cast?: $CastOutput<typeof readDependencyInput>,
     ): Promise<L extends unknown ? DependencyTxWith<DependencyLoadNames<L>>[] : never> {
-      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, readDependencyInput, input);
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
+      // for its policies and hands it over as `cast`; a read through `tx` casts it here.
+      const parsed = cast ?? (await $castInput(layer, readDependencyInput, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.dependency, {
           filter: parsed.filter,
@@ -386,9 +389,13 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
         return [] as unknown as L extends unknown
           ? DependencyWith<DependencyLoadNames<L>>[]
           : never;
-      return (await $reads.read(input, context, $clock, true)) as unknown as L extends unknown
-        ? DependencyWith<DependencyLoadNames<L>>[]
-        : never;
+      return (await $reads.read(
+        input,
+        context,
+        $clock,
+        true,
+        $parsed,
+      )) as unknown as L extends unknown ? DependencyWith<DependencyLoadNames<L>>[] : never;
     },
   });
 }

@@ -20,6 +20,7 @@ import {
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type CastOutput as $CastOutput,
   type Row as $Row,
 } from "@meshfw/runtime";
 import type {
@@ -54,11 +55,13 @@ export function bindEvidenceReferenceReads(layer: $DataLayer, options: $BindOpti
       context?: unknown,
       clock?: () => Date,
       policies?: boolean,
+      cast?: $CastOutput<typeof readEvidenceReferenceInput>,
     ): Promise<
       L extends unknown ? EvidenceReferenceTxWith<EvidenceReferenceLoadNames<L>>[] : never
     > {
-      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, readEvidenceReferenceInput, input);
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
+      // for its policies and hands it over as `cast`; a read through `tx` casts it here.
+      const parsed = cast ?? (await $castInput(layer, readEvidenceReferenceInput, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.evidenceReference, {
           filter: parsed.filter,
@@ -235,7 +238,13 @@ export function bindEvidenceReference(
         return [] as unknown as L extends unknown
           ? EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[]
           : never;
-      return (await $reads.read(input, context, $clock, true)) as unknown as L extends unknown
+      return (await $reads.read(
+        input,
+        context,
+        $clock,
+        true,
+        $parsed,
+      )) as unknown as L extends unknown
         ? EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[]
         : never;
     },

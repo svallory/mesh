@@ -98,27 +98,35 @@ export const loadPlan = {
 /**
  * Load relationships and computed fields onto Comment rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type CommentTxWith<"name" | ...>.
+ * the result is new rows of type CommentTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadCommentFields<const N extends keyof CommentLoadable>(
   tx: $DataOperations,
   rows: readonly Comment[],
   names: readonly N[],
-  options?: $LoadOptions,
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<CommentTxWith<N>[]> {
-  return (await $loadRows(loadPlan, "Comment", tx, rows, names, options)) as CommentTxWith<N>[];
+  return (await $loadRows(loadPlan, "Comment", tx, rows, names, {
+    ...options,
+    policies: false,
+  })) as CommentTxWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto Post rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type PostTxWith<"name" | ...>.
+ * the result is new rows of type PostTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadPostFields<const N extends keyof PostLoadable>(
   tx: $DataOperations,
   rows: readonly Post[],
   names: readonly N[],
-  options?: $LoadOptions,
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<PostTxWith<N>[]> {
-  return (await $loadRows(loadPlan, "Post", tx, rows, names, options)) as PostTxWith<N>[];
+  return (await $loadRows(loadPlan, "Post", tx, rows, names, {
+    ...options,
+    policies: false,
+  })) as PostTxWith<N>[];
 }

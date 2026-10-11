@@ -68,7 +68,11 @@ export interface ReadBody {
   readonly inputType: string;
   /** The type parameter list as printed (`<const N extends keyof PostLoadable = never>` when the read takes `load`), or the empty string. */
   readonly generics: string;
-  /** What follows `input` in the parameter list: `, context?: unknown` when the body loads and so reads the caller's context, else the empty string. */
+  /**
+   * What follows `input` in the parameter list: `, context?: unknown, clock?: () => Date, policies?: boolean` when the body
+   * loads and so reads the caller's context, then `cast` on a read that runs; `, _context?: unknown` or the empty string on
+   * one that fails naming M10.
+   */
   readonly contextParam: string;
   /** The validator constant, e.g. `readPostInput`. */
   readonly validator: string;
@@ -76,7 +80,11 @@ export interface ReadBody {
   readonly returnType: string;
   /** As on `ActionMethod`: when not `null`, the body validates its input and then throws a `FrameworkError` with this message. */
   readonly unsupported: string | null;
-  /** True when the statements read the validated input, bound to `parsed`. */
+  /**
+   * True when the statements read the validated input, bound to `parsed`: then the body also takes `cast`, the input its
+   * read action already cast for the read's policies, and casts only when it is absent (a read through `tx`), so
+   * `contextParam` ends with `, cast?: $CastOutput<typeof validator>`.
+   */
   readonly usesParsed: boolean;
   /** The statements inside `layer.transaction(async (tx) => { ... })`. */
   readonly statements: readonly string[];
@@ -313,7 +321,11 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         extraTypes.add(`${recordName}Loadable`);
       }
       // `policies` is true only from the read action below: a read through `tx` loads everything (ADR-0068).
-      const body = { name, inputType, generics, contextParam: loads ? ", context?: unknown, clock?: () => Date, policies?: boolean" : "", validator, returnType: txReturnType };
+      // The read action casts the input for its policies and hands the result over as `cast` (R2-N4), so it is cast once.
+      const castParam = `, cast?: $CastOutput<typeof ${validator}>`;
+      const body = { name, inputType, generics,
+        contextParam: loads ? `, context?: unknown, clock?: () => Date, policies?: boolean${castParam}` : `, _context?: unknown, _clock?: () => Date, _policies?: boolean${castParam}`,
+        validator, returnType: txReturnType };
       // ---- policies (M8): a read's policies are a filter on the read (ADR-0022, lead ruling 2 of M8a) --------------
       // A read the SQL evaluator must run (M10) fails in its body whatever the policies say, so they are not evaluated.
       const unsupportedRead = Boolean(action.filter || action.sort);
@@ -331,7 +343,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         `if (!(await ${authorizerCall(action, covering)}.filter(layer, ${preScope("$parsed as never", where)}))) return [] as unknown as ${returnType};`,
       ];
       const differs = loads && !unsupportedRead && tx.with !== `${recordName}With`;
-      const readsCall = loads && !unsupportedRead ? `$reads.${name}(input, context, $clock, true)` : loads ? `$reads.${name}(input, context)` : `$reads.${name}(input)`;
+      const readsCall = !unsupportedRead ? `$reads.${name}(input, context, $clock, true, $parsed)` : loads ? `$reads.${name}(input, context)` : `$reads.${name}(input)`;
       // ---- end policies ----------------------------------------------------------------------------------------
       const method = { ...base, inputType, generics, returnType, txReturnType, contextName: unsupportedRead && !loads ? "_context" : "context", notRun: notRun([]), unsupported: null, usesParsed: false,
         statements: [], isRead: true, seamTarget: null, readsCall: differs ? `(await ${readsCall}) as unknown as ${returnType}` : readsCall, preCheck };
@@ -355,6 +367,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         planUsed = true;
         readsLoad = true;
       }
+      runtimeTypes.add("CastOutput");
       readBodies.push({ ...body, unsupported: null, usesParsed: true,
         statements: [
           ...(computed.length ? [`rejectComputedQuery(${JSON.stringify(entity.name)}, [${computed.join(", ")}], parsed);`] : []),

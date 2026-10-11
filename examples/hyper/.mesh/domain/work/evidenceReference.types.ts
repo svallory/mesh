@@ -33,6 +33,8 @@ export type ReadEvidenceReferenceInput<N extends keyof EvidenceReferenceLoadable
 /**
  * What a caller's `load` attaches to a EvidenceReference. The record has none of it, so reading one that was not loaded is a type error.
  * A caller's load runs the read policies of the entity it reaches: a related record the caller may not read is null, a list of them empty.
+ * A computed field's body does not (POL-19): it is the entity's own rule, so it reads every related record, and what it
+ * returns is shown to every caller who may read a EvidenceReference. Return only what each such caller may see.
  */
 export type EvidenceReferenceLoadable = {
   recordedBy: Collaborator | null;

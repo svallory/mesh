@@ -21,6 +21,21 @@ function createOnly(entity: Entity, owner: ActionExpression["owner"]): boolean {
 export function checkLifecycleLimits(document: ModelDocument, diagnostics: Diagnostic[]): void {
   // The entities a relationship (and so a rollup) reaches: a caller's load of one runs its read policies (POL-17).
   const loaded = new Set(document.entities.flatMap((from) => from.relationships.map((relation) => resolve(dirname(from.file), relation.entity.from))));
+  // A relationship to an entity whose policies leave out the read a load runs gives every caller's load of it nothing
+  // (POL-17), with no error: say so (R2-N2 of the PR #79 review). Legal, since `tx` and a computed field's body still
+  // read it. An entity with no policy at all is left out: it denies every caller everything (deny by default), loads
+  // included, which its own actions show at once.
+  const byFile = new Map(document.entities.map((entity) => [resolve(entity.file), entity]));
+  for (const from of document.entities)
+    for (const relation of from.relationships) {
+      const target = byFile.get(resolve(dirname(from.file), relation.entity.from));
+      if (!target?.policies.length || loadPolicies(target).length) continue;
+      const empty = relation.kind === "has-many" ? "[]" : "null";
+      diagnostics.push({ ...error("MESH_LOAD_NO_POLICY",
+        `${relation.kind} :${relation.name} of :${from.name} reaches :${target.name}, and no policy of :${target.name} covers the read a load runs, so every caller's load of it is ${empty}, a count over it 0 and any other rollup null (through \`tx\` and in a computed field's body it is loaded)`,
+        relation.position,
+        `If callers may load it, give :${target.name} a policy that covers its read: \`types=[:read]\`, \`actions=[&read]\` or no scope`), severity: "warning" });
+    }
   for (const entity of document.entities) {
     // A computed field is worked out when a record is loaded, outside any action, so it has no transaction to compose in.
     for (const field of entity.computed) {

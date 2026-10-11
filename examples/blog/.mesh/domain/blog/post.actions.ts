@@ -30,6 +30,7 @@ import {
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type CastOutput as $CastOutput,
   type Issue as $Issue,
   type Row as $Row,
 } from "@meshfw/runtime";
@@ -86,9 +87,11 @@ export function bindPostReads(layer: $DataLayer, options: $BindOptions = {}) {
       context?: unknown,
       clock?: () => Date,
       policies?: boolean,
+      cast?: $CastOutput<typeof readPostInput>,
     ): Promise<L extends unknown ? PostTxWith<PostLoadNames<L>>[] : never> {
-      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, readPostInput, input);
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
+      // for its policies and hands it over as `cast`; a read through `tx` casts it here.
+      const parsed = cast ?? (await $castInput(layer, readPostInput, input));
       return layer.transaction(async (tx) => {
         rejectComputedQuery("Post", ["excerpt", "commentCount"], parsed);
         const $rows = (await tx.select(tables.post, {
@@ -436,9 +439,13 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
         ))
       )
         return [] as unknown as L extends unknown ? PostWith<PostLoadNames<L>>[] : never;
-      return (await $reads.read(input, context, $clock, true)) as unknown as L extends unknown
-        ? PostWith<PostLoadNames<L>>[]
-        : never;
+      return (await $reads.read(
+        input,
+        context,
+        $clock,
+        true,
+        $parsed,
+      )) as unknown as L extends unknown ? PostWith<PostLoadNames<L>>[] : never;
     },
 
     async destroy(input: DestroyPostInput, ...[context]: $ContextArgument): Promise<void> {

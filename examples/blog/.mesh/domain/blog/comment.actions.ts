@@ -13,6 +13,7 @@ import {
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type CastOutput as $CastOutput,
 } from "@meshfw/runtime";
 import type {
   Comment,
@@ -39,9 +40,11 @@ export function bindCommentReads(layer: $DataLayer, options: $BindOptions = {}) 
       context?: unknown,
       clock?: () => Date,
       policies?: boolean,
+      cast?: $CastOutput<typeof readCommentInput>,
     ): Promise<L extends unknown ? CommentTxWith<CommentLoadNames<L>>[] : never> {
-      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, readCommentInput, input);
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
+      // for its policies and hands it over as `cast`; a read through `tx` casts it here.
+      const parsed = cast ?? (await $castInput(layer, readCommentInput, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.comment, {
           filter: parsed.filter,
@@ -109,9 +112,13 @@ export function bindComment(layer: $DataLayer, options: $BindOptions = {}, _comp
         ))
       )
         return [] as unknown as L extends unknown ? CommentWith<CommentLoadNames<L>>[] : never;
-      return (await $reads.read(input, context, $clock, true)) as unknown as L extends unknown
-        ? CommentWith<CommentLoadNames<L>>[]
-        : never;
+      return (await $reads.read(
+        input,
+        context,
+        $clock,
+        true,
+        $parsed,
+      )) as unknown as L extends unknown ? CommentWith<CommentLoadNames<L>>[] : never;
     },
   });
 }

@@ -26,6 +26,7 @@ import {
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type CastOutput as $CastOutput,
   type Issue as $Issue,
   type Row as $Row,
 } from "@meshfw/runtime";
@@ -66,9 +67,11 @@ export function bindMembershipReads(layer: $DataLayer, options: $BindOptions = {
       context?: unknown,
       clock?: () => Date,
       policies?: boolean,
+      cast?: $CastOutput<typeof readMembershipInput>,
     ): Promise<L extends unknown ? MembershipTxWith<MembershipLoadNames<L>>[] : never> {
-      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, readMembershipInput, input);
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
+      // for its policies and hands it over as `cast`; a read through `tx` casts it here.
+      const parsed = cast ?? (await $castInput(layer, readMembershipInput, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.membership, {
           filter: parsed.filter,
@@ -530,9 +533,13 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
         return [] as unknown as L extends unknown
           ? MembershipWith<MembershipLoadNames<L>>[]
           : never;
-      return (await $reads.read(input, context, $clock, true)) as unknown as L extends unknown
-        ? MembershipWith<MembershipLoadNames<L>>[]
-        : never;
+      return (await $reads.read(
+        input,
+        context,
+        $clock,
+        true,
+        $parsed,
+      )) as unknown as L extends unknown ? MembershipWith<MembershipLoadNames<L>>[] : never;
     },
   });
 }

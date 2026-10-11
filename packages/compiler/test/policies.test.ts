@@ -139,9 +139,49 @@ entity :Post
     expect(built.diagnostics[0]!.message).toBe("policy :mine authorize-if reads the record, and the policy covers the loads of it (a relationship or a rollup that reaches it) of :Comment: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10");
     // Scoped to reads by type, it covers the loads too.
     expect(codes(blog("  policies\n    policy :mine types=[:read]\n      authorize-if=() => &authorId !== null\n").diagnostics)).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
-    // Scoped to the writes, it builds; so does an entity no relationship reaches.
-    expect(blog("  policies\n    policy :mine types=[:create]\n      authorize-if=({ input, actor }) => input.authorId === actor.id\n").diagnostics).toEqual([]);
+    // Scoped to the writes, it builds, with the warning that no caller then loads a Comment (R2-N2); so does an entity no
+    // relationship reaches, with no warning.
+    expect(codes(blog("  policies\n    policy :mine types=[:create]\n      authorize-if=({ input, actor }) => input.authorId === actor.id\n").diagnostics)).toEqual(["warning:MESH_LOAD_NO_POLICY"]);
     expect(codes(buildModel({ root: "/project", files: [comment("  policies\n    policy :mine\n      authorize-if=({ actor, input }) => (input.authorId ?? &authorId) === actor.id\n")] }).diagnostics)).toEqual([]);
+  });
+
+  test("a relationship to an entity whose policies leave out the read a load runs warns: every caller's load of it is empty (R2-N2)", () => {
+    const tag = (policies: string) => ({ file: "blog/tag.mesh.mx", source: `import { Shelf } from "./shelf.mesh.mx"
+entity :Tag
+  attributes
+    uuid :id primary-key
+  relationships
+    belongs-to :shelf entity=Shelf
+  actions auto=[:read]
+    read :list
+${policies}` });
+    const covered = "  actions auto=[:read]\n  policies\n    policy :all\n      authorize-if=() => true\n";
+    const blog = (policies: string) => buildModel({ root: "/project", files: [tag(policies), { file: "blog/post.mesh.mx", source: `import { Tag } from "./tag.mesh.mx"
+entity :Post
+  attributes
+    uuid :id primary-key
+  relationships
+    belongs-to :tag entity=Tag nullable
+${covered}` }, { file: "blog/shelf.mesh.mx", source: `import { Tag } from "./tag.mesh.mx"
+entity :Shelf
+  attributes
+    uuid :id primary-key
+  relationships
+    has-many :tags entity=Tag
+${covered}` }] });
+    // Only a custom read is covered: a load runs the policies of `read`, so it gets nothing; each relationship says so, where it is.
+    const custom = blog("  policies\n    policy :lists actions=[&list]\n      authorize-if=() => true\n");
+    expect(codes(custom.diagnostics)).toEqual(["warning:MESH_LOAD_NO_POLICY", "warning:MESH_LOAD_NO_POLICY"]);
+    expect(custom.diagnostics.map((d) => [d.message, d.position.line])).toEqual([
+      ["belongs-to :tag of :Post reaches :Tag, and no policy of :Tag covers the read a load runs, so every caller's load of it is null, a count over it 0 and any other rollup null (through `tx` and in a computed field's body it is loaded)", 6],
+      ["has-many :tags of :Shelf reaches :Tag, and no policy of :Tag covers the read a load runs, so every caller's load of it is [], a count over it 0 and any other rollup null (through `tx` and in a computed field's body it is loaded)", 6],
+    ]);
+    expect(custom.diagnostics[0]!.fix).toBe("If callers may load it, give :Tag a policy that covers its read: `types=[:read]`, `actions=[&read]` or no scope");
+    // Covered by type, with no scope, or by name: no warning. Neither for an entity with no policy at all, which denies
+    // every caller everything (deny by default), nor for Tag's relationship to Shelf, whose policy covers its read.
+    for (const covering of ["policy :reads types=[:read]", "policy :any", "policy :named actions=[&read, &list]"])
+      expect(blog(`  policies\n    ${covering}\n      authorize-if=() => true\n`).diagnostics).toEqual([]);
+    expect(blog("").diagnostics).toEqual([]);
   });
 
   test("scoped to the writes, the same policy builds; an actor-only read policy builds", () => {

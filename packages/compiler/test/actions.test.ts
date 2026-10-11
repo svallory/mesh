@@ -116,7 +116,7 @@ describe("actions view", () => {
       "FrameworkError as $FrameworkError", "InvalidInputError as $InvalidInputError", "NotFoundError as $NotFoundError", "authorizer as $authorizer", "castInput as $castInput", "checkScope as $checkScope",
       "checkUnchanged as $checkUnchanged", "composed as $composed", "failJoined as $failJoined", "guarded as $guarded", "loadRows as $loadRows",
       "noteWrite as $noteWrite", "pinClock as $pinClock", "readOnlyRecord as $readOnlyRecord", "recordWrite as $recordWrite", "runAction as $runAction", "runCheck as $runCheck", "scope as $scope", "uuidv7 as $uuidv7", "wantsChanges as $wantsChanges", "writeCount as $writeCount"]);
-    expect(view.runtimeTypes).toEqual(["Issue as $Issue", "Row as $Row"]);
+    expect(view.runtimeTypes).toEqual(["CastOutput as $CastOutput", "Issue as $Issue", "Row as $Row"]);
     expect(view.typesFromLiteral).toBe('"./article.types"');
     expect(view.validatorsFromLiteral).toBe('"./article.validators"');
     expect(view.schemaFromLiteral).toBe('"../../schema"');
@@ -206,12 +206,14 @@ describe("actions view", () => {
       "const $context = (context ?? {}) as unknown as Record<string, unknown>;",
       'const $clock = clock ?? $pinClock(options.clock);',
       'return (await $loadRows($loadPlan, "Article", tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock, policies })) as unknown as (L extends unknown ? ArticleTxWith<ArticleLoadNames<L>>[] : never);'],
-      generics: "<const L extends readonly (keyof ArticleLoadable)[] = readonly []>", contextParam: ", context?: unknown, clock?: () => Date, policies?: boolean" });
+      generics: "<const L extends readonly (keyof ArticleLoadable)[] = readonly []>",
+      // The read action casts its input once, for its policies, and hands it over as `cast` (R2-N4); a read through `tx` casts it in the body.
+      contextParam: ", context?: unknown, clock?: () => Date, policies?: boolean, cast?: $CastOutput<typeof readArticleInput>" });
     // The read action asks for the load's policies (`true`); a caller's result is typed with `ArticleWith`, where the author may be null.
     expect(view.methods.filter((m) => m.isRead).map((m) => [m.name, m.readsCall, m.statements])).toEqual([
       ["live", "$reads.live(input, context)", []],
-      ["load", "(await $reads.load(input, context, $clock, true)) as unknown as (L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)", []],
-      ["read", "(await $reads.read(input, context, $clock, true)) as unknown as (L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)", []]]);
+      ["load", "(await $reads.load(input, context, $clock, true, $parsed)) as unknown as (L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)", []],
+      ["read", "(await $reads.read(input, context, $clock, true, $parsed)) as unknown as (L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)", []]]);
     expect(view.methods.find((m) => m.name === "read")!.txReturnType).toBe("(L extends unknown ? ArticleTxWith<ArticleLoadNames<L>>[] : never)");
     // A read's policies are a filter; the read the SQL evaluator must run fails in its body whatever they say.
     expect(view.methods.find((m) => m.name === "live")!.preCheck).toEqual([]);

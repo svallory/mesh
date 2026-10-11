@@ -30,6 +30,7 @@ import {
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type CastOutput as $CastOutput,
   type Issue as $Issue,
   type Row as $Row,
 } from "@meshfw/runtime";
@@ -76,9 +77,11 @@ export function bindClaimReads(layer: $DataLayer, options: $BindOptions = {}) {
       context?: unknown,
       clock?: () => Date,
       policies?: boolean,
+      cast?: $CastOutput<typeof readClaimInput>,
     ): Promise<L extends unknown ? ClaimTxWith<ClaimLoadNames<L>>[] : never> {
-      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, readClaimInput, input);
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
+      // for its policies and hands it over as `cast`; a read through `tx` casts it here.
+      const parsed = cast ?? (await $castInput(layer, readClaimInput, input));
       return layer.transaction(async (tx) => {
         rejectComputedQuery("Claim", ["lapsed"], parsed);
         const $rows = (await tx.select(tables.claim, {
@@ -947,9 +950,13 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         ))
       )
         return [] as unknown as L extends unknown ? ClaimWith<ClaimLoadNames<L>>[] : never;
-      return (await $reads.read(input, context, $clock, true)) as unknown as L extends unknown
-        ? ClaimWith<ClaimLoadNames<L>>[]
-        : never;
+      return (await $reads.read(
+        input,
+        context,
+        $clock,
+        true,
+        $parsed,
+      )) as unknown as L extends unknown ? ClaimWith<ClaimLoadNames<L>>[] : never;
     },
   });
 }

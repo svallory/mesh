@@ -24,6 +24,7 @@ import {
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type CastOutput as $CastOutput,
   type Issue as $Issue,
   type Row as $Row,
 } from "@meshfw/runtime";
@@ -50,9 +51,16 @@ import {
  */
 export function bindWorkspaceReads(layer: $DataLayer, _options: $BindOptions = {}) {
   return Object.freeze({
-    async read(input: ReadWorkspaceInput): Promise<Workspace[]> {
-      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, readWorkspaceInput, input);
+    async read(
+      input: ReadWorkspaceInput,
+      _context?: unknown,
+      _clock?: () => Date,
+      _policies?: boolean,
+      cast?: $CastOutput<typeof readWorkspaceInput>,
+    ): Promise<Workspace[]> {
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
+      // for its policies and hands it over as `cast`; a read through `tx` casts it here.
+      const parsed = cast ?? (await $castInput(layer, readWorkspaceInput, input));
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.workspace, {
           filter: parsed.filter,
@@ -273,7 +281,7 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
         ))
       )
         return [] as unknown as Workspace[];
-      return $reads.read(input);
+      return $reads.read(input, context, $clock, true, $parsed);
     },
   });
 }
