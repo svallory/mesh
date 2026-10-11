@@ -25,6 +25,7 @@ import {
   scope as $scope,
   unloadFrom as $unloadFrom,
   uuidv7 as $uuidv7,
+  wantsChanges as $wantsChanges,
   writeCount as $writeCount,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
@@ -443,14 +444,14 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
       const $clock = $pinClock(options.clock);
       const $policies = $authorizer("Post", "destroy", [
         {
-          name: "owner",
+          name: "systemOnly",
           when: null,
           checks: [
             {
               kind: "authorize-if",
-              check: "({ actor }) => &author.id === actor.id",
-              record: true,
-              run: $expressions["policy.owner.authorize-if.0"],
+              check: "({ context }) => isSystem(context)",
+              record: false,
+              run: $expressions["policy.systemOnly.authorize-if.0"],
             },
           ],
         },
@@ -470,33 +471,13 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
         context,
         async (tx) => {
           // transaction: opens here; what follows commits together or not at all
-          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+          // plan: nothing in the body can see the record, so the row is deleted without being read, unless a seam wants it: then it is read under the lock first, so the seam gets `before`
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.post, $key);
-          if ($before === undefined) throw new $NotFoundError("Post", $key);
-          const $record: $Row = { ...$before };
-          const $load = { actor: $actor, context: $context, clock: $clock };
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Post", $record, "action function"),
-            "Post.destroy",
-          );
-          const $s = $scope(
-            {
-              self: $self,
-              input: $readOnlyRecord(parsed, "Post.destroy"),
-              actor: $actor,
-              context: $context,
-              before: $readOnlyRecord(
-                $guarded($loadPlan, "Post", $before, "before"),
-                "Post.destroy",
-              ) as unknown as Post,
-              ...$composed(compose, tx, context, "Post.destroy", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $StoredScope<DestroyPostInput>;
-          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
-          await $loadInto($loadPlan, "Post", tx, $record, ["author"], $load);
-          await $policies.inside($checkScope($s));
+          const $before = $wantsChanges(options.seams)
+            ? await tx.selectByKeyForUpdate(tables.post, $key)
+            : undefined;
+          if ($wantsChanges(options.seams) && $before === undefined)
+            throw new $NotFoundError("Post", $key);
           // data layer
           if (!(await tx.deleteByKey(tables.post, $key))) throw new $NotFoundError("Post", $key);
           $noteWrite(tx);
@@ -505,7 +486,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
             tx,
             options.seams,
             { entity: "Post", action: "destroy" },
-            $before,
+            $before ?? null,
             null,
             parsed,
             context,

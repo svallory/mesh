@@ -10,8 +10,10 @@ import config from "../mesh.config";
 import { alice } from "../src/context";
 
 const context = { actor: alice };
-/** The context of a call made by `user`: the post's `:owner` policy lets only its author publish, archive or destroy it. */
+/** The context of a call made by `user`: the post's `:owner` policy lets only its author publish or archive it. */
 const as = (user: { id: string }) => ({ actor: { id: user.id } });
+/** A call the application makes for itself: the post's `:systemOnly` policy lets only such a call run the auto `destroy`. */
+const system = { ...context, system: true };
 
 async function fresh() {
   const db = sqlite({ file: ":memory:" });
@@ -31,10 +33,10 @@ test("acceptance 1: create, read, update, destroy, and a write after destroy is 
     expect(published.state).toBe("published");
     expect(published.insertedAt).toEqual(post.insertedAt);
 
-    await blog.destroyPost({ id: post.id }, as(author));
+    await blog.destroyPost({ id: post.id }, system);
     expect(await blog.readPost({}, context)).toEqual([]);
     await expect(blog.publishPost({ id: post.id }, context)).rejects.toBeInstanceOf(NotFoundError);
-    await expect(blog.destroyPost({ id: post.id }, context)).rejects.toBeInstanceOf(NotFoundError);
+    await expect(blog.destroyPost({ id: post.id }, system)).rejects.toBeInstanceOf(NotFoundError);
     await expect(blog.archivePost({ id: post.id }, context)).rejects.toBeInstanceOf(NotFoundError);
   } finally { await db.close(); }
 });
@@ -62,8 +64,8 @@ describe("a destroy whose body cannot see the row reads it first only for a seam
       const author = await blog.createUser({ name: "Alice" }, context);
       const post = await blog.createPost({ title: "Hello", author: author.id }, context);
       const before = counter.locked;
-      await blog.destroyPost({ id: post.id }, context);
-      const gone = await blog.destroyPost({ id: post.id }, context).catch((cause: unknown) => cause);
+      await blog.destroyPost({ id: post.id }, system);
+      const gone = await blog.destroyPost({ id: post.id }, system).catch((cause: unknown) => cause);
       expect(gone).toBeInstanceOf(NotFoundError);
       // two destroys: the first of a row that is there, the second of one that is not
       return { locked: counter.locked - before, post };
@@ -156,7 +158,7 @@ async function seeded(titles: string[]) {
 const titlesOf = (posts: { title: string }[]) => posts.map((post) => post.title);
 
 describe("policies (M8a): every action is covered, and a caller the policies do not admit is forbidden", () => {
-  test("only the author publishes, archives or destroys a post; anyone else gets ForbiddenError and nothing is written", async () => {
+  test("only the author publishes or archives a post, only a system call destroys one; anyone else gets ForbiddenError and nothing is written", async () => {
     const { db, blog } = await fresh();
     try {
       const author = await blog.createUser({ name: "Alice" }, context);
@@ -169,7 +171,7 @@ describe("policies (M8a): every action is covered, and a caller the policies do 
       expect(breakdown).toEqual([{ policy: "owner", kind: "authorize-if", check: "({ actor }) => &author.id === actor.id", result: false, decisive: true }]);
       expect(JSON.parse(JSON.stringify(breakdown))).toEqual(breakdown);
       await expect(blog.archivePost({ id: post.id }, context)).rejects.toBeInstanceOf(ForbiddenError);
-      await expect(blog.destroyPost({ id: post.id }, context)).rejects.toBeInstanceOf(ForbiddenError);
+      await expect(blog.destroyPost({ id: post.id }, as(author))).rejects.toMatchObject({ code: "forbidden", policies: ["systemOnly"] });
       expect(await blog.readPost({}, context)).toEqual([post]);
       // A post that does not exist is not found, whoever asks: the row is read before the policy that reads it.
       await expect(blog.publishPost({ id: crypto.randomUUID() }, context)).rejects.toBeInstanceOf(NotFoundError);

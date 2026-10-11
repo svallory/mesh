@@ -1,5 +1,5 @@
 import { connect, disconnect } from "#mesh";
-import { createPost, createUser, destroyPost, publishPost, readPost } from "#mesh/domain/blog";
+import { archivePost, createPost, createUser, publishPost, readPost } from "#mesh/domain/blog";
 import { alice } from "./context";
 
 await connect();
@@ -8,11 +8,11 @@ const author = await createUser({ name: "Alice" }, { actor: alice });
 const post = await createPost({ title: "Hello, Mesh", author: author.id }, { actor: alice });
 console.log(post.state, (await readPost({}, { actor: alice })).length);
 
-// Only the post's author may publish or destroy it (the `:owner` policy of post.mesh.mx).
+// Only the post's author may publish or archive it (the `:owner` policy of post.mesh.mx).
 const published = await publishPost({ id: post.id }, { actor: { id: author.id } });
 console.log(published.state);
 
-await destroyPost({ id: post.id }, { actor: { id: author.id } });
+await archivePost({ id: post.id }, { actor: { id: author.id } });
 try {
   await publishPost({ id: post.id }, { actor: { id: author.id } });
 } catch (error) {

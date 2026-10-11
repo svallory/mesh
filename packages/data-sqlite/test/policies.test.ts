@@ -7,7 +7,7 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
-import { ForbiddenError, InvalidInputError, NotFoundError, type DataLayer } from "@meshfw/runtime";
+import { ForbiddenError, InvalidInputError, NotFoundError, type DataLayer, type Seams } from "@meshfw/runtime";
 import build from "../src/build.ts";
 import { createSchema, sqlite } from "../src/index.ts";
 
@@ -206,11 +206,11 @@ function counting(layer: DataLayer) {
   return { wrapped, counts };
 }
 
-async function fresh(generated = app) {
+async function fresh(generated = app, seams?: Seams) {
   const db = sqlite({ file: ":memory:" });
   await createSchema(db, generated.tables);
   const { wrapped, counts } = counting(db);
-  return { db, mesh: generated.bind(wrapped), counts };
+  return { db, mesh: generated.bind(wrapped, { seams }), counts };
 }
 
 async function denial(call: Promise<unknown>): Promise<ForbiddenError> {
@@ -359,6 +359,35 @@ describe("where each check runs (ACT-28, POL-08)", () => {
       expect(counts.transactions).toBe(0);
       expect(await mesh.readBoard({}, alice)).toEqual([]);
       expect(counts.transactions).toBe(1);
+    } finally { await db.close(); }
+  });
+
+  test("an actor-only denial runs no seam; a record-reading denial runs only beforeTransaction, and nothing after the write (M6)", async () => {
+    const calls: string[] = [];
+    const seams: Seams = {
+      beforeTransaction: ({ entity, action }) => { calls.push(`before ${entity}.${action}`); },
+      afterWrite: (_db, { entity, action }) => { calls.push(`write ${entity}.${action}`); },
+      afterCommit: ({ changes }) => { calls.push(`commit ${changes.length}`); },
+    };
+    const { db, mesh, counts } = await fresh(app, seams);
+    try {
+      // The pre-check comes before `runAction`: a denied call does not reach `beforeTransaction`, since it writes nothing.
+      await denial(mesh.openBoard({ ownerId: "anyone", name: "Spam" }, anonymous));
+      await denial(mesh.logAudit({ what: "x" }, alice));
+      expect(calls).toEqual([]);
+      expect(counts.transactions).toBe(0);
+      // A read runs no seam, admitted or not.
+      expect(await mesh.readBoard({}, anonymous)).toEqual([]);
+      expect(await mesh.readBoard({}, alice)).toEqual([]);
+      expect(calls).toEqual([]);
+      // An allowed call runs all three.
+      const board = await mesh.openBoard({ ownerId: "alice", name: "Plans" }, alice);
+      expect(calls).toEqual(["before Board.open", "write Board.open", "commit 1"]);
+      // A check that reads the record runs inside the transaction, which beforeTransaction precedes; its denial rolls the
+      // transaction back before the write, so neither afterWrite nor afterCommit runs.
+      calls.length = 0;
+      await denial(mesh.renameBoard({ id: board.id, name: "Mine" }, bob));
+      expect(calls).toEqual(["before Board.rename"]);
     } finally { await db.close(); }
   });
 

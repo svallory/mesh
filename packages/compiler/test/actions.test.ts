@@ -417,7 +417,7 @@ describe("explain", () => {
       .replace("    update :rename\n", "    update :rename\n      do\n        run [after=:write] ({ self }) { console.log(self.id) }\n        when=() => true\n          set\n            &views=2\n          run [after=:write] () { }\n        run () { }\n");
     const entity = documentOf({ "blog/author.mesh.mx": author, "blog/article.mesh.mx": source }).entities.find((e) => e.name === "Article")!;
     const rename = explainAction(entity, "rename")!;
-    expect(rename.slice(rename.findIndex((line) => line.startsWith("  steps")))).toEqual([
+    expect(rename.slice(rename.findIndex((line) => line.startsWith("  steps")), rename.findIndex((line) => line.startsWith("  seams")))).toEqual([
       "  steps        when () => true",
       "                 set &views = 2",
       "               run () { }",
@@ -428,7 +428,7 @@ describe("explain", () => {
     ]);
     const purge = explainAction(entity, "purge")!;
     expect(purge[1]).toContain("read-then-write");
-    expect(purge.slice(purge.findIndex((line) => line.startsWith("  after write")))).toEqual([
+    expect(purge.slice(purge.findIndex((line) => line.startsWith("  after write")), purge.findIndex((line) => line.startsWith("  seams")))).toEqual([
       "  after write  self is the deleted row as it was",
       "               run ({ self }) { console.log(self.title) }",
     ]);
