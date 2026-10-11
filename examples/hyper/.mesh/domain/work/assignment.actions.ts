@@ -32,6 +32,7 @@ import {
 import type {
   Assignment,
   AssignmentWith,
+  AssignmentTxWith,
   AssignmentLoadNames,
   AssignmentLoadArg,
   AssignmentLoadable,
@@ -62,7 +63,8 @@ export function bindAssignmentReads(layer: $DataLayer, options: $BindOptions = {
       input: Omit<ReadAssignmentInput, "load"> & AssignmentLoadArg<L>,
       context?: unknown,
       clock?: () => Date,
-    ): Promise<L extends unknown ? AssignmentWith<AssignmentLoadNames<L>>[] : never> {
+      policies?: boolean,
+    ): Promise<L extends unknown ? AssignmentTxWith<AssignmentLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readAssignmentInput, input);
       return layer.transaction(async (tx) => {
@@ -74,7 +76,7 @@ export function bindAssignmentReads(layer: $DataLayer, options: $BindOptions = {
         })) as Assignment[];
         if (!parsed.load?.length)
           return $rows as unknown as L extends unknown
-            ? AssignmentWith<AssignmentLoadNames<L>>[]
+            ? AssignmentTxWith<AssignmentLoadNames<L>>[]
             : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
@@ -82,7 +84,8 @@ export function bindAssignmentReads(layer: $DataLayer, options: $BindOptions = {
           actor: $context.actor,
           context: $context,
           clock: $clock,
-        })) as unknown as L extends unknown ? AssignmentWith<AssignmentLoadNames<L>>[] : never;
+          policies,
+        })) as unknown as L extends unknown ? AssignmentTxWith<AssignmentLoadNames<L>>[] : never;
       });
     },
   });
@@ -314,6 +317,7 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
+      const $parsed = await $castInput(layer, readAssignmentInput, input);
       if (
         !(await $authorizer("Assignment", "read", [
           {
@@ -332,20 +336,20 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
           layer,
           $scope(
             {
-              input: $readOnlyRecord(input as never, "Assignment.read"),
+              input: $readOnlyRecord($parsed as never, "Assignment.read"),
               actor: $actor,
               context: $context,
             },
             { clock: $clock },
           ),
         ))
-      ) {
-        await $castInput(layer, readAssignmentInput, input);
+      )
         return [] as unknown as L extends unknown
           ? AssignmentWith<AssignmentLoadNames<L>>[]
           : never;
-      }
-      return $reads.read(input, context, $clock);
+      return (await $reads.read(input, context, $clock, true)) as unknown as L extends unknown
+        ? AssignmentWith<AssignmentLoadNames<L>>[]
+        : never;
     },
   });
 }

@@ -35,6 +35,7 @@ import {
 import type {
   Submission,
   SubmissionWith,
+  SubmissionTxWith,
   SubmissionLoadNames,
   SubmissionLoadArg,
   SubmissionLoadable,
@@ -69,7 +70,8 @@ export function bindSubmissionReads(layer: $DataLayer, options: $BindOptions = {
       input: Omit<ReadSubmissionInput, "load"> & SubmissionLoadArg<L>,
       context?: unknown,
       clock?: () => Date,
-    ): Promise<L extends unknown ? SubmissionWith<SubmissionLoadNames<L>>[] : never> {
+      policies?: boolean,
+    ): Promise<L extends unknown ? SubmissionTxWith<SubmissionLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readSubmissionInput, input);
       return layer.transaction(async (tx) => {
@@ -81,7 +83,7 @@ export function bindSubmissionReads(layer: $DataLayer, options: $BindOptions = {
         })) as Submission[];
         if (!parsed.load?.length)
           return $rows as unknown as L extends unknown
-            ? SubmissionWith<SubmissionLoadNames<L>>[]
+            ? SubmissionTxWith<SubmissionLoadNames<L>>[]
             : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
@@ -89,7 +91,8 @@ export function bindSubmissionReads(layer: $DataLayer, options: $BindOptions = {
           actor: $context.actor,
           context: $context,
           clock: $clock,
-        })) as unknown as L extends unknown ? SubmissionWith<SubmissionLoadNames<L>>[] : never;
+          policies,
+        })) as unknown as L extends unknown ? SubmissionTxWith<SubmissionLoadNames<L>>[] : never;
       });
     },
   });
@@ -625,6 +628,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
+      const $parsed = await $castInput(layer, readSubmissionInput, input);
       if (
         !(await $authorizer("Submission", "read", [
           {
@@ -643,20 +647,20 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           layer,
           $scope(
             {
-              input: $readOnlyRecord(input as never, "Submission.read"),
+              input: $readOnlyRecord($parsed as never, "Submission.read"),
               actor: $actor,
               context: $context,
             },
             { clock: $clock },
           ),
         ))
-      ) {
-        await $castInput(layer, readSubmissionInput, input);
+      )
         return [] as unknown as L extends unknown
           ? SubmissionWith<SubmissionLoadNames<L>>[]
           : never;
-      }
-      return $reads.read(input, context, $clock);
+      return (await $reads.read(input, context, $clock, true)) as unknown as L extends unknown
+        ? SubmissionWith<SubmissionLoadNames<L>>[]
+        : never;
     },
   });
 }

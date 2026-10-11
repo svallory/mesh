@@ -9,21 +9,37 @@ import {
   type LoadPlan as $LoadPlan,
 } from "@meshfw/runtime";
 import { tables } from "./schema";
+import { expressions as eventExpressions } from "./domain/audit/event.expressions";
+import { expressions as attemptExpressions } from "./domain/execution/attempt.expressions";
+import { expressions as invocationExpressions } from "./domain/execution/invocation.expressions";
+import { expressions as machineExpressions } from "./domain/execution/machine.expressions";
+import { expressions as runExpressions } from "./domain/execution/run.expressions";
+import { expressions as sessionReferenceExpressions } from "./domain/execution/sessionReference.expressions";
+import { expressions as collaboratorExpressions } from "./domain/identity/collaborator.expressions";
+import { expressions as membershipExpressions } from "./domain/identity/membership.expressions";
+import { expressions as workspaceExpressions } from "./domain/identity/workspace.expressions";
+import { expressions as assignmentExpressions } from "./domain/work/assignment.expressions";
 import { expressions as claimExpressions } from "./domain/work/claim.expressions";
+import { expressions as completionExpressions } from "./domain/work/completion.expressions";
+import { expressions as dependencyExpressions } from "./domain/work/dependency.expressions";
+import { expressions as evidenceReferenceExpressions } from "./domain/work/evidenceReference.expressions";
+import { expressions as lateResultExpressions } from "./domain/work/lateResult.expressions";
+import { expressions as reviewExpressions } from "./domain/work/review.expressions";
+import { expressions as submissionExpressions } from "./domain/work/submission.expressions";
 import { expressions as taskExpressions } from "./domain/work/task.expressions";
 import type { Event, EventLoadable, EventWith } from "./domain/audit/event.types";
-import type { Attempt, AttemptLoadable, AttemptWith } from "./domain/execution/attempt.types";
+import type { Attempt, AttemptLoadable, AttemptTxWith } from "./domain/execution/attempt.types";
 import type {
   Invocation,
   InvocationLoadable,
-  InvocationWith,
+  InvocationTxWith,
 } from "./domain/execution/invocation.types";
 import type { Machine, MachineLoadable, MachineWith } from "./domain/execution/machine.types";
-import type { Run, RunLoadable, RunWith } from "./domain/execution/run.types";
+import type { Run, RunLoadable, RunTxWith } from "./domain/execution/run.types";
 import type {
   SessionReference,
   SessionReferenceLoadable,
-  SessionReferenceWith,
+  SessionReferenceTxWith,
 } from "./domain/execution/sessionReference.types";
 import type {
   Collaborator,
@@ -33,43 +49,46 @@ import type {
 import type {
   Membership,
   MembershipLoadable,
-  MembershipWith,
+  MembershipTxWith,
 } from "./domain/identity/membership.types";
 import type {
   Assignment,
   AssignmentLoadable,
-  AssignmentWith,
+  AssignmentTxWith,
 } from "./domain/work/assignment.types";
-import type { Claim, ClaimLoadable, ClaimWith } from "./domain/work/claim.types";
+import type { Claim, ClaimLoadable, ClaimTxWith } from "./domain/work/claim.types";
 import type {
   Completion,
   CompletionLoadable,
-  CompletionWith,
+  CompletionTxWith,
 } from "./domain/work/completion.types";
 import type {
   Dependency,
   DependencyLoadable,
-  DependencyWith,
+  DependencyTxWith,
 } from "./domain/work/dependency.types";
 import type {
   EvidenceReference,
   EvidenceReferenceLoadable,
-  EvidenceReferenceWith,
+  EvidenceReferenceTxWith,
 } from "./domain/work/evidenceReference.types";
 import type {
   LateResult,
   LateResultLoadable,
-  LateResultWith,
+  LateResultTxWith,
 } from "./domain/work/lateResult.types";
-import type { Review, ReviewLoadable, ReviewWith } from "./domain/work/review.types";
+import type { Review, ReviewLoadable, ReviewTxWith } from "./domain/work/review.types";
 import type {
   Submission,
   SubmissionLoadable,
-  SubmissionWith,
+  SubmissionTxWith,
 } from "./domain/work/submission.types";
-import type { Task, TaskLoadable, TaskWith } from "./domain/work/task.types";
+import type { Task, TaskLoadable, TaskTxWith } from "./domain/work/task.types";
 
-/** What `loadRows` follows: each entity's table and key, its relationships and its computed fields. */
+/**
+ * What `loadRows` follows: each entity's table and key, its relationships and its computed fields, and the read policies
+ * a caller's load of it runs (none listed: a caller loads none of its records).
+ */
 export const loadPlan = {
   Event: {
     table: tables.event,
@@ -78,6 +97,20 @@ export const loadPlan = {
       task: { kind: "belongs-to", target: "Task", column: "taskId", nullable: true },
     },
     computed: {},
+    reads: [
+      {
+        name: "untilM8b",
+        when: null,
+        checks: [
+          {
+            kind: "authorize-if",
+            check: "() => true",
+            record: false,
+            run: eventExpressions["policy.untilM8b.authorize-if.0"],
+          },
+        ],
+      },
+    ],
   },
   Attempt: {
     table: tables.attempt,
@@ -106,6 +139,20 @@ export const loadPlan = {
       },
     },
     computed: {},
+    reads: [
+      {
+        name: "untilM8b",
+        when: null,
+        checks: [
+          {
+            kind: "authorize-if",
+            check: "() => true",
+            record: false,
+            run: attemptExpressions["policy.untilM8b.authorize-if.0"],
+          },
+        ],
+      },
+    ],
   },
   Invocation: {
     table: tables.invocation,
@@ -128,6 +175,20 @@ export const loadPlan = {
       },
     },
     computed: {},
+    reads: [
+      {
+        name: "untilM8b",
+        when: null,
+        checks: [
+          {
+            kind: "authorize-if",
+            check: "() => true",
+            record: false,
+            run: invocationExpressions["policy.untilM8b.authorize-if.0"],
+          },
+        ],
+      },
+    ],
   },
   Machine: {
     table: tables.machine,
@@ -142,6 +203,20 @@ export const loadPlan = {
       attempts: { kind: "has-many", target: "Attempt", column: "machineId" },
     },
     computed: {},
+    reads: [
+      {
+        name: "untilM8b",
+        when: null,
+        checks: [
+          {
+            kind: "authorize-if",
+            check: "() => true",
+            record: false,
+            run: machineExpressions["policy.untilM8b.authorize-if.0"],
+          },
+        ],
+      },
+    ],
   },
   Run: {
     table: tables.run,
@@ -164,6 +239,20 @@ export const loadPlan = {
       attempts: { kind: "has-many", target: "Attempt", column: "runId" },
     },
     computed: {},
+    reads: [
+      {
+        name: "untilM8b",
+        when: null,
+        checks: [
+          {
+            kind: "authorize-if",
+            check: "() => true",
+            record: false,
+            run: runExpressions["policy.untilM8b.authorize-if.0"],
+          },
+        ],
+      },
+    ],
   },
   SessionReference: {
     table: tables.sessionReference,
@@ -184,6 +273,20 @@ export const loadPlan = {
       },
     },
     computed: {},
+    reads: [
+      {
+        name: "untilM8b",
+        when: null,
+        checks: [
+          {
+            kind: "authorize-if",
+            check: "() => true",
+            record: false,
+            run: sessionReferenceExpressions["policy.untilM8b.authorize-if.0"],
+          },
+        ],
+      },
+    ],
   },
   Collaborator: {
     table: tables.collaborator,
@@ -192,6 +295,20 @@ export const loadPlan = {
       memberships: { kind: "has-many", target: "Membership", column: "collaboratorId" },
     },
     computed: {},
+    reads: [
+      {
+        name: "untilM8b",
+        when: null,
+        checks: [
+          {
+            kind: "authorize-if",
+            check: "() => true",
+            record: false,
+            run: collaboratorExpressions["policy.untilM8b.authorize-if.0"],
+          },
+        ],
+      },
+    ],
   },
   Membership: {
     table: tables.membership,
@@ -217,12 +334,40 @@ export const loadPlan = {
       },
     },
     computed: {},
+    reads: [
+      {
+        name: "untilM8b",
+        when: null,
+        checks: [
+          {
+            kind: "authorize-if",
+            check: "() => true",
+            record: false,
+            run: membershipExpressions["policy.untilM8b.authorize-if.0"],
+          },
+        ],
+      },
+    ],
   },
   Workspace: {
     table: tables.workspace,
     key: "id",
     relations: {},
     computed: {},
+    reads: [
+      {
+        name: "untilM8b",
+        when: null,
+        checks: [
+          {
+            kind: "authorize-if",
+            check: "() => true",
+            record: false,
+            run: workspaceExpressions["policy.untilM8b.authorize-if.0"],
+          },
+        ],
+      },
+    ],
   },
   Assignment: {
     table: tables.assignment,
@@ -243,6 +388,20 @@ export const loadPlan = {
       },
     },
     computed: {},
+    reads: [
+      {
+        name: "untilM8b",
+        when: null,
+        checks: [
+          {
+            kind: "authorize-if",
+            check: "() => true",
+            record: false,
+            run: assignmentExpressions["policy.untilM8b.authorize-if.0"],
+          },
+        ],
+      },
+    ],
   },
   Claim: {
     table: tables.claim,
@@ -254,6 +413,20 @@ export const loadPlan = {
     computed: {
       lapsed: { kind: "body", needs: [], evaluate: claimExpressions["computed.lapsed"] },
     },
+    reads: [
+      {
+        name: "untilM8b",
+        when: null,
+        checks: [
+          {
+            kind: "authorize-if",
+            check: "() => true",
+            record: false,
+            run: claimExpressions["policy.untilM8b.authorize-if.0"],
+          },
+        ],
+      },
+    ],
   },
   Completion: {
     table: tables.completion,
@@ -274,6 +447,20 @@ export const loadPlan = {
       },
     },
     computed: {},
+    reads: [
+      {
+        name: "untilM8b",
+        when: null,
+        checks: [
+          {
+            kind: "authorize-if",
+            check: "() => true",
+            record: false,
+            run: completionExpressions["policy.untilM8b.authorize-if.0"],
+          },
+        ],
+      },
+    ],
   },
   Dependency: {
     table: tables.dependency,
@@ -294,6 +481,20 @@ export const loadPlan = {
       },
     },
     computed: {},
+    reads: [
+      {
+        name: "untilM8b",
+        when: null,
+        checks: [
+          {
+            kind: "authorize-if",
+            check: "() => true",
+            record: false,
+            run: dependencyExpressions["policy.untilM8b.authorize-if.0"],
+          },
+        ],
+      },
+    ],
   },
   EvidenceReference: {
     table: tables.evidenceReference,
@@ -307,6 +508,20 @@ export const loadPlan = {
       },
     },
     computed: {},
+    reads: [
+      {
+        name: "untilM8b",
+        when: null,
+        checks: [
+          {
+            kind: "authorize-if",
+            check: "() => true",
+            record: false,
+            run: evidenceReferenceExpressions["policy.untilM8b.authorize-if.0"],
+          },
+        ],
+      },
+    ],
   },
   LateResult: {
     table: tables.lateResult,
@@ -321,6 +536,20 @@ export const loadPlan = {
       },
     },
     computed: {},
+    reads: [
+      {
+        name: "untilM8b",
+        when: null,
+        checks: [
+          {
+            kind: "authorize-if",
+            check: "() => true",
+            record: false,
+            run: lateResultExpressions["policy.untilM8b.authorize-if.0"],
+          },
+        ],
+      },
+    ],
   },
   Review: {
     table: tables.review,
@@ -340,6 +569,20 @@ export const loadPlan = {
       },
     },
     computed: {},
+    reads: [
+      {
+        name: "untilM8b",
+        when: null,
+        checks: [
+          {
+            kind: "authorize-if",
+            check: "() => true",
+            record: false,
+            run: reviewExpressions["policy.untilM8b.authorize-if.0"],
+          },
+        ],
+      },
+    ],
   },
   Submission: {
     table: tables.submission,
@@ -354,6 +597,20 @@ export const loadPlan = {
       },
     },
     computed: {},
+    reads: [
+      {
+        name: "untilM8b",
+        when: null,
+        checks: [
+          {
+            kind: "authorize-if",
+            check: "() => true",
+            record: false,
+            run: submissionExpressions["policy.untilM8b.authorize-if.0"],
+          },
+        ],
+      },
+    ],
   },
   Task: {
     table: tables.task,
@@ -404,6 +661,20 @@ export const loadPlan = {
         evaluate: taskExpressions["computed.derivedState"],
       },
     },
+    reads: [
+      {
+        name: "untilM8b",
+        when: null,
+        checks: [
+          {
+            kind: "authorize-if",
+            check: "() => true",
+            record: false,
+            run: taskExpressions["policy.untilM8b.authorize-if.0"],
+          },
+        ],
+      },
+    ],
   },
 } as const satisfies $LoadPlan;
 
@@ -424,29 +695,36 @@ export async function loadEventFields<const N extends keyof EventLoadable>(
 /**
  * Load relationships and computed fields onto Attempt rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type AttemptWith<"name" | ...>.
+ * the result is new rows of type AttemptTxWith<"name" | ...>.
  */
 export async function loadAttemptFields<const N extends keyof AttemptLoadable>(
   tx: $DataOperations,
   rows: readonly Attempt[],
   names: readonly N[],
   options?: $LoadOptions,
-): Promise<AttemptWith<N>[]> {
-  return (await $loadRows(loadPlan, "Attempt", tx, rows, names, options)) as AttemptWith<N>[];
+): Promise<AttemptTxWith<N>[]> {
+  return (await $loadRows(loadPlan, "Attempt", tx, rows, names, options)) as AttemptTxWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto Invocation rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type InvocationWith<"name" | ...>.
+ * the result is new rows of type InvocationTxWith<"name" | ...>.
  */
 export async function loadInvocationFields<const N extends keyof InvocationLoadable>(
   tx: $DataOperations,
   rows: readonly Invocation[],
   names: readonly N[],
   options?: $LoadOptions,
-): Promise<InvocationWith<N>[]> {
-  return (await $loadRows(loadPlan, "Invocation", tx, rows, names, options)) as InvocationWith<N>[];
+): Promise<InvocationTxWith<N>[]> {
+  return (await $loadRows(
+    loadPlan,
+    "Invocation",
+    tx,
+    rows,
+    names,
+    options,
+  )) as InvocationTxWith<N>[];
 }
 
 /**
@@ -466,28 +744,28 @@ export async function loadMachineFields<const N extends keyof MachineLoadable>(
 /**
  * Load relationships and computed fields onto Run rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type RunWith<"name" | ...>.
+ * the result is new rows of type RunTxWith<"name" | ...>.
  */
 export async function loadRunFields<const N extends keyof RunLoadable>(
   tx: $DataOperations,
   rows: readonly Run[],
   names: readonly N[],
   options?: $LoadOptions,
-): Promise<RunWith<N>[]> {
-  return (await $loadRows(loadPlan, "Run", tx, rows, names, options)) as RunWith<N>[];
+): Promise<RunTxWith<N>[]> {
+  return (await $loadRows(loadPlan, "Run", tx, rows, names, options)) as RunTxWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto SessionReference rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type SessionReferenceWith<"name" | ...>.
+ * the result is new rows of type SessionReferenceTxWith<"name" | ...>.
  */
 export async function loadSessionReferenceFields<const N extends keyof SessionReferenceLoadable>(
   tx: $DataOperations,
   rows: readonly SessionReference[],
   names: readonly N[],
   options?: $LoadOptions,
-): Promise<SessionReferenceWith<N>[]> {
+): Promise<SessionReferenceTxWith<N>[]> {
   return (await $loadRows(
     loadPlan,
     "SessionReference",
@@ -495,7 +773,7 @@ export async function loadSessionReferenceFields<const N extends keyof SessionRe
     rows,
     names,
     options,
-  )) as SessionReferenceWith<N>[];
+  )) as SessionReferenceTxWith<N>[];
 }
 
 /**
@@ -522,84 +800,112 @@ export async function loadCollaboratorFields<const N extends keyof CollaboratorL
 /**
  * Load relationships and computed fields onto Membership rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type MembershipWith<"name" | ...>.
+ * the result is new rows of type MembershipTxWith<"name" | ...>.
  */
 export async function loadMembershipFields<const N extends keyof MembershipLoadable>(
   tx: $DataOperations,
   rows: readonly Membership[],
   names: readonly N[],
   options?: $LoadOptions,
-): Promise<MembershipWith<N>[]> {
-  return (await $loadRows(loadPlan, "Membership", tx, rows, names, options)) as MembershipWith<N>[];
+): Promise<MembershipTxWith<N>[]> {
+  return (await $loadRows(
+    loadPlan,
+    "Membership",
+    tx,
+    rows,
+    names,
+    options,
+  )) as MembershipTxWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto Assignment rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type AssignmentWith<"name" | ...>.
+ * the result is new rows of type AssignmentTxWith<"name" | ...>.
  */
 export async function loadAssignmentFields<const N extends keyof AssignmentLoadable>(
   tx: $DataOperations,
   rows: readonly Assignment[],
   names: readonly N[],
   options?: $LoadOptions,
-): Promise<AssignmentWith<N>[]> {
-  return (await $loadRows(loadPlan, "Assignment", tx, rows, names, options)) as AssignmentWith<N>[];
+): Promise<AssignmentTxWith<N>[]> {
+  return (await $loadRows(
+    loadPlan,
+    "Assignment",
+    tx,
+    rows,
+    names,
+    options,
+  )) as AssignmentTxWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto Claim rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type ClaimWith<"name" | ...>.
+ * the result is new rows of type ClaimTxWith<"name" | ...>.
  */
 export async function loadClaimFields<const N extends keyof ClaimLoadable>(
   tx: $DataOperations,
   rows: readonly Claim[],
   names: readonly N[],
   options?: $LoadOptions,
-): Promise<ClaimWith<N>[]> {
-  return (await $loadRows(loadPlan, "Claim", tx, rows, names, options)) as ClaimWith<N>[];
+): Promise<ClaimTxWith<N>[]> {
+  return (await $loadRows(loadPlan, "Claim", tx, rows, names, options)) as ClaimTxWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto Completion rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type CompletionWith<"name" | ...>.
+ * the result is new rows of type CompletionTxWith<"name" | ...>.
  */
 export async function loadCompletionFields<const N extends keyof CompletionLoadable>(
   tx: $DataOperations,
   rows: readonly Completion[],
   names: readonly N[],
   options?: $LoadOptions,
-): Promise<CompletionWith<N>[]> {
-  return (await $loadRows(loadPlan, "Completion", tx, rows, names, options)) as CompletionWith<N>[];
+): Promise<CompletionTxWith<N>[]> {
+  return (await $loadRows(
+    loadPlan,
+    "Completion",
+    tx,
+    rows,
+    names,
+    options,
+  )) as CompletionTxWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto Dependency rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type DependencyWith<"name" | ...>.
+ * the result is new rows of type DependencyTxWith<"name" | ...>.
  */
 export async function loadDependencyFields<const N extends keyof DependencyLoadable>(
   tx: $DataOperations,
   rows: readonly Dependency[],
   names: readonly N[],
   options?: $LoadOptions,
-): Promise<DependencyWith<N>[]> {
-  return (await $loadRows(loadPlan, "Dependency", tx, rows, names, options)) as DependencyWith<N>[];
+): Promise<DependencyTxWith<N>[]> {
+  return (await $loadRows(
+    loadPlan,
+    "Dependency",
+    tx,
+    rows,
+    names,
+    options,
+  )) as DependencyTxWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto EvidenceReference rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type EvidenceReferenceWith<"name" | ...>.
+ * the result is new rows of type EvidenceReferenceTxWith<"name" | ...>.
  */
 export async function loadEvidenceReferenceFields<const N extends keyof EvidenceReferenceLoadable>(
   tx: $DataOperations,
   rows: readonly EvidenceReference[],
   names: readonly N[],
   options?: $LoadOptions,
-): Promise<EvidenceReferenceWith<N>[]> {
+): Promise<EvidenceReferenceTxWith<N>[]> {
   return (await $loadRows(
     loadPlan,
     "EvidenceReference",
@@ -607,61 +913,75 @@ export async function loadEvidenceReferenceFields<const N extends keyof Evidence
     rows,
     names,
     options,
-  )) as EvidenceReferenceWith<N>[];
+  )) as EvidenceReferenceTxWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto LateResult rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type LateResultWith<"name" | ...>.
+ * the result is new rows of type LateResultTxWith<"name" | ...>.
  */
 export async function loadLateResultFields<const N extends keyof LateResultLoadable>(
   tx: $DataOperations,
   rows: readonly LateResult[],
   names: readonly N[],
   options?: $LoadOptions,
-): Promise<LateResultWith<N>[]> {
-  return (await $loadRows(loadPlan, "LateResult", tx, rows, names, options)) as LateResultWith<N>[];
+): Promise<LateResultTxWith<N>[]> {
+  return (await $loadRows(
+    loadPlan,
+    "LateResult",
+    tx,
+    rows,
+    names,
+    options,
+  )) as LateResultTxWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto Review rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type ReviewWith<"name" | ...>.
+ * the result is new rows of type ReviewTxWith<"name" | ...>.
  */
 export async function loadReviewFields<const N extends keyof ReviewLoadable>(
   tx: $DataOperations,
   rows: readonly Review[],
   names: readonly N[],
   options?: $LoadOptions,
-): Promise<ReviewWith<N>[]> {
-  return (await $loadRows(loadPlan, "Review", tx, rows, names, options)) as ReviewWith<N>[];
+): Promise<ReviewTxWith<N>[]> {
+  return (await $loadRows(loadPlan, "Review", tx, rows, names, options)) as ReviewTxWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto Submission rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type SubmissionWith<"name" | ...>.
+ * the result is new rows of type SubmissionTxWith<"name" | ...>.
  */
 export async function loadSubmissionFields<const N extends keyof SubmissionLoadable>(
   tx: $DataOperations,
   rows: readonly Submission[],
   names: readonly N[],
   options?: $LoadOptions,
-): Promise<SubmissionWith<N>[]> {
-  return (await $loadRows(loadPlan, "Submission", tx, rows, names, options)) as SubmissionWith<N>[];
+): Promise<SubmissionTxWith<N>[]> {
+  return (await $loadRows(
+    loadPlan,
+    "Submission",
+    tx,
+    rows,
+    names,
+    options,
+  )) as SubmissionTxWith<N>[];
 }
 
 /**
  * Load relationships and computed fields onto Task rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type TaskWith<"name" | ...>.
+ * the result is new rows of type TaskTxWith<"name" | ...>.
  */
 export async function loadTaskFields<const N extends keyof TaskLoadable>(
   tx: $DataOperations,
   rows: readonly Task[],
   names: readonly N[],
   options?: $LoadOptions,
-): Promise<TaskWith<N>[]> {
-  return (await $loadRows(loadPlan, "Task", tx, rows, names, options)) as TaskWith<N>[];
+): Promise<TaskTxWith<N>[]> {
+  return (await $loadRows(loadPlan, "Task", tx, rows, names, options)) as TaskTxWith<N>[];
 }

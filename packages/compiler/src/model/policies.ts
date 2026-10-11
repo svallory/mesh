@@ -51,6 +51,15 @@ export function policyCovers(policy: Policy, action: { kind: ActionType; name: s
   return (!policy.types && !policy.actions) || (policy.types?.includes(action.kind) ?? false) || (policy.actions?.some((ref) => ref.name === action.name) ?? false);
 }
 
+/**
+ * The policies a caller's load of the entity runs (POL-17): those that cover its `read`, by type (`types=[:read]`, or no
+ * scope) or by name (`actions=[&read]`). A relationship or a rollup that reaches a record runs them as its `read` would,
+ * actor only; none covering, it gives nothing.
+ */
+export function loadPolicies(entity: Entity): Policy[] {
+  return entity.policies.filter((policy) => policyCovers(policy, { kind: "read", name: "read" }));
+}
+
 /** The policies whose scope covers the action, in the order the entity file declares them. */
 export function policiesCovering(entity: Entity, action: Pick<Action, "kind" | "name">): Policy[] {
   return entity.policies.filter((policy) => policyCovers(policy, action));

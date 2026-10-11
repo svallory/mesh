@@ -41,12 +41,20 @@ export interface PolicyCheck {
   decisive: boolean;
 }
 
-/** What a `ForbiddenError` reports: the action, the covering policies that failed (none when no policy covers it) and the checks that ran. */
+/**
+ * Why a call is forbidden: `failed`, a covering policy failed; `not-covered`, no policy covers the action by its scope
+ * (`types=`/`actions=`); `not-applied`, policies cover it, but the `when=` of each was false for this call.
+ */
+export type DenialReason = "failed" | "not-covered" | "not-applied";
+
+/** What a `ForbiddenError` reports: the action, the policies that decided (none when no policy covers it) and the checks that ran. */
 export interface PolicyDenial {
   entity: string;
   action: string;
   policies: readonly string[];
   breakdown: readonly PolicyCheck[];
+  /** Taken from `policies` when left out: `not-covered` when it is empty, else `failed`. */
+  reason?: DenialReason;
 }
 
 /** A programming or configuration mistake, rather than invalid caller input. */
@@ -80,8 +88,13 @@ export class ForbiddenError extends MeshError {
   readonly entity: string;
   /** The action, e.g. `publish`. */
   readonly action: string;
-  /** The covering policies that failed, in the order the entity file declares them; empty when no policy covers the action. */
+  /**
+   * The covering policies that failed, in the order the entity file declares them; with `reason` `not-applied`, the covering
+   * policies whose `when` was false; empty when no policy covers the action.
+   */
   readonly policies: readonly string[];
+  /** Why the call is forbidden. */
+  readonly reason: DenialReason;
   /** Every check that ran, of every covering policy, as frozen plain data. */
   readonly breakdown: readonly PolicyCheck[];
 
@@ -90,15 +103,19 @@ export class ForbiddenError extends MeshError {
     this.entity = denial.entity;
     this.action = denial.action;
     this.policies = Object.freeze([...denial.policies]);
+    this.reason = denial.reason ?? (denial.policies.length ? "failed" : "not-covered");
     this.breakdown = Object.freeze(denial.breakdown.map((check) => Object.freeze({ ...check })));
   }
 }
 
-function denialMessage({ entity, action, policies }: PolicyDenial): string {
+function denialMessage({ entity, action, policies, reason }: PolicyDenial): string {
+  const names = policies.map((name) => `:${name}`);
+  if (reason === "not-applied")
+    return `${entity}.${action} is forbidden: ${names.length === 1 ? "policy" : "policies"} ${names.join(", ")} cover${names.length === 1 ? "s" : ""} it, `
+      + `but the \`when\` of each was false for this call, so none applies, and a call no policy applies to is denied`;
   if (policies.length === 0)
     return `${entity}.${action} is forbidden: no policy of :${entity} covers it, and an action no policy covers is denied. `
       + `To let every caller run it, add to the entity's \`policies\`:\n  policy :open actions=[&${action}] authorize-if=() => true`;
-  const names = policies.map((name) => `:${name}`);
   return `${entity}.${action} is forbidden by ${names.length === 1 ? "policy" : "policies"} ${names.join(", ")}`;
 }
 

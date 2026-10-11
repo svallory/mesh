@@ -4,6 +4,7 @@ import { orderedEntities } from "../emitters/order.ts";
 import { actionsView } from "./actions.ts";
 import { hasLoader } from "./load.ts";
 import { entityInputs, entityPath, typeName } from "./inputs.ts";
+import { hasTxLoadable, txLoadTypes } from "./types.ts";
 
 /**
  * What `composition.ts.jig` renders: `.mesh/composition.ts`, the types of `actions` and `tx` (ADR-0068). Types only,
@@ -53,19 +54,22 @@ export function compositionView(input: EmitInput): CompositionView {
   for (const entity of orderedEntities(document)) {
     const view = actionsView(input, entity);
     const record = typeName(entity.name, entity.position);
-    const own = new Set([record, ...entityInputs(entity, document).map((i) => i.name), ...(hasLoader(entity) ? [`${record}Loadable`, `${record}With`, `${record}LoadNames`, `${record}LoadArg`] : [])]);
+    const own = new Set([record, ...entityInputs(entity, document).map((i) => i.name), ...(hasLoader(entity) ? [`${record}Loadable`, `${record}With`, `${record}LoadNames`, `${record}LoadArg`] : []), ...(hasTxLoadable(entity) ? [`${record}TxLoadable`, `${record}TxWith`] : [])]);
     for (const name of own)
       if (COMPOSITION_TYPES.includes(name))
         throw emitError("MESH_EMIT_NAME", `Entity :${entity.name} would generate the type ${name}, which .mesh/composition.ts declares and #mesh exports for \`actions\` and \`tx\``, entity.position, "Rename the entity or the action");
     const used = new Set<string>();
+    const tx = txLoadTypes(entity);
     for (const method of view.methods) {
-      const readOnlyReturnType = method.isRead && method.generics
-        ? `(L extends unknown ? readonly ($DeepReadonly<${record}> & Pick<$DeepReadonly<${record}Loadable>, ${record}LoadNames<L>>)[] : never)`
-        : `$DeepReadonly<${method.returnType}>`;
-      const fn = { name: method.functionName, generics: method.generics, inputType: method.inputType, returnType: method.returnType, readOnlyReturnType };
+      const readOnly = (loadable: string, returnType: string) => method.isRead && method.generics
+        ? `(L extends unknown ? readonly ($DeepReadonly<${record}> & Pick<$DeepReadonly<${loadable}>, ${record}LoadNames<L>>)[] : never)`
+        : `$DeepReadonly<${returnType}>`;
+      const fn = { name: method.functionName, generics: method.generics, inputType: method.inputType, returnType: method.returnType, readOnlyReturnType: readOnly(`${record}Loadable`, method.returnType) };
       actions.push(fn);
-      if (method.isRead) reads.push(fn);
-      for (const name of `${method.generics} ${method.inputType} ${method.returnType} ${readOnlyReturnType}`.match(IDENTIFIERS) ?? []) if (own.has(name)) used.add(name);
+      // `tx` runs no policy (ADR-0068): what its reads load is typed as a load through it.
+      const read = { ...fn, returnType: method.txReturnType, readOnlyReturnType: readOnly(tx.loadable, method.txReturnType) };
+      if (method.isRead) reads.push(read);
+      for (const name of `${method.generics} ${method.inputType} ${method.returnType} ${fn.readOnlyReturnType} ${method.isRead ? `${read.returnType} ${read.readOnlyReturnType}` : ""}`.match(IDENTIFIERS) ?? []) if (own.has(name)) used.add(name);
     }
     if (used.size) imports.push({ names: [...own].filter((name) => used.has(name)).join(", "), fromLiteral: JSON.stringify(`./${entityPath(entity)}.types`) });
   }

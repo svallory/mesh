@@ -46,7 +46,10 @@ export type ReadMachineInput<N extends keyof MachineLoadable = never> = {
   load?: readonly N[] | undefined;
 };
 
-/** What `load` attaches to a Machine. The record has none of it, so reading one that was not loaded is a type error. */
+/**
+ * What a caller's `load` attaches to a Machine. The record has none of it, so reading one that was not loaded is a type error.
+ * A caller's load runs the read policies of the entity it reaches: a related record the caller may not read is null, a list of them empty.
+ */
 export type MachineLoadable = {
   firstReportedBy: Collaborator | null;
   attempts: Attempt[];

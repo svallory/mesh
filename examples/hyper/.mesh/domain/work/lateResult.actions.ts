@@ -29,6 +29,7 @@ import {
 import type {
   LateResult,
   LateResultWith,
+  LateResultTxWith,
   LateResultLoadNames,
   LateResultLoadArg,
   LateResultLoadable,
@@ -53,7 +54,8 @@ export function bindLateResultReads(layer: $DataLayer, options: $BindOptions = {
       input: Omit<ReadLateResultInput, "load"> & LateResultLoadArg<L>,
       context?: unknown,
       clock?: () => Date,
-    ): Promise<L extends unknown ? LateResultWith<LateResultLoadNames<L>>[] : never> {
+      policies?: boolean,
+    ): Promise<L extends unknown ? LateResultTxWith<LateResultLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readLateResultInput, input);
       return layer.transaction(async (tx) => {
@@ -65,7 +67,7 @@ export function bindLateResultReads(layer: $DataLayer, options: $BindOptions = {
         })) as LateResult[];
         if (!parsed.load?.length)
           return $rows as unknown as L extends unknown
-            ? LateResultWith<LateResultLoadNames<L>>[]
+            ? LateResultTxWith<LateResultLoadNames<L>>[]
             : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
@@ -73,7 +75,8 @@ export function bindLateResultReads(layer: $DataLayer, options: $BindOptions = {
           actor: $context.actor,
           context: $context,
           clock: $clock,
-        })) as unknown as L extends unknown ? LateResultWith<LateResultLoadNames<L>>[] : never;
+          policies,
+        })) as unknown as L extends unknown ? LateResultTxWith<LateResultLoadNames<L>>[] : never;
       });
     },
   });
@@ -208,6 +211,7 @@ export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, co
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
+      const $parsed = await $castInput(layer, readLateResultInput, input);
       if (
         !(await $authorizer("LateResult", "read", [
           {
@@ -226,20 +230,20 @@ export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, co
           layer,
           $scope(
             {
-              input: $readOnlyRecord(input as never, "LateResult.read"),
+              input: $readOnlyRecord($parsed as never, "LateResult.read"),
               actor: $actor,
               context: $context,
             },
             { clock: $clock },
           ),
         ))
-      ) {
-        await $castInput(layer, readLateResultInput, input);
+      )
         return [] as unknown as L extends unknown
           ? LateResultWith<LateResultLoadNames<L>>[]
           : never;
-      }
-      return $reads.read(input, context, $clock);
+      return (await $reads.read(input, context, $clock, true)) as unknown as L extends unknown
+        ? LateResultWith<LateResultLoadNames<L>>[]
+        : never;
     },
   });
 }

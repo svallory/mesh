@@ -1,7 +1,8 @@
+import { dirname, resolve } from "node:path";
 import type { ActionType, Diagnostic, Entity, ModelDocument, Step } from "@meshfw/model";
 import { actionExpressions, type ActionExpression } from "./action-expressions.ts";
 import { error } from "./diagnostics.ts";
-import { policiesCovering, policyExpressions, readsRecord } from "./policies.ts";
+import { loadPolicies, policiesCovering, policyExpressions, readsRecord } from "./policies.ts";
 
 /** True when the function only ever runs in a create: an action that is one, or an `always` block that covers nothing else. */
 function createOnly(entity: Entity, owner: ActionExpression["owner"]): boolean {
@@ -15,9 +16,11 @@ function createOnly(entity: Entity, owner: ActionExpression["owner"]): boolean {
 /**
  * What the action lifecycle (M5) cannot run is a build error, never a silent skip (ADR-0018): `before` in a check or a create,
  * a `validate` or `do` on a read, which has no record to check or change, a `set` or `load` in a destroy, and in a policy
- * (M8) `before`, `actions` and, on a read, reading the record.
+ * (M8) `before`, `actions` and, on a read or a load, reading the record, and a policy with no check.
  */
 export function checkLifecycleLimits(document: ModelDocument, diagnostics: Diagnostic[]): void {
+  // The entities a relationship (and so a rollup) reaches: a caller's load of one runs its read policies (POL-17).
+  const loaded = new Set(document.entities.flatMap((from) => from.relationships.map((relation) => resolve(dirname(from.file), relation.entity.from))));
   for (const entity of document.entities) {
     // A computed field is worked out when a record is loaded, outside any action, so it has no transaction to compose in.
     for (const field of entity.computed) {
@@ -68,13 +71,22 @@ export function checkLifecycleLimits(document: ModelDocument, diagnostics: Diagn
             `${what} reads \`actions\`: a policy decides whether the call may run, and must not run actions itself`,
             expression.position, "read what the decision needs through `tx`, which runs reads only"));
       }
+    // A policy with no check would pass every call it covers (POL-16): the build says so, and asks for it written out.
+    for (const policy of entity.policies)
+      if (!policy.authorizeIf.length && !policy.forbidIf.length)
+        diagnostics.push(error("MESH_POLICY_NO_CHECKS",
+          `policy :${policy.name} of :${entity.name} has no \`authorize-if\` and no \`forbid-if\`, so it would pass every call it covers`,
+          policy.position,
+          "To let every caller through, say so: `authorize-if=() => true`. Otherwise write the check the policy stands for"));
     const reads = [...entity.actions, ...entity.auto.map((kind) => ({ kind, name: kind as string }))].filter((action) => action.kind === "read");
+    const loads = loaded.has(resolve(entity.file)) ? loadPolicies(entity) : [];
     for (const policy of entity.policies) {
-      const covered = reads.filter((action) => policiesCovering(entity, action).includes(policy));
+      const covered = reads.filter((action) => policiesCovering(entity, action).includes(policy)).map((action) => `read :${action.name}`);
+      if (loads.includes(policy)) covered.push("the loads of it (a relationship or a rollup that reaches it)");
       const reading = covered.length ? policyExpressions(policy).find(({ expression }) => readsRecord(expression)) : undefined;
       if (!reading) continue;
       diagnostics.push(error("MESH_NOT_IMPLEMENTED",
-        `${reading.what} reads the record, and the policy covers ${covered.map((action) => `read :${action.name}`).join(", ")} of :${entity.name}: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10`,
+        `${reading.what} reads the record, and the policy covers ${covered.join(", ")} of :${entity.name}: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10`,
         reading.expression.position,
         "Until M10, a read policy reads only `actor`, `context` and `input` (it then gives the whole result or none); scope a record-reading policy to the writes with `types=` or `actions=`"));
     }

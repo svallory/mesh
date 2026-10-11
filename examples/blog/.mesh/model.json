@@ -853,6 +853,15 @@
                 "line": 49,
                 "offset": 1454
               }
+            },
+            {
+              "name": "destroy",
+              "position": {
+                "column": 47,
+                "file": "src/domain/blog/post.mesh.mx",
+                "line": 49,
+                "offset": 1464
+              }
             }
           ],
           "authorizeIf": [
@@ -867,7 +876,7 @@
                 "column": 19,
                 "file": "src/domain/blog/post.mesh.mx",
                 "line": 50,
-                "offset": 1483
+                "offset": 1493
               },
               "source": "({ actor }) => &author.id === actor.id",
               "tree": {
@@ -885,7 +894,7 @@
                           "column": 34,
                           "file": "src/domain/blog/post.mesh.mx",
                           "line": 50,
-                          "offset": 1498
+                          "offset": 1508
                         }
                       },
                       "optional": false,
@@ -893,7 +902,7 @@
                         "column": 34,
                         "file": "src/domain/blog/post.mesh.mx",
                         "line": 50,
-                        "offset": 1498
+                        "offset": 1508
                       }
                     },
                     "optional": false,
@@ -901,7 +910,7 @@
                       "column": 34,
                       "file": "src/domain/blog/post.mesh.mx",
                       "line": 50,
-                      "offset": 1498
+                      "offset": 1508
                     }
                   },
                   {
@@ -914,7 +923,7 @@
                         "column": 49,
                         "file": "src/domain/blog/post.mesh.mx",
                         "line": 50,
-                        "offset": 1513
+                        "offset": 1523
                       }
                     },
                     "optional": false,
@@ -922,7 +931,7 @@
                       "column": 49,
                       "file": "src/domain/blog/post.mesh.mx",
                       "line": 50,
-                      "offset": 1513
+                      "offset": 1523
                     }
                   }
                 ],
@@ -932,7 +941,7 @@
                   "column": 34,
                   "file": "src/domain/blog/post.mesh.mx",
                   "line": 50,
-                  "offset": 1498
+                  "offset": 1508
                 }
               }
             }
@@ -944,63 +953,6 @@
             "file": "src/domain/blog/post.mesh.mx",
             "line": 49,
             "offset": 1421
-          }
-        },
-        {
-          "actions": [
-            {
-              "name": "destroy",
-              "position": {
-                "column": 32,
-                "file": "src/domain/blog/post.mesh.mx",
-                "line": 51,
-                "offset": 1554
-              }
-            }
-          ],
-          "authorizeIf": [
-            {
-              "params": [
-                "context"
-              ],
-              "position": {
-                "column": 19,
-                "file": "src/domain/blog/post.mesh.mx",
-                "line": 52,
-                "offset": 1583
-              },
-              "source": "({ context }) => isSystem(context)",
-              "tree": {
-                "args": [
-                  {
-                    "kind": "var",
-                    "name": "context",
-                    "position": {
-                      "column": 45,
-                      "file": "src/domain/blog/post.mesh.mx",
-                      "line": 52,
-                      "offset": 1609
-                    }
-                  }
-                ],
-                "fn": "isSystem",
-                "kind": "call",
-                "position": {
-                  "column": 36,
-                  "file": "src/domain/blog/post.mesh.mx",
-                  "line": 52,
-                  "offset": 1600
-                }
-              }
-            }
-          ],
-          "forbidIf": [],
-          "name": "systemOnly",
-          "position": {
-            "column": 4,
-            "file": "src/domain/blog/post.mesh.mx",
-            "line": 51,
-            "offset": 1526
           }
         }
       ],

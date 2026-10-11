@@ -14,6 +14,7 @@ import type {
   TypeClass,
 } from "@meshfw/model";
 import { newInstanceComputed, newInstanceGaps, newInstanceMembers } from "./new-instance.ts";
+import { policyCovers } from "./policies.ts";
 
 /**
  * Types every translated expression across the whole model (M4, ADR-0012 option A).
@@ -130,14 +131,16 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     return { c: "any", nullable: false };
   }
   const scopeInput = (scope: Scope, name: string): Ty => scope.inputs?.get(name) ?? { c: "any", nullable: false };
-  const notApplied = (name: string, position: SourcePosition) => {
-    if (diagnostics.some((d) => d.code === "MESH_VALIDATE_NOT_APPLIED" && d.position.file === position.file && d.position.offset === position.offset)) return;
-    report("warning", "MESH_VALIDATE_NOT_APPLIED",
-      `on a create, \`&${name}\` here is the new instance's value before the input is applied (its default, or null), not the caller's: \`validate\` sees \`self\` before the input`, position,
+  /** `policy`: the policy's message name when the function is a policy's (S2 of the M8a review), which sees `self` as `validate` does. */
+  const notApplied = (name: string, position: SourcePosition, policy?: string) => {
+    const code = policy ? "MESH_POLICY_NOT_APPLIED" : "MESH_VALIDATE_NOT_APPLIED";
+    if (diagnostics.some((d) => d.code === code && d.position.file === position.file && d.position.offset === position.offset)) return;
+    report("warning", code,
+      `on a create, \`&${name}\` here is the new instance's value before the input is applied (its default, or null), not the caller's: ${policy ? `${policy} sees \`self\` as \`validate\` does,` : "\`validate\` sees \`self\`"} before the input`, position,
       `write \`input.${name}\` for the caller's value, or \`input.${name} ?? &${name}\` for the value the action will store; on an update this changes the meaning (\`input.${name} ?? &${name}\` is the value being sent, \`&${name}\` the stored one), so in a check that also runs on updates and means the stored value, keep \`&${name}\``);
   };
   /** The same for a check Mesh runs as plain code: each `&x` the authored text reads, found through its edits. */
-  const plainNotApplied = (e: Expression, pending: ReadonlySet<string>) => {
+  const plainNotApplied = (e: Expression, pending: ReadonlySet<string>, policy?: string) => {
     for (const edit of e.plain?.edits ?? []) {
       const name = /^self\.(\w+)$/.exec(edit.text)?.[1];
       if (name === undefined || edit.fallback || !pending.has(name)) continue;
@@ -146,7 +149,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       notApplied(name, {
         file: e.position.file, offset: e.position.offset + edit.from, line: e.position.line + lines.length - 1,
         column: lines.length === 1 ? e.position.column + edit.from : lines.at(-1)!.length,
-      });
+      }, policy);
     }
   };
   /** What an unknown value does in each part of a check (`runCheck`): `that` fails the check, `when` skips it, `details` is null. Elsewhere (a step, a computed field) the outcome depends on the position. */
@@ -193,7 +196,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
         const owner = infer(n.object, scope);
         // On a create, `&x` in a check is the new instance's value before the input: its default, or null. Not the caller's.
         if (owner.pending?.has(n.name) && !storedFallback.has(n)) {
-          notApplied(n.name, n.position);
+          notApplied(n.name, n.position, scope.policy);
           return { c: "any", nullable: false };
         }
         if (owner.nullable && !owner.viaOptional && !n.optional && owner.c !== "any") {
@@ -411,6 +414,15 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       } else if (step.kind === "run") visit(step.fn, step.after === "write" ? { ...scope, fresh: undefined } : scope, false);
     }
   }
+  /** For each create, the members it takes as member inputs. */
+  function acceptedBy(creates: readonly { input: Action["input"] }[]): Set<string>[] {
+    return creates.map((action) => new Set(action.input.flatMap((field) => (field.kind === "member" ? [field.ref.name] : []))));
+  }
+  /** The members some create takes as a member input, with a relationship's key column: on a create, `&x` of one is not the caller's value. */
+  function pendingOn(entity: Entity, creates: readonly { input: Action["input"] }[]): Set<string> {
+    const keyColumn = (name: string) => entity.relationships.find((relation) => relation.name === name && relation.kind === "belongs-to")?.keyColumn;
+    return new Set(acceptedBy(creates).flatMap((set) => [...set].flatMap((name) => [name, ...(keyColumn(name) ? [keyColumn(name)!] : [])])));
+  }
   /**
    * The checks see `self` before the input is applied and no `before` (ACT-01, ACT-27): on a create, the new instance, where
    * a member with no default is still null. The steps before the write see the input applied; on a create the key the data
@@ -418,9 +430,8 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
    */
   function blocks(entity: Entity, validate: { that: Expression; when?: Expression; details?: Expression }[], list: Step[], scope: Scope, creates: readonly { input: Action["input"] }[]): void {
     const gaps = newInstanceGaps(entity);
-    const accepted = creates.map((action) => new Set(action.input.flatMap((field) => (field.kind === "member" ? [field.ref.name] : []))));
-    const keyColumn = (name: string) => entity.relationships.find((relation) => relation.name === name && relation.kind === "belongs-to")?.keyColumn;
-    const pending = new Set(accepted.flatMap((set) => [...set].flatMap((name) => [name, ...(keyColumn(name) ? [keyColumn(name)!] : [])])));
+    const accepted = acceptedBy(creates);
+    const pending = pendingOn(entity, creates);
     const members = newInstanceMembers(gaps, true);
     const checks: Scope = creates.length
       ? { ...scope, validate: true, fresh: new Set([...members, ...newInstanceComputed(entity, new Set(members))]), pending, acceptedOnCreate: new Set([...accepted[0]!].filter((name) => accepted.every((set) => set.has(name)))) }
@@ -458,9 +469,15 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       blocks(entity, block.validate, block.do, { ...base, beforeNullable: covers.includes("create") || covers.includes(undefined), noBefore: (block.types !== undefined || named !== undefined) && covers.every((kind) => kind === "create"), inputs: null }, creates);
     }
     for (const policy of entity.policies) {
-      const scope: Scope = { ...base, inputs: null, policy: `policy :${policy.name}` };
-      for (const e of [...policy.authorizeIf, ...policy.forbidIf]) visit(e, scope, true);
-      if (policy.when) visit(policy.when, scope, true);
+      // A policy sees `self` as `validate` does (POL-08): on a create it covers, `&x` of a member the create takes is the new
+      // instance's value before the input, not the caller's.
+      const pending = pendingOn(entity, every.filter((action) => action.kind === "create" && policyCovers(policy, action)));
+      const scope: Scope = { ...base, inputs: null, policy: `policy :${policy.name}`, ...(pending.size ? { pending } : {}) };
+      const name = `policy :${policy.name}`;
+      for (const e of [...policy.authorizeIf, ...policy.forbidIf, ...(policy.when ? [policy.when] : [])]) {
+        visit(e, scope, true);
+        if (pending.size && e.plain) plainNotApplied(e, pending, name);
+      }
     }
   }
 }

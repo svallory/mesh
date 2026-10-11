@@ -59,9 +59,12 @@ export type DestroyPostInput = {
   id: string;
 };
 
-/** What `load` attaches to a Post. The record has none of it, so reading one that was not loaded is a type error. */
+/**
+ * What a caller's `load` attaches to a Post. The record has none of it, so reading one that was not loaded is a type error.
+ * A caller's load runs the read policies of the entity it reaches: a related record the caller may not read is null, a list of them empty.
+ */
 export type PostLoadable = {
-  author: User;
+  author: User | null;
   comments: Comment[];
   excerpt: string;
   commentCount: number;
@@ -69,6 +72,17 @@ export type PostLoadable = {
 
 /** A Post with the relationships and computed fields named in N loaded. */
 export type PostWith<N extends keyof PostLoadable> = Post & Pick<PostLoadable, N>;
+
+/** What a load through `tx` attaches to a Post: it runs no policy, so every related record the key names is there. */
+export type PostTxLoadable = {
+  author: User;
+  comments: Comment[];
+  excerpt: string;
+  commentCount: number;
+};
+
+/** A Post loaded through `tx`, with the relationships and computed fields named in N. */
+export type PostTxWith<N extends keyof PostLoadable> = Post & Pick<PostTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type PostLoadNames<L extends readonly (keyof PostLoadable)[]> = number extends L["length"]

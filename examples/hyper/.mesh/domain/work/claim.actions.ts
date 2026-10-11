@@ -36,6 +36,7 @@ import {
 import type {
   Claim,
   ClaimWith,
+  ClaimTxWith,
   ClaimLoadNames,
   ClaimLoadArg,
   ClaimLoadable,
@@ -74,7 +75,8 @@ export function bindClaimReads(layer: $DataLayer, options: $BindOptions = {}) {
       input: Omit<ReadClaimInput, "load"> & ClaimLoadArg<L>,
       context?: unknown,
       clock?: () => Date,
-    ): Promise<L extends unknown ? ClaimWith<ClaimLoadNames<L>>[] : never> {
+      policies?: boolean,
+    ): Promise<L extends unknown ? ClaimTxWith<ClaimLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readClaimInput, input);
       return layer.transaction(async (tx) => {
@@ -86,14 +88,15 @@ export function bindClaimReads(layer: $DataLayer, options: $BindOptions = {}) {
           offset: parsed.offset,
         })) as Claim[];
         if (!parsed.load?.length)
-          return $rows as unknown as L extends unknown ? ClaimWith<ClaimLoadNames<L>>[] : never;
+          return $rows as unknown as L extends unknown ? ClaimTxWith<ClaimLoadNames<L>>[] : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "Claim", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
-        })) as unknown as L extends unknown ? ClaimWith<ClaimLoadNames<L>>[] : never;
+          policies,
+        })) as unknown as L extends unknown ? ClaimTxWith<ClaimLoadNames<L>>[] : never;
       });
     },
   });
@@ -916,6 +919,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
+      const $parsed = await $castInput(layer, readClaimInput, input);
       if (
         !(await $authorizer("Claim", "read", [
           {
@@ -934,18 +938,18 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           layer,
           $scope(
             {
-              input: $readOnlyRecord(input as never, "Claim.read"),
+              input: $readOnlyRecord($parsed as never, "Claim.read"),
               actor: $actor,
               context: $context,
             },
             { clock: $clock },
           ),
         ))
-      ) {
-        await $castInput(layer, readClaimInput, input);
+      )
         return [] as unknown as L extends unknown ? ClaimWith<ClaimLoadNames<L>>[] : never;
-      }
-      return $reads.read(input, context, $clock);
+      return (await $reads.read(input, context, $clock, true)) as unknown as L extends unknown
+        ? ClaimWith<ClaimLoadNames<L>>[]
+        : never;
     },
   });
 }

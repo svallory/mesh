@@ -182,6 +182,17 @@ function freeVariables(fn: N, ctx: ConvertContext, clock: Set<string>): string[]
       }
       return;
     }
+    // A registered function called with the wrong number of arguments is an error, translated or plain (N3 of the M8a review).
+    const callee = n.type === "CallExpression" ? n.callee as N : undefined;
+    const registered = callee?.type === "Identifier" ? REGISTERED_CALLS[callee.name!] : undefined;
+    if (registered && !scope.has(callee!.name!) && !ctx.imported.has(callee!.name!) && !ctx.helpers.has(callee!.name!) && (n.arguments ?? []).length !== registered.arity)
+      ctx.report({
+        severity: "error",
+        code: "MESH_EXPR_ARITY",
+        message: `\`${callee!.name}()\` takes ${registered.arity === 0 ? "no arguments" : `${registered.arity} argument${registered.arity === 1 ? "" : "s"}`}, and this call passes ${(n.arguments ?? []).length}`,
+        position: ctx.at(start(n)),
+        fix: registered.arity === 0 ? `write \`${callee!.name}()\`` : `write \`${callee!.name}(context)\``,
+      });
     const opened = scopeNames(n);
     const inner = opened && opened.size > 0 ? new Set([...scope, ...opened]) : scope;
     for (const [k, child] of Object.entries(n)) if (k !== "loc" && k !== "extra") walk(child, n, k, inner);

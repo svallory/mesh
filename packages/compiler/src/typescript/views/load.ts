@@ -4,7 +4,9 @@ import { emitError } from "../emit-error.ts";
 import type { EmitInput } from "../emit.ts";
 import { orderedEntities } from "../emitters/order.ts";
 import { camelCase, entityPath, propertyName, typeName } from "./inputs.ts";
-import { relationTarget } from "./types.ts";
+import { loadPolicies } from "../../model/policies.ts";
+import { expressionIds, policySpecs } from "./expressions.ts";
+import { relationTarget, txLoadTypes } from "./types.ts";
 
 /**
  * What `load.ts.jig` renders: `<output>/load.ts`, one per build when some entity has a relationship or
@@ -35,6 +37,11 @@ export interface LoadEntity {
   readonly relations: readonly { readonly key: string; readonly plan: string }[];
   /** One entry per computed field, in authored order. */
   readonly computed: readonly { readonly key: string; readonly plan: string }[];
+  /**
+   * The policies a caller's load of the entity runs (POL-17), as the array literal `authorizer` takes, or `null` when none
+   * covers its `read`: a caller then loads none of its records.
+   */
+  readonly reads: string | null;
   /** The entity's loader, or `null` when it has no relationship and no computed field. */
   readonly loader: LoadFunction | null;
 }
@@ -84,28 +91,36 @@ export function loadView(input: EmitInput, generatedPath: string): LoadView {
       }
       return { key: propertyName(relation.name), plan: `{ ${parts.join(", ")} }` };
     });
-    const computed = entity.computed.map((field) => {
-      if (field.rollup)
-        return { key: propertyName(field.name), plan: `{ kind: "rollup", fn: ${JSON.stringify(field.rollup.fn)}, of: ${JSON.stringify(field.rollup.of.split("."))} }` };
-      const needs = JSON.stringify(field.needs ?? []);
+    const expressionsOf = () => {
       let local = locals.get(entity.file);
       if (!local) {
         local = `${camelCase(entity.name)}Expressions`;
         locals.set(entity.file, local);
         expressionImports.push({ local, fromLiteral: fromLiteral(generatedPath, `${posix.dirname(generatedPath)}/${entityPath(entity)}.expressions`) });
       }
-      return { key: propertyName(field.name), plan: `{ kind: "body", needs: ${needs},${field.body!.plain ? " plain: true," : ""} evaluate: ${local}[${JSON.stringify(`computed.${field.name}`)}] }` };
+      return local;
+    };
+    const computed = entity.computed.map((field) => {
+      if (field.rollup)
+        return { key: propertyName(field.name), plan: `{ kind: "rollup", fn: ${JSON.stringify(field.rollup.fn)}, of: ${JSON.stringify(field.rollup.of.split("."))} }` };
+      const needs = JSON.stringify(field.needs ?? []);
+      return { key: propertyName(field.name), plan: `{ kind: "body", needs: ${needs},${field.body!.plain ? " plain: true," : ""} evaluate: ${expressionsOf()}[${JSON.stringify(`computed.${field.name}`)}] }` };
     });
+    const policies = loadPolicies(entity);
+    const ids = policies.length ? expressionIds(entity) : undefined;
+    const reads = policies.length ? policySpecs(policies, (expression) => `${expressionsOf()}[${JSON.stringify(ids!.get(expression))}]`) : null;
     let loader: LoadFunction | null = null;
     if (hasLoader(entity)) {
-      loader = { name: loaderName(entity), record, loadable: `${record}Loadable`, with: `${record}With`, entityLiteral: JSON.stringify(entity.name) };
-      typeImports.push({ names: `${record}, ${record}Loadable, ${record}With`, fromLiteral: fromLiteral(generatedPath, `${posix.dirname(generatedPath)}/${entityPath(entity)}.types`) });
+      // A loader is what a `load` step and a function of an entity file call: it runs no policy, so it is typed as `tx` loads.
+      const tx = txLoadTypes(entity);
+      loader = { name: loaderName(entity), record, loadable: `${record}Loadable`, with: tx.with, entityLiteral: JSON.stringify(entity.name) };
+      typeImports.push({ names: `${record}, ${record}Loadable, ${tx.with}`, fromLiteral: fromLiteral(generatedPath, `${posix.dirname(generatedPath)}/${entityPath(entity)}.types`) });
     }
     return {
       nameLiteral: JSON.stringify(entity.name),
       table: `tables.${camelCase(entity.name)}`,
       keyLiteral: JSON.stringify(key.name),
-      relations, computed, loader,
+      relations, computed, reads, loader,
     };
   });
   return { schemaFromLiteral: JSON.stringify("./schema"), expressionImports, typeImports, entities };

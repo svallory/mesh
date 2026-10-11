@@ -31,6 +31,7 @@ import {
 import type {
   Invocation,
   InvocationWith,
+  InvocationTxWith,
   InvocationLoadNames,
   InvocationLoadArg,
   InvocationLoadable,
@@ -60,7 +61,8 @@ export function bindInvocationReads(layer: $DataLayer, options: $BindOptions = {
       input: Omit<ReadInvocationInput, "load"> & InvocationLoadArg<L>,
       context?: unknown,
       clock?: () => Date,
-    ): Promise<L extends unknown ? InvocationWith<InvocationLoadNames<L>>[] : never> {
+      policies?: boolean,
+    ): Promise<L extends unknown ? InvocationTxWith<InvocationLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readInvocationInput, input);
       return layer.transaction(async (tx) => {
@@ -72,7 +74,7 @@ export function bindInvocationReads(layer: $DataLayer, options: $BindOptions = {
         })) as Invocation[];
         if (!parsed.load?.length)
           return $rows as unknown as L extends unknown
-            ? InvocationWith<InvocationLoadNames<L>>[]
+            ? InvocationTxWith<InvocationLoadNames<L>>[]
             : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
@@ -80,7 +82,8 @@ export function bindInvocationReads(layer: $DataLayer, options: $BindOptions = {
           actor: $context.actor,
           context: $context,
           clock: $clock,
-        })) as unknown as L extends unknown ? InvocationWith<InvocationLoadNames<L>>[] : never;
+          policies,
+        })) as unknown as L extends unknown ? InvocationTxWith<InvocationLoadNames<L>>[] : never;
       });
     },
   });
@@ -451,6 +454,7 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
+      const $parsed = await $castInput(layer, readInvocationInput, input);
       if (
         !(await $authorizer("Invocation", "read", [
           {
@@ -469,20 +473,20 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
           layer,
           $scope(
             {
-              input: $readOnlyRecord(input as never, "Invocation.read"),
+              input: $readOnlyRecord($parsed as never, "Invocation.read"),
               actor: $actor,
               context: $context,
             },
             { clock: $clock },
           ),
         ))
-      ) {
-        await $castInput(layer, readInvocationInput, input);
+      )
         return [] as unknown as L extends unknown
           ? InvocationWith<InvocationLoadNames<L>>[]
           : never;
-      }
-      return $reads.read(input, context, $clock);
+      return (await $reads.read(input, context, $clock, true)) as unknown as L extends unknown
+        ? InvocationWith<InvocationLoadNames<L>>[]
+        : never;
     },
   });
 }

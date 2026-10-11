@@ -34,6 +34,7 @@ import {
 import type {
   Run,
   RunWith,
+  RunTxWith,
   RunLoadNames,
   RunLoadArg,
   RunLoadable,
@@ -61,7 +62,8 @@ export function bindRunReads(layer: $DataLayer, options: $BindOptions = {}) {
       input: Omit<ReadRunInput, "load"> & RunLoadArg<L>,
       context?: unknown,
       clock?: () => Date,
-    ): Promise<L extends unknown ? RunWith<RunLoadNames<L>>[] : never> {
+      policies?: boolean,
+    ): Promise<L extends unknown ? RunTxWith<RunLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readRunInput, input);
       return layer.transaction(async (tx) => {
@@ -72,14 +74,15 @@ export function bindRunReads(layer: $DataLayer, options: $BindOptions = {}) {
           offset: parsed.offset,
         })) as Run[];
         if (!parsed.load?.length)
-          return $rows as unknown as L extends unknown ? RunWith<RunLoadNames<L>>[] : never;
+          return $rows as unknown as L extends unknown ? RunTxWith<RunLoadNames<L>>[] : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "Run", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
-        })) as unknown as L extends unknown ? RunWith<RunLoadNames<L>>[] : never;
+          policies,
+        })) as unknown as L extends unknown ? RunTxWith<RunLoadNames<L>>[] : never;
       });
     },
   });
@@ -455,6 +458,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
+      const $parsed = await $castInput(layer, readRunInput, input);
       if (
         !(await $authorizer("Run", "read", [
           {
@@ -473,18 +477,18 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
           layer,
           $scope(
             {
-              input: $readOnlyRecord(input as never, "Run.read"),
+              input: $readOnlyRecord($parsed as never, "Run.read"),
               actor: $actor,
               context: $context,
             },
             { clock: $clock },
           ),
         ))
-      ) {
-        await $castInput(layer, readRunInput, input);
+      )
         return [] as unknown as L extends unknown ? RunWith<RunLoadNames<L>>[] : never;
-      }
-      return $reads.read(input, context, $clock);
+      return (await $reads.read(input, context, $clock, true)) as unknown as L extends unknown
+        ? RunWith<RunLoadNames<L>>[]
+        : never;
     },
   });
 }

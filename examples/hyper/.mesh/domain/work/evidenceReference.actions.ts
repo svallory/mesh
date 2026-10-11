@@ -25,6 +25,7 @@ import {
 import type {
   EvidenceReference,
   EvidenceReferenceWith,
+  EvidenceReferenceTxWith,
   EvidenceReferenceLoadNames,
   EvidenceReferenceLoadArg,
   EvidenceReferenceLoadable,
@@ -52,7 +53,10 @@ export function bindEvidenceReferenceReads(layer: $DataLayer, options: $BindOpti
       input: Omit<ReadEvidenceReferenceInput, "load"> & EvidenceReferenceLoadArg<L>,
       context?: unknown,
       clock?: () => Date,
-    ): Promise<L extends unknown ? EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[] : never> {
+      policies?: boolean,
+    ): Promise<
+      L extends unknown ? EvidenceReferenceTxWith<EvidenceReferenceLoadNames<L>>[] : never
+    > {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readEvidenceReferenceInput, input);
       return layer.transaction(async (tx) => {
@@ -64,7 +68,7 @@ export function bindEvidenceReferenceReads(layer: $DataLayer, options: $BindOpti
         })) as EvidenceReference[];
         if (!parsed.load?.length)
           return $rows as unknown as L extends unknown
-            ? EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[]
+            ? EvidenceReferenceTxWith<EvidenceReferenceLoadNames<L>>[]
             : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
@@ -72,8 +76,9 @@ export function bindEvidenceReferenceReads(layer: $DataLayer, options: $BindOpti
           actor: $context.actor,
           context: $context,
           clock: $clock,
+          policies,
         })) as unknown as L extends unknown
-          ? EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[]
+          ? EvidenceReferenceTxWith<EvidenceReferenceLoadNames<L>>[]
           : never;
       });
     },
@@ -200,6 +205,7 @@ export function bindEvidenceReference(
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
+      const $parsed = await $castInput(layer, readEvidenceReferenceInput, input);
       if (
         !(await $authorizer("EvidenceReference", "read", [
           {
@@ -218,20 +224,20 @@ export function bindEvidenceReference(
           layer,
           $scope(
             {
-              input: $readOnlyRecord(input as never, "EvidenceReference.read"),
+              input: $readOnlyRecord($parsed as never, "EvidenceReference.read"),
               actor: $actor,
               context: $context,
             },
             { clock: $clock },
           ),
         ))
-      ) {
-        await $castInput(layer, readEvidenceReferenceInput, input);
+      )
         return [] as unknown as L extends unknown
           ? EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[]
           : never;
-      }
-      return $reads.read(input, context, $clock);
+      return (await $reads.read(input, context, $clock, true)) as unknown as L extends unknown
+        ? EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[]
+        : never;
     },
   });
 }

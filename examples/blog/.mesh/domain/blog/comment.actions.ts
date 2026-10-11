@@ -17,6 +17,7 @@ import {
 import type {
   Comment,
   CommentWith,
+  CommentTxWith,
   CommentLoadNames,
   CommentLoadArg,
   CommentLoadable,
@@ -37,7 +38,8 @@ export function bindCommentReads(layer: $DataLayer, options: $BindOptions = {}) 
       input: Omit<ReadCommentInput, "load"> & CommentLoadArg<L>,
       context?: unknown,
       clock?: () => Date,
-    ): Promise<L extends unknown ? CommentWith<CommentLoadNames<L>>[] : never> {
+      policies?: boolean,
+    ): Promise<L extends unknown ? CommentTxWith<CommentLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readCommentInput, input);
       return layer.transaction(async (tx) => {
@@ -48,14 +50,17 @@ export function bindCommentReads(layer: $DataLayer, options: $BindOptions = {}) 
           offset: parsed.offset,
         })) as Comment[];
         if (!parsed.load?.length)
-          return $rows as unknown as L extends unknown ? CommentWith<CommentLoadNames<L>>[] : never;
+          return $rows as unknown as L extends unknown
+            ? CommentTxWith<CommentLoadNames<L>>[]
+            : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "Comment", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
-        })) as unknown as L extends unknown ? CommentWith<CommentLoadNames<L>>[] : never;
+          policies,
+        })) as unknown as L extends unknown ? CommentTxWith<CommentLoadNames<L>>[] : never;
       });
     },
   });
@@ -76,6 +81,7 @@ export function bindComment(layer: $DataLayer, options: $BindOptions = {}, _comp
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
+      const $parsed = await $castInput(layer, readCommentInput, input);
       if (
         !(await $authorizer("Comment", "read", [
           {
@@ -94,18 +100,18 @@ export function bindComment(layer: $DataLayer, options: $BindOptions = {}, _comp
           layer,
           $scope(
             {
-              input: $readOnlyRecord(input as never, "Comment.read"),
+              input: $readOnlyRecord($parsed as never, "Comment.read"),
               actor: $actor,
               context: $context,
             },
             { clock: $clock },
           ),
         ))
-      ) {
-        await $castInput(layer, readCommentInput, input);
+      )
         return [] as unknown as L extends unknown ? CommentWith<CommentLoadNames<L>>[] : never;
-      }
-      return $reads.read(input, context, $clock);
+      return (await $reads.read(input, context, $clock, true)) as unknown as L extends unknown
+        ? CommentWith<CommentLoadNames<L>>[]
+        : never;
     },
   });
 }

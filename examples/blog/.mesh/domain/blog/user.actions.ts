@@ -115,6 +115,7 @@ export function bindUser(layer: $DataLayer, options: $BindOptions = {}, _compose
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
+      const $parsed = await $castInput(layer, readUserInput, input);
       if (
         !(await $authorizer("User", "read", [
           {
@@ -133,17 +134,15 @@ export function bindUser(layer: $DataLayer, options: $BindOptions = {}, _compose
           layer,
           $scope(
             {
-              input: $readOnlyRecord(input as never, "User.read"),
+              input: $readOnlyRecord($parsed as never, "User.read"),
               actor: $actor,
               context: $context,
             },
             { clock: $clock },
           ),
         ))
-      ) {
-        await $castInput(layer, readUserInput, input);
+      )
         return [] as unknown as User[];
-      }
       return $reads.read(input);
     },
   });

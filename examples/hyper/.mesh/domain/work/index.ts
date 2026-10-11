@@ -18,6 +18,8 @@ import type {
   AssignmentWith,
   AssignmentLoadNames,
   AssignmentLoadArg,
+  AssignmentTxLoadable,
+  AssignmentTxWith,
 } from "./assignment.types";
 import type {
   Claim,
@@ -34,6 +36,8 @@ import type {
   ClaimWith,
   ClaimLoadNames,
   ClaimLoadArg,
+  ClaimTxLoadable,
+  ClaimTxWith,
 } from "./claim.types";
 import type {
   Completion,
@@ -45,6 +49,8 @@ import type {
   CompletionWith,
   CompletionLoadNames,
   CompletionLoadArg,
+  CompletionTxLoadable,
+  CompletionTxWith,
 } from "./completion.types";
 import type {
   Dependency,
@@ -57,6 +63,8 @@ import type {
   DependencyWith,
   DependencyLoadNames,
   DependencyLoadArg,
+  DependencyTxLoadable,
+  DependencyTxWith,
 } from "./dependency.types";
 import type {
   EvidenceReference,
@@ -68,6 +76,8 @@ import type {
   EvidenceReferenceWith,
   EvidenceReferenceLoadNames,
   EvidenceReferenceLoadArg,
+  EvidenceReferenceTxLoadable,
+  EvidenceReferenceTxWith,
 } from "./evidenceReference.types";
 import type {
   LateResult,
@@ -79,6 +89,8 @@ import type {
   LateResultWith,
   LateResultLoadNames,
   LateResultLoadArg,
+  LateResultTxLoadable,
+  LateResultTxWith,
 } from "./lateResult.types";
 import type {
   Review,
@@ -91,6 +103,8 @@ import type {
   ReviewWith,
   ReviewLoadNames,
   ReviewLoadArg,
+  ReviewTxLoadable,
+  ReviewTxWith,
 } from "./review.types";
 import type {
   Submission,
@@ -105,6 +119,8 @@ import type {
   SubmissionWith,
   SubmissionLoadNames,
   SubmissionLoadArg,
+  SubmissionTxLoadable,
+  SubmissionTxWith,
 } from "./submission.types";
 import type {
   Task,
@@ -125,6 +141,8 @@ import type {
   TaskWith,
   TaskLoadNames,
   TaskLoadArg,
+  TaskTxLoadable,
+  TaskTxWith,
 } from "./task.types";
 
 export type {
@@ -138,6 +156,8 @@ export type {
   AssignmentWith,
   AssignmentLoadNames,
   AssignmentLoadArg,
+  AssignmentTxLoadable,
+  AssignmentTxWith,
   Claim,
   AcquireClaimInput,
   RenewClaimInput,
@@ -152,6 +172,8 @@ export type {
   ClaimWith,
   ClaimLoadNames,
   ClaimLoadArg,
+  ClaimTxLoadable,
+  ClaimTxWith,
   Completion,
   RecordCompletionInput,
   ReadCompletionInput,
@@ -161,6 +183,8 @@ export type {
   CompletionWith,
   CompletionLoadNames,
   CompletionLoadArg,
+  CompletionTxLoadable,
+  CompletionTxWith,
   Dependency,
   AddDependencyInput,
   RemoveDependencyInput,
@@ -171,6 +195,8 @@ export type {
   DependencyWith,
   DependencyLoadNames,
   DependencyLoadArg,
+  DependencyTxLoadable,
+  DependencyTxWith,
   EvidenceReference,
   RecordEvidenceReferenceInput,
   ReadEvidenceReferenceInput,
@@ -180,6 +206,8 @@ export type {
   EvidenceReferenceWith,
   EvidenceReferenceLoadNames,
   EvidenceReferenceLoadArg,
+  EvidenceReferenceTxLoadable,
+  EvidenceReferenceTxWith,
   LateResult,
   RecordLateResultInput,
   ReadLateResultInput,
@@ -189,6 +217,8 @@ export type {
   LateResultWith,
   LateResultLoadNames,
   LateResultLoadArg,
+  LateResultTxLoadable,
+  LateResultTxWith,
   Review,
   AcceptReviewInput,
   ReturnReviewInput,
@@ -199,6 +229,8 @@ export type {
   ReviewWith,
   ReviewLoadNames,
   ReviewLoadArg,
+  ReviewTxLoadable,
+  ReviewTxWith,
   Submission,
   SubmitSubmissionInput,
   WithdrawSubmissionInput,
@@ -211,6 +243,8 @@ export type {
   SubmissionWith,
   SubmissionLoadNames,
   SubmissionLoadArg,
+  SubmissionTxLoadable,
+  SubmissionTxWith,
   Task,
   CreateTaskInput,
   UpdateTaskInput,
@@ -229,6 +263,8 @@ export type {
   TaskWith,
   TaskLoadNames,
   TaskLoadArg,
+  TaskTxLoadable,
+  TaskTxWith,
 };
 export {
   loadAssignmentFields,

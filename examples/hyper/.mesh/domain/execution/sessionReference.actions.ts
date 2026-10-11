@@ -32,6 +32,7 @@ import {
 import type {
   SessionReference,
   SessionReferenceWith,
+  SessionReferenceTxWith,
   SessionReferenceLoadNames,
   SessionReferenceLoadArg,
   SessionReferenceLoadable,
@@ -64,7 +65,8 @@ export function bindSessionReferenceReads(layer: $DataLayer, options: $BindOptio
       input: Omit<ReadSessionReferenceInput, "load"> & SessionReferenceLoadArg<L>,
       context?: unknown,
       clock?: () => Date,
-    ): Promise<L extends unknown ? SessionReferenceWith<SessionReferenceLoadNames<L>>[] : never> {
+      policies?: boolean,
+    ): Promise<L extends unknown ? SessionReferenceTxWith<SessionReferenceLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readSessionReferenceInput, input);
       return layer.transaction(async (tx) => {
@@ -76,7 +78,7 @@ export function bindSessionReferenceReads(layer: $DataLayer, options: $BindOptio
         })) as SessionReference[];
         if (!parsed.load?.length)
           return $rows as unknown as L extends unknown
-            ? SessionReferenceWith<SessionReferenceLoadNames<L>>[]
+            ? SessionReferenceTxWith<SessionReferenceLoadNames<L>>[]
             : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
@@ -84,8 +86,9 @@ export function bindSessionReferenceReads(layer: $DataLayer, options: $BindOptio
           actor: $context.actor,
           context: $context,
           clock: $clock,
+          policies,
         })) as unknown as L extends unknown
-          ? SessionReferenceWith<SessionReferenceLoadNames<L>>[]
+          ? SessionReferenceTxWith<SessionReferenceLoadNames<L>>[]
           : never;
       });
     },
@@ -502,6 +505,7 @@ export function bindSessionReference(
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
+      const $parsed = await $castInput(layer, readSessionReferenceInput, input);
       if (
         !(await $authorizer("SessionReference", "read", [
           {
@@ -520,20 +524,20 @@ export function bindSessionReference(
           layer,
           $scope(
             {
-              input: $readOnlyRecord(input as never, "SessionReference.read"),
+              input: $readOnlyRecord($parsed as never, "SessionReference.read"),
               actor: $actor,
               context: $context,
             },
             { clock: $clock },
           ),
         ))
-      ) {
-        await $castInput(layer, readSessionReferenceInput, input);
+      )
         return [] as unknown as L extends unknown
           ? SessionReferenceWith<SessionReferenceLoadNames<L>>[]
           : never;
-      }
-      return $reads.read(input, context, $clock);
+      return (await $reads.read(input, context, $clock, true)) as unknown as L extends unknown
+        ? SessionReferenceWith<SessionReferenceLoadNames<L>>[]
+        : never;
     },
   });
 }

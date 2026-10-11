@@ -42,16 +42,30 @@ export type ReadMembershipInput<N extends keyof MembershipLoadable = never> = {
   load?: readonly N[] | undefined;
 };
 
-/** What `load` attaches to a Membership. The record has none of it, so reading one that was not loaded is a type error. */
+/**
+ * What a caller's `load` attaches to a Membership. The record has none of it, so reading one that was not loaded is a type error.
+ * A caller's load runs the read policies of the entity it reaches: a related record the caller may not read is null, a list of them empty.
+ */
 export type MembershipLoadable = {
-  collaborator: Collaborator;
-  grantedBy: Collaborator;
+  collaborator: Collaborator | null;
+  grantedBy: Collaborator | null;
   revokedBy: Collaborator | null;
 };
 
 /** A Membership with the relationships and computed fields named in N loaded. */
 export type MembershipWith<N extends keyof MembershipLoadable> = Membership &
   Pick<MembershipLoadable, N>;
+
+/** What a load through `tx` attaches to a Membership: it runs no policy, so every related record the key names is there. */
+export type MembershipTxLoadable = {
+  collaborator: Collaborator;
+  grantedBy: Collaborator;
+  revokedBy: Collaborator | null;
+};
+
+/** A Membership loaded through `tx`, with the relationships and computed fields named in N. */
+export type MembershipTxWith<N extends keyof MembershipLoadable> = Membership &
+  Pick<MembershipTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type MembershipLoadNames<L extends readonly (keyof MembershipLoadable)[]> =

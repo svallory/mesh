@@ -36,14 +36,26 @@ export type ReadReviewInput<N extends keyof ReviewLoadable = never> = {
   load?: readonly N[] | undefined;
 };
 
-/** What `load` attaches to a Review. The record has none of it, so reading one that was not loaded is a type error. */
+/**
+ * What a caller's `load` attaches to a Review. The record has none of it, so reading one that was not loaded is a type error.
+ * A caller's load runs the read policies of the entity it reaches: a related record the caller may not read is null, a list of them empty.
+ */
 export type ReviewLoadable = {
-  submission: Submission;
-  reviewer: Collaborator;
+  submission: Submission | null;
+  reviewer: Collaborator | null;
 };
 
 /** A Review with the relationships and computed fields named in N loaded. */
 export type ReviewWith<N extends keyof ReviewLoadable> = Review & Pick<ReviewLoadable, N>;
+
+/** What a load through `tx` attaches to a Review: it runs no policy, so every related record the key names is there. */
+export type ReviewTxLoadable = {
+  submission: Submission;
+  reviewer: Collaborator;
+};
+
+/** A Review loaded through `tx`, with the relationships and computed fields named in N. */
+export type ReviewTxWith<N extends keyof ReviewLoadable> = Review & Pick<ReviewTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type ReviewLoadNames<L extends readonly (keyof ReviewLoadable)[]> =

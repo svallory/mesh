@@ -1,5 +1,6 @@
 import { dirname, posix, relative } from "node:path";
-import type { Action, Entity, Expression, ExprNode, Step } from "@meshfw/model";
+import type { Action, Entity, Expression, ExprNode, Policy, Step } from "@meshfw/model";
+import { policyExpressions, readsRecord } from "../../model/policies.ts";
 import type { EmitInput } from "../emit.ts";
 import { newInstanceComputed, newInstanceGaps, newInstanceMembers } from "../../model/new-instance.ts";
 import { mentioned, printExpression } from "../expression-printer.ts";
@@ -152,6 +153,20 @@ function helpersIn(n: ExprNode, into: Set<string>): void {
  */
 export function expressionIds(entity: Entity): Map<Expression, string> {
   return new Map(collect(entity).map((found) => [found.expression, found.id]));
+}
+
+/**
+ * The policies as `authorizer` from `@meshfw/runtime` takes them, an array literal: each with its `when` and its checks,
+ * every function with its source, where it runs (`record`: inside the transaction) and `ref(expression)`, how the generated
+ * file reads it from the expressions file.
+ */
+export function policySpecs(policies: readonly Policy[], ref: (expression: Expression) => string): string {
+  const fn = (expression: Expression) => `check: ${JSON.stringify(expression.source)}, record: ${readsRecord(expression)}, run: ${ref(expression)}`;
+  const specs = policies.map((policy) => {
+    const checks = policyExpressions(policy).filter(({ kind }) => kind !== "when").map(({ kind, expression }) => `{ kind: ${JSON.stringify(kind)}, ${fn(expression)} }`);
+    return `{ name: ${JSON.stringify(policy.name)}, when: ${policy.when ? `{ ${fn(policy.when)} }` : "null"}, checks: [${checks.join(", ")}] }`;
+  });
+  return `[${specs.join(", ")}]`;
 }
 
 /** The entities that have at least one expression get a file; the rest get none. */

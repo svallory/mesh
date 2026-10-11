@@ -189,11 +189,11 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `min.name` | `min :total of="lines.amount"` | `min.name` | on main |
 | `min.of` | `min :total of="lines.amount"` | `min.of` | on main |
 | `policies` | `policies` | `policies` | on main |
-| `policy` | `policy :rule types=[:read]` | `policy` | on main |
-| `policy.name` | `policy :rule types=[:read]` | `policy.name` | on main |
-| `policy.types` | `policy :rule types=[:read]` | `policy.types` | on main |
-| `policy.actions` | `policy :rule actions=[&custom]` | `policy.actions` | on main |
-| `policy.when` | `policy :rule when=() => true` | `policy.when` | on main |
+| `policy` | `policy :rule types=[:read] authorize-if=() => true` | `policy` | on main |
+| `policy.name` | `policy :rule types=[:read] authorize-if=() => true` | `policy.name` | on main |
+| `policy.types` | `policy :rule types=[:read] authorize-if=() => true` | `policy.types` | on main |
+| `policy.actions` | `policy :rule actions=[&custom] authorize-if=() => true` | `policy.actions` | on main |
+| `policy.when` | `policy :rule when=() => true authorize-if=() => true` | `policy.when` | on main |
 | `policy.authorize-if` | `policy :rule authorize-if=() => true` | `policy.authorize-if` | on main |
 | `policy.forbid-if` | `policy :rule forbid-if=() => true` | `policy.forbid-if` | on main |
 | `read` | `read :work` | `read` | on main |

@@ -80,7 +80,8 @@ declare module "@meshfw/runtime" {
 
   /**
    * One check from a policy's breakdown, as `ForbiddenError` (and `can`) carry it: plain data. `result` is `null` when
-   * the check was unknown; `kind` is `"when"` only for a policy whose `when=` was unknown.
+   * the check was unknown; `kind` is `"when"` only for a policy whose `when=` was unknown, or was false when no covering
+   * policy applied. Only the checks that ran are listed.
    */
   export interface PolicyCheck {
     policy: string;
@@ -108,8 +109,10 @@ declare module "@meshfw/runtime" {
     override code: "forbidden";
     entity: string;
     action: string;
-    /** The covering policies that failed; empty when no policy covers the action. */
+    /** The covering policies that failed, or with `reason` `not-applied` those whose `when` was false; empty when none covers. */
     policies: readonly string[];
+    /** Why: a covering policy failed, no policy covers the action, or none of the covering policies applies to the call. */
+    reason: "failed" | "not-covered" | "not-applied";
     breakdown: readonly PolicyCheck[];
   }
 

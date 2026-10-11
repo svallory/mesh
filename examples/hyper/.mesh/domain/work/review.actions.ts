@@ -32,6 +32,7 @@ import {
 import type {
   Review,
   ReviewWith,
+  ReviewTxWith,
   ReviewLoadNames,
   ReviewLoadArg,
   ReviewLoadable,
@@ -54,7 +55,8 @@ export function bindReviewReads(layer: $DataLayer, options: $BindOptions = {}) {
       input: Omit<ReadReviewInput, "load"> & ReviewLoadArg<L>,
       context?: unknown,
       clock?: () => Date,
-    ): Promise<L extends unknown ? ReviewWith<ReviewLoadNames<L>>[] : never> {
+      policies?: boolean,
+    ): Promise<L extends unknown ? ReviewTxWith<ReviewLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readReviewInput, input);
       return layer.transaction(async (tx) => {
@@ -65,14 +67,15 @@ export function bindReviewReads(layer: $DataLayer, options: $BindOptions = {}) {
           offset: parsed.offset,
         })) as Review[];
         if (!parsed.load?.length)
-          return $rows as unknown as L extends unknown ? ReviewWith<ReviewLoadNames<L>>[] : never;
+          return $rows as unknown as L extends unknown ? ReviewTxWith<ReviewLoadNames<L>>[] : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "Review", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
-        })) as unknown as L extends unknown ? ReviewWith<ReviewLoadNames<L>>[] : never;
+          policies,
+        })) as unknown as L extends unknown ? ReviewTxWith<ReviewLoadNames<L>>[] : never;
       });
     },
   });
@@ -387,6 +390,7 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
+      const $parsed = await $castInput(layer, readReviewInput, input);
       if (
         !(await $authorizer("Review", "read", [
           {
@@ -405,18 +409,18 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
           layer,
           $scope(
             {
-              input: $readOnlyRecord(input as never, "Review.read"),
+              input: $readOnlyRecord($parsed as never, "Review.read"),
               actor: $actor,
               context: $context,
             },
             { clock: $clock },
           ),
         ))
-      ) {
-        await $castInput(layer, readReviewInput, input);
+      )
         return [] as unknown as L extends unknown ? ReviewWith<ReviewLoadNames<L>>[] : never;
-      }
-      return $reads.read(input, context, $clock);
+      return (await $reads.read(input, context, $clock, true)) as unknown as L extends unknown
+        ? ReviewWith<ReviewLoadNames<L>>[]
+        : never;
     },
   });
 }

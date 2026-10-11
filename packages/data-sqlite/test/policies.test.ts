@@ -508,3 +508,165 @@ describe("a nested call is checked against the nested action's policies (TXN-06)
     } finally { await db.close(); }
   });
 });
+
+// POL-17: a relationship the caller loads, and a rollup the caller reads, run the target entity's read policies, actor
+// only, with the caller's context. Not admitted: a has-many is [], a belongs-to null, a count 0, a max null. Through
+// `tx` no policy runs (ADR-0068).
+describe("what a caller loads runs the read policies of the entity it reaches (POL-17)", () => {
+  const shelf = `import { Keeper } from "./keeper.mesh.mx"
+import { Item } from "./item.mesh.mx"
+
+entity :Shelf table="shelves"
+  attributes
+    uuid :id primary-key
+    string :name
+  relationships
+    belongs-to :keeper entity=Keeper
+    has-many :items entity=Item
+  computed
+    count :itemCount of="items"
+    max :topRank of="items.rank"
+  actions auto=[:read]
+    create :make
+      input
+        &name
+        &keeper
+    update :show
+      do
+        load=[&items, &keeper, &itemCount]
+    update :maybe
+      input
+        boolean :want
+      do
+        when=({ input }) => input.want
+          load=[&items]
+    update :peek
+      do
+        run({ actions, context }) {
+          context.seen.push(await actions.readShelf({ load: ["items", "keeper", "itemCount", "topRank"] }));
+        }
+  policies
+    policy :anyone
+      authorize-if=() => true
+`;
+  const item = `import { Shelf } from "./shelf.mesh.mx"
+
+entity :Item table="items"
+  attributes
+    uuid :id primary-key
+    integer :rank
+  relationships
+    belongs-to :shelf entity=Shelf
+  actions auto=[:read]
+    create :add
+      input
+        &rank
+        &shelf
+  policies
+    policy :writers types=[:create]
+      authorize-if=() => true
+    policy :members types=[:read]
+      authorize-if=({ actor }) => actor.id === "member"
+`;
+  const keeper = `entity :Keeper table="keepers"
+  attributes
+    uuid :id primary-key
+    string :name
+  actions auto=[:read]
+    create :hire
+      input
+        &name
+  policies
+    policy :writers types=[:create]
+      authorize-if=() => true
+    policy :badged types=[:read] when=({ context }) => context.badge === true
+      authorize-if=() => true
+`;
+  const member = { actor: { id: "member" } };
+  const load = ["items", "keeper", "itemCount", "topRank"] as const;
+  let loadsDir: string;
+  let loads: any;
+  beforeAll(async () => {
+    loadsDir = await generate(".policies-loads-", { shelf, item, keeper });
+    loads = await import(join(loadsDir, ".mesh/index.ts"));
+  });
+  afterAll(async () => {
+    if (loadsDir) await rm(loadsDir, { recursive: true, force: true });
+  });
+  async function stocked() {
+    const db = sqlite({ file: ":memory:" });
+    await createSchema(db, loads.tables);
+    const mesh = loads.bind(db);
+    const hired = await mesh.hireKeeper({ name: "Kay" }, alice);
+    const made = await mesh.makeShelf({ name: "Top", keeper: hired.id }, alice);
+    for (const rank of [3, 7]) await mesh.addItem({ rank, shelf: made.id }, alice);
+    return { db, mesh, made };
+  }
+
+  test("not admitted: a has-many is [], a belongs-to null, a count 0 and a max null; admitted, each is loaded", async () => {
+    const { db, mesh } = await stocked();
+    try {
+      const [guest] = await mesh.readShelf({ load }, alice);
+      expect(guest).toMatchObject({ name: "Top", items: [], keeper: null, itemCount: 0, topRank: null });
+      // Item admits the member; Keeper's only read policy does not apply without a badge, so none applies (S1).
+      const [seen] = await mesh.readShelf({ load }, member);
+      expect(seen).toMatchObject({ keeper: null, itemCount: 2, topRank: 7 });
+      expect(seen.items.map((row: { rank: number }) => row.rank).sort()).toEqual([3, 7]);
+      const [badged] = await mesh.readShelf({ load }, { ...member, badge: true });
+      expect(badged).toMatchObject({ keeper: { name: "Kay" }, itemCount: 2 });
+      // A caller the read's own policy admits, loading what it may not read, gets no error.
+      expect(await mesh.readShelf({ load: ["items"] }, anonymous)).toEqual([expect.objectContaining({ items: [] })]);
+    } finally { await db.close(); }
+  });
+
+  test("through tx nothing is filtered: the same caller's read inside a transaction sees every row", async () => {
+    const { db, mesh } = await stocked();
+    try {
+      const [inside] = await mesh.transaction(({ tx }: any) => tx.readShelf({ load }), alice);
+      expect(inside).toMatchObject({ keeper: { name: "Kay" }, itemCount: 2, topRank: 7 });
+      expect(inside.items).toHaveLength(2);
+      // And the loader a `run` or a test calls directly runs none either.
+      const { loadShelfFields } = (await import(join(loadsDir, ".mesh/load.ts"))) as { loadShelfFields: (tx: unknown, rows: object[], names: string[]) => Promise<{ keeper: unknown }[]> };
+      const rows = await db.transaction((tx) => loadShelfFields(tx, [{ ...inside }], ["items", "keeper"]));
+      expect(rows[0]).toMatchObject({ keeper: { name: "Kay" } });
+    } finally { await db.close(); }
+  });
+
+  test("a write's load step, one inside a `when`, and a read nested through `actions` apply the same rule at each level", async () => {
+    const { db, mesh, made } = await stocked();
+    try {
+      expect(await mesh.showShelf({ id: made.id }, alice)).toMatchObject({ items: [], keeper: null, itemCount: 0 });
+      expect((await mesh.showShelf({ id: made.id }, member)).items).toHaveLength(2);
+      expect(await mesh.maybeShelf({ id: made.id, want: true }, alice)).toMatchObject({ items: [] });
+      expect((await mesh.maybeShelf({ id: made.id, want: true }, member)).items).toHaveLength(2);
+      // The nested read carries the caller's context, so its loads run the policies for that caller.
+      // What the run step pushes comes back through the run's context, a proxy; a JSON copy compares as plain data.
+      const plain = (seen: unknown[][]) => JSON.parse(JSON.stringify(seen[0]![0]));
+      const guestSeen: unknown[][] = [];
+      await mesh.peekShelf({ id: made.id }, { ...alice, seen: guestSeen });
+      expect(plain(guestSeen)).toMatchObject({ items: [], keeper: null, itemCount: 0, topRank: null });
+      const memberSeen: unknown[][] = [];
+      await mesh.peekShelf({ id: made.id }, { ...member, badge: true, seen: memberSeen });
+      expect(plain(memberSeen)).toMatchObject({ keeper: { name: "Kay" }, itemCount: 2, topRank: 7 });
+    } finally { await db.close(); }
+  });
+
+  test("the types say so: a caller's belongs-to is `| null`, through tx it is not, and the generated tree type-checks", async () => {
+    await Bun.write(join(loadsDir, "use.ts"), `import { transaction } from "./.mesh/index.ts";
+import { readShelf, showShelf } from "./.mesh/domain/index.ts";
+export async function use(): Promise<string[]> {
+  const [shelf] = await readShelf({ load: ["keeper", "items"] }, { actor: { id: "a" } });
+  // @ts-expect-error a caller's keeper may be one it may not read
+  const name: string = shelf!.keeper.name;
+  const maybe: string | undefined = shelf!.keeper?.name;
+  const shown = await showShelf({ id: "x" }, { actor: { id: "a" } });
+  // @ts-expect-error the same for a write's load step
+  shown.keeper.name;
+  const inside = await transaction(async ({ tx }) => (await tx.readShelf({ load: ["keeper"] }))[0]!.keeper.name, { actor: { id: "a" } });
+  return [name, maybe ?? "", inside, String(shelf!.items.length)];
+}
+`);
+    const files = (await readdir(join(loadsDir, ".mesh"), { recursive: true })).filter((name) => name.endsWith(".ts")).map((name) => join(".mesh", name));
+    expect(typeCheck(loadsDir, [...files, "use.ts"])).toBe("");
+  });
+});

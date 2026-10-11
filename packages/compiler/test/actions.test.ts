@@ -201,21 +201,25 @@ describe("actions view", () => {
     const read = view.reads.find((m) => m.name === "read")!;
     expect(read).toMatchObject({ unsupported: null, usesParsed: true, statements: [
       "const $rows = (await tx.select(tables.article, { filter: parsed.filter, sort: parsed.sort, limit: parsed.limit, offset: parsed.offset })) as Article[];",
-      "if (!parsed.load?.length) return $rows as unknown as (L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never);",
+      // Through `tx` no policy runs, so the author is always there: the body is typed with `ArticleTxWith` (POL-17).
+      "if (!parsed.load?.length) return $rows as unknown as (L extends unknown ? ArticleTxWith<ArticleLoadNames<L>>[] : never);",
       "const $context = (context ?? {}) as unknown as Record<string, unknown>;",
       'const $clock = clock ?? $pinClock(options.clock);',
-      'return (await $loadRows($loadPlan, "Article", tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock })) as unknown as (L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never);'],
-      generics: "<const L extends readonly (keyof ArticleLoadable)[] = readonly []>", contextParam: ", context?: unknown, clock?: () => Date" });
+      'return (await $loadRows($loadPlan, "Article", tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock, policies })) as unknown as (L extends unknown ? ArticleTxWith<ArticleLoadNames<L>>[] : never);'],
+      generics: "<const L extends readonly (keyof ArticleLoadable)[] = readonly []>", contextParam: ", context?: unknown, clock?: () => Date, policies?: boolean" });
+    // The read action asks for the load's policies (`true`); a caller's result is typed with `ArticleWith`, where the author may be null.
     expect(view.methods.filter((m) => m.isRead).map((m) => [m.name, m.readsCall, m.statements])).toEqual([
-      ["live", "$reads.live(input, context)", []], ["load", "$reads.load(input, context, $clock)", []], ["read", "$reads.read(input, context, $clock)", []]]);
+      ["live", "$reads.live(input, context)", []],
+      ["load", "(await $reads.load(input, context, $clock, true)) as unknown as (L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)", []],
+      ["read", "(await $reads.read(input, context, $clock, true)) as unknown as (L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)", []]]);
+    expect(view.methods.find((m) => m.name === "read")!.txReturnType).toBe("(L extends unknown ? ArticleTxWith<ArticleLoadNames<L>>[] : never)");
     // A read's policies are a filter; the read the SQL evaluator must run fails in its body whatever they say.
     expect(view.methods.find((m) => m.name === "live")!.preCheck).toEqual([]);
     const readMethod = view.methods.find((m) => m.name === "read")!;
+    // The checks see the cast input, as a write's do (N2 of the review); an invalid input is reported as one, denied or not.
     expect(readMethod.preCheck.slice(4)).toEqual([
-      'if (!(await $authorizer("Article", "read", [{ name: "everyone", when: null, checks: [{ kind: "authorize-if", check: "() => true", record: false, run: $expressions["policy.everyone.authorize-if.0"] }] }]).filter(layer, $scope({ input: $readOnlyRecord(input as never, "Article.read"), actor: $actor, context: $context }, { clock: $clock })))) {',
-      "await $castInput(layer, readArticleInput, input);",
-      "return [] as unknown as (L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never);",
-      "}",
+      "const $parsed = await $castInput(layer, readArticleInput, input);",
+      'if (!(await $authorizer("Article", "read", [{ name: "everyone", when: null, checks: [{ kind: "authorize-if", check: "() => true", record: false, run: $expressions["policy.everyone.authorize-if.0"] }] }]).filter(layer, $scope({ input: $readOnlyRecord($parsed as never, "Article.read"), actor: $actor, context: $context }, { clock: $clock })))) return [] as unknown as (L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never);',
     ]);
   });
 

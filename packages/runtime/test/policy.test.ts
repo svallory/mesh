@@ -42,7 +42,6 @@ describe("POL-03: policies combine without order", () => {
     ["an unknown forbid-if forbids (POL-04)", [forbid(null)], false],
     ["a forbid-if that holds beats an authorize-if that holds", [allow(true), forbid(true)], false],
     ["authorize-if holds and forbid-if does not", [allow(true), forbid(false)], true],
-    ["a policy with no check passes", [], true],
   ];
   for (const [name, checks, allowed] of cases)
     test(name, async () => {
@@ -63,10 +62,38 @@ describe("POL-03: policies combine without order", () => {
     expect(await decide([policy("a", [allow(true)]), policy("b", [forbid(false)])])).toBe("allowed");
   });
 
-  test("a policy whose when is false does not cover; with none left, the action is forbidden", async () => {
+  test("POL-16: a policy with no check fails, so a policy object the compiler did not build opens nothing", async () => {
+    for (const policies of [[policy("p", [])], [policy("p", [], when(true))], [policy("p", []), policy("q", [allow(true)])]]) {
+      const error = (await decide(policies)) as ForbiddenError;
+      expect(error).toBeInstanceOf(ForbiddenError);
+      expect(error.policies).toEqual(["p"]);
+      expect(error.reason).toBe("failed");
+    }
+    expect(await authorizer("Post", "read", [policy("p", [])]).filter(layer, {})).toBe(false);
+    expect(await authorizer("Post", "read", [policy("p", [])]).admits({})).toBe(false);
+    // Its `when` false, it does not apply, and another policy decides.
+    expect(await decide([policy("p", [], when(false)), policy("q", [allow(true)])])).toBe("allowed");
+  });
+
+  test("a policy whose when is false does not apply; with none applying, a write is forbidden, naming them, with no open policy to copy", async () => {
     expect(await decide([policy("a", [allow(false)], when(false)), policy("b", [allow(true)])])).toBe("allowed");
-    const error = (await decide([policy("a", [allow(true)], when(false))])) as ForbiddenError;
-    expect(error.policies).toEqual([]);
+    const error = (await decide([policy("a", [allow(true)], when(false)), policy("b", [forbid(false)], when(false))])) as ForbiddenError;
+    expect(error).toMatchObject({ policies: ["a", "b"], reason: "not-applied" });
+    expect(error.message).toBe("Post.publish is forbidden: policies :a, :b cover it, but the `when` of each was false for this call, so none applies, and a call no policy applies to is denied");
+    expect(error.message).not.toContain("policy :open");
+    expect(error.breakdown).toEqual([
+      { policy: "a", kind: "when", check: "when false", result: false, decisive: true },
+      { policy: "b", kind: "when", check: "when false", result: false, decisive: true },
+    ]);
+    // The answer is the same when it is known only inside the transaction (a `when` that reads the record).
+    const inside = (await decide([policy("a", [allow(true)], when(false, true))])) as ForbiddenError;
+    expect(inside).toMatchObject({ policies: ["a"], reason: "not-applied" });
+  });
+
+  test("no policy covers the action: the reason is not-covered and the message shows an open policy", async () => {
+    const error = (await decide([])) as ForbiddenError;
+    expect(error.reason).toBe("not-covered");
+    expect(new ForbiddenError({ entity: "Post", action: "publish", policies: ["owner"], breakdown: [] }).reason).toBe("failed");
   });
 
   test("an unknown when fails its policy", async () => {
@@ -117,6 +144,22 @@ describe("where the checks run", () => {
     expect(seen).toEqual([{ phase: "inside" }]);
   });
 
+  test("a check that throws fails the call as a denial does: inside a running transaction it fails that transaction (N4)", async () => {
+    const failed: unknown[] = [];
+    const joined = {
+      refuseIfFailed: () => true,
+      transaction: (fn: () => Promise<unknown>) => fn().catch((cause) => { failed.push(cause); throw cause; }),
+    } as unknown as DataLayer;
+    const boom: Check = { kind: "authorize-if", check: "boom", record: false, run: () => { throw new TypeError("boom"); } };
+    await expect(authorizer("Post", "publish", [policy("a", [boom])]).before(joined, {})).rejects.toThrow("boom");
+    expect(failed[0]).toBeInstanceOf(TypeError);
+    await expect(authorizer("Post", "read", [policy("a", [boom])]).filter(joined, {})).rejects.toThrow("boom");
+    expect(failed[1]).toBeInstanceOf(TypeError);
+    // Outside a transaction it rejects the call.
+    await expect(authorizer("Post", "publish", [policy("a", [boom])]).before(layer, {})).rejects.toThrow("boom");
+    expect(failed).toHaveLength(2);
+  });
+
   test("inside a running transaction, a denial before the transaction fails that transaction", async () => {
     const failed: unknown[] = [];
     const joined = {
@@ -155,9 +198,20 @@ describe("a read's policies are a filter", () => {
     expect(await authorizer("Post", "read", [policy("a", [forbid(null)])]).filter(layer, {})).toBe(false);
   });
 
-  test("a read no policy covers is forbidden", async () => {
-    await expect(authorizer("Post", "read", []).filter(layer, {})).rejects.toBeInstanceOf(ForbiddenError);
-    await expect(authorizer("Post", "read", [policy("a", [allow(true)], when(false))]).filter(layer, {})).rejects.toBeInstanceOf(ForbiddenError);
+  test("a read no policy covers is forbidden; one whose covering policies all have a false when gives no rows (S1)", async () => {
+    await expect(authorizer("Post", "read", []).filter(layer, {})).rejects.toMatchObject({ reason: "not-covered" });
+    expect(await authorizer("Post", "read", [policy("a", [allow(true)], when(false))]).filter(layer, {})).toBe(false);
+    // The three callers of the review's table: when true and the check false, when unknown, when false: no rows, each.
+    for (const w of [when(true), when(null), when(false)])
+      expect(await authorizer("Post", "read", [policy("members", [allow(false)], w)]).filter(layer, {})).toBe(false);
+  });
+
+  test("a load's policies (POL-17): admitted or not, never an error; none covering admits no one; one reading the record is the M10 error", async () => {
+    expect(await authorizer("Comment", "read", [policy("a", [allow(true)])]).admits({})).toBe(true);
+    expect(await authorizer("Comment", "read", [policy("a", [allow(false)])]).admits({})).toBe(false);
+    expect(await authorizer("Comment", "read", [policy("a", [allow(true)], when(false))]).admits({})).toBe(false);
+    expect(await authorizer("Comment", "read", []).admits({})).toBe(false);
+    await expect(authorizer("Comment", "read", [policy("a", [allow(true, true)])]).admits({})).rejects.toThrow(/M10/);
   });
 
   test("a read policy that reads the record is the M10 error", async () => {

@@ -64,9 +64,6 @@ export const expressions = {
     $.isNotNull($s.actor?.id),
   // policy :owner authorize-if, translated (src/domain/blog/post.mesh.mx:50:20)
   "policy.owner.authorize-if.0": (
-    $s: PostCheckScope<$SharedInput<PublishPostInput | ArchivePostInput>>,
+    $s: PostCheckScope<$SharedInput<PublishPostInput | ArchivePostInput | DestroyPostInput>>,
   ) => $.eq($s.self.author?.id, $s.actor?.id),
-  // policy :systemOnly authorize-if, translated (src/domain/blog/post.mesh.mx:52:20)
-  "policy.systemOnly.authorize-if.0": ($s: PostCheckScope<DestroyPostInput>) =>
-    $.isSystem($s.context),
 } as const;

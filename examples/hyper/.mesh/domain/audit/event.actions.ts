@@ -42,6 +42,7 @@ export function bindEventReads(layer: $DataLayer, options: $BindOptions = {}) {
       input: Omit<ReadEventInput, "load"> & EventLoadArg<L>,
       context?: unknown,
       clock?: () => Date,
+      policies?: boolean,
     ): Promise<L extends unknown ? EventWith<EventLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readEventInput, input);
@@ -60,6 +61,7 @@ export function bindEventReads(layer: $DataLayer, options: $BindOptions = {}) {
           actor: $context.actor,
           context: $context,
           clock: $clock,
+          policies,
         })) as unknown as L extends unknown ? EventWith<EventLoadNames<L>>[] : never;
       });
     },
@@ -153,6 +155,7 @@ export function bindEvent(layer: $DataLayer, options: $BindOptions = {}, _compos
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
+      const $parsed = await $castInput(layer, readEventInput, input);
       if (
         !(await $authorizer("Event", "read", [
           {
@@ -171,18 +174,16 @@ export function bindEvent(layer: $DataLayer, options: $BindOptions = {}, _compos
           layer,
           $scope(
             {
-              input: $readOnlyRecord(input as never, "Event.read"),
+              input: $readOnlyRecord($parsed as never, "Event.read"),
               actor: $actor,
               context: $context,
             },
             { clock: $clock },
           ),
         ))
-      ) {
-        await $castInput(layer, readEventInput, input);
+      )
         return [] as unknown as L extends unknown ? EventWith<EventLoadNames<L>>[] : never;
-      }
-      return $reads.read(input, context, $clock);
+      return $reads.read(input, context, $clock, true);
     },
   });
 }

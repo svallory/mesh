@@ -39,7 +39,10 @@ export type ReadCollaboratorInput<N extends keyof CollaboratorLoadable = never> 
   load?: readonly N[] | undefined;
 };
 
-/** What `load` attaches to a Collaborator. The record has none of it, so reading one that was not loaded is a type error. */
+/**
+ * What a caller's `load` attaches to a Collaborator. The record has none of it, so reading one that was not loaded is a type error.
+ * A caller's load runs the read policies of the entity it reaches: a related record the caller may not read is null, a list of them empty.
+ */
 export type CollaboratorLoadable = {
   memberships: Membership[];
 };

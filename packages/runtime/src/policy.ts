@@ -11,6 +11,12 @@ import { ForbiddenError, FrameworkError, type PolicyCheck } from "./errors.ts";
  * A check that reads only `actor`, `context` and `input` runs once, before the transaction opens (`before`); one that reads
  * the record (`self`, a related record, `tx`) runs inside it, on the locked row or a create's new instance (`inside`). The
  * build decides which is which and says so in each spec (`record`).
+ *
+ * The build refuses a policy with no check (POL-16); one that reaches the evaluator anyway fails, so that a policy object
+ * not built by the compiler cannot open what it covers. Whether a policy covers the action is decided by its scope
+ * (`types=`/`actions=`), at build time: `policies` holds the covering ones, and when it is empty no policy covers the
+ * action. A covering policy whose `when=` is false does not apply to the call; when none applies, a write is forbidden
+ * and a read gives no rows (S1 of the PR #79 review).
  */
 
 /** A function of the entity's expressions file: it takes the scope. */
@@ -45,10 +51,16 @@ export interface Authorizer {
   /** Inside the transaction, before `validate`: runs the checks that read the record and decides. */
   inside(scope: object): Promise<void>;
   /**
-   * A read's policies as a filter (ADR-0022): true when every covering policy passes, false when one fails (the read then
-   * returns no rows). A read no policy covers is forbidden.
+   * A read's policies as a filter (ADR-0022): true when every covering policy passes, false when one fails or none applies
+   * (the read then returns no rows). A read no policy covers is forbidden.
    */
   filter(layer: DataLayer, scope: object): Promise<boolean>;
+  /**
+   * A load's policies (POL-17): the read policies of the entity a caller loads, run with the caller's scope. True when they
+   * admit the caller, false when one fails, none applies or none covers the load: a load no policy covers gives nothing,
+   * never an error. Inside the transaction, so a throw fails it.
+   */
+  admits(scope: object): Promise<boolean>;
 }
 
 type Spec = PolicySpec["when"] & object;
@@ -75,6 +87,8 @@ export function authorizer(entity: string, action: string, policies: readonly Po
   /** True when the policy has failed, false when it has passed, undefined while a check it needs has not run. */
   const fails = (policy: PolicySpec): boolean | undefined => {
     if (policy.when && results.get(policy.when) === null) return true;
+    // POL-16: a policy with no check is a build error; one that gets here anyway fails closed.
+    if (policy.checks.length === 0) return true;
     const forbids = policy.checks.filter((check) => check.kind === "forbid-if");
     const authorizes = policy.checks.filter((check) => check.kind === "authorize-if");
     if (forbids.some((check) => results.has(check) && results.get(check) !== false)) return true;
@@ -84,6 +98,9 @@ export function authorizer(entity: string, action: string, policies: readonly Po
   const breakdown = (): PolicyCheck[] => {
     const out: PolicyCheck[] = [];
     for (const policy of policies) {
+      // A `when` that did not apply is listed only when no policy applied: it is then what decided.
+      if (covers(policy) === "no" && !policies.some((other) => covers(other) === "yes"))
+        out.push({ policy: policy.name, kind: "when", check: policy.when!.check, result: false, decisive: true });
       if (covers(policy) !== "yes") continue;
       const failed = fails(policy) === true;
       const unknownWhen = policy.when !== null && results.get(policy.when) === null;
@@ -98,23 +115,36 @@ export function authorizer(entity: string, action: string, policies: readonly Po
     }
     return out;
   };
-  const denial = (failed: readonly PolicySpec[]) =>
-    new ForbiddenError({ entity, action, policies: failed.map((policy) => policy.name), breakdown: breakdown() });
+  const denial = (failed: readonly PolicySpec[], reason: "failed" | "not-applied" = "failed") =>
+    new ForbiddenError({ entity, action, policies: failed.map((policy) => policy.name), breakdown: breakdown(), reason });
   /** The final answer, once every check has run: undefined when allowed, else the error. */
   const decide = (): ForbiddenError | undefined => {
+    if (policies.length === 0) return new ForbiddenError({ entity, action, policies: [], breakdown: [], reason: "not-covered" });
     const covering = policies.filter((policy) => covers(policy) === "yes");
-    if (covering.length === 0) return denial([]);
+    // Every covering policy's `when` is false: none applies to this call, which is denied, naming them.
+    if (covering.length === 0) return denial(policies, "not-applied");
     const failed = covering.filter((policy) => fails(policy) === true);
     return failed.length ? denial(failed) : undefined;
+  };
+  /** A read policy that reads the record is a filter on the query, which M10 folds; the build refuses it, and this is the guard behind it. */
+  const readsTheRecord = (): FrameworkError | undefined => {
+    const reads = policies.find((policy) => policy.when?.record || policy.checks.some((check) => check.record));
+    return reads && new FrameworkError(`${entity}.${action} cannot run in this version: policy :${reads.name} reads the record, `
+      + "and a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10");
   };
   /** A nested call (inside a running transaction) fails that transaction, as a failed cast does; a top-level call rejects. */
   const reject = (layer: DataLayer, error: Error): Promise<never> => {
     if (layer.refuseIfFailed()) return failJoined(layer, error);
     throw error;
   };
+  /** A check that throws fails the call as a denial does: inside a running transaction, it fails that transaction. */
+  const guarded = async (layer: DataLayer, scope: object, wanted: (record: boolean) => boolean) => {
+    try { await evaluate(scope, wanted); }
+    catch (error) { await reject(layer, error instanceof Error ? error : new FrameworkError(`A policy check of ${entity}.${action} threw ${String(error)}`)); }
+  };
   return Object.freeze({
     async before(layer: DataLayer, scope: object): Promise<void> {
-      await evaluate(scope, (record) => !record);
+      await guarded(layer, scope, (record) => !record);
       const known = policies.filter((policy) => covers(policy) === "yes" && fails(policy) === true);
       if (known.length) return reject(layer, denial(known));
       // Nothing left for the transaction: this is the whole decision (no covering policy included).
@@ -129,15 +159,19 @@ export function authorizer(entity: string, action: string, policies: readonly Po
       if (error) throw error;
     },
     async filter(layer: DataLayer, scope: object): Promise<boolean> {
-      const reads = policies.find((policy) => policy.when?.record || policy.checks.some((check) => check.record));
-      if (reads)
-        return reject(layer, new FrameworkError(`${entity}.${action} cannot run in this version: policy :${reads.name} reads the record, `
-          + "and a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10"));
+      // No policy covers the read, by its scope: forbidden. One that applies to no caller is a different case (below).
+      if (policies.length === 0) return reject(layer, decide()!);
+      const reads = readsTheRecord();
+      if (reads) return reject(layer, reads);
+      await guarded(layer, scope, () => true);
+      return decide() === undefined;
+    },
+    async admits(scope: object): Promise<boolean> {
+      if (policies.length === 0) return false;
+      const reads = readsTheRecord();
+      if (reads) throw reads;
       await evaluate(scope, () => true);
-      const error = decide();
-      if (!error) return true;
-      if (error.policies.length === 0) return reject(layer, error);
-      return false;
+      return decide() === undefined;
     },
   });
 }

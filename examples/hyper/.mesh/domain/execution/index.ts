@@ -20,6 +20,8 @@ import type {
   AttemptWith,
   AttemptLoadNames,
   AttemptLoadArg,
+  AttemptTxLoadable,
+  AttemptTxWith,
 } from "./attempt.types";
 import type {
   Invocation,
@@ -32,6 +34,8 @@ import type {
   InvocationWith,
   InvocationLoadNames,
   InvocationLoadArg,
+  InvocationTxLoadable,
+  InvocationTxWith,
 } from "./invocation.types";
 import type {
   Machine,
@@ -59,6 +63,8 @@ import type {
   RunWith,
   RunLoadNames,
   RunLoadArg,
+  RunTxLoadable,
+  RunTxWith,
 } from "./run.types";
 import type {
   SessionReference,
@@ -72,6 +78,8 @@ import type {
   SessionReferenceWith,
   SessionReferenceLoadNames,
   SessionReferenceLoadArg,
+  SessionReferenceTxLoadable,
+  SessionReferenceTxWith,
 } from "./sessionReference.types";
 
 export type {
@@ -87,6 +95,8 @@ export type {
   AttemptWith,
   AttemptLoadNames,
   AttemptLoadArg,
+  AttemptTxLoadable,
+  AttemptTxWith,
   Invocation,
   RecordInvocationInput,
   CorrectInvocationInput,
@@ -97,6 +107,8 @@ export type {
   InvocationWith,
   InvocationLoadNames,
   InvocationLoadArg,
+  InvocationTxLoadable,
+  InvocationTxWith,
   Machine,
   RegisterMachineInput,
   ReportMachineInput,
@@ -120,6 +132,8 @@ export type {
   RunWith,
   RunLoadNames,
   RunLoadArg,
+  RunTxLoadable,
+  RunTxWith,
   SessionReference,
   RecordSessionReferenceInput,
   SetAvailabilitySessionReferenceInput,
@@ -131,6 +145,8 @@ export type {
   SessionReferenceWith,
   SessionReferenceLoadNames,
   SessionReferenceLoadArg,
+  SessionReferenceTxLoadable,
+  SessionReferenceTxWith,
 };
 export {
   loadAttemptFields,

@@ -1,6 +1,7 @@
 import type { DataOperations, Filter, Row, TableHandle } from "./data-layer.ts";
 import { FrameworkError } from "./errors.ts";
 import { pinClock, scope, type Clock } from "./expr.ts";
+import { authorizer, type PolicySpec } from "./policy.ts";
 
 /**
  * Loading relationships and computed fields (M7). The compiler writes one `LoadPlan` for the
@@ -16,6 +17,10 @@ import { pinClock, scope, type Clock } from "./expr.ts";
  *   memory once per row, with the scope the expression functions take.
  * - A `count` or `max` rollup calls the data layer's `count` and `max` once per row. That is one query
  *   per row until M10 translates rollups into one statement.
+ * - What a caller loads (`policies: true`: a read's `load`, a write's `load` step) runs the read policies of each entity it
+ *   reaches, with the caller's scope (POL-17): a relationship to an entity they do not admit is `[]` (has-many) or `null`
+ *   (belongs-to, has-one), and a rollup over one counts no row (`0`, or `null` for `max`). What a computed field loads to
+ *   work itself out, and anything read through `tx`, runs no policy (ADR-0068).
  */
 export interface BelongsToPlan {
   kind: "belongs-to";
@@ -49,6 +54,11 @@ export type ComputedPlan =
     };
 export interface EntityPlan {
   table: TableHandle;
+  /**
+   * The read policies a load of this entity runs (POL-17): those that cover its reads by type (`types=[:read]`, or no
+   * scope). Left out or empty, no policy covers a load of it, and a caller's load of it gives nothing.
+   */
+  reads?: readonly PolicySpec[];
   /** The primary key's attribute name. */
   key: string;
   relations: Readonly<Record<string, RelationPlan>>;
@@ -63,6 +73,11 @@ export interface LoadOptions {
   context?: unknown;
   /** The clock `now()` reads, as everywhere an expression runs. */
   clock?: Clock | undefined;
+  /**
+   * `loadRows` only: the names are what a caller asked for, so each relationship and rollup runs the read policies of the
+   * entity it reaches, with `actor` and `context` (POL-17). A read through `tx` and a computed field's own loads leave it out.
+   */
+  policies?: boolean | undefined;
   /**
    * `loadInto` only: the record is a create's new instance before the input is applied (ACT-27), so a required
    * `belongs-to` whose key the input has not filled yet is null on it instead of an error.
@@ -98,11 +113,48 @@ export async function loadRows(
   // Rollups last: one over a has-many that the same call loaded is worked out from those rows (below), with no query of its own.
   const isRollup = (name: string) => entityPlan.computed[name]?.kind === "rollup" && !Object.hasOwn(entityPlan.relations, name);
   for (const name of [...names.filter((n) => !isRollup(n)), ...names.filter(isRollup)]) await ensureField(plan, entity, tx, work, name, options, 0);
+  // Loaded in full first, since a computed field may read the same relationship for itself; what the caller is not admitted to is then taken off.
+  const denied = options.policies ? await deniedNames(plan, entity, names, options) : new Map<string, unknown>();
   return rows.map((row, index) => {
     const loaded: Row = { ...row };
-    for (const name of names) loaded[name] = work[index]![name];
+    for (const name of names) loaded[name] = denied.has(name) ? emptied(denied.get(name)) : work[index]![name];
     return loaded;
   });
+}
+
+/** A fresh empty value for each row, so that no two rows share one list. */
+const emptied = (value: unknown) => (Array.isArray(value) ? [] : value);
+
+/**
+ * The names, of those a caller asked for, that reach an entity whose read policies do not admit the caller, each with what
+ * it gives instead: `[]` for a has-many, `null` for a belongs-to or has-one, `0` for a count and `null` for a max. The read
+ * policies run once per entity per call: they read only the caller (a read policy that reads the record is the build's M10
+ * error, and the run time's).
+ */
+async function deniedNames(plan: LoadPlan, entity: string, names: readonly string[], options: LoadOptions): Promise<Map<string, unknown>> {
+  const entityPlan = planOf(plan, entity);
+  const decided = new Map<string, boolean>();
+  const admits = async (target: string) => {
+    if (!decided.has(target)) {
+      const policies = planOf(plan, target).reads ?? [];
+      const roots = { input: Object.freeze({}), actor: options.actor, context: options.context ?? {} };
+      decided.set(target, await authorizer(target, "read", policies).admits(scope(roots, options.clock ? { clock: options.clock } : {})));
+    }
+    return decided.get(target)!;
+  };
+  const denied = new Map<string, unknown>();
+  for (const name of names) {
+    const relation = Object.hasOwn(entityPlan.relations, name) ? entityPlan.relations[name] : undefined;
+    if (relation) {
+      if (!(await admits(relation.target))) denied.set(name, relation.kind === "has-many" ? [] : null);
+      continue;
+    }
+    const computed = entityPlan.computed[name];
+    if (computed?.kind !== "rollup") continue;
+    const over = Object.hasOwn(entityPlan.relations, computed.of[0]!) ? entityPlan.relations[computed.of[0]!] : undefined;
+    if (over && !(await admits(over.target))) denied.set(name, computed.fn === "count" ? 0 : null);
+  }
+  return denied;
 }
 
 function planOf(plan: LoadPlan, entity: string): EntityPlan {

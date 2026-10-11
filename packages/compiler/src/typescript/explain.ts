@@ -40,9 +40,12 @@ const checkLine = (check: Check) => `${check.label} (${check.code})${check.when 
 /**
  * Each policy that covers the action, with each of its functions and where it runs (POL-08, lead ruling 1 of M8a): a
  * function that reads only `actor`, `context` and `input` runs once before the transaction opens; one that reads the
- * record runs inside it, before validate. A read's policies are a filter. With none, every call is forbidden.
+ * record runs inside it, before validate. A read's policies are a filter. With none, every call is forbidden. A read
+ * with a `filter` or `sort` fails before them, as the SQL evaluator's (M10).
  */
 function policyLines(entity: Entity, action: Action): string[] {
+  if (action.kind === "read" && (action.filter || action.sort))
+    return [`none run: the read's ${action.filter ? "filter" : "sort"} is the SQL evaluator's (M10), so every call fails before its policies are evaluated`];
   const covering = policiesCovering(entity, action);
   if (covering.length === 0) return ["none covers it: every call is forbidden (an action no policy covers is denied)"];
   const record = action.kind === "read" ? "reads the record: a read policy that does so is refused until M10"
@@ -56,6 +59,10 @@ function policyLines(entity: Entity, action: Action): string[] {
       lines.push(`  ${kind} ${squash(expression.source)}: ${readsRecord(expression) ? record : early}`);
   }
   lines.push("every policy above must pass; in one, any forbid-if that holds or is unknown forbids, and of its authorize-ifs one must hold");
+  if (covering.some((policy) => policy.when))
+    lines.push(`a policy whose when is false does not apply; with none applying, ${action.kind === "read" ? "the caller gets no rows" : "the call is forbidden"}`);
+  if (action.kind === "read" && entity.relationships.length)
+    lines.push("what the caller loads runs the read policies of the entity it reaches: a record it may not read is null, a list of them empty, and a rollup counts none");
   return lines;
 }
 

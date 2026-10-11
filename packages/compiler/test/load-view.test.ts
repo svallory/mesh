@@ -89,7 +89,8 @@ describe("the load view", () => {
   test("the expressions file is imported once, and only for an entity with a body", () => {
     const view = loadView(input(documentOf()), "generated/load.ts");
     expect(view.expressionImports).toEqual([{ local: "authorExpressions", fromLiteral: '"./domain/app/author.expressions"' }]);
-    expect(view.typeImports.map((entry) => entry.names)).toEqual(["Author, AuthorLoadable, AuthorWith", "Post, PostLoadable, PostWith"]);
+        // A loader runs no policy, so it is typed as a load through `tx`: Post's belongs-to is never null there (POL-17).
+    expect(view.typeImports.map((entry) => entry.names)).toEqual(["Author, AuthorLoadable, AuthorWith", "Post, PostLoadable, PostTxWith"]);
     expect(view.schemaFromLiteral).toBe('"./schema"');
   });
 
@@ -154,7 +155,7 @@ describe("the types and the read views name what is loadable", () => {
     const authorView = typesView(input(document), document.entities.find((e) => e.name === "Author")!);
     expect(authorView.record.members.map((m) => m.name)).toEqual(["id", "name"]);
     expect(authorView.loadable).toEqual({
-      name: "AuthorLoadable", withName: "AuthorWith", namesName: "AuthorLoadNames", argName: "AuthorLoadArg",
+      name: "AuthorLoadable", withName: "AuthorWith", tx: null, namesName: "AuthorLoadNames", argName: "AuthorLoadArg",
       members: [
         { name: "posts", optional: false, key: "posts", type: "Post[]" },
         { name: "postCount", optional: false, key: "postCount", type: "number" },
@@ -177,10 +178,14 @@ describe("the types and the read views name what is loadable", () => {
     expect(authorView.imports).toEqual([{ name: "Post", names: "Post, PostLoaded", fromLiteral: '"./post.types"' }]);
   });
 
-  test("a nullable belongs-to is nullable, a self-reference imports nothing for itself", () => {
+  test("a nullable belongs-to is nullable, a self-reference imports nothing for itself; a caller's belongs-to is nullable too (POL-17)", () => {
     const document = documentOf();
     const postView = typesView(input(document), document.entities.find((e) => e.name === "Post")!);
-    expect(postView.loadable!.members.map((m) => [m.name, m.type])).toEqual([["author", "Author"], ["replyTo", "Post | null"], ["replies", "Post[]"]]);
+    // A caller's load runs the read policies of what it reaches: an author it may not read is null.
+    expect(postView.loadable!.members.map((m) => [m.name, m.type])).toEqual([["author", "Author | null"], ["replyTo", "Post | null"], ["replies", "Post[]"]]);
+    // Through `tx` no policy runs, so the key always finds its author.
+    expect(postView.loadable!.tx).toMatchObject({ name: "PostTxLoadable", withName: "PostTxWith" });
+    expect(postView.loadable!.tx!.members.map((m) => [m.name, m.type])).toEqual([["author", "Author"], ["replyTo", "Post | null"], ["replies", "Post[]"]]);
     expect(postView.loadable!.loadedMembers.map((m) => [m.name, m.type])).toEqual([["author", "AuthorLoaded"], ["replyTo", "PostLoaded | null"], ["replies", "PostLoaded[]"]]);
     expect(postView.imports).toEqual([{ name: "Author", names: "Author, AuthorLoaded", fromLiteral: '"./author.types"' }]);
   });

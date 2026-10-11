@@ -242,7 +242,7 @@ test("PORTING.md lists each omission as one line: entity, construct, milestone; 
   const lines = text.split("\n").filter((line) => line.startsWith("- "));
   expect(lines.length).toBeGreaterThan(20);
   for (const line of lines) {
-    expect(line, line).toMatch(/^- (?:[A-Z][A-Za-z]+(?:, [A-Z][A-Za-z]+)*|All entities): .+ \((?:[GD]\d+(?:, [GD]\d+)*|no gap code)\): (?:M\d+|after 1\.0|not scheduled|application code)\.$/);
+    expect(line, line).toMatch(/^- (?:[A-Z][A-Za-z]+(?:, [A-Z][A-Za-z]+)*|All entities): .+ \((?:[GD]\d+(?:, [GD]\d+)*|no gap code)\): (?:M\d+[a-z]?|after 1\.0|not scheduled|application code)\.$/);
     expect(line, line).not.toMatch(/: M5\.$/);
   }
 });

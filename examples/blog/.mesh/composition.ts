@@ -13,6 +13,8 @@ import type {
   CommentWith,
   CommentLoadNames,
   CommentLoadArg,
+  CommentTxLoadable,
+  CommentTxWith,
 } from "./domain/blog/comment.types";
 import type {
   Post,
@@ -26,6 +28,8 @@ import type {
   PostWith,
   PostLoadNames,
   PostLoadArg,
+  PostTxLoadable,
+  PostTxWith,
 } from "./domain/blog/post.types";
 import type { User, CreateUserInput, ReadUserInput } from "./domain/blog/user.types";
 
@@ -58,13 +62,13 @@ export interface Actions {
 export interface Reads {
   readonly readComment: <const L extends readonly (keyof CommentLoadable)[] = readonly []>(
     input: Omit<ReadCommentInput, "load"> & CommentLoadArg<L>,
-  ) => Promise<L extends unknown ? CommentWith<CommentLoadNames<L>>[] : never>;
+  ) => Promise<L extends unknown ? CommentTxWith<CommentLoadNames<L>>[] : never>;
   readonly publishedPost: <const L extends readonly (keyof PostLoadable)[] = readonly []>(
     input: Omit<PublishedPostInput, "load"> & PostLoadArg<L>,
-  ) => Promise<L extends unknown ? PostWith<PostLoadNames<L>>[] : never>;
+  ) => Promise<L extends unknown ? PostTxWith<PostLoadNames<L>>[] : never>;
   readonly readPost: <const L extends readonly (keyof PostLoadable)[] = readonly []>(
     input: Omit<ReadPostInput, "load"> & PostLoadArg<L>,
-  ) => Promise<L extends unknown ? PostWith<PostLoadNames<L>>[] : never>;
+  ) => Promise<L extends unknown ? PostTxWith<PostLoadNames<L>>[] : never>;
   readonly readUser: (input: ReadUserInput) => Promise<User[]>;
 }
 
@@ -133,21 +137,21 @@ export interface ReadOnlyReads {
   ) => Promise<
     L extends unknown
       ? readonly ($DeepReadonly<Comment> &
-          Pick<$DeepReadonly<CommentLoadable>, CommentLoadNames<L>>)[]
+          Pick<$DeepReadonly<CommentTxLoadable>, CommentLoadNames<L>>)[]
       : never
   >;
   readonly publishedPost: <const L extends readonly (keyof PostLoadable)[] = readonly []>(
     input: Omit<PublishedPostInput, "load"> & PostLoadArg<L>,
   ) => Promise<
     L extends unknown
-      ? readonly ($DeepReadonly<Post> & Pick<$DeepReadonly<PostLoadable>, PostLoadNames<L>>)[]
+      ? readonly ($DeepReadonly<Post> & Pick<$DeepReadonly<PostTxLoadable>, PostLoadNames<L>>)[]
       : never
   >;
   readonly readPost: <const L extends readonly (keyof PostLoadable)[] = readonly []>(
     input: Omit<ReadPostInput, "load"> & PostLoadArg<L>,
   ) => Promise<
     L extends unknown
-      ? readonly ($DeepReadonly<Post> & Pick<$DeepReadonly<PostLoadable>, PostLoadNames<L>>)[]
+      ? readonly ($DeepReadonly<Post> & Pick<$DeepReadonly<PostTxLoadable>, PostLoadNames<L>>)[]
       : never
   >;
   readonly readUser: (input: ReadUserInput) => Promise<$DeepReadonly<User[]>>;

@@ -68,6 +68,7 @@ export function bindMachineReads(layer: $DataLayer, options: $BindOptions = {}) 
       input: Omit<ReadMachineInput, "load"> & MachineLoadArg<L>,
       context?: unknown,
       clock?: () => Date,
+      policies?: boolean,
     ): Promise<L extends unknown ? MachineWith<MachineLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readMachineInput, input);
@@ -86,6 +87,7 @@ export function bindMachineReads(layer: $DataLayer, options: $BindOptions = {}) 
           actor: $context.actor,
           context: $context,
           clock: $clock,
+          policies,
         })) as unknown as L extends unknown ? MachineWith<MachineLoadNames<L>>[] : never;
       });
     },
@@ -539,6 +541,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
+      const $parsed = await $castInput(layer, readMachineInput, input);
       if (
         !(await $authorizer("Machine", "read", [
           {
@@ -557,18 +560,16 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           layer,
           $scope(
             {
-              input: $readOnlyRecord(input as never, "Machine.read"),
+              input: $readOnlyRecord($parsed as never, "Machine.read"),
               actor: $actor,
               context: $context,
             },
             { clock: $clock },
           ),
         ))
-      ) {
-        await $castInput(layer, readMachineInput, input);
+      )
         return [] as unknown as L extends unknown ? MachineWith<MachineLoadNames<L>>[] : never;
-      }
-      return $reads.read(input, context, $clock);
+      return $reads.read(input, context, $clock, true);
     },
   });
 }

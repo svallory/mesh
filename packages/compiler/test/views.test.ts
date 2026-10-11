@@ -75,6 +75,7 @@ describe("typesView", () => {
       loadable: {
         name: "ListLoadable",
         withName: "ListWith",
+        tx: null,
         namesName: "ListLoadNames",
         argName: "ListLoadArg",
         members: [{ name: "owner", optional: false, key: "owner", type: "Todo | null" }],

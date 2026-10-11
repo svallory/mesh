@@ -31,7 +31,10 @@ export type {{ input.name }}{{ input.generics }} = {
 
 @end
 @if(loadable)
-/** What `load` attaches to a {{ record.name }}. The record has none of it, so reading one that was not loaded is a type error. */
+/**
+ * What a caller's `load` attaches to a {{ record.name }}. The record has none of it, so reading one that was not loaded is a type error.
+ * A caller's load runs the read policies of the entity it reaches: a related record the caller may not read is null, a list of them empty.
+ */
 export type {{ loadable.name }} = {
   @each(member in loadable.members)
   {{ member.key }}: {{ member.type }};
@@ -40,6 +43,18 @@ export type {{ loadable.name }} = {
 
 /** A {{ record.name }} with the relationships and computed fields named in N loaded. */
 export type {{ loadable.withName }}<N extends keyof {{ loadable.name }}> = {{ record.name }} & Pick<{{ loadable.name }}, N>;
+@if(loadable.tx)
+
+/** What a load through `tx` attaches to a {{ record.name }}: it runs no policy, so every related record the key names is there. */
+export type {{ loadable.tx.name }} = {
+  @each(member in loadable.tx.members)
+  {{ member.key }}: {{ member.type }};
+  @end
+};
+
+/** A {{ record.name }} loaded through `tx`, with the relationships and computed fields named in N. */
+export type {{ loadable.tx.withName }}<N extends keyof {{ loadable.name }}> = {{ record.name }} & Pick<{{ loadable.tx.name }}, N>;
+@end
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type {{ loadable.namesName }}<L extends readonly (keyof {{ loadable.name }})[]> = number extends L["length"] ? never : L[number];

@@ -80,8 +80,24 @@ export type ReadInvocationInput<N extends keyof InvocationLoadable = never> = {
   load?: readonly N[] | undefined;
 };
 
-/** What `load` attaches to a Invocation. The record has none of it, so reading one that was not loaded is a type error. */
+/**
+ * What a caller's `load` attaches to a Invocation. The record has none of it, so reading one that was not loaded is a type error.
+ * A caller's load runs the read policies of the entity it reaches: a related record the caller may not read is null, a list of them empty.
+ */
 export type InvocationLoadable = {
+  attempt: Attempt | null;
+  task: Task | null;
+  session: SessionReference | null;
+  corrects: Invocation | null;
+  recordedBy: Collaborator | null;
+};
+
+/** A Invocation with the relationships and computed fields named in N loaded. */
+export type InvocationWith<N extends keyof InvocationLoadable> = Invocation &
+  Pick<InvocationLoadable, N>;
+
+/** What a load through `tx` attaches to a Invocation: it runs no policy, so every related record the key names is there. */
+export type InvocationTxLoadable = {
   attempt: Attempt;
   task: Task;
   session: SessionReference | null;
@@ -89,9 +105,9 @@ export type InvocationLoadable = {
   recordedBy: Collaborator;
 };
 
-/** A Invocation with the relationships and computed fields named in N loaded. */
-export type InvocationWith<N extends keyof InvocationLoadable> = Invocation &
-  Pick<InvocationLoadable, N>;
+/** A Invocation loaded through `tx`, with the relationships and computed fields named in N. */
+export type InvocationTxWith<N extends keyof InvocationLoadable> = Invocation &
+  Pick<InvocationTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type InvocationLoadNames<L extends readonly (keyof InvocationLoadable)[]> =

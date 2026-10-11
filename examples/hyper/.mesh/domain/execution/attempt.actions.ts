@@ -35,6 +35,7 @@ import {
 import type {
   Attempt,
   AttemptWith,
+  AttemptTxWith,
   AttemptLoadNames,
   AttemptLoadArg,
   AttemptLoadable,
@@ -69,7 +70,8 @@ export function bindAttemptReads(layer: $DataLayer, options: $BindOptions = {}) 
       input: Omit<ReadAttemptInput, "load"> & AttemptLoadArg<L>,
       context?: unknown,
       clock?: () => Date,
-    ): Promise<L extends unknown ? AttemptWith<AttemptLoadNames<L>>[] : never> {
+      policies?: boolean,
+    ): Promise<L extends unknown ? AttemptTxWith<AttemptLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readAttemptInput, input);
       return layer.transaction(async (tx) => {
@@ -80,14 +82,17 @@ export function bindAttemptReads(layer: $DataLayer, options: $BindOptions = {}) 
           offset: parsed.offset,
         })) as Attempt[];
         if (!parsed.load?.length)
-          return $rows as unknown as L extends unknown ? AttemptWith<AttemptLoadNames<L>>[] : never;
+          return $rows as unknown as L extends unknown
+            ? AttemptTxWith<AttemptLoadNames<L>>[]
+            : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "Attempt", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
-        })) as unknown as L extends unknown ? AttemptWith<AttemptLoadNames<L>>[] : never;
+          policies,
+        })) as unknown as L extends unknown ? AttemptTxWith<AttemptLoadNames<L>>[] : never;
       });
     },
   });
@@ -710,6 +715,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
+      const $parsed = await $castInput(layer, readAttemptInput, input);
       if (
         !(await $authorizer("Attempt", "read", [
           {
@@ -728,18 +734,18 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
           layer,
           $scope(
             {
-              input: $readOnlyRecord(input as never, "Attempt.read"),
+              input: $readOnlyRecord($parsed as never, "Attempt.read"),
               actor: $actor,
               context: $context,
             },
             { clock: $clock },
           ),
         ))
-      ) {
-        await $castInput(layer, readAttemptInput, input);
+      )
         return [] as unknown as L extends unknown ? AttemptWith<AttemptLoadNames<L>>[] : never;
-      }
-      return $reads.read(input, context, $clock);
+      return (await $reads.read(input, context, $clock, true)) as unknown as L extends unknown
+        ? AttemptWith<AttemptLoadNames<L>>[]
+        : never;
     },
   });
 }

@@ -32,16 +32,30 @@ export type ReadCompletionInput<N extends keyof CompletionLoadable = never> = {
   load?: readonly N[] | undefined;
 };
 
-/** What `load` attaches to a Completion. The record has none of it, so reading one that was not loaded is a type error. */
+/**
+ * What a caller's `load` attaches to a Completion. The record has none of it, so reading one that was not loaded is a type error.
+ * A caller's load runs the read policies of the entity it reaches: a related record the caller may not read is null, a list of them empty.
+ */
 export type CompletionLoadable = {
-  task: Task;
+  task: Task | null;
   submission: Submission | null;
-  completedBy: Collaborator;
+  completedBy: Collaborator | null;
 };
 
 /** A Completion with the relationships and computed fields named in N loaded. */
 export type CompletionWith<N extends keyof CompletionLoadable> = Completion &
   Pick<CompletionLoadable, N>;
+
+/** What a load through `tx` attaches to a Completion: it runs no policy, so every related record the key names is there. */
+export type CompletionTxLoadable = {
+  task: Task;
+  submission: Submission | null;
+  completedBy: Collaborator;
+};
+
+/** A Completion loaded through `tx`, with the relationships and computed fields named in N. */
+export type CompletionTxWith<N extends keyof CompletionLoadable> = Completion &
+  Pick<CompletionTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type CompletionLoadNames<L extends readonly (keyof CompletionLoadable)[]> =

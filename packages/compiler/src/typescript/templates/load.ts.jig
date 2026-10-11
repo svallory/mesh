@@ -16,7 +16,10 @@ import { expressions as {{ source.local }} } from {{ source.fromLiteral }};
 import type { {{ source.names }} } from {{ source.fromLiteral }};
 @end
 
-/** What `loadRows` follows: each entity's table and key, its relationships and its computed fields. */
+/**
+ * What `loadRows` follows: each entity's table and key, its relationships and its computed fields, and the read policies
+ * a caller's load of it runs (none listed: a caller loads none of its records).
+ */
 export const loadPlan = {
   @each(entity in entities)
   {{ entity.nameLiteral }}: {
@@ -32,6 +35,9 @@ export const loadPlan = {
       {{ field.key }}: {{ field.plan }},
       @end
     },
+    @if(entity.reads)
+    reads: {{ entity.reads }},
+    @end
   },
   @end
 } as const satisfies $LoadPlan;

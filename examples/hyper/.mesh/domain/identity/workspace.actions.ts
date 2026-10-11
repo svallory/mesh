@@ -245,6 +245,7 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
+      const $parsed = await $castInput(layer, readWorkspaceInput, input);
       if (
         !(await $authorizer("Workspace", "read", [
           {
@@ -263,17 +264,15 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
           layer,
           $scope(
             {
-              input: $readOnlyRecord(input as never, "Workspace.read"),
+              input: $readOnlyRecord($parsed as never, "Workspace.read"),
               actor: $actor,
               context: $context,
             },
             { clock: $clock },
           ),
         ))
-      ) {
-        await $castInput(layer, readWorkspaceInput, input);
+      )
         return [] as unknown as Workspace[];
-      }
       return $reads.read(input);
     },
   });

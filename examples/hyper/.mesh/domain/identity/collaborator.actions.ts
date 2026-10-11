@@ -64,6 +64,7 @@ export function bindCollaboratorReads(layer: $DataLayer, options: $BindOptions =
       input: Omit<ReadCollaboratorInput, "load"> & CollaboratorLoadArg<L>,
       context?: unknown,
       clock?: () => Date,
+      policies?: boolean,
     ): Promise<L extends unknown ? CollaboratorWith<CollaboratorLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readCollaboratorInput, input);
@@ -84,6 +85,7 @@ export function bindCollaboratorReads(layer: $DataLayer, options: $BindOptions =
           actor: $context.actor,
           context: $context,
           clock: $clock,
+          policies,
         })) as unknown as L extends unknown ? CollaboratorWith<CollaboratorLoadNames<L>>[] : never;
       });
     },
@@ -478,6 +480,7 @@ export function bindCollaborator(
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
+      const $parsed = await $castInput(layer, readCollaboratorInput, input);
       if (
         !(await $authorizer("Collaborator", "read", [
           {
@@ -496,20 +499,18 @@ export function bindCollaborator(
           layer,
           $scope(
             {
-              input: $readOnlyRecord(input as never, "Collaborator.read"),
+              input: $readOnlyRecord($parsed as never, "Collaborator.read"),
               actor: $actor,
               context: $context,
             },
             { clock: $clock },
           ),
         ))
-      ) {
-        await $castInput(layer, readCollaboratorInput, input);
+      )
         return [] as unknown as L extends unknown
           ? CollaboratorWith<CollaboratorLoadNames<L>>[]
           : never;
-      }
-      return $reads.read(input, context, $clock);
+      return $reads.read(input, context, $clock, true);
     },
   });
 }
