@@ -125,7 +125,7 @@ describe("v4 contracts", () => {
       const: ["MESH_SYNTAX", 1, 0],
       "old-module": ["MESH_SYNTAX", 1, 13],
       "old-relationship": ["MESH_SYNTAX", 5, 14],
-      "atom-input": ["MESH_SYNTAX", 7, 8],
+      "atom-input": ["MESH_UNSPACED_NAME", 7, 8],
       "read-input-member": ["MESH_READ_INPUT_MEMBER", 7, 8],
       "unknown-import": ["MESH_UNKNOWN_IMPORT", 1, 0],
       "duplicate-input": ["MESH_DUPLICATE_INPUT", 8, 8],

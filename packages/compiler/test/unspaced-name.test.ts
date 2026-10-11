@@ -1,9 +1,11 @@
 // A name written against its tag (`uuid:id`) is not Mesh syntax: a line is `kind :name` (decisions log, 2026-10-10 18:50).
-// Core lowers the unspaced form as name sugar today and may stop; Mesh refuses it in its own `afterLower` from the unit's
-// text, so these results do not depend on whether core still has the sugar. Every form lowers through `MESH_DIALECT`.
-import { lowerSource, type CustomTag } from "@mxlang/core";
+// Since MX alpha.17 a colon in a tag head is part of the tag name (`uuid:id` is one unknown tag), and a dialect's
+// `afterLower` sees only the tags a contract names, so Mesh refuses the form in `lowerMesh` (`src/front-end/lower.ts`), from
+// the lowered tag names. Every form lowers through `MESH_DIALECT`.
+import type { CustomTag } from "@mxlang/core";
 import { describe, expect, test } from "bun:test";
 import { MESH_DIALECT } from "../src/front-end/dialect.ts";
+import { lowerMesh } from "../src/front-end/lower.ts";
 
 const attrs = { name: { type: "atom" } };
 const tags = {
@@ -15,7 +17,7 @@ const tags = {
   setter: { attributes: attrs },
 } as unknown as Record<string, CustomTag>;
 
-const diagnostics = (source: string) => lowerSource(source, "/v/x.mesh.mx", { dialect: MESH_DIALECT, customTags: tags }).diagnostics;
+const diagnostics = (source: string) => lowerMesh(source, "/v/x.mesh.mx", { dialect: MESH_DIALECT, customTags: tags }).diagnostics;
 
 describe("the unspaced tag-head name is refused, showing the spaced spelling", () => {
   test.each([

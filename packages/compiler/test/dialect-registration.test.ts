@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 import { MESH_EXTENSIONS } from "../src/front-end/extensions.ts";
 import contracts from "../src/front-end/contracts.ts";
 
-// `meshfw` registers Mesh's dialect for MX tooling (`mx.dialect` in its package.json, MX 0.1.0-alpha.16):
+// `meshfw` registers Mesh's dialect for MX tooling (`mx.dialect` in its package.json, MX 0.1.0-alpha.17):
 // a project that lists `meshfw` as a direct dependency gets its `.mesh.mx` files routed to the `mesh`
 // dialect, which MX loads from `meshfw`'s built `dist/dialect.js`. The projects live under
 // `~/tmp/mx-alpha-16/`, never `/tmp`.

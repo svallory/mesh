@@ -32175,10 +32175,11 @@
   "diagnostics": [
    {
     "severity": "error",
-    "message": "`<input>`: `<object>` is not allowed here; allowed children: `<uuid>`, `<string>`, `<integer>`, `<float>`, `<decimal>`, `<boolean>`, `<enum>`, `<date>`, `<datetime>`, `<timestamp>`; other names must match `member`",
+    "message": "MESH_UNSPACED_NAME: `:id` is a name with no tag before it; Mesh writes a tag, a space, then the name: `kind :id`",
     "line": 7,
     "column": 8,
-    "offset": 100
+    "offset": 100,
+    "code": "MESH_UNSPACED_NAME"
    }
   ]
  },

@@ -112,7 +112,9 @@ describe("what the atom rows refuse, in Mesh's words", () => {
     ["<x :n:=y/>", "a bound value is not supported on name sugar; write name=... value:=...", 3],
     [
       "<x=1 :n=2/>",
-      '`:n` right after a default value is not supported; put it before the value',
+      // MX alpha.17 dropped its own error: a spaced `:n` after a value continues the value, so this is Marko's text,
+      // which carries no diagnostic code. Mesh keeps it until MX gives it one (then Mesh replaces it, matching the code).
+      "Expected a single expression, but found `:` after it.",
       5,
     ],
   ])("%s", (source, message, column) => {
