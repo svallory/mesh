@@ -1,17 +1,21 @@
 ---
 title: "0055. Policies are core; every covering policy must pass; an entity without policies forbids everything"
-description: "Decision record 0055: policy scope by `types=` and `actions=`, how checks combine without order, no `bypass`, fail closed, and policies in core instead of an extension. Status: Accepted, amended by ADR-0071, ADR-0072, ADR-0074."
+description: "Decision record 0055: policy scope by `types=` and `actions=`, how checks combine without order, no `bypass`, fail closed, and policies in core instead of an extension. Status: Accepted, amended by ADR-0071, ADR-0072, ADR-0074, and on 2026-10-11 (a policy sees `self` before the input)."
 ---
 
 # 0055. Policies are core; every covering policy must pass; an entity without policies forbids everything
 
 > **Amended** by [ADR-0071](./0071-system-key-on-the-action-context.md), [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) and [ADR-0074](./0074-write-policies-may-read-through-tx.md) on 2026-10-10: Internal writes pass through a reserved `system` context key and still no `bypass`; record-reading read policies wait for the SQL translator; a write policy may read through `tx`. The body below is kept as history.
+>
+> **Amended 2026-10-11** (operator): a policy sees `self` before the input is applied, as `validate` does; a create policy no longer sees the proposed record. See the Status section.
 
 ## Status
 
 Accepted. Supersedes [ADR-0036](./0036-deny-by-default-arrives-with-policies.md). Amends [ADR-0022](./0022-policies-simple-tier-as-extension.md) (packaging and policy scope).
 
 Amended by [ADR-0071](./0071-system-key-on-the-action-context.md), [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) and [ADR-0074](./0074-write-policies-may-read-through-tx.md) (2026-10-10): Internal writes pass through a reserved `system` context key and still no `bypass`; record-reading read policies wait for the SQL translator; a write policy may read through `tx`.
+
+**Amended 2026-10-11 (operator, POL-08).** A policy sees `self` as `validate` does, before the input is applied ([ADR-0053](./0053-validate-then-do.md), amended the same day): on an update or destroy the stored record, and on a create the new instance Mesh builds, with its defaults and a `uuid` or `string` key, before the member inputs. This replaces "A create policy sees the proposed record" below. Reading a related record is still a query inside the transaction, before the insert. The lead's reading, for operator review: a policy reads the caller's values from `input`, as a check does, so a create policy over a list's todos reads `input.list`, not `&list`, which is still empty; and a policy check that reads the record runs inside the transaction after the locked read and before `validate`, so a caller who may not run the action is told forbidden, never which checks their input fails. Policies are built in M8, so nothing in the code changes yet. The operator ruled it on 2026-10-11, recorded in the project's decision log. The rest of this record is unchanged and kept as history.
 
 ## Date
 
