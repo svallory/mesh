@@ -4,7 +4,6 @@
 
 import {
   FrameworkError as $FrameworkError,
-  afterWrite as $afterWrite,
   castInput as $castInput,
   composed as $composed,
   guarded as $guarded,
@@ -12,6 +11,7 @@ import {
   noteWrite as $noteWrite,
   pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
+  recordWrite as $recordWrite,
   runAction as $runAction,
   scope as $scope,
   uuidv7 as $uuidv7,
@@ -139,7 +139,7 @@ export function bindCompletion(layer: $DataLayer, options: $BindOptions = {}, co
           const $stored = await tx.insert(tables.completion, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Completion", action: "record" },

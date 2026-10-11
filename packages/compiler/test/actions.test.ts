@@ -110,9 +110,9 @@ describe("actions view", () => {
       ["destroy", "destroyArticle", "DestroyArticleInput", "destroyArticleInput", "void"],
     ]);
     expect(view.runtimeValues).toEqual([
-      "FrameworkError as $FrameworkError", "InvalidInputError as $InvalidInputError", "NotFoundError as $NotFoundError", "afterWrite as $afterWrite", "castInput as $castInput", "checkScope as $checkScope",
+      "FrameworkError as $FrameworkError", "InvalidInputError as $InvalidInputError", "NotFoundError as $NotFoundError", "castInput as $castInput", "checkScope as $checkScope",
       "checkUnchanged as $checkUnchanged", "composed as $composed", "failJoined as $failJoined", "guarded as $guarded", "loadRows as $loadRows",
-      "noteWrite as $noteWrite", "pinClock as $pinClock", "readOnlyRecord as $readOnlyRecord", "runAction as $runAction", "runCheck as $runCheck", "scope as $scope", "uuidv7 as $uuidv7", "wantsChanges as $wantsChanges", "writeCount as $writeCount"]);
+      "noteWrite as $noteWrite", "pinClock as $pinClock", "readOnlyRecord as $readOnlyRecord", "recordWrite as $recordWrite", "runAction as $runAction", "runCheck as $runCheck", "scope as $scope", "uuidv7 as $uuidv7", "wantsChanges as $wantsChanges", "writeCount as $writeCount"]);
     expect(view.runtimeTypes).toEqual(["Issue as $Issue", "Row as $Row"]);
     expect(view.typesFromLiteral).toBe('"./article.types"');
     expect(view.validatorsFromLiteral).toBe('"./article.validators"');
@@ -149,7 +149,7 @@ describe("actions view", () => {
       "const $stored = await tx.insert(tables.article, $changes);",
       "$noteWrite(tx);",
       "// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write",
-      'await $afterWrite(tx, options.seams, { entity: "Article", action: "create" }, null, $stored, parsed, context);',
+      'await $recordWrite(tx, options.seams, { entity: "Article", action: "create" }, null, $stored, parsed, context);',
       "return $stored as Article;",
     ]);
     expect(create.notRun).toBe("Not run in this version: on:load load; policies everyone");
@@ -207,7 +207,7 @@ describe("actions view", () => {
       'if (!(await tx.deleteByKey(tables.article, $key))) throw new $NotFoundError("Article", $key);',
       "$noteWrite(tx);",
       "// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write",
-      'await $afterWrite(tx, options.seams, { entity: "Article", action: "destroy" }, $before ?? null, null, parsed, context);',
+      'await $recordWrite(tx, options.seams, { entity: "Article", action: "destroy" }, $before ?? null, null, parsed, context);',
     ]);
     expect(destroy.notRun).toBe("Not run in this version: policies everyone");
   });

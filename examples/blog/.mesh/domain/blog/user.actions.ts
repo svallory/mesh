@@ -3,9 +3,9 @@
 // Mesh's own imports carry a `$` so that no entity name can shadow them.
 
 import {
-  afterWrite as $afterWrite,
   castInput as $castInput,
   noteWrite as $noteWrite,
+  recordWrite as $recordWrite,
   runAction as $runAction,
   uuidv7 as $uuidv7,
   type BindOptions as $BindOptions,
@@ -66,7 +66,7 @@ export function bindUser(layer: $DataLayer, options: $BindOptions = {}, _compose
           const $stored = await tx.insert(tables.user, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "User", action: "create" },

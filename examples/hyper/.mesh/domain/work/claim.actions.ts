@@ -6,7 +6,6 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
-  afterWrite as $afterWrite,
   castInput as $castInput,
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
@@ -17,6 +16,7 @@ import {
   noteWrite as $noteWrite,
   pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
+  recordWrite as $recordWrite,
   rejectComputedQuery,
   rescope as $rescope,
   runAction as $runAction,
@@ -212,7 +212,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           const $stored = await tx.insert(tables.claim, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Claim", action: "acquire" },
@@ -333,7 +333,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           if ($stored === undefined) throw new $NotFoundError("Claim", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Claim", action: "renew" },
@@ -455,7 +455,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           if ($stored === undefined) throw new $NotFoundError("Claim", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Claim", action: "release" },
@@ -562,7 +562,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           if ($stored === undefined) throw new $NotFoundError("Claim", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Claim", action: "revoke" },
@@ -658,7 +658,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           if ($stored === undefined) throw new $NotFoundError("Claim", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Claim", action: "expire" },
@@ -761,7 +761,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           if ($stored === undefined) throw new $NotFoundError("Claim", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Claim", action: "end" },

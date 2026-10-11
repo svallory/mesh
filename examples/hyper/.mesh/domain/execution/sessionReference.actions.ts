@@ -6,7 +6,6 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
-  afterWrite as $afterWrite,
   castInput as $castInput,
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
@@ -16,6 +15,7 @@ import {
   noteWrite as $noteWrite,
   pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
+  recordWrite as $recordWrite,
   runAction as $runAction,
   runCheck as $runCheck,
   scope as $scope,
@@ -192,7 +192,7 @@ export function bindSessionReference(
           const $stored = await tx.insert(tables.sessionReference, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "SessionReference", action: "record" },
@@ -301,7 +301,7 @@ export function bindSessionReference(
           if ($stored === undefined) throw new $NotFoundError("SessionReference", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "SessionReference", action: "setAvailability" },
@@ -401,7 +401,7 @@ export function bindSessionReference(
           if ($stored === undefined) throw new $NotFoundError("SessionReference", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "SessionReference", action: "redact" },

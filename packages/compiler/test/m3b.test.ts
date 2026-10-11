@@ -181,13 +181,13 @@ describe("the key of a create", () => {
     const { document } = await generated({ "m/item.mesh.mx": items(key) });
     const statements = actionsView({ document, config: configOf("/p") }, document.entities[0]!).methods.find((m) => m.name === "create")!.statements;
     // A UUIDv7, the value the data layer would give, made before the checks so `self.${name}` is known to them and to the steps.
-    expect(statements.slice(2)).toEqual(["const $changes: $Row = {", `${name}: $uuidv7(),`, "name: parsed.name,", "};", "// data layer", "const $stored = await tx.insert(tables.item, $changes);", "$noteWrite(tx);", "// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write", 'await $afterWrite(tx, options.seams, { entity: "Item", action: "create" }, null, $stored, parsed, context);', "return $stored as Item;"]);
+    expect(statements.slice(2)).toEqual(["const $changes: $Row = {", `${name}: $uuidv7(),`, "name: parsed.name,", "};", "// data layer", "const $stored = await tx.insert(tables.item, $changes);", "$noteWrite(tx);", "// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write", 'await $recordWrite(tx, options.seams, { entity: "Item", action: "create" }, null, $stored, parsed, context);', "return $stored as Item;"]);
   });
 
   test("integer :seq primary-key is left to the data layer, and is null on the instance until the write", async () => {
     const plain = await generated({ "m/item.mesh.mx": items("integer :seq primary-key") });
     const statements = actionsView({ document: plain.document, config: configOf("/p") }, plain.document.entities[0]!).methods.find((m) => m.name === "create")!.statements;
-    expect(statements.slice(2)).toEqual(["const $changes: $Row = {", "name: parsed.name,", "};", "// data layer", "const $stored = await tx.insert(tables.item, $changes);", "$noteWrite(tx);", "// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write", 'await $afterWrite(tx, options.seams, { entity: "Item", action: "create" }, null, $stored, parsed, context);', "return $stored as Item;"]);
+    expect(statements.slice(2)).toEqual(["const $changes: $Row = {", "name: parsed.name,", "};", "// data layer", "const $stored = await tx.insert(tables.item, $changes);", "$noteWrite(tx);", "// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write", 'await $recordWrite(tx, options.seams, { entity: "Item", action: "create" }, null, $stored, parsed, context);', "return $stored as Item;"]);
     // With a check, the instance the check sees holds the key as null; the row to insert has none, so the data layer gives it.
     const checked = await generated({ "m/item.mesh.mx": items("integer :seq primary-key").replace("        &name\n", "        &name\n      validate\n        check :named that=({ input }) => input.name !== \"\" code=\"named\" message=\"a name\"\n") });
     const lines = actionsView({ document: checked.document, config: configOf("/p") }, checked.document.entities[0]!).methods.find((m) => m.name === "create")!.statements;

@@ -6,7 +6,6 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
-  afterWrite as $afterWrite,
   castInput as $castInput,
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
@@ -17,6 +16,7 @@ import {
   noteWrite as $noteWrite,
   pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
+  recordWrite as $recordWrite,
   runAction as $runAction,
   runCheck as $runCheck,
   scope as $scope,
@@ -162,7 +162,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           const $stored = await tx.insert(tables.machine, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Machine", action: "register" },
@@ -239,7 +239,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           const $stored = await tx.insert(tables.machine, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Machine", action: "report" },
@@ -329,7 +329,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           if ($stored === undefined) throw new $NotFoundError("Machine", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Machine", action: "update" },
@@ -428,7 +428,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           if ($stored === undefined) throw new $NotFoundError("Machine", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Machine", action: "retire" },

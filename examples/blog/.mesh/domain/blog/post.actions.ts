@@ -6,7 +6,6 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
-  afterWrite as $afterWrite,
   castInput as $castInput,
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
@@ -17,6 +16,7 @@ import {
   noteWrite as $noteWrite,
   pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
+  recordWrite as $recordWrite,
   rejectComputedQuery,
   runAction as $runAction,
   runCheck as $runCheck,
@@ -150,7 +150,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
           const $stored = await tx.insert(tables.post, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Post", action: "create" },
@@ -234,7 +234,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
           if ($stored === undefined) throw new $NotFoundError("Post", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Post", action: "publish" },
@@ -275,7 +275,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
           if (!(await tx.deleteByKey(tables.post, $key))) throw new $NotFoundError("Post", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Post", action: "archive" },
@@ -328,7 +328,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
           if (!(await tx.deleteByKey(tables.post, $key))) throw new $NotFoundError("Post", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Post", action: "destroy" },

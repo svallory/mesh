@@ -6,7 +6,6 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
-  afterWrite as $afterWrite,
   castInput as $castInput,
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
@@ -17,6 +16,7 @@ import {
   noteWrite as $noteWrite,
   pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
+  recordWrite as $recordWrite,
   runAction as $runAction,
   runCheck as $runCheck,
   scope as $scope,
@@ -186,7 +186,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
           const $stored = await tx.insert(tables.run, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Run", action: "start" },
@@ -283,7 +283,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
           if ($stored === undefined) throw new $NotFoundError("Run", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Run", action: "cancel" },
@@ -366,7 +366,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
           if ($stored === undefined) throw new $NotFoundError("Run", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Run", action: "settle" },

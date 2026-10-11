@@ -6,7 +6,6 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
-  afterWrite as $afterWrite,
   castInput as $castInput,
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
@@ -14,6 +13,7 @@ import {
   noteWrite as $noteWrite,
   pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
+  recordWrite as $recordWrite,
   runAction as $runAction,
   runCheck as $runCheck,
   scope as $scope,
@@ -94,7 +94,7 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
           const $stored = await tx.insert(tables.workspace, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Workspace", action: "create" },
@@ -178,7 +178,7 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
           if ($stored === undefined) throw new $NotFoundError("Workspace", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Workspace", action: "rename" },

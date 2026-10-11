@@ -599,11 +599,11 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     }
     runtime.add("noteWrite");
     emit("$noteWrite(tx);");
-    runtime.add("afterWrite");
+    runtime.add("recordWrite");
     optionsUsed = true;
     const seamTarget = `{ entity: ${JSON.stringify(entity.name)}, action: ${JSON.stringify(action.name)} }`;
     emit("// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write");
-    emit(`await $afterWrite(tx, options.seams, ${seamTarget}, ${action.kind === "create" ? "null" : reads ? "$before" : "$before ?? null"}, ${writes ? "$stored" : "null"}, parsed, context);`);
+    emit(`await $recordWrite(tx, options.seams, ${seamTarget}, ${action.kind === "create" ? "null" : reads ? "$before" : "$before ?? null"}, ${writes ? "$stored" : "null"}, parsed, context);`);
     let result = "$stored";
     // after the write: still inside the transaction, with the stored record (a destroy: the row as it was) as `self`
     if (hasAfterWrite(steps)) {
@@ -690,7 +690,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     const statements = [`// transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)`, ...prelude, ...head, ...afterHead, ...body];
     // The working copy of the record is declared only when something reads it.
     const declared = statements.findIndex((line) => line.startsWith("const $record:"));
-    if (declared >= 0 && !statements.some((line, at) => at !== declared && line.includes("$record"))) statements.splice(declared, 1);
+    if (declared >= 0 && !statements.some((line, at) => at !== declared && /\$record\b/.test(line))) statements.splice(declared, 1);
     runtime.add("runAction");
     return { ...base, returnType, contextName: "context", notRun: notRun([]), unsupported: null, usesParsed: true, statements, isRead: false, seamTarget, readsCall: null };
   });

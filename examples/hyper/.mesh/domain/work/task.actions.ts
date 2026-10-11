@@ -6,7 +6,6 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
-  afterWrite as $afterWrite,
   castInput as $castInput,
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
@@ -17,6 +16,7 @@ import {
   noteWrite as $noteWrite,
   pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
+  recordWrite as $recordWrite,
   rejectComputedQuery,
   rescope as $rescope,
   runAction as $runAction,
@@ -197,7 +197,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           const $stored = await tx.insert(tables.task, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Task", action: "create" },
@@ -295,7 +295,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           if ($stored === undefined) throw new $NotFoundError("Task", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Task", action: "update" },
@@ -385,7 +385,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           if ($stored === undefined) throw new $NotFoundError("Task", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Task", action: "setPriority" },
@@ -500,7 +500,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           if ($stored === undefined) throw new $NotFoundError("Task", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Task", action: "move" },
@@ -593,7 +593,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           if ($stored === undefined) throw new $NotFoundError("Task", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Task", action: "reopen" },
@@ -662,7 +662,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           if ($stored === undefined) throw new $NotFoundError("Task", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Task", action: "touch" },
@@ -751,7 +751,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           if ($stored === undefined) throw new $NotFoundError("Task", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Task", action: "cancel" },
@@ -920,7 +920,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           if ($stored === undefined) throw new $NotFoundError("Task", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Task", action: "complete" },
@@ -1047,7 +1047,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           if ($stored === undefined) throw new $NotFoundError("Task", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Task", action: "assign" },
@@ -1153,7 +1153,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           if ($stored === undefined) throw new $NotFoundError("Task", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $afterWrite(
+          await $recordWrite(
             tx,
             options.seams,
             { entity: "Task", action: "unassign" },

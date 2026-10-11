@@ -26,5 +26,5 @@ export { loadRows, loadInto, unloadFrom, guarded, readOnlyRecord, cloneValue, ty
 export { castInput, checkUnchanged, composer, composed, failJoined, noteWrite, writeCount } from "./compose.ts";
 export type { Composer, Composition } from "./compose.ts";
 export type { LoadPlan, EntityPlan, RelationPlan, BelongsToPlan, HasPlan, ComputedPlan, LoadOptions } from "./load.ts";
-export { afterWrite, runAction, wantsChanges } from "./seams.ts";
+export { recordWrite, runAction, wantsChanges } from "./seams.ts";
 export type { AfterCommitEvent, AfterWriteEvent, BeforeTransactionEvent, Change, SeamContext, SeamDb, SeamTarget, Seams } from "./seams.ts";

@@ -1,5 +1,6 @@
 import type { DataLayer, DataOperations, Row } from "./data-layer.ts";
 import type { ActionContext } from "./index.ts";
+import { FrameworkError } from "./errors.ts";
 import { cloneValue } from "./load.ts";
 
 /**
@@ -81,19 +82,37 @@ export function wantsChanges(seams: Seams | undefined): boolean {
   return seams?.afterWrite !== undefined || seams?.afterCommit !== undefined;
 }
 
-/** A deeply frozen copy: what a seam receives can neither change what Mesh writes nor what another seam sees. */
+/**
+ * A deeply frozen copy of Mesh's own plain data (an input or a row): the clone is Mesh's to freeze, so a seam can neither
+ * change what Mesh writes nor what another seam sees. A `Date` is handed out read-only (freezing does not stop `setTime`).
+ */
 function frozenCopy<T>(value: T): T {
-  let copy: unknown;
-  try { copy = cloneValue(value); } catch { copy = Array.isArray(value) ? [...value] : value !== null && typeof value === "object" ? { ...value } : value; }
-  return deepFreeze(copy) as T;
+  return readOnly(cloneValue(value)) as T;
 }
 
-function deepFreeze(value: unknown): unknown {
-  if (value === null || typeof value !== "object" || Object.isFrozen(value)) return value;
-  Object.freeze(value);
-  // A Date, Map or class instance is frozen as an object; its members are not reachable as properties anyway.
-  for (const member of Object.values(value)) deepFreeze(member);
-  return value;
+/**
+ * The context as a seam sees it: a frozen copy of the top level, so a seam cannot swap `actor` or `commandId` for what
+ * runs next. What it holds belongs to the application (loggers, class instances, buffers) and is passed as it is, never
+ * cloned and never frozen.
+ */
+function contextOf(context: unknown): SeamContext {
+  return Object.freeze({ ...(context as object | null | undefined) }) as SeamContext;
+}
+
+function readOnly(value: unknown): unknown {
+  if (value === null || typeof value !== "object" || ArrayBuffer.isView(value)) return value;
+  if (value instanceof Date) {
+    // A real Date (so it compares and prints as one) whose setters throw: freezing alone does not stop `setTime`.
+    const copy = new Date(value.getTime());
+    const refuse = (): never => { throw new FrameworkError("A seam cannot change a date it was handed"); };
+    for (const name of Object.getOwnPropertyNames(Date.prototype))
+      if (name.startsWith("set")) Object.defineProperty(copy, name, { value: refuse, enumerable: false });
+    return Object.freeze(copy);
+  }
+  if (Object.isFrozen(value)) return value;
+  const record = value as Record<string, unknown>;
+  for (const key of Object.keys(record)) record[key] = readOnly(record[key]);
+  return Object.freeze(record);
 }
 
 /**
@@ -125,7 +144,7 @@ export async function runAction<T>(
   const joined = layer.refuseIfFailed();
   if (joined) return layer.transaction(body);
   if (seams?.beforeTransaction)
-    await seams.beforeTransaction({ ...target, input: frozenCopy(input) as BeforeTransactionEvent["input"], context: frozenCopy(context ?? {}) as SeamContext });
+    await seams.beforeTransaction({ ...target, input: frozenCopy(input) as BeforeTransactionEvent["input"], context: contextOf(context) });
   return outermost(layer, seams, body);
 }
 
@@ -154,7 +173,7 @@ function dbOf(tx: DataOperations): SeamDb {
  * is registered) and runs `afterWrite`. `before` and `after` are frozen copies, so the seams see the row as it was
  * written whatever a step does next, and none can change what another sees.
  */
-export async function afterWrite(
+export async function recordWrite(
   tx: DataOperations, seams: Seams | undefined, target: SeamTarget, before: Row | null, after: Row | null,
   input: unknown, context: unknown,
 ): Promise<void> {
@@ -165,5 +184,5 @@ export async function afterWrite(
     if (list) list.push(change); else changesOf.set(tx, [change]);
   }
   if (seams?.afterWrite)
-    await seams.afterWrite(dbOf(tx), { ...change, input: frozenCopy(input) as AfterWriteEvent["input"], context: frozenCopy(context ?? {}) as SeamContext });
+    await seams.afterWrite(dbOf(tx), { ...change, input: frozenCopy(input) as AfterWriteEvent["input"], context: contextOf(context) });
 }
