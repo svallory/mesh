@@ -10,6 +10,7 @@ import {
   type BindOptions as $BindOptions,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type Seams as $Seams,
 } from "@meshfw/runtime";
 import { bindComment, bindCommentReads } from "./domain/blog/comment.actions";
 import { bindPost, bindPostReads } from "./domain/blog/post.actions";
@@ -19,9 +20,10 @@ import type { Actions, Reads } from "./composition";
 /**
  * Every action function, bound to `layer`, and `transaction`. Opens nothing and creates no table:
  * the caller owns the layer and closes it.
- */ export function bind(layer: $DataLayer, options: $BindOptions = {}) {
+ */
+export function bind(layer: $DataLayer, options: $BindOptions = {}) {
   // `actions` and `tx` in a function of an entity file come from this composer, which holds this binding's functions.
-  const $composer = $makeComposer(layer);
+  const $composer = $makeComposer(layer, options.seams);
   const commentActions = bindComment(layer, options, $composer);
   const commentReads = bindCommentReads(layer, options);
   const postActions = bindPost(layer, options, $composer);
@@ -98,7 +100,8 @@ export async function connect(): Promise<void> {
     );
   if ($defaultLayer)
     throw new $FrameworkError("connect() was called while connected; call disconnect() first");
-  $defaultBinding = bind(data);
+  // `config` is read as the project wrote it, so a configuration that is not typed with `defineConfig` still binds.
+  $defaultBinding = bind(data, { seams: (config as { readonly seams?: $Seams }).seams });
   $defaultLayer = data;
 }
 

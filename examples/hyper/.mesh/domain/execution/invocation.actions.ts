@@ -5,6 +5,7 @@
 import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
+  afterWrite as $afterWrite,
   castInput as $castInput,
   checkScope as $checkScope,
   composed as $composed,
@@ -14,6 +15,7 @@ import {
   noteWrite as $noteWrite,
   pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
+  runAction as $runAction,
   runCheck as $runCheck,
   scope as $scope,
   unloadFrom as $unloadFrom,
@@ -96,125 +98,142 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
     ): Promise<Invocation> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, recordInvocationInput, input);
-      return layer.transaction(async (tx) => {
-        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $context = (context ?? {}) as unknown as Record<string, unknown>;
-        const $actor = $context.actor;
-        const $clock = $pinClock(options.clock);
-        const $now = $clock();
-        // plan: a create is one insert; nothing is read first
-        const $changes: $Row = {
-          id: $uuidv7(),
-          requestedProvider: null,
-          requestedModel: null,
-          actualProvider: null,
-          actualModel: null,
-          inputTokens: null,
-          outputTokens: null,
-          cacheReadTokens: null,
-          cacheWriteTokens: null,
-          estimatedCost: null,
-          pricingBasis: null,
-          startedAt: null,
-          endedAt: null,
-          reason: null,
-          recordedAt: $now,
-          sessionId: null,
-          correctsId: null,
-        };
-        const $record: $Row = {
-          ...$changes,
-          usageSource: null,
-          attemptId: null,
-          taskId: null,
-          recordedById: null,
-        };
-        const $load = { actor: $actor, context: $context, clock: $clock };
-        const $self = $readOnlyRecord(
-          $guarded($loadPlan, "Invocation", $record, "action function"),
-          "Invocation.record",
-        );
-        const $s = $scope(
+      return $runAction(
+        layer,
+        options.seams,
+        { entity: "Invocation", action: "record" },
+        parsed,
+        context,
+        async (tx) => {
+          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+          const $context = (context ?? {}) as unknown as Record<string, unknown>;
+          const $actor = $context.actor;
+          const $clock = $pinClock(options.clock);
+          const $now = $clock();
+          // plan: a create is one insert; nothing is read first
+          const $changes: $Row = {
+            id: $uuidv7(),
+            requestedProvider: null,
+            requestedModel: null,
+            actualProvider: null,
+            actualModel: null,
+            inputTokens: null,
+            outputTokens: null,
+            cacheReadTokens: null,
+            cacheWriteTokens: null,
+            estimatedCost: null,
+            pricingBasis: null,
+            startedAt: null,
+            endedAt: null,
+            reason: null,
+            recordedAt: $now,
+            sessionId: null,
+            correctsId: null,
+          };
+          const $record: $Row = {
+            ...$changes,
+            usageSource: null,
+            attemptId: null,
+            taskId: null,
+            recordedById: null,
+          };
+          const $load = { actor: $actor, context: $context, clock: $clock };
+          const $self = $readOnlyRecord(
+            $guarded($loadPlan, "Invocation", $record, "action function"),
+            "Invocation.record",
+          );
+          const $s = $scope(
+            {
+              self: $self,
+              input: $readOnlyRecord(parsed, "Invocation.record"),
+              actor: $actor,
+              context: $context,
+              before: null,
+              ...$composed(compose, tx, context, "Invocation.record", $clock),
+            },
+            { clock: $clock },
+          ) as unknown as $Scope<RecordInvocationInput>;
+          // validate: every check runs, and every failed check is reported together
+          const $issues: $Issue[] = [];
+          const $checks = $checkScope($s);
+          await $runCheck($issues, $checks, {
+            label: "session",
+            code: "invocation.session",
+            message: "the session is not the attempt's session",
+            source: { file: "src/domain/execution/invocation.mesh.mx", line: 50, column: 9 },
+            that: $expressions["record.check.session.that"],
+          });
+          await $runCheck($issues, $checks, {
+            label: "costUnknown",
+            code: "invocation.cost-unknown",
+            message: "the cost is unknown while a token count it needs is unknown",
+            source: { file: "src/domain/execution/invocation.mesh.mx", line: 55, column: 9 },
+            that: $expressions["record.check.costUnknown.that"],
+          });
+          if ($issues.length > 0) throw new $InvalidInputError($issues);
+          // the input: the member inputs the caller sent, applied now that the checks have passed
+          if (parsed.attempt !== undefined) $changes.attemptId = $record.attemptId = parsed.attempt;
+          if (parsed.requestedProvider !== undefined)
+            $changes.requestedProvider = $record.requestedProvider = parsed.requestedProvider;
+          if (parsed.requestedModel !== undefined)
+            $changes.requestedModel = $record.requestedModel = parsed.requestedModel;
+          if (parsed.actualProvider !== undefined)
+            $changes.actualProvider = $record.actualProvider = parsed.actualProvider;
+          if (parsed.actualModel !== undefined)
+            $changes.actualModel = $record.actualModel = parsed.actualModel;
+          if (parsed.inputTokens !== undefined)
+            $changes.inputTokens = $record.inputTokens = parsed.inputTokens;
+          if (parsed.outputTokens !== undefined)
+            $changes.outputTokens = $record.outputTokens = parsed.outputTokens;
+          if (parsed.cacheReadTokens !== undefined)
+            $changes.cacheReadTokens = $record.cacheReadTokens = parsed.cacheReadTokens;
+          if (parsed.cacheWriteTokens !== undefined)
+            $changes.cacheWriteTokens = $record.cacheWriteTokens = parsed.cacheWriteTokens;
+          if (parsed.usageSource !== undefined)
+            $changes.usageSource = $record.usageSource = parsed.usageSource;
+          if (parsed.estimatedCost !== undefined)
+            $changes.estimatedCost = $record.estimatedCost = parsed.estimatedCost;
+          if (parsed.pricingBasis !== undefined)
+            $changes.pricingBasis = $record.pricingBasis = parsed.pricingBasis;
+          if (parsed.startedAt !== undefined)
+            $changes.startedAt = $record.startedAt = parsed.startedAt;
+          if (parsed.endedAt !== undefined) $changes.endedAt = $record.endedAt = parsed.endedAt;
+          if (parsed.session !== undefined) $changes.sessionId = $record.sessionId = parsed.session;
+          // do: the steps run in written order, each seeing the record as the ones before it left it
+          await $loadInto($loadPlan, "Invocation", tx, $record, ["attempt"], $load);
           {
-            self: $self,
-            input: $readOnlyRecord(parsed, "Invocation.record"),
-            actor: $actor,
-            context: $context,
-            before: null,
-            ...$composed(compose, tx, context, "Invocation.record", $clock),
-          },
-          { clock: $clock },
-        ) as unknown as $Scope<RecordInvocationInput>;
-        // validate: every check runs, and every failed check is reported together
-        const $issues: $Issue[] = [];
-        const $checks = $checkScope($s);
-        await $runCheck($issues, $checks, {
-          label: "session",
-          code: "invocation.session",
-          message: "the session is not the attempt's session",
-          source: { file: "src/domain/execution/invocation.mesh.mx", line: 50, column: 9 },
-          that: $expressions["record.check.session.that"],
-        });
-        await $runCheck($issues, $checks, {
-          label: "costUnknown",
-          code: "invocation.cost-unknown",
-          message: "the cost is unknown while a token count it needs is unknown",
-          source: { file: "src/domain/execution/invocation.mesh.mx", line: 55, column: 9 },
-          that: $expressions["record.check.costUnknown.that"],
-        });
-        if ($issues.length > 0) throw new $InvalidInputError($issues);
-        // the input: the member inputs the caller sent, applied now that the checks have passed
-        if (parsed.attempt !== undefined) $changes.attemptId = $record.attemptId = parsed.attempt;
-        if (parsed.requestedProvider !== undefined)
-          $changes.requestedProvider = $record.requestedProvider = parsed.requestedProvider;
-        if (parsed.requestedModel !== undefined)
-          $changes.requestedModel = $record.requestedModel = parsed.requestedModel;
-        if (parsed.actualProvider !== undefined)
-          $changes.actualProvider = $record.actualProvider = parsed.actualProvider;
-        if (parsed.actualModel !== undefined)
-          $changes.actualModel = $record.actualModel = parsed.actualModel;
-        if (parsed.inputTokens !== undefined)
-          $changes.inputTokens = $record.inputTokens = parsed.inputTokens;
-        if (parsed.outputTokens !== undefined)
-          $changes.outputTokens = $record.outputTokens = parsed.outputTokens;
-        if (parsed.cacheReadTokens !== undefined)
-          $changes.cacheReadTokens = $record.cacheReadTokens = parsed.cacheReadTokens;
-        if (parsed.cacheWriteTokens !== undefined)
-          $changes.cacheWriteTokens = $record.cacheWriteTokens = parsed.cacheWriteTokens;
-        if (parsed.usageSource !== undefined)
-          $changes.usageSource = $record.usageSource = parsed.usageSource;
-        if (parsed.estimatedCost !== undefined)
-          $changes.estimatedCost = $record.estimatedCost = parsed.estimatedCost;
-        if (parsed.pricingBasis !== undefined)
-          $changes.pricingBasis = $record.pricingBasis = parsed.pricingBasis;
-        if (parsed.startedAt !== undefined)
-          $changes.startedAt = $record.startedAt = parsed.startedAt;
-        if (parsed.endedAt !== undefined) $changes.endedAt = $record.endedAt = parsed.endedAt;
-        if (parsed.session !== undefined) $changes.sessionId = $record.sessionId = parsed.session;
-        // do: the steps run in written order, each seeing the record as the ones before it left it
-        await $loadInto($loadPlan, "Invocation", tx, $record, ["attempt"], $load);
-        {
-          const $value = await $expressions["record.step.0.set.task"]($s);
-          if ($value === undefined || $value === null)
-            throw new $FrameworkError(
-              "set &task (src/domain/execution/invocation.mesh.mx:62:17) produced no value, and the relationship task is required",
-            );
-          $changes.taskId = $record.taskId = $value;
-        }
-        {
-          const $value = await $expressions["record.step.0.set.recordedBy"]($s);
-          if ($value === undefined || $value === null)
-            throw new $FrameworkError(
-              "set &recordedBy (src/domain/execution/invocation.mesh.mx:63:23) produced no value, and the relationship recordedBy is required",
-            );
-          $changes.recordedById = $record.recordedById = $value;
-        }
-        $unloadFrom($loadPlan, "Invocation", $record);
-        // data layer
-        const $stored = await tx.insert(tables.invocation, $changes);
-        $noteWrite(tx);
-        return $stored as Invocation;
-      });
+            const $value = await $expressions["record.step.0.set.task"]($s);
+            if ($value === undefined || $value === null)
+              throw new $FrameworkError(
+                "set &task (src/domain/execution/invocation.mesh.mx:62:17) produced no value, and the relationship task is required",
+              );
+            $changes.taskId = $record.taskId = $value;
+          }
+          {
+            const $value = await $expressions["record.step.0.set.recordedBy"]($s);
+            if ($value === undefined || $value === null)
+              throw new $FrameworkError(
+                "set &recordedBy (src/domain/execution/invocation.mesh.mx:63:23) produced no value, and the relationship recordedBy is required",
+              );
+            $changes.recordedById = $record.recordedById = $value;
+          }
+          $unloadFrom($loadPlan, "Invocation", $record);
+          // data layer
+          const $stored = await tx.insert(tables.invocation, $changes);
+          $noteWrite(tx);
+          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+          await $afterWrite(
+            tx,
+            options.seams,
+            { entity: "Invocation", action: "record" },
+            null,
+            $stored,
+            parsed,
+            context,
+          );
+          return $stored as Invocation;
+        },
+      );
     },
 
     async correct(
@@ -223,139 +242,156 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
     ): Promise<Invocation> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, correctInvocationInput, input);
-      return layer.transaction(async (tx) => {
-        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $context = (context ?? {}) as unknown as Record<string, unknown>;
-        const $actor = $context.actor;
-        const $clock = $pinClock(options.clock);
-        const $now = $clock();
-        // plan: a create is one insert; nothing is read first
-        const $changes: $Row = {
-          id: $uuidv7(),
-          requestedProvider: null,
-          requestedModel: null,
-          actualProvider: null,
-          actualModel: null,
-          inputTokens: null,
-          outputTokens: null,
-          cacheReadTokens: null,
-          cacheWriteTokens: null,
-          estimatedCost: null,
-          pricingBasis: null,
-          startedAt: null,
-          endedAt: null,
-          reason: null,
-          recordedAt: $now,
-          sessionId: null,
-          correctsId: null,
-        };
-        const $record: $Row = {
-          ...$changes,
-          usageSource: null,
-          attemptId: null,
-          taskId: null,
-          recordedById: null,
-        };
-        const $self = $readOnlyRecord(
-          $guarded($loadPlan, "Invocation", $record, "action function"),
-          "Invocation.correct",
-        );
-        const $s = $scope(
+      return $runAction(
+        layer,
+        options.seams,
+        { entity: "Invocation", action: "correct" },
+        parsed,
+        context,
+        async (tx) => {
+          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+          const $context = (context ?? {}) as unknown as Record<string, unknown>;
+          const $actor = $context.actor;
+          const $clock = $pinClock(options.clock);
+          const $now = $clock();
+          // plan: a create is one insert; nothing is read first
+          const $changes: $Row = {
+            id: $uuidv7(),
+            requestedProvider: null,
+            requestedModel: null,
+            actualProvider: null,
+            actualModel: null,
+            inputTokens: null,
+            outputTokens: null,
+            cacheReadTokens: null,
+            cacheWriteTokens: null,
+            estimatedCost: null,
+            pricingBasis: null,
+            startedAt: null,
+            endedAt: null,
+            reason: null,
+            recordedAt: $now,
+            sessionId: null,
+            correctsId: null,
+          };
+          const $record: $Row = {
+            ...$changes,
+            usageSource: null,
+            attemptId: null,
+            taskId: null,
+            recordedById: null,
+          };
+          const $self = $readOnlyRecord(
+            $guarded($loadPlan, "Invocation", $record, "action function"),
+            "Invocation.correct",
+          );
+          const $s = $scope(
+            {
+              self: $self,
+              input: $readOnlyRecord(parsed, "Invocation.correct"),
+              actor: $actor,
+              context: $context,
+              before: null,
+              ...$composed(compose, tx, context, "Invocation.correct", $clock),
+            },
+            { clock: $clock },
+          ) as unknown as $Scope<CorrectInvocationInput>;
+          // validate: every check runs, and every failed check is reported together
+          const $issues: $Issue[] = [];
+          const $checks = $checkScope($s);
+          await $runCheck($issues, $checks, {
+            label: "notCorrected",
+            code: "invocation.not-corrected",
+            message: "the invocation is already corrected",
+            source: { file: "src/domain/execution/invocation.mesh.mx", line: 83, column: 9 },
+            that: $expressions["correct.check.notCorrected.that"],
+          });
+          await $runCheck($issues, $checks, {
+            label: "reason",
+            code: "invocation.reason",
+            message: "a correction gives a reason",
+            source: { file: "src/domain/execution/invocation.mesh.mx", line: 88, column: 9 },
+            that: $expressions["correct.check.reason.that"],
+          });
+          await $runCheck($issues, $checks, {
+            label: "costUnknown",
+            code: "invocation.cost-unknown",
+            message: "the cost is unknown while a token count it needs is unknown",
+            source: { file: "src/domain/execution/invocation.mesh.mx", line: 93, column: 9 },
+            that: $expressions["correct.check.costUnknown.that"],
+          });
+          if ($issues.length > 0) throw new $InvalidInputError($issues);
+          // the input: the member inputs the caller sent, applied now that the checks have passed
+          if (parsed.corrects !== undefined)
+            $changes.correctsId = $record.correctsId = parsed.corrects;
+          if (parsed.reason !== undefined) $changes.reason = $record.reason = parsed.reason;
+          if (parsed.requestedProvider !== undefined)
+            $changes.requestedProvider = $record.requestedProvider = parsed.requestedProvider;
+          if (parsed.requestedModel !== undefined)
+            $changes.requestedModel = $record.requestedModel = parsed.requestedModel;
+          if (parsed.actualProvider !== undefined)
+            $changes.actualProvider = $record.actualProvider = parsed.actualProvider;
+          if (parsed.actualModel !== undefined)
+            $changes.actualModel = $record.actualModel = parsed.actualModel;
+          if (parsed.inputTokens !== undefined)
+            $changes.inputTokens = $record.inputTokens = parsed.inputTokens;
+          if (parsed.outputTokens !== undefined)
+            $changes.outputTokens = $record.outputTokens = parsed.outputTokens;
+          if (parsed.cacheReadTokens !== undefined)
+            $changes.cacheReadTokens = $record.cacheReadTokens = parsed.cacheReadTokens;
+          if (parsed.cacheWriteTokens !== undefined)
+            $changes.cacheWriteTokens = $record.cacheWriteTokens = parsed.cacheWriteTokens;
+          if (parsed.usageSource !== undefined)
+            $changes.usageSource = $record.usageSource = parsed.usageSource;
+          if (parsed.estimatedCost !== undefined)
+            $changes.estimatedCost = $record.estimatedCost = parsed.estimatedCost;
+          if (parsed.pricingBasis !== undefined)
+            $changes.pricingBasis = $record.pricingBasis = parsed.pricingBasis;
+          if (parsed.startedAt !== undefined)
+            $changes.startedAt = $record.startedAt = parsed.startedAt;
+          if (parsed.endedAt !== undefined) $changes.endedAt = $record.endedAt = parsed.endedAt;
+          if (parsed.session !== undefined) $changes.sessionId = $record.sessionId = parsed.session;
+          // do: the steps run in written order, each seeing the record as the ones before it left it
           {
-            self: $self,
-            input: $readOnlyRecord(parsed, "Invocation.correct"),
-            actor: $actor,
-            context: $context,
-            before: null,
-            ...$composed(compose, tx, context, "Invocation.correct", $clock),
-          },
-          { clock: $clock },
-        ) as unknown as $Scope<CorrectInvocationInput>;
-        // validate: every check runs, and every failed check is reported together
-        const $issues: $Issue[] = [];
-        const $checks = $checkScope($s);
-        await $runCheck($issues, $checks, {
-          label: "notCorrected",
-          code: "invocation.not-corrected",
-          message: "the invocation is already corrected",
-          source: { file: "src/domain/execution/invocation.mesh.mx", line: 83, column: 9 },
-          that: $expressions["correct.check.notCorrected.that"],
-        });
-        await $runCheck($issues, $checks, {
-          label: "reason",
-          code: "invocation.reason",
-          message: "a correction gives a reason",
-          source: { file: "src/domain/execution/invocation.mesh.mx", line: 88, column: 9 },
-          that: $expressions["correct.check.reason.that"],
-        });
-        await $runCheck($issues, $checks, {
-          label: "costUnknown",
-          code: "invocation.cost-unknown",
-          message: "the cost is unknown while a token count it needs is unknown",
-          source: { file: "src/domain/execution/invocation.mesh.mx", line: 93, column: 9 },
-          that: $expressions["correct.check.costUnknown.that"],
-        });
-        if ($issues.length > 0) throw new $InvalidInputError($issues);
-        // the input: the member inputs the caller sent, applied now that the checks have passed
-        if (parsed.corrects !== undefined)
-          $changes.correctsId = $record.correctsId = parsed.corrects;
-        if (parsed.reason !== undefined) $changes.reason = $record.reason = parsed.reason;
-        if (parsed.requestedProvider !== undefined)
-          $changes.requestedProvider = $record.requestedProvider = parsed.requestedProvider;
-        if (parsed.requestedModel !== undefined)
-          $changes.requestedModel = $record.requestedModel = parsed.requestedModel;
-        if (parsed.actualProvider !== undefined)
-          $changes.actualProvider = $record.actualProvider = parsed.actualProvider;
-        if (parsed.actualModel !== undefined)
-          $changes.actualModel = $record.actualModel = parsed.actualModel;
-        if (parsed.inputTokens !== undefined)
-          $changes.inputTokens = $record.inputTokens = parsed.inputTokens;
-        if (parsed.outputTokens !== undefined)
-          $changes.outputTokens = $record.outputTokens = parsed.outputTokens;
-        if (parsed.cacheReadTokens !== undefined)
-          $changes.cacheReadTokens = $record.cacheReadTokens = parsed.cacheReadTokens;
-        if (parsed.cacheWriteTokens !== undefined)
-          $changes.cacheWriteTokens = $record.cacheWriteTokens = parsed.cacheWriteTokens;
-        if (parsed.usageSource !== undefined)
-          $changes.usageSource = $record.usageSource = parsed.usageSource;
-        if (parsed.estimatedCost !== undefined)
-          $changes.estimatedCost = $record.estimatedCost = parsed.estimatedCost;
-        if (parsed.pricingBasis !== undefined)
-          $changes.pricingBasis = $record.pricingBasis = parsed.pricingBasis;
-        if (parsed.startedAt !== undefined)
-          $changes.startedAt = $record.startedAt = parsed.startedAt;
-        if (parsed.endedAt !== undefined) $changes.endedAt = $record.endedAt = parsed.endedAt;
-        if (parsed.session !== undefined) $changes.sessionId = $record.sessionId = parsed.session;
-        // do: the steps run in written order, each seeing the record as the ones before it left it
-        {
-          const $value = await $expressions["correct.step.0.set.attempt"]($s);
-          if ($value === undefined || $value === null)
-            throw new $FrameworkError(
-              "set &attempt (src/domain/execution/invocation.mesh.mx:100:20) produced no value, and the relationship attempt is required",
-            );
-          $changes.attemptId = $record.attemptId = $value;
-        }
-        {
-          const $value = await $expressions["correct.step.0.set.task"]($s);
-          if ($value === undefined || $value === null)
-            throw new $FrameworkError(
-              "set &task (src/domain/execution/invocation.mesh.mx:101:17) produced no value, and the relationship task is required",
-            );
-          $changes.taskId = $record.taskId = $value;
-        }
-        {
-          const $value = await $expressions["correct.step.0.set.recordedBy"]($s);
-          if ($value === undefined || $value === null)
-            throw new $FrameworkError(
-              "set &recordedBy (src/domain/execution/invocation.mesh.mx:102:23) produced no value, and the relationship recordedBy is required",
-            );
-          $changes.recordedById = $record.recordedById = $value;
-        }
-        // data layer
-        const $stored = await tx.insert(tables.invocation, $changes);
-        $noteWrite(tx);
-        return $stored as Invocation;
-      });
+            const $value = await $expressions["correct.step.0.set.attempt"]($s);
+            if ($value === undefined || $value === null)
+              throw new $FrameworkError(
+                "set &attempt (src/domain/execution/invocation.mesh.mx:100:20) produced no value, and the relationship attempt is required",
+              );
+            $changes.attemptId = $record.attemptId = $value;
+          }
+          {
+            const $value = await $expressions["correct.step.0.set.task"]($s);
+            if ($value === undefined || $value === null)
+              throw new $FrameworkError(
+                "set &task (src/domain/execution/invocation.mesh.mx:101:17) produced no value, and the relationship task is required",
+              );
+            $changes.taskId = $record.taskId = $value;
+          }
+          {
+            const $value = await $expressions["correct.step.0.set.recordedBy"]($s);
+            if ($value === undefined || $value === null)
+              throw new $FrameworkError(
+                "set &recordedBy (src/domain/execution/invocation.mesh.mx:102:23) produced no value, and the relationship recordedBy is required",
+              );
+            $changes.recordedById = $record.recordedById = $value;
+          }
+          // data layer
+          const $stored = await tx.insert(tables.invocation, $changes);
+          $noteWrite(tx);
+          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+          await $afterWrite(
+            tx,
+            options.seams,
+            { entity: "Invocation", action: "correct" },
+            null,
+            $stored,
+            parsed,
+            context,
+          );
+          return $stored as Invocation;
+        },
+      );
     },
 
     async read<const L extends readonly (keyof InvocationLoadable)[] = readonly []>(

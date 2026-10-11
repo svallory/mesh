@@ -6,6 +6,7 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
+  afterWrite as $afterWrite,
   castInput as $castInput,
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
@@ -18,6 +19,7 @@ import {
   readOnlyRecord as $readOnlyRecord,
   rejectComputedQuery,
   rescope as $rescope,
+  runAction as $runAction,
   runCheck as $runCheck,
   scope as $scope,
   unloadFrom as $unloadFrom,
@@ -127,887 +129,1057 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
     async create(input: CreateTaskInput, ...[context]: $ContextArgument): Promise<Task> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, createTaskInput, input);
-      return layer.transaction(async (tx) => {
-        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $context = (context ?? {}) as unknown as Record<string, unknown>;
-        const $actor = $context.actor;
-        const $clock = $pinClock(options.clock);
-        const $now = $clock();
-        // plan: a create is one insert; nothing is read first
-        const $changes: $Row = {
-          id: $uuidv7(),
-          intent: null,
-          priority: null,
-          state: "open",
-          version: 1,
-          createdAt: $now,
-          reopenedAt: null,
-          parentId: null,
-        };
-        const $record: $Row = { ...$changes, title: null, creatorId: null };
-        const $self = $readOnlyRecord(
-          $guarded($loadPlan, "Task", $record, "action function"),
-          "Task.create",
-        );
-        const $s = $scope(
+      return $runAction(
+        layer,
+        options.seams,
+        { entity: "Task", action: "create" },
+        parsed,
+        context,
+        async (tx) => {
+          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+          const $context = (context ?? {}) as unknown as Record<string, unknown>;
+          const $actor = $context.actor;
+          const $clock = $pinClock(options.clock);
+          const $now = $clock();
+          // plan: a create is one insert; nothing is read first
+          const $changes: $Row = {
+            id: $uuidv7(),
+            intent: null,
+            priority: null,
+            state: "open",
+            version: 1,
+            createdAt: $now,
+            reopenedAt: null,
+            parentId: null,
+          };
+          const $record: $Row = { ...$changes, title: null, creatorId: null };
+          const $self = $readOnlyRecord(
+            $guarded($loadPlan, "Task", $record, "action function"),
+            "Task.create",
+          );
+          const $s = $scope(
+            {
+              self: $self,
+              input: $readOnlyRecord(parsed, "Task.create"),
+              actor: $actor,
+              context: $context,
+              before: null,
+              ...$composed(compose, tx, context, "Task.create", $clock),
+            },
+            { clock: $clock },
+          ) as unknown as $Scope<CreateTaskInput>;
+          // validate: every check runs, and every failed check is reported together
+          const $issues: $Issue[] = [];
+          const $checks = $checkScope($s);
+          await $runCheck($issues, $checks, {
+            label: "parentOpen",
+            code: "task.parent-open",
+            message: "the parent task is not open",
+            source: { file: "src/domain/work/task.mesh.mx", line: 49, column: 9 },
+            that: $expressions["create.check.parentOpen.that"],
+          });
+          if ($issues.length > 0) throw new $InvalidInputError($issues);
+          // the input: the member inputs the caller sent, applied now that the checks have passed
+          if (parsed.title !== undefined) $changes.title = $record.title = parsed.title;
+          if (parsed.intent !== undefined) $changes.intent = $record.intent = parsed.intent;
+          if (parsed.parent !== undefined) $changes.parentId = $record.parentId = parsed.parent;
+          if (parsed.priority !== undefined) $changes.priority = $record.priority = parsed.priority;
+          // do: the steps run in written order, each seeing the record as the ones before it left it
           {
-            self: $self,
-            input: $readOnlyRecord(parsed, "Task.create"),
-            actor: $actor,
-            context: $context,
-            before: null,
-            ...$composed(compose, tx, context, "Task.create", $clock),
-          },
-          { clock: $clock },
-        ) as unknown as $Scope<CreateTaskInput>;
-        // validate: every check runs, and every failed check is reported together
-        const $issues: $Issue[] = [];
-        const $checks = $checkScope($s);
-        await $runCheck($issues, $checks, {
-          label: "parentOpen",
-          code: "task.parent-open",
-          message: "the parent task is not open",
-          source: { file: "src/domain/work/task.mesh.mx", line: 49, column: 9 },
-          that: $expressions["create.check.parentOpen.that"],
-        });
-        if ($issues.length > 0) throw new $InvalidInputError($issues);
-        // the input: the member inputs the caller sent, applied now that the checks have passed
-        if (parsed.title !== undefined) $changes.title = $record.title = parsed.title;
-        if (parsed.intent !== undefined) $changes.intent = $record.intent = parsed.intent;
-        if (parsed.parent !== undefined) $changes.parentId = $record.parentId = parsed.parent;
-        if (parsed.priority !== undefined) $changes.priority = $record.priority = parsed.priority;
-        // do: the steps run in written order, each seeing the record as the ones before it left it
-        {
-          const $value = await $expressions["create.step.0.set.creator"]($s);
-          if ($value === undefined || $value === null)
-            throw new $FrameworkError(
-              "set &creator (src/domain/work/task.mesh.mx:56:20) produced no value, and the relationship creator is required",
-            );
-          $changes.creatorId = $record.creatorId = $value;
-        }
-        // data layer
-        const $stored = await tx.insert(tables.task, $changes);
-        $noteWrite(tx);
-        return $stored as Task;
-      });
+            const $value = await $expressions["create.step.0.set.creator"]($s);
+            if ($value === undefined || $value === null)
+              throw new $FrameworkError(
+                "set &creator (src/domain/work/task.mesh.mx:56:20) produced no value, and the relationship creator is required",
+              );
+            $changes.creatorId = $record.creatorId = $value;
+          }
+          // data layer
+          const $stored = await tx.insert(tables.task, $changes);
+          $noteWrite(tx);
+          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+          await $afterWrite(
+            tx,
+            options.seams,
+            { entity: "Task", action: "create" },
+            null,
+            $stored,
+            parsed,
+            context,
+          );
+          return $stored as Task;
+        },
+      );
     },
 
     async update(input: UpdateTaskInput, ...[context]: $ContextArgument): Promise<Task> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, updateTaskInput, input);
-      return layer.transaction(async (tx) => {
-        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $context = (context ?? {}) as unknown as Record<string, unknown>;
-        const $actor = $context.actor;
-        const $clock = $pinClock(options.clock);
-        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-        const $key = { id: parsed.id };
-        const $before = await tx.selectByKeyForUpdate(tables.task, $key);
-        if ($before === undefined) throw new $NotFoundError("Task", $key);
-        const $changes: $Row = {};
-        const $record: $Row = { ...$before };
-        const $writes = $writeCount(tx);
-        const $self = $readOnlyRecord(
-          $guarded($loadPlan, "Task", $record, "action function"),
-          "Task.update",
-        );
-        const $s = $scope(
+      return $runAction(
+        layer,
+        options.seams,
+        { entity: "Task", action: "update" },
+        parsed,
+        context,
+        async (tx) => {
+          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+          const $context = (context ?? {}) as unknown as Record<string, unknown>;
+          const $actor = $context.actor;
+          const $clock = $pinClock(options.clock);
+          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+          const $key = { id: parsed.id };
+          const $before = await tx.selectByKeyForUpdate(tables.task, $key);
+          if ($before === undefined) throw new $NotFoundError("Task", $key);
+          const $changes: $Row = {};
+          const $record: $Row = { ...$before };
+          const $writes = $writeCount(tx);
+          const $self = $readOnlyRecord(
+            $guarded($loadPlan, "Task", $record, "action function"),
+            "Task.update",
+          );
+          const $s = $scope(
+            {
+              self: $self,
+              input: $readOnlyRecord(parsed, "Task.update"),
+              actor: $actor,
+              context: $context,
+              before: $readOnlyRecord(
+                $guarded($loadPlan, "Task", $before, "before"),
+                "Task.update",
+              ) as unknown as Task,
+              ...$composed(compose, tx, context, "Task.update", $clock),
+            },
+            { clock: $clock },
+          ) as unknown as $StoredScope<UpdateTaskInput>;
+          // validate: every check runs, and every failed check is reported together
+          const $issues: $Issue[] = [];
+          const $checks = $checkScope($s);
+          await $runCheck($issues, $checks, {
+            label: "taskOpen",
+            code: "task.open",
+            message: "the task is not open; reopen it first",
+            source: { file: "src/domain/work/task.mesh.mx", line: 63, column: 9 },
+            that: $expressions["update.check.taskOpen.that"],
+          });
+          await $runCheck($issues, $checks, {
+            label: "taskChanges",
+            code: "task.unchanged",
+            message: "nothing to change: every field already has that value",
+            source: { file: "src/domain/work/task.mesh.mx", line: 68, column: 9 },
+            that: $expressions["update.check.taskChanges.that"],
+          });
+          await $runCheck($issues, $checks, {
+            label: "versionMatches",
+            code: "expected-version",
+            message: "the record is at another version; read it again and retry",
+            source: { file: "src/domain/work/task.mesh.mx", line: 73, column: 9 },
+            that: $expressions["update.check.versionMatches.that"],
+            details: $expressions["update.check.versionMatches.details"],
+          });
+          if ($issues.length > 0) throw new $InvalidInputError($issues);
+          // the input: the member inputs the caller sent, applied now that the checks have passed
+          if (parsed.title !== undefined) $changes.title = $record.title = parsed.title;
+          if (parsed.intent !== undefined) $changes.intent = $record.intent = parsed.intent;
+          // do: the steps run in written order, each seeing the record as the ones before it left it
           {
-            self: $self,
-            input: $readOnlyRecord(parsed, "Task.update"),
-            actor: $actor,
-            context: $context,
-            before: $readOnlyRecord(
-              $guarded($loadPlan, "Task", $before, "before"),
-              "Task.update",
-            ) as unknown as Task,
-            ...$composed(compose, tx, context, "Task.update", $clock),
-          },
-          { clock: $clock },
-        ) as unknown as $StoredScope<UpdateTaskInput>;
-        // validate: every check runs, and every failed check is reported together
-        const $issues: $Issue[] = [];
-        const $checks = $checkScope($s);
-        await $runCheck($issues, $checks, {
-          label: "taskOpen",
-          code: "task.open",
-          message: "the task is not open; reopen it first",
-          source: { file: "src/domain/work/task.mesh.mx", line: 63, column: 9 },
-          that: $expressions["update.check.taskOpen.that"],
-        });
-        await $runCheck($issues, $checks, {
-          label: "taskChanges",
-          code: "task.unchanged",
-          message: "nothing to change: every field already has that value",
-          source: { file: "src/domain/work/task.mesh.mx", line: 68, column: 9 },
-          that: $expressions["update.check.taskChanges.that"],
-        });
-        await $runCheck($issues, $checks, {
-          label: "versionMatches",
-          code: "expected-version",
-          message: "the record is at another version; read it again and retry",
-          source: { file: "src/domain/work/task.mesh.mx", line: 73, column: 9 },
-          that: $expressions["update.check.versionMatches.that"],
-          details: $expressions["update.check.versionMatches.details"],
-        });
-        if ($issues.length > 0) throw new $InvalidInputError($issues);
-        // the input: the member inputs the caller sent, applied now that the checks have passed
-        if (parsed.title !== undefined) $changes.title = $record.title = parsed.title;
-        if (parsed.intent !== undefined) $changes.intent = $record.intent = parsed.intent;
-        // do: the steps run in written order, each seeing the record as the ones before it left it
-        {
-          const $value = await $expressions["update.step.0.set.version"]($s);
-          if ($value === undefined || $value === null)
-            throw new $FrameworkError(
-              "set &version (src/domain/work/task.mesh.mx:81:20) produced no value, and version is required",
-            );
-          $changes.version = $record.version = $value;
-        }
-        // data layer
-        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-        await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.update");
-        const $stored = await tx.updateByKey(tables.task, $key, $changes);
-        if ($stored === undefined) throw new $NotFoundError("Task", $key);
-        $noteWrite(tx);
-        return $stored as Task;
-      });
+            const $value = await $expressions["update.step.0.set.version"]($s);
+            if ($value === undefined || $value === null)
+              throw new $FrameworkError(
+                "set &version (src/domain/work/task.mesh.mx:81:20) produced no value, and version is required",
+              );
+            $changes.version = $record.version = $value;
+          }
+          // data layer
+          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.update");
+          const $stored = await tx.updateByKey(tables.task, $key, $changes);
+          if ($stored === undefined) throw new $NotFoundError("Task", $key);
+          $noteWrite(tx);
+          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+          await $afterWrite(
+            tx,
+            options.seams,
+            { entity: "Task", action: "update" },
+            $before,
+            $stored,
+            parsed,
+            context,
+          );
+          return $stored as Task;
+        },
+      );
     },
 
     async setPriority(input: SetPriorityTaskInput, ...[context]: $ContextArgument): Promise<Task> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, setPriorityTaskInput, input);
-      return layer.transaction(async (tx) => {
-        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $context = (context ?? {}) as unknown as Record<string, unknown>;
-        const $actor = $context.actor;
-        const $clock = $pinClock(options.clock);
-        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-        const $key = { id: parsed.id };
-        const $before = await tx.selectByKeyForUpdate(tables.task, $key);
-        if ($before === undefined) throw new $NotFoundError("Task", $key);
-        const $changes: $Row = {};
-        const $record: $Row = { ...$before };
-        const $writes = $writeCount(tx);
-        const $self = $readOnlyRecord(
-          $guarded($loadPlan, "Task", $record, "action function"),
-          "Task.setPriority",
-        );
-        const $s = $scope(
+      return $runAction(
+        layer,
+        options.seams,
+        { entity: "Task", action: "setPriority" },
+        parsed,
+        context,
+        async (tx) => {
+          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+          const $context = (context ?? {}) as unknown as Record<string, unknown>;
+          const $actor = $context.actor;
+          const $clock = $pinClock(options.clock);
+          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+          const $key = { id: parsed.id };
+          const $before = await tx.selectByKeyForUpdate(tables.task, $key);
+          if ($before === undefined) throw new $NotFoundError("Task", $key);
+          const $changes: $Row = {};
+          const $record: $Row = { ...$before };
+          const $writes = $writeCount(tx);
+          const $self = $readOnlyRecord(
+            $guarded($loadPlan, "Task", $record, "action function"),
+            "Task.setPriority",
+          );
+          const $s = $scope(
+            {
+              self: $self,
+              input: $readOnlyRecord(parsed, "Task.setPriority"),
+              actor: $actor,
+              context: $context,
+              before: $readOnlyRecord(
+                $guarded($loadPlan, "Task", $before, "before"),
+                "Task.setPriority",
+              ) as unknown as Task,
+              ...$composed(compose, tx, context, "Task.setPriority", $clock),
+            },
+            { clock: $clock },
+          ) as unknown as $StoredScope<SetPriorityTaskInput>;
+          // validate: every check runs, and every failed check is reported together
+          const $issues: $Issue[] = [];
+          const $checks = $checkScope($s);
+          await $runCheck($issues, $checks, {
+            label: "taskOpen",
+            code: "task.open",
+            message: "the task is not open; reopen it first",
+            source: { file: "src/domain/work/task.mesh.mx", line: 87, column: 9 },
+            that: $expressions["setPriority.check.taskOpen.that"],
+          });
+          await $runCheck($issues, $checks, {
+            label: "versionMatches",
+            code: "expected-version",
+            message: "the record is at another version; read it again and retry",
+            source: { file: "src/domain/work/task.mesh.mx", line: 92, column: 9 },
+            that: $expressions["setPriority.check.versionMatches.that"],
+            details: $expressions["setPriority.check.versionMatches.details"],
+          });
+          if ($issues.length > 0) throw new $InvalidInputError($issues);
+          // the input: the member inputs the caller sent, applied now that the checks have passed
+          if (parsed.priority !== undefined) $changes.priority = $record.priority = parsed.priority;
+          // do: the steps run in written order, each seeing the record as the ones before it left it
           {
-            self: $self,
-            input: $readOnlyRecord(parsed, "Task.setPriority"),
-            actor: $actor,
-            context: $context,
-            before: $readOnlyRecord(
-              $guarded($loadPlan, "Task", $before, "before"),
-              "Task.setPriority",
-            ) as unknown as Task,
-            ...$composed(compose, tx, context, "Task.setPriority", $clock),
-          },
-          { clock: $clock },
-        ) as unknown as $StoredScope<SetPriorityTaskInput>;
-        // validate: every check runs, and every failed check is reported together
-        const $issues: $Issue[] = [];
-        const $checks = $checkScope($s);
-        await $runCheck($issues, $checks, {
-          label: "taskOpen",
-          code: "task.open",
-          message: "the task is not open; reopen it first",
-          source: { file: "src/domain/work/task.mesh.mx", line: 87, column: 9 },
-          that: $expressions["setPriority.check.taskOpen.that"],
-        });
-        await $runCheck($issues, $checks, {
-          label: "versionMatches",
-          code: "expected-version",
-          message: "the record is at another version; read it again and retry",
-          source: { file: "src/domain/work/task.mesh.mx", line: 92, column: 9 },
-          that: $expressions["setPriority.check.versionMatches.that"],
-          details: $expressions["setPriority.check.versionMatches.details"],
-        });
-        if ($issues.length > 0) throw new $InvalidInputError($issues);
-        // the input: the member inputs the caller sent, applied now that the checks have passed
-        if (parsed.priority !== undefined) $changes.priority = $record.priority = parsed.priority;
-        // do: the steps run in written order, each seeing the record as the ones before it left it
-        {
-          const $value = await $expressions["setPriority.step.0.set.version"]($s);
-          if ($value === undefined || $value === null)
-            throw new $FrameworkError(
-              "set &version (src/domain/work/task.mesh.mx:100:20) produced no value, and version is required",
-            );
-          $changes.version = $record.version = $value;
-        }
-        // data layer
-        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-        await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.setPriority");
-        const $stored = await tx.updateByKey(tables.task, $key, $changes);
-        if ($stored === undefined) throw new $NotFoundError("Task", $key);
-        $noteWrite(tx);
-        return $stored as Task;
-      });
+            const $value = await $expressions["setPriority.step.0.set.version"]($s);
+            if ($value === undefined || $value === null)
+              throw new $FrameworkError(
+                "set &version (src/domain/work/task.mesh.mx:100:20) produced no value, and version is required",
+              );
+            $changes.version = $record.version = $value;
+          }
+          // data layer
+          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.setPriority");
+          const $stored = await tx.updateByKey(tables.task, $key, $changes);
+          if ($stored === undefined) throw new $NotFoundError("Task", $key);
+          $noteWrite(tx);
+          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+          await $afterWrite(
+            tx,
+            options.seams,
+            { entity: "Task", action: "setPriority" },
+            $before,
+            $stored,
+            parsed,
+            context,
+          );
+          return $stored as Task;
+        },
+      );
     },
 
     async move(input: MoveTaskInput, ...[context]: $ContextArgument): Promise<Task> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, moveTaskInput, input);
-      return layer.transaction(async (tx) => {
-        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $context = (context ?? {}) as unknown as Record<string, unknown>;
-        const $actor = $context.actor;
-        const $clock = $pinClock(options.clock);
-        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-        const $key = { id: parsed.id };
-        const $before = await tx.selectByKeyForUpdate(tables.task, $key);
-        if ($before === undefined) throw new $NotFoundError("Task", $key);
-        const $changes: $Row = {};
-        const $record: $Row = { ...$before };
-        const $writes = $writeCount(tx);
-        const $load = { actor: $actor, context: $context, clock: $clock };
-        const $self = $readOnlyRecord(
-          $guarded($loadPlan, "Task", $record, "action function"),
-          "Task.move",
-        );
-        const $s = $scope(
+      return $runAction(
+        layer,
+        options.seams,
+        { entity: "Task", action: "move" },
+        parsed,
+        context,
+        async (tx) => {
+          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+          const $context = (context ?? {}) as unknown as Record<string, unknown>;
+          const $actor = $context.actor;
+          const $clock = $pinClock(options.clock);
+          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+          const $key = { id: parsed.id };
+          const $before = await tx.selectByKeyForUpdate(tables.task, $key);
+          if ($before === undefined) throw new $NotFoundError("Task", $key);
+          const $changes: $Row = {};
+          const $record: $Row = { ...$before };
+          const $writes = $writeCount(tx);
+          const $load = { actor: $actor, context: $context, clock: $clock };
+          const $self = $readOnlyRecord(
+            $guarded($loadPlan, "Task", $record, "action function"),
+            "Task.move",
+          );
+          const $s = $scope(
+            {
+              self: $self,
+              input: $readOnlyRecord(parsed, "Task.move"),
+              actor: $actor,
+              context: $context,
+              before: $readOnlyRecord(
+                $guarded($loadPlan, "Task", $before, "before"),
+                "Task.move",
+              ) as unknown as Task,
+              ...$composed(compose, tx, context, "Task.move", $clock),
+            },
+            { clock: $clock },
+          ) as unknown as $StoredScope<MoveTaskInput>;
+          // validate: every check runs, and every failed check is reported together
+          const $issues: $Issue[] = [];
+          const $checks = $checkScope($s);
+          await $loadInto($loadPlan, "Task", tx, $record, ["claimed"], $load);
+          await $runCheck($issues, $checks, {
+            label: "taskOpen",
+            code: "task.open",
+            message: "the task is not open; reopen it first",
+            source: { file: "src/domain/work/task.mesh.mx", line: 106, column: 9 },
+            that: $expressions["move.check.taskOpen.that"],
+          });
+          await $runCheck($issues, $checks, {
+            label: "parentOpen",
+            code: "task.parent-open",
+            message: "the parent task is not open",
+            source: { file: "src/domain/work/task.mesh.mx", line: 111, column: 9 },
+            that: $expressions["move.check.parentOpen.that"],
+          });
+          await $runCheck($issues, $checks, {
+            label: "noCycle",
+            code: "task.no-cycle",
+            message: "the new parent is this task or one of its descendants",
+            source: { file: "src/domain/work/task.mesh.mx", line: 116, column: 9 },
+            that: $expressions["move.check.noCycle.that"],
+          });
+          await $runCheck($issues, $checks, {
+            label: "noActiveClaim",
+            code: "task.no-active-claim",
+            message: "release or revoke the active claim first",
+            source: { file: "src/domain/work/task.mesh.mx", line: 121, column: 9 },
+            that: $expressions["move.check.noActiveClaim.that"],
+          });
+          await $runCheck($issues, $checks, {
+            label: "versionMatches",
+            code: "expected-version",
+            message: "the record is at another version; read it again and retry",
+            source: { file: "src/domain/work/task.mesh.mx", line: 126, column: 9 },
+            that: $expressions["move.check.versionMatches.that"],
+            details: $expressions["move.check.versionMatches.details"],
+          });
+          if ($issues.length > 0) throw new $InvalidInputError($issues);
+          // the input: the member inputs the caller sent, applied now that the checks have passed
+          if (parsed.parent !== undefined) $changes.parentId = $record.parentId = parsed.parent;
+          $unloadFrom($loadPlan, "Task", $record);
+          // do: the steps run in written order, each seeing the record as the ones before it left it
           {
-            self: $self,
-            input: $readOnlyRecord(parsed, "Task.move"),
-            actor: $actor,
-            context: $context,
-            before: $readOnlyRecord(
-              $guarded($loadPlan, "Task", $before, "before"),
-              "Task.move",
-            ) as unknown as Task,
-            ...$composed(compose, tx, context, "Task.move", $clock),
-          },
-          { clock: $clock },
-        ) as unknown as $StoredScope<MoveTaskInput>;
-        // validate: every check runs, and every failed check is reported together
-        const $issues: $Issue[] = [];
-        const $checks = $checkScope($s);
-        await $loadInto($loadPlan, "Task", tx, $record, ["claimed"], $load);
-        await $runCheck($issues, $checks, {
-          label: "taskOpen",
-          code: "task.open",
-          message: "the task is not open; reopen it first",
-          source: { file: "src/domain/work/task.mesh.mx", line: 106, column: 9 },
-          that: $expressions["move.check.taskOpen.that"],
-        });
-        await $runCheck($issues, $checks, {
-          label: "parentOpen",
-          code: "task.parent-open",
-          message: "the parent task is not open",
-          source: { file: "src/domain/work/task.mesh.mx", line: 111, column: 9 },
-          that: $expressions["move.check.parentOpen.that"],
-        });
-        await $runCheck($issues, $checks, {
-          label: "noCycle",
-          code: "task.no-cycle",
-          message: "the new parent is this task or one of its descendants",
-          source: { file: "src/domain/work/task.mesh.mx", line: 116, column: 9 },
-          that: $expressions["move.check.noCycle.that"],
-        });
-        await $runCheck($issues, $checks, {
-          label: "noActiveClaim",
-          code: "task.no-active-claim",
-          message: "release or revoke the active claim first",
-          source: { file: "src/domain/work/task.mesh.mx", line: 121, column: 9 },
-          that: $expressions["move.check.noActiveClaim.that"],
-        });
-        await $runCheck($issues, $checks, {
-          label: "versionMatches",
-          code: "expected-version",
-          message: "the record is at another version; read it again and retry",
-          source: { file: "src/domain/work/task.mesh.mx", line: 126, column: 9 },
-          that: $expressions["move.check.versionMatches.that"],
-          details: $expressions["move.check.versionMatches.details"],
-        });
-        if ($issues.length > 0) throw new $InvalidInputError($issues);
-        // the input: the member inputs the caller sent, applied now that the checks have passed
-        if (parsed.parent !== undefined) $changes.parentId = $record.parentId = parsed.parent;
-        $unloadFrom($loadPlan, "Task", $record);
-        // do: the steps run in written order, each seeing the record as the ones before it left it
-        {
-          const $value = await $expressions["move.step.0.set.version"]($s);
-          if ($value === undefined || $value === null)
-            throw new $FrameworkError(
-              "set &version (src/domain/work/task.mesh.mx:134:20) produced no value, and version is required",
-            );
-          $changes.version = $record.version = $value;
-        }
-        $unloadFrom($loadPlan, "Task", $record);
-        // data layer
-        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-        await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.move");
-        const $stored = await tx.updateByKey(tables.task, $key, $changes);
-        if ($stored === undefined) throw new $NotFoundError("Task", $key);
-        $noteWrite(tx);
-        return $stored as Task;
-      });
+            const $value = await $expressions["move.step.0.set.version"]($s);
+            if ($value === undefined || $value === null)
+              throw new $FrameworkError(
+                "set &version (src/domain/work/task.mesh.mx:134:20) produced no value, and version is required",
+              );
+            $changes.version = $record.version = $value;
+          }
+          $unloadFrom($loadPlan, "Task", $record);
+          // data layer
+          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.move");
+          const $stored = await tx.updateByKey(tables.task, $key, $changes);
+          if ($stored === undefined) throw new $NotFoundError("Task", $key);
+          $noteWrite(tx);
+          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+          await $afterWrite(
+            tx,
+            options.seams,
+            { entity: "Task", action: "move" },
+            $before,
+            $stored,
+            parsed,
+            context,
+          );
+          return $stored as Task;
+        },
+      );
     },
 
     async reopen(input: ReopenTaskInput, ...[context]: $ContextArgument): Promise<Task> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, reopenTaskInput, input);
-      return layer.transaction(async (tx) => {
-        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $context = (context ?? {}) as unknown as Record<string, unknown>;
-        const $actor = $context.actor;
-        const $clock = $pinClock(options.clock);
-        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-        const $key = { id: parsed.id };
-        const $before = await tx.selectByKeyForUpdate(tables.task, $key);
-        if ($before === undefined) throw new $NotFoundError("Task", $key);
-        const $changes: $Row = {};
-        const $record: $Row = { ...$before };
-        const $writes = $writeCount(tx);
-        const $self = $readOnlyRecord(
-          $guarded($loadPlan, "Task", $record, "action function"),
-          "Task.reopen",
-        );
-        const $s = $scope(
+      return $runAction(
+        layer,
+        options.seams,
+        { entity: "Task", action: "reopen" },
+        parsed,
+        context,
+        async (tx) => {
+          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+          const $context = (context ?? {}) as unknown as Record<string, unknown>;
+          const $actor = $context.actor;
+          const $clock = $pinClock(options.clock);
+          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+          const $key = { id: parsed.id };
+          const $before = await tx.selectByKeyForUpdate(tables.task, $key);
+          if ($before === undefined) throw new $NotFoundError("Task", $key);
+          const $changes: $Row = {};
+          const $record: $Row = { ...$before };
+          const $writes = $writeCount(tx);
+          const $self = $readOnlyRecord(
+            $guarded($loadPlan, "Task", $record, "action function"),
+            "Task.reopen",
+          );
+          const $s = $scope(
+            {
+              self: $self,
+              input: $readOnlyRecord(parsed, "Task.reopen"),
+              actor: $actor,
+              context: $context,
+              before: $readOnlyRecord(
+                $guarded($loadPlan, "Task", $before, "before"),
+                "Task.reopen",
+              ) as unknown as Task,
+              ...$composed(compose, tx, context, "Task.reopen", $clock),
+            },
+            { clock: $clock },
+          ) as unknown as $StoredScope<ReopenTaskInput>;
+          // validate: every check runs, and every failed check is reported together
+          const $issues: $Issue[] = [];
+          const $checks = $checkScope($s);
+          await $runCheck($issues, $checks, {
+            label: "taskSettled",
+            code: "task.settled",
+            message: "the task is already open",
+            source: { file: "src/domain/work/task.mesh.mx", line: 140, column: 9 },
+            that: $expressions["reopen.check.taskSettled.that"],
+          });
+          await $runCheck($issues, $checks, {
+            label: "versionMatches",
+            code: "expected-version",
+            message: "the record is at another version; read it again and retry",
+            source: { file: "src/domain/work/task.mesh.mx", line: 145, column: 9 },
+            that: $expressions["reopen.check.versionMatches.that"],
+            details: $expressions["reopen.check.versionMatches.details"],
+          });
+          if ($issues.length > 0) throw new $InvalidInputError($issues);
+          // do: the steps run in written order, each seeing the record as the ones before it left it
+          $changes.state = $record.state = "open";
           {
-            self: $self,
-            input: $readOnlyRecord(parsed, "Task.reopen"),
-            actor: $actor,
-            context: $context,
-            before: $readOnlyRecord(
-              $guarded($loadPlan, "Task", $before, "before"),
-              "Task.reopen",
-            ) as unknown as Task,
-            ...$composed(compose, tx, context, "Task.reopen", $clock),
-          },
-          { clock: $clock },
-        ) as unknown as $StoredScope<ReopenTaskInput>;
-        // validate: every check runs, and every failed check is reported together
-        const $issues: $Issue[] = [];
-        const $checks = $checkScope($s);
-        await $runCheck($issues, $checks, {
-          label: "taskSettled",
-          code: "task.settled",
-          message: "the task is already open",
-          source: { file: "src/domain/work/task.mesh.mx", line: 140, column: 9 },
-          that: $expressions["reopen.check.taskSettled.that"],
-        });
-        await $runCheck($issues, $checks, {
-          label: "versionMatches",
-          code: "expected-version",
-          message: "the record is at another version; read it again and retry",
-          source: { file: "src/domain/work/task.mesh.mx", line: 145, column: 9 },
-          that: $expressions["reopen.check.versionMatches.that"],
-          details: $expressions["reopen.check.versionMatches.details"],
-        });
-        if ($issues.length > 0) throw new $InvalidInputError($issues);
-        // do: the steps run in written order, each seeing the record as the ones before it left it
-        $changes.state = $record.state = "open";
-        {
-          const $value = await $expressions["reopen.step.0.set.reopenedAt"]($s);
-          $changes.reopenedAt = $record.reopenedAt = $value === undefined ? null : $value;
-        }
-        {
-          const $value = await $expressions["reopen.step.0.set.version"]($s);
-          if ($value === undefined || $value === null)
-            throw new $FrameworkError(
-              "set &version (src/domain/work/task.mesh.mx:155:20) produced no value, and version is required",
-            );
-          $changes.version = $record.version = $value;
-        }
-        // data layer
-        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-        await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.reopen");
-        const $stored = await tx.updateByKey(tables.task, $key, $changes);
-        if ($stored === undefined) throw new $NotFoundError("Task", $key);
-        $noteWrite(tx);
-        return $stored as Task;
-      });
+            const $value = await $expressions["reopen.step.0.set.reopenedAt"]($s);
+            $changes.reopenedAt = $record.reopenedAt = $value === undefined ? null : $value;
+          }
+          {
+            const $value = await $expressions["reopen.step.0.set.version"]($s);
+            if ($value === undefined || $value === null)
+              throw new $FrameworkError(
+                "set &version (src/domain/work/task.mesh.mx:155:20) produced no value, and version is required",
+              );
+            $changes.version = $record.version = $value;
+          }
+          // data layer
+          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.reopen");
+          const $stored = await tx.updateByKey(tables.task, $key, $changes);
+          if ($stored === undefined) throw new $NotFoundError("Task", $key);
+          $noteWrite(tx);
+          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+          await $afterWrite(
+            tx,
+            options.seams,
+            { entity: "Task", action: "reopen" },
+            $before,
+            $stored,
+            parsed,
+            context,
+          );
+          return $stored as Task;
+        },
+      );
     },
 
     async touch(input: TouchTaskInput, ...[context]: $ContextArgument): Promise<Task> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, touchTaskInput, input);
-      return layer.transaction(async (tx) => {
-        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $context = (context ?? {}) as unknown as Record<string, unknown>;
-        const $actor = $context.actor;
-        const $clock = $pinClock(options.clock);
-        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-        const $key = { id: parsed.id };
-        const $before = await tx.selectByKeyForUpdate(tables.task, $key);
-        if ($before === undefined) throw new $NotFoundError("Task", $key);
-        const $changes: $Row = {};
-        const $record: $Row = { ...$before };
-        const $writes = $writeCount(tx);
-        const $self = $readOnlyRecord(
-          $guarded($loadPlan, "Task", $record, "action function"),
-          "Task.touch",
-        );
-        const $s = $scope(
+      return $runAction(
+        layer,
+        options.seams,
+        { entity: "Task", action: "touch" },
+        parsed,
+        context,
+        async (tx) => {
+          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+          const $context = (context ?? {}) as unknown as Record<string, unknown>;
+          const $actor = $context.actor;
+          const $clock = $pinClock(options.clock);
+          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+          const $key = { id: parsed.id };
+          const $before = await tx.selectByKeyForUpdate(tables.task, $key);
+          if ($before === undefined) throw new $NotFoundError("Task", $key);
+          const $changes: $Row = {};
+          const $record: $Row = { ...$before };
+          const $writes = $writeCount(tx);
+          const $self = $readOnlyRecord(
+            $guarded($loadPlan, "Task", $record, "action function"),
+            "Task.touch",
+          );
+          const $s = $scope(
+            {
+              self: $self,
+              input: $readOnlyRecord(parsed, "Task.touch"),
+              actor: $actor,
+              context: $context,
+              before: $readOnlyRecord(
+                $guarded($loadPlan, "Task", $before, "before"),
+                "Task.touch",
+              ) as unknown as Task,
+              ...$composed(compose, tx, context, "Task.touch", $clock),
+            },
+            { clock: $clock },
+          ) as unknown as $StoredScope<TouchTaskInput>;
+          // do: the steps run in written order, each seeing the record as the ones before it left it
           {
-            self: $self,
-            input: $readOnlyRecord(parsed, "Task.touch"),
-            actor: $actor,
-            context: $context,
-            before: $readOnlyRecord(
-              $guarded($loadPlan, "Task", $before, "before"),
-              "Task.touch",
-            ) as unknown as Task,
-            ...$composed(compose, tx, context, "Task.touch", $clock),
-          },
-          { clock: $clock },
-        ) as unknown as $StoredScope<TouchTaskInput>;
-        // do: the steps run in written order, each seeing the record as the ones before it left it
-        {
-          const $value = await $expressions["touch.step.0.set.version"]($s);
-          if ($value === undefined || $value === null)
-            throw new $FrameworkError(
-              "set &version (src/domain/work/task.mesh.mx:159:20) produced no value, and version is required",
-            );
-          $changes.version = $record.version = $value;
-        }
-        // data layer
-        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-        await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.touch");
-        const $stored = await tx.updateByKey(tables.task, $key, $changes);
-        if ($stored === undefined) throw new $NotFoundError("Task", $key);
-        $noteWrite(tx);
-        return $stored as Task;
-      });
+            const $value = await $expressions["touch.step.0.set.version"]($s);
+            if ($value === undefined || $value === null)
+              throw new $FrameworkError(
+                "set &version (src/domain/work/task.mesh.mx:159:20) produced no value, and version is required",
+              );
+            $changes.version = $record.version = $value;
+          }
+          // data layer
+          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.touch");
+          const $stored = await tx.updateByKey(tables.task, $key, $changes);
+          if ($stored === undefined) throw new $NotFoundError("Task", $key);
+          $noteWrite(tx);
+          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+          await $afterWrite(
+            tx,
+            options.seams,
+            { entity: "Task", action: "touch" },
+            $before,
+            $stored,
+            parsed,
+            context,
+          );
+          return $stored as Task;
+        },
+      );
     },
 
     async cancel(input: CancelTaskInput, ...[context]: $ContextArgument): Promise<Task> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, cancelTaskInput, input);
-      return layer.transaction(async (tx) => {
-        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $context = (context ?? {}) as unknown as Record<string, unknown>;
-        const $actor = $context.actor;
-        const $clock = $pinClock(options.clock);
-        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-        const $key = { id: parsed.id };
-        const $before = await tx.selectByKeyForUpdate(tables.task, $key);
-        if ($before === undefined) throw new $NotFoundError("Task", $key);
-        const $changes: $Row = {};
-        const $record: $Row = { ...$before };
-        const $writes = $writeCount(tx);
-        const $self = $readOnlyRecord(
-          $guarded($loadPlan, "Task", $record, "action function"),
-          "Task.cancel",
-        );
-        const $s = $scope(
-          {
-            self: $self,
-            input: $readOnlyRecord(parsed, "Task.cancel"),
-            actor: $actor,
-            context: $context,
-            before: $readOnlyRecord(
-              $guarded($loadPlan, "Task", $before, "before"),
-              "Task.cancel",
-            ) as unknown as Task,
-            ...$composed(compose, tx, context, "Task.cancel", $clock),
-          },
-          { clock: $clock },
-        ) as unknown as $StoredScope<CancelTaskInput>;
-        // validate: every check runs, and every failed check is reported together
-        const $issues: $Issue[] = [];
-        const $checks = $checkScope($s);
-        await $runCheck($issues, $checks, {
-          label: "taskOpen",
-          code: "task.open",
-          message: "the task is not open; reopen it first",
-          source: { file: "src/domain/work/task.mesh.mx", line: 165, column: 9 },
-          that: $expressions["cancel.check.taskOpen.that"],
-        });
-        await $runCheck($issues, $checks, {
-          label: "versionMatches",
-          code: "expected-version",
-          message: "the record is at another version; read it again and retry",
-          source: { file: "src/domain/work/task.mesh.mx", line: 170, column: 9 },
-          that: $expressions["cancel.check.versionMatches.that"],
-          details: $expressions["cancel.check.versionMatches.details"],
-        });
-        if ($issues.length > 0) throw new $InvalidInputError($issues);
-        // do: the steps run in written order, each seeing the record as the ones before it left it
-        $changes.state = $record.state = "canceled";
-        {
-          const $value = await $expressions["cancel.step.0.set.version"]($s);
-          if ($value === undefined || $value === null)
-            throw new $FrameworkError(
-              "set &version (src/domain/work/task.mesh.mx:179:20) produced no value, and version is required",
-            );
-          $changes.version = $record.version = $value;
-        }
-        // data layer
-        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-        await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.cancel");
-        const $stored = await tx.updateByKey(tables.task, $key, $changes);
-        if ($stored === undefined) throw new $NotFoundError("Task", $key);
-        $noteWrite(tx);
-        // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
-        const $written: $Row = { ...$stored };
-        const $after = $rescope($s, {
-          self: $readOnlyRecord(
-            $guarded($loadPlan, "Task", $written, "action function"),
+      return $runAction(
+        layer,
+        options.seams,
+        { entity: "Task", action: "cancel" },
+        parsed,
+        context,
+        async (tx) => {
+          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+          const $context = (context ?? {}) as unknown as Record<string, unknown>;
+          const $actor = $context.actor;
+          const $clock = $pinClock(options.clock);
+          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+          const $key = { id: parsed.id };
+          const $before = await tx.selectByKeyForUpdate(tables.task, $key);
+          if ($before === undefined) throw new $NotFoundError("Task", $key);
+          const $changes: $Row = {};
+          const $record: $Row = { ...$before };
+          const $writes = $writeCount(tx);
+          const $self = $readOnlyRecord(
+            $guarded($loadPlan, "Task", $record, "action function"),
             "Task.cancel",
-          ),
-        });
-        await $expressions["cancel.step.1.run"]($after);
-        // the result: the row as the steps after the write left it, read again by key
-        const $result = await tx.selectByKey(tables.task, { id: $stored.id });
-        if ($result === undefined)
-          throw new $FrameworkError(
-            "Task.cancel: a step after the write deleted the row this action returns",
           );
-        return $result as Task;
-      });
+          const $s = $scope(
+            {
+              self: $self,
+              input: $readOnlyRecord(parsed, "Task.cancel"),
+              actor: $actor,
+              context: $context,
+              before: $readOnlyRecord(
+                $guarded($loadPlan, "Task", $before, "before"),
+                "Task.cancel",
+              ) as unknown as Task,
+              ...$composed(compose, tx, context, "Task.cancel", $clock),
+            },
+            { clock: $clock },
+          ) as unknown as $StoredScope<CancelTaskInput>;
+          // validate: every check runs, and every failed check is reported together
+          const $issues: $Issue[] = [];
+          const $checks = $checkScope($s);
+          await $runCheck($issues, $checks, {
+            label: "taskOpen",
+            code: "task.open",
+            message: "the task is not open; reopen it first",
+            source: { file: "src/domain/work/task.mesh.mx", line: 165, column: 9 },
+            that: $expressions["cancel.check.taskOpen.that"],
+          });
+          await $runCheck($issues, $checks, {
+            label: "versionMatches",
+            code: "expected-version",
+            message: "the record is at another version; read it again and retry",
+            source: { file: "src/domain/work/task.mesh.mx", line: 170, column: 9 },
+            that: $expressions["cancel.check.versionMatches.that"],
+            details: $expressions["cancel.check.versionMatches.details"],
+          });
+          if ($issues.length > 0) throw new $InvalidInputError($issues);
+          // do: the steps run in written order, each seeing the record as the ones before it left it
+          $changes.state = $record.state = "canceled";
+          {
+            const $value = await $expressions["cancel.step.0.set.version"]($s);
+            if ($value === undefined || $value === null)
+              throw new $FrameworkError(
+                "set &version (src/domain/work/task.mesh.mx:179:20) produced no value, and version is required",
+              );
+            $changes.version = $record.version = $value;
+          }
+          // data layer
+          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.cancel");
+          const $stored = await tx.updateByKey(tables.task, $key, $changes);
+          if ($stored === undefined) throw new $NotFoundError("Task", $key);
+          $noteWrite(tx);
+          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+          await $afterWrite(
+            tx,
+            options.seams,
+            { entity: "Task", action: "cancel" },
+            $before,
+            $stored,
+            parsed,
+            context,
+          );
+          // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
+          const $written: $Row = { ...$stored };
+          const $after = $rescope($s, {
+            self: $readOnlyRecord(
+              $guarded($loadPlan, "Task", $written, "action function"),
+              "Task.cancel",
+            ),
+          });
+          await $expressions["cancel.step.1.run"]($after);
+          // the result: the row as the steps after the write left it, read again by key
+          const $result = await tx.selectByKey(tables.task, { id: $stored.id });
+          if ($result === undefined)
+            throw new $FrameworkError(
+              "Task.cancel: a step after the write deleted the row this action returns",
+            );
+          return $result as Task;
+        },
+      );
     },
 
     async complete(input: CompleteTaskInput, ...[context]: $ContextArgument): Promise<Task> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, completeTaskInput, input);
-      return layer.transaction(async (tx) => {
-        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $context = (context ?? {}) as unknown as Record<string, unknown>;
-        const $actor = $context.actor;
-        const $clock = $pinClock(options.clock);
-        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-        const $key = { id: parsed.id };
-        const $before = await tx.selectByKeyForUpdate(tables.task, $key);
-        if ($before === undefined) throw new $NotFoundError("Task", $key);
-        const $changes: $Row = {};
-        const $record: $Row = { ...$before };
-        const $writes = $writeCount(tx);
-        const $load = { actor: $actor, context: $context, clock: $clock };
-        const $self = $readOnlyRecord(
-          $guarded($loadPlan, "Task", $record, "action function"),
-          "Task.complete",
-        );
-        const $s = $scope(
-          {
-            self: $self,
-            input: $readOnlyRecord(parsed, "Task.complete"),
-            actor: $actor,
-            context: $context,
-            before: $readOnlyRecord(
-              $guarded($loadPlan, "Task", $before, "before"),
-              "Task.complete",
-            ) as unknown as Task,
-            ...$composed(compose, tx, context, "Task.complete", $clock),
-          },
-          { clock: $clock },
-        ) as unknown as $StoredScope<CompleteTaskInput>;
-        // validate: every check runs, and every failed check is reported together
-        const $issues: $Issue[] = [];
-        const $checks = $checkScope($s);
-        await $loadInto(
-          $loadPlan,
-          "Task",
-          tx,
-          $record,
-          ["children", "childrenSettled", "claims", "completions", "maxFence", "submissions"],
-          $load,
-        );
-        await $runCheck($issues, $checks, {
-          label: "taskOpen",
-          code: "task.open",
-          message: "the task is not open; reopen it first",
-          source: { file: "src/domain/work/task.mesh.mx", line: 193, column: 9 },
-          that: $expressions["complete.check.taskOpen.that"],
-        });
-        await $runCheck($issues, $checks, {
-          label: "childrenSettled",
-          code: "task.children-settled",
-          message: "complete or cancel every child first",
-          source: { file: "src/domain/work/task.mesh.mx", line: 198, column: 9 },
-          that: $expressions["complete.check.childrenSettled.that"],
-          details: $expressions["complete.check.childrenSettled.details"],
-        });
-        await $runCheck($issues, $checks, {
-          label: "reviewRequired",
-          code: "task.review-required",
-          message: "a review is required: submit the work for the reviewer to review",
-          source: { file: "src/domain/work/task.mesh.mx", line: 204, column: 9 },
-          that: $expressions["complete.check.reviewRequired.that"],
-          details: $expressions["complete.check.reviewRequired.details"],
-        });
-        await $runCheck($issues, $checks, {
-          label: "noForeignSubmission",
-          code: "task.no-foreign-submission",
-          message: "another collaborator's submission is pending review",
-          source: { file: "src/domain/work/task.mesh.mx", line: 210, column: 9 },
-          that: $expressions["complete.check.noForeignSubmission.that"],
-        });
-        await $runCheck($issues, $checks, {
-          label: "currentFence",
-          code: "claim.current-fence",
-          message: "the fence is not your current claim; claim the task again",
-          source: { file: "src/domain/work/task.mesh.mx", line: 215, column: 9 },
-          that: $expressions["complete.check.currentFence.that"],
-          details: $expressions["complete.check.currentFence.details"],
-        });
-        await $runCheck($issues, $checks, {
-          label: "claimNotInvalidated",
-          code: "claim.invalidated",
-          message:
-            "your claim on this task was invalidated; claim it again and complete with the new fence",
-          source: { file: "src/domain/work/task.mesh.mx", line: 221, column: 9 },
-          that: $expressions["complete.check.claimNotInvalidated.that"],
-          details: $expressions["complete.check.claimNotInvalidated.details"],
-        });
-        await $runCheck($issues, $checks, {
-          label: "ownSubmissionPending",
-          code: "submission.pending",
-          message: "your submission is pending review; withdraw it first",
-          source: { file: "src/domain/work/task.mesh.mx", line: 227, column: 9 },
-          that: $expressions["complete.check.ownSubmissionPending.that"],
-        });
-        await $runCheck($issues, $checks, {
-          label: "evidenceExists",
-          code: "evidence.exists",
-          message: "an evidence reference does not exist",
-          source: { file: "src/domain/work/task.mesh.mx", line: 232, column: 9 },
-          that: $expressions["complete.check.evidenceExists.that"],
-          details: $expressions["complete.check.evidenceExists.details"],
-        });
-        await $runCheck($issues, $checks, {
-          label: "versionMatches",
-          code: "expected-version",
-          message: "the record is at another version; read it again and retry",
-          source: { file: "src/domain/work/task.mesh.mx", line: 238, column: 9 },
-          that: $expressions["complete.check.versionMatches.that"],
-          details: $expressions["complete.check.versionMatches.details"],
-        });
-        if ($issues.length > 0) throw new $InvalidInputError($issues);
-        // do: the steps run in written order, each seeing the record as the ones before it left it
-        $changes.state = $record.state = "done";
-        {
-          const $value = await $expressions["complete.step.0.set.version"]($s);
-          if ($value === undefined || $value === null)
-            throw new $FrameworkError(
-              "set &version (src/domain/work/task.mesh.mx:247:20) produced no value, and version is required",
-            );
-          $changes.version = $record.version = $value;
-        }
-        $unloadFrom($loadPlan, "Task", $record);
-        // data layer
-        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-        await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.complete");
-        const $stored = await tx.updateByKey(tables.task, $key, $changes);
-        if ($stored === undefined) throw new $NotFoundError("Task", $key);
-        $noteWrite(tx);
-        // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
-        const $written: $Row = { ...$stored };
-        const $after = $rescope($s, {
-          self: $readOnlyRecord(
-            $guarded($loadPlan, "Task", $written, "action function"),
+      return $runAction(
+        layer,
+        options.seams,
+        { entity: "Task", action: "complete" },
+        parsed,
+        context,
+        async (tx) => {
+          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+          const $context = (context ?? {}) as unknown as Record<string, unknown>;
+          const $actor = $context.actor;
+          const $clock = $pinClock(options.clock);
+          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+          const $key = { id: parsed.id };
+          const $before = await tx.selectByKeyForUpdate(tables.task, $key);
+          if ($before === undefined) throw new $NotFoundError("Task", $key);
+          const $changes: $Row = {};
+          const $record: $Row = { ...$before };
+          const $writes = $writeCount(tx);
+          const $load = { actor: $actor, context: $context, clock: $clock };
+          const $self = $readOnlyRecord(
+            $guarded($loadPlan, "Task", $record, "action function"),
             "Task.complete",
-          ),
-        });
-        await $expressions["complete.step.1.run"]($after);
-        // the result: the row as the steps after the write left it, read again by key
-        const $result = await tx.selectByKey(tables.task, { id: $stored.id });
-        if ($result === undefined)
-          throw new $FrameworkError(
-            "Task.complete: a step after the write deleted the row this action returns",
           );
-        return $result as Task;
-      });
+          const $s = $scope(
+            {
+              self: $self,
+              input: $readOnlyRecord(parsed, "Task.complete"),
+              actor: $actor,
+              context: $context,
+              before: $readOnlyRecord(
+                $guarded($loadPlan, "Task", $before, "before"),
+                "Task.complete",
+              ) as unknown as Task,
+              ...$composed(compose, tx, context, "Task.complete", $clock),
+            },
+            { clock: $clock },
+          ) as unknown as $StoredScope<CompleteTaskInput>;
+          // validate: every check runs, and every failed check is reported together
+          const $issues: $Issue[] = [];
+          const $checks = $checkScope($s);
+          await $loadInto(
+            $loadPlan,
+            "Task",
+            tx,
+            $record,
+            ["children", "childrenSettled", "claims", "completions", "maxFence", "submissions"],
+            $load,
+          );
+          await $runCheck($issues, $checks, {
+            label: "taskOpen",
+            code: "task.open",
+            message: "the task is not open; reopen it first",
+            source: { file: "src/domain/work/task.mesh.mx", line: 193, column: 9 },
+            that: $expressions["complete.check.taskOpen.that"],
+          });
+          await $runCheck($issues, $checks, {
+            label: "childrenSettled",
+            code: "task.children-settled",
+            message: "complete or cancel every child first",
+            source: { file: "src/domain/work/task.mesh.mx", line: 198, column: 9 },
+            that: $expressions["complete.check.childrenSettled.that"],
+            details: $expressions["complete.check.childrenSettled.details"],
+          });
+          await $runCheck($issues, $checks, {
+            label: "reviewRequired",
+            code: "task.review-required",
+            message: "a review is required: submit the work for the reviewer to review",
+            source: { file: "src/domain/work/task.mesh.mx", line: 204, column: 9 },
+            that: $expressions["complete.check.reviewRequired.that"],
+            details: $expressions["complete.check.reviewRequired.details"],
+          });
+          await $runCheck($issues, $checks, {
+            label: "noForeignSubmission",
+            code: "task.no-foreign-submission",
+            message: "another collaborator's submission is pending review",
+            source: { file: "src/domain/work/task.mesh.mx", line: 210, column: 9 },
+            that: $expressions["complete.check.noForeignSubmission.that"],
+          });
+          await $runCheck($issues, $checks, {
+            label: "currentFence",
+            code: "claim.current-fence",
+            message: "the fence is not your current claim; claim the task again",
+            source: { file: "src/domain/work/task.mesh.mx", line: 215, column: 9 },
+            that: $expressions["complete.check.currentFence.that"],
+            details: $expressions["complete.check.currentFence.details"],
+          });
+          await $runCheck($issues, $checks, {
+            label: "claimNotInvalidated",
+            code: "claim.invalidated",
+            message:
+              "your claim on this task was invalidated; claim it again and complete with the new fence",
+            source: { file: "src/domain/work/task.mesh.mx", line: 221, column: 9 },
+            that: $expressions["complete.check.claimNotInvalidated.that"],
+            details: $expressions["complete.check.claimNotInvalidated.details"],
+          });
+          await $runCheck($issues, $checks, {
+            label: "ownSubmissionPending",
+            code: "submission.pending",
+            message: "your submission is pending review; withdraw it first",
+            source: { file: "src/domain/work/task.mesh.mx", line: 227, column: 9 },
+            that: $expressions["complete.check.ownSubmissionPending.that"],
+          });
+          await $runCheck($issues, $checks, {
+            label: "evidenceExists",
+            code: "evidence.exists",
+            message: "an evidence reference does not exist",
+            source: { file: "src/domain/work/task.mesh.mx", line: 232, column: 9 },
+            that: $expressions["complete.check.evidenceExists.that"],
+            details: $expressions["complete.check.evidenceExists.details"],
+          });
+          await $runCheck($issues, $checks, {
+            label: "versionMatches",
+            code: "expected-version",
+            message: "the record is at another version; read it again and retry",
+            source: { file: "src/domain/work/task.mesh.mx", line: 238, column: 9 },
+            that: $expressions["complete.check.versionMatches.that"],
+            details: $expressions["complete.check.versionMatches.details"],
+          });
+          if ($issues.length > 0) throw new $InvalidInputError($issues);
+          // do: the steps run in written order, each seeing the record as the ones before it left it
+          $changes.state = $record.state = "done";
+          {
+            const $value = await $expressions["complete.step.0.set.version"]($s);
+            if ($value === undefined || $value === null)
+              throw new $FrameworkError(
+                "set &version (src/domain/work/task.mesh.mx:247:20) produced no value, and version is required",
+              );
+            $changes.version = $record.version = $value;
+          }
+          $unloadFrom($loadPlan, "Task", $record);
+          // data layer
+          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.complete");
+          const $stored = await tx.updateByKey(tables.task, $key, $changes);
+          if ($stored === undefined) throw new $NotFoundError("Task", $key);
+          $noteWrite(tx);
+          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+          await $afterWrite(
+            tx,
+            options.seams,
+            { entity: "Task", action: "complete" },
+            $before,
+            $stored,
+            parsed,
+            context,
+          );
+          // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
+          const $written: $Row = { ...$stored };
+          const $after = $rescope($s, {
+            self: $readOnlyRecord(
+              $guarded($loadPlan, "Task", $written, "action function"),
+              "Task.complete",
+            ),
+          });
+          await $expressions["complete.step.1.run"]($after);
+          // the result: the row as the steps after the write left it, read again by key
+          const $result = await tx.selectByKey(tables.task, { id: $stored.id });
+          if ($result === undefined)
+            throw new $FrameworkError(
+              "Task.complete: a step after the write deleted the row this action returns",
+            );
+          return $result as Task;
+        },
+      );
     },
 
     async assign(input: AssignTaskInput, ...[context]: $ContextArgument): Promise<Task> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, assignTaskInput, input);
-      return layer.transaction(async (tx) => {
-        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $context = (context ?? {}) as unknown as Record<string, unknown>;
-        const $actor = $context.actor;
-        const $clock = $pinClock(options.clock);
-        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-        const $key = { id: parsed.id };
-        const $before = await tx.selectByKeyForUpdate(tables.task, $key);
-        if ($before === undefined) throw new $NotFoundError("Task", $key);
-        const $changes: $Row = {};
-        const $record: $Row = { ...$before };
-        const $writes = $writeCount(tx);
-        const $load = { actor: $actor, context: $context, clock: $clock };
-        const $self = $readOnlyRecord(
-          $guarded($loadPlan, "Task", $record, "action function"),
-          "Task.assign",
-        );
-        const $s = $scope(
-          {
-            self: $self,
-            input: $readOnlyRecord(parsed, "Task.assign"),
-            actor: $actor,
-            context: $context,
-            before: $readOnlyRecord(
-              $guarded($loadPlan, "Task", $before, "before"),
-              "Task.assign",
-            ) as unknown as Task,
-            ...$composed(compose, tx, context, "Task.assign", $clock),
-          },
-          { clock: $clock },
-        ) as unknown as $StoredScope<AssignTaskInput>;
-        // validate: every check runs, and every failed check is reported together
-        const $issues: $Issue[] = [];
-        const $checks = $checkScope($s);
-        await $loadInto($loadPlan, "Task", tx, $record, ["assignments"], $load);
-        await $runCheck($issues, $checks, {
-          label: "taskOpen",
-          code: "task.open",
-          message: "the task is not open; reopen it first",
-          source: { file: "src/domain/work/task.mesh.mx", line: 275, column: 9 },
-          that: $expressions["assign.check.taskOpen.that"],
-        });
-        await $runCheck($issues, $checks, {
-          label: "assigneeActive",
-          code: "collaborator.active",
-          message: "the collaborator is retired",
-          source: { file: "src/domain/work/task.mesh.mx", line: 280, column: 9 },
-          that: $expressions["assign.check.assigneeActive.that"],
-        });
-        await $runCheck($issues, $checks, {
-          label: "assigneeRole",
-          code: "assignment.assignee-role",
-          message: "only members and owners can be assigned",
-          source: { file: "src/domain/work/task.mesh.mx", line: 285, column: 9 },
-          that: $expressions["assign.check.assigneeRole.that"],
-        });
-        await $runCheck($issues, $checks, {
-          label: "assignmentChanges",
-          code: "assignment.unchanged",
-          message: "assignee and review waiver are unchanged",
-          source: { file: "src/domain/work/task.mesh.mx", line: 290, column: 9 },
-          that: $expressions["assign.check.assignmentChanges.that"],
-        });
-        await $runCheck($issues, $checks, {
-          label: "versionMatches",
-          code: "expected-version",
-          message: "the record is at another version; read it again and retry",
-          source: { file: "src/domain/work/task.mesh.mx", line: 295, column: 9 },
-          that: $expressions["assign.check.versionMatches.that"],
-          details: $expressions["assign.check.versionMatches.details"],
-        });
-        if ($issues.length > 0) throw new $InvalidInputError($issues);
-        // do: the steps run in written order, each seeing the record as the ones before it left it
-        {
-          const $value = await $expressions["assign.step.0.set.version"]($s);
-          if ($value === undefined || $value === null)
-            throw new $FrameworkError(
-              "set &version (src/domain/work/task.mesh.mx:303:20) produced no value, and version is required",
-            );
-          $changes.version = $record.version = $value;
-        }
-        $unloadFrom($loadPlan, "Task", $record);
-        // data layer
-        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-        await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.assign");
-        const $stored = await tx.updateByKey(tables.task, $key, $changes);
-        if ($stored === undefined) throw new $NotFoundError("Task", $key);
-        $noteWrite(tx);
-        // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
-        const $written: $Row = { ...$stored };
-        const $after = $rescope($s, {
-          self: $readOnlyRecord(
-            $guarded($loadPlan, "Task", $written, "action function"),
+      return $runAction(
+        layer,
+        options.seams,
+        { entity: "Task", action: "assign" },
+        parsed,
+        context,
+        async (tx) => {
+          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+          const $context = (context ?? {}) as unknown as Record<string, unknown>;
+          const $actor = $context.actor;
+          const $clock = $pinClock(options.clock);
+          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+          const $key = { id: parsed.id };
+          const $before = await tx.selectByKeyForUpdate(tables.task, $key);
+          if ($before === undefined) throw new $NotFoundError("Task", $key);
+          const $changes: $Row = {};
+          const $record: $Row = { ...$before };
+          const $writes = $writeCount(tx);
+          const $load = { actor: $actor, context: $context, clock: $clock };
+          const $self = $readOnlyRecord(
+            $guarded($loadPlan, "Task", $record, "action function"),
             "Task.assign",
-          ),
-        });
-        await $expressions["assign.step.1.run"]($after);
-        // the result: the row as the steps after the write left it, read again by key
-        const $result = await tx.selectByKey(tables.task, { id: $stored.id });
-        if ($result === undefined)
-          throw new $FrameworkError(
-            "Task.assign: a step after the write deleted the row this action returns",
           );
-        return $result as Task;
-      });
+          const $s = $scope(
+            {
+              self: $self,
+              input: $readOnlyRecord(parsed, "Task.assign"),
+              actor: $actor,
+              context: $context,
+              before: $readOnlyRecord(
+                $guarded($loadPlan, "Task", $before, "before"),
+                "Task.assign",
+              ) as unknown as Task,
+              ...$composed(compose, tx, context, "Task.assign", $clock),
+            },
+            { clock: $clock },
+          ) as unknown as $StoredScope<AssignTaskInput>;
+          // validate: every check runs, and every failed check is reported together
+          const $issues: $Issue[] = [];
+          const $checks = $checkScope($s);
+          await $loadInto($loadPlan, "Task", tx, $record, ["assignments"], $load);
+          await $runCheck($issues, $checks, {
+            label: "taskOpen",
+            code: "task.open",
+            message: "the task is not open; reopen it first",
+            source: { file: "src/domain/work/task.mesh.mx", line: 275, column: 9 },
+            that: $expressions["assign.check.taskOpen.that"],
+          });
+          await $runCheck($issues, $checks, {
+            label: "assigneeActive",
+            code: "collaborator.active",
+            message: "the collaborator is retired",
+            source: { file: "src/domain/work/task.mesh.mx", line: 280, column: 9 },
+            that: $expressions["assign.check.assigneeActive.that"],
+          });
+          await $runCheck($issues, $checks, {
+            label: "assigneeRole",
+            code: "assignment.assignee-role",
+            message: "only members and owners can be assigned",
+            source: { file: "src/domain/work/task.mesh.mx", line: 285, column: 9 },
+            that: $expressions["assign.check.assigneeRole.that"],
+          });
+          await $runCheck($issues, $checks, {
+            label: "assignmentChanges",
+            code: "assignment.unchanged",
+            message: "assignee and review waiver are unchanged",
+            source: { file: "src/domain/work/task.mesh.mx", line: 290, column: 9 },
+            that: $expressions["assign.check.assignmentChanges.that"],
+          });
+          await $runCheck($issues, $checks, {
+            label: "versionMatches",
+            code: "expected-version",
+            message: "the record is at another version; read it again and retry",
+            source: { file: "src/domain/work/task.mesh.mx", line: 295, column: 9 },
+            that: $expressions["assign.check.versionMatches.that"],
+            details: $expressions["assign.check.versionMatches.details"],
+          });
+          if ($issues.length > 0) throw new $InvalidInputError($issues);
+          // do: the steps run in written order, each seeing the record as the ones before it left it
+          {
+            const $value = await $expressions["assign.step.0.set.version"]($s);
+            if ($value === undefined || $value === null)
+              throw new $FrameworkError(
+                "set &version (src/domain/work/task.mesh.mx:303:20) produced no value, and version is required",
+              );
+            $changes.version = $record.version = $value;
+          }
+          $unloadFrom($loadPlan, "Task", $record);
+          // data layer
+          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.assign");
+          const $stored = await tx.updateByKey(tables.task, $key, $changes);
+          if ($stored === undefined) throw new $NotFoundError("Task", $key);
+          $noteWrite(tx);
+          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+          await $afterWrite(
+            tx,
+            options.seams,
+            { entity: "Task", action: "assign" },
+            $before,
+            $stored,
+            parsed,
+            context,
+          );
+          // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
+          const $written: $Row = { ...$stored };
+          const $after = $rescope($s, {
+            self: $readOnlyRecord(
+              $guarded($loadPlan, "Task", $written, "action function"),
+              "Task.assign",
+            ),
+          });
+          await $expressions["assign.step.1.run"]($after);
+          // the result: the row as the steps after the write left it, read again by key
+          const $result = await tx.selectByKey(tables.task, { id: $stored.id });
+          if ($result === undefined)
+            throw new $FrameworkError(
+              "Task.assign: a step after the write deleted the row this action returns",
+            );
+          return $result as Task;
+        },
+      );
     },
 
     async unassign(input: UnassignTaskInput, ...[context]: $ContextArgument): Promise<Task> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, unassignTaskInput, input);
-      return layer.transaction(async (tx) => {
-        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $context = (context ?? {}) as unknown as Record<string, unknown>;
-        const $actor = $context.actor;
-        const $clock = $pinClock(options.clock);
-        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-        const $key = { id: parsed.id };
-        const $before = await tx.selectByKeyForUpdate(tables.task, $key);
-        if ($before === undefined) throw new $NotFoundError("Task", $key);
-        const $changes: $Row = {};
-        const $record: $Row = { ...$before };
-        const $writes = $writeCount(tx);
-        const $load = { actor: $actor, context: $context, clock: $clock };
-        const $self = $readOnlyRecord(
-          $guarded($loadPlan, "Task", $record, "action function"),
-          "Task.unassign",
-        );
-        const $s = $scope(
-          {
-            self: $self,
-            input: $readOnlyRecord(parsed, "Task.unassign"),
-            actor: $actor,
-            context: $context,
-            before: $readOnlyRecord(
-              $guarded($loadPlan, "Task", $before, "before"),
-              "Task.unassign",
-            ) as unknown as Task,
-            ...$composed(compose, tx, context, "Task.unassign", $clock),
-          },
-          { clock: $clock },
-        ) as unknown as $StoredScope<UnassignTaskInput>;
-        // validate: every check runs, and every failed check is reported together
-        const $issues: $Issue[] = [];
-        const $checks = $checkScope($s);
-        await $loadInto($loadPlan, "Task", tx, $record, ["assigned"], $load);
-        await $runCheck($issues, $checks, {
-          label: "assignmentCurrent",
-          code: "assignment.current",
-          message: "the task has no current assignment",
-          source: { file: "src/domain/work/task.mesh.mx", line: 319, column: 9 },
-          that: $expressions["unassign.check.assignmentCurrent.that"],
-        });
-        await $runCheck($issues, $checks, {
-          label: "versionMatches",
-          code: "expected-version",
-          message: "the record is at another version; read it again and retry",
-          source: { file: "src/domain/work/task.mesh.mx", line: 324, column: 9 },
-          that: $expressions["unassign.check.versionMatches.that"],
-          details: $expressions["unassign.check.versionMatches.details"],
-        });
-        if ($issues.length > 0) throw new $InvalidInputError($issues);
-        // do: the steps run in written order, each seeing the record as the ones before it left it
-        {
-          const $value = await $expressions["unassign.step.0.set.version"]($s);
-          if ($value === undefined || $value === null)
-            throw new $FrameworkError(
-              "set &version (src/domain/work/task.mesh.mx:332:20) produced no value, and version is required",
-            );
-          $changes.version = $record.version = $value;
-        }
-        $unloadFrom($loadPlan, "Task", $record);
-        // data layer
-        // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-        await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.unassign");
-        const $stored = await tx.updateByKey(tables.task, $key, $changes);
-        if ($stored === undefined) throw new $NotFoundError("Task", $key);
-        $noteWrite(tx);
-        // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
-        const $written: $Row = { ...$stored };
-        const $after = $rescope($s, {
-          self: $readOnlyRecord(
-            $guarded($loadPlan, "Task", $written, "action function"),
+      return $runAction(
+        layer,
+        options.seams,
+        { entity: "Task", action: "unassign" },
+        parsed,
+        context,
+        async (tx) => {
+          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+          const $context = (context ?? {}) as unknown as Record<string, unknown>;
+          const $actor = $context.actor;
+          const $clock = $pinClock(options.clock);
+          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+          const $key = { id: parsed.id };
+          const $before = await tx.selectByKeyForUpdate(tables.task, $key);
+          if ($before === undefined) throw new $NotFoundError("Task", $key);
+          const $changes: $Row = {};
+          const $record: $Row = { ...$before };
+          const $writes = $writeCount(tx);
+          const $load = { actor: $actor, context: $context, clock: $clock };
+          const $self = $readOnlyRecord(
+            $guarded($loadPlan, "Task", $record, "action function"),
             "Task.unassign",
-          ),
-        });
-        await $expressions["unassign.step.1.run"]($after);
-        // the result: the row as the steps after the write left it, read again by key
-        const $result = await tx.selectByKey(tables.task, { id: $stored.id });
-        if ($result === undefined)
-          throw new $FrameworkError(
-            "Task.unassign: a step after the write deleted the row this action returns",
           );
-        return $result as Task;
-      });
+          const $s = $scope(
+            {
+              self: $self,
+              input: $readOnlyRecord(parsed, "Task.unassign"),
+              actor: $actor,
+              context: $context,
+              before: $readOnlyRecord(
+                $guarded($loadPlan, "Task", $before, "before"),
+                "Task.unassign",
+              ) as unknown as Task,
+              ...$composed(compose, tx, context, "Task.unassign", $clock),
+            },
+            { clock: $clock },
+          ) as unknown as $StoredScope<UnassignTaskInput>;
+          // validate: every check runs, and every failed check is reported together
+          const $issues: $Issue[] = [];
+          const $checks = $checkScope($s);
+          await $loadInto($loadPlan, "Task", tx, $record, ["assigned"], $load);
+          await $runCheck($issues, $checks, {
+            label: "assignmentCurrent",
+            code: "assignment.current",
+            message: "the task has no current assignment",
+            source: { file: "src/domain/work/task.mesh.mx", line: 319, column: 9 },
+            that: $expressions["unassign.check.assignmentCurrent.that"],
+          });
+          await $runCheck($issues, $checks, {
+            label: "versionMatches",
+            code: "expected-version",
+            message: "the record is at another version; read it again and retry",
+            source: { file: "src/domain/work/task.mesh.mx", line: 324, column: 9 },
+            that: $expressions["unassign.check.versionMatches.that"],
+            details: $expressions["unassign.check.versionMatches.details"],
+          });
+          if ($issues.length > 0) throw new $InvalidInputError($issues);
+          // do: the steps run in written order, each seeing the record as the ones before it left it
+          {
+            const $value = await $expressions["unassign.step.0.set.version"]($s);
+            if ($value === undefined || $value === null)
+              throw new $FrameworkError(
+                "set &version (src/domain/work/task.mesh.mx:332:20) produced no value, and version is required",
+              );
+            $changes.version = $record.version = $value;
+          }
+          $unloadFrom($loadPlan, "Task", $record);
+          // data layer
+          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.unassign");
+          const $stored = await tx.updateByKey(tables.task, $key, $changes);
+          if ($stored === undefined) throw new $NotFoundError("Task", $key);
+          $noteWrite(tx);
+          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+          await $afterWrite(
+            tx,
+            options.seams,
+            { entity: "Task", action: "unassign" },
+            $before,
+            $stored,
+            parsed,
+            context,
+          );
+          // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
+          const $written: $Row = { ...$stored };
+          const $after = $rescope($s, {
+            self: $readOnlyRecord(
+              $guarded($loadPlan, "Task", $written, "action function"),
+              "Task.unassign",
+            ),
+          });
+          await $expressions["unassign.step.1.run"]($after);
+          // the result: the row as the steps after the write left it, read again by key
+          const $result = await tx.selectByKey(tables.task, { id: $stored.id });
+          if ($result === undefined)
+            throw new $FrameworkError(
+              "Task.unassign: a step after the write deleted the row this action returns",
+            );
+          return $result as Task;
+        },
+      );
     },
 
     async read<const L extends readonly (keyof TaskLoadable)[] = readonly []>(

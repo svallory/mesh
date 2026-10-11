@@ -4,6 +4,7 @@
 
 import {
   FrameworkError as $FrameworkError,
+  afterWrite as $afterWrite,
   castInput as $castInput,
   composed as $composed,
   guarded as $guarded,
@@ -11,6 +12,7 @@ import {
   noteWrite as $noteWrite,
   pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
+  runAction as $runAction,
   scope as $scope,
   uuidv7 as $uuidv7,
   type BindOptions as $BindOptions,
@@ -85,53 +87,70 @@ export function bindCompletion(layer: $DataLayer, options: $BindOptions = {}, co
     ): Promise<Completion> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, recordCompletionInput, input);
-      return layer.transaction(async (tx) => {
-        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $context = (context ?? {}) as unknown as Record<string, unknown>;
-        const $actor = $context.actor;
-        const $clock = $pinClock(options.clock);
-        const $now = $clock();
-        // plan: a create is one insert; nothing is read first
-        const $changes: $Row = {
-          id: $uuidv7(),
-          completedAt: $now,
-          submissionId: null,
-        };
-        const $record: $Row = { ...$changes, rule: null, taskId: null, completedById: null };
-        const $self = $readOnlyRecord(
-          $guarded($loadPlan, "Completion", $record, "action function"),
-          "Completion.record",
-        );
-        const $s = $scope(
+      return $runAction(
+        layer,
+        options.seams,
+        { entity: "Completion", action: "record" },
+        parsed,
+        context,
+        async (tx) => {
+          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+          const $context = (context ?? {}) as unknown as Record<string, unknown>;
+          const $actor = $context.actor;
+          const $clock = $pinClock(options.clock);
+          const $now = $clock();
+          // plan: a create is one insert; nothing is read first
+          const $changes: $Row = {
+            id: $uuidv7(),
+            completedAt: $now,
+            submissionId: null,
+          };
+          const $record: $Row = { ...$changes, rule: null, taskId: null, completedById: null };
+          const $self = $readOnlyRecord(
+            $guarded($loadPlan, "Completion", $record, "action function"),
+            "Completion.record",
+          );
+          const $s = $scope(
+            {
+              self: $self,
+              input: $readOnlyRecord(parsed, "Completion.record"),
+              actor: $actor,
+              context: $context,
+              before: null,
+              ...$composed(compose, tx, context, "Completion.record", $clock),
+            },
+            { clock: $clock },
+          ) as unknown as $Scope<RecordCompletionInput>;
+          // the input: the member inputs the caller sent, applied now that the checks have passed
+          if (parsed.rule !== undefined) $changes.rule = $record.rule = parsed.rule;
+          if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
+          if (parsed.submission !== undefined)
+            $changes.submissionId = $record.submissionId = parsed.submission;
+          // do: the steps run in written order, each seeing the record as the ones before it left it
           {
-            self: $self,
-            input: $readOnlyRecord(parsed, "Completion.record"),
-            actor: $actor,
-            context: $context,
-            before: null,
-            ...$composed(compose, tx, context, "Completion.record", $clock),
-          },
-          { clock: $clock },
-        ) as unknown as $Scope<RecordCompletionInput>;
-        // the input: the member inputs the caller sent, applied now that the checks have passed
-        if (parsed.rule !== undefined) $changes.rule = $record.rule = parsed.rule;
-        if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
-        if (parsed.submission !== undefined)
-          $changes.submissionId = $record.submissionId = parsed.submission;
-        // do: the steps run in written order, each seeing the record as the ones before it left it
-        {
-          const $value = await $expressions["record.step.0.set.completedBy"]($s);
-          if ($value === undefined || $value === null)
-            throw new $FrameworkError(
-              "set &completedBy (src/domain/work/completion.mesh.mx:22:24) produced no value, and the relationship completedBy is required",
-            );
-          $changes.completedById = $record.completedById = $value;
-        }
-        // data layer
-        const $stored = await tx.insert(tables.completion, $changes);
-        $noteWrite(tx);
-        return $stored as Completion;
-      });
+            const $value = await $expressions["record.step.0.set.completedBy"]($s);
+            if ($value === undefined || $value === null)
+              throw new $FrameworkError(
+                "set &completedBy (src/domain/work/completion.mesh.mx:22:24) produced no value, and the relationship completedBy is required",
+              );
+            $changes.completedById = $record.completedById = $value;
+          }
+          // data layer
+          const $stored = await tx.insert(tables.completion, $changes);
+          $noteWrite(tx);
+          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+          await $afterWrite(
+            tx,
+            options.seams,
+            { entity: "Completion", action: "record" },
+            null,
+            $stored,
+            parsed,
+            context,
+          );
+          return $stored as Completion;
+        },
+      );
     },
 
     async read<const L extends readonly (keyof CompletionLoadable)[] = readonly []>(

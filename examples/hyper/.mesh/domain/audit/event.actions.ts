@@ -3,10 +3,12 @@
 // Mesh's own imports carry a `$` so that no entity name can shadow them.
 
 import {
+  afterWrite as $afterWrite,
   castInput as $castInput,
   loadRows as $loadRows,
   noteWrite as $noteWrite,
   pinClock as $pinClock,
+  runAction as $runAction,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
@@ -67,35 +69,52 @@ export function bindEventReads(layer: $DataLayer, options: $BindOptions = {}) {
 export function bindEvent(layer: $DataLayer, options: $BindOptions = {}, _compose?: $Composer) {
   const $reads = bindEventReads(layer, options);
   return Object.freeze({
-    async record(input: RecordEventInput, ...[_context]: $ContextArgument): Promise<Event> {
+    async record(input: RecordEventInput, ...[context]: $ContextArgument): Promise<Event> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, recordEventInput, input);
-      return layer.transaction(async (tx) => {
-        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $clock = $pinClock(options.clock);
-        const $now = $clock();
-        // plan: a create is one insert; nothing is read first
-        const $changes: $Row = {
-          type: parsed.type,
-          schemaVersion: parsed.schemaVersion === undefined ? 1 : parsed.schemaVersion,
-          workspaceId: parsed.workspaceId,
-          recordType: parsed.recordType,
-          recordId: parsed.recordId,
-          recordVersion: parsed.recordVersion,
-          actor: parsed.actor,
-          caller: parsed.caller,
-          occurredAt: parsed.occurredAt,
-          recordedAt: $now,
-          cause: parsed.cause === undefined ? null : parsed.cause,
-          checks: parsed.checks === undefined ? null : parsed.checks,
-          payload: parsed.payload === undefined ? null : parsed.payload,
-          taskId: parsed.task === undefined ? null : parsed.task,
-        };
-        // data layer
-        const $stored = await tx.insert(tables.event, $changes);
-        $noteWrite(tx);
-        return $stored as Event;
-      });
+      return $runAction(
+        layer,
+        options.seams,
+        { entity: "Event", action: "record" },
+        parsed,
+        context,
+        async (tx) => {
+          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+          const $clock = $pinClock(options.clock);
+          const $now = $clock();
+          // plan: a create is one insert; nothing is read first
+          const $changes: $Row = {
+            type: parsed.type,
+            schemaVersion: parsed.schemaVersion === undefined ? 1 : parsed.schemaVersion,
+            workspaceId: parsed.workspaceId,
+            recordType: parsed.recordType,
+            recordId: parsed.recordId,
+            recordVersion: parsed.recordVersion,
+            actor: parsed.actor,
+            caller: parsed.caller,
+            occurredAt: parsed.occurredAt,
+            recordedAt: $now,
+            cause: parsed.cause === undefined ? null : parsed.cause,
+            checks: parsed.checks === undefined ? null : parsed.checks,
+            payload: parsed.payload === undefined ? null : parsed.payload,
+            taskId: parsed.task === undefined ? null : parsed.task,
+          };
+          // data layer
+          const $stored = await tx.insert(tables.event, $changes);
+          $noteWrite(tx);
+          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+          await $afterWrite(
+            tx,
+            options.seams,
+            { entity: "Event", action: "record" },
+            null,
+            $stored,
+            parsed,
+            context,
+          );
+          return $stored as Event;
+        },
+      );
     },
 
     async read<const L extends readonly (keyof EventLoadable)[] = readonly []>(

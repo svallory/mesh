@@ -3,7 +3,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, 
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createSchema, sqlite, type SQLiteLayer } from "@meshfw/data-sqlite";
-import { FrameworkError, InvalidInputError, NotFoundError } from "@meshfw/runtime";
+import { FrameworkError, InvalidInputError, NotFoundError, type Change, type DataLayer, type DataOperations, type Seams } from "@meshfw/runtime";
 import { bind, connect, disconnect, tables } from "#mesh";
 import { createPost, createUser, readPost, type PostFilter, type PostSort } from "#mesh/domain/blog";
 import config from "../mesh.config";
@@ -35,6 +35,54 @@ test("acceptance 1: create, read, update, destroy, and a write after destroy is 
     await expect(blog.destroyPost({ id: post.id }, context)).rejects.toBeInstanceOf(NotFoundError);
     await expect(blog.archivePost({ id: post.id }, context)).rejects.toBeInstanceOf(NotFoundError);
   } finally { await db.close(); }
+});
+
+/** A layer that counts the locked reads (`selectByKeyForUpdate`) every transaction makes. */
+function counting(layer: DataLayer, counter: { locked: number }): DataLayer {
+  const wrapped = new WeakMap<DataOperations, DataOperations>();
+  return {
+    transaction: (run) => layer.transaction((tx) => run(wrapped.get(tx) ?? wrapped.set(tx, {
+      ...tx,
+      selectByKeyForUpdate: (table, key) => { counter.locked++; return tx.selectByKeyForUpdate(table, key); },
+    }).get(tx)!)),
+    refuseIfFailed: () => layer.refuseIfFailed(),
+    close: () => layer.close(),
+  };
+}
+
+describe("a destroy whose body cannot see the row reads it first only for a seam that wants the change (M6 ruling 4)", () => {
+  const destroyOne = async (seams: Seams | undefined) => {
+    const db = sqlite({ file: ":memory:" });
+    await createSchema(db, tables);
+    const counter = { locked: 0 };
+    const blog = bind(counting(db, counter), { seams });
+    try {
+      const author = await blog.createUser({ name: "Alice" }, context);
+      const post = await blog.createPost({ title: "Hello", author: author.id }, context);
+      const before = counter.locked;
+      await blog.destroyPost({ id: post.id }, context);
+      const gone = await blog.destroyPost({ id: post.id }, context).catch((cause: unknown) => cause);
+      expect(gone).toBeInstanceOf(NotFoundError);
+      // two destroys: the first of a row that is there, the second of one that is not
+      return { locked: counter.locked - before, post };
+    } finally { await db.close(); }
+  };
+
+  test("no seam, or one that wants no change: the plan is unchanged, one delete by key", async () => {
+    expect((await destroyOne(undefined)).locked).toBe(0);
+    expect((await destroyOne({ beforeTransaction() {} })).locked).toBe(0);
+  });
+
+  test("afterWrite or afterCommit registered: the locked row is read first, so before is the deleted row", async () => {
+    const seen: Change[] = [];
+    const { locked, post } = await destroyOne({ afterWrite: (_db, event) => { if (event.action === "destroy") seen.push({ entity: event.entity, action: event.action, before: event.before, after: event.after }); } });
+    expect(locked).toBe(2);
+    expect(seen).toEqual([{ entity: "Post", action: "destroy", before: post, after: null }]);
+    const committed: Change[] = [];
+    expect((await destroyOne({ afterCommit: ({ changes }) => { committed.push(...changes); } })).locked).toBe(2);
+    expect(committed.map((change) => [change.action, change.after])).toEqual([["create", expect.anything()], ["create", expect.anything()], ["destroy", null]]);
+    expect(committed[2]!.before).toMatchObject({ title: "Hello" });
+  });
 });
 
 test("a create fills timestamps from one clock reading, and an update moves only updatedAt", async () => {
@@ -380,6 +428,32 @@ describe("connect and disconnect (ADR-0047)", () => {
     expect((await pending).title).toBe("In flight");
     await connect();
     expect((await readPost({}, context)).map((post) => post.title)).toContain("In flight");
+    await disconnect();
+  });
+
+  test("connect binds the seams of mesh.config.ts, so the top-level functions run them (ADR-0075)", async () => {
+    const calls: string[] = [];
+    const changes: Change[] = [];
+    config.seams = {
+      beforeTransaction: ({ entity, action }) => { calls.push(`before ${entity}.${action}`); },
+      afterWrite: (_db, { entity, action }) => { calls.push(`write ${entity}.${action}`); },
+      afterCommit: (event) => { calls.push("commit"); changes.push(...event.changes); },
+    };
+    try {
+      await connect();
+      const author = await createUser({ name: "Seamed" }, context);
+      expect(calls).toEqual(["before User.create", "write User.create", "commit"]);
+      expect(changes).toEqual([{ entity: "User", action: "create", before: null, after: author }]);
+      await readPost({}, context);
+      expect(calls).toHaveLength(3);
+    } finally {
+      delete config.seams;
+      await disconnect();
+    }
+    // Read when connect() runs: a config without seams binds none.
+    await connect();
+    await createUser({ name: "Quiet" }, context);
+    expect(calls).toHaveLength(3);
     await disconnect();
   });
 

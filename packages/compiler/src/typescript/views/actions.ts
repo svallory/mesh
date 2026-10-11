@@ -107,6 +107,8 @@ export interface ActionMethod {
   readonly statements: readonly string[];
   /** True for a read action. */
   readonly isRead: boolean;
+  /** For a create, update or destroy, the seam target as an object literal, e.g. `{ entity: "Post", action: "publish" }`, which `$runAction` takes; `null` for a read (a read runs no seam). */
+  readonly seamTarget: string | null;
   /** For a read, the call of its body in `bind<Entity>Reads` that the method returns after the authorizer slot, e.g. `$reads.read(input)`; `null` otherwise, when `statements` hold the body. */
   readonly readsCall: string | null;
 }
@@ -282,7 +284,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       }
       const body = { name, inputType, generics, contextParam: loads ? ", context?: unknown, clock?: () => Date" : "", validator, returnType };
       const method = { ...base, inputType, generics, returnType, contextName: loads ? "context" : "_context", notRun: notRun([]), unsupported: null, usesParsed: false,
-        statements: [], isRead: true, readsCall: loads ? `$reads.${name}(input, context)` : `$reads.${name}(input)` };
+        statements: [], isRead: true, seamTarget: null, readsCall: loads ? `$reads.${name}(input, context)` : `$reads.${name}(input)` };
       if (action.filter || action.sort) {
         runtime.add("FrameworkError");
         runtime.add("failJoined");
@@ -436,9 +438,14 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     } else {
       head.push(reads
         ? "// plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)"
-        : "// plan: nothing in the body can see the record, so the row is deleted without being read");
+        : "// plan: nothing in the body can see the record, so the row is deleted without being read, unless a seam wants it: then it is read under the lock first, so the seam gets `before`");
       head.push(`const ${KEY} = ${keyObject};`);
       runtime.add("NotFoundError");
+      if (!reads) {
+        runtime.add("wantsChanges");
+        head.push(`const $before = $wantsChanges(options.seams) ? await tx.selectByKeyForUpdate(${table}, ${KEY}) : undefined;`);
+        head.push(`if ($wantsChanges(options.seams) && $before === undefined) throw new $NotFoundError(${JSON.stringify(entity.name)}, ${KEY});`);
+      }
       if (reads) {
         runtimeTypes.add("Row");
         head.push(`const $before = await tx.selectByKeyForUpdate(${table}, ${KEY});`);
@@ -592,6 +599,11 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     }
     runtime.add("noteWrite");
     emit("$noteWrite(tx);");
+    runtime.add("afterWrite");
+    optionsUsed = true;
+    const seamTarget = `{ entity: ${JSON.stringify(entity.name)}, action: ${JSON.stringify(action.name)} }`;
+    emit("// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write");
+    emit(`await $afterWrite(tx, options.seams, ${seamTarget}, ${action.kind === "create" ? "null" : reads ? "$before" : "$before ?? null"}, ${writes ? "$stored" : "null"}, parsed, context);`);
     let result = "$stored";
     // after the write: still inside the transaction, with the stored record (a destroy: the row as it was) as `self`
     if (hasAfterWrite(steps)) {
@@ -679,7 +691,8 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     // The working copy of the record is declared only when something reads it.
     const declared = statements.findIndex((line) => line.startsWith("const $record:"));
     if (declared >= 0 && !statements.some((line, at) => at !== declared && line.includes("$record"))) statements.splice(declared, 1);
-    return { ...base, returnType, contextName: usesContext ? "context" : "_context", notRun: notRun([]), unsupported: null, usesParsed: true, statements, isRead: false, readsCall: null };
+    runtime.add("runAction");
+    return { ...base, returnType, contextName: "context", notRun: notRun([]), unsupported: null, usesParsed: true, statements, isRead: false, seamTarget, readsCall: null };
   });
   return {
     entityFile: entityFileComment(entity),

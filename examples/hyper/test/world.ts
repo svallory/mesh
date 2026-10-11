@@ -1,9 +1,11 @@
 // The fixtures the Hyper tests share: an in-memory database bound with a clock the test moves, three collaborators
 // with their memberships, the context each one acts in, and the binding the command functions run on.
 import { createSchema, sqlite } from "@meshfw/data-sqlite";
-import { InvalidInputError, type ActionContext, type Issue } from "@meshfw/runtime";
+import { InvalidInputError, type ActionContext, type Issue, type Seams } from "@meshfw/runtime";
 import { bind, tables } from "#mesh";
 import type { Binding } from "../src/domain/binding";
+import { attemptStart, sessionRecord } from "../src/domain/execution/execution.commands";
+import { reviewAccept, submissionSubmit } from "../src/domain/work/work.commands";
 
 export const NOW = new Date("2026-10-10T12:00:00.000Z");
 export const minutes = (n: number, from: Date = NOW) => new Date(from.getTime() + n * 60_000);
@@ -15,12 +17,12 @@ export const as = (collaborator: { readonly id: string }): ActionContext => ({ a
 export const setup: ActionContext = { actor: { id: "00000000-0000-4000-8000-000000000000" } };
 
 /** An empty database and its binding; the clock reads `time.now`, which a test moves. */
-export async function empty() {
+export async function empty(options: { readonly seams?: Seams } = {}) {
   const db = sqlite({ file: ":memory:" });
   await createSchema(db, tables);
   const time = { now: NOW };
   const clock = () => time.now;
-  const hyper = bind(db, { clock });
+  const hyper = bind(db, { clock, seams: options.seams });
   const binding: Binding = { transaction: hyper.transaction, clock };
   /** Write a column the actions never write, to reach a state for a test: set columns of one row. */
   const force = (table: keyof typeof tables, id: string, changes: Record<string, unknown>) =>
@@ -74,4 +76,51 @@ export async function one<T>(rows: Promise<readonly T[]>): Promise<T> {
   const [row, ...rest] = await rows;
   if (!row || rest.length > 0) throw new Error(`expected one row, got ${rest.length + (row ? 1 : 0)}`);
   return row;
+}
+
+/** An event in the spec's v0 shape (PROTOCOL.md, `Event`): typed, with a cause and a payload. */
+export function eventOf(n: number, extra: Record<string, unknown> = {}) {
+  return {
+    type: "task.created", workspaceId: "00000000-0000-4000-8000-0000000000aa", recordType: "task",
+    recordId: "00000000-0000-4000-8000-000000000001", recordVersion: 1, actor: "engine", caller: "engine",
+    occurredAt: new Date("2026-10-10T10:00:00.000Z"),
+    cause: { kind: "command", commandId: `c-${n}`, method: "task.create" }, payload: { n },
+    ...extra,
+  } as never;
+}
+
+/**
+ * One row of every entity (two of Collaborator, Membership, Task, Claim and Assignment), each written by the generated
+ * actions or the command functions, through one piece of work: Bot claims, submits and has its work accepted on the
+ * child task, then claims the parent, reports an attempt on a machine, loses the claim and reports late.
+ */
+export async function populate({ hyper, binding }: Pick<Empty, "hyper" | "binding">) {
+  const workspace = await hyper.createWorkspace({ name: "Home" }, setup);
+  const alice = await hyper.registerCollaborator({ kind: "human", name: "Alice" }, setup);
+  const bot = await hyper.registerCollaborator({ kind: "agent", name: "Bot" }, setup);
+  const membership = await hyper.grantMembership({ role: "owner", collaborator: alice.id }, as(alice));
+  const botMembership = await hyper.grantMembership({ role: "member", collaborator: bot.id }, as(alice));
+  const task = await hyper.createTask({ title: "Ship", priority: 2 }, as(alice));
+  const child = await hyper.createTask({ title: "Test", parent: task.id }, as(alice));
+  const dependency = await hyper.addDependency({ dependent: task.id, prerequisite: child.id }, as(alice));
+  await hyper.assignTask({ id: child.id, assignee: bot.id }, as(alice));
+  const childClaim = await hyper.acquireClaim({ task: child.id }, as(bot));
+  const evidence = await hyper.recordEvidenceReference({ kind: "file", locator: "notes.md" }, as(bot));
+  const submitted = await submissionSubmit({ summary: "done", evidence: [evidence.id], fence: childClaim.fence, task: child.id }, as(bot), binding);
+  if (submitted.outcome !== "submitted") throw new Error(submitted.outcome);
+  const accepted = await reviewAccept({ submission: submitted.submission.id }, as(alice), binding);
+  const machine = await hyper.registerMachine({ name: "laptop", platform: "linux" }, as(bot));
+  const { sessionReference: session } = await sessionRecord({ runtime: "claude", runtimeSessionId: "s-1", availability: "complete", machine: "laptop", agentProfile: bot.id }, as(bot), binding);
+  const run = await hyper.startRun({ inputs: { goal: "ship", steps: [1, 2] }, task: task.id }, as(alice));
+  const claim = await hyper.acquireClaim({ task: task.id }, as(bot));
+  const { attempt } = await attemptStart({ run: run.id, machine: "laptop", session: session.id }, as(bot), binding);
+  const invocation = await hyper.recordInvocation({ usageSource: "runtime", estimatedCost: 0.25, inputTokens: 10, outputTokens: 5, attempt: attempt.id }, as(bot));
+  await hyper.revokeClaim({ id: claim.id, reason: "taking over" }, as(alice));
+  const late = await submissionSubmit({ summary: "late", fence: claim.fence, task: task.id }, as(bot), binding);
+  if (late.outcome !== "late-result-recorded") throw new Error(late.outcome);
+  const event = await hyper.recordEvent(eventOf(1, { recordId: task.id, payload: { taskId: task.id, title: "Ship" }, task: task.id }), setup);
+  return {
+    workspace, alice, bot, membership, botMembership, task, child, dependency, childClaim, claim, evidence,
+    submission: submitted.submission, review: accepted.review, completion: accepted.completion, lateResult: late.lateResult, machine, session, run, attempt, invocation, event,
+  };
 }

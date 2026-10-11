@@ -4,6 +4,7 @@
 
 import {
   FrameworkError as $FrameworkError,
+  afterWrite as $afterWrite,
   castInput as $castInput,
   composed as $composed,
   guarded as $guarded,
@@ -11,6 +12,7 @@ import {
   noteWrite as $noteWrite,
   pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
+  runAction as $runAction,
   scope as $scope,
   uuidv7 as $uuidv7,
   type BindOptions as $BindOptions,
@@ -94,56 +96,73 @@ export function bindEvidenceReference(
     ): Promise<EvidenceReference> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, recordEvidenceReferenceInput, input);
-      return layer.transaction(async (tx) => {
-        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $context = (context ?? {}) as unknown as Record<string, unknown>;
-        const $actor = $context.actor;
-        const $clock = $pinClock(options.clock);
-        const $now = $clock();
-        // plan: a create is one insert; nothing is read first
-        const $changes: $Row = {
-          id: $uuidv7(),
-          contentHash: null,
-          description: null,
-          recordedAt: $now,
-        };
-        const $record: $Row = { ...$changes, kind: null, locator: null, recordedById: null };
-        const $self = $readOnlyRecord(
-          $guarded($loadPlan, "EvidenceReference", $record, "action function"),
-          "EvidenceReference.record",
-        );
-        const $s = $scope(
+      return $runAction(
+        layer,
+        options.seams,
+        { entity: "EvidenceReference", action: "record" },
+        parsed,
+        context,
+        async (tx) => {
+          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+          const $context = (context ?? {}) as unknown as Record<string, unknown>;
+          const $actor = $context.actor;
+          const $clock = $pinClock(options.clock);
+          const $now = $clock();
+          // plan: a create is one insert; nothing is read first
+          const $changes: $Row = {
+            id: $uuidv7(),
+            contentHash: null,
+            description: null,
+            recordedAt: $now,
+          };
+          const $record: $Row = { ...$changes, kind: null, locator: null, recordedById: null };
+          const $self = $readOnlyRecord(
+            $guarded($loadPlan, "EvidenceReference", $record, "action function"),
+            "EvidenceReference.record",
+          );
+          const $s = $scope(
+            {
+              self: $self,
+              input: $readOnlyRecord(parsed, "EvidenceReference.record"),
+              actor: $actor,
+              context: $context,
+              before: null,
+              ...$composed(compose, tx, context, "EvidenceReference.record", $clock),
+            },
+            { clock: $clock },
+          ) as unknown as $Scope<RecordEvidenceReferenceInput>;
+          // the input: the member inputs the caller sent, applied now that the checks have passed
+          if (parsed.kind !== undefined) $changes.kind = $record.kind = parsed.kind;
+          if (parsed.locator !== undefined) $changes.locator = $record.locator = parsed.locator;
+          if (parsed.contentHash !== undefined)
+            $changes.contentHash = $record.contentHash = parsed.contentHash;
+          if (parsed.description !== undefined)
+            $changes.description = $record.description = parsed.description;
+          // do: the steps run in written order, each seeing the record as the ones before it left it
           {
-            self: $self,
-            input: $readOnlyRecord(parsed, "EvidenceReference.record"),
-            actor: $actor,
-            context: $context,
-            before: null,
-            ...$composed(compose, tx, context, "EvidenceReference.record", $clock),
-          },
-          { clock: $clock },
-        ) as unknown as $Scope<RecordEvidenceReferenceInput>;
-        // the input: the member inputs the caller sent, applied now that the checks have passed
-        if (parsed.kind !== undefined) $changes.kind = $record.kind = parsed.kind;
-        if (parsed.locator !== undefined) $changes.locator = $record.locator = parsed.locator;
-        if (parsed.contentHash !== undefined)
-          $changes.contentHash = $record.contentHash = parsed.contentHash;
-        if (parsed.description !== undefined)
-          $changes.description = $record.description = parsed.description;
-        // do: the steps run in written order, each seeing the record as the ones before it left it
-        {
-          const $value = await $expressions["record.step.0.set.recordedBy"]($s);
-          if ($value === undefined || $value === null)
-            throw new $FrameworkError(
-              "set &recordedBy (src/domain/work/evidence-reference.mesh.mx:22:23) produced no value, and the relationship recordedBy is required",
-            );
-          $changes.recordedById = $record.recordedById = $value;
-        }
-        // data layer
-        const $stored = await tx.insert(tables.evidenceReference, $changes);
-        $noteWrite(tx);
-        return $stored as EvidenceReference;
-      });
+            const $value = await $expressions["record.step.0.set.recordedBy"]($s);
+            if ($value === undefined || $value === null)
+              throw new $FrameworkError(
+                "set &recordedBy (src/domain/work/evidence-reference.mesh.mx:22:23) produced no value, and the relationship recordedBy is required",
+              );
+            $changes.recordedById = $record.recordedById = $value;
+          }
+          // data layer
+          const $stored = await tx.insert(tables.evidenceReference, $changes);
+          $noteWrite(tx);
+          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+          await $afterWrite(
+            tx,
+            options.seams,
+            { entity: "EvidenceReference", action: "record" },
+            null,
+            $stored,
+            parsed,
+            context,
+          );
+          return $stored as EvidenceReference;
+        },
+      );
     },
 
     async read<const L extends readonly (keyof EvidenceReferenceLoadable)[] = readonly []>(

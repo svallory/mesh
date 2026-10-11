@@ -5,6 +5,7 @@
 import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
+  afterWrite as $afterWrite,
   castInput as $castInput,
   checkScope as $checkScope,
   composed as $composed,
@@ -13,6 +14,7 @@ import {
   noteWrite as $noteWrite,
   pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
+  runAction as $runAction,
   runCheck as $runCheck,
   scope as $scope,
   uuidv7 as $uuidv7,
@@ -89,73 +91,90 @@ export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, co
     ): Promise<LateResult> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, recordLateResultInput, input);
-      return layer.transaction(async (tx) => {
-        // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $context = (context ?? {}) as unknown as Record<string, unknown>;
-        const $actor = $context.actor;
-        const $clock = $pinClock(options.clock);
-        const $now = $clock();
-        // plan: a create is one insert; nothing is read first
-        const $changes: $Row = {
-          id: $uuidv7(),
-          summary: null,
-          evidence: [],
-          recordedAt: $now,
-        };
-        const $record: $Row = { ...$changes, fence: null, taskId: null, submitterId: null };
-        const $self = $readOnlyRecord(
-          $guarded($loadPlan, "LateResult", $record, "action function"),
-          "LateResult.record",
-        );
-        const $s = $scope(
+      return $runAction(
+        layer,
+        options.seams,
+        { entity: "LateResult", action: "record" },
+        parsed,
+        context,
+        async (tx) => {
+          // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
+          const $context = (context ?? {}) as unknown as Record<string, unknown>;
+          const $actor = $context.actor;
+          const $clock = $pinClock(options.clock);
+          const $now = $clock();
+          // plan: a create is one insert; nothing is read first
+          const $changes: $Row = {
+            id: $uuidv7(),
+            summary: null,
+            evidence: [],
+            recordedAt: $now,
+          };
+          const $record: $Row = { ...$changes, fence: null, taskId: null, submitterId: null };
+          const $self = $readOnlyRecord(
+            $guarded($loadPlan, "LateResult", $record, "action function"),
+            "LateResult.record",
+          );
+          const $s = $scope(
+            {
+              self: $self,
+              input: $readOnlyRecord(parsed, "LateResult.record"),
+              actor: $actor,
+              context: $context,
+              before: null,
+              ...$composed(compose, tx, context, "LateResult.record", $clock),
+            },
+            { clock: $clock },
+          ) as unknown as $Scope<RecordLateResultInput>;
+          // validate: every check runs, and every failed check is reported together
+          const $issues: $Issue[] = [];
+          const $checks = $checkScope($s);
+          await $runCheck($issues, $checks, {
+            label: "staleFence",
+            code: "claim.stale-fence",
+            message: "only a fence you held that expired or was revoked records a late result",
+            source: { file: "src/domain/work/late-result.mesh.mx", line: 23, column: 9 },
+            that: $expressions["record.check.staleFence.that"],
+          });
+          await $runCheck($issues, $checks, {
+            label: "evidenceExists",
+            code: "evidence.exists",
+            message: "an evidence reference does not exist",
+            source: { file: "src/domain/work/late-result.mesh.mx", line: 28, column: 9 },
+            that: $expressions["record.check.evidenceExists.that"],
+            details: $expressions["record.check.evidenceExists.details"],
+          });
+          if ($issues.length > 0) throw new $InvalidInputError($issues);
+          // the input: the member inputs the caller sent, applied now that the checks have passed
+          if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
+          if (parsed.fence !== undefined) $changes.fence = $record.fence = parsed.fence;
+          if (parsed.summary !== undefined) $changes.summary = $record.summary = parsed.summary;
+          if (parsed.evidence !== undefined) $changes.evidence = $record.evidence = parsed.evidence;
+          // do: the steps run in written order, each seeing the record as the ones before it left it
           {
-            self: $self,
-            input: $readOnlyRecord(parsed, "LateResult.record"),
-            actor: $actor,
-            context: $context,
-            before: null,
-            ...$composed(compose, tx, context, "LateResult.record", $clock),
-          },
-          { clock: $clock },
-        ) as unknown as $Scope<RecordLateResultInput>;
-        // validate: every check runs, and every failed check is reported together
-        const $issues: $Issue[] = [];
-        const $checks = $checkScope($s);
-        await $runCheck($issues, $checks, {
-          label: "staleFence",
-          code: "claim.stale-fence",
-          message: "only a fence you held that expired or was revoked records a late result",
-          source: { file: "src/domain/work/late-result.mesh.mx", line: 23, column: 9 },
-          that: $expressions["record.check.staleFence.that"],
-        });
-        await $runCheck($issues, $checks, {
-          label: "evidenceExists",
-          code: "evidence.exists",
-          message: "an evidence reference does not exist",
-          source: { file: "src/domain/work/late-result.mesh.mx", line: 28, column: 9 },
-          that: $expressions["record.check.evidenceExists.that"],
-          details: $expressions["record.check.evidenceExists.details"],
-        });
-        if ($issues.length > 0) throw new $InvalidInputError($issues);
-        // the input: the member inputs the caller sent, applied now that the checks have passed
-        if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
-        if (parsed.fence !== undefined) $changes.fence = $record.fence = parsed.fence;
-        if (parsed.summary !== undefined) $changes.summary = $record.summary = parsed.summary;
-        if (parsed.evidence !== undefined) $changes.evidence = $record.evidence = parsed.evidence;
-        // do: the steps run in written order, each seeing the record as the ones before it left it
-        {
-          const $value = await $expressions["record.step.0.set.submitter"]($s);
-          if ($value === undefined || $value === null)
-            throw new $FrameworkError(
-              "set &submitter (src/domain/work/late-result.mesh.mx:36:22) produced no value, and the relationship submitter is required",
-            );
-          $changes.submitterId = $record.submitterId = $value;
-        }
-        // data layer
-        const $stored = await tx.insert(tables.lateResult, $changes);
-        $noteWrite(tx);
-        return $stored as LateResult;
-      });
+            const $value = await $expressions["record.step.0.set.submitter"]($s);
+            if ($value === undefined || $value === null)
+              throw new $FrameworkError(
+                "set &submitter (src/domain/work/late-result.mesh.mx:36:22) produced no value, and the relationship submitter is required",
+              );
+            $changes.submitterId = $record.submitterId = $value;
+          }
+          // data layer
+          const $stored = await tx.insert(tables.lateResult, $changes);
+          $noteWrite(tx);
+          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+          await $afterWrite(
+            tx,
+            options.seams,
+            { entity: "LateResult", action: "record" },
+            null,
+            $stored,
+            parsed,
+            context,
+          );
+          return $stored as LateResult;
+        },
+      );
     },
 
     async read<const L extends readonly (keyof LateResultLoadable)[] = readonly []>(
