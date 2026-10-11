@@ -662,3 +662,18 @@ test("importing meshfw loads the runtime's defineConfig and no compiler code (AD
   expect(result.stderr.toString()).toBe("");
   expect(result.stdout.toString()).toBe("[]\ntrue\n");
 });
+
+// MESH_EMIT_NAME comes from the emit stage, after the front end and the model passed. Every command that builds must
+// exit 1 with the diagnostic on stderr and nothing on stdout (a follow-up of PR #69 reported `inspect` exiting 0; it does not on main).
+test.each([["build"], ["build", "--check"], ["inspect"], ["inspect", "Item"], ["explain", "Item", "forUser"]])("MESH_EMIT_NAME exits 1 with the diagnostic on stderr: mesh %s", async (...args) => {
+  const root = await project();
+  await mkdir(join(root, "domain/other"), { recursive: true });
+  await writeFile(join(root, "domain/todos/item.mesh.mx"), "entity :Item\n  attributes\n    uuid :id primary-key\n  actions\n    read :forUser\n");
+  await writeFile(join(root, "domain/other/user-item.mesh.mx"), "entity :UserItem\n  attributes\n    uuid :id primary-key\n  actions\n    read :for\n");
+  const result = run(root, ...args);
+  expect(result.code).toBe(1);
+  expect(result.stdout).toBe("");
+  expect(result.stderr).toContain("domain/todos/item.mesh.mx:5:5 error Action :forUser of :Item and Action :for of :UserItem (domain/other/user-item.mesh.mx:5:5) both become the top-level name `forUserItem`");
+  expect(result.stderr).toEndWith("1 error, 0 warnings\n");
+  expect(await Bun.file(join(root, "generated/model.json")).exists()).toBe(false);
+});
