@@ -1,9 +1,9 @@
 // Roadmap M5 acceptance test 9: each of Hyper's 57 named rules (gap analysis, Appendix A) has a passing and a failing
 // case through the generated actions, named by Hyper's rule name as the issue `code`. A command whose effect crosses
 // aggregates is called through its function in `src/domain/<module>/<module>.commands.ts`, never through the generated
-// action alone (PORTING.md). The rules whose case needs events, policies or plugins are listed in NOT_PORTED with the
+// action alone (PORTING.md). The two rules whose case needs policies or plugins are listed in NOT_PORTED with the
 // reason and the milestone; the last test checks that the two lists together are the 57, and that every code an entity
-// file reports has its cases here.
+// file reports, at any depth under the domain root, has its cases here.
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -270,8 +270,16 @@ const RULES: Record<string, Case> = {
       const held = await claim(w);
       await refused(submissionSubmit({ task: w.task.id, fence: held.fence, summary: "done", evidence: [reference.id, GHOST] }, as(w.bot), w.binding), "evidence.exists", { missing: [GHOST] });
       await refused(taskComplete({ id: w.task.id, fence: held.fence, summary: "done", evidence: [GHOST] }, as(w.bot), w.binding), "evidence.exists");
+      // Evidence is a list of ids (`schemas/protocol.ts:603`): a value that is not a list is reported, never stored.
+      await refused(submissionSubmit({ task: w.task.id, fence: held.fence, summary: "done", evidence: "abc" }, as(w.bot), w.binding), "evidence.exists", { missing: ["abc"] });
+      await refused(taskComplete({ id: w.task.id, fence: held.fence, summary: "done", evidence: { id: GHOST } }, as(w.bot), w.binding), "evidence.exists", { missing: [JSON.stringify({ id: GHOST })] });
       await w.hyper.revokeClaim({ id: held.id, reason: "taking over" }, as(w.alice));
       await refused(w.hyper.recordLateResult({ task: w.task.id, fence: held.fence, evidence: [GHOST] }, as(w.bot)), "evidence.exists");
+      // The late result a stale fence records, through both functions.
+      await refused(submissionSubmit({ task: w.task.id, fence: held.fence, summary: "late", evidence: "abc" }, as(w.bot), w.binding), "evidence.exists", { missing: ["abc"] });
+      await refused(taskComplete({ id: w.task.id, fence: held.fence, evidence: 5 }, as(w.bot), w.binding), "evidence.exists", { missing: ["5"] });
+      expect(await w.hyper.readSubmission({}, as(w.alice))).toEqual([]);
+      expect(await w.hyper.readLateResult({}, as(w.alice))).toEqual([]);
     },
   },
   "task.settled": {
@@ -373,6 +381,57 @@ const RULES: Record<string, Case> = {
       await refused(w.hyper.moveTask({ id: w.task.id, parent: other.id }, as(w.alice)), "task.no-active-claim");
     },
   },
+  "claim.invalidated": {
+    pass: async (w) => {
+      // Bot is the assignee of an assignment that waives review, so only the fence rules stand between Bot and done.
+      await w.hyper.assignTask({ id: w.task.id, assignee: w.bot.id, waiveReview: true }, as(w.alice));
+      const revoked = await claim(w);
+      await w.hyper.revokeClaim({ id: revoked.id, reason: "taking over" }, as(w.alice));
+      // With a fence, the rule does not apply: Bot claims again and completes with the new fence.
+      const again = await claim(w);
+      w.advance(1);
+      expect(await taskComplete({ id: w.task.id, fence: again.fence }, as(w.bot), w.binding)).toMatchObject({ outcome: "completed" });
+      // The revoke came before the last completion and the reopen after it, so Bot completes without a fence.
+      w.advance(1);
+      await w.hyper.reopenTask({ id: w.task.id, reason: "again" }, as(w.alice));
+      w.advance(1);
+      expect(await taskComplete({ id: w.task.id }, as(w.bot), w.binding)).toMatchObject({ outcome: "completed" });
+      // A cancel revokes Bot's claim after that completion; the reopen after the cancel is what clears it, and the Task
+      // stores when it was reopened because a reopen leaves no other row.
+      w.advance(1);
+      await w.hyper.reopenTask({ id: w.task.id, reason: "again" }, as(w.alice));
+      await claim(w);
+      w.advance(1);
+      await taskCancel({ id: w.task.id, reason: "paused" }, as(w.alice), w.binding);
+      w.advance(1);
+      expect((await w.hyper.reopenTask({ id: w.task.id, reason: "resumed" }, as(w.alice))).reopenedAt).toEqual(minutes(6));
+      w.advance(1);
+      expect(await taskComplete({ id: w.task.id }, as(w.bot), w.binding)).toMatchObject({ outcome: "completed" });
+    },
+    fail: async (w) => {
+      await w.hyper.assignTask({ id: w.task.id, assignee: w.bot.id, waiveReview: true }, as(w.alice));
+      // Revoked: an unfenced completion after the actor's claim was revoked is refused, and changes nothing.
+      const revoked = await claim(w);
+      await w.hyper.revokeClaim({ id: revoked.id, reason: "taking over" }, as(w.alice));
+      const before = await taskOf(w);
+      const issues = await issuesOf(taskComplete({ id: w.task.id }, as(w.bot), w.binding));
+      expect(codes(issues)).toEqual(["claim.invalidated"]);
+      expect(issues[0]!.details).toEqual({ fences: [revoked.fence] });
+      expect(await taskOf(w)).toEqual(before);
+      expect(await w.hyper.readCompletion({}, as(w.alice))).toEqual([]);
+      // Expired: a claim whose lease ran out counts from its lease end, whether or not it was marked expired yet.
+      const lapsed = await claim(w);
+      w.advance(11);
+      await refused(taskComplete({ id: w.task.id }, as(w.bot), w.binding), "claim.invalidated", { fences: [revoked.fence, lapsed.fence] });
+      // The next acquire marks it expired; Bot releases the new claim, and both earlier fences still count.
+      const third = await claim(w);
+      expect(await one(w.hyper.readClaim({ filter: { id: { eq: lapsed.id } } }, as(w.alice)))).toMatchObject({ state: "expired", endedAt: minutes(11) });
+      await w.hyper.releaseClaim({ id: third.id, fence: third.fence }, as(w.bot));
+      await refused(taskComplete({ id: w.task.id }, as(w.bot), w.binding), "claim.invalidated", { fences: [revoked.fence, lapsed.fence] });
+      // The generated action alone applies the rule too.
+      await refused(w.hyper.completeTask({ id: w.task.id }, as(w.bot)), "claim.invalidated");
+    },
+  },
   "assignment.assignee-role": {
     pass: async (w) => {
       await w.hyper.assignTask({ id: w.task.id, assignee: w.bob.id }, as(w.alice));
@@ -464,6 +523,11 @@ const RULES: Record<string, Case> = {
       // also fails claim.current-fence, and both are reported.
       const { claim: held } = await submitted(w);
       await refused(submissionSubmit({ task: w.task.id, fence: held.fence, summary: "again" }, as(w.bot), w.binding), "submission.none-pending");
+      // No action reaches a live claim beside a pending submission (Hyper's rule is defensive, `submission/rules.ex:9`),
+      // so the claim is inserted as it is; the rule then fails alone.
+      await w.insert("claim", { taskId: w.task.id, holderId: w.bot.id, fence: held.fence + 1, acquiredAt: NOW, expiresAt: minutes(10), state: "active" });
+      const issues = await issuesOf(submissionSubmit({ task: w.task.id, fence: held.fence + 1, summary: "again" }, as(w.bot), w.binding));
+      expect(codes(issues)).toEqual(["submission.none-pending"]);
     },
   },
   "submission.task-version": {
@@ -738,11 +802,10 @@ const PORT_ONLY: Record<string, Case> = {
   },
 };
 
-/** Hyper's rules whose cases need policies, events or plugins, with the milestone that brings them. */
+/** Hyper's rules whose cases need policies or plugins, with the milestone that brings them. */
 const NOT_PORTED: Record<string, string> = {
   role: "a policy (`canWork(actor)`, `memberships/rules.ex:12`); policies run in M8 (G21)",
   "task.not-blocked": "asks the blocking-condition providers (`tasks/task/rules.ex:82`); providers arrive with the plugin hook points in M6 (G11)",
-  "claim.invalidated": "reads the claim events since the last completion or reopen (`tasks/task/rules.ex:101`); events are written in M6 (G12)",
 };
 
 /** Appendix A of the gap analysis: the 57 rule names, in its order. */
@@ -769,12 +832,16 @@ describe("roadmap M5 test 9: each of Hyper's rules, a passing and a failing case
   test("the rules run here and the ones not ported are Hyper's 57, and every code an entity file reports is run here", () => {
     expect(HYPER_RULES).toHaveLength(57);
     expect(new Set(HYPER_RULES).size).toBe(57);
+    expect(Object.keys(RULES)).toHaveLength(55);
+    expect(Object.keys(NOT_PORTED)).toEqual(["role", "task.not-blocked"]);
     expect([...Object.keys(RULES), ...Object.keys(NOT_PORTED)].sort()).toEqual([...HYPER_RULES].sort());
+    // Every entity file under the domain root (`mesh.config.ts`), at any depth.
     const domain = resolve(import.meta.dir, "../src/domain");
+    const files = readdirSync(domain, { recursive: true, encoding: "utf8" }).filter((path) => path.endsWith(".mesh.mx"));
+    expect(files.length).toBeGreaterThanOrEqual(18);
     const reported = new Set<string>();
-    for (const module of readdirSync(domain, { withFileTypes: true }).filter((entry) => entry.isDirectory()))
-      for (const file of readdirSync(resolve(domain, module.name)).filter((name) => name.endsWith(".mesh.mx")))
-        for (const [, code] of readFileSync(resolve(domain, module.name, file), "utf8").matchAll(/code="([^"]+)"/g)) reported.add(code!);
+    for (const file of files)
+      for (const [, code] of readFileSync(resolve(domain, file), "utf8").matchAll(/code="([^"]+)"/g)) reported.add(code!);
     expect([...reported].sort()).toEqual([...Object.keys(RULES), ...Object.keys(PORT_ONLY)].sort());
   });
 });

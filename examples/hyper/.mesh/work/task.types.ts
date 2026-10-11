@@ -25,6 +25,7 @@ export type Task = {
   state: "open" | "done" | "canceled";
   version: number;
   createdAt: Date;
+  reopenedAt: Date | null;
   parentId: string | null;
   creatorId: string;
 };
@@ -157,6 +158,7 @@ export type TaskFilter =
       state?: $Comparison<"open" | "done" | "canceled">;
       version?: $Comparison<number>;
       createdAt?: $Comparison<Date>;
+      reopenedAt?: $Comparison<Date>;
       parentId?: $Comparison<string>;
       creatorId?: $Comparison<string>;
       childrenSettled?: $Comparison<boolean>;
@@ -186,6 +188,8 @@ export type TaskSort = readonly (
   | "-version"
   | "createdAt"
   | "-createdAt"
+  | "reopenedAt"
+  | "-reopenedAt"
   | "parentId"
   | "-parentId"
   | "creatorId"

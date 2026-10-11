@@ -3,7 +3,7 @@
 // `src/domain/<module>/<module>.commands.ts`, each one application transaction. Roadmap M5 acceptance tests 1, 2, 3, 6
 // and 10, the version rule of PROTOCOL.md §4.5, and the naming rule of the functions.
 import { describe, expect, test } from "bun:test";
-import type { DataLayer, DataOperations, TableHandle } from "@meshfw/runtime";
+import { FrameworkError, type DataLayer, type DataOperations, type TableHandle } from "@meshfw/runtime";
 import * as mesh from "#mesh";
 import { bind, tables } from "#mesh";
 import * as executionCommands from "../src/domain/execution/execution.commands";
@@ -16,6 +16,14 @@ import { as, codes, issuesOf, minutes, NOW, one, within, type World } from "./wo
 
 const taskOf = async (w: World, id: string) => one(w.hyper.readTask({ filter: { id: { eq: id } } }, as(w.alice)));
 const claimsOf = (w: World, taskId: string) => w.hyper.readClaim({ filter: { taskId: { eq: taskId } } }, as(w.alice));
+
+/** Bot claims `task` and submits: the pending submission. */
+async function submitted(w: World, task: string) {
+  const held = await w.hyper.acquireClaim({ task }, as(w.bot));
+  const result = await submissionSubmit({ task, fence: held.fence, summary: "ready" }, as(w.bot), w.binding);
+  if (result.outcome !== "submitted") throw new Error(result.outcome);
+  return result.submission;
+}
 
 /** A layer that fails the first write `refuse` matches, as a failing step would: the error rolls the transaction back. */
 function refusing(layer: DataLayer, refuse: (table: TableHandle, changes: Record<string, unknown>) => boolean): DataLayer {
@@ -87,6 +95,32 @@ describe("acceptance 1: task.complete writes the completion, the submission and 
     expect(accepted.task).toMatchObject({ state: "done", version: submitted.task.version + 1 });
     expect(await one(w.hyper.readSubmission({}, as(w.alice)))).toMatchObject({ state: "accepted" });
     expect(accepted.warnings).toEqual([]);
+  }));
+
+  test("a completion context that names a submission review.accept did not just accept is a FrameworkError, and writes nothing", () => within(async (w) => {
+    // Another Task's pending submission, the forged call of the PR #65 review (N2).
+    const other = await w.hyper.createTask({ title: "Other" }, as(w.alice));
+    const foreign = await submitted(w, other.id);
+    const before = await taskOf(w, w.task.id);
+    const forged = (submissionId: string, actor: { id: string } = w.alice) => ({ ...as(actor), completion: { rule: "review-accepted" as const, submissionId } });
+    await expect(taskComplete({ id: w.task.id }, forged(foreign.id), w.binding)).rejects.toBeInstanceOf(FrameworkError);
+    await expect(w.hyper.completeTask({ id: w.task.id }, forged(foreign.id))).rejects.toThrow(`submission ${foreign.id}`);
+    // This Task's own submission while it is still pending, named by its submitter, whose assignment waives review.
+    await w.hyper.assignTask({ id: w.task.id, assignee: w.bot.id, waiveReview: true }, as(w.alice));
+    const own = await submitted(w, w.task.id);
+    await expect(w.hyper.completeTask({ id: w.task.id }, forged(own.id, w.bot))).rejects.toThrow(`submission ${own.id}`);
+    expect(await w.hyper.readCompletion({}, as(w.alice))).toEqual([]);
+    expect(await w.hyper.readReview({}, as(w.alice))).toEqual([]);
+    expect(await one(w.hyper.readSubmission({ filter: { id: { eq: foreign.id } } }, as(w.alice)))).toMatchObject({ state: "pending" });
+    // The assignment, the claim and the submission bumped the Task once each; the refused completions did not.
+    expect((await taskOf(w, w.task.id)).version).toBe(before.version + 3);
+    // The honest path still passes: review.accept settles the submission, then completes with it.
+    const accepted = await reviewAccept({ submission: own.id }, as(w.alice), w.binding);
+    expect(accepted.completion).toMatchObject({ rule: "review-accepted", submissionId: own.id });
+    // Once a completion names that submission, it cannot be named again after a reopen.
+    await w.hyper.reopenTask({ id: w.task.id, reason: "again" }, as(w.alice));
+    await expect(w.hyper.completeTask({ id: w.task.id }, forged(own.id))).rejects.toThrow(`submission ${own.id}`);
+    expect(await w.hyper.readCompletion({}, as(w.alice))).toHaveLength(1);
   }));
 
   test("review.accept that fails in the completion leaves the submission pending and writes no review", () => within(async (w) => {
@@ -402,9 +436,11 @@ describe("PROTOCOL.md §4.5: the Task's version goes up by one per committed com
 describe("the command functions", () => {
   test("follow Hyper's method names in camelCase, and none is a name `#mesh` exports", () => {
     const exported = new Set(Object.keys(mesh));
-    const functions = { ...workCommands, ...identityCommands, ...executionCommands };
-    expect(Object.keys(functions).sort()).toEqual(["attemptStart", "collaboratorRetire", "membershipRevoke", "reviewAccept", "sessionRecord", "submissionSubmit", "taskCancel", "taskComplete"]);
-    for (const name of Object.keys(functions)) expect(exported.has(name), name).toBe(false);
+    // The key lists, not a spread of the modules: a name two modules export would be one key of a spread.
+    const names = [workCommands, identityCommands, executionCommands].flatMap((module) => Object.keys(module));
+    expect(names.filter((name, at) => names.indexOf(name) !== at)).toEqual([]);
+    expect([...names].sort()).toEqual(["attemptStart", "collaboratorRetire", "membershipRevoke", "reviewAccept", "sessionRecord", "submissionSubmit", "taskCancel", "taskComplete"]);
+    for (const name of names) expect(exported.has(name), name).toBe(false);
     // The generated names put the action first, so `<entity><Method>` cannot meet one.
     expect(exported.has("completeTask") && exported.has("cancelTask") && exported.has("revokeMembership")).toBe(true);
   });

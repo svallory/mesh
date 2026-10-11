@@ -222,6 +222,7 @@ export const taskTable = _meshSqlite("tasks", {
   state: text("state", { enum: ["open", "done", "canceled"] }).notNull(),
   version: integer("version").notNull(),
   createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull(),
+  reopenedAt: integer("reopenedAt", { mode: "timestamp_ms" }),
   parentId: text("parentId"),
   creatorId: text("creatorId").notNull(),
 });

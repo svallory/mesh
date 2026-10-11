@@ -5,7 +5,7 @@ import { Claim } from "./claim.mesh.mx"
 import { Submission } from "./submission.mesh.mx"
 import { Completion } from "./completion.mesh.mx"
 import { Event } from "../audit/event.mesh.mx"
-import { assignmentChanges, claimToRelease, completionRule, currentAssignment, fenceDetails, fenceIsCurrent, missingEvidenceOf, noContainmentCycleOf, openChildren, openClaims, ownPending, reviewerFor, reviewNotRequiredOf } from "./work.helpers"
+import { acceptedSubmissionOf, assignmentChanges, claimNotInvalidated, claimToRelease, completionRule, currentAssignment, fenceDetails, fenceIsCurrent, invalidatedFences, missingEvidenceOf, noContainmentCycleOf, openChildren, openClaims, ownPending, reviewerFor, reviewNotRequiredOf } from "./work.helpers"
 import { assignableOf, collaboratorActiveOf } from "../identity/identity.helpers"
 
 entity :Task table="tasks"
@@ -17,6 +17,7 @@ entity :Task table="tasks"
     enum :state values=[:open, :done, :canceled] default=:open
     integer :version default=1
     timestamp :createdAt on=:create
+    timestamp :reopenedAt nullable
   relationships
     belongs-to :parent entity=Task nullable
     belongs-to :creator entity=Collaborator
@@ -150,6 +151,7 @@ entity :Task table="tasks"
       do
         set
           &state=:open
+          &reopenedAt=() => now()
           &version=() => &version + 1
     update :touch
       do
@@ -216,6 +218,12 @@ entity :Task table="tasks"
           message="the fence is not your current claim; claim the task again"
           details=({ input, actor }) => fenceDetails(&maxFence, &claims, input.fence, actor.id, now())
         ]
+        check :claimNotInvalidated [
+          that=({ input, actor }) => claimNotInvalidated(&claims, input.fence, actor.id, &completions, &reopenedAt, now())
+          code="claim.invalidated"
+          message="your claim on this task was invalidated; claim it again and complete with the new fence"
+          details=({ actor }) => ({ fences: invalidatedFences(&claims, actor.id, &completions, &reopenedAt, now()) })
+        ]
         check :ownSubmissionPending [
           that=({ input, actor }) => (input.summary == null && input.evidence == null) || !&submissions.some((s) => s.state === :pending && s.submitterId === actor.id)
           code="submission.pending"
@@ -240,7 +248,7 @@ entity :Task table="tasks"
         run [after=:write] ({ self, before, input, actor, context, tx, actions }) {
           let submission: string | null = null;
           let rule: "review-accepted" | "performer-is-reviewer" | "review-waived" = "review-accepted";
-          if (context.completion) submission = context.completion.submissionId;
+          if (context.completion) submission = await acceptedSubmissionOf(tx, self.id, context.completion.submissionId);
           else {
             rule = completionRule(actor.id, await reviewerFor(tx, self));
             if (input.summary != null || input.evidence != null) {

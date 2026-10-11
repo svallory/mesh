@@ -119,6 +119,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           state: "open",
           version: 1,
           createdAt: $now,
+          reopenedAt: null,
           parentId: parsed.parent === undefined ? null : parsed.parent,
         };
         const $record: $Row = { ...$changes };
@@ -145,7 +146,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           label: "parentOpen",
           code: "task.parent-open",
           message: "the parent task is not open",
-          source: { file: "src/domain/work/task.mesh.mx", line: 48, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 49, column: 9 },
           that: $expressions["create.check.parentOpen.that"],
         });
         if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -154,7 +155,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           const $value = await $expressions["create.step.0.set.creator"]($s);
           if ($value === undefined || $value === null)
             throw new $FrameworkError(
-              "set &creator (src/domain/work/task.mesh.mx:55:20) produced no value, and the relationship creator is required",
+              "set &creator (src/domain/work/task.mesh.mx:56:20) produced no value, and the relationship creator is required",
             );
           $changes.creatorId = $record.creatorId = $value;
         }
@@ -206,21 +207,21 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           label: "taskOpen",
           code: "task.open",
           message: "the task is not open; reopen it first",
-          source: { file: "src/domain/work/task.mesh.mx", line: 62, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 63, column: 9 },
           that: $expressions["update.check.taskOpen.that"],
         });
         await $runCheck($issues, $s, {
           label: "taskChanges",
           code: "task.unchanged",
           message: "nothing to change: every field already has that value",
-          source: { file: "src/domain/work/task.mesh.mx", line: 67, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 68, column: 9 },
           that: $expressions["update.check.taskChanges.that"],
         });
         await $runCheck($issues, $s, {
           label: "versionMatches",
           code: "expected-version",
           message: "the record is at another version; read it again and retry",
-          source: { file: "src/domain/work/task.mesh.mx", line: 72, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 73, column: 9 },
           that: $expressions["update.check.versionMatches.that"],
           details: $expressions["update.check.versionMatches.details"],
         });
@@ -230,7 +231,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           const $value = await $expressions["update.step.0.set.version"]($s);
           if ($value === undefined || $value === null)
             throw new $FrameworkError(
-              "set &version (src/domain/work/task.mesh.mx:80:20) produced no value, and version is required",
+              "set &version (src/domain/work/task.mesh.mx:81:20) produced no value, and version is required",
             );
           $changes.version = $record.version = $value;
         }
@@ -283,14 +284,14 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           label: "taskOpen",
           code: "task.open",
           message: "the task is not open; reopen it first",
-          source: { file: "src/domain/work/task.mesh.mx", line: 86, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 87, column: 9 },
           that: $expressions["setPriority.check.taskOpen.that"],
         });
         await $runCheck($issues, $s, {
           label: "versionMatches",
           code: "expected-version",
           message: "the record is at another version; read it again and retry",
-          source: { file: "src/domain/work/task.mesh.mx", line: 91, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 92, column: 9 },
           that: $expressions["setPriority.check.versionMatches.that"],
           details: $expressions["setPriority.check.versionMatches.details"],
         });
@@ -300,7 +301,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           const $value = await $expressions["setPriority.step.0.set.version"]($s);
           if ($value === undefined || $value === null)
             throw new $FrameworkError(
-              "set &version (src/domain/work/task.mesh.mx:99:20) produced no value, and version is required",
+              "set &version (src/domain/work/task.mesh.mx:100:20) produced no value, and version is required",
             );
           $changes.version = $record.version = $value;
         }
@@ -355,35 +356,35 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           label: "taskOpen",
           code: "task.open",
           message: "the task is not open; reopen it first",
-          source: { file: "src/domain/work/task.mesh.mx", line: 105, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 106, column: 9 },
           that: $expressions["move.check.taskOpen.that"],
         });
         await $runCheck($issues, $s, {
           label: "parentOpen",
           code: "task.parent-open",
           message: "the parent task is not open",
-          source: { file: "src/domain/work/task.mesh.mx", line: 110, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 111, column: 9 },
           that: $expressions["move.check.parentOpen.that"],
         });
         await $runCheck($issues, $s, {
           label: "noCycle",
           code: "task.no-cycle",
           message: "the new parent is this task or one of its descendants",
-          source: { file: "src/domain/work/task.mesh.mx", line: 115, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 116, column: 9 },
           that: $expressions["move.check.noCycle.that"],
         });
         await $runCheck($issues, $s, {
           label: "noActiveClaim",
           code: "task.no-active-claim",
           message: "release or revoke the active claim first",
-          source: { file: "src/domain/work/task.mesh.mx", line: 120, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 121, column: 9 },
           that: $expressions["move.check.noActiveClaim.that"],
         });
         await $runCheck($issues, $s, {
           label: "versionMatches",
           code: "expected-version",
           message: "the record is at another version; read it again and retry",
-          source: { file: "src/domain/work/task.mesh.mx", line: 125, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 126, column: 9 },
           that: $expressions["move.check.versionMatches.that"],
           details: $expressions["move.check.versionMatches.details"],
         });
@@ -393,7 +394,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           const $value = await $expressions["move.step.0.set.version"]($s);
           if ($value === undefined || $value === null)
             throw new $FrameworkError(
-              "set &version (src/domain/work/task.mesh.mx:133:20) produced no value, and version is required",
+              "set &version (src/domain/work/task.mesh.mx:134:20) produced no value, and version is required",
             );
           $changes.version = $record.version = $value;
         }
@@ -446,14 +447,14 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           label: "taskSettled",
           code: "task.settled",
           message: "the task is already open",
-          source: { file: "src/domain/work/task.mesh.mx", line: 139, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 140, column: 9 },
           that: $expressions["reopen.check.taskSettled.that"],
         });
         await $runCheck($issues, $s, {
           label: "versionMatches",
           code: "expected-version",
           message: "the record is at another version; read it again and retry",
-          source: { file: "src/domain/work/task.mesh.mx", line: 144, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 145, column: 9 },
           that: $expressions["reopen.check.versionMatches.that"],
           details: $expressions["reopen.check.versionMatches.details"],
         });
@@ -461,10 +462,14 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         // do: the steps run in written order, each seeing the record as the ones before it left it
         $changes.state = $record.state = "open";
         {
+          const $value = await $expressions["reopen.step.0.set.reopenedAt"]($s);
+          $changes.reopenedAt = $record.reopenedAt = $value === undefined ? null : $value;
+        }
+        {
           const $value = await $expressions["reopen.step.0.set.version"]($s);
           if ($value === undefined || $value === null)
             throw new $FrameworkError(
-              "set &version (src/domain/work/task.mesh.mx:153:20) produced no value, and version is required",
+              "set &version (src/domain/work/task.mesh.mx:155:20) produced no value, and version is required",
             );
           $changes.version = $record.version = $value;
         }
@@ -515,7 +520,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           const $value = await $expressions["touch.step.0.set.version"]($s);
           if ($value === undefined || $value === null)
             throw new $FrameworkError(
-              "set &version (src/domain/work/task.mesh.mx:157:20) produced no value, and version is required",
+              "set &version (src/domain/work/task.mesh.mx:159:20) produced no value, and version is required",
             );
           $changes.version = $record.version = $value;
         }
@@ -567,14 +572,14 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           label: "taskOpen",
           code: "task.open",
           message: "the task is not open; reopen it first",
-          source: { file: "src/domain/work/task.mesh.mx", line: 163, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 165, column: 9 },
           that: $expressions["cancel.check.taskOpen.that"],
         });
         await $runCheck($issues, $s, {
           label: "versionMatches",
           code: "expected-version",
           message: "the record is at another version; read it again and retry",
-          source: { file: "src/domain/work/task.mesh.mx", line: 168, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 170, column: 9 },
           that: $expressions["cancel.check.versionMatches.that"],
           details: $expressions["cancel.check.versionMatches.details"],
         });
@@ -585,7 +590,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           const $value = await $expressions["cancel.step.0.set.version"]($s);
           if ($value === undefined || $value === null)
             throw new $FrameworkError(
-              "set &version (src/domain/work/task.mesh.mx:177:20) produced no value, and version is required",
+              "set &version (src/domain/work/task.mesh.mx:179:20) produced no value, and version is required",
             );
           $changes.version = $record.version = $value;
         }
@@ -654,21 +659,21 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           "Task",
           tx,
           $record,
-          ["children", "childrenSettled", "claims", "maxFence", "submissions"],
+          ["children", "childrenSettled", "claims", "completions", "maxFence", "submissions"],
           $load,
         );
         await $runCheck($issues, $s, {
           label: "taskOpen",
           code: "task.open",
           message: "the task is not open; reopen it first",
-          source: { file: "src/domain/work/task.mesh.mx", line: 191, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 193, column: 9 },
           that: $expressions["complete.check.taskOpen.that"],
         });
         await $runCheck($issues, $s, {
           label: "childrenSettled",
           code: "task.children-settled",
           message: "complete or cancel every child first",
-          source: { file: "src/domain/work/task.mesh.mx", line: 196, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 198, column: 9 },
           that: $expressions["complete.check.childrenSettled.that"],
           details: $expressions["complete.check.childrenSettled.details"],
         });
@@ -676,7 +681,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           label: "reviewRequired",
           code: "task.review-required",
           message: "a review is required: submit the work for the reviewer to review",
-          source: { file: "src/domain/work/task.mesh.mx", line: 202, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 204, column: 9 },
           that: $expressions["complete.check.reviewRequired.that"],
           details: $expressions["complete.check.reviewRequired.details"],
         });
@@ -684,29 +689,38 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           label: "noForeignSubmission",
           code: "task.no-foreign-submission",
           message: "another collaborator's submission is pending review",
-          source: { file: "src/domain/work/task.mesh.mx", line: 208, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 210, column: 9 },
           that: $expressions["complete.check.noForeignSubmission.that"],
         });
         await $runCheck($issues, $s, {
           label: "currentFence",
           code: "claim.current-fence",
           message: "the fence is not your current claim; claim the task again",
-          source: { file: "src/domain/work/task.mesh.mx", line: 213, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 215, column: 9 },
           that: $expressions["complete.check.currentFence.that"],
           details: $expressions["complete.check.currentFence.details"],
+        });
+        await $runCheck($issues, $s, {
+          label: "claimNotInvalidated",
+          code: "claim.invalidated",
+          message:
+            "your claim on this task was invalidated; claim it again and complete with the new fence",
+          source: { file: "src/domain/work/task.mesh.mx", line: 221, column: 9 },
+          that: $expressions["complete.check.claimNotInvalidated.that"],
+          details: $expressions["complete.check.claimNotInvalidated.details"],
         });
         await $runCheck($issues, $s, {
           label: "ownSubmissionPending",
           code: "submission.pending",
           message: "your submission is pending review; withdraw it first",
-          source: { file: "src/domain/work/task.mesh.mx", line: 219, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 227, column: 9 },
           that: $expressions["complete.check.ownSubmissionPending.that"],
         });
         await $runCheck($issues, $s, {
           label: "evidenceExists",
           code: "evidence.exists",
           message: "an evidence reference does not exist",
-          source: { file: "src/domain/work/task.mesh.mx", line: 224, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 232, column: 9 },
           that: $expressions["complete.check.evidenceExists.that"],
           details: $expressions["complete.check.evidenceExists.details"],
         });
@@ -714,7 +728,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           label: "versionMatches",
           code: "expected-version",
           message: "the record is at another version; read it again and retry",
-          source: { file: "src/domain/work/task.mesh.mx", line: 230, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 238, column: 9 },
           that: $expressions["complete.check.versionMatches.that"],
           details: $expressions["complete.check.versionMatches.details"],
         });
@@ -725,7 +739,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           const $value = await $expressions["complete.step.0.set.version"]($s);
           if ($value === undefined || $value === null)
             throw new $FrameworkError(
-              "set &version (src/domain/work/task.mesh.mx:239:20) produced no value, and version is required",
+              "set &version (src/domain/work/task.mesh.mx:247:20) produced no value, and version is required",
             );
           $changes.version = $record.version = $value;
         }
@@ -795,35 +809,35 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           label: "taskOpen",
           code: "task.open",
           message: "the task is not open; reopen it first",
-          source: { file: "src/domain/work/task.mesh.mx", line: 267, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 275, column: 9 },
           that: $expressions["assign.check.taskOpen.that"],
         });
         await $runCheck($issues, $s, {
           label: "assigneeActive",
           code: "collaborator.active",
           message: "the collaborator is retired",
-          source: { file: "src/domain/work/task.mesh.mx", line: 272, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 280, column: 9 },
           that: $expressions["assign.check.assigneeActive.that"],
         });
         await $runCheck($issues, $s, {
           label: "assigneeRole",
           code: "assignment.assignee-role",
           message: "only members and owners can be assigned",
-          source: { file: "src/domain/work/task.mesh.mx", line: 277, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 285, column: 9 },
           that: $expressions["assign.check.assigneeRole.that"],
         });
         await $runCheck($issues, $s, {
           label: "assignmentChanges",
           code: "assignment.unchanged",
           message: "assignee and review waiver are unchanged",
-          source: { file: "src/domain/work/task.mesh.mx", line: 282, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 290, column: 9 },
           that: $expressions["assign.check.assignmentChanges.that"],
         });
         await $runCheck($issues, $s, {
           label: "versionMatches",
           code: "expected-version",
           message: "the record is at another version; read it again and retry",
-          source: { file: "src/domain/work/task.mesh.mx", line: 287, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 295, column: 9 },
           that: $expressions["assign.check.versionMatches.that"],
           details: $expressions["assign.check.versionMatches.details"],
         });
@@ -833,7 +847,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           const $value = await $expressions["assign.step.0.set.version"]($s);
           if ($value === undefined || $value === null)
             throw new $FrameworkError(
-              "set &version (src/domain/work/task.mesh.mx:295:20) produced no value, and version is required",
+              "set &version (src/domain/work/task.mesh.mx:303:20) produced no value, and version is required",
             );
           $changes.version = $record.version = $value;
         }
@@ -903,14 +917,14 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           label: "assignmentCurrent",
           code: "assignment.current",
           message: "the task has no current assignment",
-          source: { file: "src/domain/work/task.mesh.mx", line: 311, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 319, column: 9 },
           that: $expressions["unassign.check.assignmentCurrent.that"],
         });
         await $runCheck($issues, $s, {
           label: "versionMatches",
           code: "expected-version",
           message: "the record is at another version; read it again and retry",
-          source: { file: "src/domain/work/task.mesh.mx", line: 316, column: 9 },
+          source: { file: "src/domain/work/task.mesh.mx", line: 324, column: 9 },
           that: $expressions["unassign.check.versionMatches.that"],
           details: $expressions["unassign.check.versionMatches.details"],
         });
@@ -920,7 +934,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           const $value = await $expressions["unassign.step.0.set.version"]($s);
           if ($value === undefined || $value === null)
             throw new $FrameworkError(
-              "set &version (src/domain/work/task.mesh.mx:324:20) produced no value, and version is required",
+              "set &version (src/domain/work/task.mesh.mx:332:20) produced no value, and version is required",
             );
           $changes.version = $record.version = $value;
         }

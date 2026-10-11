@@ -1,7 +1,7 @@
 // Helpers for the work entity files and the work functions. The pure ones take values (rows already read, ids, a
 // time) and never the model; the ones whose names end in `Of` read through `tx`, the reads of the running
 // transaction, and hand what they read to a pure one. Each names the Hyper rule or change it follows.
-import type { ReadOnlyResults } from "@meshfw/runtime";
+import { FrameworkError, type ReadOnlyResults } from "@meshfw/runtime";
 import type { Reads as AllReads } from "#mesh";
 
 /** The reads of the running transaction, as an entity file's `tx` or an application transaction's `tx` hands them over. */
@@ -66,6 +66,53 @@ export function staleClaim<C extends ClaimFacts>(claims: readonly C[], fence: nu
 /** Whether `fence` names a stale claim of `holderId` (`staleClaim`): the condition of a late result. */
 export function isStale(claims: readonly ClaimFacts[], fence: number | null | undefined, holderId: string, now: Date): boolean {
   return staleClaim(claims, fence, holderId, now) !== undefined;
+}
+
+export interface EndedClaimFacts extends ClaimFacts {
+  readonly endedAt: Instant | null;
+}
+
+/**
+ * When a claim stopped counting for its holder, in milliseconds, or null while it is live or once it was released. A
+ * claim is expired the moment its lease runs out, whether or not it was marked expired (PROTOCOL.md:312), so a revoked
+ * or expired claim counts from its end or its lease end, whichever came first, and an active one from its lease end
+ * once that has passed. The port marks a lapsed claim expired only when a command notices it (no sweeper), and a
+ * command that revokes every open claim can end one whose lease had already run out, so `endedAt` alone would be late.
+ * The Elixir engine compares `ended_at` once a claim is marked (`tasks/task/rules.ex:175-176`); the port follows the spec.
+ */
+export function invalidatedAt(claim: EndedClaimFacts, now: Date): number | null {
+  const leaseEnd = claim.expiresAt.getTime();
+  if (claim.state === "revoked" || claim.state === "expired") return Math.min(claim.endedAt?.getTime() ?? leaseEnd, leaseEnd);
+  return claim.state === "active" && leaseEnd <= now.getTime() ? leaseEnd : null;
+}
+
+/**
+ * The Task's last completion or reopen, in milliseconds, or null when it has had neither: the latest `completedAt` of
+ * its completions (`review.accept` records one too) and its `reopenedAt`. Hyper reads the time of the last `complete`
+ * or `reopen` event (`tasks/task/rules.ex:184-192`); a reopen leaves no row, so the Task stores when it was reopened.
+ */
+export function lastCompletedOrReopened(completions: readonly { readonly completedAt: Instant }[], reopenedAt: Instant | null): number | null {
+  const times = [...completions.map((completion) => completion.completedAt.getTime()), ...(reopenedAt === null ? [] : [reopenedAt.getTime()])];
+  return times.length === 0 ? null : Math.max(...times);
+}
+
+/**
+ * `claim.invalidated` (PROTOCOL.md:326, `tasks/task/rules.ex:101-116` and `:168-182`): the fences, in order, of the
+ * claims `holderId` held on the Task that expired or were revoked after its last completion or reopen. An unfenced
+ * `task.complete` by that holder is refused while there is one: a stale worker cannot finish (invariant 3).
+ */
+export function invalidatedFences(claims: readonly EndedClaimFacts[], holderId: string, completions: readonly { readonly completedAt: Instant }[], reopenedAt: Instant | null, now: Date): number[] {
+  const since = lastCompletedOrReopened(completions, reopenedAt) ?? Number.NEGATIVE_INFINITY;
+  return claims
+    .filter((claim) => claim.holderId === holderId)
+    .filter((claim) => { const at = invalidatedAt(claim, now); return at !== null && at > since; })
+    .map((claim) => claim.fence)
+    .sort((a, b) => a - b);
+}
+
+/** `claim.invalidated` on `task.complete`: a completion with a fence passes (the fence rules decide it); one without passes while `invalidatedFences` is empty. */
+export function claimNotInvalidated(claims: readonly EndedClaimFacts[], fence: number | null | undefined, actorId: string, completions: readonly { readonly completedAt: Instant }[], reopenedAt: Instant | null, now: Date): boolean {
+  return (fence !== null && fence !== undefined) || invalidatedFences(claims, actorId, completions, reopenedAt, now).length === 0;
 }
 
 /** `claim.current-fence`'s details on a submission or a completion: the Task's latest fence, and whether the given one is stale. */
@@ -171,6 +218,20 @@ export function ownPending<S extends SubmissionFacts>(submissions: readonly S[],
   return submissions.find((submission) => submission.state === "pending" && submission.submitterId === actorId);
 }
 
+/**
+ * The submission a `review-accepted` completion names (`context.completion`, which only `review.accept` sets on its
+ * nested `task.complete`, `tasks/review/changes/review.ex:25-31`): a submission of the Task being completed, that
+ * `review.accept` has just settled as accepted and that no completion names yet. Anything else means the context
+ * was forged or misrouted, which no input can cause, so it is a `FrameworkError` and the transaction rolls back.
+ */
+export async function acceptedSubmissionOf(tx: Reads, taskId: string, submissionId: string): Promise<string> {
+  const [submission] = await tx.readSubmission({ filter: { id: { eq: submissionId } } });
+  const named = await tx.readCompletion({ filter: { submissionId: { eq: submissionId } }, limit: 1 });
+  if (!submission || submission.taskId !== taskId || submission.state !== "accepted" || named.length > 0)
+    throw new FrameworkError(`a review-accepted completion of Task ${taskId} names submission ${submissionId}, which is not an accepted submission of that Task that no completion names yet`);
+  return submission.id;
+}
+
 /** The ids of the open children (`task.children-settled`'s `details.openChildren`, `tasks/task/rules.ex:40-53`). */
 export function openChildren(children: readonly { readonly id: string; readonly state: string }[]): string[] {
   return children.filter((child) => child.state === "open").map((child) => child.id);
@@ -203,10 +264,17 @@ export async function blockReasonsOf(tx: Reads, taskId: string): Promise<BlockRe
   return blockReasons(dependencies.map((d) => byId.get(d.prerequisiteId)!).filter((task) => task !== undefined));
 }
 
-/** `evidence.exists` (`tasks/rules.ex:48-62`): the ids among `evidence` that name no evidence reference. */
+/**
+ * `evidence.exists` (`tasks/rules.ex:48-62`): the ids among `evidence` that name no evidence reference. Evidence is a
+ * list of ids (`schemas/protocol.ts:603`); a value that is neither null nor a list is reported whole, as text, so it
+ * is never stored, and so is each item of a list that is not a string.
+ */
 export async function missingEvidenceOf(tx: Reads, evidence: unknown): Promise<string[]> {
-  const ids = Array.isArray(evidence) ? evidence.filter((id): id is string => typeof id === "string") : [];
-  if (Array.isArray(evidence) && ids.length !== evidence.length) return evidence.filter((id) => typeof id !== "string").map(String);
+  const text = (value: unknown) => typeof value === "string" ? value : JSON.stringify(value);
+  if (evidence === null || evidence === undefined) return [];
+  if (!Array.isArray(evidence)) return [text(evidence)];
+  const ids = evidence.filter((id): id is string => typeof id === "string");
+  if (ids.length !== evidence.length) return evidence.filter((id) => typeof id !== "string").map(text);
   if (ids.length === 0) return [];
   const found = new Set((await tx.readEvidenceReference({ filter: { id: { in: ids } } })).map((row) => row.id));
   return ids.filter((id) => !found.has(id));
