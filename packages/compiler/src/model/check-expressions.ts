@@ -80,6 +80,8 @@ interface Scope {
   acceptedOnCreate?: ReadonlySet<string>;
   /** In a check that can run on a create: the members some such create takes as a member input (and a relationship's key column). */
   pending?: ReadonlySet<string>;
+  /** Which part of a check this is: an unknown `that` fails the check, an unknown `when` skips it. */
+  checkPart?: "that" | "when" | "details";
   inputs: Map<string, Ty> | null;
   locals: Map<string, Ty>;
 }
@@ -127,9 +129,9 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
   const scopeInput = (scope: Scope, name: string): Ty => scope.inputs?.get(name) ?? { c: "any", nullable: false };
   const notApplied = (name: string, position: SourcePosition) => {
     if (diagnostics.some((d) => d.code === "MESH_VALIDATE_NOT_APPLIED" && d.position.file === position.file && d.position.offset === position.offset)) return;
-    report("error", "MESH_VALIDATE_NOT_APPLIED",
+    report("warning", "MESH_VALIDATE_NOT_APPLIED",
       `on a create, \`&${name}\` here is the new instance's value before the input is applied (its default, or null), not the caller's: \`validate\` sees \`self\` before the input`, position,
-      `write \`input.${name}\` for the caller's value, or \`input.${name} ?? &${name}\` for the value the action will store`);
+      `write \`input.${name}\` for the caller's value, or \`input.${name} ?? &${name}\` for the value the action will store; on an update this changes the meaning (\`input.${name} ?? &${name}\` is the value being sent, \`&${name}\` the stored one), so in a check that also runs on updates and means the stored value, keep \`&${name}\``);
   };
   /** The same for a check Mesh runs as plain code: each `&x` the authored text reads, found through its edits. */
   const plainNotApplied = (e: Expression, pending: ReadonlySet<string>) => {
@@ -144,9 +146,12 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       });
     }
   };
-  const unfilled = (name: string, position: SourcePosition) =>
-    report("error", "MESH_VALIDATE_UNFILLED",
-      `\`&${name}\` is null here on a create: \`validate\` sees the new instance before the input is applied, so this is unknown and the check fails on every create`, position,
+  const unfilled = (name: string, position: SourcePosition, part: Scope["checkPart"]) =>
+    report("warning", "MESH_VALIDATE_UNFILLED",
+      `\`&${name}\` is null here on a create: \`validate\` sees the new instance before the input is applied, so ${
+        part === "when" ? "this condition is unknown on every create and the check is skipped on every create"
+        : part === "details" ? "this value is null on every create"
+        : "this is unknown and the check fails on every create"}`, position,
       `write \`input.${name} ?? &${name}\` for the value the action will store, or \`input.${name}\` for the caller's`);
 
   function infer(n: ExprNode, scope: Scope): Ty {
@@ -226,7 +231,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
         const a = n.args.map((arg) => infer(arg, scope));
         // An operator over a member a create has not filled yet is unknown on every create: the check would always fail there.
         if (scope.validate && n.fn !== "isNull" && n.fn !== "isNotNull" && n.fn !== "coalesce")
-          a.forEach((t, i) => { if (t.unfilled !== undefined && (n.fn !== "cond" || i === 0)) unfilled(t.unfilled, n.args[i]!.position); });
+          a.forEach((t, i) => { if (t.unfilled !== undefined && (n.fn !== "cond" || i === 0)) unfilled(t.unfilled, n.args[i]!.position, scope.checkPart); });
         const any = (t: Ty) => t.c === "any";
         const same = (x: Ty, y: Ty) => any(x) || any(y) || x.c === y.c;
         const bothClass = (x: Ty, ...classes: TypeClass[]) => any(x) || classes.includes(x.c as TypeClass);
@@ -409,11 +414,11 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       ? { ...scope, validate: true, fresh: new Set(newInstanceMembers(gaps, true)), pending, acceptedOnCreate: new Set([...accepted[0]!].filter((name) => accepted.every((set) => set.has(name)))) }
       : { ...scope, validate: true };
     for (const check of validate) {
-      for (const e of check.when ? [check.that, check.when] : [check.that]) {
-        const t = visit(e, checks, true);
-        if (t?.unfilled !== undefined) unfilled(t.unfilled, e.tree!.position);
+      for (const [e, part] of check.when ? [[check.that, "that"], [check.when, "when"]] as const : [[check.that, "that"]] as const) {
+        const t = visit(e, { ...checks, checkPart: part }, true);
+        if (t?.unfilled !== undefined) unfilled(t.unfilled, e.tree!.position, part);
       }
-      if (check.details) visit(check.details, checks, false);
+      if (check.details) visit(check.details, { ...checks, checkPart: "details" }, false);
       if (checks.pending?.size) for (const e of [check.that, check.when, check.details]) if (e?.plain) plainNotApplied(e, checks.pending);
     }
     steps(list, entity, creates.length && gaps.key ? { ...scope, fresh: new Set([gaps.key]) } : scope);

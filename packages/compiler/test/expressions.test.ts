@@ -648,7 +648,7 @@ ${actions}`;
     // A create that takes only `&owner`, and fills `n` with a step.
     const setsN = (body: string) => make(body + "      do\n        set\n          &n=1\n", "        &owner\n");
 
-    test("&x the create takes is MESH_VALIDATE_NOT_APPLIED at the member, whatever x is: required, nullable, defaulted or a relationship", () => {
+    test("&x the create takes is a MESH_VALIDATE_NOT_APPLIED warning at the member, whatever x is: required, nullable, defaulted or a relationship", () => {
       const cases: [string, string][] = [
         ["() => &n > 0", "&n"], ["() => &n !== 5", "&n"], ["() => &m === null", "&m"], ["() => &state === :open", "&state"],
         ["() => &owner.n > 0", "&owner"], ["() => &owner?.n === null", "&owner"], ["({ input }) => (input.m ?? &n) > 0", "&n"],
@@ -657,17 +657,17 @@ ${actions}`;
         const source = item(make(checkOf(that), takesAll));
         const found = notApplied(source);
         expect(found, that).toHaveLength(1);
-        expect(found[0]!.severity, that).toBe("error");
+        expect(found[0]!.severity, that).toBe("warning");
         expect(source.slice(found[0]!.position.offset, found[0]!.position.offset + member.length), that).toBe(member);
-        // One error for one mistake: not also the null rules that follow from it.
-        expect(all(source).filter((d) => d.severity === "error"), that).toHaveLength(1);
+        // One warning for one mistake: not also the null rules that follow from it, and no error.
+        expect(codesOf(source), that).toEqual(["warning:MESH_VALIDATE_NOT_APPLIED"]);
       }
       const [found] = notApplied(item(make(checkOf("() => &m === null"), takesAll)));
       expect(found!.message).toBe("on a create, `&m` here is the new instance's value before the input is applied (its default, or null), not the caller's: `validate` sees `self` before the input");
-      expect(found!.fix).toBe("write `input.m` for the caller's value, or `input.m ?? &m` for the value the action will store");
+      expect(found!.fix).toBe("write `input.m` for the caller's value, or `input.m ?? &m` for the value the action will store; on an update this changes the meaning (`input.m ?? &m` is the value being sent, `&m` the stored one), so in a check that also runs on updates and means the stored value, keep `&m`");
       // In `when` and in `details` too.
-      expect(codesOf(item(make(checkOf("() => true", "          when=() => &n > 0\n"), takesAll)))).toEqual(["error:MESH_VALIDATE_NOT_APPLIED"]);
-      expect(codesOf(item(make(checkOf("() => true", "          details=() => ({ n: &n })\n"), takesAll)))).toEqual(["error:MESH_VALIDATE_NOT_APPLIED"]);
+      expect(codesOf(item(make(checkOf("() => true", "          when=() => &n > 0\n"), takesAll)))).toEqual(["warning:MESH_VALIDATE_NOT_APPLIED"]);
+      expect(codesOf(item(make(checkOf("() => true", "          details=() => ({ n: &n })\n"), takesAll)))).toEqual(["warning:MESH_VALIDATE_NOT_APPLIED"]);
     });
 
     test("a check Mesh runs as plain code is held to the same rule, through the `&x` its text reads", () => {
@@ -697,21 +697,29 @@ ${actions}`;
       expect(codesOf(item(make("      do\n        when=() => &n > 0 && &owner.n > 0\n          set\n            &m=1\n", takesAll)))).toEqual([]);
     });
 
-    test("an operator over a required member no input fills yet is MESH_VALIDATE_UNFILLED at the member: the check would fail on every create", () => {
+    test("an operator over a required member no input fills yet is a MESH_VALIDATE_UNFILLED warning at the member: in that the check fails on every create, in when it is skipped on every create", () => {
       for (const that of ["() => &n !== 5", "() => &n > 0", "() => &n === 5", "() => &n + 1 > 0", "({ input }) => input.owner !== \"\" && &n > 0", "() => (&n > 0 ? 1 : 2) > 0"]) {
         const source = item(setsN(checkOf(that)));
         const found = unfilled(source);
         expect(found, that).toHaveLength(1);
-        expect(found[0]!.severity, that).toBe("error");
+        expect(found[0]!.severity, that).toBe("warning");
         expect(source.slice(found[0]!.position.offset, found[0]!.position.offset + 2), that).toBe("&n");
-        expect(notApplied(source), that).toEqual([]);
+        expect(all(source).filter((d) => d.severity === "error"), that).toEqual([]);
       }
-      // In `when` too, and a bare read of a boolean no input fills is the same.
-      expect(codesOf(item(setsN(checkOf("() => true", "          when=() => &n > 0\n"))))).toEqual(["error:MESH_VALIDATE_UNFILLED"]);
-      expect(codesOf(item(make(checkOf("() => &b"), "        &n\n        &owner\n")).replace("integer :n\n", "integer :n\n    boolean :b\n"))).toEqual(["error:MESH_VALIDATE_UNFILLED"]);
+      // A bare read of a boolean no input fills is the same.
+      expect(codesOf(item(make(checkOf("() => &b"), "        &n\n        &owner\n")).replace("integer :n\n", "integer :n\n    boolean :b\n"))).toEqual(["warning:MESH_VALIDATE_UNFILLED"]);
       const [found] = unfilled(item(setsN(checkOf("() => &n > 0"))));
       expect(found!.message).toBe("`&n` is null here on a create: `validate` sees the new instance before the input is applied, so this is unknown and the check fails on every create");
       expect(found!.fix).toBe("write `input.n ?? &n` for the value the action will store, or `input.n` for the caller's");
+      // In `when` the condition is unknown, and an unknown `when` skips the check (`runCheck`): it never runs on a create.
+      for (const when of ["() => &n > 0", "() => &b"]) {
+        const source = item(setsN(checkOf("() => true", `          when=${when}\n`))).replace("integer :n\n", "integer :n\n    boolean :b\n");
+        const [inWhen] = unfilled(source);
+        expect(codesOf(source), when).toEqual(["warning:MESH_VALIDATE_UNFILLED"]);
+        expect(inWhen!.message, when).toBe(`\`${when.slice(6, 8)}\` is null here on a create: \`validate\` sees the new instance before the input is applied, so this condition is unknown on every create and the check is skipped on every create`);
+      }
+      // In `details` it is only a null value.
+      expect(unfilled(item(setsN(checkOf("() => true", "          details=() => ({ more: &n + 1 })\n"))))[0]!.message).toEndWith("so this value is null on every create");
       // A null test, `??`, `?:` branches, an update and a member with a default are fine.
       for (const that of ["() => &n === null", "() => &n !== null", "() => (&n ?? 0) > 0", "({ input }) => (input.owner === \"\" ? &n : 1) === 1"])
         expect(unfilled(item(setsN(checkOf(that)))), that).toEqual([]);
@@ -732,17 +740,26 @@ ${actions}`;
       expect(codesOf(item(go(checkOf("() => &owner.n > 0"))))).toEqual([]);
     });
 
-    test("an always block over creates and updates: &x a create takes is an error, input.x ?? &x is not when every create takes &x", () => {
+    test("an always block over creates and updates: &x a create takes is a warning, input.x ?? &x is not when every create takes &x", () => {
       const always = (that: string, makeInput = "        &n\n        &owner\n", makeBody = "") =>
         item(`    always types=[:create, :update]\n${checkOf(that)}${make(makeBody, makeInput)}${go("")}`);
-      expect(codesOf(always("() => &n !== 5"))).toEqual(["error:MESH_VALIDATE_NOT_APPLIED"]);
+      expect(codesOf(always("() => &n !== 5"))).toEqual(["warning:MESH_VALIDATE_NOT_APPLIED"]);
       expect(codesOf(always("({ input }) => (input.n ?? &n) !== 5"))).toEqual([]);
       // A create that fills n with a step, not from the input: there the check sees null, so the value may be unknown...
       expect(codesOf(always("({ input }) => (input.n ?? &n) !== 5", "        &owner\n", "      do\n        set\n          &n=1\n"))).toEqual(["warning:MESH_EXPR_NEGATED_UNKNOWN"]);
       // ...and reading &n alone fails every create.
-      expect(codesOf(always("() => &n > 5", "        &owner\n", "      do\n        set\n          &n=1\n"))).toEqual(["error:MESH_VALIDATE_UNFILLED"]);
+      expect(codesOf(always("() => &n > 5", "        &owner\n", "      do\n        set\n          &n=1\n"))).toEqual(["warning:MESH_VALIDATE_UNFILLED"]);
       // An always block over updates only sees stored records.
       expect(codesOf(item(`    always types=[:update]\n${checkOf("() => &n !== 5")}${make("")}${go("")}`))).toEqual([]);
+    });
+
+    test("a check over creates and updates that means the stored value builds with the warning and no error: the fix says `??` changes the meaning on an update", () => {
+      // On a create `&state` is the default (`:open`), on an update the stored state: refusing an edit of a done item is correct code.
+      const source = item(`    always types=[:create, :update]\n${checkOf("() => &state !== :done")}${make("", "        &n\n        &state\n        &owner\n")}    update :go\n      input\n        &state\n`);
+      const built = buildModel({ root: "/p", files: [{ file: "item.mesh.mx", source }] });
+      expect(built.diagnostics.map((d) => `${d.severity}:${d.code}`)).toEqual(["warning:MESH_VALIDATE_NOT_APPLIED"]);
+      expect(built.document).toBeDefined();
+      expect(built.diagnostics[0]!.fix).toContain("on an update this changes the meaning (`input.state ?? &state` is the value being sent, `&state` the stored one)");
     });
   });
 
