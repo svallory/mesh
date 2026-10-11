@@ -16,6 +16,7 @@
     "db:push": "mesh db push"
   },
   "devDependencies": {
+    "@meshfw/compiler": "workspace:*",
     "drizzle-kit": "0.31.11",
     "meshfw": "workspace:*"
   },

@@ -42,6 +42,7 @@
         "zod": "4.6.5",
       },
       "devDependencies": {
+        "@meshfw/compiler": "workspace:*",
         "drizzle-kit": "0.31.11",
         "meshfw": "workspace:*",
       },
