@@ -407,6 +407,39 @@ const RULES: Record<string, Case> = {
       expect((await w.hyper.reopenTask({ id: w.task.id, reason: "resumed" }, as(w.alice))).reopenedAt).toEqual(minutes(6));
       w.advance(1);
       expect(await taskComplete({ id: w.task.id }, as(w.bot), w.binding)).toMatchObject({ outcome: "completed" });
+
+      // A claim counts from its lease end even when a later command marks it expired (PROTOCOL.md:312), not from when
+      // it was marked, as the Elixir engine's `ended_at` would (PR #65 round 2, N2). Bot's claim lapses; Alice
+      // completes and reopens; Bot's next acquire, after the reopen, marks the lapsed claim expired.
+      const later = await w.hyper.createTask({ title: "Lapsed before the reopen" }, as(w.alice));
+      await w.hyper.assignTask({ id: later.id, assignee: w.bot.id, waiveReview: true }, as(w.alice));
+      const lapsed = await claim(w, w.bot, later.id);
+      w.advance(12);
+      await completed(w, later.id);
+      w.advance(1);
+      await w.hyper.reopenTask({ id: later.id, reason: "again" }, as(w.alice));
+      w.advance(1);
+      const fresh = await claim(w, w.bot, later.id);
+      const marked = await one(w.hyper.readClaim({ filter: { id: { eq: lapsed.id } } }, as(w.alice)));
+      expect(marked).toMatchObject({ state: "expired", endedAt: w.time.now, expiresAt: lapsed.expiresAt });
+      await w.hyper.releaseClaim({ id: fresh.id, fence: fresh.fence }, as(w.bot));
+      expect(await taskComplete({ id: later.id }, as(w.bot), w.binding)).toMatchObject({ outcome: "completed" });
+
+      // The completion review.accept makes is not subject to the rule (PROTOCOL.md:283, :332; PR #65 round 2, F1): the
+      // reviewer once held a claim, revoked when she handed the Task to Bot, and the accept still succeeds.
+      const reviewed = await w.hyper.createTask({ title: "Claimed, then delegated" }, as(w.alice));
+      const hers = await claim(w, w.alice, reviewed.id);
+      await w.hyper.assignTask({ id: reviewed.id, assignee: w.bot.id }, as(w.alice));
+      expect(await one(w.hyper.readClaim({ filter: { id: { eq: hers.id } } }, as(w.alice)))).toMatchObject({ state: "revoked", endReason: "reassigned" });
+      const { submission } = await submitted(w, w.bot, reviewed.id);
+      expect(await reviewAccept({ submission: submission.id }, as(w.alice), w.binding)).toMatchObject({ completion: { rule: "review-accepted", submissionId: submission.id } });
+      // The same when her earlier claim lapsed instead.
+      const lapsedReview = await w.hyper.createTask({ title: "Claimed, lapsed, then delegated" }, as(w.alice));
+      await claim(w, w.alice, lapsedReview.id);
+      w.advance(11);
+      await w.hyper.assignTask({ id: lapsedReview.id, assignee: w.bot.id }, as(w.alice));
+      const second = await submitted(w, w.bot, lapsedReview.id);
+      expect(await reviewAccept({ submission: second.submission.id }, as(w.alice), w.binding)).toMatchObject({ completion: { rule: "review-accepted" } });
     },
     fail: async (w) => {
       await w.hyper.assignTask({ id: w.task.id, assignee: w.bot.id, waiveReview: true }, as(w.alice));

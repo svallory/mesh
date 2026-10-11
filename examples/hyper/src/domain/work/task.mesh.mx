@@ -219,7 +219,7 @@ entity :Task table="tasks"
           details=({ input, actor }) => fenceDetails(&maxFence, &claims, input.fence, actor.id, now())
         ]
         check :claimNotInvalidated [
-          that=({ input, actor }) => claimNotInvalidated(&claims, input.fence, actor.id, &completions, &reopenedAt, now())
+          that=({ input, actor, context }) => claimNotInvalidated(&claims, input.fence, actor.id, &completions, &reopenedAt, now(), context.completion)
           code="claim.invalidated"
           message="your claim on this task was invalidated; claim it again and complete with the new fence"
           details=({ actor }) => ({ fences: invalidatedFences(&claims, actor.id, &completions, &reopenedAt, now()) })

@@ -252,7 +252,7 @@ export const expressions = {
   "complete.check.claimNotInvalidated.that": ($s: TaskStoredScope<CompleteTaskInput>) => {
     const { self } = $s;
     const now = () => $.now($s);
-    return (({ input, actor }) =>
+    return (({ input, actor, context }) =>
       claimNotInvalidated(
         self.claims,
         input.fence,
@@ -260,6 +260,7 @@ export const expressions = {
         self.completions,
         self.reopenedAt,
         now(),
+        context.completion,
       ))($s);
   },
   // check :claimNotInvalidated details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:225:19)

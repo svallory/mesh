@@ -105,6 +105,12 @@ describe("acceptance 1: task.complete writes the completion, the submission and 
     const forged = (submissionId: string, actor: { id: string } = w.alice) => ({ ...as(actor), completion: { rule: "review-accepted" as const, submissionId } });
     await expect(taskComplete({ id: w.task.id }, forged(foreign.id), w.binding)).rejects.toBeInstanceOf(FrameworkError);
     await expect(w.hyper.completeTask({ id: w.task.id }, forged(foreign.id))).rejects.toThrow(`submission ${foreign.id}`);
+    // Another Task's submission that is accepted (through the exported internal settle, G20) is refused for its Task
+    // alone (PR #65 round 2, N2): the `accepted` condition does not cover it.
+    const elsewhere = await w.hyper.createTask({ title: "Elsewhere" }, as(w.alice));
+    const acceptedElsewhere = await submitted(w, elsewhere.id);
+    await w.hyper.settleSubmission({ id: acceptedElsewhere.id, outcome: "accepted" }, as(w.alice));
+    await expect(taskComplete({ id: w.task.id }, forged(acceptedElsewhere.id), w.binding)).rejects.toThrow(`submission ${acceptedElsewhere.id}`);
     // This Task's own submission while it is still pending, named by its submitter, whose assignment waives review.
     await w.hyper.assignTask({ id: w.task.id, assignee: w.bot.id, waiveReview: true }, as(w.alice));
     const own = await submitted(w, w.task.id);

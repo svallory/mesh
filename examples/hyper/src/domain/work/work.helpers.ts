@@ -97,7 +97,7 @@ export function lastCompletedOrReopened(completions: readonly { readonly complet
 }
 
 /**
- * `claim.invalidated` (PROTOCOL.md:326, `tasks/task/rules.ex:101-116` and `:168-182`): the fences, in order, of the
+ * `claim.invalidated` (PROTOCOL.md:326, `tasks/task/rules.ex:101-113` and `:168-181`): the fences, in order, of the
  * claims `holderId` held on the Task that expired or were revoked after its last completion or reopen. An unfenced
  * `task.complete` by that holder is refused while there is one: a stale worker cannot finish (invariant 3).
  */
@@ -110,8 +110,15 @@ export function invalidatedFences(claims: readonly EndedClaimFacts[], holderId: 
     .sort((a, b) => a - b);
 }
 
-/** `claim.invalidated` on `task.complete`: a completion with a fence passes (the fence rules decide it); one without passes while `invalidatedFences` is empty. */
-export function claimNotInvalidated(claims: readonly EndedClaimFacts[], fence: number | null | undefined, actorId: string, completions: readonly { readonly completedAt: Instant }[], reopenedAt: Instant | null, now: Date): boolean {
+/**
+ * `claim.invalidated` on `task.complete`: a completion with a fence passes (the fence rules decide it); one without
+ * passes while `invalidatedFences` is empty. The completion `review.accept` makes (`completion` set, checked by the
+ * step through `acceptedSubmissionOf`) passes too: the spec applies the rule to `task.complete` only
+ * (PROTOCOL.md:283), and `review.accept` re-checks the other completion rules, not this one (:332). The reviewer may
+ * once have held a claim on the Task, for example before assigning it to someone else.
+ */
+export function claimNotInvalidated(claims: readonly EndedClaimFacts[], fence: number | null | undefined, actorId: string, completions: readonly { readonly completedAt: Instant }[], reopenedAt: Instant | null, now: Date, completion: object | null | undefined): boolean {
+  if (completion !== null && completion !== undefined) return true;
   return (fence !== null && fence !== undefined) || invalidatedFences(claims, actorId, completions, reopenedAt, now).length === 0;
 }
 
