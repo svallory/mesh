@@ -8,7 +8,6 @@ import {
   resolveEntityFile,
 } from "../paths.ts";
 export { projectPath } from "../paths.ts";
-
 import {
   attributeTypeInfo,
   findNonJsonValue,

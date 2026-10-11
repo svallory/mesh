@@ -13,7 +13,7 @@ import type {
   Step,
   TypeClass,
 } from "@meshfw/model";
-import { newInstanceGaps, newInstanceMembers } from "./new-instance.ts";
+import { newInstanceComputed, newInstanceGaps, newInstanceMembers } from "./new-instance.ts";
 
 /**
  * Types every translated expression across the whole model (M4, ADR-0012 option A).
@@ -104,7 +104,8 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     if (owner.c === "input") return owner.entity ? { c: "any", nullable: false } : { ...scopeInput(scope, name), ...(scope.args?.has(name) ? {} : { input: name }) };
     const result = ownMemberTy(owner, name);
     // On a create, `self` is the new instance: a member with no default holds null until the input or a step fills it.
-    return owner.fresh?.has(name) && !result.nullable ? { ...result, nullable: true, unfilled: name } : result;
+    // A computed field `newInstanceComputed` lists is null there too, whatever its declared nullability says (it is the same set the generated type uses).
+    return owner.fresh?.has(name) && (!result.nullable || owner.entity?.computed.some((c) => c.name === name)) ? { ...result, nullable: true, unfilled: name } : result;
   }
   function ownMemberTy(owner: Ty, name: string): Ty {
     if (owner.c === "any") return { c: "any", nullable: false };
@@ -146,17 +147,14 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       });
     }
   };
-  const unfilled = (name: string, position: SourcePosition, part: Scope["checkPart"]) =>
-    report("warning", "MESH_VALIDATE_UNFILLED",
-      `\`&${name}\` is null here on a create: \`validate\` sees the new instance before the input is applied, so ${
-        part === "when" ? "this condition is unknown on every create and the check is skipped on every create"
-        : part === "details" ? "this value is null on every create"
-        : "this is unknown and the check fails on every create"}`, position,
-      `write \`input.${name} ?? &${name}\` for the value the action will store, or \`input.${name}\` for the caller's`);
-
   /** What an unknown value does in each part of a check (`runCheck`): `that` fails the check, `when` skips it, `details` is null. Elsewhere (a step, a computed field) the outcome depends on the position. */
   const whenUnknown = (part: Scope["checkPart"]) =>
     part === "that" ? "the check fails" : part === "when" ? "the check is skipped" : part === "details" ? "the details value is null" : "the check fails or the row is left out";
+  // No reachability analysis: `&n > 0 || true` is not unknown, so the wording says what happens when the result depends on the read.
+  const unfilled = (name: string, position: SourcePosition, part: Scope["checkPart"]) =>
+    report("warning", "MESH_VALIDATE_UNFILLED",
+      `\`&${name}\` is null on every create here: \`validate\` sees the new instance before the input is applied, so a result that depends on it is unknown and ${whenUnknown(part)}`, position,
+      `write \`input.${name} ?? &${name}\` for the value the action will store, or \`input.${name}\` for the caller's`);
 
   function infer(n: ExprNode, scope: Scope): Ty {
     const fail = (detail: string): never => { throw new Demote(detail, n.position); };
@@ -414,8 +412,9 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     const accepted = creates.map((action) => new Set(action.input.flatMap((field) => (field.kind === "member" ? [field.ref.name] : []))));
     const keyColumn = (name: string) => entity.relationships.find((relation) => relation.name === name && relation.kind === "belongs-to")?.keyColumn;
     const pending = new Set(accepted.flatMap((set) => [...set].flatMap((name) => [name, ...(keyColumn(name) ? [keyColumn(name)!] : [])])));
+    const members = newInstanceMembers(gaps, true);
     const checks: Scope = creates.length
-      ? { ...scope, validate: true, fresh: new Set(newInstanceMembers(gaps, true)), pending, acceptedOnCreate: new Set([...accepted[0]!].filter((name) => accepted.every((set) => set.has(name)))) }
+      ? { ...scope, validate: true, fresh: new Set([...members, ...newInstanceComputed(entity, new Set(members))]), pending, acceptedOnCreate: new Set([...accepted[0]!].filter((name) => accepted.every((set) => set.has(name)))) }
       : { ...scope, validate: true };
     for (const check of validate) {
       for (const [e, part] of check.when ? [[check.that, "that"], [check.when, "when"]] as const : [[check.that, "that"]] as const) {

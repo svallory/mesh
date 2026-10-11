@@ -75,31 +75,39 @@ export interface FunctionSpec {
   signature: string;
   /** One line; the table is the definition. */
   nulls: string;
+  /**
+   * The same rule as data, for the passes that ask whether a result can be null when an operand is (`newInstanceComputed`):
+   * `propagates`: null when some operand is (`and`/`or` are Kleene, so false && null is false, but they are kept here:
+   * a conservative answer is "may be null", which is never wrong); `never`: never null whatever the operands;
+   * `all-operands`: null only when every operand can be null (`a ?? b`); `branches`: null when a branch is, whatever the
+   * test gives (`c ? a : b`, an unknown test takes the else branch).
+   */
+  nullResult: "propagates" | "never" | "all-operands" | "branches";
 }
 
 export const FUNCTIONS: readonly FunctionSpec[] = Object.freeze([
-  { id: "eq", spelling: "a === b", arity: 2, signature: "(T, T) -> boolean", nulls: "any operand null: unknown" },
-  { id: "ne", spelling: "a !== b", arity: 2, signature: "(T, T) -> boolean", nulls: "any operand null: unknown" },
-  { id: "isNull", spelling: "a === null", arity: 1, signature: "(any) -> boolean", nulls: "never unknown" },
-  { id: "isNotNull", spelling: "a !== null", arity: 1, signature: "(any) -> boolean", nulls: "never unknown" },
-  { id: "lt", spelling: "a < b", arity: 2, signature: "(number | date, same) -> boolean", nulls: "any operand null: unknown" },
-  { id: "lte", spelling: "a <= b", arity: 2, signature: "(number | date, same) -> boolean", nulls: "any operand null: unknown" },
-  { id: "gt", spelling: "a > b", arity: 2, signature: "(number | date, same) -> boolean", nulls: "any operand null: unknown" },
-  { id: "gte", spelling: "a >= b", arity: 2, signature: "(number | date, same) -> boolean", nulls: "any operand null: unknown" },
-  { id: "and", spelling: "a && b", arity: 2, signature: "(boolean, boolean) -> boolean", nulls: "Kleene" },
-  { id: "or", spelling: "a || b", arity: 2, signature: "(boolean, boolean) -> boolean", nulls: "Kleene" },
-  { id: "not", spelling: "!a", arity: 1, signature: "(boolean) -> boolean", nulls: "null stays unknown" },
-  { id: "add", spelling: "a + b", arity: 2, signature: "(number, number) -> number", nulls: "any operand null: null" },
-  { id: "sub", spelling: "a - b", arity: 2, signature: "(number, number) -> number", nulls: "any operand null: null" },
-  { id: "mul", spelling: "a * b", arity: 2, signature: "(number, number) -> number", nulls: "any operand null: null" },
-  { id: "div", spelling: "a / b (a float or decimal operand)", arity: 2, signature: "(number, number) -> number", nulls: "exact division; any operand null, or a zero divisor: null" },
-  { id: "idiv", spelling: "a / b (both integers)", arity: 2, signature: "(integer, integer) -> integer", nulls: "truncates toward zero; any operand null, or a zero divisor: null" },
-  { id: "neg", spelling: "-a", arity: 1, signature: "(number) -> number", nulls: "null: null" },
-  { id: "length", spelling: "a.length", arity: 1, signature: "(string | list) -> number", nulls: "null string: null; a list is never null" },
-  { id: "now", spelling: "now()", arity: 0, signature: "() -> date", nulls: "never null; one instant per scope" },
-  { id: "today", spelling: "today()", arity: 0, signature: "() -> date", nulls: "never null; now() at 00:00 UTC" },
-  { id: "coalesce", spelling: "a ?? b", arity: 2, signature: "(T, T) -> T", nulls: "a unless a is null, else b" },
-  { id: "cond", spelling: "c ? a : b", arity: 3, signature: "(boolean, T, T) -> T", nulls: "unknown test: the else branch" },
+  { id: "eq", spelling: "a === b", arity: 2, signature: "(T, T) -> boolean", nulls: "any operand null: unknown", nullResult: "propagates" },
+  { id: "ne", spelling: "a !== b", arity: 2, signature: "(T, T) -> boolean", nulls: "any operand null: unknown", nullResult: "propagates" },
+  { id: "isNull", spelling: "a === null", arity: 1, signature: "(any) -> boolean", nulls: "never unknown", nullResult: "never" },
+  { id: "isNotNull", spelling: "a !== null", arity: 1, signature: "(any) -> boolean", nulls: "never unknown", nullResult: "never" },
+  { id: "lt", spelling: "a < b", arity: 2, signature: "(number | date, same) -> boolean", nulls: "any operand null: unknown", nullResult: "propagates" },
+  { id: "lte", spelling: "a <= b", arity: 2, signature: "(number | date, same) -> boolean", nulls: "any operand null: unknown", nullResult: "propagates" },
+  { id: "gt", spelling: "a > b", arity: 2, signature: "(number | date, same) -> boolean", nulls: "any operand null: unknown", nullResult: "propagates" },
+  { id: "gte", spelling: "a >= b", arity: 2, signature: "(number | date, same) -> boolean", nulls: "any operand null: unknown", nullResult: "propagates" },
+  { id: "and", spelling: "a && b", arity: 2, signature: "(boolean, boolean) -> boolean", nulls: "Kleene", nullResult: "propagates" },
+  { id: "or", spelling: "a || b", arity: 2, signature: "(boolean, boolean) -> boolean", nulls: "Kleene", nullResult: "propagates" },
+  { id: "not", spelling: "!a", arity: 1, signature: "(boolean) -> boolean", nulls: "null stays unknown", nullResult: "propagates" },
+  { id: "add", spelling: "a + b", arity: 2, signature: "(number, number) -> number", nulls: "any operand null: null", nullResult: "propagates" },
+  { id: "sub", spelling: "a - b", arity: 2, signature: "(number, number) -> number", nulls: "any operand null: null", nullResult: "propagates" },
+  { id: "mul", spelling: "a * b", arity: 2, signature: "(number, number) -> number", nulls: "any operand null: null", nullResult: "propagates" },
+  { id: "div", spelling: "a / b (a float or decimal operand)", arity: 2, signature: "(number, number) -> number", nulls: "exact division; any operand null, or a zero divisor: null", nullResult: "propagates" },
+  { id: "idiv", spelling: "a / b (both integers)", arity: 2, signature: "(integer, integer) -> integer", nulls: "truncates toward zero; any operand null, or a zero divisor: null", nullResult: "propagates" },
+  { id: "neg", spelling: "-a", arity: 1, signature: "(number) -> number", nulls: "null: null", nullResult: "propagates" },
+  { id: "length", spelling: "a.length", arity: 1, signature: "(string | list) -> number", nulls: "null string: null; a list is never null", nullResult: "propagates" },
+  { id: "now", spelling: "now()", arity: 0, signature: "() -> date", nulls: "never null; one instant per scope", nullResult: "never" },
+  { id: "today", spelling: "today()", arity: 0, signature: "() -> date", nulls: "never null; now() at 00:00 UTC", nullResult: "never" },
+  { id: "coalesce", spelling: "a ?? b", arity: 2, signature: "(T, T) -> T", nulls: "a unless a is null, else b", nullResult: "all-operands" },
+  { id: "cond", spelling: "c ? a : b", arity: 3, signature: "(boolean, T, T) -> T", nulls: "unknown test: the else branch", nullResult: "branches" },
 ] satisfies FunctionSpec[]);
 
 export const FUNCTION_IDS: ReadonlySet<string> = new Set(FUNCTIONS.map((f) => f.id));

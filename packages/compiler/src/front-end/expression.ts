@@ -144,15 +144,16 @@ function bindings(root: N): Set<string> {
 
 /**
  * Free-variable errors for one function, at the identifier. Returns the scope names the function reads as variables
- * that its parameters do not bind (`&name` is `self.name`, so it reads `self`), in a fixed order: what the printed
- * function takes from the scope. A name a nested binding shadows still counts, so the function is never short of one.
+ * that no scope of the function binds (`&name` is `self.name`, so it reads `self`), in a fixed order: what the printed
+ * function takes from the scope. Each reference is resolved against its own enclosing scopes, as the clock names are: a
+ * loop variable, a nested parameter or a `catch` parameter called `input` shadows the root only where it is in scope,
+ * and a read of `input` elsewhere in the function is still the root.
  * Adds to `clock` each clock function (`now`, `today`) the function reads somewhere that no enclosing scope binds that
  * name and the file does not import: each reference is resolved against its own scopes, so
  * `[1].some((now) => now === 1) && now()` reads the clock (a function's `var`s count for its parameters: `scopeNames`).
  */
 function freeVariables(fn: N, ctx: ConvertContext, clock: Set<string>): string[] {
   const bound = bindings(fn);
-  const parameters = bindings({ type: "ArrowFunctionExpression", params: fn.params ?? [], body: null } as unknown as N);
   const roots = new Set<string>();
   const known = (name: string) =>
     bound.has(name) || ctx.imported.has(name) || SCOPE_NAMES.has(name) || GLOBALS.has(name) || name in REGISTERED_CALLS;
@@ -161,11 +162,12 @@ function freeVariables(fn: N, ctx: ConvertContext, clock: Set<string>): string[]
     if (Array.isArray(value)) { for (const v of value) walk(v, parent, key, scope); return; }
     const n = value as N;
     if (typeof n.type === "string" && n.type.startsWith("TS")) return;
+    if (n.type === "PrivateName") return; // `#x` names a class member, never a variable
     if (n.type === "Identifier") {
       const property = parent && (parent.type === "MemberExpression" || parent.type === "OptionalMemberExpression") && key === "property" && !parent.computed;
       const objectKey = parent && (parent.type === "ObjectProperty" || parent.type === "ObjectMethod" || parent.type === "ClassMethod" || parent.type === "ClassProperty") && key === "key" && !parent.computed;
       const label = parent && /^(LabeledStatement|BreakStatement|ContinueStatement)$/.test(parent.type) && key === "label";
-      if (!property && !objectKey && !label && SCOPE_NAMES.has(n.name!) && !parameters.has(n.name!)) roots.add(n.name!);
+      if (!property && !objectKey && !label && SCOPE_NAMES.has(n.name!) && !scope.has(n.name!)) roots.add(n.name!);
       // An imported `now` or `today` is the import, as it is in translated code (`convert`).
       if (!property && !objectKey && !label && n.name! in REGISTERED_CALLS && !scope.has(n.name!) && !ctx.helpers.has(n.name!)) clock.add(n.name!);
       if (!property && !objectKey && !label && !known(n.name!) && n.start !== undefined) {

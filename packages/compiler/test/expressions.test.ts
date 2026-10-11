@@ -142,6 +142,36 @@ describe("free variables (acceptance test 2)", () => {
   });
 });
 
+describe("a name is a scope root only where it refers to the scope (small-fixes-2, items 1 and 2)", () => {
+  const make = (steps: string) => entity("").replace("      validate\n", "").replace("  actions auto=[:read]\n", `  actions auto=[:read]\n    create :make\n      input\n        &n\n      do\n${steps}`);
+  /** The roots the first run step of `make` reads from the scope. */
+  const rootsOf = (body: string) => {
+    const result = build(make(`        run (${"{ context }"}) ${body}\n`));
+    expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    const step = result.document!.entities[0]!.actions.find((a) => a.name === "make")!.do[0]!;
+    return step.kind === "run" ? step.fn.plain!.roots : undefined;
+  };
+  test("a loop variable, a nested parameter and a catch parameter shadow the root", () => {
+    expect(rootsOf("{ for (const input of [1, 2]) { console.log(input) } }")).toEqual([]);
+    expect(rootsOf("{ for (const input in { a: 1 }) { console.log(input) } }")).toEqual([]);
+    expect(rootsOf("{ [1].forEach((input) => console.log(input)) }")).toEqual([]);
+    expect(rootsOf("{ function f(input: number) { return input } console.log(f(1)) }")).toEqual([]);
+    expect(rootsOf("{ try { console.log(1) } catch (input) { console.log(input) } }")).toEqual([]);
+    expect(rootsOf("{ const input = 1; console.log(input) }")).toEqual([]);
+    expect(rootsOf("{ if (context) { var input = 1 } console.log(input) }")).toEqual([]);
+  });
+  test("the same name read as the root elsewhere is still a root", () => {
+    expect(rootsOf("{ for (const input of [1]) { console.log(input) } console.log(input) }")).toEqual(["input"]);
+    expect(rootsOf("{ console.log(input); [1].forEach((input) => console.log(input)) }")).toEqual(["input"]);
+    expect(rootsOf("{ try { console.log(input) } catch (input) { console.log(input) } }")).toEqual(["input"]);
+    expect(rootsOf("{ if (context) { const input = 1; console.log(input) } else { console.log(input) } }")).toEqual(["input"]);
+  });
+  test("a private class member is never a free variable", () => {
+    const body = "{ class C { #x = 1; static #y = 2; get() { return this.#x + C.#y } has(o: object) { return #x in o } } console.log(new C().get()) }";
+    expect(rootsOf(body)).toEqual([]);
+  });
+});
+
 describe("type rules", () => {
   test("a nullable receiver without ?. is an error with the fix", () => {
     const d = build(entity(check("() => &parent.n > 1"))).diagnostics.find((x) => x.code === "MESH_EXPR_NULLABLE_ACCESS")!;
@@ -429,6 +459,27 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(expressions["go.check.c.that"](scope({ self: { dueAt: new Date(-5) } }, at))).toBe(true);
   });
 
+  test("plain code that shadows a scope name declares no unused binding, and a class with a private member runs", async () => {
+    const plain = (entity(check("() => true")) + [
+      "      do",
+      "        run ({ context }) { for (const input of [1, 2]) { console.log(input, context) } try { console.log(1) } catch (input) { console.log(input) } }",
+      "        run ({ self }) { class C { #x = self.n; get() { return this.#x } } console.log(new C().get()) }",
+      "",
+    ].join("\n"));
+    const { root, files } = await generated(plain);
+    expect(checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
+    const { expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
+    const logs: unknown[][] = [];
+    const log = console.log;
+    console.log = (...args: unknown[]) => { logs.push(args); };
+    try {
+      const keys = Object.keys(expressions).filter((k) => /^go\.step\.\d+\.run$/.test(k));
+      expect(keys.length).toBe(2);
+      for (const k of keys) await expressions[k](scope({ self: { n: 5 }, context: {} }));
+    } finally { console.log = log; }
+    expect(logs.at(-1)).toEqual([5]);
+  });
+
   test("plain code runs with the authored meaning, `&` and atoms desugared", async () => {
     const { root } = await generated(source);
     const { expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
@@ -697,7 +748,7 @@ ${actions}`;
       expect(codesOf(item(make("      do\n        when=() => &n > 0 && &owner.n > 0\n          set\n            &m=1\n", takesAll)))).toEqual([]);
     });
 
-    test("an operator over a required member no input fills yet is a MESH_VALIDATE_UNFILLED warning at the member: in that the check fails on every create, in when it is skipped on every create", () => {
+    test("an operator over a required member no input fills yet is a MESH_VALIDATE_UNFILLED warning at the member: in that the check fails when the result depends on it, in when it is skipped, in details the value is null", () => {
       for (const that of ["() => &n !== 5", "() => &n > 0", "() => &n === 5", "() => &n + 1 > 0", "({ input }) => input.owner !== \"\" && &n > 0", "() => (&n > 0 ? 1 : 2) > 0"]) {
         const source = item(setsN(checkOf(that)));
         const found = unfilled(source);
@@ -709,17 +760,19 @@ ${actions}`;
       // A bare read of a boolean no input fills is the same.
       expect(codesOf(item(make(checkOf("() => &b"), "        &n\n        &owner\n")).replace("integer :n\n", "integer :n\n    boolean :b\n"))).toEqual(["warning:MESH_VALIDATE_UNFILLED"]);
       const [found] = unfilled(item(setsN(checkOf("() => &n > 0"))));
-      expect(found!.message).toBe("`&n` is null here on a create: `validate` sees the new instance before the input is applied, so this is unknown and the check fails on every create");
+      expect(found!.message).toBe("`&n` is null on every create here: `validate` sees the new instance before the input is applied, so a result that depends on it is unknown and the check fails");
       expect(found!.fix).toBe("write `input.n ?? &n` for the value the action will store, or `input.n` for the caller's");
       // In `when` the condition is unknown, and an unknown `when` skips the check (`runCheck`): it never runs on a create.
       for (const when of ["() => &n > 0", "() => &b"]) {
         const source = item(setsN(checkOf("() => true", `          when=${when}\n`))).replace("integer :n\n", "integer :n\n    boolean :b\n");
         const [inWhen] = unfilled(source);
         expect(codesOf(source), when).toEqual(["warning:MESH_VALIDATE_UNFILLED"]);
-        expect(inWhen!.message, when).toBe(`\`${when.slice(6, 8)}\` is null here on a create: \`validate\` sees the new instance before the input is applied, so this condition is unknown on every create and the check is skipped on every create`);
+        expect(inWhen!.message, when).toBe(`\`${when.slice(6, 8)}\` is null on every create here: \`validate\` sees the new instance before the input is applied, so a result that depends on it is unknown and the check is skipped`);
       }
+      // Not decisive: `&n > 0 || true` is true whatever `&n` is. The wording says "a result that depends on it", true here too.
+      expect(unfilled(item(setsN(checkOf("() => &n > 0 || true"))))[0]!.message).toBe(found!.message);
       // In `details` it is only a null value.
-      expect(unfilled(item(setsN(checkOf("() => true", "          details=() => ({ more: &n + 1 })\n"))))[0]!.message).toEndWith("so this value is null on every create");
+      expect(unfilled(item(setsN(checkOf("() => true", "          details=() => ({ more: &n + 1 })\n"))))[0]!.message).toEndWith("so a result that depends on it is unknown and the details value is null");
       // A null test, `??`, `?:` branches, an update and a member with a default are fine.
       for (const that of ["() => &n === null", "() => &n !== null", "() => (&n ?? 0) > 0", "({ input }) => (input.owner === \"\" ? &n : 1) === 1"])
         expect(unfilled(item(setsN(checkOf(that)))), that).toEqual([]);
@@ -816,6 +869,35 @@ export const notYet: number = fresh.self.n;
 export const maybe: number | null = fresh.self.n;
 export const id: string = fresh.self.id;
 export const state: "open" | "done" = fresh.self.state;
+`);
+      const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
+      expect(checkTypes(root, [...paths, "generated/schema.ts", "check.ts"])).toEqual({ code: 0, output: "" });
+    });
+    test("a computed field that reads a member the new instance has not filled is null there, in the type: directly, through another computed field or through a relationship; the others keep their type", async () => {
+      const computed = "  computed\n    integer :double() { return &n * 2 }\n    integer :twice() { return &double + 1 }\n    integer :viaOwner() { return &owner.n }\n    boolean :isUnset() { return &n === null }\n    integer :orZero() { return &n ?? 0 }\n    integer :orSelf() { return &n ?? &double }\n    boolean :isOpen() { return &state === :open }\n    integer :plain({ self }) { const q = self.n; return q + 1 }\n  actions auto=[:read]";
+      const source = item(make(checkOf("({ input }) => input.n > 0")) + go("")).replace("  actions auto=[:read]", computed);
+      const { root, text, files } = await generated(source);
+      expect(squash(text).replace(":|", ":")).toContain(squash('self: $DeepReadonly<Omit<ItemLoaded, "n" | "ownerId" | "owner" | "double" | "twice" | "viaOwner" | "orSelf"> & { [K in "n" | "ownerId" | "owner" | "double" | "twice" | "viaOwner" | "orSelf"]: ItemLoaded[K] | null }>'));
+      await writeFile(resolve(root, "check.ts"), `import type { ItemNewScope, ItemScope } from "./generated/domain/item.expressions";
+declare const fresh: ItemNewScope<unknown>;
+declare const stored: ItemScope<unknown>;
+export const nullDouble: number | null = fresh.self.double;
+export const nullTwice: number | null = fresh.self.twice;
+export const nullViaOwner: number | null = fresh.self.viaOwner;
+// @ts-expect-error double reads n, which is null until the input is applied
+export const notYet: number = fresh.self.double;
+// @ts-expect-error twice reads double
+export const notYetTwice: number = fresh.self.twice;
+// @ts-expect-error viaOwner reads owner
+export const notYetOwner: number = fresh.self.viaOwner;
+// isNull is never unknown, and ?? with a literal fallback is never null; ?? of two operands that can both be null is
+export const unset: boolean = fresh.self.isUnset;
+export const orZero: number = fresh.self.orZero;
+// @ts-expect-error orSelf reads n and double, both null on a create
+export const notYetOrSelf: number = fresh.self.orSelf;
+export const open: boolean = fresh.self.isOpen;
+export const plain: number = fresh.self.plain;
+export const set: number = stored.self.double;
 `);
       const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
       expect(checkTypes(root, [...paths, "generated/schema.ts", "check.ts"])).toEqual({ code: 0, output: "" });
