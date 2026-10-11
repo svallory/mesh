@@ -16,6 +16,7 @@ import {
   runCheck as $runCheck,
   scope as $scope,
   unloadFrom as $unloadFrom,
+  uuidv7 as $uuidv7,
   writeCount as $writeCount,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
@@ -85,14 +86,14 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
         const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
-          name: parsed.name,
-          platform: parsed.platform === undefined ? null : parsed.platform,
+          id: $uuidv7(),
+          platform: null,
           state: "active",
           version: 1,
           registeredAt: $now,
           firstReportedById: null,
         };
-        const $record: $Row = { ...$changes };
+        const $record: $Row = { ...$changes, name: null };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Machine", $record, "action function"),
           "Machine.register",
@@ -118,6 +119,9 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           that: $expressions["register.check.nameFree.that"],
         });
         if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // the input: the member inputs the caller sent, applied now that the checks have passed
+        if (parsed.name !== undefined) $changes.name = $record.name = parsed.name;
+        if (parsed.platform !== undefined) $changes.platform = $record.platform = parsed.platform;
         // do: the steps run in written order, each seeing the record as the ones before it left it
         {
           const $value = await $expressions["register.step.0.set.firstReportedBy"]($s);
@@ -141,14 +145,14 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
         const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
-          name: parsed.name,
+          id: $uuidv7(),
           platform: null,
           state: "active",
           version: 1,
           registeredAt: $now,
           firstReportedById: null,
         };
-        const $record: $Row = { ...$changes };
+        const $record: $Row = { ...$changes, name: null };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Machine", $record, "action function"),
           "Machine.report",
@@ -174,6 +178,8 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           that: $expressions["report.check.nameFree.that"],
         });
         if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // the input: the member inputs the caller sent, applied now that the checks have passed
+        if (parsed.name !== undefined) $changes.name = $record.name = parsed.name;
         // do: the steps run in written order, each seeing the record as the ones before it left it
         {
           const $value = await $expressions["report.step.0.set.firstReportedBy"]($s);
@@ -194,13 +200,12 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.machine, $key);
         if ($before === undefined) throw new $NotFoundError("Machine", $key);
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
-        if (parsed.platform !== undefined) $changes.platform = $record.platform = parsed.platform;
         const $writes = $writeCount(tx);
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Machine", $record, "action function"),
@@ -238,6 +243,8 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           details: $expressions["update.check.versionMatches.details"],
         });
         if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // the input: the member inputs the caller sent, applied now that the checks have passed
+        if (parsed.platform !== undefined) $changes.platform = $record.platform = parsed.platform;
         // do: the steps run in written order, each seeing the record as the ones before it left it
         {
           const $value = await $expressions["update.step.0.set.version"]($s);
@@ -264,7 +271,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.machine, $key);
         if ($before === undefined) throw new $NotFoundError("Machine", $key);

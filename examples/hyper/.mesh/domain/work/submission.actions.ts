@@ -17,6 +17,7 @@ import {
   runCheck as $runCheck,
   scope as $scope,
   unloadFrom as $unloadFrom,
+  uuidv7 as $uuidv7,
   writeCount as $writeCount,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
@@ -89,14 +90,14 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
         const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
+          id: $uuidv7(),
           summary: null,
-          evidence: parsed.evidence === undefined ? [] : parsed.evidence,
+          evidence: [],
           fence: null,
           state: "pending",
           submittedAt: $now,
-          taskId: parsed.task,
         };
-        const $record: $Row = { ...$changes };
+        const $record: $Row = { ...$changes, taskVersion: null, taskId: null, submitterId: null };
         const $load = { actor: $actor, context: $context, clock: options.clock };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Submission", $record, "action function"),
@@ -115,14 +116,6 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
         ) as unknown as $Scope<SubmitSubmissionInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $loadInto(
-          $loadPlan,
-          "Submission",
-          tx,
-          $record,
-          ["task", "task.claims", "task.inReview", "task.maxFence"],
-          $load,
-        );
         await $runCheck($issues, $s, {
           label: "taskOpen",
           code: "task.open",
@@ -162,6 +155,9 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           details: $expressions["submit.check.versionMatches.details"],
         });
         if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // the input: the member inputs the caller sent, applied now that the checks have passed
+        if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
+        if (parsed.evidence !== undefined) $changes.evidence = $record.evidence = parsed.evidence;
         // do: the steps run in written order, each seeing the record as the ones before it left it
         {
           const $value = await $expressions["submit.step.0.set.submitter"]($s);
@@ -221,7 +217,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.submission, $key);
         if ($before === undefined) throw new $NotFoundError("Submission", $key);
@@ -304,7 +300,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.submission, $key);
         if ($before === undefined) throw new $NotFoundError("Submission", $key);
@@ -371,15 +367,14 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
         const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
-          summary: parsed.summary === undefined ? null : parsed.summary,
-          evidence: parsed.evidence === undefined ? [] : parsed.evidence,
-          fence: parsed.fence === undefined ? null : parsed.fence,
-          taskVersion: parsed.taskVersion,
+          id: $uuidv7(),
+          summary: null,
+          evidence: [],
+          fence: null,
           state: "pending",
           submittedAt: $now,
-          taskId: parsed.task,
         };
-        const $record: $Row = { ...$changes };
+        const $record: $Row = { ...$changes, taskVersion: null, taskId: null, submitterId: null };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Submission", $record, "action function"),
           "Submission.recordAccepted",
@@ -395,6 +390,13 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           },
           options,
         ) as unknown as $Scope<RecordAcceptedSubmissionInput>;
+        // the input: the member inputs the caller sent, applied now that the checks have passed
+        if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
+        if (parsed.summary !== undefined) $changes.summary = $record.summary = parsed.summary;
+        if (parsed.evidence !== undefined) $changes.evidence = $record.evidence = parsed.evidence;
+        if (parsed.fence !== undefined) $changes.fence = $record.fence = parsed.fence;
+        if (parsed.taskVersion !== undefined)
+          $changes.taskVersion = $record.taskVersion = parsed.taskVersion;
         // do: the steps run in written order, each seeing the record as the ones before it left it
         {
           const $value = await $expressions["recordAccepted.step.0.set.submitter"]($s);

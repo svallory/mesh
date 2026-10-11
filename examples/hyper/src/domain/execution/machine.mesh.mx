@@ -19,7 +19,7 @@ entity :Machine table="machines"
         &platform
       validate
         check :nameFree [
-          that=async ({ tx }) => (await tx.readMachine({ filter: { name: { eq: &name } }, limit: 1 })).length === 0
+          that=async ({ input, tx }) => (await tx.readMachine({ filter: { name: { eq: input.name } }, limit: 1 })).length === 0
           code="machine.name-free"
           message="a machine already has that name"
         ]
@@ -31,7 +31,7 @@ entity :Machine table="machines"
         &name
       validate
         check :nameFree [
-          that=async ({ tx }) => (await tx.readMachine({ filter: { name: { eq: &name } }, limit: 1 })).length === 0
+          that=async ({ input, tx }) => (await tx.readMachine({ filter: { name: { eq: input.name } }, limit: 1 })).length === 0
           code="machine.name-free"
           message="a machine already has that name"
         ]
@@ -52,7 +52,7 @@ entity :Machine table="machines"
           that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
           code="expected-version"
           message="the record is at another version; read it again and retry"
-          details=({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })
+          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
         ]
       do
         set
@@ -76,7 +76,7 @@ entity :Machine table="machines"
           that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
           code="expected-version"
           message="the record is at another version; read it again and retry"
-          details=({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })
+          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
         ]
       do
         set

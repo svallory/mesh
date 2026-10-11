@@ -10,12 +10,11 @@ import {
   checkUnchanged as $checkUnchanged,
   composed as $composed,
   guarded as $guarded,
-  loadInto as $loadInto,
   noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
-  unloadFrom as $unloadFrom,
+  uuidv7 as $uuidv7,
   writeCount as $writeCount,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
@@ -82,15 +81,19 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
         const $actor = $context.actor;
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
-          role: parsed.role,
+          id: $uuidv7(),
           state: "active",
           revokedAt: null,
           version: 1,
-          collaboratorId: parsed.collaborator,
           revokedById: null,
         };
-        const $record: $Row = { ...$changes };
-        const $load = { actor: $actor, context: $context, clock: options.clock };
+        const $record: $Row = {
+          ...$changes,
+          role: null,
+          grantedAt: null,
+          collaboratorId: null,
+          grantedById: null,
+        };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Membership", $record, "action function"),
           "Membership.grant",
@@ -108,7 +111,6 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
         ) as unknown as $Scope<GrantMembershipInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $loadInto($loadPlan, "Membership", tx, $record, ["collaborator"], $load);
         await $runCheck($issues, $s, {
           label: "collaboratorActive",
           code: "collaborator.active",
@@ -124,6 +126,10 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
           that: $expressions["grant.check.noneActive.that"],
         });
         if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // the input: the member inputs the caller sent, applied now that the checks have passed
+        if (parsed.collaborator !== undefined)
+          $changes.collaboratorId = $record.collaboratorId = parsed.collaborator;
+        if (parsed.role !== undefined) $changes.role = $record.role = parsed.role;
         // do: the steps run in written order, each seeing the record as the ones before it left it
         {
           const $value = await $expressions["grant.step.0.set.grantedAt"]($s);
@@ -141,7 +147,6 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
             );
           $changes.grantedById = $record.grantedById = $value;
         }
-        $unloadFrom($loadPlan, "Membership", $record);
         // data layer
         const $stored = await tx.insert(tables.membership, $changes);
         $noteWrite(tx);
@@ -159,13 +164,12 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.membership, $key);
         if ($before === undefined) throw new $NotFoundError("Membership", $key);
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
-        if (parsed.role !== undefined) $changes.role = $record.role = parsed.role;
         const $writes = $writeCount(tx);
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Membership", $record, "action function"),
@@ -217,6 +221,8 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
           details: $expressions["changeRole.check.versionMatches.details"],
         });
         if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // the input: the member inputs the caller sent, applied now that the checks have passed
+        if (parsed.role !== undefined) $changes.role = $record.role = parsed.role;
         // do: the steps run in written order, each seeing the record as the ones before it left it
         {
           const $value = await $expressions["changeRole.step.0.set.version"]($s);
@@ -253,7 +259,7 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.membership, $key);
         if ($before === undefined) throw new $NotFoundError("Membership", $key);

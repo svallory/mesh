@@ -15,6 +15,7 @@ import {
   rescope as $rescope,
   runCheck as $runCheck,
   scope as $scope,
+  uuidv7 as $uuidv7,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
@@ -79,11 +80,15 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
         const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
+          id: $uuidv7(),
           createdAt: $now,
-          dependentId: parsed.dependent,
-          prerequisiteId: parsed.prerequisite,
         };
-        const $record: $Row = { ...$changes };
+        const $record: $Row = {
+          ...$changes,
+          dependentId: null,
+          prerequisiteId: null,
+          createdById: null,
+        };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Dependency", $record, "action function"),
           "Dependency.add",
@@ -139,6 +144,11 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
           details: $expressions["add.check.versionMatches.details"],
         });
         if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // the input: the member inputs the caller sent, applied now that the checks have passed
+        if (parsed.dependent !== undefined)
+          $changes.dependentId = $record.dependentId = parsed.dependent;
+        if (parsed.prerequisite !== undefined)
+          $changes.prerequisiteId = $record.prerequisiteId = parsed.prerequisite;
         // do: the steps run in written order, each seeing the record as the ones before it left it
         {
           const $value = await $expressions["add.step.0.set.createdBy"]($s);
@@ -177,7 +187,7 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.dependency, $key);
         if ($before === undefined) throw new $NotFoundError("Dependency", $key);

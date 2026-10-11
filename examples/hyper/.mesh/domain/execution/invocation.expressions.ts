@@ -7,6 +7,7 @@ import {
   type ReadOnlyResults as $ReadOnlyResults,
   type Scope as $Scope,
 } from "@meshfw/runtime";
+import { attemptSessionOf } from "../../../src/domain/execution/execution.helpers";
 import type { Actions as $Actions, Reads as $Reads } from "../../composition";
 import type {
   Invocation,
@@ -29,51 +30,73 @@ export type InvocationScope<I = unknown> = $Scope<{
 export type InvocationStoredScope<I = unknown> = InvocationScope<I> & {
   before: $DeepReadonly<Invocation>;
 };
+/** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
+export type InvocationCheckScope<I = unknown> = Omit<InvocationScope<I>, "before">;
+/** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
+export type InvocationNewScope<I = unknown> = Omit<InvocationCheckScope<I>, "self"> & {
+  self: $DeepReadonly<
+    Omit<
+      InvocationLoaded,
+      "usageSource" | "attemptId" | "attempt" | "taskId" | "task" | "recordedById" | "recordedBy"
+    > & {
+      [K in
+        | "usageSource"
+        | "attemptId"
+        | "attempt"
+        | "taskId"
+        | "task"
+        | "recordedById"
+        | "recordedBy"]: InvocationLoaded[K] | null;
+    }
+  >;
+};
 
 export const expressions = {
-  // check :session that, translated (src/domain/execution/invocation.mesh.mx:50:16)
-  "record.check.session.that": ($s: InvocationScope<RecordInvocationInput>) =>
-    $.or($.isNull($s.self.session), $.eq($s.self.session?.id, $s.self.attempt?.sessionId)),
-  // check :costUnknown that, translated (src/domain/execution/invocation.mesh.mx:55:16)
-  "record.check.costUnknown.that": ($s: InvocationScope<RecordInvocationInput>) =>
+  // check :session that, plain (uses-tx) (src/domain/execution/invocation.mesh.mx:51:16)
+  "record.check.session.that": ($s: InvocationNewScope<RecordInvocationInput>) => {
+    return (async ({ input, tx }) =>
+      input.session == null || input.session === (await attemptSessionOf(tx, input.attempt)))($s);
+  },
+  // check :costUnknown that, translated (src/domain/execution/invocation.mesh.mx:56:16)
+  "record.check.costUnknown.that": ($s: InvocationNewScope<RecordInvocationInput>) =>
     $.or(
-      $.and($.isNotNull($s.self.inputTokens), $.isNotNull($s.self.outputTokens)),
-      $.isNull($s.self.estimatedCost),
+      $.and($.isNotNull($s.input?.inputTokens), $.isNotNull($s.input?.outputTokens)),
+      $.isNull($s.input?.estimatedCost),
     ),
-  // set &task, translated (src/domain/execution/invocation.mesh.mx:61:17)
+  // set &task, translated (src/domain/execution/invocation.mesh.mx:62:17)
   "record.step.0.set.task": ($s: InvocationScope<RecordInvocationInput>) => $s.self.attempt?.taskId,
-  // set &recordedBy, translated (src/domain/execution/invocation.mesh.mx:62:23)
+  // set &recordedBy, translated (src/domain/execution/invocation.mesh.mx:63:23)
   "record.step.0.set.recordedBy": ($s: InvocationScope<RecordInvocationInput>) => $s.actor?.id,
-  // check :notCorrected that, plain (uses-tx) (src/domain/execution/invocation.mesh.mx:83:16)
-  "correct.check.notCorrected.that": ($s: InvocationScope<CorrectInvocationInput>) => {
+  // check :notCorrected that, plain (uses-tx) (src/domain/execution/invocation.mesh.mx:84:16)
+  "correct.check.notCorrected.that": ($s: InvocationNewScope<CorrectInvocationInput>) => {
     return (async ({ input, tx }) =>
       input.corrects != null &&
       (await tx.readInvocation({ filter: { correctsId: { eq: input.corrects } }, limit: 1 }))
         .length === 0)($s);
   },
-  // check :reason that, translated (src/domain/execution/invocation.mesh.mx:88:16)
-  "correct.check.reason.that": ($s: InvocationScope<CorrectInvocationInput>) =>
-    $.ne($.coalesce($s.self.reason, ""), ""),
-  // check :costUnknown that, translated (src/domain/execution/invocation.mesh.mx:93:16)
-  "correct.check.costUnknown.that": ($s: InvocationScope<CorrectInvocationInput>) =>
+  // check :reason that, translated (src/domain/execution/invocation.mesh.mx:89:16)
+  "correct.check.reason.that": ($s: InvocationNewScope<CorrectInvocationInput>) =>
+    $.ne($.coalesce($s.input?.reason, ""), ""),
+  // check :costUnknown that, translated (src/domain/execution/invocation.mesh.mx:94:16)
+  "correct.check.costUnknown.that": ($s: InvocationNewScope<CorrectInvocationInput>) =>
     $.or(
-      $.and($.isNotNull($s.self.inputTokens), $.isNotNull($s.self.outputTokens)),
-      $.isNull($s.self.estimatedCost),
+      $.and($.isNotNull($s.input?.inputTokens), $.isNotNull($s.input?.outputTokens)),
+      $.isNull($s.input?.estimatedCost),
     ),
-  // set &attempt, plain (uses-tx) (src/domain/execution/invocation.mesh.mx:99:20)
+  // set &attempt, plain (uses-tx) (src/domain/execution/invocation.mesh.mx:100:20)
   "correct.step.0.set.attempt": ($s: InvocationScope<CorrectInvocationInput>) => {
     return (async ({ input, tx }) =>
       (await tx.readInvocation({ filter: { id: { eq: input.corrects ?? "" } } })).map(
         (corrected) => corrected.attemptId,
       )[0])($s);
   },
-  // set &task, plain (uses-tx) (src/domain/execution/invocation.mesh.mx:100:17)
+  // set &task, plain (uses-tx) (src/domain/execution/invocation.mesh.mx:101:17)
   "correct.step.0.set.task": ($s: InvocationScope<CorrectInvocationInput>) => {
     return (async ({ input, tx }) =>
       (await tx.readInvocation({ filter: { id: { eq: input.corrects ?? "" } } })).map(
         (corrected) => corrected.taskId,
       )[0])($s);
   },
-  // set &recordedBy, translated (src/domain/execution/invocation.mesh.mx:101:23)
+  // set &recordedBy, translated (src/domain/execution/invocation.mesh.mx:102:23)
   "correct.step.0.set.recordedBy": ($s: InvocationScope<CorrectInvocationInput>) => $s.actor?.id,
 } as const;

@@ -14,6 +14,7 @@ import {
   runCheck as $runCheck,
   scope as $scope,
   unloadFrom as $unloadFrom,
+  uuidv7 as $uuidv7,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
@@ -80,27 +81,31 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
         const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
-          requestedProvider:
-            parsed.requestedProvider === undefined ? null : parsed.requestedProvider,
-          requestedModel: parsed.requestedModel === undefined ? null : parsed.requestedModel,
-          actualProvider: parsed.actualProvider === undefined ? null : parsed.actualProvider,
-          actualModel: parsed.actualModel === undefined ? null : parsed.actualModel,
-          inputTokens: parsed.inputTokens === undefined ? null : parsed.inputTokens,
-          outputTokens: parsed.outputTokens === undefined ? null : parsed.outputTokens,
-          cacheReadTokens: parsed.cacheReadTokens === undefined ? null : parsed.cacheReadTokens,
-          cacheWriteTokens: parsed.cacheWriteTokens === undefined ? null : parsed.cacheWriteTokens,
-          usageSource: parsed.usageSource,
-          estimatedCost: parsed.estimatedCost === undefined ? null : parsed.estimatedCost,
-          pricingBasis: parsed.pricingBasis === undefined ? null : parsed.pricingBasis,
-          startedAt: parsed.startedAt === undefined ? null : parsed.startedAt,
-          endedAt: parsed.endedAt === undefined ? null : parsed.endedAt,
+          id: $uuidv7(),
+          requestedProvider: null,
+          requestedModel: null,
+          actualProvider: null,
+          actualModel: null,
+          inputTokens: null,
+          outputTokens: null,
+          cacheReadTokens: null,
+          cacheWriteTokens: null,
+          estimatedCost: null,
+          pricingBasis: null,
+          startedAt: null,
+          endedAt: null,
           reason: null,
           recordedAt: $now,
-          attemptId: parsed.attempt,
-          sessionId: parsed.session === undefined ? null : parsed.session,
+          sessionId: null,
           correctsId: null,
         };
-        const $record: $Row = { ...$changes };
+        const $record: $Row = {
+          ...$changes,
+          usageSource: null,
+          attemptId: null,
+          taskId: null,
+          recordedById: null,
+        };
         const $load = { actor: $actor, context: $context, clock: options.clock };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Invocation", $record, "action function"),
@@ -119,29 +124,56 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
         ) as unknown as $Scope<RecordInvocationInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $loadInto($loadPlan, "Invocation", tx, $record, ["attempt", "session"], $load);
         await $runCheck($issues, $s, {
           label: "session",
           code: "invocation.session",
           message: "the session is not the attempt's session",
-          source: { file: "src/domain/execution/invocation.mesh.mx", line: 49, column: 9 },
+          source: { file: "src/domain/execution/invocation.mesh.mx", line: 50, column: 9 },
           that: $expressions["record.check.session.that"],
         });
         await $runCheck($issues, $s, {
           label: "costUnknown",
           code: "invocation.cost-unknown",
           message: "the cost is unknown while a token count it needs is unknown",
-          source: { file: "src/domain/execution/invocation.mesh.mx", line: 54, column: 9 },
+          source: { file: "src/domain/execution/invocation.mesh.mx", line: 55, column: 9 },
           that: $expressions["record.check.costUnknown.that"],
         });
         if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // the input: the member inputs the caller sent, applied now that the checks have passed
+        if (parsed.attempt !== undefined) $changes.attemptId = $record.attemptId = parsed.attempt;
+        if (parsed.requestedProvider !== undefined)
+          $changes.requestedProvider = $record.requestedProvider = parsed.requestedProvider;
+        if (parsed.requestedModel !== undefined)
+          $changes.requestedModel = $record.requestedModel = parsed.requestedModel;
+        if (parsed.actualProvider !== undefined)
+          $changes.actualProvider = $record.actualProvider = parsed.actualProvider;
+        if (parsed.actualModel !== undefined)
+          $changes.actualModel = $record.actualModel = parsed.actualModel;
+        if (parsed.inputTokens !== undefined)
+          $changes.inputTokens = $record.inputTokens = parsed.inputTokens;
+        if (parsed.outputTokens !== undefined)
+          $changes.outputTokens = $record.outputTokens = parsed.outputTokens;
+        if (parsed.cacheReadTokens !== undefined)
+          $changes.cacheReadTokens = $record.cacheReadTokens = parsed.cacheReadTokens;
+        if (parsed.cacheWriteTokens !== undefined)
+          $changes.cacheWriteTokens = $record.cacheWriteTokens = parsed.cacheWriteTokens;
+        if (parsed.usageSource !== undefined)
+          $changes.usageSource = $record.usageSource = parsed.usageSource;
+        if (parsed.estimatedCost !== undefined)
+          $changes.estimatedCost = $record.estimatedCost = parsed.estimatedCost;
+        if (parsed.pricingBasis !== undefined)
+          $changes.pricingBasis = $record.pricingBasis = parsed.pricingBasis;
+        if (parsed.startedAt !== undefined)
+          $changes.startedAt = $record.startedAt = parsed.startedAt;
+        if (parsed.endedAt !== undefined) $changes.endedAt = $record.endedAt = parsed.endedAt;
+        if (parsed.session !== undefined) $changes.sessionId = $record.sessionId = parsed.session;
         // do: the steps run in written order, each seeing the record as the ones before it left it
         await $loadInto($loadPlan, "Invocation", tx, $record, ["attempt"], $load);
         {
           const $value = await $expressions["record.step.0.set.task"]($s);
           if ($value === undefined || $value === null)
             throw new $FrameworkError(
-              "set &task (src/domain/execution/invocation.mesh.mx:61:17) produced no value, and the relationship task is required",
+              "set &task (src/domain/execution/invocation.mesh.mx:62:17) produced no value, and the relationship task is required",
             );
           $changes.taskId = $record.taskId = $value;
         }
@@ -149,7 +181,7 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
           const $value = await $expressions["record.step.0.set.recordedBy"]($s);
           if ($value === undefined || $value === null)
             throw new $FrameworkError(
-              "set &recordedBy (src/domain/execution/invocation.mesh.mx:62:23) produced no value, and the relationship recordedBy is required",
+              "set &recordedBy (src/domain/execution/invocation.mesh.mx:63:23) produced no value, and the relationship recordedBy is required",
             );
           $changes.recordedById = $record.recordedById = $value;
         }
@@ -174,26 +206,31 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
         const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
-          requestedProvider:
-            parsed.requestedProvider === undefined ? null : parsed.requestedProvider,
-          requestedModel: parsed.requestedModel === undefined ? null : parsed.requestedModel,
-          actualProvider: parsed.actualProvider === undefined ? null : parsed.actualProvider,
-          actualModel: parsed.actualModel === undefined ? null : parsed.actualModel,
-          inputTokens: parsed.inputTokens === undefined ? null : parsed.inputTokens,
-          outputTokens: parsed.outputTokens === undefined ? null : parsed.outputTokens,
-          cacheReadTokens: parsed.cacheReadTokens === undefined ? null : parsed.cacheReadTokens,
-          cacheWriteTokens: parsed.cacheWriteTokens === undefined ? null : parsed.cacheWriteTokens,
-          usageSource: parsed.usageSource,
-          estimatedCost: parsed.estimatedCost === undefined ? null : parsed.estimatedCost,
-          pricingBasis: parsed.pricingBasis === undefined ? null : parsed.pricingBasis,
-          startedAt: parsed.startedAt === undefined ? null : parsed.startedAt,
-          endedAt: parsed.endedAt === undefined ? null : parsed.endedAt,
-          reason: parsed.reason === undefined ? null : parsed.reason,
+          id: $uuidv7(),
+          requestedProvider: null,
+          requestedModel: null,
+          actualProvider: null,
+          actualModel: null,
+          inputTokens: null,
+          outputTokens: null,
+          cacheReadTokens: null,
+          cacheWriteTokens: null,
+          estimatedCost: null,
+          pricingBasis: null,
+          startedAt: null,
+          endedAt: null,
+          reason: null,
           recordedAt: $now,
-          sessionId: parsed.session === undefined ? null : parsed.session,
-          correctsId: parsed.corrects === undefined ? null : parsed.corrects,
+          sessionId: null,
+          correctsId: null,
         };
-        const $record: $Row = { ...$changes };
+        const $record: $Row = {
+          ...$changes,
+          usageSource: null,
+          attemptId: null,
+          taskId: null,
+          recordedById: null,
+        };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Invocation", $record, "action function"),
           "Invocation.correct",
@@ -215,30 +252,60 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
           label: "notCorrected",
           code: "invocation.not-corrected",
           message: "the invocation is already corrected",
-          source: { file: "src/domain/execution/invocation.mesh.mx", line: 82, column: 9 },
+          source: { file: "src/domain/execution/invocation.mesh.mx", line: 83, column: 9 },
           that: $expressions["correct.check.notCorrected.that"],
         });
         await $runCheck($issues, $s, {
           label: "reason",
           code: "invocation.reason",
           message: "a correction gives a reason",
-          source: { file: "src/domain/execution/invocation.mesh.mx", line: 87, column: 9 },
+          source: { file: "src/domain/execution/invocation.mesh.mx", line: 88, column: 9 },
           that: $expressions["correct.check.reason.that"],
         });
         await $runCheck($issues, $s, {
           label: "costUnknown",
           code: "invocation.cost-unknown",
           message: "the cost is unknown while a token count it needs is unknown",
-          source: { file: "src/domain/execution/invocation.mesh.mx", line: 92, column: 9 },
+          source: { file: "src/domain/execution/invocation.mesh.mx", line: 93, column: 9 },
           that: $expressions["correct.check.costUnknown.that"],
         });
         if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // the input: the member inputs the caller sent, applied now that the checks have passed
+        if (parsed.corrects !== undefined)
+          $changes.correctsId = $record.correctsId = parsed.corrects;
+        if (parsed.reason !== undefined) $changes.reason = $record.reason = parsed.reason;
+        if (parsed.requestedProvider !== undefined)
+          $changes.requestedProvider = $record.requestedProvider = parsed.requestedProvider;
+        if (parsed.requestedModel !== undefined)
+          $changes.requestedModel = $record.requestedModel = parsed.requestedModel;
+        if (parsed.actualProvider !== undefined)
+          $changes.actualProvider = $record.actualProvider = parsed.actualProvider;
+        if (parsed.actualModel !== undefined)
+          $changes.actualModel = $record.actualModel = parsed.actualModel;
+        if (parsed.inputTokens !== undefined)
+          $changes.inputTokens = $record.inputTokens = parsed.inputTokens;
+        if (parsed.outputTokens !== undefined)
+          $changes.outputTokens = $record.outputTokens = parsed.outputTokens;
+        if (parsed.cacheReadTokens !== undefined)
+          $changes.cacheReadTokens = $record.cacheReadTokens = parsed.cacheReadTokens;
+        if (parsed.cacheWriteTokens !== undefined)
+          $changes.cacheWriteTokens = $record.cacheWriteTokens = parsed.cacheWriteTokens;
+        if (parsed.usageSource !== undefined)
+          $changes.usageSource = $record.usageSource = parsed.usageSource;
+        if (parsed.estimatedCost !== undefined)
+          $changes.estimatedCost = $record.estimatedCost = parsed.estimatedCost;
+        if (parsed.pricingBasis !== undefined)
+          $changes.pricingBasis = $record.pricingBasis = parsed.pricingBasis;
+        if (parsed.startedAt !== undefined)
+          $changes.startedAt = $record.startedAt = parsed.startedAt;
+        if (parsed.endedAt !== undefined) $changes.endedAt = $record.endedAt = parsed.endedAt;
+        if (parsed.session !== undefined) $changes.sessionId = $record.sessionId = parsed.session;
         // do: the steps run in written order, each seeing the record as the ones before it left it
         {
           const $value = await $expressions["correct.step.0.set.attempt"]($s);
           if ($value === undefined || $value === null)
             throw new $FrameworkError(
-              "set &attempt (src/domain/execution/invocation.mesh.mx:99:20) produced no value, and the relationship attempt is required",
+              "set &attempt (src/domain/execution/invocation.mesh.mx:100:20) produced no value, and the relationship attempt is required",
             );
           $changes.attemptId = $record.attemptId = $value;
         }
@@ -246,7 +313,7 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
           const $value = await $expressions["correct.step.0.set.task"]($s);
           if ($value === undefined || $value === null)
             throw new $FrameworkError(
-              "set &task (src/domain/execution/invocation.mesh.mx:100:17) produced no value, and the relationship task is required",
+              "set &task (src/domain/execution/invocation.mesh.mx:101:17) produced no value, and the relationship task is required",
             );
           $changes.taskId = $record.taskId = $value;
         }
@@ -254,7 +321,7 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
           const $value = await $expressions["correct.step.0.set.recordedBy"]($s);
           if ($value === undefined || $value === null)
             throw new $FrameworkError(
-              "set &recordedBy (src/domain/execution/invocation.mesh.mx:101:23) produced no value, and the relationship recordedBy is required",
+              "set &recordedBy (src/domain/execution/invocation.mesh.mx:102:23) produced no value, and the relationship recordedBy is required",
             );
           $changes.recordedById = $record.recordedById = $value;
         }

@@ -4,7 +4,7 @@ import { Collaborator } from "../identity/collaborator.mesh.mx"
 import { Machine } from "./machine.mesh.mx"
 import { SessionReference } from "./session-reference.mesh.mx"
 import { heldFence, missingEvidenceOf } from "../work/work.helpers"
-import { attemptOutcome, delegatorFor, nextNumber, settlesRun } from "./execution.helpers"
+import { attemptOutcome, claimerOf, delegatorFor, machineActiveOf, nextNumber, runRunningOf, settlesRun, stepIdleOf } from "./execution.helpers"
 
 entity :Attempt table="attempts"
   attributes
@@ -35,17 +35,17 @@ entity :Attempt table="attempts"
         &session
       validate
         check :claimer [
-          that=({ actor }) => &run.task.claims.some((c) => c.state === :active && c.expiresAt > now() && c.holderId === actor.id)
+          that=({ input, actor, tx }) => claimerOf(tx, input.run, actor.id, now())
           code="attempt.claimer"
           message="the claim on the task is no longer the actor's; claim it again to report"
         ]
         check :runRunning [
-          that=() => &run.state === :running
+          that=({ input, tx }) => runRunningOf(tx, input.run)
           code="attempt.run-running"
           message="the run is not running"
         ]
         check :stepIdle [
-          that=() => !&run.attempts.some((a) => a.step === &step && a.state === :running)
+          that=({ input, tx }) => stepIdleOf(tx, input.run, input.step ?? &step)
           code="attempt.step-idle"
           message="an attempt of this step is already running"
         ]
@@ -55,7 +55,7 @@ entity :Attempt table="attempts"
           message="the session reference does not exist"
         ]
         check :machineRetired [
-          that=() => &machine === null || &machine?.state === :active
+          that=async ({ input, tx }) => input.machine == null || await machineActiveOf(tx, input.machine)
           code="machine.retired"
           message="the machine is retired; report the host by a new name"
         ]
@@ -94,7 +94,7 @@ entity :Attempt table="attempts"
           that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
           code="expected-version"
           message="the record is at another version; read it again and retry"
-          details=({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })
+          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
         ]
       do
         set
@@ -121,7 +121,7 @@ entity :Attempt table="attempts"
           that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
           code="expected-version"
           message="the record is at another version; read it again and retry"
-          details=({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })
+          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
         ]
       do
         set
@@ -143,7 +143,7 @@ entity :Attempt table="attempts"
           that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
           code="expected-version"
           message="the record is at another version; read it again and retry"
-          details=({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })
+          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
         ]
       do
         set

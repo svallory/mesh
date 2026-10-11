@@ -1,6 +1,6 @@
 import { Task } from "./task.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
-import { leaseEnd, readinessOf } from "./work.helpers"
+import { derivedStateOf, leaseEnd, readinessOf, taskVersionOf } from "./work.helpers"
 
 entity :Claim table="claims"
   attributes
@@ -23,16 +23,16 @@ entity :Claim table="claims"
         integer :expectedVersion nullable
       validate
         check :taskReady [
-          that=() => &task.derivedState === :ready
+          that=async ({ input, tx }) => (await derivedStateOf(tx, input.task, now())) === :ready
           code="claim.task-ready"
           message="the task is not ready to claim"
-          details=({ tx }) => readinessOf(tx, &task.id, &task.derivedState)
+          details=({ input, tx }) => readinessOf(tx, input.task, now())
         ]
         check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &task.version
+          that=async ({ input, tx }) => input.expectedVersion == null || input.expectedVersion === await taskVersionOf(tx, input.task)
           code="expected-version"
           message="the task is at another version; read it again and retry"
-          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &task.version })
+          details=async ({ input, tx }) => ({ expectedVersion: input.expectedVersion, actualVersion: await taskVersionOf(tx, input.task) })
         ]
       do
         run({ input, tx, actions }) {

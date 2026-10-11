@@ -1,7 +1,8 @@
 import { Task } from "../work/task.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
 import { Attempt } from "./attempt.mesh.mx"
-import { responsibleFor } from "./execution.helpers"
+import { taskOpenOf } from "../work/work.helpers"
+import { responsibleFor, runRunningOf } from "./execution.helpers"
 
 entity :Run table="runs"
   attributes
@@ -27,12 +28,12 @@ entity :Run table="runs"
         &parentRun
       validate
         check :taskOpen [
-          that=() => &task.state === :open
+          that=({ input, tx }) => taskOpenOf(tx, input.task)
           code="run.task-open"
           message="runs serve open tasks"
         ]
         check :parentRunning [
-          that=() => &parentRun === null || &parentRun?.state === :running
+          that=async ({ input, tx }) => input.parentRun == null || await runRunningOf(tx, input.parentRun)
           code="run.parent-running"
           message="the parent run is not running"
         ]
@@ -54,7 +55,7 @@ entity :Run table="runs"
           that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
           code="expected-version"
           message="the record is at another version; read it again and retry"
-          details=({ input, before }) => ({ expectedVersion: input.expectedVersion, actualVersion: before.version })
+          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
         ]
       do
         set

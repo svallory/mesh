@@ -1,6 +1,6 @@
 import { Task } from "./task.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
-import { claimToRelease, fenceDetails, fenceIsCurrent, missingEvidenceOf } from "./work.helpers"
+import { claimsOf, claimToRelease, fenceDetailsOf, fenceIsCurrent, inReviewOf, missingEvidenceOf, taskOpenOf, taskVersionOf } from "./work.helpers"
 
 entity :Submission table="submissions"
   attributes
@@ -24,32 +24,32 @@ entity :Submission table="submissions"
         integer :expectedVersion nullable
       validate
         check :taskOpen [
-          that=() => &task.state === :open
+          that=({ input, tx }) => taskOpenOf(tx, input.task)
           code="task.open"
           message="the task is not open; reopen it first"
         ]
         check :currentFence [
-          that=({ input, actor }) => fenceIsCurrent(&task.claims, input.fence, actor.id, now())
+          that=async ({ input, actor, tx }) => fenceIsCurrent(await claimsOf(tx, input.task), input.fence, actor.id, now())
           code="claim.current-fence"
           message="the fence is not your current claim; claim the task again"
-          details=({ input, actor }) => fenceDetails(&task.maxFence, &task.claims, input.fence, actor.id, now())
+          details=({ input, actor, tx }) => fenceDetailsOf(tx, input.task, input.fence, actor.id, now())
         ]
         check :nonePending [
-          that=() => !&task.inReview
+          that=async ({ input, tx }) => !(await inReviewOf(tx, input.task))
           code="submission.none-pending"
           message="a submission is already pending; wait for its review or withdraw it"
         ]
         check :evidenceExists [
-          that=async ({ tx }) => (await missingEvidenceOf(tx, &evidence)).length === 0
+          that=async ({ input, tx }) => (await missingEvidenceOf(tx, input.evidence ?? &evidence)).length === 0
           code="evidence.exists"
           message="an evidence reference does not exist"
-          details=async ({ tx }) => ({ missing: await missingEvidenceOf(tx, &evidence) })
+          details=async ({ input, tx }) => ({ missing: await missingEvidenceOf(tx, input.evidence ?? &evidence) })
         ]
         check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &task.version
+          that=async ({ input, tx }) => input.expectedVersion == null || input.expectedVersion === await taskVersionOf(tx, input.task)
           code="expected-version"
           message="the task is at another version; read it again and retry"
-          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &task.version })
+          details=async ({ input, tx }) => ({ expectedVersion: input.expectedVersion, actualVersion: await taskVersionOf(tx, input.task) })
         ]
       do
         set

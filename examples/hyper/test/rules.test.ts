@@ -298,7 +298,7 @@ const RULES: Record<string, Case> = {
       expect((await w.hyper.updateTask({ id: w.task.id, intent: null }, as(w.alice))).intent).toBeNull();
     },
     fail: async (w) => {
-      // `before` holds the stored values; an omitted input keeps them, so nothing differs.
+      // `validate` sees the stored values; an omitted input keeps them, so nothing differs.
       await refused(w.hyper.updateTask({ id: w.task.id, title: "Ship" }, as(w.alice)), "task.unchanged");
       await refused(w.hyper.updateTask({ id: w.task.id, intent: null }, as(w.alice)), "task.unchanged");
     },
@@ -904,6 +904,25 @@ describe("rules together, and the version rule on the other entities", () => {
   }));
 });
 
+// A translated check reads a value not sent as null, so `input.x ?? &x` cannot tell "sent null" from "not sent" (ACT-27).
+// The two rules where that differs are plain code (`taskChanges` and `movedParent` in work.helpers.ts); these pin both.
+describe("a value sent as null is not a value left out", () => {
+  test("task.unchanged: an intent sent as null clears it, one left out keeps it", () => within(async (w) => {
+    await w.hyper.updateTask({ id: w.task.id, intent: "by Friday" }, as(w.alice));
+    expect(await w.hyper.updateTask({ id: w.task.id, title: "Ship it" }, as(w.alice))).toMatchObject({ title: "Ship it", intent: "by Friday" });
+    await refused(w.hyper.updateTask({ id: w.task.id, title: "Ship it" }, as(w.alice)), "task.unchanged");
+    expect((await w.hyper.updateTask({ id: w.task.id, title: "Ship it", intent: null }, as(w.alice))).intent).toBeNull();
+    await refused(w.hyper.updateTask({ id: w.task.id, title: "Ship it", intent: null }, as(w.alice)), "task.unchanged");
+  }));
+
+  test("task.parent-open: a parent sent as null moves the Task to the top, one left out keeps the stored parent", () => within(async (w) => {
+    const child = await w.hyper.createTask({ title: "child", parent: w.task.id }, as(w.alice));
+    await taskCancel({ id: w.task.id, reason: "not now" }, as(w.alice), w.binding);
+    await refused(w.hyper.moveTask({ id: child.id }, as(w.alice)), "task.parent-open");
+    expect((await w.hyper.moveTask({ id: child.id, parent: null }, as(w.alice))).parentId).toBeNull();
+  }));
+});
+
 describe("what the rules leave in place", () => {
   test("release ends the claim with the time and reason; revoke needs a reason and stores it", () => within(async (w) => {
     const held = await claim(w);
@@ -924,6 +943,12 @@ describe("what the rules leave in place", () => {
   }));
 
   test("a related id that names no row, where no rule asks, is a FrameworkError (the `exists` check is M8's permission phase)", () => within(async (w) => {
-    await expect(w.hyper.acquireClaim({ task: GHOST }, as(w.bot))).rejects.toThrow("which does not exist");
+    // No check of `recordInvocation` reads the attempt when no session is sent; its `set` step loads it and finds no row.
+    await expect(w.hyper.recordInvocation({ attempt: GHOST, usageSource: "runtime" }, as(w.bot))).rejects.toThrow("which does not exist");
+  }));
+
+  test("a rule that reads the record a create names reads it through tx, so an id that names no row fails the rule (ACT-27)", () => within(async (w) => {
+    // A create's checks see `self` before the input, so `claim.task-ready` reads the Task by `input.task` and finds none.
+    await refused(w.hyper.acquireClaim({ task: GHOST }, as(w.bot)), "claim.task-ready", { derivedState: null, reasons: [] });
   }));
 });

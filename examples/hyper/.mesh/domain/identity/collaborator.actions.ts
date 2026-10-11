@@ -14,6 +14,7 @@ import {
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
+  uuidv7 as $uuidv7,
   writeCount as $writeCount,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
@@ -87,12 +88,11 @@ export function bindCollaborator(
         const $actor = $context.actor;
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
-          kind: parsed.kind,
-          name: parsed.name,
+          id: $uuidv7(),
           state: "active",
           version: 1,
         };
-        const $record: $Row = { ...$changes };
+        const $record: $Row = { ...$changes, kind: null, name: null };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Collaborator", $record, "action function"),
           "Collaborator.register",
@@ -118,6 +118,9 @@ export function bindCollaborator(
           that: $expressions["register.check.nameUnique.that"],
         });
         if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // the input: the member inputs the caller sent, applied now that the checks have passed
+        if (parsed.kind !== undefined) $changes.kind = $record.kind = parsed.kind;
+        if (parsed.name !== undefined) $changes.name = $record.name = parsed.name;
         // data layer
         const $stored = await tx.insert(tables.collaborator, $changes);
         $noteWrite(tx);
@@ -135,13 +138,12 @@ export function bindCollaborator(
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.collaborator, $key);
         if ($before === undefined) throw new $NotFoundError("Collaborator", $key);
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
-        if (parsed.name !== undefined) $changes.name = $record.name = parsed.name;
         const $writes = $writeCount(tx);
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Collaborator", $record, "action function"),
@@ -193,6 +195,8 @@ export function bindCollaborator(
           details: $expressions["update.check.versionMatches.details"],
         });
         if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // the input: the member inputs the caller sent, applied now that the checks have passed
+        if (parsed.name !== undefined) $changes.name = $record.name = parsed.name;
         // do: the steps run in written order, each seeing the record as the ones before it left it
         {
           const $value = await $expressions["update.step.0.set.version"]($s);
@@ -229,7 +233,7 @@ export function bindCollaborator(
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.collaborator, $key);
         if ($before === undefined) throw new $NotFoundError("Collaborator", $key);

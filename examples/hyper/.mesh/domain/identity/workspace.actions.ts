@@ -13,6 +13,7 @@ import {
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
+  uuidv7 as $uuidv7,
   writeCount as $writeCount,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
@@ -73,6 +74,7 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
+          id: $uuidv7(),
           name: parsed.name === undefined ? null : parsed.name,
           location: parsed.location === undefined ? "local" : parsed.location,
           state: "active",
@@ -92,13 +94,12 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.workspace, $key);
         if ($before === undefined) throw new $NotFoundError("Workspace", $key);
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
-        if (parsed.name !== undefined) $changes.name = $record.name = parsed.name;
         const $writes = $writeCount(tx);
         const $self = $readOnlyRecord($record, "Workspace.rename");
         const $s = $scope(
@@ -130,6 +131,8 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
           details: $expressions["rename.check.versionMatches.details"],
         });
         if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // the input: the member inputs the caller sent, applied now that the checks have passed
+        if (parsed.name !== undefined) $changes.name = $record.name = parsed.name;
         // do: the steps run in written order, each seeing the record as the ones before it left it
         {
           const $value = await $expressions["rename.step.0.set.version"]($s);

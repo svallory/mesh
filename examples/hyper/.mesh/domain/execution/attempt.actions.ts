@@ -17,6 +17,7 @@ import {
   runCheck as $runCheck,
   scope as $scope,
   unloadFrom as $unloadFrom,
+  uuidv7 as $uuidv7,
   writeCount as $writeCount,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
@@ -86,19 +87,26 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
         const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
-          step: parsed.step === undefined ? "main" : parsed.step,
+          id: $uuidv7(),
+          step: "main",
           claimFence: null,
-          runtime: parsed.runtime === undefined ? null : parsed.runtime,
+          runtime: null,
           outcome: null,
           state: "running",
           endedAt: null,
           version: 1,
           startedAt: $now,
-          runId: parsed.run,
-          machineId: parsed.machine === undefined ? null : parsed.machine,
-          sessionId: parsed.session === undefined ? null : parsed.session,
+          machineId: null,
+          sessionId: null,
         };
-        const $record: $Row = { ...$changes };
+        const $record: $Row = {
+          ...$changes,
+          number: null,
+          runId: null,
+          taskId: null,
+          performerId: null,
+          delegatorId: null,
+        };
         const $load = { actor: $actor, context: $context, clock: options.clock };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Attempt", $record, "action function"),
@@ -117,14 +125,6 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
         ) as unknown as $Scope<StartAttemptInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $loadInto(
-          $loadPlan,
-          "Attempt",
-          tx,
-          $record,
-          ["machine", "run", "run.attempts", "run.task", "run.task.claims"],
-          $load,
-        );
         await $runCheck($issues, $s, {
           label: "claimer",
           code: "attempt.claimer",
@@ -161,6 +161,12 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
           that: $expressions["start.check.machineRetired.that"],
         });
         if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // the input: the member inputs the caller sent, applied now that the checks have passed
+        if (parsed.run !== undefined) $changes.runId = $record.runId = parsed.run;
+        if (parsed.step !== undefined) $changes.step = $record.step = parsed.step;
+        if (parsed.runtime !== undefined) $changes.runtime = $record.runtime = parsed.runtime;
+        if (parsed.machine !== undefined) $changes.machineId = $record.machineId = parsed.machine;
+        if (parsed.session !== undefined) $changes.sessionId = $record.sessionId = parsed.session;
         // do: the steps run in written order, each seeing the record as the ones before it left it
         {
           const $value = await $expressions["start.step.0.set.performer"]($s);
@@ -231,7 +237,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.attempt, $key);
         if ($before === undefined) throw new $NotFoundError("Attempt", $key);
@@ -349,7 +355,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.attempt, $key);
         if ($before === undefined) throw new $NotFoundError("Attempt", $key);
@@ -427,7 +433,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.attempt, $key);
         if ($before === undefined) throw new $NotFoundError("Attempt", $key);

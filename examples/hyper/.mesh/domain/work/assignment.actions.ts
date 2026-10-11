@@ -14,6 +14,7 @@ import {
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
+  uuidv7 as $uuidv7,
   writeCount as $writeCount,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
@@ -78,13 +79,18 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
         const $actor = $context.actor;
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
-          reviewWaived: parsed.reviewWaived === undefined ? false : parsed.reviewWaived,
+          id: $uuidv7(),
+          reviewWaived: false,
           endedAt: null,
           endReason: null,
-          taskId: parsed.task,
-          assigneeId: parsed.assignee,
         };
-        const $record: $Row = { ...$changes };
+        const $record: $Row = {
+          ...$changes,
+          startedAt: null,
+          taskId: null,
+          assigneeId: null,
+          delegatorId: null,
+        };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Assignment", $record, "action function"),
           "Assignment.start",
@@ -100,6 +106,12 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
           },
           options,
         ) as unknown as $Scope<StartAssignmentInput>;
+        // the input: the member inputs the caller sent, applied now that the checks have passed
+        if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
+        if (parsed.assignee !== undefined)
+          $changes.assigneeId = $record.assigneeId = parsed.assignee;
+        if (parsed.reviewWaived !== undefined)
+          $changes.reviewWaived = $record.reviewWaived = parsed.reviewWaived;
         // do: the steps run in written order, each seeing the record as the ones before it left it
         {
           const $value = await $expressions["start.step.0.set.delegator"]($s);
@@ -134,7 +146,7 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.assignment, $key);
         if ($before === undefined) throw new $NotFoundError("Assignment", $key);

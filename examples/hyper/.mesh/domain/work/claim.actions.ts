@@ -18,6 +18,7 @@ import {
   runCheck as $runCheck,
   scope as $scope,
   unloadFrom as $unloadFrom,
+  uuidv7 as $uuidv7,
   writeCount as $writeCount,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
@@ -91,12 +92,19 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         const $actor = $context.actor;
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
+          id: $uuidv7(),
           endedAt: null,
           endReason: null,
           state: "active",
-          taskId: parsed.task,
         };
-        const $record: $Row = { ...$changes };
+        const $record: $Row = {
+          ...$changes,
+          fence: null,
+          acquiredAt: null,
+          expiresAt: null,
+          taskId: null,
+          holderId: null,
+        };
         const $load = { actor: $actor, context: $context, clock: options.clock };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Claim", $record, "action function"),
@@ -115,7 +123,6 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         ) as unknown as $Scope<AcquireClaimInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $loadInto($loadPlan, "Claim", tx, $record, ["task", "task.derivedState"], $load);
         await $runCheck($issues, $s, {
           label: "taskReady",
           code: "claim.task-ready",
@@ -133,6 +140,8 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           details: $expressions["acquire.check.versionMatches.details"],
         });
         if ($issues.length > 0) throw new $InvalidInputError($issues);
+        // the input: the member inputs the caller sent, applied now that the checks have passed
+        if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
         // do: the steps run in written order, each seeing the record as the ones before it left it
         await $expressions["acquire.step.0.run"]($s);
         {
@@ -198,7 +207,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.claim, $key);
         if ($before === undefined) throw new $NotFoundError("Claim", $key);
@@ -300,7 +309,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.claim, $key);
         if ($before === undefined) throw new $NotFoundError("Claim", $key);
@@ -403,7 +412,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.claim, $key);
         if ($before === undefined) throw new $NotFoundError("Claim", $key);
@@ -491,7 +500,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.claim, $key);
         if ($before === undefined) throw new $NotFoundError("Claim", $key);
@@ -568,7 +577,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        // plan: read the row under the write lock, check, change it, write it (every update is a read then a write)
+        // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.claim, $key);
         if ($before === undefined) throw new $NotFoundError("Claim", $key);

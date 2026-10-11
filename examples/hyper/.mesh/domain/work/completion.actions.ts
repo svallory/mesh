@@ -10,6 +10,7 @@ import {
   noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
   scope as $scope,
+  uuidv7 as $uuidv7,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
@@ -66,12 +67,11 @@ export function bindCompletion(layer: $DataLayer, options: $BindOptions = {}, co
         const $now = options.clock?.() ?? new Date();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
-          rule: parsed.rule,
+          id: $uuidv7(),
           completedAt: $now,
-          taskId: parsed.task,
-          submissionId: parsed.submission === undefined ? null : parsed.submission,
+          submissionId: null,
         };
-        const $record: $Row = { ...$changes };
+        const $record: $Row = { ...$changes, rule: null, taskId: null, completedById: null };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Completion", $record, "action function"),
           "Completion.record",
@@ -87,6 +87,11 @@ export function bindCompletion(layer: $DataLayer, options: $BindOptions = {}, co
           },
           options,
         ) as unknown as $Scope<RecordCompletionInput>;
+        // the input: the member inputs the caller sent, applied now that the checks have passed
+        if (parsed.rule !== undefined) $changes.rule = $record.rule = parsed.rule;
+        if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
+        if (parsed.submission !== undefined)
+          $changes.submissionId = $record.submissionId = parsed.submission;
         // do: the steps run in written order, each seeing the record as the ones before it left it
         {
           const $value = await $expressions["record.step.0.set.completedBy"]($s);

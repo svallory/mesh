@@ -7,7 +7,8 @@ import {
   type ReadOnlyResults as $ReadOnlyResults,
   type Scope as $Scope,
 } from "@meshfw/runtime";
-import { responsibleFor } from "../../../src/domain/execution/execution.helpers";
+import { responsibleFor, runRunningOf } from "../../../src/domain/execution/execution.helpers";
+import { taskOpenOf } from "../../../src/domain/work/work.helpers";
 import type { Actions as $Actions, Reads as $Reads } from "../../composition";
 import type { Run, RunLoaded, CancelRunInput, SettleRunInput, StartRunInput } from "./run.types";
 
@@ -23,43 +24,63 @@ export type RunScope<I = unknown> = $Scope<{
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
 export type RunStoredScope<I = unknown> = RunScope<I> & { before: $DeepReadonly<Run> };
+/** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
+export type RunCheckScope<I = unknown> = Omit<RunScope<I>, "before">;
+/** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
+export type RunNewScope<I = unknown> = Omit<RunCheckScope<I>, "self"> & {
+  self: $DeepReadonly<
+    Omit<
+      RunLoaded,
+      "taskId" | "task" | "responsibleId" | "responsible" | "startedById" | "startedBy"
+    > & {
+      [K in "taskId" | "task" | "responsibleId" | "responsible" | "startedById" | "startedBy"]:
+        | RunLoaded[K]
+        | null;
+    }
+  >;
+};
 
 export const expressions = {
-  // check :taskOpen that, translated (src/domain/execution/run.mesh.mx:30:16)
-  "start.check.taskOpen.that": ($s: RunScope<StartRunInput>) => $.eq($s.self.task?.state, "open"),
-  // check :parentRunning that, translated (src/domain/execution/run.mesh.mx:35:16)
-  "start.check.parentRunning.that": ($s: RunScope<StartRunInput>) =>
-    $.or($.isNull($s.self.parentRun), $.eq($s.self.parentRun?.state, "running")),
-  // set &startedBy, translated (src/domain/execution/run.mesh.mx:41:22)
+  // check :taskOpen that, plain (uses-tx) (src/domain/execution/run.mesh.mx:31:16)
+  "start.check.taskOpen.that": ($s: RunNewScope<StartRunInput>) => {
+    return (({ input, tx }) => taskOpenOf(tx, input.task))($s);
+  },
+  // check :parentRunning that, plain (uses-tx) (src/domain/execution/run.mesh.mx:36:16)
+  "start.check.parentRunning.that": ($s: RunNewScope<StartRunInput>) => {
+    return (async ({ input, tx }) =>
+      input.parentRun == null || (await runRunningOf(tx, input.parentRun)))($s);
+  },
+  // set &startedBy, translated (src/domain/execution/run.mesh.mx:42:22)
   "start.step.0.set.startedBy": ($s: RunScope<StartRunInput>) => $s.actor?.id,
-  // set &responsible, plain (reads-record-in-helper) (src/domain/execution/run.mesh.mx:42:24)
+  // set &responsible, plain (reads-record-in-helper) (src/domain/execution/run.mesh.mx:43:24)
   "start.step.0.set.responsible": ($s: RunScope<StartRunInput>) => {
     const { self } = $s;
     return (({ actor }) => responsibleFor(self.task.assignments, actor.id))($s);
   },
-  // check :cancelable that, translated (src/domain/execution/run.mesh.mx:49:16)
-  "cancel.check.cancelable.that": ($s: RunStoredScope<CancelRunInput>) =>
+  // check :cancelable that, translated (src/domain/execution/run.mesh.mx:50:16)
+  "cancel.check.cancelable.that": ($s: RunCheckScope<CancelRunInput>) =>
     $.eq($s.self.state, "running"),
-  // check :versionMatches that, translated (src/domain/execution/run.mesh.mx:54:16)
-  "cancel.check.versionMatches.that": ($s: RunStoredScope<CancelRunInput>) =>
+  // check :versionMatches that, translated (src/domain/execution/run.mesh.mx:55:16)
+  "cancel.check.versionMatches.that": ($s: RunCheckScope<CancelRunInput>) =>
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/run.mesh.mx:57:19)
-  "cancel.check.versionMatches.details": ($s: RunStoredScope<CancelRunInput>) => {
-    return (({ input, before }) => ({
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/run.mesh.mx:58:19)
+  "cancel.check.versionMatches.details": ($s: RunCheckScope<CancelRunInput>) => {
+    const { self } = $s;
+    return (({ input }) => ({
       expectedVersion: input.expectedVersion,
-      actualVersion: before.version,
+      actualVersion: self.version,
     }))($s);
   },
-  // set &endedAt, translated (src/domain/execution/run.mesh.mx:62:20)
+  // set &endedAt, translated (src/domain/execution/run.mesh.mx:63:20)
   "cancel.step.0.set.endedAt": ($s: RunStoredScope<CancelRunInput>) => $.now($s),
-  // set &cancelReason, translated (src/domain/execution/run.mesh.mx:63:25)
+  // set &cancelReason, translated (src/domain/execution/run.mesh.mx:64:25)
   "cancel.step.0.set.cancelReason": ($s: RunStoredScope<CancelRunInput>) => $s.input?.reason,
-  // set &version, translated (src/domain/execution/run.mesh.mx:64:20)
+  // set &version, translated (src/domain/execution/run.mesh.mx:65:20)
   "cancel.step.0.set.version": ($s: RunStoredScope<CancelRunInput>) => $.add($s.self.version, 1),
-  // set &state, translated (src/domain/execution/run.mesh.mx:71:18)
+  // set &state, translated (src/domain/execution/run.mesh.mx:72:18)
   "settle.step.0.set.state": ($s: RunStoredScope<SettleRunInput>) => $s.input?.result,
-  // set &endedAt, translated (src/domain/execution/run.mesh.mx:72:20)
+  // set &endedAt, translated (src/domain/execution/run.mesh.mx:73:20)
   "settle.step.0.set.endedAt": ($s: RunStoredScope<SettleRunInput>) => $.now($s),
-  // set &version, translated (src/domain/execution/run.mesh.mx:73:20)
+  // set &version, translated (src/domain/execution/run.mesh.mx:74:20)
   "settle.step.0.set.version": ($s: RunStoredScope<SettleRunInput>) => $.add($s.self.version, 1),
 } as const;
