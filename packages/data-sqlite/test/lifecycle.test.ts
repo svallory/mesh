@@ -52,7 +52,7 @@ entity :Task table="tasks"
     always types=[:create, :update]
       validate
         check :titleNotShouting [
-          that=() => &title !== "STOP"
+          that=({ input }) => (input.title ?? &title) !== "STOP"
           code="task.shouting"
           message="do not shout"
         ]
@@ -68,8 +68,8 @@ entity :Task table="tasks"
         &reviewer
       validate
         check :underQuota [
-          that=() => &owner.taskCount < 2
-          when=() => &owner.plan === :free
+          that=async ({ input, tx }) => (await tx.readTask({ filter: { ownerId: { eq: input.owner } } })).length < 2
+          when=async ({ input, tx }) => (await tx.readMember({ filter: { id: { eq: input.owner } } }))[0]?.plan === "free"
           code="task.quota"
           message="free members have 2 tasks"
           details=() => ({ limit: 2 })
@@ -95,10 +95,10 @@ entity :Task table="tasks"
           that=({ input }) => input.expectedVersion === &version
           code="expected-version"
           message="the task changed since it was read"
-          details=({ before }) => ({ currentVersion: before.version })
+          details=() => ({ currentVersion: &version })
         ]
         check :titleChanged [
-          that=({ before }) => &title !== before.title
+          that=({ input }) => (input.title ?? &title) !== &title
           code="task.unchanged"
           message="the title is the same"
         ]
@@ -223,7 +223,7 @@ entity :Task table="tasks"
           if (input.what === "json" && target.meta) target.meta.injected = true;
           if (input.what === "array" && target.meta) target.meta.list.push(9);
           if (input.what === "date" && target.doneAt) target.doneAt.setUTCFullYear(2000);
-          if (input.what === "related") target.owner.name = "hacked";
+          if (input.what === "related") { const owner: any = &owner; owner.name = "hacked"; }
           if (input.what === "before") stored.title = "hacked";
           if (input.what === "beforeJson") stored.meta.injected = true;
         }
@@ -435,7 +435,7 @@ describe("create", () => {
     } finally { await world.db.close(); }
   });
 
-  test("a check reads a related record through the transaction: the quota counts the owner's tasks, and `when` limits it to the free plan", async () => {
+  test("a check reads a related record through the transaction: on a create `&owner` is not there yet, so the quota reads the caller's `input.owner` through `tx`, and `when` limits it to the free plan (ACT-27, POL-08)", async () => {
     const world = await fresh();
     try {
       await world.mesh.openTask({ title: "1", owner: world.owner.id, reviewer: world.owner.id }, world.ctx);
@@ -503,7 +503,7 @@ describe("update", () => {
     } finally { await world.db.close(); }
   });
 
-  test("details run only for a failed check, with `before`, and ride on the issue (G22)", async () => {
+  test("details run only for a failed check, see the stored record as `self`, and ride on the issue (G22)", async () => {
     const world = await fresh();
     try {
       const row = await openTask(world);
@@ -515,7 +515,7 @@ describe("update", () => {
     } finally { await world.db.close(); }
   });
 
-  test("before is the stored record and self the record with the input applied: a check can compare them", async () => {
+  test("a check compares the caller's value with the stored record: `input.title ?? &title` against `&title` (ACT-27)", async () => {
     const world = await fresh();
     try {
       const row = await openTask(world, { title: "same" });

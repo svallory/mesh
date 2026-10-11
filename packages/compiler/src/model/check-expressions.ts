@@ -13,6 +13,7 @@ import type {
   Step,
   TypeClass,
 } from "@meshfw/model";
+import { newInstanceGaps, newInstanceMembers } from "./new-instance.ts";
 
 /**
  * Types every translated expression across the whole model (M4, ADR-0012 option A).
@@ -41,6 +42,14 @@ interface Ty {
   atom?: string;
   /** The stored record (`before`): columns only, nothing is loaded for it. */
   stored?: boolean;
+  /** `self` where it may be a create's new instance (ACT-27): the members that hold null there until the input or a step fills them. */
+  fresh?: ReadonlySet<string>;
+  /** A member of `self` that is nullable only because it may not be filled yet (one of `fresh`). */
+  unfilled?: string;
+  /** `input.x` where `x` is a member input (`&x`), not a typed argument. */
+  input?: string;
+  /** `self` in a check that can run on a create: the members a create takes as member inputs, which the checks see before the input is applied. */
+  pending?: ReadonlySet<string>;
 }
 
 class Demote extends Error {
@@ -63,6 +72,14 @@ interface Scope {
   noBefore?: boolean;
   /** Names of the action's typed arguments: one that shares a member's name is not the member input. */
   args?: Set<string>;
+  /** Inside `validate`: `self` is the record before the input is applied, and there is no `before` (ACT-01, ACT-27). */
+  validate?: boolean;
+  /** When the function can run on a create: the members of `self` that may still be null there (see `newInstanceGaps`). */
+  fresh?: ReadonlySet<string>;
+  /** The members every create the function runs in takes as a member input, so `input.x ?? &x` has a value on a create. */
+  acceptedOnCreate?: ReadonlySet<string>;
+  /** In a check that can run on a create: the members some such create takes as a member input (and a relationship's key column). */
+  pending?: ReadonlySet<string>;
   inputs: Map<string, Ty> | null;
   locals: Map<string, Ty>;
 }
@@ -73,6 +90,8 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     byFile.get(resolve(dirname(from.file), relation.entity.from));
   const report = (severity: "error" | "warning", code: string, message: string, position: SourcePosition, fix: string | null = null) =>
     diagnostics.push({ severity, code, message, position, fix });
+  /** The `&x` of an `input.x ?? &x`. */
+  const storedFallback = new WeakSet<ExprNode>();
 
   const attributeTy = (a: Attribute): Ty => ({
     c: CLASS[a.type] ?? "any", nullable: a.nullable, ...(a.type === "integer" ? { int: true } : {}),
@@ -80,7 +99,12 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
   });
 
   function memberTy(scope: Scope, owner: Ty, name: string): Ty {
-    if (owner.c === "input") return owner.entity ? { c: "any", nullable: false } : (scopeInput(scope, name));
+    if (owner.c === "input") return owner.entity ? { c: "any", nullable: false } : { ...scopeInput(scope, name), ...(scope.args?.has(name) ? {} : { input: name }) };
+    const result = ownMemberTy(owner, name);
+    // On a create, `self` is the new instance: a member with no default holds null until the input or a step fills it.
+    return owner.fresh?.has(name) && !result.nullable ? { ...result, nullable: true, unfilled: name } : result;
+  }
+  function ownMemberTy(owner: Ty, name: string): Ty {
     if (owner.c === "any") return { c: "any", nullable: false };
     if (owner.c !== "record" || !owner.entity) throw new Demote(`member access on a ${owner.c}`, undefined as never);
     const e = owner.entity;
@@ -101,6 +125,29 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     return { c: "any", nullable: false };
   }
   const scopeInput = (scope: Scope, name: string): Ty => scope.inputs?.get(name) ?? { c: "any", nullable: false };
+  const notApplied = (name: string, position: SourcePosition) => {
+    if (diagnostics.some((d) => d.code === "MESH_VALIDATE_NOT_APPLIED" && d.position.file === position.file && d.position.offset === position.offset)) return;
+    report("error", "MESH_VALIDATE_NOT_APPLIED",
+      `on a create, \`&${name}\` here is the new instance's value before the input is applied (its default, or null), not the caller's: \`validate\` sees \`self\` before the input`, position,
+      `write \`input.${name}\` for the caller's value, or \`input.${name} ?? &${name}\` for the value the action will store`);
+  };
+  /** The same for a check Mesh runs as plain code: each `&x` the authored text reads, found through its edits. */
+  const plainNotApplied = (e: Expression, pending: ReadonlySet<string>) => {
+    for (const edit of e.plain?.edits ?? []) {
+      const name = /^self\.(\w+)$/.exec(edit.text)?.[1];
+      if (name === undefined || edit.fallback || !pending.has(name)) continue;
+      const before = e.source.slice(0, edit.from);
+      const lines = before.split("\n");
+      notApplied(name, {
+        file: e.position.file, offset: e.position.offset + edit.from, line: e.position.line + lines.length - 1,
+        column: lines.length === 1 ? e.position.column + edit.from : lines.at(-1)!.length,
+      });
+    }
+  };
+  const unfilled = (name: string, position: SourcePosition) =>
+    report("error", "MESH_VALIDATE_UNFILLED",
+      `\`&${name}\` is null here on a create: \`validate\` sees the new instance before the input is applied, so this is unknown and the check fails on every create`, position,
+      `write \`input.${name} ?? &${name}\` for the value the action will store, or \`input.${name}\` for the caller's`);
 
   function infer(n: ExprNode, scope: Scope): Ty {
     const fail = (detail: string): never => { throw new Demote(detail, n.position); };
@@ -110,7 +157,13 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
         return { c: typeof n.value === "number" ? "number" : typeof n.value === "boolean" ? "boolean" : "string", nullable: false, literal: true, ...(typeof n.value === "number" && Number.isInteger(n.value) && !n.float ? { int: true } : {}) };
       case "atom": return { c: "enum", nullable: false, literal: true, atom: n.value };
       case "var": {
-        if (n.name === "self") return { c: "record", nullable: false, entity: scope.entity };
+        if (n.name === "self") return { c: "record", nullable: false, entity: scope.entity, ...(scope.fresh?.size ? { fresh: scope.fresh } : {}), ...(scope.pending?.size ? { pending: scope.pending } : {}) };
+        if (n.name === "before" && scope.validate) {
+          report("error", "MESH_VALIDATE_BEFORE",
+            "`before` is gone from `validate`: there `self` is the record before the input is applied (the stored record, or a create's new instance), and the caller's values are `input.x`", n.position,
+            "write `&x` for the value before the input, `input.x` for the caller's, and `input.x ?? &x` for the value the action will store");
+          return { c: "any", nullable: false };
+        }
         if (n.name === "before" && scope.noBefore) {
           report("error", "MESH_BEFORE_IN_CREATE", "`before` is the stored record, and a create has none, so it is always null here", n.position,
             "Remove it. Compare with `self` or `input`, or move the rule to an update");
@@ -123,10 +176,20 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       }
       case "member": {
         const owner = infer(n.object, scope);
+        // On a create, `&x` in a check is the new instance's value before the input: its default, or null. Not the caller's.
+        if (owner.pending?.has(n.name) && !storedFallback.has(n)) {
+          notApplied(n.name, n.position);
+          return { c: "any", nullable: false };
+        }
         if (owner.nullable && !owner.viaOptional && !n.optional && owner.c !== "any") {
-          report("error", "MESH_EXPR_NULLABLE_ACCESS",
-            `\`.${n.name}\` is read through a value that may be null`, n.position,
-            `write \`?.${n.name}\`, which gives null when the value is null`);
+          if (owner.unfilled !== undefined)
+            report("error", "MESH_EXPR_NULLABLE_ACCESS",
+              `\`.${n.name}\` is read through \`&${owner.unfilled}\`, which is null on a create here: \`validate\` sees the new instance before the input is applied`, n.position,
+              `read the caller's value as \`input.${owner.unfilled}\` (a related record through \`tx\`), or write \`?.${n.name}\` for null on a create`);
+          else
+            report("error", "MESH_EXPR_NULLABLE_ACCESS",
+              `\`.${n.name}\` is read through a value that may be null`, n.position,
+              `write \`?.${n.name}\`, which gives null when the value is null`);
         }
         if (owner.stored && owner.entity && !owner.entity.attributes.some((a) => a.name === n.name)
           && (owner.entity.relationships.some((r) => r.name === n.name) || owner.entity.computed.some((x) => x.name === n.name))) {
@@ -155,7 +218,15 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
         return { c: "list", nullable: source.nullable, ...(source.entity ? { entity: source.entity } : {}) };
       }
       case "call": {
+        // `input.x ?? &x` reads `&x` only when the caller did not send x: the value the action will store.
+        const [left, right] = n.args;
+        if (n.fn === "coalesce" && left?.kind === "member" && right?.kind === "member" && left.name === right.name
+          && left.object.kind === "var" && left.object.name === "input" && right.object.kind === "var" && right.object.name === "self")
+          storedFallback.add(right);
         const a = n.args.map((arg) => infer(arg, scope));
+        // An operator over a member a create has not filled yet is unknown on every create: the check would always fail there.
+        if (scope.validate && n.fn !== "isNull" && n.fn !== "isNotNull" && n.fn !== "coalesce")
+          a.forEach((t, i) => { if (t.unfilled !== undefined && (n.fn !== "cond" || i === 0)) unfilled(t.unfilled, n.args[i]!.position); });
         const any = (t: Ty) => t.c === "any";
         const same = (x: Ty, y: Ty) => any(x) || any(y) || x.c === y.c;
         const bothClass = (x: Ty, ...classes: TypeClass[]) => any(x) || classes.includes(x.c as TypeClass);
@@ -220,13 +291,16 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
           case "coalesce": {
             const [x, y] = a as [Ty, Ty];
             if (!same(x, y) && !(x.literal && x.c === "any")) return fail("`??` between values of different types");
-            return { ...(x.c === "any" ? y : x), nullable: y.nullable, literal: false, atom: undefined, viaOptional: false };
+            // `input.x ?? &x`, the value the action will store: on a create that takes `&x` the input has it, elsewhere the record does.
+            if (x.input !== undefined && x.input === y.unfilled && scope.acceptedOnCreate?.has(x.input))
+              return { ...(x.c === "any" ? y : x), nullable: false, literal: false, atom: undefined, viaOptional: false, unfilled: undefined, input: undefined };
+            return { ...(x.c === "any" ? y : x), nullable: y.nullable, literal: false, atom: undefined, viaOptional: false, unfilled: undefined, input: undefined };
           }
           case "cond": {
             const [c, x, y] = a as [Ty, Ty, Ty];
             if (!bothClass(c, "boolean")) throw new Demote("a non-boolean test in `?:` (truthiness)", n.position, true);
             if (!same(x, y)) return fail("`?:` branches of different types");
-            return { ...(x.c === "any" ? y : x), nullable: x.nullable || y.nullable, literal: false, atom: undefined };
+            return { ...(x.c === "any" ? y : x), nullable: x.nullable || y.nullable, literal: false, atom: undefined, unfilled: undefined, input: undefined };
           }
         }
       }
@@ -317,16 +391,32 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       } else if (step.kind === "when") {
         visit(step.condition, scope, true);
         steps(step.steps, entity, scope);
-      } else if (step.kind === "run") visit(step.fn, scope, false);
+        // After the write, `self` is the stored record: on a create the data layer has given it its key.
+      } else if (step.kind === "run") visit(step.fn, step.after === "write" ? { ...scope, fresh: undefined } : scope, false);
     }
   }
-  function blocks(entity: Entity, validate: { that: Expression; when?: Expression; details?: Expression }[], list: Step[], scope: Scope): void {
+  /**
+   * The checks see `self` before the input is applied and no `before` (ACT-01, ACT-27): on a create, the new instance, where
+   * a member with no default is still null. The steps before the write see the input applied; on a create the key the data
+   * layer gives (an `integer` key) is null until the write.
+   */
+  function blocks(entity: Entity, validate: { that: Expression; when?: Expression; details?: Expression }[], list: Step[], scope: Scope, creates: readonly { input: Action["input"] }[]): void {
+    const gaps = newInstanceGaps(entity);
+    const accepted = creates.map((action) => new Set(action.input.flatMap((field) => (field.kind === "member" ? [field.ref.name] : []))));
+    const keyColumn = (name: string) => entity.relationships.find((relation) => relation.name === name && relation.kind === "belongs-to")?.keyColumn;
+    const pending = new Set(accepted.flatMap((set) => [...set].flatMap((name) => [name, ...(keyColumn(name) ? [keyColumn(name)!] : [])])));
+    const checks: Scope = creates.length
+      ? { ...scope, validate: true, fresh: new Set(newInstanceMembers(gaps, true)), pending, acceptedOnCreate: new Set([...accepted[0]!].filter((name) => accepted.every((set) => set.has(name)))) }
+      : { ...scope, validate: true };
     for (const check of validate) {
-      visit(check.that, scope, true);
-      if (check.when) visit(check.when, scope, true);
-      if (check.details) visit(check.details, scope, false);
+      for (const e of check.when ? [check.that, check.when] : [check.that]) {
+        const t = visit(e, checks, true);
+        if (t?.unfilled !== undefined) unfilled(t.unfilled, e.tree!.position);
+      }
+      if (check.details) visit(check.details, checks, false);
+      if (checks.pending?.size) for (const e of [check.that, check.when, check.details]) if (e?.plain) plainNotApplied(e, checks.pending);
     }
-    steps(list, entity, scope);
+    steps(list, entity, creates.length && gaps.key ? { ...scope, fresh: new Set([gaps.key]) } : scope);
   }
 
   for (const entity of document.entities) {
@@ -339,12 +429,16 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     for (const action of entity.actions) {
       const scope: Scope = { ...base, beforeNullable: action.kind === "create", noBefore: action.kind === "create", args: new Set(action.input.flatMap((field) => (field.kind === "argument" ? [field.name] : []))), inputs: inputsOf(entity, action) };
       if (action.filter) visit(action.filter, scope, true);
-      blocks(entity, action.validate, action.do, scope);
+      blocks(entity, action.validate, action.do, scope, action.kind === "create" ? [action] : []);
     }
+    // The actions an `always` block can cover: the declared ones and the generated (`auto`) ones, which take no input.
+    const every = [...entity.actions, ...entity.auto.map((kind) => ({ kind, name: kind as string, input: [] as Action["input"] }))];
     for (const block of entity.always) {
       const named = block.actions?.map((ref) => entity.actions.find((a) => a.name === ref.name)?.kind);
       const covers: (string | undefined)[] = block.types ?? named ?? ["create"];
-      blocks(entity, block.validate, block.do, { ...base, beforeNullable: covers.includes("create") || covers.includes(undefined), noBefore: (block.types !== undefined || named !== undefined) && covers.every((kind) => kind === "create"), inputs: null });
+      const creates = every.filter((action) => action.kind === "create"
+        && ((!block.types && !block.actions) || block.types?.includes(action.kind) || block.actions?.some((ref) => ref.name === action.name)));
+      blocks(entity, block.validate, block.do, { ...base, beforeNullable: covers.includes("create") || covers.includes(undefined), noBefore: (block.types !== undefined || named !== undefined) && covers.every((kind) => kind === "create"), inputs: null }, creates);
     }
     for (const policy of entity.policies) {
       const scope = { ...base, inputs: null };

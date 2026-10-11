@@ -501,7 +501,7 @@ describe("after=:write", () => {
     try {
       const opened = await world.mesh.openAccount({ name: "Ada" }, world.ctx);
       expect(opened.id).toBe(1);
-      expect(world.log.slice(0, 2)).toEqual(["before the write: id undefined", "after the write: id 1"]);
+      expect(world.log.slice(0, 2)).toEqual(["before the write: id null", "after the write: id 1"]);
       // The step's nested call wrote in the same transaction: the audit carries the key, and its own after-write `tx` read sees itself.
       expect(world.log[2]).toBe('audit "opened 1" by alice; tx sees 1');
       expect((await rows(world)).audits).toMatchObject([{ what: "opened 1", by: "alice" }]);

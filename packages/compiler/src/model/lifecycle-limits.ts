@@ -12,7 +12,7 @@ function createOnly(entity: Entity, owner: ActionExpression["owner"]): boolean {
 }
 
 /**
- * What the action lifecycle (M5) cannot run is a build error, never a silent skip (ADR-0018): `before` in a create,
+ * What the action lifecycle (M5) cannot run is a build error, never a silent skip (ADR-0018): `before` in a check or a create,
  * a `validate` or `do` on a read, which has no record to check or change, and a `set` or `load` in a destroy.
  */
 export function checkLifecycleLimits(document: ModelDocument, diagnostics: Diagnostic[]): void {
@@ -29,12 +29,23 @@ export function checkLifecycleLimits(document: ModelDocument, diagnostics: Diagn
     }
     // A plain function (a `run`, or a body that is not one expression) is not type-checked by the expression pass, so a create's
     // `before` parameter is caught here: a create has no stored record.
-    for (const { expression, what, owner } of actionExpressions(entity)) {
+    for (const { expression, kind, what, owner } of actionExpressions(entity)) {
       const reads = expression.params.includes("before") || (expression.rest && /\bbefore\b/.test(expression.source));
-      if (!expression.plain || !reads || !createOnly(entity, owner)) continue;
-      // The type pass already reported a `before` it found inside this function (a `details` value it could translate).
+      if (!reads) continue;
       const end = expression.position.offset + expression.source.length;
-      if (diagnostics.some((d) => d.code === "MESH_BEFORE_IN_CREATE" && d.position.file === expression.position.file && d.position.offset >= expression.position.offset && d.position.offset < end)) continue;
+      const reported = (code: string) => diagnostics.some((d) => d.code === code && d.position.file === expression.position.file && d.position.offset >= expression.position.offset && d.position.offset < end);
+      // A check runs before the input is applied, on `self` as it is (ACT-01, ACT-27): `before` would be the same record.
+      // The type pass reports a `before` it reads in a translated check; this catches a plain one, or one only destructured.
+      if (kind === "that" || kind === "check-when" || kind === "details") {
+        if (!reported("MESH_VALIDATE_BEFORE"))
+          diagnostics.push(error("MESH_VALIDATE_BEFORE",
+            `${what} reads \`before\`, which is gone from \`validate\`: there \`self\` is the record before the input is applied (the stored record, or a create's new instance), and the caller's values are \`input.x\``,
+            expression.position, "write `&x` for the value before the input, `input.x` for the caller's, and `input.x ?? &x` for the value the action will store"));
+        continue;
+      }
+      if (!expression.plain || !createOnly(entity, owner)) continue;
+      // The type pass already reported a `before` it found inside this function.
+      if (reported("MESH_BEFORE_IN_CREATE")) continue;
       diagnostics.push(error("MESH_BEFORE_IN_CREATE",
         `${what} reads \`before\`, the stored record, and a create has none, so it is always null`, expression.position,
         "Remove it. Compare with `self` or `input`, or move the rule to an update"));

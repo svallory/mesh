@@ -112,30 +112,36 @@ describe("actions view", () => {
     expect(view.runtimeValues).toEqual([
       "FrameworkError as $FrameworkError", "InvalidInputError as $InvalidInputError", "NotFoundError as $NotFoundError", "castInput as $castInput",
       "checkUnchanged as $checkUnchanged", "composed as $composed", "failJoined as $failJoined", "guarded as $guarded", "loadRows as $loadRows",
-      "noteWrite as $noteWrite", "readOnlyRecord as $readOnlyRecord", "runCheck as $runCheck", "scope as $scope", "writeCount as $writeCount"]);
+      "noteWrite as $noteWrite", "readOnlyRecord as $readOnlyRecord", "runCheck as $runCheck", "scope as $scope", "uuidv7 as $uuidv7", "writeCount as $writeCount"]);
     expect(view.runtimeTypes).toEqual(["Issue as $Issue", "Row as $Row"]);
     expect(view.typesFromLiteral).toBe('"./article.types"');
     expect(view.validatorsFromLiteral).toBe('"./article.validators"');
     expect(view.schemaFromLiteral).toBe('"../../schema"');
   });
 
-  test("create builds the proposed record in declared order by the five rules; a set step runs after it", () => {
+  test("create builds the new instance in declared order (key, defaults, stamps, null), then applies the input; a set step runs after it", () => {
     const create = viewOf("Article").methods[0]!;
     expect(create.statements.slice(1)).toEqual([
       "const $now = options.clock?.() ?? new Date();",
       "// plan: a create is one insert; nothing is read first",
       "const $changes: $Row = {",
-      "title: parsed.title,",
-      "body: parsed.body === undefined ? null : parsed.body,",
-      "views: parsed.views === undefined ? 0 : parsed.views,",
+      // ACT-27: the uuid key is filled when the instance is built, not by the data layer at the write
+      "id: $uuidv7(),",
+      "body: null,",
+      "views: 0,",
       'state: "draft",',
       "pinned: false,",
       "insertedAt: $now,",
       "updatedAt: $now,",
-      "authorId: parsed.author,",
       "editorId: null,",
       "};",
-      "const $record: $Row = { ...$changes };",
+      // what the input fills is null on the instance the checks see, and not in the row until the input is applied
+      "const $record: $Row = { ...$changes, title: null, authorId: null };",
+      "// the input: the member inputs the caller sent, applied now that the checks have passed",
+      "if (parsed.title !== undefined) $changes.title = $record.title = parsed.title;",
+      "if (parsed.body !== undefined) $changes.body = $record.body = parsed.body;",
+      "if (parsed.views !== undefined) $changes.views = $record.views = parsed.views;",
+      "if (parsed.author !== undefined) $changes.authorId = $record.authorId = parsed.author;",
       "// do: the steps run in written order, each seeing the record as the ones before it left it",
       "$changes.pinned = $record.pinned = true;",
       "// data layer",
@@ -146,13 +152,18 @@ describe("actions view", () => {
     expect(create.notRun).toBe("Not run in this version: on:load load; policies everyone");
   });
 
-  test("update reads the row under the lock, applies the accepted input, runs the checks and writes only what changed", () => {
+  test("update reads the row under the lock, runs the checks, then applies the accepted input and writes only what changed", () => {
     const [, rename, publish] = viewOf("Article").methods;
     const text = rename!.statements.join("\n");
     expect(text).toContain("const $before = await tx.selectByKeyForUpdate(tables.article, $key);");
     expect(text).toContain('if ($before === undefined) throw new $NotFoundError("Article", $key);');
     expect(text).toContain("if (parsed.title !== undefined) $changes.title = $record.title = parsed.title;");
     expect(text).toContain("if (parsed.editor !== undefined) $changes.editorId = $record.editorId = parsed.editor;");
+    // ACT-01: the checks see the stored record; the input is applied after them, before the steps and the write
+    const at = (line: string) => rename!.statements.findIndex((statement) => statement.startsWith(line));
+    expect(at("await $runCheck")).toBeGreaterThan(at("const $record: $Row = { ...$before };"));
+    expect(at("if (parsed.title !== undefined)")).toBeGreaterThan(at("if ($issues.length > 0)"));
+    expect(at("const $stored = await tx.updateByKey")).toBeGreaterThan(at("if (parsed.editor !== undefined)"));
     expect(text).toContain("$changes.updatedAt = $now;");
     expect(text).toContain("const $stored = await tx.updateByKey(tables.article, $key, $changes);");
     // always types=[:update]: its check runs on every update, before the action's own

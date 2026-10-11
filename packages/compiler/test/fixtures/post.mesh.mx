@@ -38,7 +38,7 @@ entity :Invoice table="invoices"
     always types=[:create, :update]
       validate
         check :dueAfterIssue [
-          that=() => &dueOn >= &issuedOn
+          that=({ input }) => (input.dueOn ?? &dueOn) >= (input.issuedOn ?? &issuedOn)
           code="invalid_dates"
           message="the due date cannot be before the issue date"
         ]
