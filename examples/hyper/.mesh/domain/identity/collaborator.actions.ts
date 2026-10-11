@@ -7,6 +7,7 @@ import {
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
   castInput as $castInput,
+  checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
   composed as $composed,
   guarded as $guarded,
@@ -110,7 +111,8 @@ export function bindCollaborator(
         ) as unknown as $Scope<RegisterCollaboratorInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "nameUnique",
           code: "collaborator.name-unique",
           message: "another active collaborator has that name",
@@ -165,28 +167,29 @@ export function bindCollaborator(
         ) as unknown as $StoredScope<UpdateCollaboratorInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "collaboratorActive",
           code: "collaborator.active",
           message: "the collaborator is retired",
           source: { file: "src/domain/identity/collaborator.mesh.mx", line: 30, column: 9 },
           that: $expressions["update.check.collaboratorActive.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "kindImmutable",
           code: "collaborator.kind-immutable",
           message: "a collaborator keeps its kind",
           source: { file: "src/domain/identity/collaborator.mesh.mx", line: 35, column: 9 },
           that: $expressions["update.check.kindImmutable.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "nameUnique",
           code: "collaborator.name-unique",
           message: "another active collaborator has that name",
           source: { file: "src/domain/identity/collaborator.mesh.mx", line: 40, column: 9 },
           that: $expressions["update.check.nameUnique.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the record is at another version; read it again and retry",
@@ -260,21 +263,22 @@ export function bindCollaborator(
         ) as unknown as $StoredScope<RetireCollaboratorInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "collaboratorActive",
           code: "collaborator.active",
           message: "the collaborator is retired",
           source: { file: "src/domain/identity/collaborator.mesh.mx", line: 59, column: 9 },
           that: $expressions["retire.check.collaboratorActive.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "lastOwner",
           code: "membership.last-owner",
           message: "the workspace would have no owner; grant another owner first",
           source: { file: "src/domain/identity/collaborator.mesh.mx", line: 64, column: 9 },
           that: $expressions["retire.check.lastOwner.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the record is at another version; read it again and retry",

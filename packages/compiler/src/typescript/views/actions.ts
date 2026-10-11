@@ -420,8 +420,11 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       emit("// validate: every check runs, and every failed check is reported together");
       runtime.add("InvalidInputError");
       runtime.add("runCheck");
+      runtime.add("checkScope");
       runtimeTypes.add("Issue");
       emit("const $issues: $Issue[] = [];");
+      // A check sees no `before` (ACT-01, ACT-27): `self` there is the record before the input.
+      emit("const $checks = $checkScope($s);");
       // On a create the record is the new instance: a required relationship the input has not filled yet is null on it.
       loadFor(checkNeeds, "$record", action.kind === "create" ? "{ ...$load, newInstance: true }" : "$load");
       for (const check of checks) {
@@ -437,7 +440,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
           ...(check.when ? [`when: ${idOf(check.when)}`] : []),
           ...(check.details ? [`details: ${idOf(check.details)}`] : []),
         ];
-        emit(`await $runCheck($issues, $s, { ${parts.join(", ")} });`);
+        emit(`await $runCheck($issues, $checks, { ${parts.join(", ")} });`);
       }
       emit("if ($issues.length > 0) throw new $InvalidInputError($issues);");
     }

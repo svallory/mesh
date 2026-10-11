@@ -7,6 +7,7 @@ import {
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
   castInput as $castInput,
+  checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
   composed as $composed,
   guarded as $guarded,
@@ -123,7 +124,8 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         ) as unknown as $Scope<AcquireClaimInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "taskReady",
           code: "claim.task-ready",
           message: "the task is not ready to claim",
@@ -131,7 +133,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           that: $expressions["acquire.check.taskReady.that"],
           details: $expressions["acquire.check.taskReady.details"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the task is at another version; read it again and retry",
@@ -235,8 +237,9 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         ) as unknown as $StoredScope<RenewClaimInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
+        const $checks = $checkScope($s);
         await $loadInto($loadPlan, "Claim", tx, $record, ["task", "task.maxFence"], $load);
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "currentFence",
           code: "claim.current-fence",
           message: "the fence is not the current claim's; claim the task again",
@@ -244,21 +247,21 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           that: $expressions["renew.check.currentFence.that"],
           details: $expressions["renew.check.currentFence.details"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "claimActive",
           code: "claim.active",
           message: "the claim has ended; claim the task again",
           source: { file: "src/domain/work/claim.mesh.mx", line: 63, column: 9 },
           that: $expressions["renew.check.claimActive.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "claimNotExpired",
           code: "claim.expired",
           message: "the lease has expired; claim the task again",
           source: { file: "src/domain/work/claim.mesh.mx", line: 68, column: 9 },
           that: $expressions["renew.check.claimNotExpired.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the task is at another version; read it again and retry",
@@ -337,8 +340,9 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         ) as unknown as $StoredScope<ReleaseClaimInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
+        const $checks = $checkScope($s);
         await $loadInto($loadPlan, "Claim", tx, $record, ["task", "task.maxFence"], $load);
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "currentFence",
           code: "claim.current-fence",
           message: "the fence is not the current claim's; claim the task again",
@@ -346,21 +350,21 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           that: $expressions["release.check.currentFence.that"],
           details: $expressions["release.check.currentFence.details"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "claimActive",
           code: "claim.active",
           message: "the claim has ended; claim the task again",
           source: { file: "src/domain/work/claim.mesh.mx", line: 97, column: 9 },
           that: $expressions["release.check.claimActive.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "claimNotExpired",
           code: "claim.expired",
           message: "the lease has expired; claim the task again",
           source: { file: "src/domain/work/claim.mesh.mx", line: 102, column: 9 },
           that: $expressions["release.check.claimNotExpired.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the task is at another version; read it again and retry",
@@ -440,15 +444,16 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         ) as unknown as $StoredScope<RevokeClaimInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
+        const $checks = $checkScope($s);
         await $loadInto($loadPlan, "Claim", tx, $record, ["task"], $load);
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "claimActive",
           code: "claim.active",
           message: "the claim has ended; claim the task again",
           source: { file: "src/domain/work/claim.mesh.mx", line: 126, column: 9 },
           that: $expressions["revoke.check.claimActive.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the task is at another version; read it again and retry",
@@ -527,7 +532,8 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         ) as unknown as $StoredScope<ExpireClaimInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "claimActive",
           code: "claim.active",
           message: "the claim has ended; claim the task again",
@@ -604,7 +610,8 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         ) as unknown as $StoredScope<EndClaimInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "claimActive",
           code: "claim.active",
           message: "the claim has ended; claim the task again",

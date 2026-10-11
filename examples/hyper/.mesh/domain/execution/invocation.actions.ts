@@ -6,6 +6,7 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   castInput as $castInput,
+  checkScope as $checkScope,
   composed as $composed,
   guarded as $guarded,
   loadInto as $loadInto,
@@ -124,14 +125,15 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
         ) as unknown as $Scope<RecordInvocationInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "session",
           code: "invocation.session",
           message: "the session is not the attempt's session",
           source: { file: "src/domain/execution/invocation.mesh.mx", line: 50, column: 9 },
           that: $expressions["record.check.session.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "costUnknown",
           code: "invocation.cost-unknown",
           message: "the cost is unknown while a token count it needs is unknown",
@@ -248,21 +250,22 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
         ) as unknown as $Scope<CorrectInvocationInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "notCorrected",
           code: "invocation.not-corrected",
           message: "the invocation is already corrected",
           source: { file: "src/domain/execution/invocation.mesh.mx", line: 83, column: 9 },
           that: $expressions["correct.check.notCorrected.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "reason",
           code: "invocation.reason",
           message: "a correction gives a reason",
           source: { file: "src/domain/execution/invocation.mesh.mx", line: 88, column: 9 },
           that: $expressions["correct.check.reason.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "costUnknown",
           code: "invocation.cost-unknown",
           message: "the cost is unknown while a token count it needs is unknown",

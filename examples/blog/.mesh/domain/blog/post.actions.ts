@@ -7,6 +7,7 @@ import {
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
   castInput as $castInput,
+  checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
   composed as $composed,
   failJoined as $failJoined,
@@ -163,7 +164,8 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
         ) as unknown as $StoredScope<PublishPostInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "titlePresent",
           code: "title_required",
           message: "Title is required",

@@ -7,6 +7,7 @@ import {
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
   castInput as $castInput,
+  checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
   composed as $composed,
   noteWrite as $noteWrite,
@@ -115,14 +116,15 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
         ) as unknown as $StoredScope<RenameWorkspaceInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "workspaceActive",
           code: "workspace.active",
           message: "the workspace has moved; it can no longer be changed",
           source: { file: "src/domain/identity/workspace.mesh.mx", line: 18, column: 9 },
           that: $expressions["rename.check.workspaceActive.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the record is at another version; read it again and retry",

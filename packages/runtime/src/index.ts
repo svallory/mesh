@@ -19,7 +19,7 @@ export { uuidv7 } from "./uuid.ts";
 export type { DataAdapter } from "./data-adapter.ts";
 export { defineConfig, type MeshConfig, type ExtensionDescriptor } from "./config.ts";
 export { expr, rescope, scope, systemClock } from "./expr.ts";
-export { runCheck } from "./lifecycle.ts";
+export { checkScope, runCheck } from "./lifecycle.ts";
 export type { BindOptions, CheckSpec, SharedInput } from "./lifecycle.ts";
 export type { Clock, Scope } from "./expr.ts";
 export { loadRows, loadInto, unloadFrom, guarded, readOnlyRecord, cloneValue, type DeepReadonly, type Writable, rejectComputedQuery, CHUNK } from "./load.ts";

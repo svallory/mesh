@@ -7,6 +7,7 @@ import {
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
   castInput as $castInput,
+  checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
   composed as $composed,
   guarded as $guarded,
@@ -111,14 +112,15 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
         ) as unknown as $Scope<GrantMembershipInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "collaboratorActive",
           code: "collaborator.active",
           message: "the collaborator is retired",
           source: { file: "src/domain/identity/membership.mesh.mx", line: 22, column: 9 },
           that: $expressions["grant.check.collaboratorActive.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "noneActive",
           code: "membership.none-active",
           message: "the collaborator already has an active membership; change its role instead",
@@ -191,28 +193,29 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
         ) as unknown as $StoredScope<ChangeRoleMembershipInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "membershipActive",
           code: "membership.active",
           message: "the membership is revoked",
           source: { file: "src/domain/identity/membership.mesh.mx", line: 41, column: 9 },
           that: $expressions["changeRole.check.membershipActive.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "roleChanges",
           code: "membership.unchanged",
           message: "the member already has that role",
           source: { file: "src/domain/identity/membership.mesh.mx", line: 46, column: 9 },
           that: $expressions["changeRole.check.roleChanges.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "lastOwner",
           code: "membership.last-owner",
           message: "the workspace would have no owner; grant another owner first",
           source: { file: "src/domain/identity/membership.mesh.mx", line: 51, column: 9 },
           that: $expressions["changeRole.check.lastOwner.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the record is at another version; read it again and retry",
@@ -286,21 +289,22 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
         ) as unknown as $StoredScope<RevokeMembershipInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "membershipActive",
           code: "membership.active",
           message: "the membership is revoked",
           source: { file: "src/domain/identity/membership.mesh.mx", line: 70, column: 9 },
           that: $expressions["revoke.check.membershipActive.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "lastOwner",
           code: "membership.last-owner",
           message: "the workspace would have no owner; grant another owner first",
           source: { file: "src/domain/identity/membership.mesh.mx", line: 75, column: 9 },
           that: $expressions["revoke.check.lastOwner.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the record is at another version; read it again and retry",

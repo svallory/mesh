@@ -6,6 +6,7 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   castInput as $castInput,
+  checkScope as $checkScope,
   composed as $composed,
   guarded as $guarded,
   noteWrite as $noteWrite,
@@ -93,14 +94,15 @@ export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, co
         ) as unknown as $Scope<RecordLateResultInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "staleFence",
           code: "claim.stale-fence",
           message: "only a fence you held that expired or was revoked records a late result",
           source: { file: "src/domain/work/late-result.mesh.mx", line: 23, column: 9 },
           that: $expressions["record.check.staleFence.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "evidenceExists",
           code: "evidence.exists",
           message: "an evidence reference does not exist",

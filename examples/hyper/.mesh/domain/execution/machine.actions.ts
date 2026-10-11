@@ -7,6 +7,7 @@ import {
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
   castInput as $castInput,
+  checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
   composed as $composed,
   guarded as $guarded,
@@ -111,7 +112,8 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
         ) as unknown as $Scope<RegisterMachineInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "nameFree",
           code: "machine.name-free",
           message: "a machine already has that name",
@@ -170,7 +172,8 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
         ) as unknown as $Scope<ReportMachineInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "nameFree",
           code: "machine.name-free",
           message: "a machine already has that name",
@@ -227,14 +230,15 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
         ) as unknown as $StoredScope<UpdateMachineInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "machineActive",
           code: "machine.active",
           message: "the machine is retired",
           source: { file: "src/domain/execution/machine.mesh.mx", line: 46, column: 9 },
           that: $expressions["update.check.machineActive.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the record is at another version; read it again and retry",
@@ -299,22 +303,23 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
         ) as unknown as $StoredScope<RetireMachineInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
+        const $checks = $checkScope($s);
         await $loadInto($loadPlan, "Machine", tx, $record, ["attempts"], $load);
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "machineActive",
           code: "machine.active",
           message: "the machine is retired",
           source: { file: "src/domain/execution/machine.mesh.mx", line: 65, column: 9 },
           that: $expressions["retire.check.machineActive.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "machineIdle",
           code: "machine.idle",
           message: "an attempt on this machine is reported running",
           source: { file: "src/domain/execution/machine.mesh.mx", line: 70, column: 9 },
           that: $expressions["retire.check.machineIdle.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the record is at another version; read it again and retry",

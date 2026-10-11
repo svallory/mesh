@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { FrameworkError, readOnlyRecord, runCheck, type CheckSpec, type Issue } from "../src/index.ts";
+import { checkScope, FrameworkError, readOnlyRecord, runCheck, type CheckSpec, type Issue } from "../src/index.ts";
 
 const source = { file: "t.mesh.mx", line: 3, column: 7 };
 const spec = (over: Partial<CheckSpec>): CheckSpec => ({ label: "l", code: "c", message: "m", source, that: () => true, ...over });
@@ -36,6 +36,22 @@ describe("runCheck", () => {
     await runCheck(issues, {}, spec({ label: "a", that: () => false }));
     await runCheck(issues, {}, spec({ label: "b", that: () => false }));
     expect(issues.map((issue) => issue.label)).toEqual(["a", "b"]);
+  });
+});
+
+describe("checkScope", () => {
+  test("the checks' scope is the action's without before, null or not; the rest is the same values, and the action's scope is untouched", () => {
+    const self = { id: "1" };
+    const clock = () => new Date(0);
+    for (const before of [{ id: "1" }, null]) {
+      const scope = { self, input: { id: "1" }, actor: null, context: {}, before, clock };
+      const checks = checkScope(scope);
+      expect("before" in checks).toBe(false);
+      expect(checks).toEqual({ self, input: { id: "1" }, actor: null, context: {}, clock });
+      expect(checks.self).toBe(self);
+      expect(checks.clock).toBe(clock);
+      expect(scope.before).toBe(before);
+    }
   });
 });
 

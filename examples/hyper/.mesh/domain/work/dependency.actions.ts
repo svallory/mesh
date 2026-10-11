@@ -7,6 +7,7 @@ import {
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
   castInput as $castInput,
+  checkScope as $checkScope,
   composed as $composed,
   guarded as $guarded,
   loadInto as $loadInto,
@@ -106,7 +107,8 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
         ) as unknown as $Scope<AddDependencyInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "exists",
           code: "dependency.exists",
           message: "a task of the dependency does not exist",
@@ -114,28 +116,28 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
           that: $expressions["add.check.exists.that"],
           details: $expressions["add.check.exists.details"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "distinct",
           code: "dependency.distinct",
           message: "a task cannot depend on itself",
           source: { file: "src/domain/work/dependency.mesh.mx", line: 26, column: 9 },
           that: $expressions["add.check.distinct.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "duplicate",
           code: "dependency.duplicate",
           message: "the dependency already exists",
           source: { file: "src/domain/work/dependency.mesh.mx", line: 31, column: 9 },
           that: $expressions["add.check.duplicate.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "noCycle",
           code: "dependency.no-cycle",
           message: "the prerequisite already waits for the dependent",
           source: { file: "src/domain/work/dependency.mesh.mx", line: 36, column: 9 },
           that: $expressions["add.check.noCycle.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the task is at another version; read it again and retry",
@@ -213,8 +215,9 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
         ) as unknown as $StoredScope<RemoveDependencyInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
+        const $checks = $checkScope($s);
         await $loadInto($loadPlan, "Dependency", tx, $record, ["dependent"], $load);
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the task is at another version; read it again and retry",

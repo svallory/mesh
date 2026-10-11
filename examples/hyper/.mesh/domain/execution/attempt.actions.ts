@@ -7,6 +7,7 @@ import {
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
   castInput as $castInput,
+  checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
   composed as $composed,
   guarded as $guarded,
@@ -125,35 +126,36 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
         ) as unknown as $Scope<StartAttemptInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "claimer",
           code: "attempt.claimer",
           message: "the claim on the task is no longer the actor's; claim it again to report",
           source: { file: "src/domain/execution/attempt.mesh.mx", line: 37, column: 9 },
           that: $expressions["start.check.claimer.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "runRunning",
           code: "attempt.run-running",
           message: "the run is not running",
           source: { file: "src/domain/execution/attempt.mesh.mx", line: 42, column: 9 },
           that: $expressions["start.check.runRunning.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "stepIdle",
           code: "attempt.step-idle",
           message: "an attempt of this step is already running",
           source: { file: "src/domain/execution/attempt.mesh.mx", line: 47, column: 9 },
           that: $expressions["start.check.stepIdle.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "session",
           code: "attempt.session",
           message: "the session reference does not exist",
           source: { file: "src/domain/execution/attempt.mesh.mx", line: 52, column: 9 },
           that: $expressions["start.check.session.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "machineRetired",
           code: "machine.retired",
           message: "the machine is retired; report the host by a new name",
@@ -264,21 +266,22 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
         ) as unknown as $StoredScope<FinishAttemptInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "running",
           code: "attempt.running",
           message: "the attempt has ended",
           source: { file: "src/domain/execution/attempt.mesh.mx", line: 77, column: 9 },
           that: $expressions["finish.check.running.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "error",
           code: "attempt.error",
           message: "only a failed attempt reports an error",
           source: { file: "src/domain/execution/attempt.mesh.mx", line: 82, column: 9 },
           that: $expressions["finish.check.error.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "evidence",
           code: "attempt.evidence",
           message: "an evidence reference does not exist",
@@ -286,7 +289,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
           that: $expressions["finish.check.evidence.that"],
           details: $expressions["finish.check.evidence.details"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the record is at another version; read it again and retry",
@@ -382,14 +385,15 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
         ) as unknown as $StoredScope<ReportStoppedAttemptInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "running",
           code: "attempt.running",
           message: "the attempt has ended",
           source: { file: "src/domain/execution/attempt.mesh.mx", line: 115, column: 9 },
           that: $expressions["reportStopped.check.running.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the record is at another version; read it again and retry",
@@ -460,14 +464,15 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
         ) as unknown as $StoredScope<AbandonAttemptInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "running",
           code: "attempt.running",
           message: "the attempt has ended",
           source: { file: "src/domain/execution/attempt.mesh.mx", line: 137, column: 9 },
           that: $expressions["abandon.check.running.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the record is at another version; read it again and retry",

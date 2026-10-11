@@ -7,6 +7,7 @@ import {
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
   castInput as $castInput,
+  checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
   composed as $composed,
   guarded as $guarded,
@@ -173,7 +174,8 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
         ) as unknown as $StoredScope<FinishAssignmentInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "current",
           code: "assignment.current",
           message: "the assignment has already ended",

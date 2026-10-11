@@ -8,7 +8,8 @@ export interface BindOptions {
 
 /**
  * One `check` of an action, as the generated code declares it (M5, ADR-0053). The functions are the compiled
- * expressions of the entity (`<entity>.expressions.ts`); the scope is `{ self, input, actor, context, before }`.
+ * expressions of the entity (`<entity>.expressions.ts`); the scope is `{ self, input, actor, context }` with no
+ * `before` (ACT-01, ACT-27): `self` is the record before the input is applied (see `checkScope`).
  */
 export interface CheckSpec {
   label: string;
@@ -19,6 +20,17 @@ export interface CheckSpec {
   that: (scope: never) => unknown;
   when?: (scope: never) => unknown;
   details?: (scope: never) => unknown;
+}
+
+/**
+ * The scope the checks get: the action's scope without `before` (ACT-01, ACT-27). There `self` is already the record
+ * before the input, so `before` would only repeat it; a check that reaches for it (`that=(s) => s.before`, which the
+ * build reports as `MESH_VALIDATE_BEFORE`) finds nothing rather than a value the rule forbids.
+ */
+export function checkScope<S extends object>(scope: S): Omit<S, "before"> {
+  const copy: { before?: unknown } = { ...scope };
+  delete copy.before;
+  return copy as Omit<S, "before">;
 }
 
 /**

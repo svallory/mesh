@@ -6,6 +6,7 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   castInput as $castInput,
+  checkScope as $checkScope,
   composed as $composed,
   guarded as $guarded,
   loadInto as $loadInto,
@@ -96,14 +97,15 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
         ) as unknown as $Scope<AcceptReviewInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "pending",
           code: "submission.pending",
           message: "the submission is not pending",
           source: { file: "src/domain/work/review.mesh.mx", line: 21, column: 9 },
           that: $expressions["accept.check.pending.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "taskVersion",
           code: "submission.task-version",
           message: "the task changed since this was submitted; return it for rework",
@@ -111,7 +113,7 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
           that: $expressions["accept.check.taskVersion.that"],
           details: $expressions["accept.check.taskVersion.details"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the task is at another version; read it again and retry",
@@ -204,14 +206,15 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
         ) as unknown as $Scope<ReturnReviewInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "pending",
           code: "submission.pending",
           message: "the submission is not pending",
           source: { file: "src/domain/work/review.mesh.mx", line: 53, column: 9 },
           that: $expressions["return.check.pending.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the task is at another version; read it again and retry",

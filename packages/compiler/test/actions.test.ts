@@ -110,7 +110,7 @@ describe("actions view", () => {
       ["destroy", "destroyArticle", "DestroyArticleInput", "destroyArticleInput", "void"],
     ]);
     expect(view.runtimeValues).toEqual([
-      "FrameworkError as $FrameworkError", "InvalidInputError as $InvalidInputError", "NotFoundError as $NotFoundError", "castInput as $castInput",
+      "FrameworkError as $FrameworkError", "InvalidInputError as $InvalidInputError", "NotFoundError as $NotFoundError", "castInput as $castInput", "checkScope as $checkScope",
       "checkUnchanged as $checkUnchanged", "composed as $composed", "failJoined as $failJoined", "guarded as $guarded", "loadRows as $loadRows",
       "noteWrite as $noteWrite", "readOnlyRecord as $readOnlyRecord", "runCheck as $runCheck", "scope as $scope", "uuidv7 as $uuidv7", "writeCount as $writeCount"]);
     expect(view.runtimeTypes).toEqual(["Issue as $Issue", "Row as $Row"]);

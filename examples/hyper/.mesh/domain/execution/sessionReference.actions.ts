@@ -7,6 +7,7 @@ import {
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
   castInput as $castInput,
+  checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
   composed as $composed,
   guarded as $guarded,
@@ -120,14 +121,15 @@ export function bindSessionReference(
         ) as unknown as $Scope<RecordSessionReferenceInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "agentProfile",
           code: "session.agent-profile",
           message: "the agent profile is not a collaborator",
           source: { file: "src/domain/execution/session-reference.mesh.mx", line: 28, column: 9 },
           that: $expressions["record.check.agentProfile.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "machineRetired",
           code: "machine.retired",
           message: "the machine is retired; report the host by a new name",
@@ -198,21 +200,22 @@ export function bindSessionReference(
         ) as unknown as $StoredScope<SetAvailabilitySessionReferenceInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "notRedacted",
           code: "session.not-redacted",
           message: "the session is redacted and cannot be changed",
           source: { file: "src/domain/execution/session-reference.mesh.mx", line: 48, column: 9 },
           that: $expressions["setAvailability.check.notRedacted.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "availabilityKept",
           code: "session.availability",
           message: "availability is complete, partial or unavailable; redact with redact",
           source: { file: "src/domain/execution/session-reference.mesh.mx", line: 53, column: 9 },
           that: $expressions["setAvailability.check.availabilityKept.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the record is at another version; read it again and retry",
@@ -288,14 +291,15 @@ export function bindSessionReference(
         ) as unknown as $StoredScope<RedactSessionReferenceInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "notRedacted",
           code: "session.not-redacted",
           message: "the session is redacted and cannot be changed",
           source: { file: "src/domain/execution/session-reference.mesh.mx", line: 72, column: 9 },
           that: $expressions["redact.check.notRedacted.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the record is at another version; read it again and retry",

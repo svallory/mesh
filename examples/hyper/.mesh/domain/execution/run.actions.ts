@@ -7,6 +7,7 @@ import {
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
   castInput as $castInput,
+  checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
   composed as $composed,
   guarded as $guarded,
@@ -102,14 +103,15 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
         ) as unknown as $Scope<StartRunInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "taskOpen",
           code: "run.task-open",
           message: "runs serve open tasks",
           source: { file: "src/domain/execution/run.mesh.mx", line: 30, column: 9 },
           that: $expressions["start.check.taskOpen.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "parentRunning",
           code: "run.parent-running",
           message: "the parent run is not running",
@@ -182,14 +184,15 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
         ) as unknown as $StoredScope<CancelRunInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "cancelable",
           code: "run.cancelable",
           message: "the run is not running",
           source: { file: "src/domain/execution/run.mesh.mx", line: 49, column: 9 },
           that: $expressions["cancel.check.cancelable.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the record is at another version; read it again and retry",

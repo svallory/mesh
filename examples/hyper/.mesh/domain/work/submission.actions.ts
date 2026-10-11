@@ -7,6 +7,7 @@ import {
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
   castInput as $castInput,
+  checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
   composed as $composed,
   guarded as $guarded,
@@ -116,14 +117,15 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
         ) as unknown as $Scope<SubmitSubmissionInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "taskOpen",
           code: "task.open",
           message: "the task is not open; reopen it first",
           source: { file: "src/domain/work/submission.mesh.mx", line: 26, column: 9 },
           that: $expressions["submit.check.taskOpen.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "currentFence",
           code: "claim.current-fence",
           message: "the fence is not your current claim; claim the task again",
@@ -131,14 +133,14 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           that: $expressions["submit.check.currentFence.that"],
           details: $expressions["submit.check.currentFence.details"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "nonePending",
           code: "submission.none-pending",
           message: "a submission is already pending; wait for its review or withdraw it",
           source: { file: "src/domain/work/submission.mesh.mx", line: 37, column: 9 },
           that: $expressions["submit.check.nonePending.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "evidenceExists",
           code: "evidence.exists",
           message: "an evidence reference does not exist",
@@ -146,7 +148,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           that: $expressions["submit.check.evidenceExists.that"],
           details: $expressions["submit.check.evidenceExists.details"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the task is at another version; read it again and retry",
@@ -245,15 +247,16 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
         ) as unknown as $StoredScope<WithdrawSubmissionInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
+        const $checks = $checkScope($s);
         await $loadInto($loadPlan, "Submission", tx, $record, ["task"], $load);
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "pending",
           code: "submission.pending",
           message: "the submission is not pending",
           source: { file: "src/domain/work/submission.mesh.mx", line: 70, column: 9 },
           that: $expressions["withdraw.check.pending.that"],
         });
-        await $runCheck($issues, $s, {
+        await $runCheck($issues, $checks, {
           label: "versionMatches",
           code: "expected-version",
           message: "the task is at another version; read it again and retry",
@@ -327,7 +330,8 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
         ) as unknown as $StoredScope<SettleSubmissionInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
-        await $runCheck($issues, $s, {
+        const $checks = $checkScope($s);
+        await $runCheck($issues, $checks, {
           label: "pending",
           code: "submission.pending",
           message: "the submission is not pending",
