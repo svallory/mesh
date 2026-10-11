@@ -116,7 +116,7 @@ describe("actions view", () => {
     expect(view.runtimeTypes).toEqual(["Issue as $Issue", "Row as $Row"]);
     expect(view.typesFromLiteral).toBe('"./article.types"');
     expect(view.validatorsFromLiteral).toBe('"./article.validators"');
-    expect(view.schemaFromLiteral).toBe('"../schema"');
+    expect(view.schemaFromLiteral).toBe('"../../schema"');
   });
 
   test("create builds the proposed record in declared order by the five rules; a set step runs after it", () => {
@@ -190,7 +190,7 @@ describe("actions view", () => {
 
   test("an entity without actions binds an empty object and imports nothing else", () => {
     const view = viewOf("Lone", inputOf(documentOf({ "lone.mesh.mx": "entity :Lone\n  attributes\n    uuid :id primary-key\n" })));
-    expect(view).toMatchObject({ hasActions: false, methods: [], runtimeValues: [], typeImports: [], validatorImports: [], schemaFromLiteral: '"./schema"' });
+    expect(view).toMatchObject({ hasActions: false, methods: [], runtimeValues: [], typeImports: [], validatorImports: [], schemaFromLiteral: '"../schema"' });
   });
 });
 
@@ -246,7 +246,7 @@ describe("build errors", () => {
   });
 
   test("negative: distinct names across entities build", () => {
-    expect(actionsGenerator.views(inputOf()).map((file) => file.path)).toEqual(["generated/blog/article.actions.ts", "generated/blog/author.actions.ts"]);
+    expect(actionsGenerator.views(inputOf()).map((file) => file.path)).toEqual(["generated/domain/blog/article.actions.ts", "generated/domain/blog/author.actions.ts"]);
   });
 });
 
@@ -295,8 +295,8 @@ describe("the generated file", () => {
 
   test("runs create, update, read, destroy against a data layer", async () => {
     const { root } = await generated();
-    const { bindArticle } = await import(resolve(root, "generated/blog/article.actions.ts"));
-    const { bindAuthor } = await import(resolve(root, "generated/blog/author.actions.ts"));
+    const { bindArticle } = await import(resolve(root, "generated/domain/blog/article.actions.ts"));
+    const { bindAuthor } = await import(resolve(root, "generated/domain/blog/author.actions.ts"));
     const layer = memoryLayer();
     const articles = bindArticle(layer);
     const authors = bindAuthor(layer);

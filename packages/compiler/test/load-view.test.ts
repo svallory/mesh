@@ -3,15 +3,15 @@ import type { ModelDocument } from "@meshfw/model";
 import { buildModel } from "../src/front-end/build.ts";
 import { EmitError, generateFiles, type EmitInput } from "../src/typescript/emit.ts";
 import { loadGenerator } from "../src/typescript/emitters/load.ts";
-import { indexView } from "../src/typescript/views/index.ts";
 import { loadView } from "../src/typescript/views/load.ts";
+import { moduleViews } from "../src/typescript/views/module.ts";
 import { queryColumns } from "../src/typescript/views/inputs.ts";
 import { typesView } from "../src/typescript/views/types.ts";
 import { checkTypes, configOf } from "./generated.ts";
 import { mkdtemp, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 
-/** The `load` generator's view, and the pieces of the types, index and read views that name what it generates (M7). */
+/** The `load` generator's view, and the pieces of the types, module and read views that name what it generates (M7). */
 const author = `import { Post } from "./post.mesh.mx"
 entity :Author table="authors"
   attributes
@@ -88,7 +88,7 @@ describe("the load view", () => {
 
   test("the expressions file is imported once, and only for an entity with a body", () => {
     const view = loadView(input(documentOf()), "generated/load.ts");
-    expect(view.expressionImports).toEqual([{ local: "authorExpressions", fromLiteral: '"./app/author.expressions"' }]);
+    expect(view.expressionImports).toEqual([{ local: "authorExpressions", fromLiteral: '"./domain/app/author.expressions"' }]);
     expect(view.typeImports.map((entry) => entry.names)).toEqual(["Author, AuthorLoadable, AuthorWith", "Post, PostLoadable, PostWith"]);
     expect(view.schemaFromLiteral).toBe('"./schema"');
   });
@@ -103,21 +103,23 @@ describe("the load generator", () => {
   test("a model with no relationship and no computed field writes no load.ts and no loader export", async () => {
     const document = documentOf({ lonely });
     expect(loadGenerator.views(input(document))).toEqual([]);
-    expect(indexView(input(document)).loaders).toEqual([]);
+    expect(moduleViews(input(document)).map(({ view }) => [view.loaders, view.loadFromLiteral])).toEqual([[[], null]]);
     const files = await generateFiles(input(document));
     expect(files.map((file) => file.path).some((path) => path.endsWith("/load.ts"))).toBe(false);
-    expect(files.find((file) => file.path.endsWith("/index.ts"))!.contents).not.toContain("./load");
+    for (const file of files.filter((entry) => entry.path.endsWith("/index.ts"))) expect(file.contents).not.toContain("/load");
   });
 
-  test("a model with one writes load.ts and the index re-exports the loaders and their types", async () => {
+  test("a model with one writes load.ts and the module's index re-exports the loaders and their types; #mesh does not", async () => {
     const document = documentOf();
     expect(loadGenerator.views(input(document)).map((entry) => entry.path)).toEqual(["generated/load.ts"]);
-    expect(indexView(input(document)).loaders).toEqual(["loadAuthorFields", "loadPostFields"]);
+    expect(moduleViews(input(document)).map(({ view }) => [view.loaders, view.loadFromLiteral])).toEqual([[["loadAuthorFields", "loadPostFields"], '"../../load"']]);
     const files = await generateFiles(input(document));
+    const module = files.find((file) => file.path === "generated/domain/app/index.ts")!.contents;
+    expect(module).toContain('export { loadAuthorFields, loadPostFields } from "../../load";');
+    expect(module).toMatch(/AuthorLoadable,\s+AuthorWith,/);
     const index = files.find((file) => file.path === "generated/index.ts")!.contents;
-    expect(index).toContain('} from "./load";');
-    expect(index).toContain('export { loadAuthorFields, loadPostFields } from "./load";');
-    expect(index).toMatch(/AuthorLoadable,\s+AuthorWith,/);
+    expect(index).not.toContain("load");
+    expect(index).not.toContain("Author");
   });
 
   test("a loader whose name an action function already has is an error that names both", async () => {
@@ -139,7 +141,7 @@ describe("the load generator", () => {
       await writeGeneratedFiles(files, emitted);
       // The load file imports `./schema`, which the adapter writes; a stand-in with the same table names is enough here.
       await Bun.write(resolve(root, "generated/schema.ts"), "export const tables = { author: {}, lonely: {}, post: {} };\n");
-      const result = checkTypes(root, ["generated/load.ts", "generated/app/author.expressions.ts", "generated/app/post.types.ts"]);
+      const result = checkTypes(root, ["generated/load.ts", "generated/domain/app/author.expressions.ts", "generated/domain/app/post.types.ts"]);
       expect(result.output).toBe("");
       expect(result.code).toBe(0);
     } finally { await rm(root, { recursive: true, force: true }); }

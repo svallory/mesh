@@ -49,6 +49,8 @@ const tsconfig = {
     typeRoots: ["../../../../node_modules/@types"],
     paths: {
       "#mesh": ["../../samples/mesh-api.d.ts"],
+      "#mesh/domain": ["../../samples/mesh-api.d.ts"],
+      "#mesh/domain/*": ["../../samples/mesh-api.d.ts"],
       "@meshfw/runtime": ["../../samples/mesh-api.d.ts"],
       "@meshfw/data-sqlite": ["../../samples/mesh-api.d.ts"],
       "@meshfw/data-postgres": ["../../samples/mesh-api.d.ts"],

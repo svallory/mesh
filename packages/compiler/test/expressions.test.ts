@@ -290,7 +290,7 @@ describe("type rules", () => {
     expect(plain.document!.entities[0]!.actions[0]!.validate[0]!.that.plain).toMatchObject({ why: "reads-record-in-helper" });
     const config = configOf(root);
     const files = await generateFiles({ document: ok.document!, config });
-    expect(files.find((f) => f.path.endsWith("task.expressions.ts"))!.contents).toContain('import { isStaff } from "../helpers"');
+    expect(files.find((f) => f.path.endsWith("task.expressions.ts"))!.contents).toContain('import { isStaff } from "../../helpers"');
   });
 });
 
@@ -315,13 +315,13 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
 
   test("the generated file type-checks under the strict flags", async () => {
     const { root, files } = await generated(source);
-    expect(files.map((f) => f.path)).toContain("generated/task.expressions.ts");
-    expect(checkTypes(root, ["generated/task.expressions.ts", "generated/task.types.ts"])).toEqual({ code: 0, output: "" });
+    expect(files.map((f) => f.path)).toContain("generated/domain/task.expressions.ts");
+    expect(checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
   });
 
   test("quantifiers evaluate on loaded rows, unknown included (test 3)", async () => {
     const { root } = await generated(source);
-    const { expressions } = await import(resolve(root, "generated/task.expressions.ts"));
+    const { expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     const f = expressions["go.check.c.that"] as (s: unknown) => unknown;
     const run = (children: unknown) => f(scope({ self: { children } }));
     expect(run([{ state: "done", n: 2 }, { state: "done", n: 0 }])).toBe(true);
@@ -333,7 +333,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
 
   test("now() is the injected clock (test 4)", async () => {
     const { root } = await generated(source);
-    const { expressions } = await import(resolve(root, "generated/task.expressions.ts"));
+    const { expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     const late = expressions["go.check.late.that"] as (s: unknown) => unknown;
     const row = { dueAt: new Date(1_000) };
     expect(late(scope({ self: row }, { clock: () => new Date(2_000) }))).toBe(true);
@@ -348,8 +348,8 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     // A string or an object key that spells a scope name declares nothing, so --noUnusedLocals finds nothing unused.
     const plain = (entity(check("() => true")) + "      do\n        run ({ context }) { console.log({ actor: \"before the write\" }, context) }\n").replace("  actions auto", "  computed\n    boolean :a() { return &children.some((c) => (c.title ?? \"\").startsWith(\"a\")) }\n    boolean :b({ self }) { return self.state.toString() === :open }\n    boolean :c() { return self.n.toFixed(0) === \"1\" }\n  actions auto");
     const { root, files } = await generated(plain);
-    expect(checkTypes(root, ["generated/task.expressions.ts", "generated/task.types.ts"])).toEqual({ code: 0, output: "" });
-    const { expressions } = await import(resolve(root, "generated/task.expressions.ts"));
+    expect(checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
+    const { expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     expect(expressions["computed.c"](scope({ self: { n: 1 } }))).toBe(true);
   });
 
@@ -358,8 +358,8 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     const { root, built } = await generated(plain);
     const computed = built.document!.entities[0]!.computed;
     expect(computed.map((c) => c.body?.plain?.clock)).toEqual([["now"], ["today"], undefined]);
-    expect(checkTypes(root, ["generated/task.expressions.ts", "generated/task.types.ts"])).toEqual({ code: 0, output: "" });
-    const { expressions } = await import(resolve(root, "generated/task.expressions.ts"));
+    expect(checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
+    const { expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     const at = { clock: () => new Date(86_400_000 * 2 + 5_000) };
     expect(expressions["computed.stamped"](scope({ self: { n: 86_400 * 2 + 5 } }, at))).toBe(true);
     expect(expressions["computed.stamped"](scope({ self: { n: 1 } }, at))).toBe(false);
@@ -383,8 +383,8 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     const computed = built.document!.entities[0]!.computed;
     expect(computed.map((c) => [c.name, c.body?.plain?.clock])).toEqual([["outer", ["now"]], ["inner", undefined], ["nested", ["now", "today"]], ["cast", ["now"]]]);
-    expect(checkTypes(root, ["generated/task.expressions.ts", "generated/task.types.ts"])).toEqual({ code: 0, output: "" });
-    const { expressions } = await import(resolve(root, "generated/task.expressions.ts"));
+    expect(checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
+    const { expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     const at = { clock: () => new Date(86_400_000 * 2 + 5_000) };
     expect(expressions["computed.outer"](scope({ self: { n: 86_400_000 * 2 + 5_000 } }, at))).toBe(true);
     expect(expressions["computed.outer"](scope({ self: { n: 1 } }, at))).toBe(false);
@@ -418,10 +418,10 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     const config = configOf(root);
     await writeGeneratedFiles(await generateFiles({ document: built.document!, config }), config);
     await writeFile(resolve(root, "generated/schema.ts"), "export const tables = {};\n");
-    const printed = await Bun.file(resolve(root, "generated/task.expressions.ts")).text();
-    expect(printed).toContain('import { now } from "../clock"');
+    const printed = await Bun.file(resolve(root, "generated/domain/task.expressions.ts")).text();
+    expect(printed).toContain('import { now } from "../../clock"');
     expect(printed).not.toContain("const now = () => $.now($s)");
-    const { expressions } = await import(resolve(root, "generated/task.expressions.ts"));
+    const { expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     // The bound clock says two days in; the import says the epoch. Both paths answer as the import does.
     const at = { clock: () => new Date(86_400_000 * 2) };
     expect(expressions["computed.plainNow"](scope({ self: {} }, at))).toBe(true);
@@ -431,7 +431,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
 
   test("plain code runs with the authored meaning, `&` and atoms desugared", async () => {
     const { root } = await generated(source);
-    const { expressions } = await import(resolve(root, "generated/task.expressions.ts"));
+    const { expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     expect(expressions["computed.label"](scope({ self: { n: 3, title: "x" } }))).toBe("3:x");
   });
 

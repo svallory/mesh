@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createSchema, sqlite, type SQLiteLayer } from "@meshfw/data-sqlite";
 import { FrameworkError, InvalidInputError, NotFoundError } from "@meshfw/runtime";
-import { bind, connect, createPost, createUser, disconnect, readPost, tables, type PostFilter, type PostSort } from "#mesh";
+import { bind, connect, disconnect, tables } from "#mesh";
+import { createPost, createUser, readPost, type PostFilter, type PostSort } from "#mesh/domain/blog";
 import config from "../mesh.config";
 import { alice } from "../src/context";
 
@@ -71,7 +72,7 @@ test("acceptance 3: a failing validation's first frame outside node_modules and 
     const frames = (caught as Error).stack!.split("\n").filter((line) => line.trimStart().startsWith("at "));
     const packages = resolve(import.meta.dir, "../../../packages");
     const first = frames.find((frame) => !frame.includes("node_modules") && !frame.includes(packages));
-    expect(first).toContain(resolve(import.meta.dir, "../.mesh/blog/post.actions.ts"));
+    expect(first).toContain(resolve(import.meta.dir, "../.mesh/domain/blog/post.actions.ts"));
   } finally { await db.close(); }
 });
 
@@ -115,7 +116,7 @@ describe("ids (UUIDv7, filled by the data layer)", () => {
   });
 
   test("the generated create does not mention the id, and a client cannot send one", async () => {
-    expect(readFileSync(resolve(import.meta.dir, "../.mesh/blog/post.actions.ts"), "utf8")).not.toMatch(/randomUUID|^\s+id: /m);
+    expect(readFileSync(resolve(import.meta.dir, "../.mesh/domain/blog/post.actions.ts"), "utf8")).not.toMatch(/randomUUID|^\s+id: /m);
     const { db, blog, author } = await seeded([]);
     try {
       // @ts-expect-error the id is not part of createPost's input
@@ -389,7 +390,7 @@ describe("connect and disconnect (ADR-0047)", () => {
   });
 });
 
-test.each(["blog/post.actions.ts", "index.ts"])("acceptance 6: mesh build --check fails on an edited byte in .mesh/%s", (path) => {
+test.each(["domain/blog/post.actions.ts", "domain/blog/index.ts", "binding.ts", "index.ts"])("acceptance 6: mesh build --check fails on an edited byte in .mesh/%s", (path) => {
   const file = resolve(import.meta.dir, "../.mesh", path);
   const original = readFileSync(file);
   const check = () => Bun.spawnSync([process.execPath, "x", "mesh", "build", "--check"], { cwd: resolve(import.meta.dir, "..") });
@@ -402,7 +403,22 @@ test.each(["blog/post.actions.ts", "index.ts"])("acceptance 6: mesh build --chec
   expect(check().exitCode).toBe(0);
 });
 
-test("acceptance 8: application code imports only #mesh and relative paths", () => {
+test("acceptance 6: mesh build --check fails on a deleted module index, and mesh build writes it back", () => {
+  const file = resolve(import.meta.dir, "../.mesh/domain/blog/index.ts");
+  const original = readFileSync(file);
+  const run = (...args: string[]) => Bun.spawnSync([process.execPath, "x", "mesh", "build", ...args], { cwd: resolve(import.meta.dir, "..") });
+  try {
+    rmSync(file);
+    const result = run("--check");
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.toString()).toContain(".mesh/domain/blog/index.ts:1:1 error Generated file is missing");
+    expect(run().exitCode).toBe(0);
+    expect(readFileSync(file)).toEqual(original);
+  } finally { writeFileSync(file, original); }
+  expect(run("--check").exitCode).toBe(0);
+});
+
+test("acceptance 8: application code imports only #mesh, a module's #mesh/domain specifier and relative paths", () => {
   const src = resolve(import.meta.dir, "../src");
   const files = readdirSync(src, { recursive: true }).map(String).filter((name) => /\.[cm]?[jt]sx?$/.test(name));
   expect(files.length).toBeGreaterThan(0);
@@ -415,7 +431,8 @@ test("acceptance 8: application code imports only #mesh and relative paths", () 
     for (const match of source.matchAll(/(?:\bfrom\s*|\bimport\s*\(?\s*)["']([^"']+)["']/g)) {
       const specifier = match[1]!;
       const bare = /^import\s*["']/.test(match[0]);
-      if (specifier === "#mesh" || specifier.startsWith(".") || (bare && augmented.has(specifier))) continue;
+      const generated = specifier === "#mesh" || specifier === "#mesh/domain" || specifier.startsWith("#mesh/domain/");
+      if (generated || specifier.startsWith(".") || (bare && augmented.has(specifier))) continue;
       offenders.push(`src/${name}: ${specifier}`);
     }
   }

@@ -6,6 +6,10 @@ import { describe, expect, test } from "bun:test";
 import { FrameworkError, type DataLayer, type DataOperations, type TableHandle } from "@meshfw/runtime";
 import * as mesh from "#mesh";
 import { bind, tables } from "#mesh";
+import * as audit from "#mesh/domain/audit";
+import * as execution from "#mesh/domain/execution";
+import * as identity from "#mesh/domain/identity";
+import * as work from "#mesh/domain/work";
 import * as executionCommands from "../src/domain/execution/execution.commands";
 import { attemptStart, sessionRecord } from "../src/domain/execution/execution.commands";
 import * as identityCommands from "../src/domain/identity/identity.commands";
@@ -440,8 +444,10 @@ describe("PROTOCOL.md §4.5: the Task's version goes up by one per committed com
 });
 
 describe("the command functions", () => {
-  test("follow Hyper's method names in camelCase, and none is a name `#mesh` exports", () => {
-    const exported = new Set(Object.keys(mesh));
+  test("follow Hyper's method names in camelCase, and none is a name `#mesh` or a module's index exports", () => {
+    // `#mesh` holds only the framework's names; every action function is its module's.
+    expect(Object.keys(mesh).sort()).toEqual(["bind", "connect", "disconnect", "tables", "transaction"]);
+    const exported = new Set([mesh, audit, execution, identity, work].flatMap((module) => Object.keys(module)));
     // The key lists, not a spread of the modules: a name two modules export would be one key of a spread.
     const names = [workCommands, identityCommands, executionCommands].flatMap((module) => Object.keys(module));
     expect(names.filter((name, at) => names.indexOf(name) !== at)).toEqual([]);

@@ -217,7 +217,7 @@ test("M2 test 4: the allow-list is data adapters, emitted schemas, manifests, lo
 
 test("M2 test 4: a schema.ts is exempt only at .mesh/schema.ts with the generated header", () => {
   workspace((dir, put) => {
-    const paths = ["examples/blog/src/schema.ts", "examples/blog/.mesh/blog/schema.ts", "examples/blog/mesh/schema.ts", "examples/blog/.mesh/schema.js"];
+    const paths = ["examples/blog/src/schema.ts", "examples/blog/.mesh/blog/schema.ts", "examples/blog/.mesh/domain/schema.ts", "examples/blog/.mesh/domain/schema/schema.ts", "examples/blog/mesh/schema.ts", "examples/blog/.mesh/schema.js"];
     for (const path of paths) put(path, `${SCHEMA_HEADER}import "drizzle-orm";`);
     put("examples/demo/.mesh/schema.ts", 'import "drizzle-orm";');
     const errors = checkDrizzleImports(dir);
@@ -233,10 +233,10 @@ test("M2 test 4: no generated file imports the model, the compiler, Drizzle (out
 test.each(["@meshfw/model", "@meshfw/compiler", "model.json", "drizzle-orm", "drizzle-kit"])(
   "M2 test 4: a planted %s in a generated file fails, comments included", (name) => {
     workspace((dir, put) => {
-      const paths = ["examples/blog/.mesh/index.ts", "examples/blog/.mesh/blog/post.actions.ts", "apps/demo/.mesh/x/y.validators.js"];
+      const paths = ["examples/blog/.mesh/index.ts", "examples/blog/.mesh/binding.ts", "examples/blog/.mesh/domain/blog/index.ts", "examples/blog/.mesh/domain/blog/post.actions.ts", "apps/demo/.mesh/domain/x/y.validators.js"];
       for (const path of paths) put(path, `// Do not edit\n// ${name}`);
       expect(checkGeneratedImports(dir)).toEqual(paths.sort().map((path) =>
-        `${path}:2: Generated code must not import ${name} (roadmap M2, acceptance 4); it imports only @meshfw/runtime, zod, its sibling files, the adapter's schema.ts and (index.ts only) ../mesh.config`));
+        `${path}:2: Generated code must not import ${name} (roadmap M2, acceptance 4); it imports only @meshfw/runtime, zod, the other files of its .mesh/ tree, the adapter's schema.ts and (binding.ts only) the project's mesh.config`));
     });
   },
 );
@@ -248,7 +248,7 @@ test("M2 test 4: the emitted schema may import Drizzle but not the build half; m
     put("examples/blog/src/main.ts", 'import "@meshfw/model";');
     put("examples/blog/node_modules/x/.mesh/index.ts", 'import "@meshfw/model";');
     expect(checkGeneratedImports(dir)).toEqual([
-      "examples/blog/.mesh/schema.ts:2: Generated code must not import @meshfw/compiler (roadmap M2, acceptance 4); it imports only @meshfw/runtime, zod, its sibling files, the adapter's schema.ts and (index.ts only) ../mesh.config",
+      "examples/blog/.mesh/schema.ts:2: Generated code must not import @meshfw/compiler (roadmap M2, acceptance 4); it imports only @meshfw/runtime, zod, the other files of its .mesh/ tree, the adapter's schema.ts and (binding.ts only) the project's mesh.config",
     ]);
   });
 });

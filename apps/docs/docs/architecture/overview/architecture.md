@@ -58,7 +58,7 @@ entity :Todo table="todos"
       authorize-if=({ actor }) => &list.ownerId === actor.id
 ```
 
-From it Mesh generates `createTodo(input, context)`, `completeTodo`, `pendingTodo`, `readTodo` and `destroyTodo`, the `Todo` type, an input validator per action and the `todos` table. Application code imports them from `#mesh` ([ADR-0058](../decisions/0058-generated-code-in-mesh-imported-as-hash-mesh.md)).
+From it Mesh generates `createTodo(input, context)`, `completeTodo`, `pendingTodo`, `readTodo` and `destroyTodo`, the `Todo` type, an input validator per action and the `todos` table. Application code imports them from the module's specifier, `#mesh/domain/todo` for an entity in `src/domain/todo/`, and `connect`, `bind` and `transaction` from `#mesh` ([ADR-0058](../decisions/0058-generated-code-in-mesh-imported-as-hash-mesh.md), amended 2026-10-11).
 
 ## Design goals
 

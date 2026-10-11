@@ -22,7 +22,7 @@ bun run test         # mesh build --check, then bun test against an in-memory da
 - [`src/main.ts`](src/main.ts) is the program: `connect()`, the calls, `disconnect()`.
 - [`test/blog.test.ts`](test/blog.test.ts) binds its own `sqlite({ file: ":memory:" })` with `createSchema(db, tables)` and `bind(db)`, and covers the M2 acceptance tests.
 
-`mesh.config.ts` reads `src/domain/`, selects the SQLite adapter and writes `.mesh/`. The folder relative to the domain root is the module, so the per-entity files land under `.mesh/blog/`. `package.json` maps `#mesh` to `./.mesh/index.ts`, which exports `connect`, `disconnect`, `bind`, every action function, every record and input type, and `tables`. Code in this example imports `#mesh`, never a path inside `.mesh/`.
+`mesh.config.ts` reads `src/domain/`, selects the SQLite adapter and writes `.mesh/`. The folder relative to the domain root is the module, so the module is `blog` and its files land under `.mesh/domain/blog/`. `package.json` maps three specifiers: `#mesh` to `./.mesh/index.ts`, which exports `connect`, `disconnect`, `bind`, `transaction` and `tables`; `#mesh/domain/*` to `./.mesh/domain/*/index.ts`, so `#mesh/domain/blog` exports the module's action functions (`createPost`, `readPost`, ...) and its record and input types; and `#mesh/domain` to `./.mesh/domain/index.ts`, for entities at the domain root (this example has none). Code in this example imports those specifiers, never a path inside `.mesh/`.
 
 ## What this version runs
 

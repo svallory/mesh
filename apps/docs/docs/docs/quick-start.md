@@ -61,9 +61,10 @@ The build writes the functions you call. The schema push creates the table in `t
 
 ## Use your domain
 
-Import a function from `#mesh` and pass its input and the caller's context:
+Import a function from its module, `#mesh/domain/todo` for the entities in `src/domain/todo/`, and pass its input and the caller's context; `connect` and `disconnect` come from `#mesh`:
 ```ts "src/demo.ts"
-import { connect, createList, disconnect } from "#mesh";
+import { connect, disconnect } from "#mesh";
+import { createList } from "#mesh/domain/todo";
 import { alice } from "./context";
 await connect();
 try {

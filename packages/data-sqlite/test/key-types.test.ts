@@ -46,16 +46,16 @@ beforeAll(async () => {
 afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
 
 test("the record, the input and the schema column all take the integer key's type", async () => {
-  const types = await Bun.file(join(dir, ".mesh/line.types.ts")).text();
+  const types = await Bun.file(join(dir, ".mesh/domain/line.types.ts")).text();
   expect(types).toMatch(/orderId: number;/);
   expect(types).toMatch(/replacesId: number \| null;/);
   expect(types).toMatch(/order: Order\["id"\];/);
-  expect(await Bun.file(join(dir, ".mesh/line.validators.ts")).text()).toContain("order: z.int(),");
+  expect(await Bun.file(join(dir, ".mesh/domain/line.validators.ts")).text()).toContain("order: z.int(),");
   const schema = await Bun.file(join(dir, ".mesh/schema.ts")).text();
   expect(schema).toMatch(/orderId: integer\("orderId"\)\.notNull\(\)/);
   expect(schema).toMatch(/replacesId: integer\("replacesId"\),/);
-  await writeFile(join(dir, "check.ts"), `import type { Line } from "./.mesh/line.types";
-import type { LineFilter } from "./.mesh/line.types";
+  await writeFile(join(dir, "check.ts"), `import type { Line } from "./.mesh/domain/line.types";
+import type { LineFilter } from "./.mesh/domain/line.types";
 import { lineTable } from "./.mesh/schema";
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
 export const same: Equal<typeof lineTable.$inferSelect, Line> = true;

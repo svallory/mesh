@@ -9,37 +9,65 @@ import {
   type LoadPlan as $LoadPlan,
 } from "@meshfw/runtime";
 import { tables } from "./schema";
-import { expressions as claimExpressions } from "./work/claim.expressions";
-import { expressions as taskExpressions } from "./work/task.expressions";
-import type { Event, EventLoadable, EventWith } from "./audit/event.types";
-import type { Attempt, AttemptLoadable, AttemptWith } from "./execution/attempt.types";
-import type { Invocation, InvocationLoadable, InvocationWith } from "./execution/invocation.types";
-import type { Machine, MachineLoadable, MachineWith } from "./execution/machine.types";
-import type { Run, RunLoadable, RunWith } from "./execution/run.types";
+import { expressions as claimExpressions } from "./domain/work/claim.expressions";
+import { expressions as taskExpressions } from "./domain/work/task.expressions";
+import type { Event, EventLoadable, EventWith } from "./domain/audit/event.types";
+import type { Attempt, AttemptLoadable, AttemptWith } from "./domain/execution/attempt.types";
+import type {
+  Invocation,
+  InvocationLoadable,
+  InvocationWith,
+} from "./domain/execution/invocation.types";
+import type { Machine, MachineLoadable, MachineWith } from "./domain/execution/machine.types";
+import type { Run, RunLoadable, RunWith } from "./domain/execution/run.types";
 import type {
   SessionReference,
   SessionReferenceLoadable,
   SessionReferenceWith,
-} from "./execution/sessionReference.types";
+} from "./domain/execution/sessionReference.types";
 import type {
   Collaborator,
   CollaboratorLoadable,
   CollaboratorWith,
-} from "./identity/collaborator.types";
-import type { Membership, MembershipLoadable, MembershipWith } from "./identity/membership.types";
-import type { Assignment, AssignmentLoadable, AssignmentWith } from "./work/assignment.types";
-import type { Claim, ClaimLoadable, ClaimWith } from "./work/claim.types";
-import type { Completion, CompletionLoadable, CompletionWith } from "./work/completion.types";
-import type { Dependency, DependencyLoadable, DependencyWith } from "./work/dependency.types";
+} from "./domain/identity/collaborator.types";
+import type {
+  Membership,
+  MembershipLoadable,
+  MembershipWith,
+} from "./domain/identity/membership.types";
+import type {
+  Assignment,
+  AssignmentLoadable,
+  AssignmentWith,
+} from "./domain/work/assignment.types";
+import type { Claim, ClaimLoadable, ClaimWith } from "./domain/work/claim.types";
+import type {
+  Completion,
+  CompletionLoadable,
+  CompletionWith,
+} from "./domain/work/completion.types";
+import type {
+  Dependency,
+  DependencyLoadable,
+  DependencyWith,
+} from "./domain/work/dependency.types";
 import type {
   EvidenceReference,
   EvidenceReferenceLoadable,
   EvidenceReferenceWith,
-} from "./work/evidenceReference.types";
-import type { LateResult, LateResultLoadable, LateResultWith } from "./work/lateResult.types";
-import type { Review, ReviewLoadable, ReviewWith } from "./work/review.types";
-import type { Submission, SubmissionLoadable, SubmissionWith } from "./work/submission.types";
-import type { Task, TaskLoadable, TaskWith } from "./work/task.types";
+} from "./domain/work/evidenceReference.types";
+import type {
+  LateResult,
+  LateResultLoadable,
+  LateResultWith,
+} from "./domain/work/lateResult.types";
+import type { Review, ReviewLoadable, ReviewWith } from "./domain/work/review.types";
+import type {
+  Submission,
+  SubmissionLoadable,
+  SubmissionWith,
+} from "./domain/work/submission.types";
+import type { Task, TaskLoadable, TaskWith } from "./domain/work/task.types";
 
 /** What `loadRows` follows: each entity's table and key, its relationships and its computed fields. */
 export const loadPlan = {

@@ -3,14 +3,13 @@ import { indexView, type IndexView } from "../views/index.ts";
 import { outputPrefix } from "./order.ts";
 
 /**
- * `<output>/index.ts`, one per build: `bind`, `connect`, `disconnect`, one function
- * per action delegating to the default binding, and the type and table re-exports
- * (ADR-0047). It is the file a project's `#mesh` import names.
+ * `<output>/index.ts`, one per build: the file a project's `#mesh` import names (ADR-0058). It re-exports `bind`,
+ * `connect`, `disconnect` and `transaction` from `binding.ts`, `Actions` and `Reads` from `composition.ts` and
+ * `tables` from the adapter's `schema.ts`, and nothing of any entity: those are each module's (CMP-17).
  */
 export const indexGenerator: Generator<IndexView> = {
   name: "index",
   template: "index.ts.jig",
-  requires: ["@meshfw/runtime"],
   views(input) {
     return [{ path: `${outputPrefix(input.config)}/index.ts`, view: indexView(input) }];
   },

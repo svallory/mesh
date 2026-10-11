@@ -3,10 +3,11 @@
 // pages against this file.
 //
 // This is not Mesh. Mesh does not exist as an installable runtime yet, so the file
-// states the shape the pages promise: the generated `#mesh` entry point for the two
-// entities of the tutorial, the run-time error classes, the SQLite adapter and the
-// configuration helper. If a page and this file disagree, the page is a bug or this
-// file is; both are cheap to fix and the sample check is what notices.
+// states the shape the pages promise: the generated entry points (`#mesh` and the
+// `#mesh/domain/<module>` specifiers) for the entities of the pages, the run-time error
+// classes, the SQLite adapter and the configuration helper. If a page and this file
+// disagree, the page is a bug or this file is; both are cheap to fix and the sample
+// check is what notices.
 //
 // The per-entity filter types are spelled out here because the real generator emits
 // them per entity. `anyField` is the union a reader would expect from the entity file.
@@ -148,10 +149,14 @@ declare module "meshfw" {
   export { defineConfig, type MeshConfig } from "@meshfw/runtime";
 }
 
-declare module "#mesh" {
-  import type { ActionContext } from "@meshfw/runtime";
-  import type { PostgresDataLayer } from "@meshfw/data-postgres";
-  import type { SqliteDataLayer } from "@meshfw/data-sqlite";
+// The generated entry points, as CMP-17 lays them out: `#mesh` holds the framework's names only, and each module
+// of the domain gets its own specifier, `#mesh/domain/<module>`, with its entities' action functions and types. The
+// pages' entities live in two modules: `Todo` and `List` in `src/domain/todo/`, `Invoice` in `src/domain/billing/`.
+// The types below that no single module owns (`Condition`, `Filter`, `Decision`) are this file's shorthand for the
+// per-entity types the generator writes into each module.
+
+declare module "#mesh/domain/todo" {
+  import type { ActionContext, PolicyCheck } from "@meshfw/runtime";
 
   export type Condition = {
     eq?: string | number | boolean | Date | null;
@@ -186,6 +191,48 @@ declare module "#mesh" {
     updatedAt: Date;
   }
 
+  export interface Decision {
+    allowed: boolean;
+    breakdown: PolicyCheck[];
+  }
+
+  export type TodoField = "id" | "title" | "done" | "listId" | "insertedAt" | "updatedAt";
+
+  export interface ReadTodoInput {
+    filter?: Filter<TodoField>;
+    sort?: string[];
+    limit?: number;
+    offset?: number;
+    load?: readonly string[];
+  }
+
+  export type TodoOrLabelled = Todo & { label: string };
+
+  /** A computed field is a property only when the read asked for it: two signatures say so. */
+  export interface PendingTodo {
+    (input: { load: readonly ["label"] }, context: ActionContext): Promise<TodoOrLabelled[]>;
+    (input: { filter?: Filter<TodoField>; load?: readonly string[] }, context: ActionContext): Promise<Todo[]>;
+  }
+
+  export function createList(input: { name: string }, context: ActionContext): Promise<List>;
+  export function readList(input: ReadTodoInput, context: ActionContext): Promise<List[]>;
+  export function destroyList(input: { id: string }, context: ActionContext): Promise<void>;
+  /** `&list` in input takes the related id; the returned record still has listId. */
+  export function createTodo(input: { title: string; list: List["id"] }, context: ActionContext): Promise<Todo>;
+  export function readTodo(input: ReadTodoInput, context: ActionContext): Promise<Todo[]>;
+  export const pendingTodo: PendingTodo;
+  export function completeTodo(input: { id: string }, context: ActionContext): Promise<Todo>;
+  export function renameTodo(input: { id: string; title: string }, context: ActionContext): Promise<Todo>;
+  export function destroyTodo(input: { id: string }, context: ActionContext): Promise<void>;
+  export function canCreateTodo(input: { title: string; list: List["id"] }, context: ActionContext): Promise<Decision>;
+  export function canPendingTodo(input: { load?: readonly string[] }, context: ActionContext): Promise<Decision>;
+  export function canCompleteTodo(input: { id: string }, context: ActionContext): Promise<Decision>;
+}
+
+declare module "#mesh/domain/billing" {
+  import type { ActionContext } from "@meshfw/runtime";
+  import type { Filter } from "#mesh/domain/todo";
+
   /** Enough of the Invoice entity for the read-with-an-argument sample on the pages. */
   export interface Invoice {
     id: string;
@@ -210,29 +257,6 @@ declare module "#mesh" {
     | "insertedAt"
     | "updatedAt";
 
-  export interface Decision {
-    allowed: boolean;
-    breakdown: PolicyCheck[];
-  }
-
-  export type TodoField = "id" | "title" | "done" | "listId" | "insertedAt" | "updatedAt";
-
-  export interface ReadTodoInput {
-    filter?: Filter<TodoField>;
-    sort?: string[];
-    limit?: number;
-    offset?: number;
-    load?: readonly string[];
-  }
-
-  export type TodoOrLabelled = Todo & { label: string };
-
-  /** A computed field is a property only when the read asked for it: two signatures say so. */
-  export interface PendingTodo {
-    (input: { load: readonly ["label"] }, context: ActionContext): Promise<TodoOrLabelled[]>;
-    (input: { filter?: Filter<TodoField>; load?: readonly string[] }, context: ActionContext): Promise<Todo[]>;
-  }
-
   /** A read's typed `input` lines sit beside `filter`, `sort` and the rest. */
   export interface ReadInvoiceInput {
     customerId: string;
@@ -243,38 +267,48 @@ declare module "#mesh" {
     load?: readonly string[];
   }
 
+  export function forCustomerInvoice(input: ReadInvoiceInput, context: ActionContext): Promise<Invoice[]>;
+}
+
+declare module "#mesh" {
+  import type { ActionContext, Seams } from "@meshfw/runtime";
+  import type { PostgresDataLayer } from "@meshfw/data-postgres";
+  import type { SqliteDataLayer } from "@meshfw/data-sqlite";
+  import type * as todo from "#mesh/domain/todo";
+  import type * as billing from "#mesh/domain/billing";
+
+  /** What `bind` returns: every action function of the project, by name, on one data layer. */
   export type Bound = {
-    createList(input: { name: string }, context: ActionContext): Promise<List>;
-    readList(input: ReadTodoInput, context: ActionContext): Promise<List[]>;
-    destroyList(input: { id: string }, context: ActionContext): Promise<void>;
-    /** `&list` in input takes the related id; the returned record still has listId. */
-    createTodo(input: { title: string; list: List["id"] }, context: ActionContext): Promise<Todo>;
-    readTodo(input: ReadTodoInput, context: ActionContext): Promise<Todo[]>;
-    pendingTodo: PendingTodo;
-    completeTodo(input: { id: string }, context: ActionContext): Promise<Todo>;
-    renameTodo(input: { id: string; title: string }, context: ActionContext): Promise<Todo>;
-    destroyTodo(input: { id: string }, context: ActionContext): Promise<void>;
-    forCustomerInvoice(input: ReadInvoiceInput, context: ActionContext): Promise<Invoice[]>;
-    canCreateTodo(input: { title: string; list: List["id"] }, context: ActionContext): Promise<Decision>;
-    canPendingTodo(input: { load?: readonly string[] }, context: ActionContext): Promise<Decision>;
-    canCompleteTodo(input: { id: string }, context: ActionContext): Promise<Decision>;
+    createList: typeof todo.createList;
+    readList: typeof todo.readList;
+    destroyList: typeof todo.destroyList;
+    createTodo: typeof todo.createTodo;
+    readTodo: typeof todo.readTodo;
+    pendingTodo: todo.PendingTodo;
+    completeTodo: typeof todo.completeTodo;
+    renameTodo: typeof todo.renameTodo;
+    destroyTodo: typeof todo.destroyTodo;
+    forCustomerInvoice: typeof billing.forCustomerInvoice;
+    canCreateTodo: typeof todo.canCreateTodo;
+    canPendingTodo: typeof todo.canPendingTodo;
+    canCompleteTodo: typeof todo.canCompleteTodo;
   };
 
   export type DataLayer = SqliteDataLayer | PostgresDataLayer;
 
   /** The action functions as `actions` hands them to a step, a check or `transaction`: bound to the running transaction, context optional. */
   export type Actions = {
-    createList(input: { name: string }, context?: ActionContext): Promise<List>;
-    createTodo(input: { title: string; list: List["id"] }, context?: ActionContext): Promise<Todo>;
-    completeTodo(input: { id: string }, context?: ActionContext): Promise<Todo>;
-    renameTodo(input: { id: string; title: string }, context?: ActionContext): Promise<Todo>;
+    createList(input: { name: string }, context?: ActionContext): Promise<todo.List>;
+    createTodo(input: { title: string; list: todo.List["id"] }, context?: ActionContext): Promise<todo.Todo>;
+    completeTodo(input: { id: string }, context?: ActionContext): Promise<todo.Todo>;
+    renameTodo(input: { id: string; title: string }, context?: ActionContext): Promise<todo.Todo>;
     destroyTodo(input: { id: string }, context?: ActionContext): Promise<void>;
   };
 
   /** The reads of the running transaction; no read policies run. */
   export type Reads = {
-    readList(input: ReadTodoInput): Promise<List[]>;
-    readTodo(input: ReadTodoInput): Promise<Todo[]>;
+    readList(input: todo.ReadTodoInput): Promise<todo.List[]>;
+    readTodo(input: todo.ReadTodoInput): Promise<todo.Todo[]>;
   };
 
   /** Opens a transaction, or joins the running one, and hands `run` the bound `actions` and `tx`. */
@@ -285,22 +319,8 @@ declare module "#mesh" {
 
   export function connect(): Promise<void>;
   export function disconnect(): Promise<void>;
-  export function bind(dataLayer: DataLayer, options?: { seams?: import("@meshfw/runtime").Seams; clock?: () => Date }): Bound;
+  export function bind(dataLayer: DataLayer, options?: { seams?: Seams; clock?: () => Date }): Bound;
 
   /** The emitted schema's tables, for `createSchema(db, tables)`. */
   export const tables: { readonly list: object; readonly todo: object };
-
-  export const createList: Bound["createList"];
-  export const readList: Bound["readList"];
-  export const destroyList: Bound["destroyList"];
-  export const createTodo: Bound["createTodo"];
-  export const readTodo: Bound["readTodo"];
-  export const pendingTodo: PendingTodo;
-  export const completeTodo: Bound["completeTodo"];
-  export const renameTodo: Bound["renameTodo"];
-  export const destroyTodo: Bound["destroyTodo"];
-  export const forCustomerInvoice: Bound["forCustomerInvoice"];
-  export const canCreateTodo: Bound["canCreateTodo"];
-  export const canPendingTodo: Bound["canPendingTodo"];
-  export const canCompleteTodo: Bound["canCompleteTodo"];
 }

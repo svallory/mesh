@@ -19,6 +19,17 @@ const todo = await createTodo({ title: "Buy milk", list: list.id }, { actor });
 
 **The input, and the action context.** The input is always required. The context is a plain object too, and it is required as soon as your project has declared a required key on it: `@meshfw/runtime` exports an empty `ActionContext` interface, your project adds its keys, and while every key you declare is optional the parameter is optional too. A call with no context at all compiles exactly when a call with one does.
 
+## Where the functions come from
+
+`mesh build` writes the functions into `.mesh/`, and your `package.json` maps three import specifiers to it. Each module of your domain has its own: the functions and types of the entities in `src/domain/todo/` come from `#mesh/domain/todo`, those of `src/domain/billing/` from `#mesh/domain/billing`, and those of the entities at the domain root from `#mesh/domain`. `#mesh` holds only what belongs to the whole project: `connect`, `disconnect`, `transaction`, `bind`, `tables` and the `Actions` and `Reads` types.
+
+```ts "src/main.ts (excerpt)"
+import { connect, disconnect } from "#mesh";
+import { createList, createTodo } from "#mesh/domain/todo";
+```
+
+An action function's name is still unique across the project, because `actions`, `tx` and what `bind` returns hold every function by name; see [Project structure](./project-structure.md#generated-code).
+
 ## Connect once
 
 `#mesh` exports `connect()` and `disconnect()`. `connect()` opens the data layer your `mesh.config.ts` configures; there is nothing to pass, and the same configuration drives the build, so the connection and the schema cannot disagree.
@@ -40,7 +51,8 @@ In a test you do not connect at all. You bind a data layer, and every action fun
 The second argument says who is calling, and carries whatever else the call needs. It is one flat object, and it is a plain argument on every call rather than a global, which is what makes "run this as somebody else" one line:
 
 ```ts "src/main.ts"
-import { connect, disconnect, createList, createTodo } from "#mesh";
+import { connect, disconnect } from "#mesh";
+import { createList, createTodo } from "#mesh/domain/todo";
 import { alice, bob } from "./context";
 
 await connect();
@@ -73,7 +85,8 @@ export const alice = { id: "00000000-0000-4000-8000-000000000001", role: "member
 Two keys are reserved. **`actor`** is what the `authorize-if` checks in your policies are given. **`system`** marks a call the application makes on its own behalf, and is covered under [internal writes](#internal-writes). Every other key is yours. A tenant, a locale, a request id: name them, and both your TypeScript and your entity files can use them:
 
 ```ts "src/main.ts"
-import { connect, disconnect, createList } from "#mesh";
+import { connect, disconnect } from "#mesh";
+import { createList } from "#mesh/domain/todo";
 import { alice } from "./context";
 
 await connect();
@@ -112,7 +125,8 @@ The name is the action's name followed by the entity's name in PascalCase. An ac
 **One `input` section describes the whole input.** A member line such as `&title` takes a declared field; a typed line such as `uuid :customerId` declares an argument that is not stored as sent. A read's caller sends these beside `filter`, `sort` and the rest:
 
 ```ts "src/main.ts"
-import { connect, disconnect, forCustomerInvoice } from "#mesh";
+import { connect, disconnect } from "#mesh";
+import { forCustomerInvoice } from "#mesh/domain/billing";
 import { alice } from "./context";
 
 await connect();
@@ -133,7 +147,8 @@ A read returns an array even when the filter can match one row. There is no sepa
 The input has exactly the fields in the action's `input` section. With the tutorial's `todo.mesh.mx`, `createTodo` takes `title` and `list`:
 
 ```ts "src/main.ts"
-import { connect, createList, createTodo, disconnect } from "#mesh";
+import { connect, disconnect } from "#mesh";
+import { createList, createTodo } from "#mesh/domain/todo";
 import { alice } from "./context";
 
 await connect();
@@ -166,7 +181,8 @@ The same rule makes `customerId` on an Invoice record. These key-column names ar
 `{ id, ...accepted }`. The id is separate, so an action that accepts nothing still reads well:
 
 ```ts "src/main.ts"
-import { connect, disconnect, completeTodo } from "#mesh";
+import { connect, disconnect } from "#mesh";
+import { completeTodo } from "#mesh/domain/todo";
 import { alice } from "./context";
 
 await connect();
@@ -189,7 +205,8 @@ Omitting an optional input field and passing it as `undefined` both mean "not pr
 A read's input is plain data: a field name, an operator and a value.
 
 ```ts "src/main.ts"
-import { connect, createList, disconnect, readTodo } from "#mesh";
+import { connect, disconnect } from "#mesh";
+import { createList, readTodo } from "#mesh/domain/todo";
 import { alice } from "./context";
 
 await connect();
@@ -211,7 +228,8 @@ await disconnect();
 Filters combine with `and` and `or`:
 
 ```ts "src/main.ts"
-import { connect, createList, disconnect, readTodo } from "#mesh";
+import { connect, disconnect } from "#mesh";
+import { createList, readTodo } from "#mesh/domain/todo";
 import { alice } from "./context";
 
 await connect();
@@ -241,7 +259,8 @@ A filter is a value, not a string, so a field that does not exist is a type erro
 Anything derived is computed only when you name it in `load`:
 
 ```ts "src/main.ts"
-import { connect, disconnect, pendingTodo } from "#mesh";
+import { connect, disconnect } from "#mesh";
+import { pendingTodo } from "#mesh/domain/todo";
 import { alice } from "./context";
 
 await connect();
@@ -276,7 +295,8 @@ Every action throws on failure. All four classes come from `@meshfw/runtime`, ex
 
 ```ts "src/main.ts"
 import { InvalidInputError } from "@meshfw/runtime";
-import { connect, disconnect, createList, createTodo, completeTodo } from "#mesh";
+import { connect, disconnect } from "#mesh";
+import { completeTodo, createList, createTodo } from "#mesh/domain/todo";
 import { alice } from "./context";
 
 await connect();
@@ -311,7 +331,8 @@ A caught error has type `unknown` in strict TypeScript, so narrow it before read
 Actions that call other actions do it inside the entity file, through `actions` ([Entities: calling other actions](./entities.md#calling-other-actions)). Your application can do the same when a method must answer with more than a record. `transaction` opens a transaction, or joins the one that is running, and hands you the same `actions` and `tx`:
 
 ```ts "src/main.ts"
-import { connect, createList, disconnect, transaction } from "#mesh";
+import { connect, disconnect, transaction } from "#mesh";
+import { createList } from "#mesh/domain/todo";
 import { alice } from "./context";
 
 await connect();
@@ -329,14 +350,15 @@ console.log(todo.id);
 await disconnect();
 ```
 
-`actions` are the functions you import from `#mesh`, bound to this transaction and carrying the context you passed; each still validates its input and runs its own policies. `tx` reads inside the transaction and does not run read policies. A throw rolls back every call, and so does a failed call you catch: if an action you call fails, the whole transaction fails even when your code handles the error, so decide before you call, with a `tx` read or its `can<Action>` check. An action that calls `transaction` while another is running joins it rather than opening a second one.
+`actions` holds every action function of the project, the ones you import from each module's `#mesh/domain/<module>`, bound to this transaction and carrying the context you passed; each still validates its input and runs its own policies. `tx` reads inside the transaction and does not run read policies. A throw rolls back every call, and so does a failed call you catch: if an action you call fails, the whole transaction fails even when your code handles the error, so decide before you call, with a `tx` read or its `can<Action>` check. An action that calls `transaction` while another is running joins it rather than opening a second one.
 
 ## Internal writes
 
 Some writes are not a person's: a timer that expires leases, the bootstrap that creates the first user, an action another action calls. The context has a reserved key for them, **`system`**. Your application sets it, never a caller's input:
 
 ```ts "src/sweeper.ts"
-import { connect, disconnect, readTodo, renameTodo } from "#mesh";
+import { connect, disconnect } from "#mesh";
+import { readTodo, renameTodo } from "#mesh/domain/todo";
 import { alice } from "./context";
 
 await connect();
@@ -414,7 +436,8 @@ A call that another action makes through `actions` runs the seams for its own wr
 Every action has a `can` function with the same arguments, returning `{ allowed, breakdown }` and changing nothing.
 
 ```ts "src/main.ts"
-import { canCompleteTodo, connect, createList, createTodo, disconnect } from "#mesh";
+import { connect, disconnect } from "#mesh";
+import { canCompleteTodo, createList, createTodo } from "#mesh/domain/todo";
 import { alice, bob } from "./context";
 
 await connect();
@@ -451,7 +474,8 @@ An [oclif command](https://oclif.io/docs/args) can call the same action. This ex
 
 ```ts "src/commands/list/create.ts (excerpt)"
 import { Args, Command } from "@oclif/core";
-import { connect, createList, disconnect } from "#mesh";
+import { connect, disconnect } from "#mesh";
+import { createList } from "#mesh/domain/todo";
 import { alice } from "../../context";
 
 export default class CreateList extends Command {
@@ -476,7 +500,8 @@ An [Elysia handler](https://elysiajs.com/essential/handler) calls an action and 
 ```ts "src/http.ts (excerpt)"
 import { Elysia, t } from "elysia";
 import { InvalidInputError, ForbiddenError } from "@meshfw/runtime";
-import { connect, createList } from "#mesh";
+import { connect } from "#mesh";
+import { createList } from "#mesh/domain/todo";
 import { requireActor } from "./auth";
 
 await connect();
@@ -502,7 +527,7 @@ The [error classes](#errors) stay the same: `invalid_input` is a bad request, `f
 ```ts "src/domain-actions.ts (excerpt)"
 export async function addList(name: string) {
   "use server";
-  const { createList } = await import("#mesh");
+  const { createList } = await import("#mesh/domain/todo");
   const { InvalidInputError, ForbiddenError } = await import("@meshfw/runtime");
   const { requireActor } = await import("./auth");
   const actor = await requireActor();
