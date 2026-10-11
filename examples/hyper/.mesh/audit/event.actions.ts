@@ -3,7 +3,8 @@
 // Mesh's own imports carry a `$` so that no entity name can shadow them.
 
 import {
-  parseInput,
+  castInput as $castInput,
+  noteWrite as $noteWrite,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
@@ -21,8 +22,8 @@ import { tables } from "../schema";
 export function bindEventReads(layer: $DataLayer) {
   return Object.freeze({
     async read(input: ReadEventInput): Promise<Event[]> {
-      // enter, cast: only the declared input passes
-      const parsed = await parseInput(readEventInput, input);
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, readEventInput, input);
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.event, {
           filter: parsed.filter,
@@ -43,8 +44,8 @@ export function bindEvent(layer: $DataLayer, options: $BindOptions = {}, _compos
   const $reads = bindEventReads(layer);
   return Object.freeze({
     async record(input: RecordEventInput, ...[_context]: $ContextArgument): Promise<Event> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(recordEventInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, recordEventInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $now = options.clock?.() ?? new Date();
@@ -67,6 +68,7 @@ export function bindEvent(layer: $DataLayer, options: $BindOptions = {}, _compos
         };
         // data layer
         const $stored = await tx.insert(tables.event, $changes);
+        $noteWrite(tx);
         return $stored as Event;
       });
     },

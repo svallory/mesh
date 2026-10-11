@@ -5,11 +5,13 @@ import { dataLayerConformance } from "@meshfw/runtime/testing";
 import type { DataLayerFixture } from "@meshfw/runtime/testing";
 
 // Only a test double for the suite: never shipped as an adapter.
-function fake(mode: "correct" | "no rollback" | "wrong error" | "no commit" | "bad update" | "ignores keys" | "ignores select key" | "ignores update key" | "ignores delete key" | "interleaves" | "closes while busy" | "nests separately" | "copies operations" | "rejects nesting" | "poisoned queue" | "stays closed" = "correct"): DataLayerFixture & { closed: () => boolean } {
+function fake(mode: "correct" | "no rollback" | "wrong error" | "no commit" | "bad update" | "ignores keys" | "ignores select key" | "ignores update key" | "ignores delete key" | "interleaves" | "closes while busy" | "nests separately" | "copies operations" | "rejects nesting" | "joins in parallel" | "poisoned queue" | "stays closed" = "correct"): DataLayerFixture & { closed: () => boolean } {
   let rows = new Map<unknown, Row>();
   let closed = false;
   const table = {};
-  const context = new AsyncLocalStorage<{ active: boolean; tx?: DataOperations }>();
+  type Token = { active: boolean; tx?: DataOperations };
+  // A frame per callback and per joined call, each queueing the calls joined from it.
+  const context = new AsyncLocalStorage<{ token: Token; tail: Promise<void> }>();
   let tail: Promise<void> = Promise.resolve();
   let pendingCount = 0;
   const execute = async <T>(run: (tx: DataOperations) => Promise<T>, token?: { tx?: DataOperations }): Promise<T> => {
@@ -48,18 +50,23 @@ function fake(mode: "correct" | "no rollback" | "wrong error" | "no commit" | "b
   };
   const layer: DataLayer = {
     transaction(run) {
-      const current = context.getStore();
-      if (current?.active) {
+      const frame = context.getStore();
+      if (frame?.token.active) {
+        const current = frame.token;
         if (mode === "nests separately") return execute(run);
         if (mode === "rejects nesting") throw new FrameworkError("nested transactions are not supported");
         // Joins the transaction, but hands the call a copy of its operations: composition could not tell it from a new one.
         if (mode === "copies operations") return run({ ...current.tx! });
-        return run(current.tx!);
+        // Joins, but lets calls joined from one frame run at the same time.
+        if (mode === "joins in parallel") return run(current.tx!);
+        const work = frame.tail.then(() => context.run({ token: current, tail: Promise.resolve() }, () => run(current.tx!)));
+        frame.tail = work.then(() => undefined, () => undefined);
+        return work;
       }
       pendingCount++;
       const start = async () => {
-        const token: { active: boolean; tx?: DataOperations } = { active: true };
-        try { return await context.run(token, () => execute(run, token)); }
+        const token: Token = { active: true };
+        try { return await context.run({ token, tail: Promise.resolve() }, () => execute(run, token)); }
         finally { token.active = false; pendingCount--; }
       };
       if (mode === "interleaves") return start();
@@ -96,6 +103,7 @@ test.each([
   ["nests separately", "nested transaction joins the running one", "a joined call must receive the same operations as the transaction it joins"],
   ["copies operations", "nested transaction joins the running one", "a joined call must receive the same operations as the transaction it joins"],
   ["nests separately", "a throw after a joined call rolls back both", "a throw after a joined call must roll back"],
+  ["joins in parallel", "calls joined to one transaction run one at a time, and a nested join does not wait for itself", "calls joined to one transaction must run one at a time"],
   ["no rollback", "rejected run rolls back every write and rethrows the same error", "rejected insert must roll back"],
   ["wrong error", "rejected run rolls back every write and rethrows the same error", "transaction must rethrow the same error"],
   ["no commit", "resolved run commits and returns its result", "resolved run must commit"],

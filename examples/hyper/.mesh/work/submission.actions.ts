@@ -3,7 +3,8 @@
 // Mesh's own imports carry a `$` so that no entity name can shadow them.
 
 import {
-  parseInput,
+  castInput as $castInput,
+  noteWrite as $noteWrite,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
@@ -21,8 +22,8 @@ import { tables } from "../schema";
 export function bindSubmissionReads(layer: $DataLayer) {
   return Object.freeze({
     async read(input: ReadSubmissionInput): Promise<Submission[]> {
-      // enter, cast: only the declared input passes
-      const parsed = await parseInput(readSubmissionInput, input);
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, readSubmissionInput, input);
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.submission, {
           filter: parsed.filter,
@@ -50,8 +51,8 @@ export function bindSubmission(
       input: SubmitSubmissionInput,
       ...[_context]: $ContextArgument
     ): Promise<Submission> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(submitSubmissionInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, submitSubmissionInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $now = options.clock?.() ?? new Date();
@@ -68,6 +69,7 @@ export function bindSubmission(
         };
         // data layer
         const $stored = await tx.insert(tables.submission, $changes);
+        $noteWrite(tx);
         return $stored as Submission;
       });
     },

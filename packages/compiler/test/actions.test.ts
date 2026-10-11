@@ -110,8 +110,9 @@ describe("actions view", () => {
       ["destroy", "destroyArticle", "DestroyArticleInput", "destroyArticleInput", "void"],
     ]);
     expect(view.runtimeValues).toEqual([
-      "FrameworkError as $FrameworkError", "InvalidInputError as $InvalidInputError", "NotFoundError as $NotFoundError", "composed as $composed", "guarded as $guarded",
-      "loadRows as $loadRows", "parseInput", "readOnlyRecord as $readOnlyRecord", "runCheck as $runCheck", "scope as $scope"]);
+      "FrameworkError as $FrameworkError", "InvalidInputError as $InvalidInputError", "NotFoundError as $NotFoundError", "castInput as $castInput",
+      "checkUnchanged as $checkUnchanged", "composed as $composed", "failJoined as $failJoined", "guarded as $guarded", "loadRows as $loadRows",
+      "noteWrite as $noteWrite", "readOnlyRecord as $readOnlyRecord", "runCheck as $runCheck", "scope as $scope", "writeCount as $writeCount"]);
     expect(view.runtimeTypes).toEqual(["Issue as $Issue", "Row as $Row"]);
     expect(view.typesFromLiteral).toBe('"./article.types"');
     expect(view.validatorsFromLiteral).toBe('"./article.validators"');
@@ -139,6 +140,7 @@ describe("actions view", () => {
       "$changes.pinned = $record.pinned = true;",
       "// data layer",
       "const $stored = await tx.insert(tables.article, $changes);",
+      "$noteWrite(tx);",
       "return $stored as Article;",
     ]);
     expect(create.notRun).toBe("Not run in this version: on:load load; policies everyone");
@@ -181,6 +183,7 @@ describe("actions view", () => {
       "const $key = { id: parsed.id };",
       "// data layer",
       'if (!(await tx.deleteByKey(tables.article, $key))) throw new $NotFoundError("Article", $key);',
+      "$noteWrite(tx);",
     ]);
     expect(destroy.notRun).toBe("Not run in this version: policies everyone");
   });
@@ -377,6 +380,31 @@ describe("explain", () => {
     ]);
     // An action without one has no such section.
     expect(explainAction(article_(), "publish")!.some((line) => line.includes("after write"))).toBe(false);
+  });
+  test("a write is counted; an update with functions before its write checks the row first, and after-write steps re-read what it returns", () => {
+    const source = article.replace("    destroy :purge\n", "    destroy :purge\n      do\n        run [after=:write] ({ self }) { console.log(self.title) }\n")
+      .replace("    update :rename\n", "    update :rename\n      do\n        run () { }\n        run [after=:write] () { }\n");
+    const doc = documentOf({ "blog/author.mesh.mx": author, "blog/article.mesh.mx": source });
+    const methods = viewOf("Article", inputOf(doc)).methods;
+    const rename = methods.find((m) => m.name === "rename")!.statements;
+    const at = (line: string) => rename.findIndex((statement) => statement.startsWith(line));
+    // The count is taken after the locked read and before any function runs, and checked just before the write.
+    expect(at("const $writes = $writeCount(tx);")).toBeGreaterThan(at("const $before = await tx.selectByKeyForUpdate"));
+    expect(at("const $writes = $writeCount(tx);")).toBeLessThan(at("const $self = "));
+    expect(rename[at("const $stored = await tx.updateByKey(") - 1]).toBe('await $checkUnchanged(tx, $writes, tables.article, $key, $before, "Article.rename");');
+    expect(rename[at("const $stored = ") + 2]).toBe("$noteWrite(tx);");
+    // The row is read again after the after-write steps, and that is what the call returns.
+    expect(at("const $result = await tx.selectByKey(tables.article, ")).toBeGreaterThan(at("const $stored = "));
+    expect(rename.at(-1)).toMatch(/^return \$result as /);
+    // A destroy returns nothing, so it reads nothing again.
+    expect(methods.find((m) => m.name === "purge")!.statements.some((line) => line.includes("$result"))).toBe(false);
+    // An update whose functions all run after the write evaluates nothing before it, so it has no check.
+    const lateSource = article.replace("    always types=[:update]\n      validate\n        check :fresh that=() => true code=\"stale\" message=\"stale\"\n", "")
+      .replace("    update :rename\n", "    update :rename\n      do\n        run [after=:write] () { }\n");
+    const late = viewOf("Article", inputOf(documentOf({ "blog/author.mesh.mx": author, "blog/article.mesh.mx": lateSource })));
+    const plain = late.methods.find((m) => m.name === "rename")!.statements;
+    expect(plain.some((line) => line.includes("$checkUnchanged") || line.includes("$writeCount"))).toBe(false);
+    expect(plain.some((line) => line.startsWith("const $result = await tx.selectByKey("))).toBe(true);
   });
   test("an auto action is explained and an unknown action is undefined", () => {
     expect(explainAction(article_(), "destroy")![0]).toBe("Article.destroy (destroy)");

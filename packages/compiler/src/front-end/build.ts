@@ -788,7 +788,7 @@ export function parseEntitySource(source: string, file: string) {
  * stops producing the second attribute.
  */
 function selfDuplicate(d: IrDiagnostic): boolean {
-  const duplicate = /^duplicate attribute `[^`]+`: the later one at (\d+):(\d+) wins/.exec(d.message);
+  const duplicate = /^duplicate attribute `value`: the later one at (\d+):(\d+) wins/.exec(d.message);
   return !!duplicate && Number(duplicate[1]) === d.line && Number(duplicate[2]) - 1 === d.column;
 }
 

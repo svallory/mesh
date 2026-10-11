@@ -6,15 +6,18 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
+  castInput as $castInput,
+  checkUnchanged as $checkUnchanged,
   composed as $composed,
   guarded as $guarded,
   loadInto as $loadInto,
-  parseInput,
+  noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
   rejectComputedQuery,
   runCheck as $runCheck,
   scope as $scope,
   unloadFrom as $unloadFrom,
+  writeCount as $writeCount,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
@@ -54,8 +57,8 @@ import { loadPlan as $loadPlan } from "../load";
 export function bindTaskReads(layer: $DataLayer) {
   return Object.freeze({
     async read(input: ReadTaskInput): Promise<Task[]> {
-      // enter, cast: only the declared input passes
-      const parsed = await parseInput(readTaskInput, input);
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, readTaskInput, input);
       return layer.transaction(async (tx) => {
         rejectComputedQuery(
           "Task",
@@ -90,8 +93,8 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
   const $reads = bindTaskReads(layer);
   return Object.freeze({
     async create(input: CreateTaskInput, ...[context]: $ContextArgument): Promise<Task> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(createTaskInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, createTaskInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
@@ -138,13 +141,14 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         if ($issues.length > 0) throw new $InvalidInputError($issues);
         // data layer
         const $stored = await tx.insert(tables.task, $changes);
+        $noteWrite(tx);
         return $stored as Task;
       });
     },
 
     async update(input: UpdateTaskInput, ...[context]: $ContextArgument): Promise<Task> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(updateTaskInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, updateTaskInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
@@ -157,6 +161,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         const $record: $Row = { ...$before };
         if (parsed.title !== undefined) $changes.title = $record.title = parsed.title;
         if (parsed.intent !== undefined) $changes.intent = $record.intent = parsed.intent;
+        const $writes = $writeCount(tx);
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Task", $record, "action function"),
           "Task.update",
@@ -210,15 +215,18 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           $changes.version = $record.version = $value;
         }
         // data layer
+        // a call made before this write must not have changed this row: the write would overwrite that change
+        await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.update");
         const $stored = await tx.updateByKey(tables.task, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Task", $key);
+        $noteWrite(tx);
         return $stored as Task;
       });
     },
 
     async setPriority(input: SetPriorityTaskInput, ...[context]: $ContextArgument): Promise<Task> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(setPriorityTaskInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, setPriorityTaskInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
@@ -230,6 +238,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
         if (parsed.priority !== undefined) $changes.priority = $record.priority = parsed.priority;
+        const $writes = $writeCount(tx);
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Task", $record, "action function"),
           "Task.setPriority",
@@ -276,15 +285,18 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           $changes.version = $record.version = $value;
         }
         // data layer
+        // a call made before this write must not have changed this row: the write would overwrite that change
+        await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.setPriority");
         const $stored = await tx.updateByKey(tables.task, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Task", $key);
+        $noteWrite(tx);
         return $stored as Task;
       });
     },
 
     async move(input: MoveTaskInput, ...[context]: $ContextArgument): Promise<Task> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(moveTaskInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, moveTaskInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
@@ -296,6 +308,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
         if (parsed.parent !== undefined) $changes.parentId = $record.parentId = parsed.parent;
+        const $writes = $writeCount(tx);
         const $load = { actor: $actor, context: $context, clock: options.clock };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Task", $record, "action function"),
@@ -359,15 +372,18 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         }
         $unloadFrom($loadPlan, "Task", $record);
         // data layer
+        // a call made before this write must not have changed this row: the write would overwrite that change
+        await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.move");
         const $stored = await tx.updateByKey(tables.task, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Task", $key);
+        $noteWrite(tx);
         return $stored as Task;
       });
     },
 
     async reopen(input: ReopenTaskInput, ...[context]: $ContextArgument): Promise<Task> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(reopenTaskInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, reopenTaskInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
@@ -378,6 +394,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         if ($before === undefined) throw new $NotFoundError("Task", $key);
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
+        const $writes = $writeCount(tx);
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Task", $record, "action function"),
           "Task.reopen",
@@ -425,8 +442,11 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           $changes.version = $record.version = $value;
         }
         // data layer
+        // a call made before this write must not have changed this row: the write would overwrite that change
+        await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.reopen");
         const $stored = await tx.updateByKey(tables.task, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Task", $key);
+        $noteWrite(tx);
         return $stored as Task;
       });
     },

@@ -1,6 +1,8 @@
-import type { DataLayer, DataOperations, Row } from "./data-layer.ts";
+import type { DataLayer, DataOperations, Key, Row, TableHandle } from "./data-layer.ts";
 import { FrameworkError } from "./errors.ts";
+import { parseInput } from "./input.ts";
 import { readOnlyRecord, type DeepReadonly } from "./load.ts";
+import type { StandardSchemaV1 } from "./standard-schema.ts";
 
 /**
  * Action composition (M5, ADR-0068). The functions of an entity file receive `actions`, every generated action
@@ -48,9 +50,9 @@ const ENDED = "`actions` and `tx` are bound to the transaction that handed them 
 /**
  * The composer of one binding. Every call goes through the layer's `transaction`, so it joins the running one; a joined
  * call that fails marks that transaction, and the outermost call then rejects with a `FrameworkError` whose `cause` is
- * the failure, even when the caller caught it (the data layer's rollback-only rule). The call joins before the called
- * action casts its input, so a cast failure fails the transaction too. A call made after its transaction ended would
- * open a new one; it is refused instead.
+ * the failure, even when the caller caught it (the data layer's rollback-only rule). Calls joined to one transaction run
+ * one at a time (the data layer's rule too). A call made after its transaction ended would open a new one; it is
+ * refused instead.
  */
 export function composer(layer: DataLayer): Composer {
   let functions: Readonly<Record<string, ActionFunction>> | undefined;
@@ -96,4 +98,72 @@ export function composed(composer: Composer | undefined, operations: DataOperati
     },
   });
   return Object.freeze({ actions: missing("actions"), tx: missing("tx") });
+}
+
+/**
+ * Reject with `cause`, failing the running transaction first when there is one: the rejection passes through the
+ * layer's `transaction`, which joins it and marks it. At top level it passes through an empty transaction that rolls
+ * back. Either way the caller gets `cause` itself.
+ */
+export function failJoined(layer: DataLayer, cause: unknown): Promise<never> {
+  const rethrow = (): never => { throw cause; };
+  return layer.transaction(() => Promise.reject(cause)).then(rethrow, rethrow);
+}
+
+/**
+ * Cast a generated function's input. The cast runs before the function opens or joins a transaction, so a failed cast
+ * goes through `failJoined`: called inside a running transaction, directly from `#mesh` or through `actions`, it fails
+ * that transaction like any other failed call, even when the caller catches it. At top level the caller gets the same
+ * error as from `parseInput`; only that failure pays for an empty transaction.
+ */
+export async function castInput<T>(layer: DataLayer, schema: StandardSchemaV1<unknown, T>, input: unknown): Promise<T> {
+  // An `await`, not `.catch`: the error's async stack then keeps the generated function that called this, so its first
+  // frame outside Mesh's packages is still the generated action (blog acceptance 3).
+  try {
+    return await parseInput(schema, input);
+  } catch (cause) {
+    return failJoined(layer, cause);
+  }
+}
+
+const writes = new WeakMap<DataOperations, number>();
+
+/** Count one write a generated action made through `operations`, the running transaction's. */
+export function noteWrite(operations: DataOperations): void {
+  writes.set(operations, (writes.get(operations) ?? 0) + 1);
+}
+
+/** How many writes generated actions have made through `operations` so far. */
+export function writeCount(operations: DataOperations): number {
+  return writes.get(operations) ?? 0;
+}
+
+/**
+ * Before an update's own write: when a call made during the update's earlier phases wrote anything (`writeCount` moved
+ * past `since`), re-read the row by key and compare it with `before`, the copy read under the lock. A difference means
+ * a nested call changed this very row, and the update's write would overwrite that change without a trace, so it is a
+ * `FrameworkError` that says to move the call after the write.
+ */
+export async function checkUnchanged(operations: DataOperations, since: number, table: TableHandle, key: Key, before: Row, where: string): Promise<void> {
+  if (writeCount(operations) === since) return;
+  const now = await operations.selectByKey(table, key);
+  if (now !== undefined && sameValue(now, before)) return;
+  throw new FrameworkError(`${where}: a call made before this action's write ${now === undefined ? "deleted" : "changed"} the row this action is updating (${JSON.stringify(key)}), and this action's write would ${now === undefined ? "fail on it" : "overwrite that change"}. Make the call from a step that runs after the write: run [after=:write]`);
+}
+
+/** Equal stored values: dates by time, byte arrays by content, objects and arrays member by member. */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return false;
+  if (a instanceof Date || b instanceof Date) return a instanceof Date && b instanceof Date && a.getTime() === b.getTime();
+  if (ArrayBuffer.isView(a) || ArrayBuffer.isView(b)) {
+    if (!ArrayBuffer.isView(a) || !ArrayBuffer.isView(b) || a.byteLength !== b.byteLength) return false;
+    const left = new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
+    const right = new Uint8Array(b.buffer, b.byteOffset, b.byteLength);
+    return left.every((byte, index) => byte === right[index]);
+  }
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((key) => Object.prototype.hasOwnProperty.call(b, key) && sameValue((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]));
 }

@@ -23,6 +23,6 @@ export { runCheck } from "./lifecycle.ts";
 export type { BindOptions, CheckSpec, SharedInput } from "./lifecycle.ts";
 export type { Clock, Scope } from "./expr.ts";
 export { loadRows, loadInto, unloadFrom, guarded, readOnlyRecord, cloneValue, type DeepReadonly, type Writable, rejectComputedQuery, CHUNK } from "./load.ts";
-export { composer, composed } from "./compose.ts";
+export { castInput, checkUnchanged, composer, composed, failJoined, noteWrite, writeCount } from "./compose.ts";
 export type { Composer, Composition, ReadOnlyResults } from "./compose.ts";
 export type { LoadPlan, EntityPlan, RelationPlan, BelongsToPlan, HasPlan, ComputedPlan, LoadOptions } from "./load.ts";

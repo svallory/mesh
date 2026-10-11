@@ -117,9 +117,14 @@ export interface DataLayer {
    * a joined call fails, the transaction is marked, and the outer call rejects with a
    * FrameworkError (cause: the inner error) and rolls back everything even if its callback
    * caught the error. This holds for parallel joined calls; there are no savepoints, so an
-   * inner failure cannot be undone alone. Joining follows async context, so a detached
-   * promise started inside the callback and still running joins it too. A call made after
-   * the outer transaction settled starts a new one.
+   * inner failure cannot be undone alone. Joined calls run one at a time: calls joined from
+   * the same callback (siblings started together, as with Promise.all) run in the order they
+   * were made, each after the one before it settled, so two read-then-write calls on one row
+   * cannot both read before either writes. A call joined from inside a joined call queues
+   * behind that call's own joined calls only, so nesting never waits for itself. Joining
+   * follows async context, so a detached promise started inside the callback joins it too;
+   * one whose turn comes after the outer call settled rejects with a FrameworkError. A call
+   * made after the outer transaction settled starts a new one.
    */
   transaction<T>(run: (tx: DataOperations) => Promise<T>): Promise<T>;
   /** Release the adapter's connection and other owned handles. Rejects while

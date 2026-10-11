@@ -3,7 +3,7 @@
 // Mesh's own imports carry a `$` so that no entity name can shadow them.
 
 import {
-  parseInput,
+  castInput as $castInput,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
@@ -20,8 +20,8 @@ import { tables } from "../schema";
 export function bindCommentReads(layer: $DataLayer) {
   return Object.freeze({
     async read(input: ReadCommentInput): Promise<Comment[]> {
-      // enter, cast: only the declared input passes
-      const parsed = await parseInput(readCommentInput, input);
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, readCommentInput, input);
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.comment, {
           filter: parsed.filter,

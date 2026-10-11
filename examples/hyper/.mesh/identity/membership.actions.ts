@@ -6,12 +6,15 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
+  castInput as $castInput,
+  checkUnchanged as $checkUnchanged,
   composed as $composed,
   guarded as $guarded,
-  parseInput,
+  noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
+  writeCount as $writeCount,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
@@ -44,8 +47,8 @@ import { loadPlan as $loadPlan } from "../load";
 export function bindMembershipReads(layer: $DataLayer) {
   return Object.freeze({
     async read(input: ReadMembershipInput): Promise<Membership[]> {
-      // enter, cast: only the declared input passes
-      const parsed = await parseInput(readMembershipInput, input);
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, readMembershipInput, input);
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.membership, {
           filter: parsed.filter,
@@ -66,8 +69,8 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
   const $reads = bindMembershipReads(layer);
   return Object.freeze({
     async grant(input: GrantMembershipInput, ...[_context]: $ContextArgument): Promise<Membership> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(grantMembershipInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, grantMembershipInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         // plan: a create is one insert; nothing is read first
@@ -83,6 +86,7 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
         };
         // data layer
         const $stored = await tx.insert(tables.membership, $changes);
+        $noteWrite(tx);
         return $stored as Membership;
       });
     },
@@ -91,8 +95,8 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
       input: ChangeRoleMembershipInput,
       ...[context]: $ContextArgument
     ): Promise<Membership> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(changeRoleMembershipInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, changeRoleMembershipInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
@@ -104,6 +108,7 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
         if (parsed.role !== undefined) $changes.role = $record.role = parsed.role;
+        const $writes = $writeCount(tx);
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Membership", $record, "action function"),
           "Membership.changeRole",
@@ -157,8 +162,18 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
           $changes.version = $record.version = $value;
         }
         // data layer
+        // a call made before this write must not have changed this row: the write would overwrite that change
+        await $checkUnchanged(
+          tx,
+          $writes,
+          tables.membership,
+          $key,
+          $before,
+          "Membership.changeRole",
+        );
         const $stored = await tx.updateByKey(tables.membership, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Membership", $key);
+        $noteWrite(tx);
         return $stored as Membership;
       });
     },

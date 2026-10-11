@@ -6,12 +6,15 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
+  castInput as $castInput,
+  checkUnchanged as $checkUnchanged,
   composed as $composed,
   guarded as $guarded,
-  parseInput,
+  noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
+  writeCount as $writeCount,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
@@ -40,8 +43,8 @@ import { loadPlan as $loadPlan } from "../load";
 export function bindMachineReads(layer: $DataLayer) {
   return Object.freeze({
     async read(input: ReadMachineInput): Promise<Machine[]> {
-      // enter, cast: only the declared input passes
-      const parsed = await parseInput(readMachineInput, input);
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, readMachineInput, input);
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.machine, {
           filter: parsed.filter,
@@ -62,8 +65,8 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
   const $reads = bindMachineReads(layer);
   return Object.freeze({
     async register(input: RegisterMachineInput, ...[_context]: $ContextArgument): Promise<Machine> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(registerMachineInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, registerMachineInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $now = options.clock?.() ?? new Date();
@@ -78,13 +81,14 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
         };
         // data layer
         const $stored = await tx.insert(tables.machine, $changes);
+        $noteWrite(tx);
         return $stored as Machine;
       });
     },
 
     async update(input: UpdateMachineInput, ...[context]: $ContextArgument): Promise<Machine> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(updateMachineInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, updateMachineInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
@@ -96,6 +100,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
         if (parsed.platform !== undefined) $changes.platform = $record.platform = parsed.platform;
+        const $writes = $writeCount(tx);
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Machine", $record, "action function"),
           "Machine.update",
@@ -142,8 +147,11 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           $changes.version = $record.version = $value;
         }
         // data layer
+        // a call made before this write must not have changed this row: the write would overwrite that change
+        await $checkUnchanged(tx, $writes, tables.machine, $key, $before, "Machine.update");
         const $stored = await tx.updateByKey(tables.machine, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Machine", $key);
+        $noteWrite(tx);
         return $stored as Machine;
       });
     },

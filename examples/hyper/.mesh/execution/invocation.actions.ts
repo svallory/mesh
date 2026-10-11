@@ -3,7 +3,8 @@
 // Mesh's own imports carry a `$` so that no entity name can shadow them.
 
 import {
-  parseInput,
+  castInput as $castInput,
+  noteWrite as $noteWrite,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
@@ -30,8 +31,8 @@ import { tables } from "../schema";
 export function bindInvocationReads(layer: $DataLayer) {
   return Object.freeze({
     async read(input: ReadInvocationInput): Promise<Invocation[]> {
-      // enter, cast: only the declared input passes
-      const parsed = await parseInput(readInvocationInput, input);
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, readInvocationInput, input);
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.invocation, {
           filter: parsed.filter,
@@ -59,8 +60,8 @@ export function bindInvocation(
       input: RecordInvocationInput,
       ...[_context]: $ContextArgument
     ): Promise<Invocation> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(recordInvocationInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, recordInvocationInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $now = options.clock?.() ?? new Date();
@@ -90,6 +91,7 @@ export function bindInvocation(
         };
         // data layer
         const $stored = await tx.insert(tables.invocation, $changes);
+        $noteWrite(tx);
         return $stored as Invocation;
       });
     },
@@ -98,8 +100,8 @@ export function bindInvocation(
       input: CorrectInvocationInput,
       ...[_context]: $ContextArgument
     ): Promise<Invocation> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(correctInvocationInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, correctInvocationInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $now = options.clock?.() ?? new Date();
@@ -128,6 +130,7 @@ export function bindInvocation(
         };
         // data layer
         const $stored = await tx.insert(tables.invocation, $changes);
+        $noteWrite(tx);
         return $stored as Invocation;
       });
     },

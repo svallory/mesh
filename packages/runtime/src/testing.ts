@@ -203,6 +203,19 @@ export function dataLayerConformance(makeLayer: () => Promise<DataLayerFixture>)
       });
       await layer.transaction(async (tx) => rowsEqual(await tx.select(table), [sampleRow, secondRow], "nested and parallel joined writes must commit"));
     }),
+    "calls joined to one transaction run one at a time, and a nested join does not wait for itself": withLayer(async ({ layer, table, sampleRow, secondRow }) => {
+      // Each call yields between its start and its nested write: run together, the two would interleave.
+      const events: string[] = [];
+      const call = (name: string, row: Row) => layer.transaction(async () => {
+        events.push(`${name} start`);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        await layer.transaction(async (inner) => { events.push(`${name} nested`); await inner.insert(table, row); });
+        events.push(`${name} end`);
+      });
+      await layer.transaction(async () => { await Promise.all([call("a", sampleRow), call("b", secondRow)]); });
+      assert(events.join(",") === "a start,a nested,a end,b start,b nested,b end", `calls joined to one transaction must run one at a time, in the order they were made; got ${events.join(",")}`);
+      await layer.transaction(async (tx) => rowsEqual(await tx.select(table), [sampleRow, secondRow], "both joined writes must commit"));
+    }),
     "a call after the transaction ended starts a new one": withLayer(async ({ layer, table, sampleRow, secondRow }) => {
       let late: Promise<void> | undefined;
       await layer.transaction(async (tx) => {

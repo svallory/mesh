@@ -6,11 +6,14 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
+  castInput as $castInput,
+  checkUnchanged as $checkUnchanged,
   composed as $composed,
-  parseInput,
+  noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
+  writeCount as $writeCount,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
@@ -42,8 +45,8 @@ import {
 export function bindWorkspaceReads(layer: $DataLayer) {
   return Object.freeze({
     async read(input: ReadWorkspaceInput): Promise<Workspace[]> {
-      // enter, cast: only the declared input passes
-      const parsed = await parseInput(readWorkspaceInput, input);
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, readWorkspaceInput, input);
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.workspace, {
           filter: parsed.filter,
@@ -64,8 +67,8 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
   const $reads = bindWorkspaceReads(layer);
   return Object.freeze({
     async create(input: CreateWorkspaceInput, ...[_context]: $ContextArgument): Promise<Workspace> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(createWorkspaceInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, createWorkspaceInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         // plan: a create is one insert; nothing is read first
@@ -77,13 +80,14 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
         };
         // data layer
         const $stored = await tx.insert(tables.workspace, $changes);
+        $noteWrite(tx);
         return $stored as Workspace;
       });
     },
 
     async rename(input: RenameWorkspaceInput, ...[context]: $ContextArgument): Promise<Workspace> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(renameWorkspaceInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, renameWorkspaceInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
@@ -95,6 +99,7 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
         if (parsed.name !== undefined) $changes.name = $record.name = parsed.name;
+        const $writes = $writeCount(tx);
         const $self = $readOnlyRecord($record, "Workspace.rename");
         const $s = $scope(
           {
@@ -135,8 +140,11 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
           $changes.version = $record.version = $value;
         }
         // data layer
+        // a call made before this write must not have changed this row: the write would overwrite that change
+        await $checkUnchanged(tx, $writes, tables.workspace, $key, $before, "Workspace.rename");
         const $stored = await tx.updateByKey(tables.workspace, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Workspace", $key);
+        $noteWrite(tx);
         return $stored as Workspace;
       });
     },

@@ -3,7 +3,8 @@
 // Mesh's own imports carry a `$` so that no entity name can shadow them.
 
 import {
-  parseInput,
+  castInput as $castInput,
+  noteWrite as $noteWrite,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
@@ -21,8 +22,8 @@ import { tables } from "../schema";
 export function bindAssignmentReads(layer: $DataLayer) {
   return Object.freeze({
     async read(input: ReadAssignmentInput): Promise<Assignment[]> {
-      // enter, cast: only the declared input passes
-      const parsed = await parseInput(readAssignmentInput, input);
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, readAssignmentInput, input);
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.assignment, {
           filter: parsed.filter,
@@ -47,8 +48,8 @@ export function bindAssignment(
   const $reads = bindAssignmentReads(layer);
   return Object.freeze({
     async start(input: StartAssignmentInput, ...[_context]: $ContextArgument): Promise<Assignment> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(startAssignmentInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, startAssignmentInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         // plan: a create is one insert; nothing is read first
@@ -63,6 +64,7 @@ export function bindAssignment(
         };
         // data layer
         const $stored = await tx.insert(tables.assignment, $changes);
+        $noteWrite(tx);
         return $stored as Assignment;
       });
     },

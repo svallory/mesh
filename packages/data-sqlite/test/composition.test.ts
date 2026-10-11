@@ -11,7 +11,7 @@ import build from "../src/build.ts";
 import { createSchema, sqlite } from "../src/index.ts";
 
 const account = `import { Entry } from "./entry.mesh.mx"
-import { auditInTransaction } from "./helpers"
+import { auditInTransaction, directDeposit } from "./helpers"
 entity :Account table="accounts"
   attributes
     integer :id primary-key
@@ -149,6 +149,46 @@ entity :Account table="accounts"
         run({ actions, context }) {
           context.stash = actions;
         }
+    create :openDirect
+      input
+        &name
+        integer :target
+      do
+        run({ input, context }) {
+          try { await directDeposit(input.target, "ten"); } catch (error) { context.log.push(\`caught \${(error as Error).constructor.name}\`); }
+        }
+    create :openRenamed
+      input
+        &name
+      do
+        run [after=:write] ({ self, actions }) {
+          await actions.renameAccount({ id: self.id, name: \`\${self.name} (renamed)\` });
+        }
+    update :rename
+      input
+        &name
+    update :renameAfter
+      input
+        string :newName
+      do
+        run [after=:write] ({ self, input, actions }) {
+          await actions.renameAccount({ id: self.id, name: input.newName });
+        }
+    update :renameBefore
+      input
+        string :newName
+        integer :other nullable
+      do
+        set
+          &balance=({}) => &balance + 1
+        run({ self, input, actions }) {
+          await actions.renameAccount({ id: input.other ?? self.id, name: input.newName });
+        }
+    update :depositTwice
+      do
+        run [after=:write] ({ self, actions }) {
+          await Promise.all([actions.depositAccount({ id: self.id, amount: 1 }), actions.depositAccount({ id: self.id, amount: 1 })]);
+        }
     destroy :close
       do
         run [after=:write] ({ self, tx, actions }) {
@@ -211,9 +251,17 @@ const audit = `entity :Audit table="audits"
 
 /** A helper module the entity file imports: it opens an application transaction from inside a \`run\`. */
 const helpers = `type Composition = { readonly actions: { logAudit(input: { what: string }): Promise<unknown> }; readonly tx: { readAudit(input: object): Promise<readonly unknown[]> } };
-type Binding = { transaction<T>(fn: (composition: Composition) => Promise<T>): Promise<T> };
+type Binding = {
+  transaction<T>(fn: (composition: Composition) => Promise<T>): Promise<T>;
+  depositAccount(input: { id: number; amount: number }): Promise<unknown>;
+};
 let binding: Binding | undefined;
 export function use(given: Binding): void { binding = given; }
+/** A generated function called directly, as an application imports it from \`#mesh\`, not through \`actions\`. */
+export async function directDeposit(id: number, amount: unknown): Promise<void> {
+  if (!binding) throw new Error("no binding");
+  await binding.depositAccount({ id, amount: amount as number });
+}
 export async function auditInTransaction(what: string): Promise<number> {
   if (!binding) throw new Error("no binding");
   return binding.transaction(async ({ actions, tx }) => {
@@ -635,6 +683,156 @@ describe("an entity bound alone", () => {
       expect(error).toBeInstanceOf(FrameworkError);
       expect((error as Error).message).toBe("Account.transfer reads `actions.depositAccount`, which only a binding of the whole project has: bind with bind(layer) from #mesh, not with one entity's bind function");
       expect((await rows(world)).accounts.map((row: { balance: number }) => row.balance)).toEqual([100, 1]);
+    } finally { await world.db.close(); }
+  });
+});
+
+describe("a generated function called directly inside a transaction fails it as an `actions` call does (decisions log, 2026-10-11 02:45, B1)", () => {
+  test("inside the application transaction: a caught cast failure of a direct call rolls everything back", async () => {
+    const world = await fresh();
+    try {
+      const opened = await world.mesh.openAccount({ name: "Ada", balance: 5 }, world.ctx);
+      const before = await rows(world);
+      const error = await failure(world.mesh.transaction(async () => {
+        await world.mesh.openAccount({ name: "kept?" }, world.ctx);
+        try { await world.mesh.depositAccount({ id: opened.id, amount: "nope" }, world.ctx); } catch { /* caught on purpose */ }
+        return "ignored";
+      }, world.ctx));
+      expect(error).toBeInstanceOf(FrameworkError);
+      expect((error as Error).cause).toBeInstanceOf(InvalidInputError);
+      expect(await rows(world)).toEqual(before);
+    } finally { await world.db.close(); }
+  });
+
+  test("inside the application transaction: a caught cast failure of a direct read rolls everything back too", async () => {
+    const world = await fresh();
+    try {
+      const error = await failure(world.mesh.transaction(async () => {
+        await world.mesh.openAccount({ name: "kept?" }, world.ctx);
+        try { await world.mesh.readAccount({ limit: -1 }, world.ctx); } catch { /* caught on purpose */ }
+      }, world.ctx));
+      expect(error).toBeInstanceOf(FrameworkError);
+      expect((error as Error).cause).toBeInstanceOf(InvalidInputError);
+      expect(await rows(world)).toEqual({ accounts: [], entries: [], audits: [] });
+    } finally { await world.db.close(); }
+  });
+
+  test("in a helper called from a `run`: a caught cast failure of a direct call rejects the action, and nothing is stored", async () => {
+    const world = await fresh();
+    try {
+      const opened = await world.mesh.openAccount({ name: "Ada", balance: 5 }, world.ctx);
+      const before = await rows(world);
+      world.log.length = 0;
+      const error = await failure(world.mesh.openDirectAccount({ name: "Bo", target: opened.id }, world.ctx));
+      expect(world.log).toContain("caught InvalidInputError");
+      expect(error).toBeInstanceOf(FrameworkError);
+      expect((error as Error).cause).toBeInstanceOf(InvalidInputError);
+      expect(await rows(world)).toEqual(before);
+    } finally { await world.db.close(); }
+  });
+
+  test("at top level, outside any transaction, a failed cast rejects with the same error as before, and the next call works", async () => {
+    const world = await fresh();
+    try {
+      const opened = await world.mesh.openAccount({ name: "Ada" }, world.ctx);
+      const error = await failure(world.mesh.depositAccount({ id: opened.id, amount: "nope" }, world.ctx));
+      expect(error).toBeInstanceOf(InvalidInputError);
+      expect((error as InvalidInputError).issues[0]!.path).toEqual(["amount"]);
+      expect(await failure(world.mesh.readAccount({ limit: -1 }, world.ctx))).toBeInstanceOf(InvalidInputError);
+      expect((await world.mesh.depositAccount({ id: opened.id, amount: 2 }, world.ctx)).balance).toBe(2);
+    } finally { await world.db.close(); }
+  });
+});
+
+describe("calls joined to one transaction run one at a time (decisions log, 2026-10-11 02:45, S1)", () => {
+  test("two parallel deposits through `actions` in one transaction add 2", async () => {
+    const world = await fresh();
+    try {
+      const opened = await world.mesh.openAccount({ name: "Ada" }, world.ctx);
+      await world.mesh.transaction(async ({ actions }: any) => {
+        await Promise.all([actions.depositAccount({ id: opened.id, amount: 1 }), actions.depositAccount({ id: opened.id, amount: 1 })]);
+      }, world.ctx);
+      // The same, from an action's own step after its write.
+      const twice = await world.mesh.depositTwiceAccount({ id: opened.id }, world.ctx);
+      expect(twice.balance).toBe(4);
+      expect((await rows(world)).accounts).toMatchObject([{ id: opened.id, balance: 4 }]);
+    } finally { await world.db.close(); }
+  });
+
+  test("Promise.all over calls that call `actions` two levels down completes, without a deadlock", async () => {
+    const world = await fresh();
+    try {
+      const opened = await world.mesh.transaction(async ({ actions }: any) =>
+        Promise.all(["Ada", "Bo", "Cy"].map((name) => actions.openFullAccount({ name, failLast: false }))), world.ctx);
+      expect(opened.map((row: { name: string }) => row.name)).toEqual(["Ada", "Bo", "Cy"]);
+      const { accounts, entries, audits } = await rows(world);
+      expect(accounts).toHaveLength(3);
+      expect(entries.map((row: { accountId: number }) => row.accountId)).toEqual([1, 2, 3]);
+      // Each account's cascade ran whole before the next began.
+      expect(audits.map((row: { what: string }) => row.what)).toEqual(["posted 10", "opened Ada in full", "posted 10", "opened Bo in full", "posted 10", "opened Cy in full"]);
+    } finally { await world.db.close(); }
+  });
+
+  test("a `tx` read in parallel with a write sees the row as the calls made before it left it", async () => {
+    const world = await fresh();
+    try {
+      const opened = await world.mesh.openAccount({ name: "Ada", balance: 10 }, world.ctx);
+      const seen = await world.mesh.transaction(async ({ actions, tx }: any) => {
+        const [first, , second] = await Promise.all([
+          tx.readAccount({}),
+          actions.depositAccount({ id: opened.id, amount: 5 }),
+          tx.readAccount({}),
+        ]);
+        return [first[0].balance, second[0].balance];
+      }, world.ctx);
+      expect(seen).toEqual([10, 15]);
+      expect((await rows(world)).accounts).toMatchObject([{ balance: 15 }]);
+    } finally { await world.db.close(); }
+  });
+});
+
+describe("an action with a step after its write returns the row as the steps left it (decisions log, 2026-10-11 02:45, S2)", () => {
+  test("an update whose after-write step renames its own row returns the new name", async () => {
+    const world = await fresh();
+    try {
+      const opened = await world.mesh.openAccount({ name: "Ada" }, world.ctx);
+      const renamed = await world.mesh.renameAfterAccount({ id: opened.id, newName: "Ada Lovelace" }, world.ctx);
+      expect(renamed).toMatchObject({ id: opened.id, name: "Ada Lovelace" });
+      expect((await rows(world)).accounts).toMatchObject([{ id: opened.id, name: "Ada Lovelace" }]);
+    } finally { await world.db.close(); }
+  });
+
+  test("a create whose after-write step renames the row it made returns the new name, with the key the data layer filled", async () => {
+    const world = await fresh();
+    try {
+      const opened = await world.mesh.openRenamedAccount({ name: "Ada" }, world.ctx);
+      expect(opened).toMatchObject({ id: 1, name: "Ada (renamed)" });
+    } finally { await world.db.close(); }
+  });
+});
+
+describe("a nested write to the caller's own row before the caller's write is a loud error (decisions log, 2026-10-11 02:45, S3)", () => {
+  test("an update whose step renames its own row before the write rejects with a FrameworkError naming after=:write, and stores nothing", async () => {
+    const world = await fresh();
+    try {
+      const opened = await world.mesh.openAccount({ name: "Ada", balance: 3 }, world.ctx);
+      const before = await rows(world);
+      const error = await failure(world.mesh.renameBeforeAccount({ id: opened.id, newName: "lost?" }, world.ctx));
+      expect(error).toBeInstanceOf(FrameworkError);
+      expect((error as Error).message).toMatch(/^Account\.renameBefore: a call made before this action's write changed the row this action is updating \(\{"id":1\}\)/);
+      expect((error as Error).message).toMatch(/run \[after=:write\]$/);
+      expect(await rows(world)).toEqual(before);
+    } finally { await world.db.close(); }
+  });
+
+  test("a step that renames another row of the same entity before the write passes, and both writes are stored", async () => {
+    const world = await fresh();
+    try {
+      const ada = await world.mesh.openAccount({ name: "Ada", balance: 3 }, world.ctx);
+      const bo = await world.mesh.openAccount({ name: "Bo" }, world.ctx);
+      const result = await world.mesh.renameBeforeAccount({ id: ada.id, newName: "Bo Diddley", other: bo.id }, world.ctx);
+      expect(result).toMatchObject({ name: "Ada", balance: 4 });
+      expect((await rows(world)).accounts).toMatchObject([{ name: "Ada", balance: 4 }, { name: "Bo Diddley", balance: 0 }]);
     } finally { await world.db.close(); }
   });
 });

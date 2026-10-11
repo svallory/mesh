@@ -24,7 +24,8 @@ export interface SQLiteLayer extends DataAdapter, DataLayer {
   readonly capabilities: CapabilityManifest;
   readonly options: SQLiteOptions;
   /** Transactions are serialised per connection and await the callback before commit.
-   * A call inside a running transaction joins it (see `DataLayer.transaction`). There is no callback timeout: a callback
+   * A call inside a running transaction joins it (see `DataLayer.transaction`), and calls joined to one transaction
+   * run one at a time. There is no callback timeout: a callback
    * that never settles holds the queue; close rejects with running/queued counts
    * and leaves the layer open rather than rolling back under a running callback.
    * A failed rollback is fatal: queued and later work rejects until the caller
@@ -47,6 +48,13 @@ export function sqliteTable(handle: TableHandle): SQLiteTable {
 
 /** The running transaction: `operations` is set once BEGIN succeeded, and `active` ends with the outer call. */
 interface Token { active: boolean; operations?: DataOperations; failed?: { cause: unknown } }
+
+/**
+ * Where a call runs: the outer transaction's callback, or one call joined to it. Each frame queues the calls joined
+ * from it, so calls joined to one transaction run one at a time. A call joined from inside another queues on that
+ * call's frame, not on the one it waits in, so it never waits for itself.
+ */
+interface Frame { readonly token: Token; tail: Promise<void> }
 
 interface State {
   exclusive<T>(run: (db: BunSQLiteDatabase, token: Token) => Promise<T>): Promise<T>;
@@ -90,12 +98,12 @@ export function sqlite(options: SQLiteOptions): SQLiteLayer {
   let running = 0;
   let queued = 0;
   let tail: Promise<void> = Promise.resolve();
-  const context = new AsyncLocalStorage<Token>();
+  const context = new AsyncLocalStorage<Frame>();
   const state: State = {
     exclusive(run) {
       const fatal = healthError();
       if (fatal) return Promise.reject(fatal);
-      if (context.getStore()?.active) throw new FrameworkError("nested transactions are not supported");
+      if (context.getStore()?.token.active) throw new FrameworkError("nested transactions are not supported");
       queued++;
       const work = tail.then(async () => {
         queued--;
@@ -110,7 +118,7 @@ export function sqlite(options: SQLiteOptions): SQLiteLayer {
               db = drizzle(connection);
             } catch (cause) { throw connectionError("open a connection", configured.file, cause); }
           }
-          return await context.run(token, () => run(db!, token));
+          return await context.run({ token, tail: Promise.resolve() }, () => run(db!, token));
         } finally { token.active = false; running--; }
       });
       // Consume the queue link's rejection, not the caller's result. A failed
@@ -122,14 +130,21 @@ export function sqlite(options: SQLiteOptions): SQLiteLayer {
   const layer: SQLiteLayer = {
     kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities, options: configured,
     transaction(run) {
-      const current = context.getStore();
-      if (current?.active && current.operations) {
+      const frame = context.getStore();
+      if (frame?.token.active && frame.token.operations) {
+        // Joined calls run one at a time: this call waits for the ones joined before it from the same frame, so two
+        // read-then-write calls on one row cannot both read before either writes. It runs in a frame of its own.
         // Rollback-only: a joined call that fails poisons the whole transaction, even if the
         // outer callback catches the error, so a half-done inner call can never commit.
-        const joined = current;
-        // Promise.resolve().then also catches a callback that throws before returning a promise.
-        const operations = current.operations;
-        return Promise.resolve().then(() => run(operations)).catch((cause: unknown) => { joined.failed ??= { cause }; throw cause; });
+        const { token } = frame;
+        const operations = frame.token.operations;
+        const work = frame.tail.then(() => {
+          if (!token.active) throw new FrameworkError("A call joined a transaction that ended before the call's turn came: await every call joined to a transaction before its callback returns");
+          // Inside then, so a callback that throws before returning a promise is caught too.
+          return context.run({ token, tail: Promise.resolve() }, () => run(operations));
+        }).catch((cause: unknown) => { token.failed ??= { cause }; throw cause; });
+        frame.tail = work.then(() => undefined, () => undefined);
+        return work;
       }
       return state.exclusive(async (database, token) => {
         try { database.run(sql.raw("BEGIN IMMEDIATE")); }

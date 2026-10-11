@@ -6,14 +6,18 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
+  castInput as $castInput,
+  checkUnchanged as $checkUnchanged,
   composed as $composed,
+  failJoined as $failJoined,
   guarded as $guarded,
   loadRows as $loadRows,
-  parseInput,
+  noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
   rejectComputedQuery,
   runCheck as $runCheck,
   scope as $scope,
+  writeCount as $writeCount,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
@@ -53,15 +57,18 @@ import { loadPlan as $loadPlan } from "../load";
 export function bindPostReads(layer: $DataLayer) {
   return Object.freeze({
     async published(input: PublishedPostInput): Promise<Post[]> {
-      await parseInput(publishedPostInput, input);
-      throw new $FrameworkError(
-        "publishedPost cannot run in this version: its filter and sort are evaluated by the SQL evaluator, which arrives in M10",
+      await $castInput(layer, publishedPostInput, input);
+      return $failJoined(
+        layer,
+        new $FrameworkError(
+          "publishedPost cannot run in this version: its filter and sort are evaluated by the SQL evaluator, which arrives in M10",
+        ),
       );
     },
 
     async read(input: ReadPostInput): Promise<Post[]> {
-      // enter, cast: only the declared input passes
-      const parsed = await parseInput(readPostInput, input);
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, readPostInput, input);
       return layer.transaction(async (tx) => {
         rejectComputedQuery("Post", ["excerpt", "commentCount"], parsed);
         return (await tx.select(tables.post, {
@@ -85,8 +92,8 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
     async create(input: CreatePostInput, ...[_context]: $ContextArgument): Promise<Post> {
       // Not run in this version: on:load published
 
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(createPostInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, createPostInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $now = options.clock?.() ?? new Date();
@@ -108,6 +115,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
         };
         // data layer
         const $stored = await tx.insert(tables.post, $changes);
+        $noteWrite(tx);
         return $stored as Post;
       });
     },
@@ -118,8 +126,8 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
     ): Promise<PostWith<"comments" | "excerpt">> {
       // Not run in this version: on:load published; policies owner
 
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(publishPostInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, publishPostInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
@@ -131,6 +139,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
         if ($before === undefined) throw new $NotFoundError("Post", $key);
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
+        const $writes = $writeCount(tx);
         const $load = { actor: $actor, context: $context, clock: options.clock };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Post", $record, "action function"),
@@ -167,8 +176,11 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
         $loads.add("excerpt");
         // data layer
         $changes.updatedAt = $now;
+        // a call made before this write must not have changed this row: the write would overwrite that change
+        await $checkUnchanged(tx, $writes, tables.post, $key, $before, "Post.publish");
         const $stored = await tx.updateByKey(tables.post, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("Post", $key);
+        $noteWrite(tx);
         // still inside the transaction: the result, with what a load step named
         return (
           await $loadRows($loadPlan, "Post", tx, [$stored], [...$loads], $load)
@@ -179,14 +191,15 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
     async archive(input: ArchivePostInput, ...[_context]: $ContextArgument): Promise<void> {
       // Not run in this version: policies owner
 
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(archivePostInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, archivePostInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         // plan: nothing in the body can see the record, so the row is deleted without being read
         const $key = { id: parsed.id };
         // data layer
         if (!(await tx.deleteByKey(tables.post, $key))) throw new $NotFoundError("Post", $key);
+        $noteWrite(tx);
       });
     },
 
@@ -203,14 +216,15 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
     },
 
     async destroy(input: DestroyPostInput, ...[_context]: $ContextArgument): Promise<void> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(destroyPostInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, destroyPostInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         // plan: nothing in the body can see the record, so the row is deleted without being read
         const $key = { id: parsed.id };
         // data layer
         if (!(await tx.deleteByKey(tables.post, $key))) throw new $NotFoundError("Post", $key);
+        $noteWrite(tx);
       });
     },
   });

@@ -6,12 +6,15 @@ import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
+  castInput as $castInput,
+  checkUnchanged as $checkUnchanged,
   composed as $composed,
   guarded as $guarded,
-  parseInput,
+  noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
+  writeCount as $writeCount,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
@@ -46,8 +49,8 @@ import { loadPlan as $loadPlan } from "../load";
 export function bindSessionReferenceReads(layer: $DataLayer) {
   return Object.freeze({
     async read(input: ReadSessionReferenceInput): Promise<SessionReference[]> {
-      // enter, cast: only the declared input passes
-      const parsed = await parseInput(readSessionReferenceInput, input);
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, readSessionReferenceInput, input);
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.sessionReference, {
           filter: parsed.filter,
@@ -75,8 +78,8 @@ export function bindSessionReference(
       input: RecordSessionReferenceInput,
       ...[_context]: $ContextArgument
     ): Promise<SessionReference> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(recordSessionReferenceInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, recordSessionReferenceInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $now = options.clock?.() ?? new Date();
@@ -94,6 +97,7 @@ export function bindSessionReference(
         };
         // data layer
         const $stored = await tx.insert(tables.sessionReference, $changes);
+        $noteWrite(tx);
         return $stored as SessionReference;
       });
     },
@@ -102,8 +106,8 @@ export function bindSessionReference(
       input: SetAvailabilitySessionReferenceInput,
       ...[context]: $ContextArgument
     ): Promise<SessionReference> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(setAvailabilitySessionReferenceInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, setAvailabilitySessionReferenceInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
@@ -116,6 +120,7 @@ export function bindSessionReference(
         const $record: $Row = { ...$before };
         if (parsed.availability !== undefined)
           $changes.availability = $record.availability = parsed.availability;
+        const $writes = $writeCount(tx);
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "SessionReference", $record, "action function"),
           "SessionReference.setAvailability",
@@ -169,8 +174,18 @@ export function bindSessionReference(
           $changes.version = $record.version = $value;
         }
         // data layer
+        // a call made before this write must not have changed this row: the write would overwrite that change
+        await $checkUnchanged(
+          tx,
+          $writes,
+          tables.sessionReference,
+          $key,
+          $before,
+          "SessionReference.setAvailability",
+        );
         const $stored = await tx.updateByKey(tables.sessionReference, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("SessionReference", $key);
+        $noteWrite(tx);
         return $stored as SessionReference;
       });
     },
@@ -179,8 +194,8 @@ export function bindSessionReference(
       input: RedactSessionReferenceInput,
       ...[context]: $ContextArgument
     ): Promise<SessionReference> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(redactSessionReferenceInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, redactSessionReferenceInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
@@ -191,6 +206,7 @@ export function bindSessionReference(
         if ($before === undefined) throw new $NotFoundError("SessionReference", $key);
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
+        const $writes = $writeCount(tx);
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "SessionReference", $record, "action function"),
           "SessionReference.redact",
@@ -239,8 +255,18 @@ export function bindSessionReference(
           $changes.version = $record.version = $value;
         }
         // data layer
+        // a call made before this write must not have changed this row: the write would overwrite that change
+        await $checkUnchanged(
+          tx,
+          $writes,
+          tables.sessionReference,
+          $key,
+          $before,
+          "SessionReference.redact",
+        );
         const $stored = await tx.updateByKey(tables.sessionReference, $key, $changes);
         if ($stored === undefined) throw new $NotFoundError("SessionReference", $key);
+        $noteWrite(tx);
         return $stored as SessionReference;
       });
     },

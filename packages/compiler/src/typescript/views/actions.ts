@@ -195,9 +195,9 @@ function columnOf(entity: Entity, name: string, position: SourcePosition): { nam
 export const GLOBAL_TYPES: readonly string[] = Object.freeze(["Partial", "Promise", "ReturnType"]);
 
 /** Names that stay unprefixed in the actions file, as they were before the lifecycle added the others. */
-const PLAIN_IMPORTS: ReadonlySet<string> = new Set(["parseInput", "rejectComputedQuery"]);
+const PLAIN_IMPORTS: ReadonlySet<string> = new Set(["rejectComputedQuery"]);
 
-/** `NotFoundError as $NotFoundError`; the two functions generated code has always imported keep their names. */
+/** `NotFoundError as $NotFoundError`; `rejectComputedQuery`, which generated code has always imported, keeps its name. */
 const runtimeImport = (name: string) => (PLAIN_IMPORTS.has(name) ? name : `${name} as $${name}`);
 
 /**
@@ -246,7 +246,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       inputType: input.name,
       validator,
     };
-    runtime.add("parseInput");
+    runtime.add("castInput");
     const keyRead = read("parsed", key.name);
     const keyObject = `{ ${propertyName(key.name)}: ${keyRead} }`;
     const notRun = (parts: string[]) => {
@@ -262,6 +262,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         statements: [], isRead: true, readsCall: `$reads.${name}(input)` };
       if (action.filter || action.sort) {
         runtime.add("FrameworkError");
+        runtime.add("failJoined");
         const parts = [action.filter ? "filter" : null, action.sort ? "sort" : null].filter(Boolean).join(" and ");
         readBodies.push({ ...body, usesParsed: false, unsupported: JSON.stringify(
           `${base.functionName} cannot run in this version: its ${parts} ${action.filter && action.sort ? "are" : "is"} evaluated by the SQL evaluator, which arrives in M10`), statements: [] });
@@ -503,19 +504,30 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
 
     // data layer, commit
     let returnType = writes ? recordName : "void";
+    const where = JSON.stringify(`${entity.name}.${action.name}`);
     emit("// data layer");
     if (action.kind === "create") {
       emit(`const $stored = await tx.insert(${table}, $changes);`);
     } else if (action.kind === "update") {
       for (const attribute of stamped) { used.now = true; emit(`${read("$changes", attribute.name)} = $now;`); }
+      if (used.scope) {
+        // A call a function made before this write may have changed this very row; this write must not overwrite that silently.
+        runtime.add("writeCount");
+        runtime.add("checkUnchanged");
+        head.push("const $writes = $writeCount(tx);");
+        emit("// a call made before this write must not have changed this row: the write would overwrite that change");
+        emit(`await $checkUnchanged(tx, $writes, ${table}, ${KEY}, $before, ${where});`);
+      }
       emit(`const $stored = await tx.updateByKey(${table}, ${KEY}, $changes);`);
       emit(`if ($stored === undefined) throw new $NotFoundError(${JSON.stringify(entity.name)}, ${KEY});`);
     } else {
       emit(`if (!(await tx.deleteByKey(${table}, ${KEY}))) throw new $NotFoundError(${JSON.stringify(entity.name)}, ${KEY});`);
     }
+    runtime.add("noteWrite");
+    emit("$noteWrite(tx);");
+    let result = "$stored";
     // after the write: still inside the transaction, with the stored record (a destroy: the row as it was) as `self`
     if (hasAfterWrite(steps)) {
-      const where = JSON.stringify(`${entity.name}.${action.name}`);
       runtime.add("readOnlyRecord");
       runtime.add("rescope");
       if (writes) {
@@ -530,6 +542,14 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         emit(`const $after = $rescope($s, { self: $readOnlyRecord($guarded($loadPlan, ${JSON.stringify(entity.name)}, ${record}, "action function"), ${where}) });`);
       } else emit(`const $after = $rescope($s, { self: $readOnlyRecord(${record}, ${where}) });`);
       emitAfterWrite(steps, record);
+      if (writes) {
+        // A step after the write may have changed the row through `actions`: the result is the row as the steps left it.
+        runtime.add("FrameworkError");
+        emit("// the result: the row as the steps after the write left it, read again by key");
+        emit(`const $result = await tx.selectByKey(${table}, { ${propertyName(key.name)}: ${read("$stored", key.name)} });`);
+        emit(`if ($result === undefined) throw new $FrameworkError(${JSON.stringify(`${entity.name}.${action.name}: a step after the write deleted the row this action returns`)});`);
+        result = "$result";
+      }
     }
     // The transaction commits when this callback returns. The typed result carries anything a `load` step named.
     if (writes) {
@@ -544,8 +564,8 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
           const present = loadNames.length ? `${recordName}With<${loadNames.map((name) => JSON.stringify(name)).join(" | ")}>` : recordName;
           returnType = maybeLoadNames.length ? `${present} & Partial<Pick<${recordName}Loadable, ${maybeLoadNames.map((name) => JSON.stringify(name)).join(" | ")}>>` : present;
         }
-        emit(`return (await $loadRows($loadPlan, ${JSON.stringify(entity.name)}, tx, [$stored], [...$loads], $load))[0] as unknown as ${returnType};`);
-      } else emit(`return $stored as ${recordName};`);
+        emit(`return (await $loadRows($loadPlan, ${JSON.stringify(entity.name)}, tx, [${result}], [...$loads], $load))[0] as unknown as ${returnType};`);
+      } else emit(`return ${result} as ${recordName};`);
     }
 
     // The declarations the body turned out to need, in front of it.
@@ -565,7 +585,6 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       const scopeAlias = stored ? "$StoredScope" : "$Scope";
       scopes.add(stored ? `${recordName}StoredScope as $StoredScope` : `${recordName}Scope as $Scope`);
       runtime.add("readOnlyRecord");
-      const where = JSON.stringify(`${entity.name}.${action.name}`);
       if (loader) {
         used.plan = true;
         runtime.add("guarded");

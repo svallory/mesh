@@ -5,10 +5,11 @@
 import {
   InvalidInputError as $InvalidInputError,
   NotFoundError as $NotFoundError,
+  castInput as $castInput,
   composed as $composed,
   guarded as $guarded,
   loadInto as $loadInto,
-  parseInput,
+  noteWrite as $noteWrite,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
@@ -44,8 +45,8 @@ import { loadPlan as $loadPlan } from "../load";
 export function bindDependencyReads(layer: $DataLayer) {
   return Object.freeze({
     async read(input: ReadDependencyInput): Promise<Dependency[]> {
-      // enter, cast: only the declared input passes
-      const parsed = await parseInput(readDependencyInput, input);
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, readDependencyInput, input);
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.dependency, {
           filter: parsed.filter,
@@ -66,8 +67,8 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
   const $reads = bindDependencyReads(layer);
   return Object.freeze({
     async add(input: AddDependencyInput, ...[context]: $ContextArgument): Promise<Dependency> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(addDependencyInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, addDependencyInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
@@ -110,13 +111,14 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
         if ($issues.length > 0) throw new $InvalidInputError($issues);
         // data layer
         const $stored = await tx.insert(tables.dependency, $changes);
+        $noteWrite(tx);
         return $stored as Dependency;
       });
     },
 
     async remove(input: RemoveDependencyInput, ...[_context]: $ContextArgument): Promise<void> {
-      // enter, cast: the call arrives with its context, and only the declared input passes
-      const parsed = await parseInput(removeDependencyInput, input);
+      // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
+      const parsed = await $castInput(layer, removeDependencyInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         // plan: nothing in the body can see the record, so the row is deleted without being read
@@ -124,6 +126,7 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
         // data layer
         if (!(await tx.deleteByKey(tables.dependency, $key)))
           throw new $NotFoundError("Dependency", $key);
+        $noteWrite(tx);
       });
     },
 
