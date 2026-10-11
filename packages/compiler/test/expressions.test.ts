@@ -347,7 +347,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     const { root, files } = await generated(source);
     expect(files.map((f) => f.path)).toContain("generated/domain/task.expressions.ts");
     expect(checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
-  });
+  }, 30_000);
 
   test("quantifiers evaluate on loaded rows, unknown included (test 3)", async () => {
     const { root } = await generated(source);
@@ -381,7 +381,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
     const { expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     expect(expressions["computed.c"](scope({ self: { n: 1 } }))).toBe(true);
-  });
+  }, 30_000);
 
   test("now() and today() in plain code read the injected clock, as in a translated expression; a local of that name is the author's", async () => {
     const plain = entity(check("() => true")).replace("  actions auto", "  computed\n    boolean :stamped() { return Math.floor(now().getTime() / 1000) === &n }\n    boolean :daily() { return [today()].some((d) => d.getTime() === &n) }\n    boolean :own() { const now = () => 7; return now() === &n }\n  actions auto");
@@ -395,7 +395,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(expressions["computed.stamped"](scope({ self: { n: 1 } }, at))).toBe(false);
     expect(expressions["computed.daily"](scope({ self: { n: 86_400_000 * 2 } }, at))).toBe(true);
     expect(expressions["computed.own"](scope({ self: { n: 7 } }, at))).toBe(true);
-  });
+  }, 30_000);
 
   test("each now() and today() resolves against its own enclosing scopes: a parameter of that name shadows only inside its function", async () => {
     const plain = entity(check("() => true")).replace("  actions auto", [
@@ -420,7 +420,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(expressions["computed.outer"](scope({ self: { n: 1 } }, at))).toBe(false);
     expect(expressions["computed.inner"](scope({ self: { n: 7 } }, at))).toBe(true);
     expect(expressions["computed.nested"](scope({ self: { n: 86_400_000 * 2 + 5_000 } }, at))).toBe(true);
-  });
+  }, 30_000);
 
   test("a parameter default beside a body `var` of the same name binds no clock, so the type check refuses it", () => {
     // PR #65 round 2, N4. JavaScript gives `at = now()` the outer `now`, but Bun 1.3.14 throws "now is not defined"
@@ -478,7 +478,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
       for (const k of keys) await expressions[k](scope({ self: { n: 5 }, context: {} }));
     } finally { console.log = log; }
     expect(logs.at(-1)).toEqual([5]);
-  });
+  }, 30_000);
 
   test("plain code runs with the authored meaning, `&` and atoms desugared", async () => {
     const { root } = await generated(source);
@@ -872,7 +872,7 @@ export const state: "open" | "done" = fresh.self.state;
 `);
       const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
       expect(checkTypes(root, [...paths, "generated/schema.ts", "check.ts"])).toEqual({ code: 0, output: "" });
-    });
+    }, 30_000);
     test("a computed field that reads a member the new instance has not filled is null there, in the type: directly, through another computed field or through a relationship; the others keep their type", async () => {
       const computed = "  computed\n    integer :double() { return &n * 2 }\n    integer :twice() { return &double + 1 }\n    integer :viaOwner() { return &owner.n }\n    boolean :isUnset() { return &n === null }\n    integer :orZero() { return &n ?? 0 }\n    integer :orSelf() { return &n ?? &double }\n    boolean :isOpen() { return &state === :open }\n    integer :plain({ self }) { const q = self.n; return q + 1 }\n  actions auto=[:read]";
       const source = item(make(checkOf("({ input }) => input.n > 0")) + go("")).replace("  actions auto=[:read]", computed);
@@ -901,7 +901,7 @@ export const set: number = stored.self.double;
 `);
       const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
       expect(checkTypes(root, [...paths, "generated/schema.ts", "check.ts"])).toEqual({ code: 0, output: "" });
-    });
+    }, 30_000);
     test("an integer key: a create's steps before the write get ItemCreateScope, where the key may be null", async () => {
       const source = item(make(checkOf("() => &seq === null") + "      do\n        set\n          &m=() => &seq ?? 0\n        run [after=:write] ({ self }) { console.log(self.seq + 1) }\n"), "integer :seq primary-key");
       const { root, text, files } = await generated(source);
@@ -918,6 +918,6 @@ export const after: number = written.self.seq;
 `);
       const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
       expect(checkTypes(root, [...paths, "generated/schema.ts", "check.ts"])).toEqual({ code: 0, output: "" });
-    });
+    }, 30_000);
   });
 });

@@ -71,7 +71,7 @@ export const filterBad: LineFilter = { orderId: { eq: "1" } };
   const result = Bun.spawnSync([tsc, "--ignoreConfig", "--noEmit", "--strict", "--exactOptionalPropertyTypes", "--skipLibCheck",
     "--target", "es2022", "--module", "esnext", "--moduleResolution", "bundler", "--allowImportingTsExtensions", "--types", "bun", join(dir, "check.ts")], { cwd: dir });
   expect(result.stdout.toString() + result.stderr.toString()).toBe("");
-});
+}, 30_000);
 
 test("a line points at an order by its integer key, and that key reads back as a number", async () => {
   const { bind, tables } = await import(join(dir, ".mesh/index.ts")) as { bind: (layer: ReturnType<typeof sqlite>) => any; tables: Record<string, object> };

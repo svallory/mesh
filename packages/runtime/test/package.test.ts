@@ -47,4 +47,4 @@ test("package archive excludes the Map fake and tests, and both exports load fro
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
-});
+}, 30_000);

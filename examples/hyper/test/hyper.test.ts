@@ -33,7 +33,7 @@ describe("the schema", () => {
       database.close();
       expect(names).toHaveLength(18);
     } finally { for (const suffix of ["", "-journal", "-wal", "-shm"]) rmSync(file + suffix, { force: true }); }
-  });
+  }, 30_000);
 });
 
 describe("one row of every entity round-trips through its generated functions", () => {

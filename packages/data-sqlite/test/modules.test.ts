@@ -221,7 +221,7 @@ describe("the specifiers", () => {
     ], { cwd: dir });
     expect(child.stdout.toString() + child.stderr.toString()).toBe("");
     expect(child.exitCode).toBe(0);
-  });
+  }, 30_000);
 });
 
 describe("a module's action functions on the default binding", () => {

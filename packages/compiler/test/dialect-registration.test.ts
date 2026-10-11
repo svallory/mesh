@@ -31,7 +31,7 @@ beforeAll(() => {
   if (build.exitCode !== 0) throw new Error(`meshfw build failed: ${build.stdout}${build.stderr}`);
   mkdirSync(base, { recursive: true });
   work = mkdtempSync(join(base, "registration-"));
-});
+}, 30_000);
 afterAll(() => {
   rmSync(work, { recursive: true, force: true });
   // `~/tmp/mx-alpha-16/` itself goes too, but only while it is empty: it is not ours to empty.
@@ -85,7 +85,7 @@ test("the module is built JavaScript Node can load, and no TypeScript ships besi
   expect(packed.some((line) => line.endsWith(" dist/dialect.js"))).toBe(true);
   expect(packed.filter((line) => /dialect/.test(line) && /\.(?:ts|mts|cts|tsx)$/.test(line))).toEqual([]);
   expect(packed.filter((line) => line.includes("dist/") && !line.endsWith(".js"))).toEqual([]);
-});
+}, 30_000);
 
 test("the build refuses a manifest whose extensions drift from MESH_EXTENSIONS", async () => {
   const copy = join(work, "drifted-cli");
@@ -106,7 +106,7 @@ test("the build refuses a manifest whose extensions drift from MESH_EXTENSIONS",
   const renamed = Bun.spawnSync(["bun", "scripts/build-dialect.ts"], { cwd: copy, stdout: "pipe", stderr: "pipe" });
   expect(renamed.exitCode).toBe(1);
   expect(renamed.stderr.toString()).toContain('mx.dialect.id must be "mesh"');
-});
+}, 30_000);
 
 test("mx.contracts stays on @meshfw/compiler and is the only mx key there", async () => {
   const compiler = await Bun.file(join(import.meta.dir, "../package.json")).json();

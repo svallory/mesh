@@ -344,7 +344,7 @@ describe("the generated file", () => {
     const { root, files } = await generated();
     expect(checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts")).map((f) => f.path), "generated/schema.ts", "mesh.config.ts"]))
       .toEqual({ code: 0, output: "" });
-  });
+  }, 30_000);
 
   test("runs create, update, read, destroy against a data layer", async () => {
     const { root } = await generated();

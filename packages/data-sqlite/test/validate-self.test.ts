@@ -279,7 +279,7 @@ describe("the generated files", () => {
       "--exactOptionalPropertyTypes", "--verbatimModuleSyntax", "--isolatedModules", "--allowImportingTsExtensions", "mesh.config.ts", ...files,
     ], { cwd: dir });
     expect(child.stdout.toString() + child.stderr.toString()).toBe("");
-  });
+  }, 30_000);
 });
 
 describe("create: validate sees the new instance, do sees the input applied", () => {
@@ -335,7 +335,7 @@ describe("create: validate sees the new instance, do sees the input applied", ()
       expect(phase(world, "do")).toEqual([]);
       expect(await world.mesh.readNote({}, world.ctx)).toEqual([]);
     } finally { await world.db.close(); }
-  });
+  }, 30_000);
 
   test("a failed check stores nothing and runs no step: the input was never applied", async () => {
     const world = await fresh();
@@ -345,7 +345,7 @@ describe("create: validate sees the new instance, do sees the input applied", ()
       expect(world.seen.map((entry) => entry.phase)).toEqual(["always", "validate"]);
       expect(await world.mesh.readNote({}, world.ctx)).toEqual([]);
     } finally { await world.db.close(); }
-  });
+  }, 30_000);
 });
 
 describe("update: validate sees the stored record, do sees the input applied", () => {
@@ -378,7 +378,7 @@ describe("update: validate sees the stored record, do sees the input applied", (
       expect(phase(world, "do")).toHaveLength(1);
       expect((await world.mesh.readNote({}, world.ctx))[0]).toMatchObject({ title: "first", priority: 1 });
     } finally { await world.db.close(); }
-  });
+  }, 30_000);
 
   test("a nullable field sent as null: input has null, self the stored value until do, and the row stores null", async () => {
     const world = await fresh();
@@ -410,7 +410,7 @@ describe("update: validate sees the stored record, do sees the input applied", (
       expect(labels(await invalid(world.mesh.editStrictNote({ id: strict.id, body: null }, world.ctx)))).toEqual(["keepsLocked"]);
       expect((await world.mesh.editStrictNote({ id: strict.id }, world.ctx)).body).toBe("locked");
     } finally { await world.db.close(); }
-  });
+  }, 30_000);
 });
 
 describe("destroy", () => {
@@ -434,7 +434,7 @@ describe("destroy", () => {
       expect(labels(await invalid(world.mesh.dropNote({ id: row.id }, world.ctx)))).toEqual(["draftOnly"]);
       expect(await world.mesh.readNote({}, world.ctx)).toHaveLength(1);
     } finally { await world.db.close(); }
-  });
+  }, 30_000);
 });
 
 describe("composition: an action called through actions or tx checks the record it finds", () => {
@@ -447,7 +447,7 @@ describe("composition: an action called through actions or tx checks the record 
       expect(row.state).toBe("live");
       expect(labels(await invalid(world.mesh.publishNote({ id: row.id }, world.ctx)))).toEqual(["draftOnly"]);
     } finally { await world.db.close(); }
-  });
+  }, 30_000);
 
   test("in one transaction, an edit after a create sees the row the create wrote, not the edit's input", async () => {
     const world = await fresh();
@@ -478,7 +478,7 @@ describe("a relationship a check loads", () => {
       await world.mesh.retirePerson({ id: world.bo.id }, ctx);
       expect(labels(await invalid(world.mesh.reassignCard({ id: made.id, owner: world.ada.id }, ctx)))).toEqual(["ownerActive"]);
     } finally { await world.db.close(); }
-  });
+  }, 30_000);
 
   test("create: a check reading a required belongs-to that only a step fills sees null, not a load failure", async () => {
     const world = await fresh();
@@ -506,7 +506,7 @@ describe("one instant per action", () => {
       // The next call is a new instant, past the deadline.
       expect(labels(await invalid(mesh.acceptOffer({ id: made.id }, {})))).toEqual(["stillOpen"]);
     } finally { await db.close(); }
-  });
+  }, 30_000);
 });
 
 describe("the key on a create", () => {

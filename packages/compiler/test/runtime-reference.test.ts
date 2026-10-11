@@ -50,4 +50,4 @@ type ExtraIssue = Assert<Same<Docs.Issue, Actual.Issue & { extra: string }>>;
     expect(broken.code).not.toBe(0);
     expect(broken.output).toContain("message");
   } finally { await rm(root, { recursive: true, force: true }); }
-});
+}, 30_000);

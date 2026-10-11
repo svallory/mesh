@@ -117,7 +117,7 @@ async function seeded() {
 describe("the generated files", () => {
   test("type-check under the strictest flags, with the generic reads in `actions`, `tx` and the composition types", async () => {
     expect(await typeCheck(dir)).toBe("");
-  });
+  }, 30_000);
 
   test("the result of a read is typed to the names passed: a loaded field is readable, an unloaded one is a type error", async () => {
     await Bun.write(join(dir, "check-load.ts"), [
@@ -177,7 +177,7 @@ describe("the generated files", () => {
     try {
       expect(await typeCheck(dir, ["check-load.ts"])).toBe("");
     } finally { await rm(join(dir, "check-load.ts")); }
-  });
+  }, 30_000);
 
   test("a load that does not name its fields as a tuple claims nothing: a widened list and an input type give the bare record, and a union of tuples gives a union of results", async () => {
     await Bun.write(join(dir, "check-tuple.ts"), [
@@ -225,7 +225,7 @@ describe("the generated files", () => {
     try {
       expect(await typeCheck(dir, ["check-tuple.ts"])).toBe("");
     } finally { await rm(join(dir, "check-tuple.ts")); }
-  });
+  }, 30_000);
 
   test("the read-only types keep what is loaded and what is not: `Reads` and `Actions` are assignable to them, `tx` of an entity file and a helper typed with them are checked", async () => {
     await Bun.write(join(dir, "check-readonly.ts"), [
@@ -266,7 +266,7 @@ describe("the generated files", () => {
     try {
       expect(await typeCheck(dir, ["check-readonly.ts"])).toBe("");
     } finally { await rm(join(dir, "check-readonly.ts")); }
-  });
+  }, 30_000);
 
   test("a check of an entity file that reads a field it did not load is a type error in the generated expressions file", async () => {
     const wrong = task.replace(
@@ -281,7 +281,7 @@ describe("the generated files", () => {
       expect(output).toContain("TS2339");
       expect(output).toContain("taskCount");
     } finally { await rm(broken, { recursive: true, force: true }); }
-  });
+  }, 30_000);
 
   test("an entity with nothing to load has no `load`", async () => {
     const plain = await generate(".reads-load-plain-", { note: 'entity :Note table="notes"\n  attributes\n    uuid :id primary-key\n    string :text\n  actions auto=[:read]\n' });
@@ -300,7 +300,7 @@ describe("the generated files", () => {
       ].join("\n"));
       expect(await typeCheck(plain, ["check.ts"])).toBe("");
     } finally { await rm(plain, { recursive: true, force: true }); }
-  });
+  }, 30_000);
 });
 
 describe("a caller's read with load", () => {

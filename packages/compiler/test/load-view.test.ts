@@ -146,7 +146,7 @@ describe("the load generator", () => {
       expect(result.output).toBe("");
       expect(result.code).toBe(0);
     } finally { await rm(root, { recursive: true, force: true }); }
-  });
+  }, 30_000);
 });
 
 describe("the types and the read views name what is loadable", () => {

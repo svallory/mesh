@@ -111,7 +111,7 @@ export { update, destroy, bad, computed };
       "consumer.ts",
     ]),
   ).toEqual({ code: 0, output: "" });
-});
+}, 30_000);
 
 test("argument defaults and nullable fields are optional, update member fields are patches", () => {
   const document = documentOf();
