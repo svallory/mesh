@@ -1,11 +1,10 @@
 // A name written against its tag (`uuid:id`) is not Mesh syntax: a line is `kind :name` (decisions log, 2026-10-10 18:50).
 // Since MX alpha.17 a colon in a tag head is part of the tag name (`uuid:id` is one unknown tag), and a dialect's
-// `afterLower` sees only the tags a contract names, so Mesh refuses the form in `lowerMesh` (`src/front-end/lower.ts`), from
-// the lowered tag names. Every form lowers through `MESH_DIALECT`.
-import type { CustomTag } from "@mxlang/core";
+// `afterLower` sees only the tags a contract names, so Mesh refuses the form in the dialect's `explainUnknownTag`
+// (`src/front-end/dialect.ts`, MX alpha.19). Every form lowers through `MESH_DIALECT`.
+import { lowerSource, type CustomTag } from "@mxlang/core";
 import { describe, expect, test } from "bun:test";
 import { MESH_DIALECT } from "../src/front-end/dialect.ts";
-import { lowerMesh } from "../src/front-end/lower.ts";
 
 const attrs = { name: { type: "atom" } };
 const tags = {
@@ -17,7 +16,7 @@ const tags = {
   setter: { attributes: attrs },
 } as unknown as Record<string, CustomTag>;
 
-const diagnostics = (source: string) => lowerMesh(source, "/v/x.mesh.mx", { dialect: MESH_DIALECT, customTags: tags }).diagnostics;
+const diagnostics = (source: string) => lowerSource(source, "/v/x.mesh.mx", { dialect: MESH_DIALECT, customTags: tags }).diagnostics;
 
 describe("the unspaced tag-head name is refused, showing the spaced spelling", () => {
   test.each([
@@ -43,5 +42,28 @@ describe("the unspaced tag-head name is refused, showing the spaced spelling", (
     expect(diagnostics("entity :T\n  attributes\n    uuid :id\n    string :first-name\n")).toEqual([]);
     expect(diagnostics("<entity :T><attributes><string :title/></attributes></entity>")).toEqual([]);
     expect(diagnostics("<set><setter :x/></set>")).toEqual([]);
+  });
+});
+
+describe("Mesh's explainUnknownTag leaves every other unknown tag to MX", () => {
+  test("a plain unknown tag keeps MX's own code", () => {
+    const found = lowerSource("<entity :T><bogus/></entity>", "/v/x.mesh.mx", { dialect: MESH_DIALECT, customTags: tags, unknownTags: "reject" }).diagnostics;
+    expect(found.map((d) => d.code)).toEqual(["MX_UNKNOWN_TAG"]);
+  });
+  test("in reject mode inside a closed parent, an unspaced tag still gives one Mesh error", () => {
+    const found = lowerSource("<entity :T>\n  <attributes><string:title/></attributes>\n</entity>", "/v/x.mesh.mx", {
+      dialect: MESH_DIALECT,
+      customTags: tags,
+      unknownTags: "reject",
+      structural: "reject",
+    }).diagnostics;
+    expect(found.map((d) => d.code)).toEqual(["MESH_UNSPACED_NAME"]);
+  });
+});
+
+describe("an unnamed tag in a closed parent (MX alpha.19: the nearest parent's defaultTag)", () => {
+  test.each(["reject", "allow"] as const)("<set><#a/></set> reports exactly one error in %s mode", (unknownTags) => {
+    const found = lowerSource("<set><#a/></set>", "/v/x.mesh.mx", { dialect: MESH_DIALECT, customTags: tags, unknownTags, structural: "reject" }).diagnostics;
+    expect(found.filter((d) => d.severity === "error")).toHaveLength(1);
   });
 });

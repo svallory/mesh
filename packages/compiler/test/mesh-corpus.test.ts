@@ -50,6 +50,14 @@ function snapshot(rel: string): unknown {
 }
 
 describe("Mesh's golden parse corpus", () => {
+  test("Mesh's explainUnknownTag never throws on a corpus tag", () => {
+    const golden = JSON.parse(readFileSync(GOLDEN, "utf8"));
+    for (const rel of FILES) {
+      const codes = (golden[rel].diagnostics as { code?: string }[]).map((d) => d.code);
+      expect(codes, rel).not.toContain("MX_DIALECT_HOOK_ERROR");
+    }
+  });
+
   test("holds 41 entity files and 22 doc blocks", () => {
     expect(FILES.filter((rel) => rel.startsWith("entities/"))).toHaveLength(41);
     expect(FILES.filter((rel) => rel.startsWith("docs/"))).toHaveLength(22);

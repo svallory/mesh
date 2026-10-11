@@ -5,7 +5,7 @@ description: "How Mesh reads static entity files through MX, the syntax-v4 parse
 
 # How Mesh uses MX
 
-Status: the loader and the closed v4 contracts are built (PR #47), MX is pinned at `0.1.0-alpha.18`, whose `lowerSource` returns the IR and lowers every `&` member position and every atom (expression, attribute and value position) through Mesh's dialect, and `meshfw` registers that dialect with MX tooling, and `verify` checks the MX import boundary and complete MX samples in the Docs pages. The composed contracts module is built in M6; the `mesh` MX host package follows MX decision 148 ([ADR-0051](../decisions/0051-mesh-mx-files-and-the-mesh-host.md)).
+Status: the loader and the closed v4 contracts are built (PR #47), MX is pinned at `0.1.0-alpha.19`, whose `lowerSource` returns the IR and lowers every `&` member position and every atom (expression, attribute and value position) through Mesh's dialect, and `meshfw` registers that dialect with MX tooling, and `verify` checks the MX import boundary and complete MX samples in the Docs pages. The composed contracts module is built in M6; the `mesh` MX host package follows MX decision 148 ([ADR-0051](../decisions/0051-mesh-mx-files-and-the-mesh-host.md)).
 
 ::: callout info "What the code does today"
 `packages/compiler/src/front-end/contracts.ts` on `main` declares the closed contracts of entity file syntax v4 ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)), and `packages/compiler/src/front-end/dialect.ts` is Mesh's MX dialect, which the compiler passes to every parse. The Docs samples parse as authored. The mechanisms below (the call, the tree, `analyze`, the import boundary) are as built.
@@ -32,9 +32,9 @@ The vocabulary is Mesh's own, informed by Ash ([ADR-0049](../decisions/0049-voca
 
 ## The MX features syntax v4 depends on
 
-Measured on `@mxlang/core` `0.1.0-alpha.18` through the compiler's parse (`parseEntitySource`: the production contracts, `dialect: MESH_DIALECT`, `structural: "reject"`, `unknownTags: "reject"`, `imports: "pass"`), on an Invoice with each spelling below. Every row parses with no diagnostic.
+Measured on `@mxlang/core` `0.1.0-alpha.19` through the compiler's parse (`parseEntitySource`: the production contracts, `dialect: MESH_DIALECT`, `structural: "reject"`, `unknownTags: "reject"`, `imports: "pass"`), on an Invoice with each spelling below. Every row parses with no diagnostic.
 
-| Feature | Used for | State on alpha.18 |
+| Feature | Used for | State on alpha.19 |
 |---|---|---|
 | Atoms and `kind :name` | Declarations and fixed-set/enum values | Parses; a whole-value atom (`inverse=:owner`) is claimed by the dialect's `mesh:Atom` node type and lowers to a `static` attribute with `atom: { name, span }`, exactly as on alpha.15; expression atoms have `extra.mxAtom`. `Attr.node` stays unset |
 | Comments | `// …` before the entity, at the end of a line and on their own line in a body | Parse under structural rejection |

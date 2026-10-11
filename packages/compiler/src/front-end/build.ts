@@ -1,3 +1,4 @@
+import { lowerSource } from "@mxlang/core";
 import { basename, dirname, relative, resolve } from "node:path";
 import { realpathSync, statSync } from "node:fs";
 import {
@@ -7,7 +8,7 @@ import {
   resolveEntityFile,
 } from "../paths.ts";
 export { projectPath } from "../paths.ts";
-import { lowerMesh } from "./lower.ts";
+
 import {
   attributeTypeInfo,
   findNonJsonValue,
@@ -780,11 +781,11 @@ function buildEntity(
 }
 
 /**
- * The compiler's one MX call (`lowerMesh`, which is `lowerSource` plus the colon-name check) with closed contracts, Mesh's dialect (which carries
+ * The compiler's one MX call (`lowerSource`) with closed contracts, Mesh's dialect (which carries
  * its tag rules) and rejection on. It never throws; every problem is a positioned diagnostic.
  */
 export function parseEntitySource(source: string, file: string) {
-  return lowerMesh(source, file, {
+  return lowerSource(source, file, {
     dialect: MESH_DIALECT,
     customTags: contracts,
     structural: "reject",

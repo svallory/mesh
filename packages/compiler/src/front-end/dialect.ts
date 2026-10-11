@@ -29,12 +29,41 @@
  * (`input` is a section of an action). The preset applies when the dialect is
  * passed directly; `test/dialect.test.ts` asserts it.
  */
-import type { Dialect } from "@mxlang/core";
+import type { Dialect, UnknownTag, UnknownTagExplanation } from "@mxlang/core";
 import { MESH_SYNTAX } from "./syntax/mesh.ts";
+
+/** The message, from the tag name alone: `uuid:id` is written `uuid :id`; `:x` has no kind, the parent's default tag names it. */
+function unspacedMessage(name: string, defaultTag: string | undefined): string {
+  const colon = name.indexOf(":");
+  const kind = name.slice(0, colon);
+  if (kind === "") {
+    if (defaultTag === undefined)
+      return `\`${name}\` is a name with no tag before it; Mesh writes a tag, a space, then the name: \`kind ${name}\``;
+    return `\`${name}\` writes the name against the tag; Mesh writes a name after a space: \`${defaultTag} ${name}\``;
+  }
+  return `\`${name}\` writes the name against the tag; Mesh writes a name after a space: \`${kind} ${name.slice(colon)}\``;
+}
+
+/**
+ * Since MX 0.1.0-alpha.17 a colon in a tag head is part of the tag name (`uuid:id`, `<string:title/>`, `entity:Todo`,
+ * `<:x/>`), so such a tag is an unknown tag to MX. Mesh's error replaces MX's for it, since a line is `kind :name`.
+ * Every other unknown tag keeps MX's own error (`undefined`). `Dialect.explainUnknownTag` is `@unstable` in MX
+ * (alpha.19, #511). The error sits at the tag name, as MX's does.
+ */
+function explainUnknownTag(tag: UnknownTag): UnknownTagExplanation | undefined {
+  if (!tag.name.includes(":")) return undefined;
+  const parent = tag.ancestors[tag.ancestors.length - 1];
+  return {
+    message: unspacedMessage(tag.name, parent?.contract?.defaultTag),
+    code: "MESH_UNSPACED_NAME",
+    at: tag.nameSpan,
+  };
+}
 
 export const MESH_DIALECT: Dialect = Object.freeze({
   id: "mesh",
   name: "Mesh",
   tagRules: "none",
   ...MESH_SYNTAX,
+  explainUnknownTag,
 });
