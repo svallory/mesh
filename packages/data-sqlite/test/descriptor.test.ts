@@ -11,7 +11,7 @@ test("sqlite() is one frozen value: the data adapter descriptor and its data lay
   const adapter: DataAdapter = db;
   const layer: DataLayer = db;
   expect(adapter).toMatchObject({ kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", options });
-  expect(Object.keys(db).sort()).toEqual(["build", "capabilities", "close", "kind", "name", "options", "transaction"]);
+  expect(Object.keys(db).sort()).toEqual(["build", "capabilities", "close", "kind", "name", "options", "refuseIfFailed", "transaction"]);
   expect(typeof layer.transaction).toBe("function");
   expect(typeof layer.close).toBe("function");
   expect(Object.isFrozen(db)).toBe(true);

@@ -189,6 +189,17 @@ entity :Account table="accounts"
         run [after=:write] ({ self, actions }) {
           await Promise.all([actions.depositAccount({ id: self.id, amount: 1 }), actions.depositAccount({ id: self.id, amount: 1 })]);
         }
+    create :failThenTally
+      input
+        &name
+      do
+        run({ actions, context }) {
+          try { await actions.failAudit({ what: "first" }); } catch { context.log.push("caught the failure"); }
+          for (const call of [{ what: "after" }, { what: 5 as unknown as string }]) {
+            try { await actions.tallyAudit(call); context.log.push("not refused"); }
+            catch (error) { context.log.push(\`refused: \${(error as Error).constructor.name}, cause \${((error as Error).cause as Error | undefined)?.message}\`); }
+          }
+        }
     destroy :close
       do
         run [after=:write] ({ self, tx, actions }) {
@@ -246,6 +257,13 @@ const audit = `entity :Audit table="audits"
       do
         run({ actions, context }) {
           try { await actions.failAudit({ what: "inner" }); } catch { context.log.push("relay caught the inner failure"); }
+        }
+    create :tally
+      input
+        &what
+      do
+        run({ context }) {
+          context.log.push("tally ran");
         }
 `;
 
@@ -833,6 +851,72 @@ describe("a nested write to the caller's own row before the caller's write is a 
       const result = await world.mesh.renameBeforeAccount({ id: ada.id, newName: "Bo Diddley", other: bo.id }, world.ctx);
       expect(result).toMatchObject({ name: "Ada", balance: 4 });
       expect((await rows(world)).accounts).toMatchObject([{ name: "Ada", balance: 4 }, { name: "Bo Diddley", balance: 0 }]);
+    } finally { await world.db.close(); }
+  });
+});
+
+describe("a call that joins a failed transaction is refused before it does anything (decisions log, N6 ruling)", () => {
+  const refusedBy = (refusal: unknown): string | undefined =>
+    refusal instanceof FrameworkError ? ((refusal as Error).cause as Error | undefined)?.message : `not refused: ${String(refusal)}`;
+
+  test("through `actions`: after a caught failure, the next calls are refused before their cast and their `run`, and nothing is stored", async () => {
+    const world = await fresh();
+    try {
+      const before = await rows(world);
+      world.log.length = 0;
+      const error = await failure(world.mesh.failThenTallyAccount({ name: "Ada" }, world.ctx));
+      // The second call's input does not cast: it is refused all the same, so the refusal comes before the cast.
+      expect(world.log).toEqual(["caught the failure", "refused: FrameworkError, cause audit refused", "refused: FrameworkError, cause audit refused"]);
+      expect(world.log).not.toContain("tally ran");
+      expect(error).toBeInstanceOf(FrameworkError);
+      expect(((error as Error).cause as Error).message).toBe("audit refused");
+      expect(await rows(world)).toEqual(before);
+    } finally { await world.db.close(); }
+  });
+
+  test("a direct call inside the application transaction: refused before its cast and its `run`, and nothing is stored", async () => {
+    const world = await fresh();
+    try {
+      const before = await rows(world);
+      world.log.length = 0;
+      const refusals: unknown[] = [];
+      const error = await failure(world.mesh.transaction(async () => {
+        await world.mesh.openAccount({ name: "kept?" }, world.ctx);
+        try { await world.mesh.failAudit({ what: "first" }, world.ctx); } catch { /* caught on purpose */ }
+        refusals.push(await world.mesh.tallyAudit({ what: "after" }, world.ctx).catch((cause: unknown) => cause));
+        refusals.push(await world.mesh.tallyAudit({ what: 5 } as never, world.ctx).catch((cause: unknown) => cause));
+        refusals.push(await world.mesh.openAccount({ name: "never" }, world.ctx).catch((cause: unknown) => cause));
+        refusals.push(await world.mesh.readAccount({}, world.ctx).catch((cause: unknown) => cause));
+      }, world.ctx));
+      expect(refusals.map(refusedBy)).toEqual(["audit refused", "audit refused", "audit refused", "audit refused"]);
+      expect(world.log).not.toContain("tally ran");
+      expect(error).toBeInstanceOf(FrameworkError);
+      expect(((error as Error).cause as Error).message).toBe("audit refused");
+      expect(await rows(world)).toEqual(before);
+    } finally { await world.db.close(); }
+  });
+
+  test("a nested `transaction`: refused before its callback runs, and nothing is stored; the next transaction works", async () => {
+    const world = await fresh();
+    try {
+      const before = await rows(world);
+      let ran = 0;
+      let refusal: unknown;
+      const error = await failure(world.mesh.transaction(async ({ actions }: any) => {
+        await actions.openAccount({ name: "kept?" });
+        try { await actions.failAudit({ what: "first" }); } catch { /* caught on purpose */ }
+        refusal = await world.mesh.transaction(async ({ actions: nested }: any) => { ran++; await nested.tallyAudit({ what: "nested" }); }, world.ctx)
+          .catch((cause: unknown) => cause);
+      }, world.ctx));
+      expect(refusedBy(refusal)).toBe("audit refused");
+      expect(ran).toBe(0);
+      expect(error).toBeInstanceOf(FrameworkError);
+      expect(await rows(world)).toEqual(before);
+      // The mark belongs to that transaction: the next one runs and commits.
+      world.log.length = 0;
+      await world.mesh.transaction(async ({ actions }: any) => { await actions.tallyAudit({ what: "later" }); }, world.ctx);
+      expect(world.log).toEqual(["tally ran"]);
+      expect((await rows(world)).audits).toHaveLength(before.audits.length + 1);
     } finally { await world.db.close(); }
   });
 });

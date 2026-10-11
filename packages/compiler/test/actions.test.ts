@@ -270,7 +270,7 @@ function memoryLayer(): DataLayer {
     },
     async deleteByKey(table, key) { return of(table).delete(key.id); },
   };
-  return { transaction: (run) => run(ops), close: async () => {} };
+  return { transaction: (run) => run(ops), refuseIfFailed: () => {}, close: async () => {} };
 }
 
 describe("the generated file", () => {

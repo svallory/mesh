@@ -117,7 +117,9 @@ export interface DataLayer {
    * a joined call fails, the transaction is marked, and the outer call rejects with a
    * FrameworkError (cause: the inner error) and rolls back everything even if its callback
    * caught the error. This holds for parallel joined calls; there are no savepoints, so an
-   * inner failure cannot be undone alone. Joined calls run one at a time: calls joined from
+   * inner failure cannot be undone alone. Fail fast: once a joined call failed, a call that joins the transaction
+   * afterwards (or that was queued to join it and whose turn comes after the failure) is refused before its callback
+   * runs, with a FrameworkError whose cause is the first failure. Joined calls run one at a time: calls joined from
    * the same callback (siblings started together, as with Promise.all) run in the order they
    * were made, each after the one before it settled, so two read-then-write calls on one row
    * cannot both read before either writes. A call joined from inside a joined call queues
@@ -127,6 +129,13 @@ export interface DataLayer {
    * made after the outer transaction settled starts a new one.
    */
   transaction<T>(run: (tx: DataOperations) => Promise<T>): Promise<T>;
+  /**
+   * Refuse a call made inside a transaction that a joined call already failed. Every generated function calls this
+   * first, before it casts its input: there it throws the FrameworkError that `transaction` would refuse the call with
+   * (cause: the first failure), so the call does no work at all. Anywhere else (outside a transaction, inside one that
+   * has not failed, or after the failed one settled) it returns. It opens nothing, takes no lock and waits for nothing.
+   */
+  refuseIfFailed(): void;
   /** Release the adapter's connection and other owned handles. Rejects while
    * transactions are running or queued, leaving the layer open. Idempotent.
    * Releases handles only: a later transaction must open the layer again, on the

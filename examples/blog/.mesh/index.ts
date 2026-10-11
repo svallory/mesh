@@ -125,6 +125,7 @@ function $isDataLayer(value: unknown): value is $DataLayer {
     typeof value === "object" &&
     value !== null &&
     typeof (value as Partial<$DataLayer>).transaction === "function" &&
+    typeof (value as Partial<$DataLayer>).refuseIfFailed === "function" &&
     typeof (value as Partial<$DataLayer>).close === "function"
   );
 }
@@ -142,7 +143,7 @@ export async function connect(): Promise<void> {
   const data: unknown = config.data;
   if (!$isDataLayer(data))
     throw new $FrameworkError(
-      `The data adapter "${config.data.name}" configured in mesh.config.ts has no run-time half: connect() needs a data layer with transaction() and close()`,
+      `The data adapter "${config.data.name}" configured in mesh.config.ts has no run-time half: connect() needs a data layer with transaction(), refuseIfFailed() and close()`,
     );
   if ($defaultLayer)
     throw new $FrameworkError("connect() was called while connected; call disconnect() first");

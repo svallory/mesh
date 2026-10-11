@@ -321,16 +321,49 @@ export function contractV1Checks(makeLayer: () => Promise<DataLayerFixtureV1>, m
       assert((await layer.transaction((tx) => tx.select(uuidTable))).length === 0, "nothing of that transaction may commit");
     })],
     ["one failing joined call among parallel ones rolls back all of them", withFixture(async ({ layer, uuidTable }) => {
+      const failed = new Error("b failed");
+      let ranAfter = 0;
+      let results: PromiseSettledResult<void>[] = [];
       const outcome = await failure(layer, async () => {
-        const results = await Promise.allSettled([
+        // Joined calls run one at a time, in call order (base suite): a runs, b fails, c's turn comes after the failure.
+        results = await Promise.allSettled([
           layer.transaction(async (tx) => { await tx.insert(uuidTable, { label: "a" }); }),
-          layer.transaction(async (tx) => { await tx.insert(uuidTable, { label: "b" }); throw new Error("b failed"); }),
-          layer.transaction(async (tx) => { await tx.insert(uuidTable, { label: "c" }); }),
+          layer.transaction(async (tx) => { await tx.insert(uuidTable, { label: "b" }); throw failed; }),
+          layer.transaction(async (tx) => { ranAfter++; await tx.insert(uuidTable, { label: "c" }); }),
         ]);
-        assert(results.filter((result) => result.status === "rejected").length === 1, "exactly one joined call fails");
       });
+      const [a, b, c] = results;
+      assert(a?.status === "fulfilled", "a joined call made before the failure must run");
+      assert(b?.status === "rejected" && b.reason === failed, "the failing joined call must reject with its own error");
+      assert(c?.status === "rejected" && c.reason instanceof FrameworkError && c.reason.cause === failed,
+        "a joined call whose turn comes after a failure must be refused with a FrameworkError whose cause is that failure");
+      assert(ranAfter === 0, "a joined call whose turn comes after a failure must not run");
       assert(outcome instanceof FrameworkError, "the outer call must reject after a parallel joined call failed");
       assert((await layer.transaction((tx) => tx.select(uuidTable))).length === 0, "no parallel joined write may commit");
+    })],
+    ["a call that joins a failed transaction is refused before it runs, and refuseIfFailed refuses only there", withFixture(async ({ layer, uuidTable }) => {
+      const first = new Error("first");
+      const refusedBy = (probe: () => void): unknown => { try { probe(); return undefined; } catch (cause) { return cause; } };
+      assert(refusedBy(() => layer.refuseIfFailed()) === undefined, "refuseIfFailed must return outside a transaction");
+      let healthy: unknown, probed: unknown, refused: unknown, again: unknown;
+      let ran = 0;
+      const outcome = await failure(layer, async (tx) => {
+        healthy = refusedBy(() => layer.refuseIfFailed());
+        await tx.insert(uuidTable, { label: "outer" });
+        await layer.transaction(async () => { throw first; }).catch(() => undefined);
+        probed = refusedBy(() => layer.refuseIfFailed());
+        refused = await layer.transaction(async (joined) => { ran++; await joined.insert(uuidTable, { label: "after" }); }).then(() => "ran", (cause: unknown) => cause);
+        // A refusal does not clear the mark: the call after it is refused too.
+        again = await layer.transaction(async () => { ran++; }).then(() => "ran", (cause: unknown) => cause);
+      });
+      assert(healthy === undefined, "refuseIfFailed must return inside a transaction that has not failed");
+      assert(probed instanceof FrameworkError && probed.cause === first, "refuseIfFailed inside a failed transaction must throw a FrameworkError whose cause is the first failure");
+      assert(refused instanceof FrameworkError && refused.cause === first, "a call that joins a failed transaction must be refused with a FrameworkError whose cause is the first failure");
+      assert(again instanceof FrameworkError && again.cause === first, "every later call that joins a failed transaction must be refused");
+      assert(ran === 0, "a call that joins a failed transaction must not run");
+      assert(outcome instanceof FrameworkError && outcome.cause === first, "the outer call must still reject with the first failure as its cause");
+      assert((await layer.transaction((joined) => joined.select(uuidTable))).length === 0, "nothing of a failed transaction may commit");
+      assert(refusedBy(() => layer.refuseIfFailed()) === undefined, "refuseIfFailed must return once the failed transaction settled");
     })],
     ["parallel inserts with integer fill get distinct consecutive keys", withFixture(async ({ layer, integerTable }) => {
       if (!declared("integer-key-fill")) return;

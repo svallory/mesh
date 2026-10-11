@@ -10,6 +10,7 @@ function layerOf(): { layer: DataLayer; current: { ops: DataOperations } } {
   const current = { ops: {} as DataOperations };
   const layer = {
     transaction: <T>(run: (ops: DataOperations) => Promise<T>) => run(current.ops),
+    refuseIfFailed: () => {},
     close: async () => {},
   } as unknown as DataLayer;
   return { layer, current };
@@ -139,14 +140,14 @@ describe("castInput and failJoined", () => {
 
   test("a value that casts comes back without touching the layer", async () => {
     let opened = 0;
-    const layer = { transaction: async () => { opened++; }, close: async () => {} } as unknown as DataLayer;
+    const layer = { transaction: async () => { opened++; }, refuseIfFailed: () => {}, close: async () => {} } as unknown as DataLayer;
     expect(await castInput(layer, positive, 3)).toBe(3);
     expect(opened).toBe(0);
   });
 
   test("a failed cast passes through the layer's transaction, so a running one is marked, and rejects with the cast error itself", async () => {
     const seen: unknown[] = [];
-    const layer = { transaction: (run: () => Promise<unknown>) => run().catch((cause) => { seen.push(cause); throw cause; }), close: async () => {} } as unknown as DataLayer;
+    const layer = { transaction: (run: () => Promise<unknown>) => run().catch((cause) => { seen.push(cause); throw cause; }), refuseIfFailed: () => {}, close: async () => {} } as unknown as DataLayer;
     const error = await castInput(layer, positive, -1).catch((cause: unknown) => cause);
     expect(error).toBeInstanceOf(InvalidInputError);
     expect(seen).toEqual([error]);
@@ -154,9 +155,9 @@ describe("castInput and failJoined", () => {
 
   test("whatever the layer's transaction rejects with, the caller gets the original error", async () => {
     const original = new Error("the original");
-    const broken = { transaction: async () => { throw new FrameworkError("the layer is unusable"); }, close: async () => {} } as unknown as DataLayer;
+    const broken = { transaction: async () => { throw new FrameworkError("the layer is unusable"); }, refuseIfFailed: () => {}, close: async () => {} } as unknown as DataLayer;
     await expect(failJoined(broken, original)).rejects.toBe(original);
-    const resolving = { transaction: async () => "swallowed", close: async () => {} } as unknown as DataLayer;
+    const resolving = { transaction: async () => "swallowed", refuseIfFailed: () => {}, close: async () => {} } as unknown as DataLayer;
     await expect(failJoined(resolving, original)).rejects.toBe(original);
   });
 });

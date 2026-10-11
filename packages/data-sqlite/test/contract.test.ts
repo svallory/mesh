@@ -28,7 +28,7 @@ export function fixtureFactory(kind: "memory" | "file", dirs: string[]) {
     try { await createSchema(layer, tables); }
     catch (error) { await layer.close(); throw error; }
     return {
-      layer: { transaction: layer.transaction, close: layer.close } satisfies DataLayer,
+      layer: { transaction: layer.transaction, refuseIfFailed: layer.refuseIfFailed, close: layer.close } satisfies DataLayer,
       table: records, sampleRow, secondRow, key: { id: sampleRow.id }, secondKey: { id: secondRow.id },
       changes: { title: "Changed" },
       uuidTable, integerTable, taskTable,
@@ -58,11 +58,12 @@ describe("the capability manifest", () => {
 
 describe("the suite catches adapters that break the contract", () => {
   // A wrapper that breaks one promise: each case must fail a named check.
-  async function broken(change: (layer: DataLayer) => DataLayer, name: string, message: string) {
+  // A wrapper that does not name `refuseIfFailed` keeps the real one.
+  async function broken(change: (layer: DataLayer) => Pick<DataLayer, "transaction" | "close"> & Partial<DataLayer>, name: string, message: string) {
     const make = fixtureFactory("memory", []);
     const checks = dataLayerConformanceV1(async () => {
       const fixture = await make();
-      return { ...fixture, layer: change(fixture.layer) };
+      return { ...fixture, layer: { refuseIfFailed: fixture.layer.refuseIfFailed, ...change(fixture.layer) } };
     }, capabilities);
     await expect(checks[name]!()).rejects.toThrow(message);
   }
@@ -116,6 +117,42 @@ describe("the suite catches adapters that break the contract", () => {
       // Joins by handing the outer operations to the inner callback, with no failure mark.
       transaction: (run) => outer.getStore() ? run(outer.getStore()!) : layer.transaction((tx) => outer.run(tx, () => run(tx))),
     }), "a joined call that fails rejects the commit even when the outer callback catches it", "must reject the commit");
+  });
+
+  // Joins through its own context and marks a failure, so the commit is still refused, but never fails fast.
+  function slowToRefuse(refuses: boolean) {
+    const joined = new AsyncLocalStorage<{ tx: DataOperations; failed?: { cause: unknown } }>();
+    return (layer: DataLayer): DataLayer => ({
+      close: layer.close,
+      refuseIfFailed: () => {
+        const failed = joined.getStore()?.failed;
+        if (refuses && failed) throw new FrameworkError("refused", { cause: failed.cause });
+      },
+      transaction: (run) => {
+        const state = joined.getStore();
+        if (state) return run(state.tx).catch((cause: unknown) => { state.failed ??= { cause }; throw cause; });
+        return layer.transaction((tx) => {
+          const own: { tx: DataOperations; failed?: { cause: unknown } } = { tx };
+          return joined.run(own, async () => {
+            const result = await run(tx);
+            if (own.failed) throw new FrameworkError("a joined call failed", { cause: own.failed.cause });
+            return result;
+          });
+        });
+      },
+    });
+  }
+
+  test("a layer whose refuseIfFailed never refuses", async () => {
+    await broken(slowToRefuse(false), "a call that joins a failed transaction is refused before it runs, and refuseIfFailed refuses only there",
+      "refuseIfFailed inside a failed transaction must throw");
+  });
+
+  test("a layer that runs a call joined after a failure", async () => {
+    await broken(slowToRefuse(true), "a call that joins a failed transaction is refused before it runs, and refuseIfFailed refuses only there",
+      "a call that joins a failed transaction must be refused");
+    await broken(slowToRefuse(true), "one failing joined call among parallel ones rolls back all of them",
+      "a joined call whose turn comes after a failure must be refused");
   });
 
   test("a manifest that names a capability outside the union is refused", async () => {

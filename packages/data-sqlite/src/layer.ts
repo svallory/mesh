@@ -24,8 +24,8 @@ export interface SQLiteLayer extends DataAdapter, DataLayer {
   readonly capabilities: CapabilityManifest;
   readonly options: SQLiteOptions;
   /** Transactions are serialised per connection and await the callback before commit.
-   * A call inside a running transaction joins it (see `DataLayer.transaction`), and calls joined to one transaction
-   * run one at a time. There is no callback timeout: a callback
+   * A call inside a running transaction joins it (see `DataLayer.transaction`), calls joined to one transaction
+   * run one at a time, and once one of them failed the later ones are refused. There is no callback timeout: a callback
    * that never settles holds the queue; close rejects with running/queued counts
    * and leaves the layer open rather than rolling back under a running callback.
    * A failed rollback is fatal: queued and later work rejects until the caller
@@ -55,6 +55,11 @@ interface Token { active: boolean; operations?: DataOperations; failed?: { cause
  * call's frame, not on the one it waits in, so it never waits for itself.
  */
 interface Frame { readonly token: Token; tail: Promise<void> }
+
+/** What a call that joins a transaction a joined call already failed gets instead of running. */
+function refusal(failed: { cause: unknown }): FrameworkError {
+  return new FrameworkError("A call joined a transaction that an earlier joined call failed, so it was refused before it ran: the transaction rolls back", { cause: failed.cause });
+}
 
 interface State {
   exclusive<T>(run: (db: BunSQLiteDatabase, token: Token) => Promise<T>): Promise<T>;
@@ -136,10 +141,14 @@ export function sqlite(options: SQLiteOptions): SQLiteLayer {
         // read-then-write calls on one row cannot both read before either writes. It runs in a frame of its own.
         // Rollback-only: a joined call that fails poisons the whole transaction, even if the
         // outer callback catches the error, so a half-done inner call can never commit.
+        // Fail fast: once a joined call failed, a call that joins afterwards is refused before its callback runs, at
+        // once or, if it was queued before the failure, when its turn comes.
         const { token } = frame;
+        if (token.failed) return Promise.reject(refusal(token.failed));
         const operations = frame.token.operations;
         const work = frame.tail.then(() => {
           if (!token.active) throw new FrameworkError("A call joined a transaction that ended before the call's turn came: await every call joined to a transaction before its callback returns");
+          if (token.failed) throw refusal(token.failed);
           // Inside then, so a callback that throws before returning a promise is caught too.
           return context.run({ token, tail: Promise.resolve() }, () => run(operations));
         }).catch((cause: unknown) => { token.failed ??= { cause }; throw cause; });
@@ -190,6 +199,10 @@ export function sqlite(options: SQLiteOptions): SQLiteLayer {
           throw cause;
         } finally { active = false; }
       });
+    },
+    refuseIfFailed() {
+      const failed = context.getStore()?.token;
+      if (failed?.active && failed.failed) throw refusal(failed.failed);
     },
     async close() {
       if (running || queued) throw new FrameworkError(`Cannot close SQLite data layer: ${running} running and ${queued} queued; wait for transactions to settle`);
