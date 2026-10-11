@@ -42,6 +42,6 @@ export async function recordEvent(
 export async function readEvent<const L extends readonly (keyof EventLoadable)[] = readonly []>(
   input: Omit<ReadEventInput, "load"> & EventLoadArg<L>,
   ...context: $ContextArgument
-): Promise<EventWith<EventLoadNames<L>>[]> {
+): Promise<L extends unknown ? EventWith<EventLoadNames<L>>[] : never> {
   return $delegate("readEvent", (binding) => binding.readEvent(input, ...context));
 }

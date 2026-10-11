@@ -173,7 +173,7 @@ export async function abandonAttempt(
 export async function readAttempt<const L extends readonly (keyof AttemptLoadable)[] = readonly []>(
   input: Omit<ReadAttemptInput, "load"> & AttemptLoadArg<L>,
   ...context: $ContextArgument
-): Promise<AttemptWith<AttemptLoadNames<L>>[]> {
+): Promise<L extends unknown ? AttemptWith<AttemptLoadNames<L>>[] : never> {
   return $delegate("readAttempt", (binding) => binding.readAttempt(input, ...context));
 }
 
@@ -196,7 +196,7 @@ export async function readInvocation<
 >(
   input: Omit<ReadInvocationInput, "load"> & InvocationLoadArg<L>,
   ...context: $ContextArgument
-): Promise<InvocationWith<InvocationLoadNames<L>>[]> {
+): Promise<L extends unknown ? InvocationWith<InvocationLoadNames<L>>[] : never> {
   return $delegate("readInvocation", (binding) => binding.readInvocation(input, ...context));
 }
 
@@ -231,7 +231,7 @@ export async function retireMachine(
 export async function readMachine<const L extends readonly (keyof MachineLoadable)[] = readonly []>(
   input: Omit<ReadMachineInput, "load"> & MachineLoadArg<L>,
   ...context: $ContextArgument
-): Promise<MachineWith<MachineLoadNames<L>>[]> {
+): Promise<L extends unknown ? MachineWith<MachineLoadNames<L>>[] : never> {
   return $delegate("readMachine", (binding) => binding.readMachine(input, ...context));
 }
 
@@ -250,7 +250,7 @@ export async function settleRun(input: SettleRunInput, ...context: $ContextArgum
 export async function readRun<const L extends readonly (keyof RunLoadable)[] = readonly []>(
   input: Omit<ReadRunInput, "load"> & RunLoadArg<L>,
   ...context: $ContextArgument
-): Promise<RunWith<RunLoadNames<L>>[]> {
+): Promise<L extends unknown ? RunWith<RunLoadNames<L>>[] : never> {
   return $delegate("readRun", (binding) => binding.readRun(input, ...context));
 }
 
@@ -286,7 +286,7 @@ export async function readSessionReference<
 >(
   input: Omit<ReadSessionReferenceInput, "load"> & SessionReferenceLoadArg<L>,
   ...context: $ContextArgument
-): Promise<SessionReferenceWith<SessionReferenceLoadNames<L>>[]> {
+): Promise<L extends unknown ? SessionReferenceWith<SessionReferenceLoadNames<L>>[] : never> {
   return $delegate("readSessionReference", (binding) =>
     binding.readSessionReference(input, ...context),
   );

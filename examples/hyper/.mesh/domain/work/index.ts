@@ -261,7 +261,7 @@ export async function readAssignment<
 >(
   input: Omit<ReadAssignmentInput, "load"> & AssignmentLoadArg<L>,
   ...context: $ContextArgument
-): Promise<AssignmentWith<AssignmentLoadNames<L>>[]> {
+): Promise<L extends unknown ? AssignmentWith<AssignmentLoadNames<L>>[] : never> {
   return $delegate("readAssignment", (binding) => binding.readAssignment(input, ...context));
 }
 
@@ -307,7 +307,7 @@ export async function endClaim(input: EndClaimInput, ...context: $ContextArgumen
 export async function readClaim<const L extends readonly (keyof ClaimLoadable)[] = readonly []>(
   input: Omit<ReadClaimInput, "load"> & ClaimLoadArg<L>,
   ...context: $ContextArgument
-): Promise<ClaimWith<ClaimLoadNames<L>>[]> {
+): Promise<L extends unknown ? ClaimWith<ClaimLoadNames<L>>[] : never> {
   return $delegate("readClaim", (binding) => binding.readClaim(input, ...context));
 }
 
@@ -323,7 +323,7 @@ export async function readCompletion<
 >(
   input: Omit<ReadCompletionInput, "load"> & CompletionLoadArg<L>,
   ...context: $ContextArgument
-): Promise<CompletionWith<CompletionLoadNames<L>>[]> {
+): Promise<L extends unknown ? CompletionWith<CompletionLoadNames<L>>[] : never> {
   return $delegate("readCompletion", (binding) => binding.readCompletion(input, ...context));
 }
 
@@ -346,7 +346,7 @@ export async function readDependency<
 >(
   input: Omit<ReadDependencyInput, "load"> & DependencyLoadArg<L>,
   ...context: $ContextArgument
-): Promise<DependencyWith<DependencyLoadNames<L>>[]> {
+): Promise<L extends unknown ? DependencyWith<DependencyLoadNames<L>>[] : never> {
   return $delegate("readDependency", (binding) => binding.readDependency(input, ...context));
 }
 
@@ -364,7 +364,7 @@ export async function readEvidenceReference<
 >(
   input: Omit<ReadEvidenceReferenceInput, "load"> & EvidenceReferenceLoadArg<L>,
   ...context: $ContextArgument
-): Promise<EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[]> {
+): Promise<L extends unknown ? EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[] : never> {
   return $delegate("readEvidenceReference", (binding) =>
     binding.readEvidenceReference(input, ...context),
   );
@@ -382,7 +382,7 @@ export async function readLateResult<
 >(
   input: Omit<ReadLateResultInput, "load"> & LateResultLoadArg<L>,
   ...context: $ContextArgument
-): Promise<LateResultWith<LateResultLoadNames<L>>[]> {
+): Promise<L extends unknown ? LateResultWith<LateResultLoadNames<L>>[] : never> {
   return $delegate("readLateResult", (binding) => binding.readLateResult(input, ...context));
 }
 
@@ -403,7 +403,7 @@ export async function returnReview(
 export async function readReview<const L extends readonly (keyof ReviewLoadable)[] = readonly []>(
   input: Omit<ReadReviewInput, "load"> & ReviewLoadArg<L>,
   ...context: $ContextArgument
-): Promise<ReviewWith<ReviewLoadNames<L>>[]> {
+): Promise<L extends unknown ? ReviewWith<ReviewLoadNames<L>>[] : never> {
   return $delegate("readReview", (binding) => binding.readReview(input, ...context));
 }
 
@@ -444,7 +444,7 @@ export async function readSubmission<
 >(
   input: Omit<ReadSubmissionInput, "load"> & SubmissionLoadArg<L>,
   ...context: $ContextArgument
-): Promise<SubmissionWith<SubmissionLoadNames<L>>[]> {
+): Promise<L extends unknown ? SubmissionWith<SubmissionLoadNames<L>>[] : never> {
   return $delegate("readSubmission", (binding) => binding.readSubmission(input, ...context));
 }
 
@@ -518,6 +518,6 @@ export async function unassignTask(
 export async function readTask<const L extends readonly (keyof TaskLoadable)[] = readonly []>(
   input: Omit<ReadTaskInput, "load"> & TaskLoadArg<L>,
   ...context: $ContextArgument
-): Promise<TaskWith<TaskLoadNames<L>>[]> {
+): Promise<L extends unknown ? TaskWith<TaskLoadNames<L>>[] : never> {
   return $delegate("readTask", (binding) => binding.readTask(input, ...context));
 }

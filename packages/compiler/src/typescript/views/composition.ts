@@ -60,7 +60,7 @@ export function compositionView(input: EmitInput): CompositionView {
     const used = new Set<string>();
     for (const method of view.methods) {
       const readOnlyReturnType = method.isRead && method.generics
-        ? `readonly ($DeepReadonly<${record}> & Pick<$DeepReadonly<${record}Loadable>, ${record}LoadNames<L>>)[]`
+        ? `(L extends unknown ? readonly ($DeepReadonly<${record}> & Pick<$DeepReadonly<${record}Loadable>, ${record}LoadNames<L>>)[] : never)`
         : `$DeepReadonly<${method.returnType}>`;
       const fn = { name: method.functionName, generics: method.generics, inputType: method.inputType, returnType: method.returnType, readOnlyReturnType };
       actions.push(fn);

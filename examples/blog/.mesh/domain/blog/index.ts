@@ -67,7 +67,7 @@ export { loadCommentFields, loadPostFields } from "../../load";
 export async function readComment<const L extends readonly (keyof CommentLoadable)[] = readonly []>(
   input: Omit<ReadCommentInput, "load"> & CommentLoadArg<L>,
   ...context: $ContextArgument
-): Promise<CommentWith<CommentLoadNames<L>>[]> {
+): Promise<L extends unknown ? CommentWith<CommentLoadNames<L>>[] : never> {
   return $delegate("readComment", (binding) => binding.readComment(input, ...context));
 }
 
@@ -95,14 +95,14 @@ export async function archivePost(
 export async function publishedPost<const L extends readonly (keyof PostLoadable)[] = readonly []>(
   input: Omit<PublishedPostInput, "load"> & PostLoadArg<L>,
   ...context: $ContextArgument
-): Promise<PostWith<PostLoadNames<L>>[]> {
+): Promise<L extends unknown ? PostWith<PostLoadNames<L>>[] : never> {
   return $delegate("publishedPost", (binding) => binding.publishedPost(input, ...context));
 }
 
 export async function readPost<const L extends readonly (keyof PostLoadable)[] = readonly []>(
   input: Omit<ReadPostInput, "load"> & PostLoadArg<L>,
   ...context: $ContextArgument
-): Promise<PostWith<PostLoadNames<L>>[]> {
+): Promise<L extends unknown ? PostWith<PostLoadNames<L>>[] : never> {
   return $delegate("readPost", (binding) => binding.readPost(input, ...context));
 }
 

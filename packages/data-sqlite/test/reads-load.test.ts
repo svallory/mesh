@@ -174,13 +174,13 @@ describe("the generated files", () => {
     } finally { await rm(join(dir, "check-load.ts")); }
   });
 
-  test("a load that does not name its fields as a tuple claims nothing: a widened list and an input type give the bare record", async () => {
+  test("a load that does not name its fields as a tuple claims nothing: a widened list and an input type give the bare record, and a union of tuples gives a union of results", async () => {
     await Bun.write(join(dir, "check-tuple.ts"), [
       'import { bind } from "./.mesh/index.ts";',
       'import type { ReadProjectInput } from "./.mesh/domain/index.ts";',
       "const mesh = bind(null as never);",
       "const context = { actor: { id: 'a' } };",
-      "export async function calls(): Promise<void> {",
+      "export async function calls(flag: boolean): Promise<void> {",
       "  const names: ('label' | 'taskCount')[] = [];",
       "  const [widened] = await mesh.readProject({ load: names }, context);",
       "  // @ts-expect-error a list that does not say which names it holds loads none, as far as the type knows",
@@ -193,6 +193,22 @@ describe("the generated files", () => {
       "  await mesh.readProject<readonly ['label']>({}, context);",
       "  const [explicit] = await mesh.readProject<readonly ['label']>({ load: ['label'] }, context);",
       "  const label: string = explicit!.label;",
+      "  // A union of tuples gives a union of results: only what every arm loads is readable, the rest is narrowed.",
+      "  const [conditional] = await mesh.readProject({ load: flag ? ['label'] : [] }, context);",
+      "  // @ts-expect-error a conditional load may not have loaded the label",
+      "  void conditional!.label;",
+      "  if ('label' in conditional!) { const narrowed: string = conditional.label; void narrowed; }",
+      "  const either: readonly ['label'] | readonly ['taskCount'] = flag ? ['label'] : ['taskCount'];",
+      "  const [fromVariable] = await mesh.readProject({ load: either }, context);",
+      "  // @ts-expect-error a variable of a union-of-tuples type loads one list or the other",
+      "  void fromVariable!.label;",
+      "  // @ts-expect-error nor the other",
+      "  void fromVariable!.taskCount;",
+      "  const [fromArgument] = await mesh.readProject<readonly ['label'] | readonly []>({ load: [] }, context);",
+      "  // @ts-expect-error a union type argument is a union of results",
+      "  void fromArgument!.label;",
+      "  const [both] = await mesh.readProject({ load: ['label', 'taskCount'] }, context);",
+      "  void both!.label; void both!.taskCount;",
       "  const [empty] = await mesh.readProject({ load: [] }, context);",
       "  // @ts-expect-error an empty list loads nothing",
       "  void empty!.label;",

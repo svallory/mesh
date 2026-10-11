@@ -61,7 +61,7 @@ export function bindCollaboratorReads(layer: $DataLayer, options: $BindOptions =
       input: Omit<ReadCollaboratorInput, "load"> & CollaboratorLoadArg<L>,
       context?: unknown,
       clock?: () => Date,
-    ): Promise<CollaboratorWith<CollaboratorLoadNames<L>>[]> {
+    ): Promise<L extends unknown ? CollaboratorWith<CollaboratorLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readCollaboratorInput, input);
       return layer.transaction(async (tx) => {
@@ -72,14 +72,16 @@ export function bindCollaboratorReads(layer: $DataLayer, options: $BindOptions =
           offset: parsed.offset,
         })) as Collaborator[];
         if (!parsed.load?.length)
-          return $rows as unknown as CollaboratorWith<CollaboratorLoadNames<L>>[];
+          return $rows as unknown as L extends unknown
+            ? CollaboratorWith<CollaboratorLoadNames<L>>[]
+            : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "Collaborator", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
-        })) as unknown as CollaboratorWith<CollaboratorLoadNames<L>>[];
+        })) as unknown as L extends unknown ? CollaboratorWith<CollaboratorLoadNames<L>>[] : never;
       });
     },
   });
@@ -339,7 +341,7 @@ export function bindCollaborator(
     async read<const L extends readonly (keyof CollaboratorLoadable)[] = readonly []>(
       input: Omit<ReadCollaboratorInput, "load"> & CollaboratorLoadArg<L>,
       ...[context]: $ContextArgument
-    ): Promise<CollaboratorWith<CollaboratorLoadNames<L>>[]> {
+    ): Promise<L extends unknown ? CollaboratorWith<CollaboratorLoadNames<L>>[] : never> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
       return $reads.read(input, context);
     },

@@ -49,7 +49,7 @@ export function bindEvidenceReferenceReads(layer: $DataLayer, options: $BindOpti
       input: Omit<ReadEvidenceReferenceInput, "load"> & EvidenceReferenceLoadArg<L>,
       context?: unknown,
       clock?: () => Date,
-    ): Promise<EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[]> {
+    ): Promise<L extends unknown ? EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readEvidenceReferenceInput, input);
       return layer.transaction(async (tx) => {
@@ -60,14 +60,18 @@ export function bindEvidenceReferenceReads(layer: $DataLayer, options: $BindOpti
           offset: parsed.offset,
         })) as EvidenceReference[];
         if (!parsed.load?.length)
-          return $rows as unknown as EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[];
+          return $rows as unknown as L extends unknown
+            ? EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[]
+            : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "EvidenceReference", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
-        })) as unknown as EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[];
+        })) as unknown as L extends unknown
+          ? EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[]
+          : never;
       });
     },
   });
@@ -145,7 +149,7 @@ export function bindEvidenceReference(
     async read<const L extends readonly (keyof EvidenceReferenceLoadable)[] = readonly []>(
       input: Omit<ReadEvidenceReferenceInput, "load"> & EvidenceReferenceLoadArg<L>,
       ...[context]: $ContextArgument
-    ): Promise<EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[]> {
+    ): Promise<L extends unknown ? EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[] : never> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
       return $reads.read(input, context);
     },

@@ -61,7 +61,7 @@ export function bindSessionReferenceReads(layer: $DataLayer, options: $BindOptio
       input: Omit<ReadSessionReferenceInput, "load"> & SessionReferenceLoadArg<L>,
       context?: unknown,
       clock?: () => Date,
-    ): Promise<SessionReferenceWith<SessionReferenceLoadNames<L>>[]> {
+    ): Promise<L extends unknown ? SessionReferenceWith<SessionReferenceLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readSessionReferenceInput, input);
       return layer.transaction(async (tx) => {
@@ -72,14 +72,18 @@ export function bindSessionReferenceReads(layer: $DataLayer, options: $BindOptio
           offset: parsed.offset,
         })) as SessionReference[];
         if (!parsed.load?.length)
-          return $rows as unknown as SessionReferenceWith<SessionReferenceLoadNames<L>>[];
+          return $rows as unknown as L extends unknown
+            ? SessionReferenceWith<SessionReferenceLoadNames<L>>[]
+            : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "SessionReference", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
-        })) as unknown as SessionReferenceWith<SessionReferenceLoadNames<L>>[];
+        })) as unknown as L extends unknown
+          ? SessionReferenceWith<SessionReferenceLoadNames<L>>[]
+          : never;
       });
     },
   });
@@ -361,7 +365,7 @@ export function bindSessionReference(
     async read<const L extends readonly (keyof SessionReferenceLoadable)[] = readonly []>(
       input: Omit<ReadSessionReferenceInput, "load"> & SessionReferenceLoadArg<L>,
       ...[context]: $ContextArgument
-    ): Promise<SessionReferenceWith<SessionReferenceLoadNames<L>>[]> {
+    ): Promise<L extends unknown ? SessionReferenceWith<SessionReferenceLoadNames<L>>[] : never> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
       return $reads.read(input, context);
     },

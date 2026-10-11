@@ -273,7 +273,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       // The `load` member comes from the tuple `L` itself, so that TypeScript infers the names written.
       const inputType = loads ? `Omit<${input.name}, "load"> & ${recordName}LoadArg<L>` : input.name;
       const generics = loads ? loadGenerics(entity, true) : "";
-      const returnType = loads ? `${recordName}With<${recordName}LoadNames<L>>[]` : `${recordName}[]`;
+      const returnType = loads ? `(L extends unknown ? ${recordName}With<${recordName}LoadNames<L>>[] : never)` : `${recordName}[]`;
       if (loads) {
         extraTypes.add(`${recordName}With`);
         extraTypes.add(`${recordName}LoadNames`);

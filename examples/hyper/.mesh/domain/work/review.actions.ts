@@ -51,7 +51,7 @@ export function bindReviewReads(layer: $DataLayer, options: $BindOptions = {}) {
       input: Omit<ReadReviewInput, "load"> & ReviewLoadArg<L>,
       context?: unknown,
       clock?: () => Date,
-    ): Promise<ReviewWith<ReviewLoadNames<L>>[]> {
+    ): Promise<L extends unknown ? ReviewWith<ReviewLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readReviewInput, input);
       return layer.transaction(async (tx) => {
@@ -61,14 +61,15 @@ export function bindReviewReads(layer: $DataLayer, options: $BindOptions = {}) {
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Review[];
-        if (!parsed.load?.length) return $rows as unknown as ReviewWith<ReviewLoadNames<L>>[];
+        if (!parsed.load?.length)
+          return $rows as unknown as L extends unknown ? ReviewWith<ReviewLoadNames<L>>[] : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "Review", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
-        })) as unknown as ReviewWith<ReviewLoadNames<L>>[];
+        })) as unknown as L extends unknown ? ReviewWith<ReviewLoadNames<L>>[] : never;
       });
     },
   });
@@ -300,7 +301,7 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
     async read<const L extends readonly (keyof ReviewLoadable)[] = readonly []>(
       input: Omit<ReadReviewInput, "load"> & ReviewLoadArg<L>,
       ...[context]: $ContextArgument
-    ): Promise<ReviewWith<ReviewLoadNames<L>>[]> {
+    ): Promise<L extends unknown ? ReviewWith<ReviewLoadNames<L>>[] : never> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
       return $reads.read(input, context);
     },

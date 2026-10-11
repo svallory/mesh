@@ -36,7 +36,7 @@ export function bindEventReads(layer: $DataLayer, options: $BindOptions = {}) {
       input: Omit<ReadEventInput, "load"> & EventLoadArg<L>,
       context?: unknown,
       clock?: () => Date,
-    ): Promise<EventWith<EventLoadNames<L>>[]> {
+    ): Promise<L extends unknown ? EventWith<EventLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readEventInput, input);
       return layer.transaction(async (tx) => {
@@ -46,14 +46,15 @@ export function bindEventReads(layer: $DataLayer, options: $BindOptions = {}) {
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Event[];
-        if (!parsed.load?.length) return $rows as unknown as EventWith<EventLoadNames<L>>[];
+        if (!parsed.load?.length)
+          return $rows as unknown as L extends unknown ? EventWith<EventLoadNames<L>>[] : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "Event", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
-        })) as unknown as EventWith<EventLoadNames<L>>[];
+        })) as unknown as L extends unknown ? EventWith<EventLoadNames<L>>[] : never;
       });
     },
   });
@@ -100,7 +101,7 @@ export function bindEvent(layer: $DataLayer, options: $BindOptions = {}, _compos
     async read<const L extends readonly (keyof EventLoadable)[] = readonly []>(
       input: Omit<ReadEventInput, "load"> & EventLoadArg<L>,
       ...[context]: $ContextArgument
-    ): Promise<EventWith<EventLoadNames<L>>[]> {
+    ): Promise<L extends unknown ? EventWith<EventLoadNames<L>>[] : never> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
       return $reads.read(input, context);
     },

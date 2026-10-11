@@ -57,7 +57,7 @@ export function bindInvocationReads(layer: $DataLayer, options: $BindOptions = {
       input: Omit<ReadInvocationInput, "load"> & InvocationLoadArg<L>,
       context?: unknown,
       clock?: () => Date,
-    ): Promise<InvocationWith<InvocationLoadNames<L>>[]> {
+    ): Promise<L extends unknown ? InvocationWith<InvocationLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readInvocationInput, input);
       return layer.transaction(async (tx) => {
@@ -68,14 +68,16 @@ export function bindInvocationReads(layer: $DataLayer, options: $BindOptions = {
           offset: parsed.offset,
         })) as Invocation[];
         if (!parsed.load?.length)
-          return $rows as unknown as InvocationWith<InvocationLoadNames<L>>[];
+          return $rows as unknown as L extends unknown
+            ? InvocationWith<InvocationLoadNames<L>>[]
+            : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "Invocation", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
-        })) as unknown as InvocationWith<InvocationLoadNames<L>>[];
+        })) as unknown as L extends unknown ? InvocationWith<InvocationLoadNames<L>>[] : never;
       });
     },
   });
@@ -359,7 +361,7 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
     async read<const L extends readonly (keyof InvocationLoadable)[] = readonly []>(
       input: Omit<ReadInvocationInput, "load"> & InvocationLoadArg<L>,
       ...[context]: $ContextArgument
-    ): Promise<InvocationWith<InvocationLoadNames<L>>[]> {
+    ): Promise<L extends unknown ? InvocationWith<InvocationLoadNames<L>>[] : never> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
       return $reads.read(input, context);
     },

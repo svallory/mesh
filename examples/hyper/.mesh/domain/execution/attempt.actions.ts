@@ -66,7 +66,7 @@ export function bindAttemptReads(layer: $DataLayer, options: $BindOptions = {}) 
       input: Omit<ReadAttemptInput, "load"> & AttemptLoadArg<L>,
       context?: unknown,
       clock?: () => Date,
-    ): Promise<AttemptWith<AttemptLoadNames<L>>[]> {
+    ): Promise<L extends unknown ? AttemptWith<AttemptLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readAttemptInput, input);
       return layer.transaction(async (tx) => {
@@ -76,14 +76,15 @@ export function bindAttemptReads(layer: $DataLayer, options: $BindOptions = {}) 
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Attempt[];
-        if (!parsed.load?.length) return $rows as unknown as AttemptWith<AttemptLoadNames<L>>[];
+        if (!parsed.load?.length)
+          return $rows as unknown as L extends unknown ? AttemptWith<AttemptLoadNames<L>>[] : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "Attempt", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
-        })) as unknown as AttemptWith<AttemptLoadNames<L>>[];
+        })) as unknown as L extends unknown ? AttemptWith<AttemptLoadNames<L>>[] : never;
       });
     },
   });
@@ -534,7 +535,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
     async read<const L extends readonly (keyof AttemptLoadable)[] = readonly []>(
       input: Omit<ReadAttemptInput, "load"> & AttemptLoadArg<L>,
       ...[context]: $ContextArgument
-    ): Promise<AttemptWith<AttemptLoadNames<L>>[]> {
+    ): Promise<L extends unknown ? AttemptWith<AttemptLoadNames<L>>[] : never> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
       return $reads.read(input, context);
     },

@@ -65,7 +65,7 @@ export function bindPostReads(layer: $DataLayer, options: $BindOptions = {}) {
     async published<const L extends readonly (keyof PostLoadable)[] = readonly []>(
       input: Omit<PublishedPostInput, "load"> & PostLoadArg<L>,
       _context?: unknown,
-    ): Promise<PostWith<PostLoadNames<L>>[]> {
+    ): Promise<L extends unknown ? PostWith<PostLoadNames<L>>[] : never> {
       await $castInput(layer, publishedPostInput, input);
       return $failJoined(
         layer,
@@ -79,7 +79,7 @@ export function bindPostReads(layer: $DataLayer, options: $BindOptions = {}) {
       input: Omit<ReadPostInput, "load"> & PostLoadArg<L>,
       context?: unknown,
       clock?: () => Date,
-    ): Promise<PostWith<PostLoadNames<L>>[]> {
+    ): Promise<L extends unknown ? PostWith<PostLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readPostInput, input);
       return layer.transaction(async (tx) => {
@@ -90,14 +90,15 @@ export function bindPostReads(layer: $DataLayer, options: $BindOptions = {}) {
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Post[];
-        if (!parsed.load?.length) return $rows as unknown as PostWith<PostLoadNames<L>>[];
+        if (!parsed.load?.length)
+          return $rows as unknown as L extends unknown ? PostWith<PostLoadNames<L>>[] : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "Post", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
-        })) as unknown as PostWith<PostLoadNames<L>>[];
+        })) as unknown as L extends unknown ? PostWith<PostLoadNames<L>>[] : never;
       });
     },
   });
@@ -231,7 +232,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
     async published<const L extends readonly (keyof PostLoadable)[] = readonly []>(
       input: Omit<PublishedPostInput, "load"> & PostLoadArg<L>,
       ...[context]: $ContextArgument
-    ): Promise<PostWith<PostLoadNames<L>>[]> {
+    ): Promise<L extends unknown ? PostWith<PostLoadNames<L>>[] : never> {
       // Not run in this version: on:load published; policies public
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
       return $reads.published(input, context);
@@ -240,7 +241,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
     async read<const L extends readonly (keyof PostLoadable)[] = readonly []>(
       input: Omit<ReadPostInput, "load"> & PostLoadArg<L>,
       ...[context]: $ContextArgument
-    ): Promise<PostWith<PostLoadNames<L>>[]> {
+    ): Promise<L extends unknown ? PostWith<PostLoadNames<L>>[] : never> {
       // Not run in this version: on:load published; policies public
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
       return $reads.read(input, context);

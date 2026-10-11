@@ -104,9 +104,9 @@ describe("actions view", () => {
       ["rename", "renameArticle", "RenameArticleInput", "renameArticleInput", "Article"],
       ["publish", "publishArticle", "PublishArticleInput", "publishArticleInput", 'ArticleWith<"author">'],
       ["purge", "purgeArticle", "PurgeArticleInput", "purgeArticleInput", "void"],
-      ["live", "liveArticle", 'Omit<LiveArticleInput, "load"> & ArticleLoadArg<L>', "liveArticleInput", "ArticleWith<ArticleLoadNames<L>>[]"],
-      ["load", "loadArticle", 'Omit<LoadArticleInput, "load"> & ArticleLoadArg<L>', "loadArticleInput", "ArticleWith<ArticleLoadNames<L>>[]"],
-      ["read", "readArticle", 'Omit<ReadArticleInput, "load"> & ArticleLoadArg<L>', "readArticleInput", "ArticleWith<ArticleLoadNames<L>>[]"],
+      ["live", "liveArticle", 'Omit<LiveArticleInput, "load"> & ArticleLoadArg<L>', "liveArticleInput", "(L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)"],
+      ["load", "loadArticle", 'Omit<LoadArticleInput, "load"> & ArticleLoadArg<L>', "loadArticleInput", "(L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)"],
+      ["read", "readArticle", 'Omit<ReadArticleInput, "load"> & ArticleLoadArg<L>', "readArticleInput", "(L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)"],
       ["destroy", "destroyArticle", "DestroyArticleInput", "destroyArticleInput", "void"],
     ]);
     expect(view.runtimeValues).toEqual([
@@ -185,10 +185,10 @@ describe("actions view", () => {
     const read = view.reads.find((m) => m.name === "read")!;
     expect(read).toMatchObject({ unsupported: null, usesParsed: true, statements: [
       "const $rows = (await tx.select(tables.article, { filter: parsed.filter, sort: parsed.sort, limit: parsed.limit, offset: parsed.offset })) as Article[];",
-      "if (!parsed.load?.length) return $rows as unknown as ArticleWith<ArticleLoadNames<L>>[];",
+      "if (!parsed.load?.length) return $rows as unknown as (L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never);",
       "const $context = (context ?? {}) as unknown as Record<string, unknown>;",
       'const $clock = clock ?? $pinClock(options.clock);',
-      'return (await $loadRows($loadPlan, "Article", tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock })) as unknown as ArticleWith<ArticleLoadNames<L>>[];'],
+      'return (await $loadRows($loadPlan, "Article", tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock })) as unknown as (L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never);'],
       generics: "<const L extends readonly (keyof ArticleLoadable)[] = readonly []>", contextParam: ", context?: unknown, clock?: () => Date" });
     expect(view.methods.filter((m) => m.isRead).map((m) => [m.name, m.readsCall, m.statements])).toEqual([
       ["live", "$reads.live(input, context)", []], ["load", "$reads.load(input, context)", []], ["read", "$reads.read(input, context)", []]]);

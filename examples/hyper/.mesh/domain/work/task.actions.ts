@@ -79,7 +79,7 @@ export function bindTaskReads(layer: $DataLayer, options: $BindOptions = {}) {
       input: Omit<ReadTaskInput, "load"> & TaskLoadArg<L>,
       context?: unknown,
       clock?: () => Date,
-    ): Promise<TaskWith<TaskLoadNames<L>>[]> {
+    ): Promise<L extends unknown ? TaskWith<TaskLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readTaskInput, input);
       return layer.transaction(async (tx) => {
@@ -103,14 +103,15 @@ export function bindTaskReads(layer: $DataLayer, options: $BindOptions = {}) {
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Task[];
-        if (!parsed.load?.length) return $rows as unknown as TaskWith<TaskLoadNames<L>>[];
+        if (!parsed.load?.length)
+          return $rows as unknown as L extends unknown ? TaskWith<TaskLoadNames<L>>[] : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "Task", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
-        })) as unknown as TaskWith<TaskLoadNames<L>>[];
+        })) as unknown as L extends unknown ? TaskWith<TaskLoadNames<L>>[] : never;
       });
     },
   });
@@ -1012,7 +1013,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
     async read<const L extends readonly (keyof TaskLoadable)[] = readonly []>(
       input: Omit<ReadTaskInput, "load"> & TaskLoadArg<L>,
       ...[context]: $ContextArgument
-    ): Promise<TaskWith<TaskLoadNames<L>>[]> {
+    ): Promise<L extends unknown ? TaskWith<TaskLoadNames<L>>[] : never> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
       return $reads.read(input, context);
     },

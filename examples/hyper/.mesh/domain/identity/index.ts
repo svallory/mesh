@@ -106,7 +106,7 @@ export async function readCollaborator<
 >(
   input: Omit<ReadCollaboratorInput, "load"> & CollaboratorLoadArg<L>,
   ...context: $ContextArgument
-): Promise<CollaboratorWith<CollaboratorLoadNames<L>>[]> {
+): Promise<L extends unknown ? CollaboratorWith<CollaboratorLoadNames<L>>[] : never> {
   return $delegate("readCollaborator", (binding) => binding.readCollaborator(input, ...context));
 }
 
@@ -138,7 +138,7 @@ export async function readMembership<
 >(
   input: Omit<ReadMembershipInput, "load"> & MembershipLoadArg<L>,
   ...context: $ContextArgument
-): Promise<MembershipWith<MembershipLoadNames<L>>[]> {
+): Promise<L extends unknown ? MembershipWith<MembershipLoadNames<L>>[] : never> {
   return $delegate("readMembership", (binding) => binding.readMembership(input, ...context));
 }
 

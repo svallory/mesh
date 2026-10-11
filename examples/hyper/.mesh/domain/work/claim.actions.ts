@@ -71,7 +71,7 @@ export function bindClaimReads(layer: $DataLayer, options: $BindOptions = {}) {
       input: Omit<ReadClaimInput, "load"> & ClaimLoadArg<L>,
       context?: unknown,
       clock?: () => Date,
-    ): Promise<ClaimWith<ClaimLoadNames<L>>[]> {
+    ): Promise<L extends unknown ? ClaimWith<ClaimLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readClaimInput, input);
       return layer.transaction(async (tx) => {
@@ -82,14 +82,15 @@ export function bindClaimReads(layer: $DataLayer, options: $BindOptions = {}) {
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Claim[];
-        if (!parsed.load?.length) return $rows as unknown as ClaimWith<ClaimLoadNames<L>>[];
+        if (!parsed.load?.length)
+          return $rows as unknown as L extends unknown ? ClaimWith<ClaimLoadNames<L>>[] : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "Claim", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
-        })) as unknown as ClaimWith<ClaimLoadNames<L>>[];
+        })) as unknown as L extends unknown ? ClaimWith<ClaimLoadNames<L>>[] : never;
       });
     },
   });
@@ -673,7 +674,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
     async read<const L extends readonly (keyof ClaimLoadable)[] = readonly []>(
       input: Omit<ReadClaimInput, "load"> & ClaimLoadArg<L>,
       ...[context]: $ContextArgument
-    ): Promise<ClaimWith<ClaimLoadNames<L>>[]> {
+    ): Promise<L extends unknown ? ClaimWith<ClaimLoadNames<L>>[] : never> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
       return $reads.read(input, context);
     },

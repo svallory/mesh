@@ -33,7 +33,7 @@ export function bindCommentReads(layer: $DataLayer, options: $BindOptions = {}) 
       input: Omit<ReadCommentInput, "load"> & CommentLoadArg<L>,
       context?: unknown,
       clock?: () => Date,
-    ): Promise<CommentWith<CommentLoadNames<L>>[]> {
+    ): Promise<L extends unknown ? CommentWith<CommentLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readCommentInput, input);
       return layer.transaction(async (tx) => {
@@ -43,14 +43,15 @@ export function bindCommentReads(layer: $DataLayer, options: $BindOptions = {}) 
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Comment[];
-        if (!parsed.load?.length) return $rows as unknown as CommentWith<CommentLoadNames<L>>[];
+        if (!parsed.load?.length)
+          return $rows as unknown as L extends unknown ? CommentWith<CommentLoadNames<L>>[] : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "Comment", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
-        })) as unknown as CommentWith<CommentLoadNames<L>>[];
+        })) as unknown as L extends unknown ? CommentWith<CommentLoadNames<L>>[] : never;
       });
     },
   });
@@ -66,7 +67,7 @@ export function bindComment(layer: $DataLayer, options: $BindOptions = {}, _comp
     async read<const L extends readonly (keyof CommentLoadable)[] = readonly []>(
       input: Omit<ReadCommentInput, "load"> & CommentLoadArg<L>,
       ...[context]: $ContextArgument
-    ): Promise<CommentWith<CommentLoadNames<L>>[]> {
+    ): Promise<L extends unknown ? CommentWith<CommentLoadNames<L>>[] : never> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
       return $reads.read(input, context);
     },

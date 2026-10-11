@@ -58,7 +58,7 @@ export function bindRunReads(layer: $DataLayer, options: $BindOptions = {}) {
       input: Omit<ReadRunInput, "load"> & RunLoadArg<L>,
       context?: unknown,
       clock?: () => Date,
-    ): Promise<RunWith<RunLoadNames<L>>[]> {
+    ): Promise<L extends unknown ? RunWith<RunLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readRunInput, input);
       return layer.transaction(async (tx) => {
@@ -68,14 +68,15 @@ export function bindRunReads(layer: $DataLayer, options: $BindOptions = {}) {
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Run[];
-        if (!parsed.load?.length) return $rows as unknown as RunWith<RunLoadNames<L>>[];
+        if (!parsed.load?.length)
+          return $rows as unknown as L extends unknown ? RunWith<RunLoadNames<L>>[] : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "Run", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
-        })) as unknown as RunWith<RunLoadNames<L>>[];
+        })) as unknown as L extends unknown ? RunWith<RunLoadNames<L>>[] : never;
       });
     },
   });
@@ -324,7 +325,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
     async read<const L extends readonly (keyof RunLoadable)[] = readonly []>(
       input: Omit<ReadRunInput, "load"> & RunLoadArg<L>,
       ...[context]: $ContextArgument
-    ): Promise<RunWith<RunLoadNames<L>>[]> {
+    ): Promise<L extends unknown ? RunWith<RunLoadNames<L>>[] : never> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
       return $reads.read(input, context);
     },

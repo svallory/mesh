@@ -34,7 +34,7 @@ export interface Actions {
   readonly readComment: <const L extends readonly (keyof CommentLoadable)[] = readonly []>(
     input: Omit<ReadCommentInput, "load"> & CommentLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<CommentWith<CommentLoadNames<L>>[]>;
+  ) => Promise<L extends unknown ? CommentWith<CommentLoadNames<L>>[] : never>;
   readonly createPost: (input: CreatePostInput, context?: $ActionContext) => Promise<Post>;
   readonly publishPost: (
     input: PublishPostInput,
@@ -44,11 +44,11 @@ export interface Actions {
   readonly publishedPost: <const L extends readonly (keyof PostLoadable)[] = readonly []>(
     input: Omit<PublishedPostInput, "load"> & PostLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<PostWith<PostLoadNames<L>>[]>;
+  ) => Promise<L extends unknown ? PostWith<PostLoadNames<L>>[] : never>;
   readonly readPost: <const L extends readonly (keyof PostLoadable)[] = readonly []>(
     input: Omit<ReadPostInput, "load"> & PostLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<PostWith<PostLoadNames<L>>[]>;
+  ) => Promise<L extends unknown ? PostWith<PostLoadNames<L>>[] : never>;
   readonly destroyPost: (input: DestroyPostInput, context?: $ActionContext) => Promise<void>;
   readonly createUser: (input: CreateUserInput, context?: $ActionContext) => Promise<User>;
   readonly readUser: (input: ReadUserInput, context?: $ActionContext) => Promise<User[]>;
@@ -58,13 +58,13 @@ export interface Actions {
 export interface Reads {
   readonly readComment: <const L extends readonly (keyof CommentLoadable)[] = readonly []>(
     input: Omit<ReadCommentInput, "load"> & CommentLoadArg<L>,
-  ) => Promise<CommentWith<CommentLoadNames<L>>[]>;
+  ) => Promise<L extends unknown ? CommentWith<CommentLoadNames<L>>[] : never>;
   readonly publishedPost: <const L extends readonly (keyof PostLoadable)[] = readonly []>(
     input: Omit<PublishedPostInput, "load"> & PostLoadArg<L>,
-  ) => Promise<PostWith<PostLoadNames<L>>[]>;
+  ) => Promise<L extends unknown ? PostWith<PostLoadNames<L>>[] : never>;
   readonly readPost: <const L extends readonly (keyof PostLoadable)[] = readonly []>(
     input: Omit<ReadPostInput, "load"> & PostLoadArg<L>,
-  ) => Promise<PostWith<PostLoadNames<L>>[]>;
+  ) => Promise<L extends unknown ? PostWith<PostLoadNames<L>>[] : never>;
   readonly readUser: (input: ReadUserInput) => Promise<User[]>;
 }
 
@@ -79,7 +79,10 @@ export interface ReadOnlyActions {
     input: Omit<ReadCommentInput, "load"> & CommentLoadArg<L>,
     context?: $ActionContext,
   ) => Promise<
-    readonly ($DeepReadonly<Comment> & Pick<$DeepReadonly<CommentLoadable>, CommentLoadNames<L>>)[]
+    L extends unknown
+      ? readonly ($DeepReadonly<Comment> &
+          Pick<$DeepReadonly<CommentLoadable>, CommentLoadNames<L>>)[]
+      : never
   >;
   readonly createPost: (
     input: CreatePostInput,
@@ -97,13 +100,17 @@ export interface ReadOnlyActions {
     input: Omit<PublishedPostInput, "load"> & PostLoadArg<L>,
     context?: $ActionContext,
   ) => Promise<
-    readonly ($DeepReadonly<Post> & Pick<$DeepReadonly<PostLoadable>, PostLoadNames<L>>)[]
+    L extends unknown
+      ? readonly ($DeepReadonly<Post> & Pick<$DeepReadonly<PostLoadable>, PostLoadNames<L>>)[]
+      : never
   >;
   readonly readPost: <const L extends readonly (keyof PostLoadable)[] = readonly []>(
     input: Omit<ReadPostInput, "load"> & PostLoadArg<L>,
     context?: $ActionContext,
   ) => Promise<
-    readonly ($DeepReadonly<Post> & Pick<$DeepReadonly<PostLoadable>, PostLoadNames<L>>)[]
+    L extends unknown
+      ? readonly ($DeepReadonly<Post> & Pick<$DeepReadonly<PostLoadable>, PostLoadNames<L>>)[]
+      : never
   >;
   readonly destroyPost: (
     input: DestroyPostInput,
@@ -124,17 +131,24 @@ export interface ReadOnlyReads {
   readonly readComment: <const L extends readonly (keyof CommentLoadable)[] = readonly []>(
     input: Omit<ReadCommentInput, "load"> & CommentLoadArg<L>,
   ) => Promise<
-    readonly ($DeepReadonly<Comment> & Pick<$DeepReadonly<CommentLoadable>, CommentLoadNames<L>>)[]
+    L extends unknown
+      ? readonly ($DeepReadonly<Comment> &
+          Pick<$DeepReadonly<CommentLoadable>, CommentLoadNames<L>>)[]
+      : never
   >;
   readonly publishedPost: <const L extends readonly (keyof PostLoadable)[] = readonly []>(
     input: Omit<PublishedPostInput, "load"> & PostLoadArg<L>,
   ) => Promise<
-    readonly ($DeepReadonly<Post> & Pick<$DeepReadonly<PostLoadable>, PostLoadNames<L>>)[]
+    L extends unknown
+      ? readonly ($DeepReadonly<Post> & Pick<$DeepReadonly<PostLoadable>, PostLoadNames<L>>)[]
+      : never
   >;
   readonly readPost: <const L extends readonly (keyof PostLoadable)[] = readonly []>(
     input: Omit<ReadPostInput, "load"> & PostLoadArg<L>,
   ) => Promise<
-    readonly ($DeepReadonly<Post> & Pick<$DeepReadonly<PostLoadable>, PostLoadNames<L>>)[]
+    L extends unknown
+      ? readonly ($DeepReadonly<Post> & Pick<$DeepReadonly<PostLoadable>, PostLoadNames<L>>)[]
+      : never
   >;
   readonly readUser: (input: ReadUserInput) => Promise<$DeepReadonly<User[]>>;
 }
