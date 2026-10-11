@@ -36,7 +36,7 @@ export type ReviewAccepted = { readonly task: Task; readonly review: Review; rea
 async function taskOf(tx: Reads, id: string): Promise<Task> {
   const [task] = await tx.readTask({ filter: { id: { eq: id } } });
   if (!task) throw new Error(`Task ${id} not found`);
-  return task as unknown as Task;
+  return task as Task;
 }
 
 /**

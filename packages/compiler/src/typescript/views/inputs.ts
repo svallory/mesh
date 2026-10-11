@@ -105,8 +105,11 @@ export const sortTypeName = (entity: Entity) => `${typeName(entity.name, entity.
  * so `load: ["author"]` is read as the tuple of literals without `as const`. With no `load`, `N` is `never` and the
  * result is the bare record.
  */
-export const loadGenerics = (entity: Entity, forFunction: boolean) =>
-  `<${forFunction ? "const " : ""}N extends keyof ${typeName(entity.name, entity.position)}Loadable = never>`;
+export const loadGenerics = (entity: Entity, forFunction: boolean) => {
+  const loadable = `${typeName(entity.name, entity.position)}Loadable`;
+  // A function infers the tuple of names written (`const L`); a type alias takes the union of them.
+  return forFunction ? `<const L extends readonly (keyof ${loadable})[] = readonly []>` : `<N extends keyof ${loadable} = never>`;
+};
 /** True for the input of a read that takes `load`. */
 export const takesLoad = (input: PlannedInput) => input.fields.some((field) => field.query === "load");
 export const hasRead = (entity: Entity) => effectiveActions(entity).some((action) => action.kind === "read");

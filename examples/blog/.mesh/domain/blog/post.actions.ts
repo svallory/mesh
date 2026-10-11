@@ -14,6 +14,7 @@ import {
   guarded as $guarded,
   loadRows as $loadRows,
   noteWrite as $noteWrite,
+  pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
   rejectComputedQuery,
   runCheck as $runCheck,
@@ -30,6 +31,8 @@ import {
 import type {
   Post,
   PostWith,
+  PostLoadNames,
+  PostLoadArg,
   PostLoadable,
   CreatePostInput,
   PublishPostInput,
@@ -59,10 +62,10 @@ import { loadPlan as $loadPlan } from "../../load";
  */
 export function bindPostReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async published<const N extends keyof PostLoadable = never>(
-      input: PublishedPostInput<N>,
+    async published<const L extends readonly (keyof PostLoadable)[] = readonly []>(
+      input: Omit<PublishedPostInput, "load"> & PostLoadArg<L>,
       _context?: unknown,
-    ): Promise<PostWith<N>[]> {
+    ): Promise<PostWith<PostLoadNames<L>>[]> {
       await $castInput(layer, publishedPostInput, input);
       return $failJoined(
         layer,
@@ -72,10 +75,11 @@ export function bindPostReads(layer: $DataLayer, options: $BindOptions = {}) {
       );
     },
 
-    async read<const N extends keyof PostLoadable = never>(
-      input: ReadPostInput<N>,
+    async read<const L extends readonly (keyof PostLoadable)[] = readonly []>(
+      input: Omit<ReadPostInput, "load"> & PostLoadArg<L>,
       context?: unknown,
-    ): Promise<PostWith<N>[]> {
+      clock?: () => Date,
+    ): Promise<PostWith<PostLoadNames<L>>[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readPostInput, input);
       return layer.transaction(async (tx) => {
@@ -86,13 +90,14 @@ export function bindPostReads(layer: $DataLayer, options: $BindOptions = {}) {
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Post[];
-        if (!parsed.load?.length) return $rows as unknown as PostWith<N>[];
+        if (!parsed.load?.length) return $rows as unknown as PostWith<PostLoadNames<L>>[];
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "Post", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
-          clock: options.clock,
-        })) as unknown as PostWith<N>[];
+          clock: $clock,
+        })) as unknown as PostWith<PostLoadNames<L>>[];
       });
     },
   });
@@ -112,7 +117,8 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
       const parsed = await $castInput(layer, createPostInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $now = options.clock?.() ?? new Date();
+        const $clock = $pinClock(options.clock);
+        const $now = $clock();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           id: $uuidv7(),
@@ -149,7 +155,8 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        const $now = options.clock?.() ?? new Date();
+        const $clock = $pinClock(options.clock);
+        const $now = $clock();
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.post, $key);
@@ -157,7 +164,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
         const $writes = $writeCount(tx);
-        const $load = { actor: $actor, context: $context, clock: options.clock };
+        const $load = { actor: $actor, context: $context, clock: $clock };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Post", $record, "action function"),
           "Post.publish",
@@ -172,9 +179,9 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
               $guarded($loadPlan, "Post", $before, "before"),
               "Post.publish",
             ) as unknown as Post,
-            ...$composed(compose, tx, context, "Post.publish"),
+            ...$composed(compose, tx, context, "Post.publish", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<PublishPostInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -221,19 +228,19 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
       });
     },
 
-    async published<const N extends keyof PostLoadable = never>(
-      input: PublishedPostInput<N>,
+    async published<const L extends readonly (keyof PostLoadable)[] = readonly []>(
+      input: Omit<PublishedPostInput, "load"> & PostLoadArg<L>,
       ...[context]: $ContextArgument
-    ): Promise<PostWith<N>[]> {
+    ): Promise<PostWith<PostLoadNames<L>>[]> {
       // Not run in this version: on:load published; policies public
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
       return $reads.published(input, context);
     },
 
-    async read<const N extends keyof PostLoadable = never>(
-      input: ReadPostInput<N>,
+    async read<const L extends readonly (keyof PostLoadable)[] = readonly []>(
+      input: Omit<ReadPostInput, "load"> & PostLoadArg<L>,
       ...[context]: $ContextArgument
-    ): Promise<PostWith<N>[]> {
+    ): Promise<PostWith<PostLoadNames<L>>[]> {
       // Not run in this version: on:load published; policies public
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
       return $reads.read(input, context);

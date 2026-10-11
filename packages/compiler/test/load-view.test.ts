@@ -154,7 +154,7 @@ describe("the types and the read views name what is loadable", () => {
     const authorView = typesView(input(document), document.entities.find((e) => e.name === "Author")!);
     expect(authorView.record.members.map((m) => m.name)).toEqual(["id", "name"]);
     expect(authorView.loadable).toEqual({
-      name: "AuthorLoadable", withName: "AuthorWith",
+      name: "AuthorLoadable", withName: "AuthorWith", namesName: "AuthorLoadNames", argName: "AuthorLoadArg",
       members: [
         { name: "posts", optional: false, key: "posts", type: "Post[]" },
         { name: "postCount", optional: false, key: "postCount", type: "number" },

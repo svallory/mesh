@@ -15,6 +15,8 @@ import type {
   EventSort,
   EventLoadable,
   EventWith,
+  EventLoadNames,
+  EventLoadArg,
 } from "./event.types";
 
 export type {
@@ -25,6 +27,8 @@ export type {
   EventSort,
   EventLoadable,
   EventWith,
+  EventLoadNames,
+  EventLoadArg,
 };
 export { loadEventFields } from "../../load";
 
@@ -35,9 +39,9 @@ export async function recordEvent(
   return $delegate("recordEvent", (binding) => binding.recordEvent(input, ...context));
 }
 
-export async function readEvent<const N extends keyof EventLoadable = never>(
-  input: ReadEventInput<N>,
+export async function readEvent<const L extends readonly (keyof EventLoadable)[] = readonly []>(
+  input: Omit<ReadEventInput, "load"> & EventLoadArg<L>,
   ...context: $ContextArgument
-): Promise<EventWith<N>[]> {
+): Promise<EventWith<EventLoadNames<L>>[]> {
   return $delegate("readEvent", (binding) => binding.readEvent(input, ...context));
 }

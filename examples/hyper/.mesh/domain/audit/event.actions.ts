@@ -6,6 +6,7 @@ import {
   castInput as $castInput,
   loadRows as $loadRows,
   noteWrite as $noteWrite,
+  pinClock as $pinClock,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
@@ -15,6 +16,8 @@ import {
 import type {
   Event,
   EventWith,
+  EventLoadNames,
+  EventLoadArg,
   EventLoadable,
   RecordEventInput,
   ReadEventInput,
@@ -29,10 +32,11 @@ import { loadPlan as $loadPlan } from "../../load";
  */
 export function bindEventReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read<const N extends keyof EventLoadable = never>(
-      input: ReadEventInput<N>,
+    async read<const L extends readonly (keyof EventLoadable)[] = readonly []>(
+      input: Omit<ReadEventInput, "load"> & EventLoadArg<L>,
       context?: unknown,
-    ): Promise<EventWith<N>[]> {
+      clock?: () => Date,
+    ): Promise<EventWith<EventLoadNames<L>>[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readEventInput, input);
       return layer.transaction(async (tx) => {
@@ -42,13 +46,14 @@ export function bindEventReads(layer: $DataLayer, options: $BindOptions = {}) {
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Event[];
-        if (!parsed.load?.length) return $rows as unknown as EventWith<N>[];
+        if (!parsed.load?.length) return $rows as unknown as EventWith<EventLoadNames<L>>[];
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "Event", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
-          clock: options.clock,
-        })) as unknown as EventWith<N>[];
+          clock: $clock,
+        })) as unknown as EventWith<EventLoadNames<L>>[];
       });
     },
   });
@@ -66,7 +71,8 @@ export function bindEvent(layer: $DataLayer, options: $BindOptions = {}, _compos
       const parsed = await $castInput(layer, recordEventInput, input);
       return layer.transaction(async (tx) => {
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
-        const $now = options.clock?.() ?? new Date();
+        const $clock = $pinClock(options.clock);
+        const $now = $clock();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           type: parsed.type,
@@ -91,10 +97,10 @@ export function bindEvent(layer: $DataLayer, options: $BindOptions = {}, _compos
       });
     },
 
-    async read<const N extends keyof EventLoadable = never>(
-      input: ReadEventInput<N>,
+    async read<const L extends readonly (keyof EventLoadable)[] = readonly []>(
+      input: Omit<ReadEventInput, "load"> & EventLoadArg<L>,
       ...[context]: $ContextArgument
-    ): Promise<EventWith<N>[]> {
+    ): Promise<EventWith<EventLoadNames<L>>[]> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
       return $reads.read(input, context);
     },

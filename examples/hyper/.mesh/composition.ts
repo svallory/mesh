@@ -12,6 +12,8 @@ import type {
   ReadEventInput,
   EventLoadable,
   EventWith,
+  EventLoadNames,
+  EventLoadArg,
 } from "./domain/audit/event.types";
 import type {
   Attempt,
@@ -22,6 +24,8 @@ import type {
   ReadAttemptInput,
   AttemptLoadable,
   AttemptWith,
+  AttemptLoadNames,
+  AttemptLoadArg,
 } from "./domain/execution/attempt.types";
 import type {
   Invocation,
@@ -30,6 +34,8 @@ import type {
   ReadInvocationInput,
   InvocationLoadable,
   InvocationWith,
+  InvocationLoadNames,
+  InvocationLoadArg,
 } from "./domain/execution/invocation.types";
 import type {
   Machine,
@@ -40,6 +46,8 @@ import type {
   ReadMachineInput,
   MachineLoadable,
   MachineWith,
+  MachineLoadNames,
+  MachineLoadArg,
 } from "./domain/execution/machine.types";
 import type {
   Run,
@@ -49,6 +57,8 @@ import type {
   ReadRunInput,
   RunLoadable,
   RunWith,
+  RunLoadNames,
+  RunLoadArg,
 } from "./domain/execution/run.types";
 import type {
   SessionReference,
@@ -58,6 +68,8 @@ import type {
   ReadSessionReferenceInput,
   SessionReferenceLoadable,
   SessionReferenceWith,
+  SessionReferenceLoadNames,
+  SessionReferenceLoadArg,
 } from "./domain/execution/sessionReference.types";
 import type {
   Collaborator,
@@ -67,6 +79,8 @@ import type {
   ReadCollaboratorInput,
   CollaboratorLoadable,
   CollaboratorWith,
+  CollaboratorLoadNames,
+  CollaboratorLoadArg,
 } from "./domain/identity/collaborator.types";
 import type {
   Membership,
@@ -76,6 +90,8 @@ import type {
   ReadMembershipInput,
   MembershipLoadable,
   MembershipWith,
+  MembershipLoadNames,
+  MembershipLoadArg,
 } from "./domain/identity/membership.types";
 import type {
   Workspace,
@@ -90,6 +106,8 @@ import type {
   ReadAssignmentInput,
   AssignmentLoadable,
   AssignmentWith,
+  AssignmentLoadNames,
+  AssignmentLoadArg,
 } from "./domain/work/assignment.types";
 import type {
   Claim,
@@ -102,6 +120,8 @@ import type {
   ReadClaimInput,
   ClaimLoadable,
   ClaimWith,
+  ClaimLoadNames,
+  ClaimLoadArg,
 } from "./domain/work/claim.types";
 import type {
   Completion,
@@ -109,6 +129,8 @@ import type {
   ReadCompletionInput,
   CompletionLoadable,
   CompletionWith,
+  CompletionLoadNames,
+  CompletionLoadArg,
 } from "./domain/work/completion.types";
 import type {
   Dependency,
@@ -117,6 +139,8 @@ import type {
   ReadDependencyInput,
   DependencyLoadable,
   DependencyWith,
+  DependencyLoadNames,
+  DependencyLoadArg,
 } from "./domain/work/dependency.types";
 import type {
   EvidenceReference,
@@ -124,6 +148,8 @@ import type {
   ReadEvidenceReferenceInput,
   EvidenceReferenceLoadable,
   EvidenceReferenceWith,
+  EvidenceReferenceLoadNames,
+  EvidenceReferenceLoadArg,
 } from "./domain/work/evidenceReference.types";
 import type {
   LateResult,
@@ -131,6 +157,8 @@ import type {
   ReadLateResultInput,
   LateResultLoadable,
   LateResultWith,
+  LateResultLoadNames,
+  LateResultLoadArg,
 } from "./domain/work/lateResult.types";
 import type {
   Review,
@@ -139,6 +167,8 @@ import type {
   ReadReviewInput,
   ReviewLoadable,
   ReviewWith,
+  ReviewLoadNames,
+  ReviewLoadArg,
 } from "./domain/work/review.types";
 import type {
   Submission,
@@ -149,6 +179,8 @@ import type {
   ReadSubmissionInput,
   SubmissionLoadable,
   SubmissionWith,
+  SubmissionLoadNames,
+  SubmissionLoadArg,
 } from "./domain/work/submission.types";
 import type {
   Task,
@@ -165,15 +197,17 @@ import type {
   ReadTaskInput,
   TaskLoadable,
   TaskWith,
+  TaskLoadNames,
+  TaskLoadArg,
 } from "./domain/work/task.types";
 
 /** Every action function of the project, bound to the running transaction: a call joins it, and carries the caller's context unless it passes its own. */
 export interface Actions {
   readonly recordEvent: (input: RecordEventInput, context?: $ActionContext) => Promise<Event>;
-  readonly readEvent: <const N extends keyof EventLoadable = never>(
-    input: ReadEventInput<N>,
+  readonly readEvent: <const L extends readonly (keyof EventLoadable)[] = readonly []>(
+    input: Omit<ReadEventInput, "load"> & EventLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<EventWith<N>[]>;
+  ) => Promise<EventWith<EventLoadNames<L>>[]>;
   readonly startAttempt: (input: StartAttemptInput, context?: $ActionContext) => Promise<Attempt>;
   readonly finishAttempt: (input: FinishAttemptInput, context?: $ActionContext) => Promise<Attempt>;
   readonly reportStoppedAttempt: (
@@ -184,10 +218,10 @@ export interface Actions {
     input: AbandonAttemptInput,
     context?: $ActionContext,
   ) => Promise<Attempt>;
-  readonly readAttempt: <const N extends keyof AttemptLoadable = never>(
-    input: ReadAttemptInput<N>,
+  readonly readAttempt: <const L extends readonly (keyof AttemptLoadable)[] = readonly []>(
+    input: Omit<ReadAttemptInput, "load"> & AttemptLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<AttemptWith<N>[]>;
+  ) => Promise<AttemptWith<AttemptLoadNames<L>>[]>;
   readonly recordInvocation: (
     input: RecordInvocationInput,
     context?: $ActionContext,
@@ -196,10 +230,10 @@ export interface Actions {
     input: CorrectInvocationInput,
     context?: $ActionContext,
   ) => Promise<Invocation>;
-  readonly readInvocation: <const N extends keyof InvocationLoadable = never>(
-    input: ReadInvocationInput<N>,
+  readonly readInvocation: <const L extends readonly (keyof InvocationLoadable)[] = readonly []>(
+    input: Omit<ReadInvocationInput, "load"> & InvocationLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<InvocationWith<N>[]>;
+  ) => Promise<InvocationWith<InvocationLoadNames<L>>[]>;
   readonly registerMachine: (
     input: RegisterMachineInput,
     context?: $ActionContext,
@@ -207,17 +241,17 @@ export interface Actions {
   readonly reportMachine: (input: ReportMachineInput, context?: $ActionContext) => Promise<Machine>;
   readonly updateMachine: (input: UpdateMachineInput, context?: $ActionContext) => Promise<Machine>;
   readonly retireMachine: (input: RetireMachineInput, context?: $ActionContext) => Promise<Machine>;
-  readonly readMachine: <const N extends keyof MachineLoadable = never>(
-    input: ReadMachineInput<N>,
+  readonly readMachine: <const L extends readonly (keyof MachineLoadable)[] = readonly []>(
+    input: Omit<ReadMachineInput, "load"> & MachineLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<MachineWith<N>[]>;
+  ) => Promise<MachineWith<MachineLoadNames<L>>[]>;
   readonly startRun: (input: StartRunInput, context?: $ActionContext) => Promise<Run>;
   readonly cancelRun: (input: CancelRunInput, context?: $ActionContext) => Promise<Run>;
   readonly settleRun: (input: SettleRunInput, context?: $ActionContext) => Promise<Run>;
-  readonly readRun: <const N extends keyof RunLoadable = never>(
-    input: ReadRunInput<N>,
+  readonly readRun: <const L extends readonly (keyof RunLoadable)[] = readonly []>(
+    input: Omit<ReadRunInput, "load"> & RunLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<RunWith<N>[]>;
+  ) => Promise<RunWith<RunLoadNames<L>>[]>;
   readonly recordSessionReference: (
     input: RecordSessionReferenceInput,
     context?: $ActionContext,
@@ -230,10 +264,12 @@ export interface Actions {
     input: RedactSessionReferenceInput,
     context?: $ActionContext,
   ) => Promise<SessionReference>;
-  readonly readSessionReference: <const N extends keyof SessionReferenceLoadable = never>(
-    input: ReadSessionReferenceInput<N>,
+  readonly readSessionReference: <
+    const L extends readonly (keyof SessionReferenceLoadable)[] = readonly [],
+  >(
+    input: Omit<ReadSessionReferenceInput, "load"> & SessionReferenceLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<SessionReferenceWith<N>[]>;
+  ) => Promise<SessionReferenceWith<SessionReferenceLoadNames<L>>[]>;
   readonly registerCollaborator: (
     input: RegisterCollaboratorInput,
     context?: $ActionContext,
@@ -246,10 +282,12 @@ export interface Actions {
     input: RetireCollaboratorInput,
     context?: $ActionContext,
   ) => Promise<Collaborator>;
-  readonly readCollaborator: <const N extends keyof CollaboratorLoadable = never>(
-    input: ReadCollaboratorInput<N>,
+  readonly readCollaborator: <
+    const L extends readonly (keyof CollaboratorLoadable)[] = readonly [],
+  >(
+    input: Omit<ReadCollaboratorInput, "load"> & CollaboratorLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<CollaboratorWith<N>[]>;
+  ) => Promise<CollaboratorWith<CollaboratorLoadNames<L>>[]>;
   readonly grantMembership: (
     input: GrantMembershipInput,
     context?: $ActionContext,
@@ -262,10 +300,10 @@ export interface Actions {
     input: RevokeMembershipInput,
     context?: $ActionContext,
   ) => Promise<Membership>;
-  readonly readMembership: <const N extends keyof MembershipLoadable = never>(
-    input: ReadMembershipInput<N>,
+  readonly readMembership: <const L extends readonly (keyof MembershipLoadable)[] = readonly []>(
+    input: Omit<ReadMembershipInput, "load"> & MembershipLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<MembershipWith<N>[]>;
+  ) => Promise<MembershipWith<MembershipLoadNames<L>>[]>;
   readonly createWorkspace: (
     input: CreateWorkspaceInput,
     context?: $ActionContext,
@@ -286,28 +324,28 @@ export interface Actions {
     input: FinishAssignmentInput,
     context?: $ActionContext,
   ) => Promise<Assignment>;
-  readonly readAssignment: <const N extends keyof AssignmentLoadable = never>(
-    input: ReadAssignmentInput<N>,
+  readonly readAssignment: <const L extends readonly (keyof AssignmentLoadable)[] = readonly []>(
+    input: Omit<ReadAssignmentInput, "load"> & AssignmentLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<AssignmentWith<N>[]>;
+  ) => Promise<AssignmentWith<AssignmentLoadNames<L>>[]>;
   readonly acquireClaim: (input: AcquireClaimInput, context?: $ActionContext) => Promise<Claim>;
   readonly renewClaim: (input: RenewClaimInput, context?: $ActionContext) => Promise<Claim>;
   readonly releaseClaim: (input: ReleaseClaimInput, context?: $ActionContext) => Promise<Claim>;
   readonly revokeClaim: (input: RevokeClaimInput, context?: $ActionContext) => Promise<Claim>;
   readonly expireClaim: (input: ExpireClaimInput, context?: $ActionContext) => Promise<Claim>;
   readonly endClaim: (input: EndClaimInput, context?: $ActionContext) => Promise<Claim>;
-  readonly readClaim: <const N extends keyof ClaimLoadable = never>(
-    input: ReadClaimInput<N>,
+  readonly readClaim: <const L extends readonly (keyof ClaimLoadable)[] = readonly []>(
+    input: Omit<ReadClaimInput, "load"> & ClaimLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<ClaimWith<N>[]>;
+  ) => Promise<ClaimWith<ClaimLoadNames<L>>[]>;
   readonly recordCompletion: (
     input: RecordCompletionInput,
     context?: $ActionContext,
   ) => Promise<Completion>;
-  readonly readCompletion: <const N extends keyof CompletionLoadable = never>(
-    input: ReadCompletionInput<N>,
+  readonly readCompletion: <const L extends readonly (keyof CompletionLoadable)[] = readonly []>(
+    input: Omit<ReadCompletionInput, "load"> & CompletionLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<CompletionWith<N>[]>;
+  ) => Promise<CompletionWith<CompletionLoadNames<L>>[]>;
   readonly addDependency: (
     input: AddDependencyInput,
     context?: $ActionContext,
@@ -316,32 +354,34 @@ export interface Actions {
     input: RemoveDependencyInput,
     context?: $ActionContext,
   ) => Promise<void>;
-  readonly readDependency: <const N extends keyof DependencyLoadable = never>(
-    input: ReadDependencyInput<N>,
+  readonly readDependency: <const L extends readonly (keyof DependencyLoadable)[] = readonly []>(
+    input: Omit<ReadDependencyInput, "load"> & DependencyLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<DependencyWith<N>[]>;
+  ) => Promise<DependencyWith<DependencyLoadNames<L>>[]>;
   readonly recordEvidenceReference: (
     input: RecordEvidenceReferenceInput,
     context?: $ActionContext,
   ) => Promise<EvidenceReference>;
-  readonly readEvidenceReference: <const N extends keyof EvidenceReferenceLoadable = never>(
-    input: ReadEvidenceReferenceInput<N>,
+  readonly readEvidenceReference: <
+    const L extends readonly (keyof EvidenceReferenceLoadable)[] = readonly [],
+  >(
+    input: Omit<ReadEvidenceReferenceInput, "load"> & EvidenceReferenceLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<EvidenceReferenceWith<N>[]>;
+  ) => Promise<EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[]>;
   readonly recordLateResult: (
     input: RecordLateResultInput,
     context?: $ActionContext,
   ) => Promise<LateResult>;
-  readonly readLateResult: <const N extends keyof LateResultLoadable = never>(
-    input: ReadLateResultInput<N>,
+  readonly readLateResult: <const L extends readonly (keyof LateResultLoadable)[] = readonly []>(
+    input: Omit<ReadLateResultInput, "load"> & LateResultLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<LateResultWith<N>[]>;
+  ) => Promise<LateResultWith<LateResultLoadNames<L>>[]>;
   readonly acceptReview: (input: AcceptReviewInput, context?: $ActionContext) => Promise<Review>;
   readonly returnReview: (input: ReturnReviewInput, context?: $ActionContext) => Promise<Review>;
-  readonly readReview: <const N extends keyof ReviewLoadable = never>(
-    input: ReadReviewInput<N>,
+  readonly readReview: <const L extends readonly (keyof ReviewLoadable)[] = readonly []>(
+    input: Omit<ReadReviewInput, "load"> & ReviewLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<ReviewWith<N>[]>;
+  ) => Promise<ReviewWith<ReviewLoadNames<L>>[]>;
   readonly submitSubmission: (
     input: SubmitSubmissionInput,
     context?: $ActionContext,
@@ -358,10 +398,10 @@ export interface Actions {
     input: RecordAcceptedSubmissionInput,
     context?: $ActionContext,
   ) => Promise<Submission>;
-  readonly readSubmission: <const N extends keyof SubmissionLoadable = never>(
-    input: ReadSubmissionInput<N>,
+  readonly readSubmission: <const L extends readonly (keyof SubmissionLoadable)[] = readonly []>(
+    input: Omit<ReadSubmissionInput, "load"> & SubmissionLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<SubmissionWith<N>[]>;
+  ) => Promise<SubmissionWith<SubmissionLoadNames<L>>[]>;
   readonly createTask: (input: CreateTaskInput, context?: $ActionContext) => Promise<Task>;
   readonly updateTask: (input: UpdateTaskInput, context?: $ActionContext) => Promise<Task>;
   readonly setPriorityTask: (
@@ -375,82 +415,91 @@ export interface Actions {
   readonly completeTask: (input: CompleteTaskInput, context?: $ActionContext) => Promise<Task>;
   readonly assignTask: (input: AssignTaskInput, context?: $ActionContext) => Promise<Task>;
   readonly unassignTask: (input: UnassignTaskInput, context?: $ActionContext) => Promise<Task>;
-  readonly readTask: <const N extends keyof TaskLoadable = never>(
-    input: ReadTaskInput<N>,
+  readonly readTask: <const L extends readonly (keyof TaskLoadable)[] = readonly []>(
+    input: Omit<ReadTaskInput, "load"> & TaskLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<TaskWith<N>[]>;
+  ) => Promise<TaskWith<TaskLoadNames<L>>[]>;
 }
 
 /** One function per read action, reading inside the running transaction. A read through `tx` runs no read policy. */
 export interface Reads {
-  readonly readEvent: <const N extends keyof EventLoadable = never>(
-    input: ReadEventInput<N>,
-  ) => Promise<EventWith<N>[]>;
-  readonly readAttempt: <const N extends keyof AttemptLoadable = never>(
-    input: ReadAttemptInput<N>,
-  ) => Promise<AttemptWith<N>[]>;
-  readonly readInvocation: <const N extends keyof InvocationLoadable = never>(
-    input: ReadInvocationInput<N>,
-  ) => Promise<InvocationWith<N>[]>;
-  readonly readMachine: <const N extends keyof MachineLoadable = never>(
-    input: ReadMachineInput<N>,
-  ) => Promise<MachineWith<N>[]>;
-  readonly readRun: <const N extends keyof RunLoadable = never>(
-    input: ReadRunInput<N>,
-  ) => Promise<RunWith<N>[]>;
-  readonly readSessionReference: <const N extends keyof SessionReferenceLoadable = never>(
-    input: ReadSessionReferenceInput<N>,
-  ) => Promise<SessionReferenceWith<N>[]>;
-  readonly readCollaborator: <const N extends keyof CollaboratorLoadable = never>(
-    input: ReadCollaboratorInput<N>,
-  ) => Promise<CollaboratorWith<N>[]>;
-  readonly readMembership: <const N extends keyof MembershipLoadable = never>(
-    input: ReadMembershipInput<N>,
-  ) => Promise<MembershipWith<N>[]>;
+  readonly readEvent: <const L extends readonly (keyof EventLoadable)[] = readonly []>(
+    input: Omit<ReadEventInput, "load"> & EventLoadArg<L>,
+  ) => Promise<EventWith<EventLoadNames<L>>[]>;
+  readonly readAttempt: <const L extends readonly (keyof AttemptLoadable)[] = readonly []>(
+    input: Omit<ReadAttemptInput, "load"> & AttemptLoadArg<L>,
+  ) => Promise<AttemptWith<AttemptLoadNames<L>>[]>;
+  readonly readInvocation: <const L extends readonly (keyof InvocationLoadable)[] = readonly []>(
+    input: Omit<ReadInvocationInput, "load"> & InvocationLoadArg<L>,
+  ) => Promise<InvocationWith<InvocationLoadNames<L>>[]>;
+  readonly readMachine: <const L extends readonly (keyof MachineLoadable)[] = readonly []>(
+    input: Omit<ReadMachineInput, "load"> & MachineLoadArg<L>,
+  ) => Promise<MachineWith<MachineLoadNames<L>>[]>;
+  readonly readRun: <const L extends readonly (keyof RunLoadable)[] = readonly []>(
+    input: Omit<ReadRunInput, "load"> & RunLoadArg<L>,
+  ) => Promise<RunWith<RunLoadNames<L>>[]>;
+  readonly readSessionReference: <
+    const L extends readonly (keyof SessionReferenceLoadable)[] = readonly [],
+  >(
+    input: Omit<ReadSessionReferenceInput, "load"> & SessionReferenceLoadArg<L>,
+  ) => Promise<SessionReferenceWith<SessionReferenceLoadNames<L>>[]>;
+  readonly readCollaborator: <
+    const L extends readonly (keyof CollaboratorLoadable)[] = readonly [],
+  >(
+    input: Omit<ReadCollaboratorInput, "load"> & CollaboratorLoadArg<L>,
+  ) => Promise<CollaboratorWith<CollaboratorLoadNames<L>>[]>;
+  readonly readMembership: <const L extends readonly (keyof MembershipLoadable)[] = readonly []>(
+    input: Omit<ReadMembershipInput, "load"> & MembershipLoadArg<L>,
+  ) => Promise<MembershipWith<MembershipLoadNames<L>>[]>;
   readonly readWorkspace: (input: ReadWorkspaceInput) => Promise<Workspace[]>;
-  readonly readAssignment: <const N extends keyof AssignmentLoadable = never>(
-    input: ReadAssignmentInput<N>,
-  ) => Promise<AssignmentWith<N>[]>;
-  readonly readClaim: <const N extends keyof ClaimLoadable = never>(
-    input: ReadClaimInput<N>,
-  ) => Promise<ClaimWith<N>[]>;
-  readonly readCompletion: <const N extends keyof CompletionLoadable = never>(
-    input: ReadCompletionInput<N>,
-  ) => Promise<CompletionWith<N>[]>;
-  readonly readDependency: <const N extends keyof DependencyLoadable = never>(
-    input: ReadDependencyInput<N>,
-  ) => Promise<DependencyWith<N>[]>;
-  readonly readEvidenceReference: <const N extends keyof EvidenceReferenceLoadable = never>(
-    input: ReadEvidenceReferenceInput<N>,
-  ) => Promise<EvidenceReferenceWith<N>[]>;
-  readonly readLateResult: <const N extends keyof LateResultLoadable = never>(
-    input: ReadLateResultInput<N>,
-  ) => Promise<LateResultWith<N>[]>;
-  readonly readReview: <const N extends keyof ReviewLoadable = never>(
-    input: ReadReviewInput<N>,
-  ) => Promise<ReviewWith<N>[]>;
-  readonly readSubmission: <const N extends keyof SubmissionLoadable = never>(
-    input: ReadSubmissionInput<N>,
-  ) => Promise<SubmissionWith<N>[]>;
-  readonly readTask: <const N extends keyof TaskLoadable = never>(
-    input: ReadTaskInput<N>,
-  ) => Promise<TaskWith<N>[]>;
+  readonly readAssignment: <const L extends readonly (keyof AssignmentLoadable)[] = readonly []>(
+    input: Omit<ReadAssignmentInput, "load"> & AssignmentLoadArg<L>,
+  ) => Promise<AssignmentWith<AssignmentLoadNames<L>>[]>;
+  readonly readClaim: <const L extends readonly (keyof ClaimLoadable)[] = readonly []>(
+    input: Omit<ReadClaimInput, "load"> & ClaimLoadArg<L>,
+  ) => Promise<ClaimWith<ClaimLoadNames<L>>[]>;
+  readonly readCompletion: <const L extends readonly (keyof CompletionLoadable)[] = readonly []>(
+    input: Omit<ReadCompletionInput, "load"> & CompletionLoadArg<L>,
+  ) => Promise<CompletionWith<CompletionLoadNames<L>>[]>;
+  readonly readDependency: <const L extends readonly (keyof DependencyLoadable)[] = readonly []>(
+    input: Omit<ReadDependencyInput, "load"> & DependencyLoadArg<L>,
+  ) => Promise<DependencyWith<DependencyLoadNames<L>>[]>;
+  readonly readEvidenceReference: <
+    const L extends readonly (keyof EvidenceReferenceLoadable)[] = readonly [],
+  >(
+    input: Omit<ReadEvidenceReferenceInput, "load"> & EvidenceReferenceLoadArg<L>,
+  ) => Promise<EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[]>;
+  readonly readLateResult: <const L extends readonly (keyof LateResultLoadable)[] = readonly []>(
+    input: Omit<ReadLateResultInput, "load"> & LateResultLoadArg<L>,
+  ) => Promise<LateResultWith<LateResultLoadNames<L>>[]>;
+  readonly readReview: <const L extends readonly (keyof ReviewLoadable)[] = readonly []>(
+    input: Omit<ReadReviewInput, "load"> & ReviewLoadArg<L>,
+  ) => Promise<ReviewWith<ReviewLoadNames<L>>[]>;
+  readonly readSubmission: <const L extends readonly (keyof SubmissionLoadable)[] = readonly []>(
+    input: Omit<ReadSubmissionInput, "load"> & SubmissionLoadArg<L>,
+  ) => Promise<SubmissionWith<SubmissionLoadNames<L>>[]>;
+  readonly readTask: <const L extends readonly (keyof TaskLoadable)[] = readonly []>(
+    input: Omit<ReadTaskInput, "load"> & TaskLoadArg<L>,
+  ) => Promise<TaskWith<TaskLoadNames<L>>[]>;
 }
 
 /**
  * `Actions` as a function of an entity file receives them: every result deeply read-only. Written out, not mapped over
- * `Actions`, because a read is generic in the names its `load` lists and a mapped type would lose that. `Actions` is
- * assignable to it.
+ * `Actions`, because a read is generic in the names its `load` lists and a mapped type would erase that. `Actions` is
+ * assignable to it (a read's result is the read-only record intersected with the read-only loaded members, which TypeScript
+ * relates member by member).
  */
 export interface ReadOnlyActions {
   readonly recordEvent: (
     input: RecordEventInput,
     context?: $ActionContext,
   ) => Promise<$DeepReadonly<Event>>;
-  readonly readEvent: <const N extends keyof EventLoadable = never>(
-    input: ReadEventInput<N>,
+  readonly readEvent: <const L extends readonly (keyof EventLoadable)[] = readonly []>(
+    input: Omit<ReadEventInput, "load"> & EventLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<$DeepReadonly<EventWith<N>[]>>;
+  ) => Promise<
+    readonly ($DeepReadonly<Event> & Pick<$DeepReadonly<EventLoadable>, EventLoadNames<L>>)[]
+  >;
   readonly startAttempt: (
     input: StartAttemptInput,
     context?: $ActionContext,
@@ -467,10 +516,12 @@ export interface ReadOnlyActions {
     input: AbandonAttemptInput,
     context?: $ActionContext,
   ) => Promise<$DeepReadonly<Attempt>>;
-  readonly readAttempt: <const N extends keyof AttemptLoadable = never>(
-    input: ReadAttemptInput<N>,
+  readonly readAttempt: <const L extends readonly (keyof AttemptLoadable)[] = readonly []>(
+    input: Omit<ReadAttemptInput, "load"> & AttemptLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<$DeepReadonly<AttemptWith<N>[]>>;
+  ) => Promise<
+    readonly ($DeepReadonly<Attempt> & Pick<$DeepReadonly<AttemptLoadable>, AttemptLoadNames<L>>)[]
+  >;
   readonly recordInvocation: (
     input: RecordInvocationInput,
     context?: $ActionContext,
@@ -479,10 +530,13 @@ export interface ReadOnlyActions {
     input: CorrectInvocationInput,
     context?: $ActionContext,
   ) => Promise<$DeepReadonly<Invocation>>;
-  readonly readInvocation: <const N extends keyof InvocationLoadable = never>(
-    input: ReadInvocationInput<N>,
+  readonly readInvocation: <const L extends readonly (keyof InvocationLoadable)[] = readonly []>(
+    input: Omit<ReadInvocationInput, "load"> & InvocationLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<$DeepReadonly<InvocationWith<N>[]>>;
+  ) => Promise<
+    readonly ($DeepReadonly<Invocation> &
+      Pick<$DeepReadonly<InvocationLoadable>, InvocationLoadNames<L>>)[]
+  >;
   readonly registerMachine: (
     input: RegisterMachineInput,
     context?: $ActionContext,
@@ -499,10 +553,12 @@ export interface ReadOnlyActions {
     input: RetireMachineInput,
     context?: $ActionContext,
   ) => Promise<$DeepReadonly<Machine>>;
-  readonly readMachine: <const N extends keyof MachineLoadable = never>(
-    input: ReadMachineInput<N>,
+  readonly readMachine: <const L extends readonly (keyof MachineLoadable)[] = readonly []>(
+    input: Omit<ReadMachineInput, "load"> & MachineLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<$DeepReadonly<MachineWith<N>[]>>;
+  ) => Promise<
+    readonly ($DeepReadonly<Machine> & Pick<$DeepReadonly<MachineLoadable>, MachineLoadNames<L>>)[]
+  >;
   readonly startRun: (
     input: StartRunInput,
     context?: $ActionContext,
@@ -515,10 +571,10 @@ export interface ReadOnlyActions {
     input: SettleRunInput,
     context?: $ActionContext,
   ) => Promise<$DeepReadonly<Run>>;
-  readonly readRun: <const N extends keyof RunLoadable = never>(
-    input: ReadRunInput<N>,
+  readonly readRun: <const L extends readonly (keyof RunLoadable)[] = readonly []>(
+    input: Omit<ReadRunInput, "load"> & RunLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<$DeepReadonly<RunWith<N>[]>>;
+  ) => Promise<readonly ($DeepReadonly<Run> & Pick<$DeepReadonly<RunLoadable>, RunLoadNames<L>>)[]>;
   readonly recordSessionReference: (
     input: RecordSessionReferenceInput,
     context?: $ActionContext,
@@ -531,10 +587,15 @@ export interface ReadOnlyActions {
     input: RedactSessionReferenceInput,
     context?: $ActionContext,
   ) => Promise<$DeepReadonly<SessionReference>>;
-  readonly readSessionReference: <const N extends keyof SessionReferenceLoadable = never>(
-    input: ReadSessionReferenceInput<N>,
+  readonly readSessionReference: <
+    const L extends readonly (keyof SessionReferenceLoadable)[] = readonly [],
+  >(
+    input: Omit<ReadSessionReferenceInput, "load"> & SessionReferenceLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<$DeepReadonly<SessionReferenceWith<N>[]>>;
+  ) => Promise<
+    readonly ($DeepReadonly<SessionReference> &
+      Pick<$DeepReadonly<SessionReferenceLoadable>, SessionReferenceLoadNames<L>>)[]
+  >;
   readonly registerCollaborator: (
     input: RegisterCollaboratorInput,
     context?: $ActionContext,
@@ -547,10 +608,15 @@ export interface ReadOnlyActions {
     input: RetireCollaboratorInput,
     context?: $ActionContext,
   ) => Promise<$DeepReadonly<Collaborator>>;
-  readonly readCollaborator: <const N extends keyof CollaboratorLoadable = never>(
-    input: ReadCollaboratorInput<N>,
+  readonly readCollaborator: <
+    const L extends readonly (keyof CollaboratorLoadable)[] = readonly [],
+  >(
+    input: Omit<ReadCollaboratorInput, "load"> & CollaboratorLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<$DeepReadonly<CollaboratorWith<N>[]>>;
+  ) => Promise<
+    readonly ($DeepReadonly<Collaborator> &
+      Pick<$DeepReadonly<CollaboratorLoadable>, CollaboratorLoadNames<L>>)[]
+  >;
   readonly grantMembership: (
     input: GrantMembershipInput,
     context?: $ActionContext,
@@ -563,10 +629,13 @@ export interface ReadOnlyActions {
     input: RevokeMembershipInput,
     context?: $ActionContext,
   ) => Promise<$DeepReadonly<Membership>>;
-  readonly readMembership: <const N extends keyof MembershipLoadable = never>(
-    input: ReadMembershipInput<N>,
+  readonly readMembership: <const L extends readonly (keyof MembershipLoadable)[] = readonly []>(
+    input: Omit<ReadMembershipInput, "load"> & MembershipLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<$DeepReadonly<MembershipWith<N>[]>>;
+  ) => Promise<
+    readonly ($DeepReadonly<Membership> &
+      Pick<$DeepReadonly<MembershipLoadable>, MembershipLoadNames<L>>)[]
+  >;
   readonly createWorkspace: (
     input: CreateWorkspaceInput,
     context?: $ActionContext,
@@ -587,10 +656,13 @@ export interface ReadOnlyActions {
     input: FinishAssignmentInput,
     context?: $ActionContext,
   ) => Promise<$DeepReadonly<Assignment>>;
-  readonly readAssignment: <const N extends keyof AssignmentLoadable = never>(
-    input: ReadAssignmentInput<N>,
+  readonly readAssignment: <const L extends readonly (keyof AssignmentLoadable)[] = readonly []>(
+    input: Omit<ReadAssignmentInput, "load"> & AssignmentLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<$DeepReadonly<AssignmentWith<N>[]>>;
+  ) => Promise<
+    readonly ($DeepReadonly<Assignment> &
+      Pick<$DeepReadonly<AssignmentLoadable>, AssignmentLoadNames<L>>)[]
+  >;
   readonly acquireClaim: (
     input: AcquireClaimInput,
     context?: $ActionContext,
@@ -615,18 +687,23 @@ export interface ReadOnlyActions {
     input: EndClaimInput,
     context?: $ActionContext,
   ) => Promise<$DeepReadonly<Claim>>;
-  readonly readClaim: <const N extends keyof ClaimLoadable = never>(
-    input: ReadClaimInput<N>,
+  readonly readClaim: <const L extends readonly (keyof ClaimLoadable)[] = readonly []>(
+    input: Omit<ReadClaimInput, "load"> & ClaimLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<$DeepReadonly<ClaimWith<N>[]>>;
+  ) => Promise<
+    readonly ($DeepReadonly<Claim> & Pick<$DeepReadonly<ClaimLoadable>, ClaimLoadNames<L>>)[]
+  >;
   readonly recordCompletion: (
     input: RecordCompletionInput,
     context?: $ActionContext,
   ) => Promise<$DeepReadonly<Completion>>;
-  readonly readCompletion: <const N extends keyof CompletionLoadable = never>(
-    input: ReadCompletionInput<N>,
+  readonly readCompletion: <const L extends readonly (keyof CompletionLoadable)[] = readonly []>(
+    input: Omit<ReadCompletionInput, "load"> & CompletionLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<$DeepReadonly<CompletionWith<N>[]>>;
+  ) => Promise<
+    readonly ($DeepReadonly<Completion> &
+      Pick<$DeepReadonly<CompletionLoadable>, CompletionLoadNames<L>>)[]
+  >;
   readonly addDependency: (
     input: AddDependencyInput,
     context?: $ActionContext,
@@ -635,26 +712,37 @@ export interface ReadOnlyActions {
     input: RemoveDependencyInput,
     context?: $ActionContext,
   ) => Promise<$DeepReadonly<void>>;
-  readonly readDependency: <const N extends keyof DependencyLoadable = never>(
-    input: ReadDependencyInput<N>,
+  readonly readDependency: <const L extends readonly (keyof DependencyLoadable)[] = readonly []>(
+    input: Omit<ReadDependencyInput, "load"> & DependencyLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<$DeepReadonly<DependencyWith<N>[]>>;
+  ) => Promise<
+    readonly ($DeepReadonly<Dependency> &
+      Pick<$DeepReadonly<DependencyLoadable>, DependencyLoadNames<L>>)[]
+  >;
   readonly recordEvidenceReference: (
     input: RecordEvidenceReferenceInput,
     context?: $ActionContext,
   ) => Promise<$DeepReadonly<EvidenceReference>>;
-  readonly readEvidenceReference: <const N extends keyof EvidenceReferenceLoadable = never>(
-    input: ReadEvidenceReferenceInput<N>,
+  readonly readEvidenceReference: <
+    const L extends readonly (keyof EvidenceReferenceLoadable)[] = readonly [],
+  >(
+    input: Omit<ReadEvidenceReferenceInput, "load"> & EvidenceReferenceLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<$DeepReadonly<EvidenceReferenceWith<N>[]>>;
+  ) => Promise<
+    readonly ($DeepReadonly<EvidenceReference> &
+      Pick<$DeepReadonly<EvidenceReferenceLoadable>, EvidenceReferenceLoadNames<L>>)[]
+  >;
   readonly recordLateResult: (
     input: RecordLateResultInput,
     context?: $ActionContext,
   ) => Promise<$DeepReadonly<LateResult>>;
-  readonly readLateResult: <const N extends keyof LateResultLoadable = never>(
-    input: ReadLateResultInput<N>,
+  readonly readLateResult: <const L extends readonly (keyof LateResultLoadable)[] = readonly []>(
+    input: Omit<ReadLateResultInput, "load"> & LateResultLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<$DeepReadonly<LateResultWith<N>[]>>;
+  ) => Promise<
+    readonly ($DeepReadonly<LateResult> &
+      Pick<$DeepReadonly<LateResultLoadable>, LateResultLoadNames<L>>)[]
+  >;
   readonly acceptReview: (
     input: AcceptReviewInput,
     context?: $ActionContext,
@@ -663,10 +751,12 @@ export interface ReadOnlyActions {
     input: ReturnReviewInput,
     context?: $ActionContext,
   ) => Promise<$DeepReadonly<Review>>;
-  readonly readReview: <const N extends keyof ReviewLoadable = never>(
-    input: ReadReviewInput<N>,
+  readonly readReview: <const L extends readonly (keyof ReviewLoadable)[] = readonly []>(
+    input: Omit<ReadReviewInput, "load"> & ReviewLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<$DeepReadonly<ReviewWith<N>[]>>;
+  ) => Promise<
+    readonly ($DeepReadonly<Review> & Pick<$DeepReadonly<ReviewLoadable>, ReviewLoadNames<L>>)[]
+  >;
   readonly submitSubmission: (
     input: SubmitSubmissionInput,
     context?: $ActionContext,
@@ -683,10 +773,13 @@ export interface ReadOnlyActions {
     input: RecordAcceptedSubmissionInput,
     context?: $ActionContext,
   ) => Promise<$DeepReadonly<Submission>>;
-  readonly readSubmission: <const N extends keyof SubmissionLoadable = never>(
-    input: ReadSubmissionInput<N>,
+  readonly readSubmission: <const L extends readonly (keyof SubmissionLoadable)[] = readonly []>(
+    input: Omit<ReadSubmissionInput, "load"> & SubmissionLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<$DeepReadonly<SubmissionWith<N>[]>>;
+  ) => Promise<
+    readonly ($DeepReadonly<Submission> &
+      Pick<$DeepReadonly<SubmissionLoadable>, SubmissionLoadNames<L>>)[]
+  >;
   readonly createTask: (
     input: CreateTaskInput,
     context?: $ActionContext,
@@ -727,64 +820,114 @@ export interface ReadOnlyActions {
     input: UnassignTaskInput,
     context?: $ActionContext,
   ) => Promise<$DeepReadonly<Task>>;
-  readonly readTask: <const N extends keyof TaskLoadable = never>(
-    input: ReadTaskInput<N>,
+  readonly readTask: <const L extends readonly (keyof TaskLoadable)[] = readonly []>(
+    input: Omit<ReadTaskInput, "load"> & TaskLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<$DeepReadonly<TaskWith<N>[]>>;
+  ) => Promise<
+    readonly ($DeepReadonly<Task> & Pick<$DeepReadonly<TaskLoadable>, TaskLoadNames<L>>)[]
+  >;
 }
 
 /** `Reads` as a function of an entity file receives them (`tx`): every result deeply read-only. `Reads` is assignable to it. */
 export interface ReadOnlyReads {
-  readonly readEvent: <const N extends keyof EventLoadable = never>(
-    input: ReadEventInput<N>,
-  ) => Promise<$DeepReadonly<EventWith<N>[]>>;
-  readonly readAttempt: <const N extends keyof AttemptLoadable = never>(
-    input: ReadAttemptInput<N>,
-  ) => Promise<$DeepReadonly<AttemptWith<N>[]>>;
-  readonly readInvocation: <const N extends keyof InvocationLoadable = never>(
-    input: ReadInvocationInput<N>,
-  ) => Promise<$DeepReadonly<InvocationWith<N>[]>>;
-  readonly readMachine: <const N extends keyof MachineLoadable = never>(
-    input: ReadMachineInput<N>,
-  ) => Promise<$DeepReadonly<MachineWith<N>[]>>;
-  readonly readRun: <const N extends keyof RunLoadable = never>(
-    input: ReadRunInput<N>,
-  ) => Promise<$DeepReadonly<RunWith<N>[]>>;
-  readonly readSessionReference: <const N extends keyof SessionReferenceLoadable = never>(
-    input: ReadSessionReferenceInput<N>,
-  ) => Promise<$DeepReadonly<SessionReferenceWith<N>[]>>;
-  readonly readCollaborator: <const N extends keyof CollaboratorLoadable = never>(
-    input: ReadCollaboratorInput<N>,
-  ) => Promise<$DeepReadonly<CollaboratorWith<N>[]>>;
-  readonly readMembership: <const N extends keyof MembershipLoadable = never>(
-    input: ReadMembershipInput<N>,
-  ) => Promise<$DeepReadonly<MembershipWith<N>[]>>;
+  readonly readEvent: <const L extends readonly (keyof EventLoadable)[] = readonly []>(
+    input: Omit<ReadEventInput, "load"> & EventLoadArg<L>,
+  ) => Promise<
+    readonly ($DeepReadonly<Event> & Pick<$DeepReadonly<EventLoadable>, EventLoadNames<L>>)[]
+  >;
+  readonly readAttempt: <const L extends readonly (keyof AttemptLoadable)[] = readonly []>(
+    input: Omit<ReadAttemptInput, "load"> & AttemptLoadArg<L>,
+  ) => Promise<
+    readonly ($DeepReadonly<Attempt> & Pick<$DeepReadonly<AttemptLoadable>, AttemptLoadNames<L>>)[]
+  >;
+  readonly readInvocation: <const L extends readonly (keyof InvocationLoadable)[] = readonly []>(
+    input: Omit<ReadInvocationInput, "load"> & InvocationLoadArg<L>,
+  ) => Promise<
+    readonly ($DeepReadonly<Invocation> &
+      Pick<$DeepReadonly<InvocationLoadable>, InvocationLoadNames<L>>)[]
+  >;
+  readonly readMachine: <const L extends readonly (keyof MachineLoadable)[] = readonly []>(
+    input: Omit<ReadMachineInput, "load"> & MachineLoadArg<L>,
+  ) => Promise<
+    readonly ($DeepReadonly<Machine> & Pick<$DeepReadonly<MachineLoadable>, MachineLoadNames<L>>)[]
+  >;
+  readonly readRun: <const L extends readonly (keyof RunLoadable)[] = readonly []>(
+    input: Omit<ReadRunInput, "load"> & RunLoadArg<L>,
+  ) => Promise<readonly ($DeepReadonly<Run> & Pick<$DeepReadonly<RunLoadable>, RunLoadNames<L>>)[]>;
+  readonly readSessionReference: <
+    const L extends readonly (keyof SessionReferenceLoadable)[] = readonly [],
+  >(
+    input: Omit<ReadSessionReferenceInput, "load"> & SessionReferenceLoadArg<L>,
+  ) => Promise<
+    readonly ($DeepReadonly<SessionReference> &
+      Pick<$DeepReadonly<SessionReferenceLoadable>, SessionReferenceLoadNames<L>>)[]
+  >;
+  readonly readCollaborator: <
+    const L extends readonly (keyof CollaboratorLoadable)[] = readonly [],
+  >(
+    input: Omit<ReadCollaboratorInput, "load"> & CollaboratorLoadArg<L>,
+  ) => Promise<
+    readonly ($DeepReadonly<Collaborator> &
+      Pick<$DeepReadonly<CollaboratorLoadable>, CollaboratorLoadNames<L>>)[]
+  >;
+  readonly readMembership: <const L extends readonly (keyof MembershipLoadable)[] = readonly []>(
+    input: Omit<ReadMembershipInput, "load"> & MembershipLoadArg<L>,
+  ) => Promise<
+    readonly ($DeepReadonly<Membership> &
+      Pick<$DeepReadonly<MembershipLoadable>, MembershipLoadNames<L>>)[]
+  >;
   readonly readWorkspace: (input: ReadWorkspaceInput) => Promise<$DeepReadonly<Workspace[]>>;
-  readonly readAssignment: <const N extends keyof AssignmentLoadable = never>(
-    input: ReadAssignmentInput<N>,
-  ) => Promise<$DeepReadonly<AssignmentWith<N>[]>>;
-  readonly readClaim: <const N extends keyof ClaimLoadable = never>(
-    input: ReadClaimInput<N>,
-  ) => Promise<$DeepReadonly<ClaimWith<N>[]>>;
-  readonly readCompletion: <const N extends keyof CompletionLoadable = never>(
-    input: ReadCompletionInput<N>,
-  ) => Promise<$DeepReadonly<CompletionWith<N>[]>>;
-  readonly readDependency: <const N extends keyof DependencyLoadable = never>(
-    input: ReadDependencyInput<N>,
-  ) => Promise<$DeepReadonly<DependencyWith<N>[]>>;
-  readonly readEvidenceReference: <const N extends keyof EvidenceReferenceLoadable = never>(
-    input: ReadEvidenceReferenceInput<N>,
-  ) => Promise<$DeepReadonly<EvidenceReferenceWith<N>[]>>;
-  readonly readLateResult: <const N extends keyof LateResultLoadable = never>(
-    input: ReadLateResultInput<N>,
-  ) => Promise<$DeepReadonly<LateResultWith<N>[]>>;
-  readonly readReview: <const N extends keyof ReviewLoadable = never>(
-    input: ReadReviewInput<N>,
-  ) => Promise<$DeepReadonly<ReviewWith<N>[]>>;
-  readonly readSubmission: <const N extends keyof SubmissionLoadable = never>(
-    input: ReadSubmissionInput<N>,
-  ) => Promise<$DeepReadonly<SubmissionWith<N>[]>>;
-  readonly readTask: <const N extends keyof TaskLoadable = never>(
-    input: ReadTaskInput<N>,
-  ) => Promise<$DeepReadonly<TaskWith<N>[]>>;
+  readonly readAssignment: <const L extends readonly (keyof AssignmentLoadable)[] = readonly []>(
+    input: Omit<ReadAssignmentInput, "load"> & AssignmentLoadArg<L>,
+  ) => Promise<
+    readonly ($DeepReadonly<Assignment> &
+      Pick<$DeepReadonly<AssignmentLoadable>, AssignmentLoadNames<L>>)[]
+  >;
+  readonly readClaim: <const L extends readonly (keyof ClaimLoadable)[] = readonly []>(
+    input: Omit<ReadClaimInput, "load"> & ClaimLoadArg<L>,
+  ) => Promise<
+    readonly ($DeepReadonly<Claim> & Pick<$DeepReadonly<ClaimLoadable>, ClaimLoadNames<L>>)[]
+  >;
+  readonly readCompletion: <const L extends readonly (keyof CompletionLoadable)[] = readonly []>(
+    input: Omit<ReadCompletionInput, "load"> & CompletionLoadArg<L>,
+  ) => Promise<
+    readonly ($DeepReadonly<Completion> &
+      Pick<$DeepReadonly<CompletionLoadable>, CompletionLoadNames<L>>)[]
+  >;
+  readonly readDependency: <const L extends readonly (keyof DependencyLoadable)[] = readonly []>(
+    input: Omit<ReadDependencyInput, "load"> & DependencyLoadArg<L>,
+  ) => Promise<
+    readonly ($DeepReadonly<Dependency> &
+      Pick<$DeepReadonly<DependencyLoadable>, DependencyLoadNames<L>>)[]
+  >;
+  readonly readEvidenceReference: <
+    const L extends readonly (keyof EvidenceReferenceLoadable)[] = readonly [],
+  >(
+    input: Omit<ReadEvidenceReferenceInput, "load"> & EvidenceReferenceLoadArg<L>,
+  ) => Promise<
+    readonly ($DeepReadonly<EvidenceReference> &
+      Pick<$DeepReadonly<EvidenceReferenceLoadable>, EvidenceReferenceLoadNames<L>>)[]
+  >;
+  readonly readLateResult: <const L extends readonly (keyof LateResultLoadable)[] = readonly []>(
+    input: Omit<ReadLateResultInput, "load"> & LateResultLoadArg<L>,
+  ) => Promise<
+    readonly ($DeepReadonly<LateResult> &
+      Pick<$DeepReadonly<LateResultLoadable>, LateResultLoadNames<L>>)[]
+  >;
+  readonly readReview: <const L extends readonly (keyof ReviewLoadable)[] = readonly []>(
+    input: Omit<ReadReviewInput, "load"> & ReviewLoadArg<L>,
+  ) => Promise<
+    readonly ($DeepReadonly<Review> & Pick<$DeepReadonly<ReviewLoadable>, ReviewLoadNames<L>>)[]
+  >;
+  readonly readSubmission: <const L extends readonly (keyof SubmissionLoadable)[] = readonly []>(
+    input: Omit<ReadSubmissionInput, "load"> & SubmissionLoadArg<L>,
+  ) => Promise<
+    readonly ($DeepReadonly<Submission> &
+      Pick<$DeepReadonly<SubmissionLoadable>, SubmissionLoadNames<L>>)[]
+  >;
+  readonly readTask: <const L extends readonly (keyof TaskLoadable)[] = readonly []>(
+    input: Omit<ReadTaskInput, "load"> & TaskLoadArg<L>,
+  ) => Promise<
+    readonly ($DeepReadonly<Task> & Pick<$DeepReadonly<TaskLoadable>, TaskLoadNames<L>>)[]
+  >;
 }

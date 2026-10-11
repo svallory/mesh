@@ -174,6 +174,88 @@ describe("the generated files", () => {
     } finally { await rm(join(dir, "check-load.ts")); }
   });
 
+  test("a load that does not name its fields as a tuple claims nothing: a widened list and an input type give the bare record", async () => {
+    await Bun.write(join(dir, "check-tuple.ts"), [
+      'import { bind } from "./.mesh/index.ts";',
+      'import type { ReadProjectInput } from "./.mesh/domain/index.ts";',
+      "const mesh = bind(null as never);",
+      "const context = { actor: { id: 'a' } };",
+      "export async function calls(): Promise<void> {",
+      "  const names: ('label' | 'taskCount')[] = [];",
+      "  const [widened] = await mesh.readProject({ load: names }, context);",
+      "  // @ts-expect-error a list that does not say which names it holds loads none, as far as the type knows",
+      "  void widened!.label;",
+      "  const input: ReadProjectInput<'label'> = { limit: 1 };",
+      "  const [fromInput] = await mesh.readProject(input, context);",
+      "  // @ts-expect-error an input typed for a name says nothing about what the value loads",
+      "  void fromInput!.label;",
+      "  // @ts-expect-error an explicit tuple that lists a name needs the load that lists it",
+      "  await mesh.readProject<readonly ['label']>({}, context);",
+      "  const [explicit] = await mesh.readProject<readonly ['label']>({ load: ['label'] }, context);",
+      "  const label: string = explicit!.label;",
+      "  const [empty] = await mesh.readProject({ load: [] }, context);",
+      "  // @ts-expect-error an empty list loads nothing",
+      "  void empty!.label;",
+      "  const [undef] = await mesh.readProject({ load: undefined, limit: 1 }, context);",
+      "  void undef!.name; void label;",
+      "}",
+      "",
+    ].join("\n"));
+    try {
+      expect(await typeCheck(dir, ["check-tuple.ts"])).toBe("");
+    } finally { await rm(join(dir, "check-tuple.ts")); }
+  });
+
+  test("the read-only types keep what is loaded and what is not: `Reads` and `Actions` are assignable to them, `tx` of an entity file and a helper typed with them are checked", async () => {
+    await Bun.write(join(dir, "check-readonly.ts"), [
+      'import type { Actions, ReadOnlyActions, ReadOnlyReads, Reads } from "./.mesh/index.ts";',
+      "declare const plain: Reads;",
+      "declare const plainActions: Actions;",
+      "// A function that takes the read-only reads, as a Hyper helper does, accepts the plain ones: no cast.",
+      "const ro: ReadOnlyReads = plain;",
+      "const roa: ReadOnlyActions = plainActions;",
+      "async function helper(tx: ReadOnlyReads): Promise<number> {",
+      "  const [p] = await tx.readProject({ load: ['label'] });",
+      "  const label: string = p!.label;",
+      "  // @ts-expect-error not loaded through the read-only reads either",
+      "  void p!.taskCount;",
+      "  const [bare] = await tx.readProject({});",
+      "  // @ts-expect-error nothing loaded, nothing readable",
+      "  void bare!.label;",
+      "  // @ts-expect-error a record read through them is read-only",
+      "  p!.name = 'x';",
+      "  // @ts-expect-error and so is a loaded list",
+      "  (await tx.readProject({ load: ['tasks'] }))[0]!.tasks.push((await tx.readTask({}))[0]!);",
+      "  const [t] = await roa.readTask({ load: ['project'] });",
+      "  const projectName: string = t!.project.name;",
+      "  // @ts-expect-error a name that is not loadable",
+      "  await tx.readProject({ load: ['nope'] });",
+      "  void label; void projectName;",
+      "  return 1;",
+      "}",
+      "export const run = (): Promise<number> => helper(ro);",
+      "",
+    ].join("\n"));
+    try {
+      expect(await typeCheck(dir, ["check-readonly.ts"])).toBe("");
+    } finally { await rm(join(dir, "check-readonly.ts")); }
+  });
+
+  test("a check of an entity file that reads a field it did not load is a type error in the generated expressions file", async () => {
+    const wrong = task.replace(
+      '(await tx.readProject({ filter: { id: { eq: input.project } }, load: ["viewer"] }))[0]?.viewer === "alice"',
+      '(await tx.readProject({ filter: { id: { eq: input.project } }, load: ["viewer"] }))[0]?.taskCount === 1',
+    );
+    expect(wrong).not.toBe(task);
+    const broken = await generate(".reads-load-unloaded-", { project, task: wrong });
+    try {
+      const output = await typeCheck(broken);
+      expect(output).toContain("task.expressions.ts");
+      expect(output).toContain("TS2339");
+      expect(output).toContain("taskCount");
+    } finally { await rm(broken, { recursive: true, force: true }); }
+  });
+
   test("an entity with nothing to load has no `load`", async () => {
     const plain = await generate(".reads-load-plain-", { note: 'entity :Note table="notes"\n  attributes\n    uuid :id primary-key\n    string :text\n  actions auto=[:read]\n' });
     try {
@@ -362,6 +444,39 @@ describe("the clock", () => {
       expect((await late.readStamp({ load: ["past"] }, ctx))[0].past).toBe(true);
       expect(await late.transaction(async ({ tx }: any) => (await tx.readStamp({ load: ["past"] }))[0].past, ctx)).toBe(true);
       expect(await early.transaction(async ({ tx }: any) => (await tx.readStamp({ load: ["past"] }))[0].past, ctx)).toBe(false);
+      await db.close();
+    } finally { await rm(clockDir, { recursive: true, force: true }); }
+  });
+
+  test("one instant per call: every row and field of a load, and a create's check and its tx read, see the same now()", async () => {
+    const source = {
+      stamp: 'entity :Stamp table="stamps"\n  attributes\n    uuid :id primary-key\n    timestamp :at\n  computed\n    boolean :past() { return &at < now() }\n    timestamp :seen() { return now() }\n  actions auto=[:read]\n    create :add\n      input\n        &at\n      validate\n        check :same that=async ({ tx }) => (await tx.readStamp({ load: ["seen", "past"] })).every((row) => row.seen.getTime() === now().getTime() && row.past === (row.at < now())) code="skewed" message="the load and the check read two instants"\n',
+    };
+    const clockDir = await generate(".reads-load-instant-", source);
+    try {
+      const clock = await import(join(clockDir, ".mesh/index.ts"));
+      const db = sqlite({ file: ":memory:" });
+      await createSchema(db, clock.tables);
+      await db.transaction(async (tx) => {
+        for (let n = 1; n <= 3; n++) await tx.insert(clock.tables.stamp, { id: id(n), at: new Date(n * 1_000 + 500) });
+      });
+      // An advancing clock: every read of it is one second later than the last.
+      let ticks = 0;
+      const mesh = clock.bind(db, { clock: () => new Date(1_000 * ++ticks) });
+      const ctx = { actor: alice };
+      // A top-level read takes one instant for all its rows and fields.
+      ticks = 0;
+      const rows = await mesh.readStamp({ load: ["seen", "past"] }, ctx);
+      expect(new Set(rows.map((row: any) => row.seen.getTime())).size).toBe(1);
+      expect(ticks).toBe(1);
+      // The same through the application's transaction.
+      ticks = 0;
+      const viaTx = await mesh.transaction(async ({ tx }: any) => tx.readStamp({ load: ["seen"] }), ctx);
+      expect(new Set(viaTx.map((row: any) => row.seen.getTime())).size).toBe(1);
+      // A create's check: its `now()` and the field its `tx` read loaded are one instant, so the check passes
+      // (it fails with `skewed` when the load takes a fresh reading of the clock).
+      ticks = 0;
+      await expect(mesh.addStamp({ at: new Date(2_500) }, ctx)).resolves.toBeDefined();
       await db.close();
     } finally { await rm(clockDir, { recursive: true, force: true }); }
   });

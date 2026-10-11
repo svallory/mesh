@@ -11,6 +11,7 @@ import {
   checkUnchanged as $checkUnchanged,
   composed as $composed,
   noteWrite as $noteWrite,
+  pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
@@ -95,6 +96,7 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.workspace, $key);
@@ -110,9 +112,9 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
             actor: $actor,
             context: $context,
             before: $readOnlyRecord($before, "Workspace.rename") as unknown as Workspace,
-            ...$composed(compose, tx, context, "Workspace.rename"),
+            ...$composed(compose, tx, context, "Workspace.rename", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<RenameWorkspaceInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];

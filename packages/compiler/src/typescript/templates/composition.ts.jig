@@ -25,18 +25,19 @@ export interface Reads {
 
 /**
  * `Actions` as a function of an entity file receives them: every result deeply read-only. Written out, not mapped over
- * `Actions`, because a read is generic in the names its `load` lists and a mapped type would lose that. `Actions` is
- * assignable to it.
+ * `Actions`, because a read is generic in the names its `load` lists and a mapped type would erase that. `Actions` is
+ * assignable to it (a read's result is the read-only record intersected with the read-only loaded members, which TypeScript
+ * relates member by member).
  */
 export interface ReadOnlyActions {
   @each(fn in actions)
-  readonly {{ fn.name }}: {{ fn.generics }}(input: {{ fn.inputType }}, context?: $ActionContext) => Promise<$DeepReadonly<{{ fn.returnType }}>>;
+  readonly {{ fn.name }}: {{ fn.generics }}(input: {{ fn.inputType }}, context?: $ActionContext) => Promise<{{ fn.readOnlyReturnType }}>;
   @end
 }
 
 /** `Reads` as a function of an entity file receives them (`tx`): every result deeply read-only. `Reads` is assignable to it. */
 export interface ReadOnlyReads {
   @each(fn in reads)
-  readonly {{ fn.name }}: {{ fn.generics }}(input: {{ fn.inputType }}) => Promise<$DeepReadonly<{{ fn.returnType }}>>;
+  readonly {{ fn.name }}: {{ fn.generics }}(input: {{ fn.inputType }}) => Promise<{{ fn.readOnlyReturnType }}>;
   @end
 }

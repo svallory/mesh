@@ -5,12 +5,20 @@
 import {
   castInput as $castInput,
   loadRows as $loadRows,
+  pinClock as $pinClock,
   type BindOptions as $BindOptions,
   type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
 } from "@meshfw/runtime";
-import type { Comment, CommentWith, CommentLoadable, ReadCommentInput } from "./comment.types";
+import type {
+  Comment,
+  CommentWith,
+  CommentLoadNames,
+  CommentLoadArg,
+  CommentLoadable,
+  ReadCommentInput,
+} from "./comment.types";
 import { readCommentInput } from "./comment.validators";
 import { tables } from "../../schema";
 import { loadPlan as $loadPlan } from "../../load";
@@ -21,10 +29,11 @@ import { loadPlan as $loadPlan } from "../../load";
  */
 export function bindCommentReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read<const N extends keyof CommentLoadable = never>(
-      input: ReadCommentInput<N>,
+    async read<const L extends readonly (keyof CommentLoadable)[] = readonly []>(
+      input: Omit<ReadCommentInput, "load"> & CommentLoadArg<L>,
       context?: unknown,
-    ): Promise<CommentWith<N>[]> {
+      clock?: () => Date,
+    ): Promise<CommentWith<CommentLoadNames<L>>[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readCommentInput, input);
       return layer.transaction(async (tx) => {
@@ -34,13 +43,14 @@ export function bindCommentReads(layer: $DataLayer, options: $BindOptions = {}) 
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Comment[];
-        if (!parsed.load?.length) return $rows as unknown as CommentWith<N>[];
+        if (!parsed.load?.length) return $rows as unknown as CommentWith<CommentLoadNames<L>>[];
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "Comment", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
-          clock: options.clock,
-        })) as unknown as CommentWith<N>[];
+          clock: $clock,
+        })) as unknown as CommentWith<CommentLoadNames<L>>[];
       });
     },
   });
@@ -53,10 +63,10 @@ export function bindCommentReads(layer: $DataLayer, options: $BindOptions = {}) 
 export function bindComment(layer: $DataLayer, options: $BindOptions = {}, _compose?: $Composer) {
   const $reads = bindCommentReads(layer, options);
   return Object.freeze({
-    async read<const N extends keyof CommentLoadable = never>(
-      input: ReadCommentInput<N>,
+    async read<const L extends readonly (keyof CommentLoadable)[] = readonly []>(
+      input: Omit<ReadCommentInput, "load"> & CommentLoadArg<L>,
       ...[context]: $ContextArgument
-    ): Promise<CommentWith<N>[]> {
+    ): Promise<CommentWith<CommentLoadNames<L>>[]> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
       return $reads.read(input, context);
     },

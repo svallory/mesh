@@ -48,6 +48,17 @@ export type AssignmentLoadable = {
 export type AssignmentWith<N extends keyof AssignmentLoadable> = Assignment &
   Pick<AssignmentLoadable, N>;
 
+/** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
+export type AssignmentLoadNames<L extends readonly (keyof AssignmentLoadable)[]> =
+  number extends L["length"] ? never : L[number];
+
+/** The `load` member of a read called with the tuple `L`: required when `L` lists a name, so an input cannot claim a load it does not make. */
+export type AssignmentLoadArg<L extends readonly (keyof AssignmentLoadable)[]> = [
+  AssignmentLoadNames<L>,
+] extends [never]
+  ? { load?: L | undefined }
+  : { load: L };
+
 /** A Assignment as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
 export type AssignmentLoaded = Assignment & {
   task: TaskLoaded;

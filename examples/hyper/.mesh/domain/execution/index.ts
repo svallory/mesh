@@ -18,6 +18,8 @@ import type {
   AttemptSort,
   AttemptLoadable,
   AttemptWith,
+  AttemptLoadNames,
+  AttemptLoadArg,
 } from "./attempt.types";
 import type {
   Invocation,
@@ -28,6 +30,8 @@ import type {
   InvocationSort,
   InvocationLoadable,
   InvocationWith,
+  InvocationLoadNames,
+  InvocationLoadArg,
 } from "./invocation.types";
 import type {
   Machine,
@@ -40,6 +44,8 @@ import type {
   MachineSort,
   MachineLoadable,
   MachineWith,
+  MachineLoadNames,
+  MachineLoadArg,
 } from "./machine.types";
 import type {
   Run,
@@ -51,6 +57,8 @@ import type {
   RunSort,
   RunLoadable,
   RunWith,
+  RunLoadNames,
+  RunLoadArg,
 } from "./run.types";
 import type {
   SessionReference,
@@ -62,6 +70,8 @@ import type {
   SessionReferenceSort,
   SessionReferenceLoadable,
   SessionReferenceWith,
+  SessionReferenceLoadNames,
+  SessionReferenceLoadArg,
 } from "./sessionReference.types";
 
 export type {
@@ -75,6 +85,8 @@ export type {
   AttemptSort,
   AttemptLoadable,
   AttemptWith,
+  AttemptLoadNames,
+  AttemptLoadArg,
   Invocation,
   RecordInvocationInput,
   CorrectInvocationInput,
@@ -83,6 +95,8 @@ export type {
   InvocationSort,
   InvocationLoadable,
   InvocationWith,
+  InvocationLoadNames,
+  InvocationLoadArg,
   Machine,
   RegisterMachineInput,
   ReportMachineInput,
@@ -93,6 +107,8 @@ export type {
   MachineSort,
   MachineLoadable,
   MachineWith,
+  MachineLoadNames,
+  MachineLoadArg,
   Run,
   StartRunInput,
   CancelRunInput,
@@ -102,6 +118,8 @@ export type {
   RunSort,
   RunLoadable,
   RunWith,
+  RunLoadNames,
+  RunLoadArg,
   SessionReference,
   RecordSessionReferenceInput,
   SetAvailabilitySessionReferenceInput,
@@ -111,6 +129,8 @@ export type {
   SessionReferenceSort,
   SessionReferenceLoadable,
   SessionReferenceWith,
+  SessionReferenceLoadNames,
+  SessionReferenceLoadArg,
 };
 export {
   loadAttemptFields,
@@ -150,10 +170,10 @@ export async function abandonAttempt(
   return $delegate("abandonAttempt", (binding) => binding.abandonAttempt(input, ...context));
 }
 
-export async function readAttempt<const N extends keyof AttemptLoadable = never>(
-  input: ReadAttemptInput<N>,
+export async function readAttempt<const L extends readonly (keyof AttemptLoadable)[] = readonly []>(
+  input: Omit<ReadAttemptInput, "load"> & AttemptLoadArg<L>,
   ...context: $ContextArgument
-): Promise<AttemptWith<N>[]> {
+): Promise<AttemptWith<AttemptLoadNames<L>>[]> {
   return $delegate("readAttempt", (binding) => binding.readAttempt(input, ...context));
 }
 
@@ -171,10 +191,12 @@ export async function correctInvocation(
   return $delegate("correctInvocation", (binding) => binding.correctInvocation(input, ...context));
 }
 
-export async function readInvocation<const N extends keyof InvocationLoadable = never>(
-  input: ReadInvocationInput<N>,
+export async function readInvocation<
+  const L extends readonly (keyof InvocationLoadable)[] = readonly [],
+>(
+  input: Omit<ReadInvocationInput, "load"> & InvocationLoadArg<L>,
   ...context: $ContextArgument
-): Promise<InvocationWith<N>[]> {
+): Promise<InvocationWith<InvocationLoadNames<L>>[]> {
   return $delegate("readInvocation", (binding) => binding.readInvocation(input, ...context));
 }
 
@@ -206,10 +228,10 @@ export async function retireMachine(
   return $delegate("retireMachine", (binding) => binding.retireMachine(input, ...context));
 }
 
-export async function readMachine<const N extends keyof MachineLoadable = never>(
-  input: ReadMachineInput<N>,
+export async function readMachine<const L extends readonly (keyof MachineLoadable)[] = readonly []>(
+  input: Omit<ReadMachineInput, "load"> & MachineLoadArg<L>,
   ...context: $ContextArgument
-): Promise<MachineWith<N>[]> {
+): Promise<MachineWith<MachineLoadNames<L>>[]> {
   return $delegate("readMachine", (binding) => binding.readMachine(input, ...context));
 }
 
@@ -225,10 +247,10 @@ export async function settleRun(input: SettleRunInput, ...context: $ContextArgum
   return $delegate("settleRun", (binding) => binding.settleRun(input, ...context));
 }
 
-export async function readRun<const N extends keyof RunLoadable = never>(
-  input: ReadRunInput<N>,
+export async function readRun<const L extends readonly (keyof RunLoadable)[] = readonly []>(
+  input: Omit<ReadRunInput, "load"> & RunLoadArg<L>,
   ...context: $ContextArgument
-): Promise<RunWith<N>[]> {
+): Promise<RunWith<RunLoadNames<L>>[]> {
   return $delegate("readRun", (binding) => binding.readRun(input, ...context));
 }
 
@@ -259,10 +281,12 @@ export async function redactSessionReference(
   );
 }
 
-export async function readSessionReference<const N extends keyof SessionReferenceLoadable = never>(
-  input: ReadSessionReferenceInput<N>,
+export async function readSessionReference<
+  const L extends readonly (keyof SessionReferenceLoadable)[] = readonly [],
+>(
+  input: Omit<ReadSessionReferenceInput, "load"> & SessionReferenceLoadArg<L>,
   ...context: $ContextArgument
-): Promise<SessionReferenceWith<N>[]> {
+): Promise<SessionReferenceWith<SessionReferenceLoadNames<L>>[]> {
   return $delegate("readSessionReference", (binding) =>
     binding.readSessionReference(input, ...context),
   );

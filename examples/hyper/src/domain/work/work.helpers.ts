@@ -1,11 +1,11 @@
 // Helpers for the work entity files and the work functions. The pure ones take values (rows already read, ids, a
 // time) and never the model; the ones whose names end in `Of` read through `tx`, the reads of the running
 // transaction, and hand what they read to a pure one. Each names the Hyper rule or change it follows.
-import { FrameworkError, type ReadOnlyResults } from "@meshfw/runtime";
-import type { Reads as AllReads } from "#mesh";
+import { FrameworkError } from "@meshfw/runtime";
+import type { ReadOnlyReads } from "#mesh";
 
 /** The reads of the running transaction, as an entity file's `tx` or an application transaction's `tx` hands them over. */
-export type Reads = ReadOnlyResults<AllReads>;
+export type Reads = ReadOnlyReads;
 
 /** The default lease (PROTOCOL.md:33, `--lease-ms`): 10 minutes. */
 export const LEASE_MS = 600_000;
@@ -339,8 +339,8 @@ export async function readinessOf(tx: Reads, taskId: string): Promise<{ derivedS
 
 // The reads a create's check makes. In `validate`, a create's `self` is the new instance before the input is applied
 // (ACT-27), so `&task` is not the Task the caller names yet: the check reads that Task through `tx`, by the id in
-// `input` (POL-08). `tx` returns stored rows without computed fields, so the helpers below derive the ones the checks
-// need from the rows, the same way the computed fields in `task.mesh.mx` do.
+// `input` (POL-08). A read through `tx` takes `load`, so the helpers below read the Task with the computed fields and
+// rollups the checks need (`derivedState`, `maxFence`, `inReview`) instead of deriving them from rows.
 
 /** The Task `taskId`, or undefined when there is none. */
 export async function taskOf(tx: Reads, taskId: string) {

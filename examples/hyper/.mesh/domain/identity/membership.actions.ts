@@ -13,6 +13,7 @@ import {
   guarded as $guarded,
   loadRows as $loadRows,
   noteWrite as $noteWrite,
+  pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
@@ -28,6 +29,8 @@ import {
 import type {
   Membership,
   MembershipWith,
+  MembershipLoadNames,
+  MembershipLoadArg,
   MembershipLoadable,
   GrantMembershipInput,
   ChangeRoleMembershipInput,
@@ -54,10 +57,11 @@ import { loadPlan as $loadPlan } from "../../load";
  */
 export function bindMembershipReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read<const N extends keyof MembershipLoadable = never>(
-      input: ReadMembershipInput<N>,
+    async read<const L extends readonly (keyof MembershipLoadable)[] = readonly []>(
+      input: Omit<ReadMembershipInput, "load"> & MembershipLoadArg<L>,
       context?: unknown,
-    ): Promise<MembershipWith<N>[]> {
+      clock?: () => Date,
+    ): Promise<MembershipWith<MembershipLoadNames<L>>[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readMembershipInput, input);
       return layer.transaction(async (tx) => {
@@ -67,13 +71,15 @@ export function bindMembershipReads(layer: $DataLayer, options: $BindOptions = {
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Membership[];
-        if (!parsed.load?.length) return $rows as unknown as MembershipWith<N>[];
+        if (!parsed.load?.length)
+          return $rows as unknown as MembershipWith<MembershipLoadNames<L>>[];
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "Membership", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
-          clock: options.clock,
-        })) as unknown as MembershipWith<N>[];
+          clock: $clock,
+        })) as unknown as MembershipWith<MembershipLoadNames<L>>[];
       });
     },
   });
@@ -93,6 +99,7 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           id: $uuidv7(),
@@ -119,9 +126,9 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
             actor: $actor,
             context: $context,
             before: null,
-            ...$composed(compose, tx, context, "Membership.grant"),
+            ...$composed(compose, tx, context, "Membership.grant", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $Scope<GrantMembershipInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -179,6 +186,7 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.membership, $key);
@@ -200,9 +208,9 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
               $guarded($loadPlan, "Membership", $before, "before"),
               "Membership.changeRole",
             ) as unknown as Membership,
-            ...$composed(compose, tx, context, "Membership.changeRole"),
+            ...$composed(compose, tx, context, "Membership.changeRole", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<ChangeRoleMembershipInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -275,6 +283,7 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.membership, $key);
@@ -296,9 +305,9 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
               $guarded($loadPlan, "Membership", $before, "before"),
               "Membership.revoke",
             ) as unknown as Membership,
-            ...$composed(compose, tx, context, "Membership.revoke"),
+            ...$composed(compose, tx, context, "Membership.revoke", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<RevokeMembershipInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -354,10 +363,10 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
       });
     },
 
-    async read<const N extends keyof MembershipLoadable = never>(
-      input: ReadMembershipInput<N>,
+    async read<const L extends readonly (keyof MembershipLoadable)[] = readonly []>(
+      input: Omit<ReadMembershipInput, "load"> & MembershipLoadArg<L>,
       ...[context]: $ContextArgument
-    ): Promise<MembershipWith<N>[]> {
+    ): Promise<MembershipWith<MembershipLoadNames<L>>[]> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
       return $reads.read(input, context);
     },

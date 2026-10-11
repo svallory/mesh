@@ -9,6 +9,7 @@ import {
   guarded as $guarded,
   loadRows as $loadRows,
   noteWrite as $noteWrite,
+  pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
   scope as $scope,
   uuidv7 as $uuidv7,
@@ -21,6 +22,8 @@ import {
 import type {
   Completion,
   CompletionWith,
+  CompletionLoadNames,
+  CompletionLoadArg,
   CompletionLoadable,
   RecordCompletionInput,
   ReadCompletionInput,
@@ -39,10 +42,11 @@ import { loadPlan as $loadPlan } from "../../load";
  */
 export function bindCompletionReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read<const N extends keyof CompletionLoadable = never>(
-      input: ReadCompletionInput<N>,
+    async read<const L extends readonly (keyof CompletionLoadable)[] = readonly []>(
+      input: Omit<ReadCompletionInput, "load"> & CompletionLoadArg<L>,
       context?: unknown,
-    ): Promise<CompletionWith<N>[]> {
+      clock?: () => Date,
+    ): Promise<CompletionWith<CompletionLoadNames<L>>[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readCompletionInput, input);
       return layer.transaction(async (tx) => {
@@ -52,13 +56,15 @@ export function bindCompletionReads(layer: $DataLayer, options: $BindOptions = {
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Completion[];
-        if (!parsed.load?.length) return $rows as unknown as CompletionWith<N>[];
+        if (!parsed.load?.length)
+          return $rows as unknown as CompletionWith<CompletionLoadNames<L>>[];
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "Completion", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
-          clock: options.clock,
-        })) as unknown as CompletionWith<N>[];
+          clock: $clock,
+        })) as unknown as CompletionWith<CompletionLoadNames<L>>[];
       });
     },
   });
@@ -81,7 +87,8 @@ export function bindCompletion(layer: $DataLayer, options: $BindOptions = {}, co
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        const $now = options.clock?.() ?? new Date();
+        const $clock = $pinClock(options.clock);
+        const $now = $clock();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           id: $uuidv7(),
@@ -100,9 +107,9 @@ export function bindCompletion(layer: $DataLayer, options: $BindOptions = {}, co
             actor: $actor,
             context: $context,
             before: null,
-            ...$composed(compose, tx, context, "Completion.record"),
+            ...$composed(compose, tx, context, "Completion.record", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $Scope<RecordCompletionInput>;
         // the input: the member inputs the caller sent, applied now that the checks have passed
         if (parsed.rule !== undefined) $changes.rule = $record.rule = parsed.rule;
@@ -125,10 +132,10 @@ export function bindCompletion(layer: $DataLayer, options: $BindOptions = {}, co
       });
     },
 
-    async read<const N extends keyof CompletionLoadable = never>(
-      input: ReadCompletionInput<N>,
+    async read<const L extends readonly (keyof CompletionLoadable)[] = readonly []>(
+      input: Omit<ReadCompletionInput, "load"> & CompletionLoadArg<L>,
       ...[context]: $ContextArgument
-    ): Promise<CompletionWith<N>[]> {
+    ): Promise<CompletionWith<CompletionLoadNames<L>>[]> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
       return $reads.read(input, context);
     },

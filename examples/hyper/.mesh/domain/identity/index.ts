@@ -17,6 +17,8 @@ import type {
   CollaboratorSort,
   CollaboratorLoadable,
   CollaboratorWith,
+  CollaboratorLoadNames,
+  CollaboratorLoadArg,
 } from "./collaborator.types";
 import type {
   Membership,
@@ -28,6 +30,8 @@ import type {
   MembershipSort,
   MembershipLoadable,
   MembershipWith,
+  MembershipLoadNames,
+  MembershipLoadArg,
 } from "./membership.types";
 import type {
   Workspace,
@@ -48,6 +52,8 @@ export type {
   CollaboratorSort,
   CollaboratorLoadable,
   CollaboratorWith,
+  CollaboratorLoadNames,
+  CollaboratorLoadArg,
   Membership,
   GrantMembershipInput,
   ChangeRoleMembershipInput,
@@ -57,6 +63,8 @@ export type {
   MembershipSort,
   MembershipLoadable,
   MembershipWith,
+  MembershipLoadNames,
+  MembershipLoadArg,
   Workspace,
   CreateWorkspaceInput,
   RenameWorkspaceInput,
@@ -93,10 +101,12 @@ export async function retireCollaborator(
   );
 }
 
-export async function readCollaborator<const N extends keyof CollaboratorLoadable = never>(
-  input: ReadCollaboratorInput<N>,
+export async function readCollaborator<
+  const L extends readonly (keyof CollaboratorLoadable)[] = readonly [],
+>(
+  input: Omit<ReadCollaboratorInput, "load"> & CollaboratorLoadArg<L>,
   ...context: $ContextArgument
-): Promise<CollaboratorWith<N>[]> {
+): Promise<CollaboratorWith<CollaboratorLoadNames<L>>[]> {
   return $delegate("readCollaborator", (binding) => binding.readCollaborator(input, ...context));
 }
 
@@ -123,10 +133,12 @@ export async function revokeMembership(
   return $delegate("revokeMembership", (binding) => binding.revokeMembership(input, ...context));
 }
 
-export async function readMembership<const N extends keyof MembershipLoadable = never>(
-  input: ReadMembershipInput<N>,
+export async function readMembership<
+  const L extends readonly (keyof MembershipLoadable)[] = readonly [],
+>(
+  input: Omit<ReadMembershipInput, "load"> & MembershipLoadArg<L>,
   ...context: $ContextArgument
-): Promise<MembershipWith<N>[]> {
+): Promise<MembershipWith<MembershipLoadNames<L>>[]> {
   return $delegate("readMembership", (binding) => binding.readMembership(input, ...context));
 }
 

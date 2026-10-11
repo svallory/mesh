@@ -64,6 +64,17 @@ export type SubmissionLoadable = {
 export type SubmissionWith<N extends keyof SubmissionLoadable> = Submission &
   Pick<SubmissionLoadable, N>;
 
+/** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
+export type SubmissionLoadNames<L extends readonly (keyof SubmissionLoadable)[]> =
+  number extends L["length"] ? never : L[number];
+
+/** The `load` member of a read called with the tuple `L`: required when `L` lists a name, so an input cannot claim a load it does not make. */
+export type SubmissionLoadArg<L extends readonly (keyof SubmissionLoadable)[]> = [
+  SubmissionLoadNames<L>,
+] extends [never]
+  ? { load?: L | undefined }
+  : { load: L };
+
 /** A Submission as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
 export type SubmissionLoaded = Submission & {
   task: TaskLoaded;

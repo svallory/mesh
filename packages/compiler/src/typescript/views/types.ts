@@ -49,6 +49,10 @@ export interface LoadableDeclaration {
   readonly name: string;
   /** The loaded record's name, e.g. `TaskWith`. */
   readonly withName: string;
+  /** `TaskLoadNames<L>`: the names of a `load` tuple `L`, none for a list that does not say which (a widened array). */
+  readonly namesName: string;
+  /** `TaskLoadArg<L>`: the `load` member of a read called with `L`, required when `L` names something. */
+  readonly argName: string;
   /** One member per relationship (the related record, a list of them, or `| null`) and per computed field, in authored order; never optional. */
   readonly members: readonly TypeMember[];
   /** The fully loaded record's name, e.g. `TaskLoaded`: what the functions of the entity file see as `self`. */
@@ -121,7 +125,7 @@ export function typesView({ document }: EmitInput, entity: Entity): TypesView {
     declared.add(input.name);
   }
   if (entity.relationships.length + entity.computed.length > 0)
-    for (const name of [`${recordName}Loadable`, `${recordName}With`, `${recordName}Loaded`]) {
+    for (const name of [`${recordName}Loadable`, `${recordName}With`, `${recordName}LoadNames`, `${recordName}LoadArg`, `${recordName}Loaded`]) {
       if (declared.has(name)) throw emitError("MESH_EMIT_NAME", `Duplicate generated type ${name}`, entity.position);
       declared.add(name);
     }
@@ -207,7 +211,7 @@ function loadableDeclaration(document: EmitInput["document"], entity: Entity, re
     loadedMembers.push(member);
   }
   if (members.length === 0) return null;
-  return { name: `${recordName}Loadable`, withName: `${recordName}With`, members, loadedName: `${recordName}Loaded`, loadedMembers };
+  return { name: `${recordName}Loadable`, withName: `${recordName}With`, namesName: `${recordName}LoadNames`, argName: `${recordName}LoadArg`, members, loadedName: `${recordName}Loaded`, loadedMembers };
 }
 
 /** The columns a caller of a read may name. An attribute called `and` or `or` cannot be filtered: the contract reads those keys as combinators. */

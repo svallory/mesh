@@ -13,6 +13,7 @@ import {
   guarded as $guarded,
   loadRows as $loadRows,
   noteWrite as $noteWrite,
+  pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
@@ -28,6 +29,8 @@ import {
 import type {
   Assignment,
   AssignmentWith,
+  AssignmentLoadNames,
+  AssignmentLoadArg,
   AssignmentLoadable,
   StartAssignmentInput,
   FinishAssignmentInput,
@@ -52,10 +55,11 @@ import { loadPlan as $loadPlan } from "../../load";
  */
 export function bindAssignmentReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read<const N extends keyof AssignmentLoadable = never>(
-      input: ReadAssignmentInput<N>,
+    async read<const L extends readonly (keyof AssignmentLoadable)[] = readonly []>(
+      input: Omit<ReadAssignmentInput, "load"> & AssignmentLoadArg<L>,
       context?: unknown,
-    ): Promise<AssignmentWith<N>[]> {
+      clock?: () => Date,
+    ): Promise<AssignmentWith<AssignmentLoadNames<L>>[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readAssignmentInput, input);
       return layer.transaction(async (tx) => {
@@ -65,13 +69,15 @@ export function bindAssignmentReads(layer: $DataLayer, options: $BindOptions = {
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Assignment[];
-        if (!parsed.load?.length) return $rows as unknown as AssignmentWith<N>[];
+        if (!parsed.load?.length)
+          return $rows as unknown as AssignmentWith<AssignmentLoadNames<L>>[];
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "Assignment", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
-          clock: options.clock,
-        })) as unknown as AssignmentWith<N>[];
+          clock: $clock,
+        })) as unknown as AssignmentWith<AssignmentLoadNames<L>>[];
       });
     },
   });
@@ -91,6 +97,7 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           id: $uuidv7(),
@@ -116,9 +123,9 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
             actor: $actor,
             context: $context,
             before: null,
-            ...$composed(compose, tx, context, "Assignment.start"),
+            ...$composed(compose, tx, context, "Assignment.start", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $Scope<StartAssignmentInput>;
         // the input: the member inputs the caller sent, applied now that the checks have passed
         if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
@@ -160,6 +167,7 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.assignment, $key);
@@ -181,9 +189,9 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
               $guarded($loadPlan, "Assignment", $before, "before"),
               "Assignment.finish",
             ) as unknown as Assignment,
-            ...$composed(compose, tx, context, "Assignment.finish"),
+            ...$composed(compose, tx, context, "Assignment.finish", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<FinishAssignmentInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -215,10 +223,10 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
       });
     },
 
-    async read<const N extends keyof AssignmentLoadable = never>(
-      input: ReadAssignmentInput<N>,
+    async read<const L extends readonly (keyof AssignmentLoadable)[] = readonly []>(
+      input: Omit<ReadAssignmentInput, "load"> & AssignmentLoadArg<L>,
       ...[context]: $ContextArgument
-    ): Promise<AssignmentWith<N>[]> {
+    ): Promise<AssignmentWith<AssignmentLoadNames<L>>[]> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
       return $reads.read(input, context);
     },

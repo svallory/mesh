@@ -272,7 +272,7 @@ await disconnect();
 ```
 
 `load` takes relationship names (`load: ["list"]`) and computed names (`load: ["label"]` on a todo, `load: ["todoCount"]` on a list). Reading one that was not loaded is a **type error**, not `undefined`, and a load that cannot be served at run time is an error, never silently skipped.
-A loaded `has-many` comes back in primary-key order, which is creation order for the keys Mesh generates (UUIDv7 and integers). The reads that `tx` gives a function of an entity file take the same `load`, typed the same way: `tx.readTask({ filter, load: ["derivedState"] })` reads the computed field inside the check's transaction.
+A loaded `has-many` comes back in primary-key order, which is creation order for the keys Mesh generates (UUIDv7 and integers). The type follows the names as written in the call, so pass the list itself: `load` is required whenever it names something, and a list that Mesh cannot read as a tuple (a widened `string[]`, a variable of a union type) types as loading nothing. A list that chooses between two literal lists (`flag ? ["label"] : []`) is typed as the names of both, so build such a call from two calls. The reads that `tx` gives a function of an entity file take the same `load`, typed the same way: `tx.readTask({ filter, load: ["derivedState"] })` reads the computed field inside the check's transaction.
 
 Three things meet in `load`, and they are not one thing:
 

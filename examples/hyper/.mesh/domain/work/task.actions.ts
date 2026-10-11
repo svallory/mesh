@@ -14,6 +14,7 @@ import {
   loadInto as $loadInto,
   loadRows as $loadRows,
   noteWrite as $noteWrite,
+  pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
   rejectComputedQuery,
   rescope as $rescope,
@@ -32,6 +33,8 @@ import {
 import type {
   Task,
   TaskWith,
+  TaskLoadNames,
+  TaskLoadArg,
   TaskLoadable,
   CreateTaskInput,
   UpdateTaskInput,
@@ -72,10 +75,11 @@ import { loadPlan as $loadPlan } from "../../load";
  */
 export function bindTaskReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read<const N extends keyof TaskLoadable = never>(
-      input: ReadTaskInput<N>,
+    async read<const L extends readonly (keyof TaskLoadable)[] = readonly []>(
+      input: Omit<ReadTaskInput, "load"> & TaskLoadArg<L>,
       context?: unknown,
-    ): Promise<TaskWith<N>[]> {
+      clock?: () => Date,
+    ): Promise<TaskWith<TaskLoadNames<L>>[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readTaskInput, input);
       return layer.transaction(async (tx) => {
@@ -99,13 +103,14 @@ export function bindTaskReads(layer: $DataLayer, options: $BindOptions = {}) {
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Task[];
-        if (!parsed.load?.length) return $rows as unknown as TaskWith<N>[];
+        if (!parsed.load?.length) return $rows as unknown as TaskWith<TaskLoadNames<L>>[];
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "Task", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
-          clock: options.clock,
-        })) as unknown as TaskWith<N>[];
+          clock: $clock,
+        })) as unknown as TaskWith<TaskLoadNames<L>>[];
       });
     },
   });
@@ -125,7 +130,8 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        const $now = options.clock?.() ?? new Date();
+        const $clock = $pinClock(options.clock);
+        const $now = $clock();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           id: $uuidv7(),
@@ -149,9 +155,9 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
             actor: $actor,
             context: $context,
             before: null,
-            ...$composed(compose, tx, context, "Task.create"),
+            ...$composed(compose, tx, context, "Task.create", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $Scope<CreateTaskInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -192,6 +198,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.task, $key);
@@ -213,9 +220,9 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
               $guarded($loadPlan, "Task", $before, "before"),
               "Task.update",
             ) as unknown as Task,
-            ...$composed(compose, tx, context, "Task.update"),
+            ...$composed(compose, tx, context, "Task.update", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<UpdateTaskInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -272,6 +279,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.task, $key);
@@ -293,9 +301,9 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
               $guarded($loadPlan, "Task", $before, "before"),
               "Task.setPriority",
             ) as unknown as Task,
-            ...$composed(compose, tx, context, "Task.setPriority"),
+            ...$composed(compose, tx, context, "Task.setPriority", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<SetPriorityTaskInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -344,6 +352,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.task, $key);
@@ -351,7 +360,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
         const $writes = $writeCount(tx);
-        const $load = { actor: $actor, context: $context, clock: options.clock };
+        const $load = { actor: $actor, context: $context, clock: $clock };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Task", $record, "action function"),
           "Task.move",
@@ -366,9 +375,9 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
               $guarded($loadPlan, "Task", $before, "before"),
               "Task.move",
             ) as unknown as Task,
-            ...$composed(compose, tx, context, "Task.move"),
+            ...$composed(compose, tx, context, "Task.move", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<MoveTaskInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -441,6 +450,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.task, $key);
@@ -462,9 +472,9 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
               $guarded($loadPlan, "Task", $before, "before"),
               "Task.reopen",
             ) as unknown as Task,
-            ...$composed(compose, tx, context, "Task.reopen"),
+            ...$composed(compose, tx, context, "Task.reopen", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<ReopenTaskInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -516,6 +526,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.task, $key);
@@ -537,9 +548,9 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
               $guarded($loadPlan, "Task", $before, "before"),
               "Task.touch",
             ) as unknown as Task,
-            ...$composed(compose, tx, context, "Task.touch"),
+            ...$composed(compose, tx, context, "Task.touch", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<TouchTaskInput>;
         // do: the steps run in written order, each seeing the record as the ones before it left it
         {
@@ -567,6 +578,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.task, $key);
@@ -588,9 +600,9 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
               $guarded($loadPlan, "Task", $before, "before"),
               "Task.cancel",
             ) as unknown as Task,
-            ...$composed(compose, tx, context, "Task.cancel"),
+            ...$composed(compose, tx, context, "Task.cancel", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<CancelTaskInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -653,6 +665,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.task, $key);
@@ -660,7 +673,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
         const $writes = $writeCount(tx);
-        const $load = { actor: $actor, context: $context, clock: options.clock };
+        const $load = { actor: $actor, context: $context, clock: $clock };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Task", $record, "action function"),
           "Task.complete",
@@ -675,9 +688,9 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
               $guarded($loadPlan, "Task", $before, "before"),
               "Task.complete",
             ) as unknown as Task,
-            ...$composed(compose, tx, context, "Task.complete"),
+            ...$composed(compose, tx, context, "Task.complete", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<CompleteTaskInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -804,6 +817,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.task, $key);
@@ -811,7 +825,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
         const $writes = $writeCount(tx);
-        const $load = { actor: $actor, context: $context, clock: options.clock };
+        const $load = { actor: $actor, context: $context, clock: $clock };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Task", $record, "action function"),
           "Task.assign",
@@ -826,9 +840,9 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
               $guarded($loadPlan, "Task", $before, "before"),
               "Task.assign",
             ) as unknown as Task,
-            ...$composed(compose, tx, context, "Task.assign"),
+            ...$composed(compose, tx, context, "Task.assign", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<AssignTaskInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -913,6 +927,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.task, $key);
@@ -920,7 +935,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
         const $writes = $writeCount(tx);
-        const $load = { actor: $actor, context: $context, clock: options.clock };
+        const $load = { actor: $actor, context: $context, clock: $clock };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Task", $record, "action function"),
           "Task.unassign",
@@ -935,9 +950,9 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
               $guarded($loadPlan, "Task", $before, "before"),
               "Task.unassign",
             ) as unknown as Task,
-            ...$composed(compose, tx, context, "Task.unassign"),
+            ...$composed(compose, tx, context, "Task.unassign", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<UnassignTaskInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -994,10 +1009,10 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       });
     },
 
-    async read<const N extends keyof TaskLoadable = never>(
-      input: ReadTaskInput<N>,
+    async read<const L extends readonly (keyof TaskLoadable)[] = readonly []>(
+      input: Omit<ReadTaskInput, "load"> & TaskLoadArg<L>,
       ...[context]: $ContextArgument
-    ): Promise<TaskWith<N>[]> {
+    ): Promise<TaskWith<TaskLoadNames<L>>[]> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
       return $reads.read(input, context);
     },

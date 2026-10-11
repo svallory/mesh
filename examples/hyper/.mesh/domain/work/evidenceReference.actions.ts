@@ -9,6 +9,7 @@ import {
   guarded as $guarded,
   loadRows as $loadRows,
   noteWrite as $noteWrite,
+  pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
   scope as $scope,
   uuidv7 as $uuidv7,
@@ -21,6 +22,8 @@ import {
 import type {
   EvidenceReference,
   EvidenceReferenceWith,
+  EvidenceReferenceLoadNames,
+  EvidenceReferenceLoadArg,
   EvidenceReferenceLoadable,
   RecordEvidenceReferenceInput,
   ReadEvidenceReferenceInput,
@@ -42,10 +45,11 @@ import { loadPlan as $loadPlan } from "../../load";
  */
 export function bindEvidenceReferenceReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read<const N extends keyof EvidenceReferenceLoadable = never>(
-      input: ReadEvidenceReferenceInput<N>,
+    async read<const L extends readonly (keyof EvidenceReferenceLoadable)[] = readonly []>(
+      input: Omit<ReadEvidenceReferenceInput, "load"> & EvidenceReferenceLoadArg<L>,
       context?: unknown,
-    ): Promise<EvidenceReferenceWith<N>[]> {
+      clock?: () => Date,
+    ): Promise<EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readEvidenceReferenceInput, input);
       return layer.transaction(async (tx) => {
@@ -55,13 +59,15 @@ export function bindEvidenceReferenceReads(layer: $DataLayer, options: $BindOpti
           limit: parsed.limit,
           offset: parsed.offset,
         })) as EvidenceReference[];
-        if (!parsed.load?.length) return $rows as unknown as EvidenceReferenceWith<N>[];
+        if (!parsed.load?.length)
+          return $rows as unknown as EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[];
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "EvidenceReference", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
-          clock: options.clock,
-        })) as unknown as EvidenceReferenceWith<N>[];
+          clock: $clock,
+        })) as unknown as EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[];
       });
     },
   });
@@ -88,7 +94,8 @@ export function bindEvidenceReference(
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        const $now = options.clock?.() ?? new Date();
+        const $clock = $pinClock(options.clock);
+        const $now = $clock();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           id: $uuidv7(),
@@ -108,9 +115,9 @@ export function bindEvidenceReference(
             actor: $actor,
             context: $context,
             before: null,
-            ...$composed(compose, tx, context, "EvidenceReference.record"),
+            ...$composed(compose, tx, context, "EvidenceReference.record", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $Scope<RecordEvidenceReferenceInput>;
         // the input: the member inputs the caller sent, applied now that the checks have passed
         if (parsed.kind !== undefined) $changes.kind = $record.kind = parsed.kind;
@@ -135,10 +142,10 @@ export function bindEvidenceReference(
       });
     },
 
-    async read<const N extends keyof EvidenceReferenceLoadable = never>(
-      input: ReadEvidenceReferenceInput<N>,
+    async read<const L extends readonly (keyof EvidenceReferenceLoadable)[] = readonly []>(
+      input: Omit<ReadEvidenceReferenceInput, "load"> & EvidenceReferenceLoadArg<L>,
       ...[context]: $ContextArgument
-    ): Promise<EvidenceReferenceWith<N>[]> {
+    ): Promise<EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[]> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
       return $reads.read(input, context);
     },

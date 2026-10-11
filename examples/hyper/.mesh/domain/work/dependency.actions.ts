@@ -13,6 +13,7 @@ import {
   loadInto as $loadInto,
   loadRows as $loadRows,
   noteWrite as $noteWrite,
+  pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
   rescope as $rescope,
   runCheck as $runCheck,
@@ -28,6 +29,8 @@ import {
 import type {
   Dependency,
   DependencyWith,
+  DependencyLoadNames,
+  DependencyLoadArg,
   DependencyLoadable,
   AddDependencyInput,
   RemoveDependencyInput,
@@ -52,10 +55,11 @@ import { loadPlan as $loadPlan } from "../../load";
  */
 export function bindDependencyReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read<const N extends keyof DependencyLoadable = never>(
-      input: ReadDependencyInput<N>,
+    async read<const L extends readonly (keyof DependencyLoadable)[] = readonly []>(
+      input: Omit<ReadDependencyInput, "load"> & DependencyLoadArg<L>,
       context?: unknown,
-    ): Promise<DependencyWith<N>[]> {
+      clock?: () => Date,
+    ): Promise<DependencyWith<DependencyLoadNames<L>>[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readDependencyInput, input);
       return layer.transaction(async (tx) => {
@@ -65,13 +69,15 @@ export function bindDependencyReads(layer: $DataLayer, options: $BindOptions = {
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Dependency[];
-        if (!parsed.load?.length) return $rows as unknown as DependencyWith<N>[];
+        if (!parsed.load?.length)
+          return $rows as unknown as DependencyWith<DependencyLoadNames<L>>[];
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "Dependency", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
-          clock: options.clock,
-        })) as unknown as DependencyWith<N>[];
+          clock: $clock,
+        })) as unknown as DependencyWith<DependencyLoadNames<L>>[];
       });
     },
   });
@@ -91,7 +97,8 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        const $now = options.clock?.() ?? new Date();
+        const $clock = $pinClock(options.clock);
+        const $now = $clock();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           id: $uuidv7(),
@@ -114,9 +121,9 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
             actor: $actor,
             context: $context,
             before: null,
-            ...$composed(compose, tx, context, "Dependency.add"),
+            ...$composed(compose, tx, context, "Dependency.add", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $Scope<AddDependencyInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -202,12 +209,13 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.dependency, $key);
         if ($before === undefined) throw new $NotFoundError("Dependency", $key);
         const $record: $Row = { ...$before };
-        const $load = { actor: $actor, context: $context, clock: options.clock };
+        const $load = { actor: $actor, context: $context, clock: $clock };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Dependency", $record, "action function"),
           "Dependency.remove",
@@ -222,9 +230,9 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
               $guarded($loadPlan, "Dependency", $before, "before"),
               "Dependency.remove",
             ) as unknown as Dependency,
-            ...$composed(compose, tx, context, "Dependency.remove"),
+            ...$composed(compose, tx, context, "Dependency.remove", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<RemoveDependencyInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -254,10 +262,10 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
       });
     },
 
-    async read<const N extends keyof DependencyLoadable = never>(
-      input: ReadDependencyInput<N>,
+    async read<const L extends readonly (keyof DependencyLoadable)[] = readonly []>(
+      input: Omit<ReadDependencyInput, "load"> & DependencyLoadArg<L>,
       ...[context]: $ContextArgument
-    ): Promise<DependencyWith<N>[]> {
+    ): Promise<DependencyWith<DependencyLoadNames<L>>[]> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
       return $reads.read(input, context);
     },

@@ -104,15 +104,15 @@ describe("actions view", () => {
       ["rename", "renameArticle", "RenameArticleInput", "renameArticleInput", "Article"],
       ["publish", "publishArticle", "PublishArticleInput", "publishArticleInput", 'ArticleWith<"author">'],
       ["purge", "purgeArticle", "PurgeArticleInput", "purgeArticleInput", "void"],
-      ["live", "liveArticle", "LiveArticleInput<N>", "liveArticleInput", "ArticleWith<N>[]"],
-      ["load", "loadArticle", "LoadArticleInput<N>", "loadArticleInput", "ArticleWith<N>[]"],
-      ["read", "readArticle", "ReadArticleInput<N>", "readArticleInput", "ArticleWith<N>[]"],
+      ["live", "liveArticle", 'Omit<LiveArticleInput, "load"> & ArticleLoadArg<L>', "liveArticleInput", "ArticleWith<ArticleLoadNames<L>>[]"],
+      ["load", "loadArticle", 'Omit<LoadArticleInput, "load"> & ArticleLoadArg<L>', "loadArticleInput", "ArticleWith<ArticleLoadNames<L>>[]"],
+      ["read", "readArticle", 'Omit<ReadArticleInput, "load"> & ArticleLoadArg<L>', "readArticleInput", "ArticleWith<ArticleLoadNames<L>>[]"],
       ["destroy", "destroyArticle", "DestroyArticleInput", "destroyArticleInput", "void"],
     ]);
     expect(view.runtimeValues).toEqual([
       "FrameworkError as $FrameworkError", "InvalidInputError as $InvalidInputError", "NotFoundError as $NotFoundError", "castInput as $castInput", "checkScope as $checkScope",
       "checkUnchanged as $checkUnchanged", "composed as $composed", "failJoined as $failJoined", "guarded as $guarded", "loadRows as $loadRows",
-      "noteWrite as $noteWrite", "readOnlyRecord as $readOnlyRecord", "runCheck as $runCheck", "scope as $scope", "uuidv7 as $uuidv7", "writeCount as $writeCount"]);
+      "noteWrite as $noteWrite", "pinClock as $pinClock", "readOnlyRecord as $readOnlyRecord", "runCheck as $runCheck", "scope as $scope", "uuidv7 as $uuidv7", "writeCount as $writeCount"]);
     expect(view.runtimeTypes).toEqual(["Issue as $Issue", "Row as $Row"]);
     expect(view.typesFromLiteral).toBe('"./article.types"');
     expect(view.validatorsFromLiteral).toBe('"./article.validators"');
@@ -122,7 +122,8 @@ describe("actions view", () => {
   test("create builds the new instance in declared order (key, defaults, stamps, null), then applies the input; a set step runs after it", () => {
     const create = viewOf("Article").methods[0]!;
     expect(create.statements.slice(1)).toEqual([
-      "const $now = options.clock?.() ?? new Date();",
+      "const $clock = $pinClock(options.clock);",
+      "const $now = $clock();",
       "// plan: a create is one insert; nothing is read first",
       "const $changes: $Row = {",
       // ACT-27: the uuid key is filled when the instance is built, not by the data layer at the write
@@ -184,10 +185,11 @@ describe("actions view", () => {
     const read = view.reads.find((m) => m.name === "read")!;
     expect(read).toMatchObject({ unsupported: null, usesParsed: true, statements: [
       "const $rows = (await tx.select(tables.article, { filter: parsed.filter, sort: parsed.sort, limit: parsed.limit, offset: parsed.offset })) as Article[];",
-      "if (!parsed.load?.length) return $rows as unknown as ArticleWith<N>[];",
+      "if (!parsed.load?.length) return $rows as unknown as ArticleWith<ArticleLoadNames<L>>[];",
       "const $context = (context ?? {}) as unknown as Record<string, unknown>;",
-      'return (await $loadRows($loadPlan, "Article", tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: options.clock })) as unknown as ArticleWith<N>[];'],
-      generics: "<const N extends keyof ArticleLoadable = never>", contextParam: ", context?: unknown" });
+      'const $clock = clock ?? $pinClock(options.clock);',
+      'return (await $loadRows($loadPlan, "Article", tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock })) as unknown as ArticleWith<ArticleLoadNames<L>>[];'],
+      generics: "<const L extends readonly (keyof ArticleLoadable)[] = readonly []>", contextParam: ", context?: unknown, clock?: () => Date" });
     expect(view.methods.filter((m) => m.isRead).map((m) => [m.name, m.readsCall, m.statements])).toEqual([
       ["live", "$reads.live(input, context)", []], ["load", "$reads.load(input, context)", []], ["read", "$reads.read(input, context)", []]]);
   });

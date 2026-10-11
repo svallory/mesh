@@ -270,14 +270,17 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       // The body goes to `bind<Entity>Reads`, which `tx` calls; the method runs the authorizer slot, then the body.
       // A read that takes `load` is generic in the names it lists: the result is the record with exactly those loaded.
       const loads = takesLoad(input);
-      const inputType = loads ? `${input.name}<N>` : input.name;
+      // The `load` member comes from the tuple `L` itself, so that TypeScript infers the names written.
+      const inputType = loads ? `Omit<${input.name}, "load"> & ${recordName}LoadArg<L>` : input.name;
       const generics = loads ? loadGenerics(entity, true) : "";
-      const returnType = loads ? `${recordName}With<N>[]` : `${recordName}[]`;
+      const returnType = loads ? `${recordName}With<${recordName}LoadNames<L>>[]` : `${recordName}[]`;
       if (loads) {
         extraTypes.add(`${recordName}With`);
+        extraTypes.add(`${recordName}LoadNames`);
+        extraTypes.add(`${recordName}LoadArg`);
         extraTypes.add(`${recordName}Loadable`);
       }
-      const body = { name, inputType, generics, contextParam: loads ? ", context?: unknown" : "", validator, returnType };
+      const body = { name, inputType, generics, contextParam: loads ? ", context?: unknown, clock?: () => Date" : "", validator, returnType };
       const method = { ...base, inputType, generics, returnType, contextName: loads ? "context" : "_context", notRun: notRun([]), unsupported: null, usesParsed: false,
         statements: [], isRead: true, readsCall: loads ? `$reads.${name}(input, context)` : `$reads.${name}(input)` };
       if (action.filter || action.sort) {
@@ -296,6 +299,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       if (loads) {
         // The names were validated before the transaction opened. The rows are read, then loaded in the same transaction.
         runtime.add("loadRows");
+        runtime.add("pinClock");
         planUsed = true;
         readsLoad = true;
       }
@@ -307,7 +311,9 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
               `const $rows = (${select}) as ${recordName}[];`,
               `if (!parsed.load?.length) return $rows as unknown as ${returnType};`,
               "const $context = (context ?? {}) as unknown as Record<string, unknown>;",
-              `return (await $loadRows($loadPlan, ${JSON.stringify(entity.name)}, tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: options.clock })) as unknown as ${returnType};`,
+              // One instant per call: the caller's (a `tx` read inside an action carries the action's), else this read's own.
+              "const $clock = clock ?? $pinClock(options.clock);",
+              `return (await $loadRows($loadPlan, ${JSON.stringify(entity.name)}, tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock })) as unknown as ${returnType};`,
             ]
             : [`return (${select}) as ${recordName}[];`]),
         ] });
@@ -636,9 +642,15 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       used.options = true;
       prelude.push("const $context = (context ?? {}) as unknown as Record<string, unknown>;", "const $actor = $context.actor;");
     }
-    if (used.now) { used.options = true; prelude.push("const $now = options.clock?.() ?? new Date();"); }
+    // One instant per action call: the scope's `now()`, the `$now` stamps, the `load` step and every `tx` read read it.
+    if (usesContext || used.now) {
+      used.options = true;
+      runtime.add("pinClock");
+      prelude.push("const $clock = $pinClock(options.clock);");
+    }
+    if (used.now) prelude.push("const $now = $clock();");
     const afterHead: string[] = [];
-    if (used.load) afterHead.push("const $load = { actor: $actor, context: $context, clock: options.clock };");
+    if (used.load) afterHead.push("const $load = { actor: $actor, context: $context, clock: $clock };");
     if (used.scope) {
       runtime.add("scope");
       // An update or a destroy reads a stored record, so `before` is never null for its functions.
@@ -658,7 +670,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       // `actions` and `tx` come from the binding's composer, bound to this transaction and carrying this call's context (ADR-0068).
       runtime.add("composed");
       composeUsed = true;
-      afterHead.push(`const $s = $scope({ self: $self, input: $readOnlyRecord(parsed, ${where}), actor: $actor, context: $context, before: ${beforeView}, ...$composed(compose, tx, context, ${where}) }, options) as unknown as ${scopeAlias}<${input.name}>;`);
+      afterHead.push(`const $s = $scope({ self: $self, input: $readOnlyRecord(parsed, ${where}), actor: $actor, context: $context, before: ${beforeView}, ...$composed(compose, tx, context, ${where}, $clock) }, { clock: $clock }) as unknown as ${scopeAlias}<${input.name}>;`);
     }
     if (used.plan) planUsed = true;
     if (used.options) optionsUsed = true;

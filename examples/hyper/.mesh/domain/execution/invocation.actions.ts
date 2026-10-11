@@ -12,6 +12,7 @@ import {
   loadInto as $loadInto,
   loadRows as $loadRows,
   noteWrite as $noteWrite,
+  pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
@@ -27,6 +28,8 @@ import {
 import type {
   Invocation,
   InvocationWith,
+  InvocationLoadNames,
+  InvocationLoadArg,
   InvocationLoadable,
   RecordInvocationInput,
   CorrectInvocationInput,
@@ -50,10 +53,11 @@ import { loadPlan as $loadPlan } from "../../load";
  */
 export function bindInvocationReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read<const N extends keyof InvocationLoadable = never>(
-      input: ReadInvocationInput<N>,
+    async read<const L extends readonly (keyof InvocationLoadable)[] = readonly []>(
+      input: Omit<ReadInvocationInput, "load"> & InvocationLoadArg<L>,
       context?: unknown,
-    ): Promise<InvocationWith<N>[]> {
+      clock?: () => Date,
+    ): Promise<InvocationWith<InvocationLoadNames<L>>[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readInvocationInput, input);
       return layer.transaction(async (tx) => {
@@ -63,13 +67,15 @@ export function bindInvocationReads(layer: $DataLayer, options: $BindOptions = {
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Invocation[];
-        if (!parsed.load?.length) return $rows as unknown as InvocationWith<N>[];
+        if (!parsed.load?.length)
+          return $rows as unknown as InvocationWith<InvocationLoadNames<L>>[];
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "Invocation", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
-          clock: options.clock,
-        })) as unknown as InvocationWith<N>[];
+          clock: $clock,
+        })) as unknown as InvocationWith<InvocationLoadNames<L>>[];
       });
     },
   });
@@ -92,7 +98,8 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        const $now = options.clock?.() ?? new Date();
+        const $clock = $pinClock(options.clock);
+        const $now = $clock();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           id: $uuidv7(),
@@ -120,7 +127,7 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
           taskId: null,
           recordedById: null,
         };
-        const $load = { actor: $actor, context: $context, clock: options.clock };
+        const $load = { actor: $actor, context: $context, clock: $clock };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Invocation", $record, "action function"),
           "Invocation.record",
@@ -132,9 +139,9 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
             actor: $actor,
             context: $context,
             before: null,
-            ...$composed(compose, tx, context, "Invocation.record"),
+            ...$composed(compose, tx, context, "Invocation.record", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $Scope<RecordInvocationInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -218,7 +225,8 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        const $now = options.clock?.() ?? new Date();
+        const $clock = $pinClock(options.clock);
+        const $now = $clock();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           id: $uuidv7(),
@@ -257,9 +265,9 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
             actor: $actor,
             context: $context,
             before: null,
-            ...$composed(compose, tx, context, "Invocation.correct"),
+            ...$composed(compose, tx, context, "Invocation.correct", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $Scope<CorrectInvocationInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -348,10 +356,10 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
       });
     },
 
-    async read<const N extends keyof InvocationLoadable = never>(
-      input: ReadInvocationInput<N>,
+    async read<const L extends readonly (keyof InvocationLoadable)[] = readonly []>(
+      input: Omit<ReadInvocationInput, "load"> & InvocationLoadArg<L>,
       ...[context]: $ContextArgument
-    ): Promise<InvocationWith<N>[]> {
+    ): Promise<InvocationWith<InvocationLoadNames<L>>[]> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
       return $reads.read(input, context);
     },

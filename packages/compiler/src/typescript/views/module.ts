@@ -86,7 +86,7 @@ export function moduleView(input: EmitInput, module: string, entities: readonly 
       record,
       ...entityInputs(entity, document).map((i) => i.name),
       ...(hasRead(entity) ? [filterTypeName(entity), sortTypeName(entity)] : []),
-      ...(hasLoader(entity) ? [`${record}Loadable`, `${record}With`] : []),
+      ...(hasLoader(entity) ? [`${record}Loadable`, `${record}With`, `${record}LoadNames`, `${record}LoadArg`] : []),
     ];
     types.push(...entityTypes);
     imports.push({ types: entityTypes, typesFromLiteral: JSON.stringify(`./${entitySegment(entity)}.types`) });

@@ -6,7 +6,14 @@ import type {
   ActionContext as $ActionContext,
   DeepReadonly as $DeepReadonly,
 } from "@meshfw/runtime";
-import type { ReadCommentInput, CommentLoadable, CommentWith } from "./domain/blog/comment.types";
+import type {
+  Comment,
+  ReadCommentInput,
+  CommentLoadable,
+  CommentWith,
+  CommentLoadNames,
+  CommentLoadArg,
+} from "./domain/blog/comment.types";
 import type {
   Post,
   CreatePostInput,
@@ -17,29 +24,31 @@ import type {
   DestroyPostInput,
   PostLoadable,
   PostWith,
+  PostLoadNames,
+  PostLoadArg,
 } from "./domain/blog/post.types";
 import type { User, CreateUserInput, ReadUserInput } from "./domain/blog/user.types";
 
 /** Every action function of the project, bound to the running transaction: a call joins it, and carries the caller's context unless it passes its own. */
 export interface Actions {
-  readonly readComment: <const N extends keyof CommentLoadable = never>(
-    input: ReadCommentInput<N>,
+  readonly readComment: <const L extends readonly (keyof CommentLoadable)[] = readonly []>(
+    input: Omit<ReadCommentInput, "load"> & CommentLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<CommentWith<N>[]>;
+  ) => Promise<CommentWith<CommentLoadNames<L>>[]>;
   readonly createPost: (input: CreatePostInput, context?: $ActionContext) => Promise<Post>;
   readonly publishPost: (
     input: PublishPostInput,
     context?: $ActionContext,
   ) => Promise<PostWith<"comments" | "excerpt">>;
   readonly archivePost: (input: ArchivePostInput, context?: $ActionContext) => Promise<void>;
-  readonly publishedPost: <const N extends keyof PostLoadable = never>(
-    input: PublishedPostInput<N>,
+  readonly publishedPost: <const L extends readonly (keyof PostLoadable)[] = readonly []>(
+    input: Omit<PublishedPostInput, "load"> & PostLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<PostWith<N>[]>;
-  readonly readPost: <const N extends keyof PostLoadable = never>(
-    input: ReadPostInput<N>,
+  ) => Promise<PostWith<PostLoadNames<L>>[]>;
+  readonly readPost: <const L extends readonly (keyof PostLoadable)[] = readonly []>(
+    input: Omit<ReadPostInput, "load"> & PostLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<PostWith<N>[]>;
+  ) => Promise<PostWith<PostLoadNames<L>>[]>;
   readonly destroyPost: (input: DestroyPostInput, context?: $ActionContext) => Promise<void>;
   readonly createUser: (input: CreateUserInput, context?: $ActionContext) => Promise<User>;
   readonly readUser: (input: ReadUserInput, context?: $ActionContext) => Promise<User[]>;
@@ -47,28 +56,31 @@ export interface Actions {
 
 /** One function per read action, reading inside the running transaction. A read through `tx` runs no read policy. */
 export interface Reads {
-  readonly readComment: <const N extends keyof CommentLoadable = never>(
-    input: ReadCommentInput<N>,
-  ) => Promise<CommentWith<N>[]>;
-  readonly publishedPost: <const N extends keyof PostLoadable = never>(
-    input: PublishedPostInput<N>,
-  ) => Promise<PostWith<N>[]>;
-  readonly readPost: <const N extends keyof PostLoadable = never>(
-    input: ReadPostInput<N>,
-  ) => Promise<PostWith<N>[]>;
+  readonly readComment: <const L extends readonly (keyof CommentLoadable)[] = readonly []>(
+    input: Omit<ReadCommentInput, "load"> & CommentLoadArg<L>,
+  ) => Promise<CommentWith<CommentLoadNames<L>>[]>;
+  readonly publishedPost: <const L extends readonly (keyof PostLoadable)[] = readonly []>(
+    input: Omit<PublishedPostInput, "load"> & PostLoadArg<L>,
+  ) => Promise<PostWith<PostLoadNames<L>>[]>;
+  readonly readPost: <const L extends readonly (keyof PostLoadable)[] = readonly []>(
+    input: Omit<ReadPostInput, "load"> & PostLoadArg<L>,
+  ) => Promise<PostWith<PostLoadNames<L>>[]>;
   readonly readUser: (input: ReadUserInput) => Promise<User[]>;
 }
 
 /**
  * `Actions` as a function of an entity file receives them: every result deeply read-only. Written out, not mapped over
- * `Actions`, because a read is generic in the names its `load` lists and a mapped type would lose that. `Actions` is
- * assignable to it.
+ * `Actions`, because a read is generic in the names its `load` lists and a mapped type would erase that. `Actions` is
+ * assignable to it (a read's result is the read-only record intersected with the read-only loaded members, which TypeScript
+ * relates member by member).
  */
 export interface ReadOnlyActions {
-  readonly readComment: <const N extends keyof CommentLoadable = never>(
-    input: ReadCommentInput<N>,
+  readonly readComment: <const L extends readonly (keyof CommentLoadable)[] = readonly []>(
+    input: Omit<ReadCommentInput, "load"> & CommentLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<$DeepReadonly<CommentWith<N>[]>>;
+  ) => Promise<
+    readonly ($DeepReadonly<Comment> & Pick<$DeepReadonly<CommentLoadable>, CommentLoadNames<L>>)[]
+  >;
   readonly createPost: (
     input: CreatePostInput,
     context?: $ActionContext,
@@ -81,14 +93,18 @@ export interface ReadOnlyActions {
     input: ArchivePostInput,
     context?: $ActionContext,
   ) => Promise<$DeepReadonly<void>>;
-  readonly publishedPost: <const N extends keyof PostLoadable = never>(
-    input: PublishedPostInput<N>,
+  readonly publishedPost: <const L extends readonly (keyof PostLoadable)[] = readonly []>(
+    input: Omit<PublishedPostInput, "load"> & PostLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<$DeepReadonly<PostWith<N>[]>>;
-  readonly readPost: <const N extends keyof PostLoadable = never>(
-    input: ReadPostInput<N>,
+  ) => Promise<
+    readonly ($DeepReadonly<Post> & Pick<$DeepReadonly<PostLoadable>, PostLoadNames<L>>)[]
+  >;
+  readonly readPost: <const L extends readonly (keyof PostLoadable)[] = readonly []>(
+    input: Omit<ReadPostInput, "load"> & PostLoadArg<L>,
     context?: $ActionContext,
-  ) => Promise<$DeepReadonly<PostWith<N>[]>>;
+  ) => Promise<
+    readonly ($DeepReadonly<Post> & Pick<$DeepReadonly<PostLoadable>, PostLoadNames<L>>)[]
+  >;
   readonly destroyPost: (
     input: DestroyPostInput,
     context?: $ActionContext,
@@ -105,14 +121,20 @@ export interface ReadOnlyActions {
 
 /** `Reads` as a function of an entity file receives them (`tx`): every result deeply read-only. `Reads` is assignable to it. */
 export interface ReadOnlyReads {
-  readonly readComment: <const N extends keyof CommentLoadable = never>(
-    input: ReadCommentInput<N>,
-  ) => Promise<$DeepReadonly<CommentWith<N>[]>>;
-  readonly publishedPost: <const N extends keyof PostLoadable = never>(
-    input: PublishedPostInput<N>,
-  ) => Promise<$DeepReadonly<PostWith<N>[]>>;
-  readonly readPost: <const N extends keyof PostLoadable = never>(
-    input: ReadPostInput<N>,
-  ) => Promise<$DeepReadonly<PostWith<N>[]>>;
+  readonly readComment: <const L extends readonly (keyof CommentLoadable)[] = readonly []>(
+    input: Omit<ReadCommentInput, "load"> & CommentLoadArg<L>,
+  ) => Promise<
+    readonly ($DeepReadonly<Comment> & Pick<$DeepReadonly<CommentLoadable>, CommentLoadNames<L>>)[]
+  >;
+  readonly publishedPost: <const L extends readonly (keyof PostLoadable)[] = readonly []>(
+    input: Omit<PublishedPostInput, "load"> & PostLoadArg<L>,
+  ) => Promise<
+    readonly ($DeepReadonly<Post> & Pick<$DeepReadonly<PostLoadable>, PostLoadNames<L>>)[]
+  >;
+  readonly readPost: <const L extends readonly (keyof PostLoadable)[] = readonly []>(
+    input: Omit<ReadPostInput, "load"> & PostLoadArg<L>,
+  ) => Promise<
+    readonly ($DeepReadonly<Post> & Pick<$DeepReadonly<PostLoadable>, PostLoadNames<L>>)[]
+  >;
   readonly readUser: (input: ReadUserInput) => Promise<$DeepReadonly<User[]>>;
 }

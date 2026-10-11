@@ -14,6 +14,7 @@ import {
   loadInto as $loadInto,
   loadRows as $loadRows,
   noteWrite as $noteWrite,
+  pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
   rejectComputedQuery,
   rescope as $rescope,
@@ -32,6 +33,8 @@ import {
 import type {
   Claim,
   ClaimWith,
+  ClaimLoadNames,
+  ClaimLoadArg,
   ClaimLoadable,
   AcquireClaimInput,
   RenewClaimInput,
@@ -64,10 +67,11 @@ import { loadPlan as $loadPlan } from "../../load";
  */
 export function bindClaimReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read<const N extends keyof ClaimLoadable = never>(
-      input: ReadClaimInput<N>,
+    async read<const L extends readonly (keyof ClaimLoadable)[] = readonly []>(
+      input: Omit<ReadClaimInput, "load"> & ClaimLoadArg<L>,
       context?: unknown,
-    ): Promise<ClaimWith<N>[]> {
+      clock?: () => Date,
+    ): Promise<ClaimWith<ClaimLoadNames<L>>[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readClaimInput, input);
       return layer.transaction(async (tx) => {
@@ -78,13 +82,14 @@ export function bindClaimReads(layer: $DataLayer, options: $BindOptions = {}) {
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Claim[];
-        if (!parsed.load?.length) return $rows as unknown as ClaimWith<N>[];
+        if (!parsed.load?.length) return $rows as unknown as ClaimWith<ClaimLoadNames<L>>[];
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "Claim", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
-          clock: options.clock,
-        })) as unknown as ClaimWith<N>[];
+          clock: $clock,
+        })) as unknown as ClaimWith<ClaimLoadNames<L>>[];
       });
     },
   });
@@ -104,6 +109,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           id: $uuidv7(),
@@ -119,7 +125,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           taskId: null,
           holderId: null,
         };
-        const $load = { actor: $actor, context: $context, clock: options.clock };
+        const $load = { actor: $actor, context: $context, clock: $clock };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Claim", $record, "action function"),
           "Claim.acquire",
@@ -131,9 +137,9 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
             actor: $actor,
             context: $context,
             before: null,
-            ...$composed(compose, tx, context, "Claim.acquire"),
+            ...$composed(compose, tx, context, "Claim.acquire", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $Scope<AcquireClaimInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -222,6 +228,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.claim, $key);
@@ -229,7 +236,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
         const $writes = $writeCount(tx);
-        const $load = { actor: $actor, context: $context, clock: options.clock };
+        const $load = { actor: $actor, context: $context, clock: $clock };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Claim", $record, "action function"),
           "Claim.renew",
@@ -244,9 +251,9 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
               $guarded($loadPlan, "Claim", $before, "before"),
               "Claim.renew",
             ) as unknown as Claim,
-            ...$composed(compose, tx, context, "Claim.renew"),
+            ...$composed(compose, tx, context, "Claim.renew", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<RenewClaimInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -325,6 +332,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.claim, $key);
@@ -332,7 +340,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
         const $writes = $writeCount(tx);
-        const $load = { actor: $actor, context: $context, clock: options.clock };
+        const $load = { actor: $actor, context: $context, clock: $clock };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Claim", $record, "action function"),
           "Claim.release",
@@ -347,9 +355,9 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
               $guarded($loadPlan, "Claim", $before, "before"),
               "Claim.release",
             ) as unknown as Claim,
-            ...$composed(compose, tx, context, "Claim.release"),
+            ...$composed(compose, tx, context, "Claim.release", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<ReleaseClaimInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -429,6 +437,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.claim, $key);
@@ -436,7 +445,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         const $changes: $Row = {};
         const $record: $Row = { ...$before };
         const $writes = $writeCount(tx);
-        const $load = { actor: $actor, context: $context, clock: options.clock };
+        const $load = { actor: $actor, context: $context, clock: $clock };
         const $self = $readOnlyRecord(
           $guarded($loadPlan, "Claim", $record, "action function"),
           "Claim.revoke",
@@ -451,9 +460,9 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
               $guarded($loadPlan, "Claim", $before, "before"),
               "Claim.revoke",
             ) as unknown as Claim,
-            ...$composed(compose, tx, context, "Claim.revoke"),
+            ...$composed(compose, tx, context, "Claim.revoke", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<RevokeClaimInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -518,6 +527,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.claim, $key);
@@ -539,9 +549,9 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
               $guarded($loadPlan, "Claim", $before, "before"),
               "Claim.expire",
             ) as unknown as Claim,
-            ...$composed(compose, tx, context, "Claim.expire"),
+            ...$composed(compose, tx, context, "Claim.expire", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<ExpireClaimInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -596,6 +606,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.claim, $key);
@@ -617,9 +628,9 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
               $guarded($loadPlan, "Claim", $before, "before"),
               "Claim.end",
             ) as unknown as Claim,
-            ...$composed(compose, tx, context, "Claim.end"),
+            ...$composed(compose, tx, context, "Claim.end", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<EndClaimInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -659,10 +670,10 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
       });
     },
 
-    async read<const N extends keyof ClaimLoadable = never>(
-      input: ReadClaimInput<N>,
+    async read<const L extends readonly (keyof ClaimLoadable)[] = readonly []>(
+      input: Omit<ReadClaimInput, "load"> & ClaimLoadArg<L>,
       ...[context]: $ContextArgument
-    ): Promise<ClaimWith<N>[]> {
+    ): Promise<ClaimWith<ClaimLoadNames<L>>[]> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
       return $reads.read(input, context);
     },

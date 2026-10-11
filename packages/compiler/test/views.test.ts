@@ -75,6 +75,8 @@ describe("typesView", () => {
       loadable: {
         name: "ListLoadable",
         withName: "ListWith",
+        namesName: "ListLoadNames",
+        argName: "ListLoadArg",
         members: [{ name: "owner", optional: false, key: "owner", type: "Todo | null" }],
         // What a function of the entity file sees as `self`: every relationship and computed field, related records loaded alike.
         loadedName: "ListLoaded",

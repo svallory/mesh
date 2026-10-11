@@ -13,6 +13,7 @@ import {
   guarded as $guarded,
   loadRows as $loadRows,
   noteWrite as $noteWrite,
+  pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
   runCheck as $runCheck,
   scope as $scope,
@@ -28,6 +29,8 @@ import {
 import type {
   SessionReference,
   SessionReferenceWith,
+  SessionReferenceLoadNames,
+  SessionReferenceLoadArg,
   SessionReferenceLoadable,
   RecordSessionReferenceInput,
   SetAvailabilitySessionReferenceInput,
@@ -54,10 +57,11 @@ import { loadPlan as $loadPlan } from "../../load";
  */
 export function bindSessionReferenceReads(layer: $DataLayer, options: $BindOptions = {}) {
   return Object.freeze({
-    async read<const N extends keyof SessionReferenceLoadable = never>(
-      input: ReadSessionReferenceInput<N>,
+    async read<const L extends readonly (keyof SessionReferenceLoadable)[] = readonly []>(
+      input: Omit<ReadSessionReferenceInput, "load"> & SessionReferenceLoadArg<L>,
       context?: unknown,
-    ): Promise<SessionReferenceWith<N>[]> {
+      clock?: () => Date,
+    ): Promise<SessionReferenceWith<SessionReferenceLoadNames<L>>[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, readSessionReferenceInput, input);
       return layer.transaction(async (tx) => {
@@ -67,13 +71,15 @@ export function bindSessionReferenceReads(layer: $DataLayer, options: $BindOptio
           limit: parsed.limit,
           offset: parsed.offset,
         })) as SessionReference[];
-        if (!parsed.load?.length) return $rows as unknown as SessionReferenceWith<N>[];
+        if (!parsed.load?.length)
+          return $rows as unknown as SessionReferenceWith<SessionReferenceLoadNames<L>>[];
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
+        const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "SessionReference", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
-          clock: options.clock,
-        })) as unknown as SessionReferenceWith<N>[];
+          clock: $clock,
+        })) as unknown as SessionReferenceWith<SessionReferenceLoadNames<L>>[];
       });
     },
   });
@@ -100,7 +106,8 @@ export function bindSessionReference(
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
-        const $now = options.clock?.() ?? new Date();
+        const $clock = $pinClock(options.clock);
+        const $now = $clock();
         // plan: a create is one insert; nothing is read first
         const $changes: $Row = {
           id: $uuidv7(),
@@ -128,9 +135,9 @@ export function bindSessionReference(
             actor: $actor,
             context: $context,
             before: null,
-            ...$composed(compose, tx, context, "SessionReference.record"),
+            ...$composed(compose, tx, context, "SessionReference.record", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $Scope<RecordSessionReferenceInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -186,6 +193,7 @@ export function bindSessionReference(
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.sessionReference, $key);
@@ -207,9 +215,9 @@ export function bindSessionReference(
               $guarded($loadPlan, "SessionReference", $before, "before"),
               "SessionReference.setAvailability",
             ) as unknown as SessionReference,
-            ...$composed(compose, tx, context, "SessionReference.setAvailability"),
+            ...$composed(compose, tx, context, "SessionReference.setAvailability", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<SetAvailabilitySessionReferenceInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -277,6 +285,7 @@ export function bindSessionReference(
         // transaction: opens here; what follows commits together or not at all (pre-check: the authorizer slot before it stays empty until policies, M8)
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $actor = $context.actor;
+        const $clock = $pinClock(options.clock);
         // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
         const $key = { id: parsed.id };
         const $before = await tx.selectByKeyForUpdate(tables.sessionReference, $key);
@@ -298,9 +307,9 @@ export function bindSessionReference(
               $guarded($loadPlan, "SessionReference", $before, "before"),
               "SessionReference.redact",
             ) as unknown as SessionReference,
-            ...$composed(compose, tx, context, "SessionReference.redact"),
+            ...$composed(compose, tx, context, "SessionReference.redact", $clock),
           },
-          options,
+          { clock: $clock },
         ) as unknown as $StoredScope<RedactSessionReferenceInput>;
         // validate: every check runs, and every failed check is reported together
         const $issues: $Issue[] = [];
@@ -349,10 +358,10 @@ export function bindSessionReference(
       });
     },
 
-    async read<const N extends keyof SessionReferenceLoadable = never>(
-      input: ReadSessionReferenceInput<N>,
+    async read<const L extends readonly (keyof SessionReferenceLoadable)[] = readonly []>(
+      input: Omit<ReadSessionReferenceInput, "load"> & SessionReferenceLoadArg<L>,
       ...[context]: $ContextArgument
-    ): Promise<SessionReferenceWith<N>[]> {
+    ): Promise<SessionReferenceWith<SessionReferenceLoadNames<L>>[]> {
       // pre-check: the read authorizer slot stays empty until policies (M8); a read through `tx` skips it
       return $reads.read(input, context);
     },
