@@ -3,9 +3,12 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Task, TaskLoaded } from "./task.types";
+import type { Task as $work$Task$Record, TaskLoaded as $work$Task$Loaded } from "./task.types";
 
-import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
+import type {
+  Collaborator as $identity$Collaborator$Record,
+  CollaboratorLoaded as $identity$Collaborator$Loaded,
+} from "../identity/collaborator.types";
 
 export type Submission = {
   id: string;
@@ -20,7 +23,7 @@ export type Submission = {
 };
 
 export type SubmitSubmissionInput = {
-  task: Task["id"];
+  task: $work$Task$Record["id"];
   fence: number;
   summary: string;
   evidence?: unknown | undefined;
@@ -39,7 +42,7 @@ export type SettleSubmissionInput = {
 };
 
 export type RecordAcceptedSubmissionInput = {
-  task: Task["id"];
+  task: $work$Task$Record["id"];
   summary?: string | null | undefined;
   evidence?: unknown | undefined;
   fence?: number | null | undefined;
@@ -61,8 +64,8 @@ export type ReadSubmissionInput<N extends keyof SubmissionLoadable = never> = {
  * returns is shown to every caller who may read a Submission. Return only what each such caller may see.
  */
 export type SubmissionLoadable = {
-  task: Task | null;
-  submitter: Collaborator | null;
+  task: $work$Task$Record | null;
+  submitter: $identity$Collaborator$Record | null;
 };
 
 /** A Submission with the relationships and computed fields named in N loaded. */
@@ -71,8 +74,8 @@ export type SubmissionWith<N extends keyof SubmissionLoadable> = Submission &
 
 /** What a load through `privileged` attaches to a Submission: it runs no policy, so every related record the key names is there. */
 export type SubmissionTxLoadable = {
-  task: Task;
-  submitter: Collaborator;
+  task: $work$Task$Record;
+  submitter: $identity$Collaborator$Record;
 };
 
 /** A Submission loaded through `privileged`, with the relationships and computed fields named in N. */
@@ -92,8 +95,8 @@ export type SubmissionLoadArg<L extends readonly (keyof SubmissionLoadable)[]> =
 
 /** A Submission as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
 export type SubmissionLoaded = Submission & {
-  task: TaskLoaded;
-  submitter: CollaboratorLoaded;
+  task: $work$Task$Loaded;
+  submitter: $identity$Collaborator$Loaded;
 };
 
 export type SubmissionFilter =

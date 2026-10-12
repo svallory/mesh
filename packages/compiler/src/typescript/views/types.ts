@@ -6,6 +6,7 @@ import { hasLoader } from "./load.ts";
 import {
   baseType,
   entityInputs,
+  entityLocal,
   entityPath,
   filterTypeName,
   hasRead,
@@ -27,7 +28,10 @@ import {
 export interface TypesView {
   /** The entity file this file is generated from, project-relative, line terminators escaped as `\uXXXX`. */
   readonly entityFile: string;
-  /** Type-only imports of other entities' record types, ordered as they are first referenced. */
+  /**
+   * Type-only imports of other entities' record types, ordered as they are first referenced, each under its FQN-derived
+   * local (CMP-05, `entityLocal`), which cannot clash with another entity's or with a name the file uses.
+   */
   readonly imports: readonly TypeImport[];
   /** The entity's stored record: its attributes, then one key column per relationship that has one. */
   readonly record: RecordDeclaration;
@@ -84,9 +88,15 @@ export interface QueryDeclaration {
 
 /** `import type { <names> } from <fromLiteral>;` */
 export interface TypeImport {
-  /** The imported record type's name, PascalCase. */
+  /**
+   * The local the record type is imported under, the entity's FQN-derived local (`$identity$Member$Record`,
+   * `entityLocal`), whatever alias the entity file's import wrote. Not the target's type name (`Member`).
+   */
   readonly name: string;
-  /** What the import names, as printed: the record type, then its fully loaded type when the file needs it, e.g. `Member, MemberLoaded`. */
+  /**
+   * What the import names, as printed: the record type, then its fully loaded type when the file needs it, e.g.
+   * `Member as $identity$Member$Record, MemberLoaded as $identity$Member$Loaded`.
+   */
   readonly names: string;
   /** The module specifier as a quoted string literal, e.g. `"./user.types"`. */
   readonly fromLiteral: string;
@@ -130,48 +140,56 @@ export function typesView({ document }: EmitInput, entity: Entity): TypesView {
   const inputs = entityInputs(entity, document);
   const declared = new Set([recordName]);
   for (const input of inputs) {
-    if (declared.has(input.name)) throw emitError("MESH_EMIT_NAME", `Duplicate generated type ${input.name}`, input.position);
+    if (declared.has(input.name)) throw emitError("MESH_EMIT_NAME", `Entity ${entity.fqn} would generate the type ${input.name} twice`, input.position);
     declared.add(input.name);
   }
   if (entity.relationships.length + entity.computed.length > 0)
     for (const name of [`${recordName}Loadable`, `${recordName}With`, `${recordName}LoadNames`, `${recordName}LoadArg`, `${recordName}Loaded`, ...(hasTxLoadable(entity) ? [`${recordName}TxLoadable`, `${recordName}TxWith`] : [])]) {
-      if (declared.has(name)) throw emitError("MESH_EMIT_NAME", `Duplicate generated type ${name}`, entity.position);
+      if (declared.has(name)) throw emitError("MESH_EMIT_NAME", `Entity ${entity.fqn} would generate the type ${name} twice`, entity.position);
       declared.add(name);
     }
-  const referenced = new Map<string, Entity>();
+  // Another entity's types are imported under its FQN-derived locals (`$b$List$Record`, `$b$List$Loaded`; CMP-05:
+  // generated locals never use a bare entity name, and never the alias the entity file's import wrote, which could
+  // hide a global the file uses, such as `Pick`). No such local is one of this file's own names or another entity's.
+  const imported = new Map<string, { target: Entity; local: string; loadedLocal: string; loaded: boolean }>();
+  const localOf = (target: Entity): string => {
+    if (target.file === entity.file) return recordName;
+    let found = imported.get(target.file);
+    if (!found) {
+      found = { target, local: entityLocal(target, "Record"), loadedLocal: entityLocal(target, "Loaded"), loaded: false };
+      imported.set(target.file, found);
+    }
+    return found.local;
+  };
   for (const input of inputs)
     for (const field of input.fields)
-      if (field.reference && field.reference.file !== entity.file) {
-        const name = typeName(field.reference.name, field.reference.position);
-        if (declared.has(name) || (referenced.has(name) && referenced.get(name)!.file !== field.reference.file))
-          throw emitError("MESH_EMIT_NAME", `Imported type ${name} conflicts with another generated type`, entity.position);
-        referenced.set(name, field.reference);
-      }
+      if (field.reference) localOf(field.reference);
   // A relationship's record type is imported when the target is another file; its own type needs no import.
   // So is its fully loaded type, which this entity's own fully loaded type names.
-  const loadedImports = new Set<string>();
   for (const relation of entity.relationships) {
     const target = relationTarget(document, entity, relation);
-    if (target.file === entity.file) continue;
-    const name = typeName(target.name, target.position);
-    if (declared.has(name) || (referenced.has(name) && referenced.get(name)!.file !== target.file))
-      throw emitError("MESH_EMIT_NAME", `Imported type ${name} conflicts with another generated type`, entity.position);
-    referenced.set(name, target);
-    if (hasLoader(target)) loadedImports.add(name);
+    localOf(target);
+    const found = imported.get(target.file);
+    if (found && hasLoader(target)) found.loaded = true;
   }
-  for (const name of loadedImports)
-    if (declared.has(`${name}Loaded`) || referenced.has(`${name}Loaded`))
-      throw emitError("MESH_EMIT_NAME", `Imported type ${name}Loaded conflicts with another generated type`, entity.position);
   const allFields = [...entity.attributes, ...inputs.flatMap((i) => i.fields.map((f) => f.attribute))];
-  if (allFields.some((f) => attributeTypeInfo(f.type).tsType === "Date") && (declared.has("Date") || referenced.has("Date")))
+  if (allFields.some((f) => attributeTypeInfo(f.type).tsType === "Date") && declared.has("Date"))
     throw emitError("MESH_EMIT_NAME", "Generated Date would shadow the Date type", entity.position);
 
-  const imports = [...referenced].map(([name, target]): TypeImport => {
+  const imports = [...imported.values()].map(({ target, local, loadedLocal, loaded }): TypeImport => {
     let path = relative(dirname(entityPath(entity)), entityPath(target)).replace(/\\/g, "/");
     if (!path.startsWith(".")) path = `./${path}`;
-    return { name, names: loadedImports.has(name) ? `${name}, ${name}Loaded` : name, fromLiteral: JSON.stringify(`${path}.types`) };
+    const record = typeName(target.name, target.position);
+    const names = [`${record} as ${local}`, ...(loaded ? [`${record}Loaded as ${loadedLocal}`] : [])];
+    return { name: local, names: names.join(", "), fromLiteral: JSON.stringify(`${path}.types`) };
   });
-  const recordMembers = entity.attributes.map((attribute) => member({ attribute, optional: false }, entity));
+  // What this file calls another entity's record type and its fully loaded type; the entity's own are its own names.
+  const locals: Locals = (target) => {
+    if (target.file === entity.file) return { record: recordName, loaded: `${recordName}Loaded` };
+    const found = imported.get(target.file)!;
+    return { record: found.local, loaded: found.loadedLocal };
+  };
+  const recordMembers = entity.attributes.map((attribute) => member({ attribute, optional: false }, entity, locals));
   for (const relation of entity.relationships)
     if (relation.keyColumn)
       recordMembers.push({
@@ -184,9 +202,9 @@ export function typesView({ document }: EmitInput, entity: Entity): TypesView {
     entityFile: entityFileComment(entity),
     imports,
     record: { name: recordName, members: recordMembers },
-    inputs: inputs.map((input) => declaration(input.name, takesLoad(input) ? loadGenerics(entity, false) : "", input.fields.map((field) => member(field, entity)))),
+    inputs: inputs.map((input) => declaration(input.name, takesLoad(input) ? loadGenerics(entity, false) : "", input.fields.map((field) => member(field, entity, locals)))),
     query: hasRead(entity) ? queryDeclaration(entity) : null,
-    loadable: loadableDeclaration(document, entity, recordName),
+    loadable: loadableDeclaration(document, entity, recordName, locals),
   };
 }
 
@@ -207,7 +225,10 @@ export function txLoadTypes(entity: Entity): { loadable: string; with: string } 
   return hasTxLoadable(entity) ? { loadable: `${record}TxLoadable`, with: `${record}TxWith` } : { loadable: `${record}Loadable`, with: `${record}With` };
 }
 
-function loadableDeclaration(document: EmitInput["document"], entity: Entity, recordName: string): LoadableDeclaration | null {
+/** What a types file calls an entity's record type and its fully loaded type. */
+type Locals = (target: Entity) => { readonly record: string; readonly loaded: string };
+
+function loadableDeclaration(document: EmitInput["document"], entity: Entity, recordName: string, locals: Locals): LoadableDeclaration | null {
   const members: TypeMember[] = [];
   const txMembers: TypeMember[] = [];
   const loadedMembers: TypeMember[] = [];
@@ -217,11 +238,11 @@ function loadableDeclaration(document: EmitInput["document"], entity: Entity, re
   const forCaller = (relation: Entity["relationships"][number], target: string) => relation.kind === "has-many" ? `${target}[]` : `${target} | null`;
   for (const relation of entity.relationships) {
     const entityTarget = relationTarget(document, entity, relation);
-    const target = typeName(entityTarget.name, relation.position);
+    const { record: target, loaded } = locals(entityTarget);
     members.push({ name: relation.name, optional: false, key: propertyName(relation.name), type: forCaller(relation, target) });
     txMembers.push({ name: relation.name, optional: false, key: propertyName(relation.name), type: related(relation, target) });
     // A target with no relationship and no computed field is loaded when its record is.
-    loadedMembers.push({ name: relation.name, optional: false, key: propertyName(relation.name), type: related(relation, hasLoader(entityTarget) ? `${target}Loaded` : target) });
+    loadedMembers.push({ name: relation.name, optional: false, key: propertyName(relation.name), type: related(relation, hasLoader(entityTarget) ? loaded : target) });
   }
   for (const field of entity.computed) {
     const member = {
@@ -260,11 +281,11 @@ function declaration(name: string, generics: string, members: TypeMember[]): Typ
   return { name, generics, empty: members.length === 0, members };
 }
 
-function member({ attribute, optional, reference, query }: PlannedField, entity: Entity): TypeMember {
+function member({ attribute, optional, reference, query }: PlannedField, entity: Entity, locals: Locals): TypeMember {
   const type = query
     ? query === "filter" ? filterTypeName(entity) : query === "sort" ? sortTypeName(entity) : query === "load" ? "readonly N[]" : "number"
     : reference
-    ? `${typeName(reference.name, reference.position)}[${JSON.stringify(reference.attributes.find((a) => a.primaryKey)!.name)}]${attribute.nullable ? " | null" : ""}`
+    ? `${locals(reference).record}[${JSON.stringify(reference.attributes.find((a) => a.primaryKey)!.name)}]${attribute.nullable ? " | null" : ""}`
     : valueType(attribute);
   return {
     name: attribute.name,

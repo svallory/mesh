@@ -31,7 +31,7 @@ async function generated(source: string) {
   await writeGeneratedFiles(await generateFiles({ document: built.document!, config }), config);
   await writeFile(resolve(root, "generated/schema.ts"), "export const tables = {};\n");
   await mkdir(resolve(root, "node_modules"), { recursive: true });
-  const { expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
+  const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
   return { root, built, expressions: expressions as Record<string, (s: unknown) => unknown> };
 }
 const types = (root: string) => checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"]);

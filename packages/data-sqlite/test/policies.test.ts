@@ -635,7 +635,7 @@ entity :Item table="items"
       expect(inside).toMatchObject({ keeper: { name: "Kay" }, itemCount: 2, topRank: 7 });
       expect(inside.items).toHaveLength(2);
       // And the loader a `run` or a test calls directly runs none either.
-      const { loadShelfFields } = (await import(join(loadsDir, ".mesh/load.ts"))) as { loadShelfFields: (tx: unknown, rows: object[], names: string[]) => Promise<{ keeper: unknown }[]> };
+      const { loadShelfFields } = (await import(join(loadsDir, ".mesh/domain/index.ts"))) as { loadShelfFields: (tx: unknown, rows: object[], names: string[]) => Promise<{ keeper: unknown }[]> };
       const rows = await db.transaction((tx) => loadShelfFields(tx, [{ ...inside }], ["items", "keeper"]));
       expect(rows[0]).toMatchObject({ keeper: { name: "Kay" } });
       // Its type takes no `policies` (R2-N1); one forced past it is ignored: the loader always loads as `privileged` does.
@@ -667,8 +667,7 @@ entity :Item table="items"
   test("the types say so: a caller's belongs-to is `| null`, through privileged it is not, and the generated tree type-checks", async () => {
     await Bun.write(join(loadsDir, "use.ts"), `import type { DataOperations, LoadOptions } from "@meshfw/runtime";
 import { privileged, transaction } from "./.mesh/index.ts";
-import { Shelf } from "./.mesh/domain/index.ts";
-import { loadShelfFields } from "./.mesh/load.ts";
+import { Shelf, loadShelfFields } from "./.mesh/domain/index.ts";
 export async function use(): Promise<string[]> {
   const [shelf] = await Shelf.read({ load: ["keeper", "items"] }, { actor: { id: "a" } });
   // @ts-expect-error a caller's keeper may be one it may not read

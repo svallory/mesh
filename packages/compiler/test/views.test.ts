@@ -61,7 +61,7 @@ describe("typesView", () => {
   test("an entity with no actions and one reference: its import, no inputs, the record's members in order", () => {
     expect(types(documentOf(), "List")).toEqual({
       entityFile: "todo/list.mesh.mx",
-      imports: [{ name: "Todo", names: "Todo, TodoLoaded", fromLiteral: '"./todo.types"' }],
+      imports: [{ name: "$todo$Todo$Record", names: "Todo as $todo$Todo$Record, TodoLoaded as $todo$Todo$Loaded", fromLiteral: '"./todo.types"' }],
       record: {
         name: "List",
         members: [
@@ -78,20 +78,21 @@ describe("typesView", () => {
         tx: null,
         namesName: "ListLoadNames",
         argName: "ListLoadArg",
-        members: [{ name: "owner", optional: false, key: "owner", type: "Todo | null" }],
+        members: [{ name: "owner", optional: false, key: "owner", type: "$todo$Todo$Record | null" }],
         // What a function of the entity file sees as `self`: every relationship and computed field, related records loaded alike.
         loadedName: "ListLoaded",
-        loadedMembers: [{ name: "owner", optional: false, key: "owner", type: "TodoLoaded | null" }],
+        loadedMembers: [{ name: "owner", optional: false, key: "owner", type: "$todo$Todo$Loaded | null" }],
       },
     });
   });
 
   test("imports: each referenced entity in another file once, with a relative quoted specifier", () => {
     const document = documentOf();
-    expect(types(document, "Todo").imports).toEqual([{ name: "List", names: "List, ListLoaded", fromLiteral: '"./list.types"' }]);
+    // Under its FQN-derived locals (CMP-05): the import wrote no alias.
+    expect(types(document, "Todo").imports).toEqual([{ name: "$todo$List$Record", names: "List as $todo$List$Record, ListLoaded as $todo$List$Loaded", fromLiteral: '"./list.types"' }]);
     entityOf(document, "List").module = "lists";
     entityOf(document, "Todo").module = "todos";
-    expect(types(document, "Todo").imports).toEqual([{ name: "List", names: "List, ListLoaded", fromLiteral: '"../lists/list.types"' }]);
+    expect(types(document, "Todo").imports).toEqual([{ name: "$lists$List$Record", names: "List as $lists$List$Record, ListLoaded as $lists$List$Loaded", fromLiteral: '"../lists/list.types"' }]);
   });
 
   test("record: attributes then relationship key columns; nullable and enum types are printed in full", () => {
@@ -128,7 +129,7 @@ describe("typesView", () => {
     ]);
     expect(view.inputs[0]!.members).toEqual([
       { name: "title", optional: false, key: "title", type: "string" },
-      { name: "list", optional: false, key: "list", type: 'List["id"]' },
+      { name: "list", optional: false, key: "list", type: '$todo$List$Record["id"]' },
       { name: "status", optional: true, key: "status", type: '"draft" | "sent" | undefined' },
       { name: "reason", optional: true, key: "reason", type: "string | null | undefined" },
     ]);
@@ -164,7 +165,7 @@ describe("typesView", () => {
     entityOf(document, "Todo").relationships.find((r) => r.name === "list")!.nullable = true;
     const create = types(document, "Todo").inputs[0]!;
     expect(create.members.find((m) => m.name === "list")).toEqual({
-      name: "list", optional: true, key: "list", type: 'List["id"] | null | undefined',
+      name: "list", optional: true, key: "list", type: '$todo$List$Record["id"] | null | undefined',
     });
   });
 

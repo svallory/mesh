@@ -28,7 +28,7 @@ import {
 import type { User as $Record, CreateUserInput, ReadUserInput } from "./user.types";
 import { createUserInput, readUserInput } from "./user.validators";
 import { tables } from "../../schema";
-import { expressions as $expressions } from "./user.expressions";
+import { $expressions } from "./user.expressions";
 
 /**
  * The reads of this entity without their policies: what `privileged(User)` runs (TXN-16). The read actions

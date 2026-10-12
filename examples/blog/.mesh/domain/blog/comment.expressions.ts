@@ -6,22 +6,28 @@ import {
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
 } from "@meshfw/runtime";
-import type { Comment, CommentLoaded } from "./comment.types";
+import type {
+  Comment as $blog$Comment$Record,
+  CommentLoaded as $blog$Comment$Loaded,
+} from "./comment.types";
 
 /** What every expression of Comment reads; `I` is the input of the action it runs in. */
-export type CommentScope<I = unknown> = $Scope<{
-  self: $DeepReadonly<CommentLoaded>;
+export type $blog$Comment$Scope<I = unknown> = $Scope<{
+  self: $DeepReadonly<$blog$Comment$Loaded>;
   input: $DeepReadonly<I>;
   actor: any;
   context: any;
-  before: $DeepReadonly<Comment> | null;
+  before: $DeepReadonly<$blog$Comment$Record> | null;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
-export type CommentStoredScope<I = unknown> = CommentScope<I> & { before: $DeepReadonly<Comment> };
+export type $blog$Comment$StoredScope<I = unknown> = $blog$Comment$Scope<I> & {
+  before: $DeepReadonly<$blog$Comment$Record>;
+};
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type CommentCheckScope<I = unknown> = Omit<CommentScope<I>, "before">;
+export type $blog$Comment$CheckScope<I = unknown> = Omit<$blog$Comment$Scope<I>, "before">;
 
-export const expressions = {
+export const $expressions = {
   // policy :signedIn authorize-if, translated (src/domain/blog/comment.mesh.mx:12:20)
-  "policy.signedIn.authorize-if.0": ($s: CommentCheckScope<unknown>) => $.isNotNull($s.actor?.id),
+  "policy.signedIn.authorize-if.0": ($s: $blog$Comment$CheckScope<unknown>) =>
+    $.isNotNull($s.actor?.id),
 } as const;

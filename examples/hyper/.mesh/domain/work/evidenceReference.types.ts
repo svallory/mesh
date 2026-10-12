@@ -3,7 +3,10 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
+import type {
+  Collaborator as $identity$Collaborator$Record,
+  CollaboratorLoaded as $identity$Collaborator$Loaded,
+} from "../identity/collaborator.types";
 
 export type EvidenceReference = {
   id: string;
@@ -37,7 +40,7 @@ export type ReadEvidenceReferenceInput<N extends keyof EvidenceReferenceLoadable
  * returns is shown to every caller who may read a EvidenceReference. Return only what each such caller may see.
  */
 export type EvidenceReferenceLoadable = {
-  recordedBy: Collaborator | null;
+  recordedBy: $identity$Collaborator$Record | null;
 };
 
 /** A EvidenceReference with the relationships and computed fields named in N loaded. */
@@ -46,7 +49,7 @@ export type EvidenceReferenceWith<N extends keyof EvidenceReferenceLoadable> = E
 
 /** What a load through `privileged` attaches to a EvidenceReference: it runs no policy, so every related record the key names is there. */
 export type EvidenceReferenceTxLoadable = {
-  recordedBy: Collaborator;
+  recordedBy: $identity$Collaborator$Record;
 };
 
 /** A EvidenceReference loaded through `privileged`, with the relationships and computed fields named in N. */
@@ -66,7 +69,7 @@ export type EvidenceReferenceLoadArg<L extends readonly (keyof EvidenceReference
 
 /** A EvidenceReference as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
 export type EvidenceReferenceLoaded = EvidenceReference & {
-  recordedBy: CollaboratorLoaded;
+  recordedBy: $identity$Collaborator$Loaded;
 };
 
 export type EvidenceReferenceFilter =

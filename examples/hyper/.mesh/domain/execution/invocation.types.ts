@@ -3,13 +3,25 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Attempt, AttemptLoaded } from "./attempt.types";
+import type {
+  Attempt as $execution$Attempt$Record,
+  AttemptLoaded as $execution$Attempt$Loaded,
+} from "./attempt.types";
 
-import type { SessionReference, SessionReferenceLoaded } from "./sessionReference.types";
+import type {
+  SessionReference as $execution$SessionReference$Record,
+  SessionReferenceLoaded as $execution$SessionReference$Loaded,
+} from "./sessionReference.types";
 
-import type { Task, TaskLoaded } from "../work/task.types";
+import type {
+  Task as $work$Task$Record,
+  TaskLoaded as $work$Task$Loaded,
+} from "../work/task.types";
 
-import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
+import type {
+  Collaborator as $identity$Collaborator$Record,
+  CollaboratorLoaded as $identity$Collaborator$Loaded,
+} from "../identity/collaborator.types";
 
 export type Invocation = {
   id: string;
@@ -36,7 +48,7 @@ export type Invocation = {
 };
 
 export type RecordInvocationInput = {
-  attempt: Attempt["id"];
+  attempt: $execution$Attempt$Record["id"];
   requestedProvider?: string | null | undefined;
   requestedModel?: string | null | undefined;
   actualProvider?: string | null | undefined;
@@ -50,7 +62,7 @@ export type RecordInvocationInput = {
   pricingBasis?: string | null | undefined;
   startedAt?: Date | null | undefined;
   endedAt?: Date | null | undefined;
-  session?: SessionReference["id"] | null | undefined;
+  session?: $execution$SessionReference$Record["id"] | null | undefined;
 };
 
 export type CorrectInvocationInput = {
@@ -69,7 +81,7 @@ export type CorrectInvocationInput = {
   pricingBasis?: string | null | undefined;
   startedAt?: Date | null | undefined;
   endedAt?: Date | null | undefined;
-  session?: SessionReference["id"] | null | undefined;
+  session?: $execution$SessionReference$Record["id"] | null | undefined;
 };
 
 export type ReadInvocationInput<N extends keyof InvocationLoadable = never> = {
@@ -87,11 +99,11 @@ export type ReadInvocationInput<N extends keyof InvocationLoadable = never> = {
  * returns is shown to every caller who may read a Invocation. Return only what each such caller may see.
  */
 export type InvocationLoadable = {
-  attempt: Attempt | null;
-  task: Task | null;
-  session: SessionReference | null;
+  attempt: $execution$Attempt$Record | null;
+  task: $work$Task$Record | null;
+  session: $execution$SessionReference$Record | null;
   corrects: Invocation | null;
-  recordedBy: Collaborator | null;
+  recordedBy: $identity$Collaborator$Record | null;
 };
 
 /** A Invocation with the relationships and computed fields named in N loaded. */
@@ -100,11 +112,11 @@ export type InvocationWith<N extends keyof InvocationLoadable> = Invocation &
 
 /** What a load through `privileged` attaches to a Invocation: it runs no policy, so every related record the key names is there. */
 export type InvocationTxLoadable = {
-  attempt: Attempt;
-  task: Task;
-  session: SessionReference | null;
+  attempt: $execution$Attempt$Record;
+  task: $work$Task$Record;
+  session: $execution$SessionReference$Record | null;
   corrects: Invocation | null;
-  recordedBy: Collaborator;
+  recordedBy: $identity$Collaborator$Record;
 };
 
 /** A Invocation loaded through `privileged`, with the relationships and computed fields named in N. */
@@ -124,11 +136,11 @@ export type InvocationLoadArg<L extends readonly (keyof InvocationLoadable)[]> =
 
 /** A Invocation as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
 export type InvocationLoaded = Invocation & {
-  attempt: AttemptLoaded;
-  task: TaskLoaded;
-  session: SessionReferenceLoaded | null;
+  attempt: $execution$Attempt$Loaded;
+  task: $work$Task$Loaded;
+  session: $execution$SessionReference$Loaded | null;
   corrects: InvocationLoaded | null;
-  recordedBy: CollaboratorLoaded;
+  recordedBy: $identity$Collaborator$Loaded;
 };
 
 export type InvocationFilter =

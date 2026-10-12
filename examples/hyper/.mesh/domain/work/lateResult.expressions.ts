@@ -8,63 +8,84 @@ import {
 } from "@meshfw/runtime";
 import { claimsOf, isStale, missingEvidenceOf } from "../../../src/domain/work/work.helpers";
 import { memberOf, roleIn } from "../../../src/domain/identity/identity.helpers";
-import type { LateResult, LateResultLoaded, RecordLateResultInput } from "./lateResult.types";
+import type {
+  LateResult as $work$LateResult$Record,
+  LateResultLoaded as $work$LateResult$Loaded,
+  RecordLateResultInput as $work$LateResult$RecordLateResultInput,
+} from "./lateResult.types";
 
 /** What every expression of LateResult reads; `I` is the input of the action it runs in. */
-export type LateResultScope<I = unknown> = $Scope<{
-  self: $DeepReadonly<LateResultLoaded>;
+export type $work$LateResult$Scope<I = unknown> = $Scope<{
+  self: $DeepReadonly<$work$LateResult$Loaded>;
   input: $DeepReadonly<I>;
   actor: any;
   context: any;
-  before: $DeepReadonly<LateResult> | null;
+  before: $DeepReadonly<$work$LateResult$Record> | null;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
-export type LateResultStoredScope<I = unknown> = LateResultScope<I> & {
-  before: $DeepReadonly<LateResult>;
+export type $work$LateResult$StoredScope<I = unknown> = $work$LateResult$Scope<I> & {
+  before: $DeepReadonly<$work$LateResult$Record>;
 };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type LateResultCheckScope<I = unknown> = Omit<LateResultScope<I>, "before">;
+export type $work$LateResult$CheckScope<I = unknown> = Omit<$work$LateResult$Scope<I>, "before">;
 /** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
-export type LateResultNewScope<I = unknown> = Omit<LateResultCheckScope<I>, "self"> & {
+export type $work$LateResult$NewScope<I = unknown> = Omit<
+  $work$LateResult$CheckScope<I>,
+  "self"
+> & {
   self: $DeepReadonly<
-    Omit<LateResultLoaded, "fence" | "taskId" | "task" | "submitterId" | "submitter"> & {
-      [K in "fence" | "taskId" | "task" | "submitterId" | "submitter"]: LateResultLoaded[K] | null;
+    Omit<$work$LateResult$Loaded, "fence" | "taskId" | "task" | "submitterId" | "submitter"> & {
+      [K in "fence" | "taskId" | "task" | "submitterId" | "submitter"]:
+        | $work$LateResult$Loaded[K]
+        | null;
     }
   >;
 };
 
-export const expressions = {
+export const $expressions = {
   // check :staleFence that, plain (awaits-helper) (src/domain/work/late-result.mesh.mx:25:16)
-  "record.check.staleFence.that": ($s: LateResultNewScope<RecordLateResultInput>) => {
+  "record.check.staleFence.that": (
+    $s: $work$LateResult$NewScope<$work$LateResult$RecordLateResultInput>,
+  ) => {
     const now = () => $.now($s);
     return (async ({ input, actor }) =>
       isStale(await claimsOf(input.task), input.fence, actor.id, now()))($s);
   },
   // check :evidenceExists that, plain (awaits-helper) (src/domain/work/late-result.mesh.mx:30:16)
-  "record.check.evidenceExists.that": ($s: LateResultNewScope<RecordLateResultInput>) => {
+  "record.check.evidenceExists.that": (
+    $s: $work$LateResult$NewScope<$work$LateResult$RecordLateResultInput>,
+  ) => {
     const { self } = $s;
     return (async ({ input }) =>
       (await missingEvidenceOf(input.evidence ?? self.evidence)).length === 0)($s);
   },
   // check :evidenceExists details, plain (awaits-helper) (src/domain/work/late-result.mesh.mx:33:19)
-  "record.check.evidenceExists.details": ($s: LateResultNewScope<RecordLateResultInput>) => {
+  "record.check.evidenceExists.details": (
+    $s: $work$LateResult$NewScope<$work$LateResult$RecordLateResultInput>,
+  ) => {
     const { self } = $s;
     return (async ({ input }) => ({
       missing: await missingEvidenceOf(input.evidence ?? self.evidence),
     }))($s);
   },
   // set &submitter, translated (src/domain/work/late-result.mesh.mx:37:22)
-  "record.step.0.set.submitter": ($s: LateResultScope<RecordLateResultInput>) => $s.actor?.id,
+  "record.step.0.set.submitter": (
+    $s: $work$LateResult$Scope<$work$LateResult$RecordLateResultInput>,
+  ) => $s.actor?.id,
   // policy :membersRead authorize-if, translated (src/domain/work/late-result.mesh.mx:40:20)
-  "policy.membersRead.authorize-if.0": ($s: LateResultCheckScope<unknown>) =>
+  "policy.membersRead.authorize-if.0": ($s: $work$LateResult$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
   // policy :isMember authorize-if, plain (awaits-helper) (src/domain/work/late-result.mesh.mx:42:20)
-  "policy.isMember.authorize-if.0": ($s: LateResultNewScope<RecordLateResultInput>) => {
+  "policy.isMember.authorize-if.0": (
+    $s: $work$LateResult$NewScope<$work$LateResult$RecordLateResultInput>,
+  ) => {
     const isSystem = $.isSystem;
     return (async ({ actor, context }) => isSystem(context) || (await memberOf(actor.id)))($s);
   },
   // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/work/late-result.mesh.mx:44:20)
-  "policy.ownerOrMember.authorize-if.0": ($s: LateResultNewScope<RecordLateResultInput>) => {
+  "policy.ownerOrMember.authorize-if.0": (
+    $s: $work$LateResult$NewScope<$work$LateResult$RecordLateResultInput>,
+  ) => {
     const isSystem = $.isSystem;
     return (async ({ actor, context }) =>
       isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);

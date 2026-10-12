@@ -17,37 +17,45 @@ import {
   taskVersionOf,
 } from "../../../src/domain/work/work.helpers";
 import { memberOf, roleIn } from "../../../src/domain/identity/identity.helpers";
-import { Assignment as $e$Assignment, type $ReadOnly as $t$Assignment } from "./assignment.actions";
-import { Claim as $e$Claim, type $ReadOnly as $t$Claim } from "./claim.actions";
-import { Task as $e$Task, type $ReadOnly as $t$Task } from "./task.actions";
+import {
+  Assignment as $work$Assignment$value,
+  type $ReadOnly as $work$Assignment$ReadOnly,
+} from "./assignment.actions";
+import {
+  Claim as $work$Claim$value,
+  type $ReadOnly as $work$Claim$ReadOnly,
+} from "./claim.actions";
+import { Task as $work$Task$value, type $ReadOnly as $work$Task$ReadOnly } from "./task.actions";
 import type {
-  Claim,
-  ClaimLoaded,
-  AcquireClaimInput,
-  EndClaimInput,
-  ExpireClaimInput,
-  ReleaseClaimInput,
-  RenewClaimInput,
-  RevokeClaimInput,
+  Claim as $work$Claim$Record,
+  ClaimLoaded as $work$Claim$Loaded,
+  AcquireClaimInput as $work$Claim$AcquireClaimInput,
+  EndClaimInput as $work$Claim$EndClaimInput,
+  ExpireClaimInput as $work$Claim$ExpireClaimInput,
+  ReleaseClaimInput as $work$Claim$ReleaseClaimInput,
+  RenewClaimInput as $work$Claim$RenewClaimInput,
+  RevokeClaimInput as $work$Claim$RevokeClaimInput,
 } from "./claim.types";
 
 /** What every expression of Claim reads; `I` is the input of the action it runs in. */
-export type ClaimScope<I = unknown> = $Scope<{
-  self: $DeepReadonly<ClaimLoaded>;
+export type $work$Claim$Scope<I = unknown> = $Scope<{
+  self: $DeepReadonly<$work$Claim$Loaded>;
   input: $DeepReadonly<I>;
   actor: any;
   context: any;
-  before: $DeepReadonly<Claim> | null;
+  before: $DeepReadonly<$work$Claim$Record> | null;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
-export type ClaimStoredScope<I = unknown> = ClaimScope<I> & { before: $DeepReadonly<Claim> };
+export type $work$Claim$StoredScope<I = unknown> = $work$Claim$Scope<I> & {
+  before: $DeepReadonly<$work$Claim$Record>;
+};
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type ClaimCheckScope<I = unknown> = Omit<ClaimScope<I>, "before">;
+export type $work$Claim$CheckScope<I = unknown> = Omit<$work$Claim$Scope<I>, "before">;
 /** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
-export type ClaimNewScope<I = unknown> = Omit<ClaimCheckScope<I>, "self"> & {
+export type $work$Claim$NewScope<I = unknown> = Omit<$work$Claim$CheckScope<I>, "self"> & {
   self: $DeepReadonly<
     Omit<
-      ClaimLoaded,
+      $work$Claim$Loaded,
       "fence" | "acquiredAt" | "expiresAt" | "taskId" | "task" | "holderId" | "holder" | "lapsed"
     > & {
       [K in
@@ -58,42 +66,46 @@ export type ClaimNewScope<I = unknown> = Omit<ClaimCheckScope<I>, "self"> & {
         | "task"
         | "holderId"
         | "holder"
-        | "lapsed"]: ClaimLoaded[K] | null;
+        | "lapsed"]: $work$Claim$Loaded[K] | null;
     }
   >;
 };
 
-export const expressions = {
+export const $expressions = {
   // computed lapsed, translated (src/domain/work/claim.mesh.mx:20:20)
-  "computed.lapsed": ($s: ClaimScope<unknown>) =>
+  "computed.lapsed": ($s: $work$Claim$Scope<unknown>) =>
     $.and($.eq($s.self.state, "active"), $.lte($s.self.expiresAt, $.now($s))),
   // check :taskReady that, plain (awaits-helper) (src/domain/work/claim.mesh.mx:28:16)
-  "acquire.check.taskReady.that": ($s: ClaimNewScope<AcquireClaimInput>) => {
+  "acquire.check.taskReady.that": ($s: $work$Claim$NewScope<$work$Claim$AcquireClaimInput>) => {
     return (async ({ input }) => (await derivedStateOf(input.task)) === "ready")($s);
   },
   // check :taskReady details, plain (awaits-helper) (src/domain/work/claim.mesh.mx:31:19)
-  "acquire.check.taskReady.details": ($s: ClaimNewScope<AcquireClaimInput>) => {
+  "acquire.check.taskReady.details": ($s: $work$Claim$NewScope<$work$Claim$AcquireClaimInput>) => {
     return (async ({ input }) => await readinessOf(input.task))($s);
   },
   // check :versionMatches that, plain (awaits-helper) (src/domain/work/claim.mesh.mx:34:16)
-  "acquire.check.versionMatches.that": ($s: ClaimNewScope<AcquireClaimInput>) => {
+  "acquire.check.versionMatches.that": (
+    $s: $work$Claim$NewScope<$work$Claim$AcquireClaimInput>,
+  ) => {
     return (async ({ input }) =>
       input.expectedVersion == null || input.expectedVersion === (await taskVersionOf(input.task)))(
       $s,
     );
   },
   // check :versionMatches details, plain (awaits-helper) (src/domain/work/claim.mesh.mx:37:19)
-  "acquire.check.versionMatches.details": ($s: ClaimNewScope<AcquireClaimInput>) => {
+  "acquire.check.versionMatches.details": (
+    $s: $work$Claim$NewScope<$work$Claim$AcquireClaimInput>,
+  ) => {
     return (async ({ input }) => ({
       expectedVersion: input.expectedVersion,
       actualVersion: await taskVersionOf(input.task),
     }))($s);
   },
   // run, plain (run-step) (src/domain/work/claim.mesh.mx:40:12)
-  "acquire.step.0.run": ($s: ClaimScope<AcquireClaimInput>) => {
+  "acquire.step.0.run": ($s: $work$Claim$Scope<$work$Claim$AcquireClaimInput>) => {
     const now = () => $.now($s);
     const privileged = $privileged;
-    const Claim: $t$Claim = $e$Claim;
+    const Claim: $work$Claim$ReadOnly = $work$Claim$value;
     return (async function ({ input, context }) {
       const lapsed = await privileged(Claim).read({
         filter: { taskId: { eq: input.task }, state: { eq: "active" }, expiresAt: { lte: now() } },
@@ -106,20 +118,22 @@ export const expressions = {
     })($s);
   },
   // set &holder, translated (src/domain/work/claim.mesh.mx:45:19)
-  "acquire.step.1.set.holder": ($s: ClaimScope<AcquireClaimInput>) => $s.actor?.id,
+  "acquire.step.1.set.holder": ($s: $work$Claim$Scope<$work$Claim$AcquireClaimInput>) =>
+    $s.actor?.id,
   // set &fence, translated (src/domain/work/claim.mesh.mx:46:18)
-  "acquire.step.1.set.fence": ($s: ClaimScope<AcquireClaimInput>) =>
+  "acquire.step.1.set.fence": ($s: $work$Claim$Scope<$work$Claim$AcquireClaimInput>) =>
     $.add($.coalesce($s.self.task?.maxFence, 0), 1),
   // set &acquiredAt, translated (src/domain/work/claim.mesh.mx:47:23)
-  "acquire.step.1.set.acquiredAt": ($s: ClaimScope<AcquireClaimInput>) => $.now($s),
+  "acquire.step.1.set.acquiredAt": ($s: $work$Claim$Scope<$work$Claim$AcquireClaimInput>) =>
+    $.now($s),
   // set &expiresAt, translated (src/domain/work/claim.mesh.mx:48:22)
-  "acquire.step.1.set.expiresAt": ($s: ClaimScope<AcquireClaimInput>) =>
+  "acquire.step.1.set.expiresAt": ($s: $work$Claim$Scope<$work$Claim$AcquireClaimInput>) =>
     $.pure(leaseEnd($.now($s)), "leaseEnd"),
   // run, plain (run-step) (src/domain/work/claim.mesh.mx:49:28)
-  "acquire.step.2.run": ($s: ClaimScope<AcquireClaimInput>) => {
+  "acquire.step.2.run": ($s: $work$Claim$Scope<$work$Claim$AcquireClaimInput>) => {
     const privileged = $privileged;
-    const Assignment: $t$Assignment = $e$Assignment;
-    const Task: $t$Task = $e$Task;
+    const Assignment: $work$Assignment$ReadOnly = $work$Assignment$value;
+    const Task: $work$Task$ReadOnly = $work$Task$value;
     return (async function ({ self, context }) {
       const open = await privileged(Assignment).read({
         filter: { taskId: { eq: self.taskId }, endedAt: { nil: true } },
@@ -134,27 +148,29 @@ export const expressions = {
     })($s);
   },
   // check :currentFence that, translated (src/domain/work/claim.mesh.mx:60:16)
-  "renew.check.currentFence.that": ($s: ClaimCheckScope<RenewClaimInput>) =>
+  "renew.check.currentFence.that": ($s: $work$Claim$CheckScope<$work$Claim$RenewClaimInput>) =>
     $.and($.eq($s.input?.fence, $s.self.fence), $.eq($s.input?.fence, $s.self.task?.maxFence)),
   // check :currentFence details, plain (unsupported-construct) (src/domain/work/claim.mesh.mx:63:19)
-  "renew.check.currentFence.details": ($s: ClaimCheckScope<RenewClaimInput>) => {
+  "renew.check.currentFence.details": ($s: $work$Claim$CheckScope<$work$Claim$RenewClaimInput>) => {
     const { self } = $s;
     return (() => ({ currentFence: self.task.maxFence, stale: false }))();
   },
   // check :claimActive that, translated (src/domain/work/claim.mesh.mx:66:16)
-  "renew.check.claimActive.that": ($s: ClaimCheckScope<RenewClaimInput>) =>
+  "renew.check.claimActive.that": ($s: $work$Claim$CheckScope<$work$Claim$RenewClaimInput>) =>
     $.eq($s.self.state, "active"),
   // check :claimNotExpired that, translated (src/domain/work/claim.mesh.mx:71:16)
-  "renew.check.claimNotExpired.that": ($s: ClaimCheckScope<RenewClaimInput>) =>
+  "renew.check.claimNotExpired.that": ($s: $work$Claim$CheckScope<$work$Claim$RenewClaimInput>) =>
     $.gt($s.self.expiresAt, $.now($s)),
   // check :versionMatches that, translated (src/domain/work/claim.mesh.mx:76:16)
-  "renew.check.versionMatches.that": ($s: ClaimCheckScope<RenewClaimInput>) =>
+  "renew.check.versionMatches.that": ($s: $work$Claim$CheckScope<$work$Claim$RenewClaimInput>) =>
     $.or(
       $.isNull($s.input?.expectedVersion),
       $.eq($s.input?.expectedVersion, $s.self.task?.version),
     ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/work/claim.mesh.mx:79:19)
-  "renew.check.versionMatches.details": ($s: ClaimCheckScope<RenewClaimInput>) => {
+  "renew.check.versionMatches.details": (
+    $s: $work$Claim$CheckScope<$work$Claim$RenewClaimInput>,
+  ) => {
     const { self } = $s;
     return (({ input }) => ({
       expectedVersion: input.expectedVersion,
@@ -162,37 +178,44 @@ export const expressions = {
     }))($s);
   },
   // set &expiresAt, translated (src/domain/work/claim.mesh.mx:83:22)
-  "renew.step.0.set.expiresAt": ($s: ClaimStoredScope<RenewClaimInput>) =>
+  "renew.step.0.set.expiresAt": ($s: $work$Claim$StoredScope<$work$Claim$RenewClaimInput>) =>
     $.pure(leaseEnd($.now($s)), "leaseEnd"),
   // run, plain (run-step) (src/domain/work/claim.mesh.mx:84:28)
-  "renew.step.1.run": ($s: ClaimStoredScope<RenewClaimInput>) => {
-    const Task: $t$Task = $e$Task;
+  "renew.step.1.run": ($s: $work$Claim$StoredScope<$work$Claim$RenewClaimInput>) => {
+    const Task: $work$Task$ReadOnly = $work$Task$value;
     return (async function ({ self, context }) {
       await Task.touch({ id: self.taskId }, { ...context, system: true });
     })($s);
   },
   // check :currentFence that, translated (src/domain/work/claim.mesh.mx:94:16)
-  "release.check.currentFence.that": ($s: ClaimCheckScope<ReleaseClaimInput>) =>
+  "release.check.currentFence.that": ($s: $work$Claim$CheckScope<$work$Claim$ReleaseClaimInput>) =>
     $.and($.eq($s.input?.fence, $s.self.fence), $.eq($s.input?.fence, $s.self.task?.maxFence)),
   // check :currentFence details, plain (unsupported-construct) (src/domain/work/claim.mesh.mx:97:19)
-  "release.check.currentFence.details": ($s: ClaimCheckScope<ReleaseClaimInput>) => {
+  "release.check.currentFence.details": (
+    $s: $work$Claim$CheckScope<$work$Claim$ReleaseClaimInput>,
+  ) => {
     const { self } = $s;
     return (() => ({ currentFence: self.task.maxFence, stale: false }))();
   },
   // check :claimActive that, translated (src/domain/work/claim.mesh.mx:100:16)
-  "release.check.claimActive.that": ($s: ClaimCheckScope<ReleaseClaimInput>) =>
+  "release.check.claimActive.that": ($s: $work$Claim$CheckScope<$work$Claim$ReleaseClaimInput>) =>
     $.eq($s.self.state, "active"),
   // check :claimNotExpired that, translated (src/domain/work/claim.mesh.mx:105:16)
-  "release.check.claimNotExpired.that": ($s: ClaimCheckScope<ReleaseClaimInput>) =>
-    $.gt($s.self.expiresAt, $.now($s)),
+  "release.check.claimNotExpired.that": (
+    $s: $work$Claim$CheckScope<$work$Claim$ReleaseClaimInput>,
+  ) => $.gt($s.self.expiresAt, $.now($s)),
   // check :versionMatches that, translated (src/domain/work/claim.mesh.mx:110:16)
-  "release.check.versionMatches.that": ($s: ClaimCheckScope<ReleaseClaimInput>) =>
+  "release.check.versionMatches.that": (
+    $s: $work$Claim$CheckScope<$work$Claim$ReleaseClaimInput>,
+  ) =>
     $.or(
       $.isNull($s.input?.expectedVersion),
       $.eq($s.input?.expectedVersion, $s.self.task?.version),
     ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/work/claim.mesh.mx:113:19)
-  "release.check.versionMatches.details": ($s: ClaimCheckScope<ReleaseClaimInput>) => {
+  "release.check.versionMatches.details": (
+    $s: $work$Claim$CheckScope<$work$Claim$ReleaseClaimInput>,
+  ) => {
     const { self } = $s;
     return (({ input }) => ({
       expectedVersion: input.expectedVersion,
@@ -200,28 +223,31 @@ export const expressions = {
     }))($s);
   },
   // set &endedAt, translated (src/domain/work/claim.mesh.mx:118:20)
-  "release.step.0.set.endedAt": ($s: ClaimStoredScope<ReleaseClaimInput>) => $.now($s),
+  "release.step.0.set.endedAt": ($s: $work$Claim$StoredScope<$work$Claim$ReleaseClaimInput>) =>
+    $.now($s),
   // set &endReason, translated (src/domain/work/claim.mesh.mx:119:22)
-  "release.step.0.set.endReason": ($s: ClaimStoredScope<ReleaseClaimInput>) =>
+  "release.step.0.set.endReason": ($s: $work$Claim$StoredScope<$work$Claim$ReleaseClaimInput>) =>
     $.coalesce($s.input?.reason, "released"),
   // run, plain (run-step) (src/domain/work/claim.mesh.mx:120:28)
-  "release.step.1.run": ($s: ClaimStoredScope<ReleaseClaimInput>) => {
-    const Task: $t$Task = $e$Task;
+  "release.step.1.run": ($s: $work$Claim$StoredScope<$work$Claim$ReleaseClaimInput>) => {
+    const Task: $work$Task$ReadOnly = $work$Task$value;
     return (async function ({ self, context }) {
       await Task.touch({ id: self.taskId }, { ...context, system: true });
     })($s);
   },
   // check :claimActive that, translated (src/domain/work/claim.mesh.mx:129:16)
-  "revoke.check.claimActive.that": ($s: ClaimCheckScope<RevokeClaimInput>) =>
+  "revoke.check.claimActive.that": ($s: $work$Claim$CheckScope<$work$Claim$RevokeClaimInput>) =>
     $.eq($s.self.state, "active"),
   // check :versionMatches that, translated (src/domain/work/claim.mesh.mx:134:16)
-  "revoke.check.versionMatches.that": ($s: ClaimCheckScope<RevokeClaimInput>) =>
+  "revoke.check.versionMatches.that": ($s: $work$Claim$CheckScope<$work$Claim$RevokeClaimInput>) =>
     $.or(
       $.isNull($s.input?.expectedVersion),
       $.eq($s.input?.expectedVersion, $s.self.task?.version),
     ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/work/claim.mesh.mx:137:19)
-  "revoke.check.versionMatches.details": ($s: ClaimCheckScope<RevokeClaimInput>) => {
+  "revoke.check.versionMatches.details": (
+    $s: $work$Claim$CheckScope<$work$Claim$RevokeClaimInput>,
+  ) => {
     const { self } = $s;
     return (({ input }) => ({
       expectedVersion: input.expectedVersion,
@@ -229,47 +255,57 @@ export const expressions = {
     }))($s);
   },
   // set &endedAt, translated (src/domain/work/claim.mesh.mx:142:20)
-  "revoke.step.0.set.endedAt": ($s: ClaimStoredScope<RevokeClaimInput>) => $.now($s),
+  "revoke.step.0.set.endedAt": ($s: $work$Claim$StoredScope<$work$Claim$RevokeClaimInput>) =>
+    $.now($s),
   // set &endReason, translated (src/domain/work/claim.mesh.mx:143:22)
-  "revoke.step.0.set.endReason": ($s: ClaimStoredScope<RevokeClaimInput>) => $s.input?.reason,
+  "revoke.step.0.set.endReason": ($s: $work$Claim$StoredScope<$work$Claim$RevokeClaimInput>) =>
+    $s.input?.reason,
   // run, plain (run-step) (src/domain/work/claim.mesh.mx:144:28)
-  "revoke.step.1.run": ($s: ClaimStoredScope<RevokeClaimInput>) => {
-    const Task: $t$Task = $e$Task;
+  "revoke.step.1.run": ($s: $work$Claim$StoredScope<$work$Claim$RevokeClaimInput>) => {
+    const Task: $work$Task$ReadOnly = $work$Task$value;
     return (async function ({ self, context }) {
       await Task.touch({ id: self.taskId }, { ...context, system: true });
     })($s);
   },
   // check :claimActive that, translated (src/domain/work/claim.mesh.mx:152:16)
-  "expire.check.claimActive.that": ($s: ClaimCheckScope<ExpireClaimInput>) =>
+  "expire.check.claimActive.that": ($s: $work$Claim$CheckScope<$work$Claim$ExpireClaimInput>) =>
     $.eq($s.self.state, "active"),
   // set &endedAt, translated (src/domain/work/claim.mesh.mx:159:20)
-  "expire.step.0.set.endedAt": ($s: ClaimStoredScope<ExpireClaimInput>) => $.now($s),
+  "expire.step.0.set.endedAt": ($s: $work$Claim$StoredScope<$work$Claim$ExpireClaimInput>) =>
+    $.now($s),
   // set &endReason, translated (src/domain/work/claim.mesh.mx:160:22)
-  "expire.step.0.set.endReason": ($s: ClaimStoredScope<ExpireClaimInput>) =>
+  "expire.step.0.set.endReason": ($s: $work$Claim$StoredScope<$work$Claim$ExpireClaimInput>) =>
     $.coalesce($s.input?.reason, "lease expired"),
   // run, plain (run-step) (src/domain/work/claim.mesh.mx:161:28)
-  "expire.step.1.run": ($s: ClaimStoredScope<ExpireClaimInput>) => {
-    const Task: $t$Task = $e$Task;
+  "expire.step.1.run": ($s: $work$Claim$StoredScope<$work$Claim$ExpireClaimInput>) => {
+    const Task: $work$Task$ReadOnly = $work$Task$value;
     return (async function ({ self, context }) {
       await Task.touch({ id: self.taskId }, { ...context, system: true });
     })($s);
   },
   // check :claimActive that, translated (src/domain/work/claim.mesh.mx:170:16)
-  "end.check.claimActive.that": ($s: ClaimCheckScope<EndClaimInput>) =>
+  "end.check.claimActive.that": ($s: $work$Claim$CheckScope<$work$Claim$EndClaimInput>) =>
     $.eq($s.self.state, "active"),
   // set &state, translated (src/domain/work/claim.mesh.mx:176:18)
-  "end.step.0.set.state": ($s: ClaimStoredScope<EndClaimInput>) => $s.input?.outcome,
+  "end.step.0.set.state": ($s: $work$Claim$StoredScope<$work$Claim$EndClaimInput>) =>
+    $s.input?.outcome,
   // set &endedAt, translated (src/domain/work/claim.mesh.mx:177:20)
-  "end.step.0.set.endedAt": ($s: ClaimStoredScope<EndClaimInput>) => $.now($s),
+  "end.step.0.set.endedAt": ($s: $work$Claim$StoredScope<$work$Claim$EndClaimInput>) => $.now($s),
   // set &endReason, translated (src/domain/work/claim.mesh.mx:178:22)
-  "end.step.0.set.endReason": ($s: ClaimStoredScope<EndClaimInput>) => $s.input?.reason,
+  "end.step.0.set.endReason": ($s: $work$Claim$StoredScope<$work$Claim$EndClaimInput>) =>
+    $s.input?.reason,
   // policy :membersRead authorize-if, translated (src/domain/work/claim.mesh.mx:181:20)
-  "policy.membersRead.authorize-if.0": ($s: ClaimCheckScope<unknown>) =>
+  "policy.membersRead.authorize-if.0": ($s: $work$Claim$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
   // policy :isMember authorize-if, plain (awaits-helper) (src/domain/work/claim.mesh.mx:183:20)
   "policy.isMember.authorize-if.0": (
-    $s: ClaimNewScope<
-      $SharedInput<AcquireClaimInput | RenewClaimInput | ReleaseClaimInput | RevokeClaimInput>
+    $s: $work$Claim$NewScope<
+      $SharedInput<
+        | $work$Claim$AcquireClaimInput
+        | $work$Claim$RenewClaimInput
+        | $work$Claim$ReleaseClaimInput
+        | $work$Claim$RevokeClaimInput
+      >
     >,
   ) => {
     const isSystem = $.isSystem;
@@ -277,8 +313,13 @@ export const expressions = {
   },
   // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/work/claim.mesh.mx:185:20)
   "policy.ownerOrMember.authorize-if.0": (
-    $s: ClaimNewScope<
-      $SharedInput<AcquireClaimInput | RenewClaimInput | ReleaseClaimInput | RevokeClaimInput>
+    $s: $work$Claim$NewScope<
+      $SharedInput<
+        | $work$Claim$AcquireClaimInput
+        | $work$Claim$RenewClaimInput
+        | $work$Claim$ReleaseClaimInput
+        | $work$Claim$RevokeClaimInput
+      >
     >,
   ) => {
     const isSystem = $.isSystem;
@@ -286,23 +327,31 @@ export const expressions = {
       isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
   },
   // policy :claimAssignee authorize-if, plain (awaits-helper) (src/domain/work/claim.mesh.mx:187:20)
-  "policy.claimAssignee.authorize-if.0": ($s: ClaimNewScope<AcquireClaimInput>) => {
+  "policy.claimAssignee.authorize-if.0": (
+    $s: $work$Claim$NewScope<$work$Claim$AcquireClaimInput>,
+  ) => {
     const isSystem = $.isSystem;
     return (async ({ input, actor, context }) =>
       isSystem(context) || (await assigneeMayClaimOf(input.task, actor.id)))($s);
   },
   // policy :claimHolder authorize-if, translated (src/domain/work/claim.mesh.mx:189:20)
   "policy.claimHolder.authorize-if.0": (
-    $s: ClaimCheckScope<$SharedInput<RenewClaimInput | ReleaseClaimInput>>,
+    $s: $work$Claim$CheckScope<
+      $SharedInput<$work$Claim$RenewClaimInput | $work$Claim$ReleaseClaimInput>
+    >,
   ) => $.or($.isSystem($s.context), $.eq($s.self.holderId, $s.actor?.id)),
   // policy :claimRevoker authorize-if, plain (awaits-helper) (src/domain/work/claim.mesh.mx:191:20)
-  "policy.claimRevoker.authorize-if.0": ($s: ClaimCheckScope<RevokeClaimInput>) => {
+  "policy.claimRevoker.authorize-if.0": (
+    $s: $work$Claim$CheckScope<$work$Claim$RevokeClaimInput>,
+  ) => {
     const isSystem = $.isSystem;
     return (async ({ self, actor, context }) =>
       isSystem(context) || (await revokesClaimOf(self.taskId, actor.id)))($s);
   },
   // policy :internal authorize-if, translated (src/domain/work/claim.mesh.mx:193:20)
   "policy.internal.authorize-if.0": (
-    $s: ClaimCheckScope<$SharedInput<ExpireClaimInput | EndClaimInput>>,
+    $s: $work$Claim$CheckScope<
+      $SharedInput<$work$Claim$ExpireClaimInput | $work$Claim$EndClaimInput>
+    >,
   ) => $.isSystem($s.context),
 } as const;

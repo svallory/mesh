@@ -14,33 +14,42 @@ import {
   performsAttemptOf,
 } from "../../../src/domain/execution/execution.helpers";
 import { memberOf, roleIn } from "../../../src/domain/identity/identity.helpers";
-import { Invocation as $e$Invocation, type $ReadOnly as $t$Invocation } from "./invocation.actions";
+import {
+  Invocation as $execution$Invocation$value,
+  type $ReadOnly as $execution$Invocation$ReadOnly,
+} from "./invocation.actions";
 import type {
-  Invocation,
-  InvocationLoaded,
-  CorrectInvocationInput,
-  RecordInvocationInput,
+  Invocation as $execution$Invocation$Record,
+  InvocationLoaded as $execution$Invocation$Loaded,
+  CorrectInvocationInput as $execution$Invocation$CorrectInvocationInput,
+  RecordInvocationInput as $execution$Invocation$RecordInvocationInput,
 } from "./invocation.types";
 
 /** What every expression of Invocation reads; `I` is the input of the action it runs in. */
-export type InvocationScope<I = unknown> = $Scope<{
-  self: $DeepReadonly<InvocationLoaded>;
+export type $execution$Invocation$Scope<I = unknown> = $Scope<{
+  self: $DeepReadonly<$execution$Invocation$Loaded>;
   input: $DeepReadonly<I>;
   actor: any;
   context: any;
-  before: $DeepReadonly<Invocation> | null;
+  before: $DeepReadonly<$execution$Invocation$Record> | null;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
-export type InvocationStoredScope<I = unknown> = InvocationScope<I> & {
-  before: $DeepReadonly<Invocation>;
+export type $execution$Invocation$StoredScope<I = unknown> = $execution$Invocation$Scope<I> & {
+  before: $DeepReadonly<$execution$Invocation$Record>;
 };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type InvocationCheckScope<I = unknown> = Omit<InvocationScope<I>, "before">;
+export type $execution$Invocation$CheckScope<I = unknown> = Omit<
+  $execution$Invocation$Scope<I>,
+  "before"
+>;
 /** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
-export type InvocationNewScope<I = unknown> = Omit<InvocationCheckScope<I>, "self"> & {
+export type $execution$Invocation$NewScope<I = unknown> = Omit<
+  $execution$Invocation$CheckScope<I>,
+  "self"
+> & {
   self: $DeepReadonly<
     Omit<
-      InvocationLoaded,
+      $execution$Invocation$Loaded,
       "usageSource" | "attemptId" | "attempt" | "taskId" | "task" | "recordedById" | "recordedBy"
     > & {
       [K in
@@ -50,31 +59,41 @@ export type InvocationNewScope<I = unknown> = Omit<InvocationCheckScope<I>, "sel
         | "taskId"
         | "task"
         | "recordedById"
-        | "recordedBy"]: InvocationLoaded[K] | null;
+        | "recordedBy"]: $execution$Invocation$Loaded[K] | null;
     }
   >;
 };
 
-export const expressions = {
+export const $expressions = {
   // check :session that, plain (awaits-helper) (src/domain/execution/invocation.mesh.mx:52:16)
-  "record.check.session.that": ($s: InvocationNewScope<RecordInvocationInput>) => {
+  "record.check.session.that": (
+    $s: $execution$Invocation$NewScope<$execution$Invocation$RecordInvocationInput>,
+  ) => {
     return (async ({ input }) =>
       input.session == null || input.session === (await attemptSessionOf(input.attempt)))($s);
   },
   // check :costUnknown that, translated (src/domain/execution/invocation.mesh.mx:57:16)
-  "record.check.costUnknown.that": ($s: InvocationNewScope<RecordInvocationInput>) =>
+  "record.check.costUnknown.that": (
+    $s: $execution$Invocation$NewScope<$execution$Invocation$RecordInvocationInput>,
+  ) =>
     $.or(
       $.and($.isNotNull($s.input?.inputTokens), $.isNotNull($s.input?.outputTokens)),
       $.isNull($s.input?.estimatedCost),
     ),
   // set &task, translated (src/domain/execution/invocation.mesh.mx:63:17)
-  "record.step.0.set.task": ($s: InvocationScope<RecordInvocationInput>) => $s.self.attempt?.taskId,
+  "record.step.0.set.task": (
+    $s: $execution$Invocation$Scope<$execution$Invocation$RecordInvocationInput>,
+  ) => $s.self.attempt?.taskId,
   // set &recordedBy, translated (src/domain/execution/invocation.mesh.mx:64:23)
-  "record.step.0.set.recordedBy": ($s: InvocationScope<RecordInvocationInput>) => $s.actor?.id,
+  "record.step.0.set.recordedBy": (
+    $s: $execution$Invocation$Scope<$execution$Invocation$RecordInvocationInput>,
+  ) => $s.actor?.id,
   // check :notCorrected that, plain (uses-privileged) (src/domain/execution/invocation.mesh.mx:85:16)
-  "correct.check.notCorrected.that": ($s: InvocationNewScope<CorrectInvocationInput>) => {
+  "correct.check.notCorrected.that": (
+    $s: $execution$Invocation$NewScope<$execution$Invocation$CorrectInvocationInput>,
+  ) => {
     const privileged = $privileged;
-    const Invocation: $t$Invocation = $e$Invocation;
+    const Invocation: $execution$Invocation$ReadOnly = $execution$Invocation$value;
     return (async ({ input }) =>
       input.corrects != null &&
       (
@@ -85,60 +104,81 @@ export const expressions = {
       ).length === 0)($s);
   },
   // check :reason that, translated (src/domain/execution/invocation.mesh.mx:90:16)
-  "correct.check.reason.that": ($s: InvocationNewScope<CorrectInvocationInput>) =>
-    $.ne($.coalesce($s.input?.reason, ""), ""),
+  "correct.check.reason.that": (
+    $s: $execution$Invocation$NewScope<$execution$Invocation$CorrectInvocationInput>,
+  ) => $.ne($.coalesce($s.input?.reason, ""), ""),
   // check :costUnknown that, translated (src/domain/execution/invocation.mesh.mx:95:16)
-  "correct.check.costUnknown.that": ($s: InvocationNewScope<CorrectInvocationInput>) =>
+  "correct.check.costUnknown.that": (
+    $s: $execution$Invocation$NewScope<$execution$Invocation$CorrectInvocationInput>,
+  ) =>
     $.or(
       $.and($.isNotNull($s.input?.inputTokens), $.isNotNull($s.input?.outputTokens)),
       $.isNull($s.input?.estimatedCost),
     ),
   // set &attempt, plain (uses-privileged) (src/domain/execution/invocation.mesh.mx:101:20)
-  "correct.step.0.set.attempt": ($s: InvocationScope<CorrectInvocationInput>) => {
+  "correct.step.0.set.attempt": (
+    $s: $execution$Invocation$Scope<$execution$Invocation$CorrectInvocationInput>,
+  ) => {
     const privileged = $privileged;
-    const Invocation: $t$Invocation = $e$Invocation;
+    const Invocation: $execution$Invocation$ReadOnly = $execution$Invocation$value;
     return (async ({ input }) =>
       (await privileged(Invocation).read({ filter: { id: { eq: input.corrects ?? "" } } })).map(
         (corrected) => corrected.attemptId,
       )[0])($s);
   },
   // set &task, plain (uses-privileged) (src/domain/execution/invocation.mesh.mx:102:17)
-  "correct.step.0.set.task": ($s: InvocationScope<CorrectInvocationInput>) => {
+  "correct.step.0.set.task": (
+    $s: $execution$Invocation$Scope<$execution$Invocation$CorrectInvocationInput>,
+  ) => {
     const privileged = $privileged;
-    const Invocation: $t$Invocation = $e$Invocation;
+    const Invocation: $execution$Invocation$ReadOnly = $execution$Invocation$value;
     return (async ({ input }) =>
       (await privileged(Invocation).read({ filter: { id: { eq: input.corrects ?? "" } } })).map(
         (corrected) => corrected.taskId,
       )[0])($s);
   },
   // set &recordedBy, translated (src/domain/execution/invocation.mesh.mx:103:23)
-  "correct.step.0.set.recordedBy": ($s: InvocationScope<CorrectInvocationInput>) => $s.actor?.id,
+  "correct.step.0.set.recordedBy": (
+    $s: $execution$Invocation$Scope<$execution$Invocation$CorrectInvocationInput>,
+  ) => $s.actor?.id,
   // policy :membersRead authorize-if, translated (src/domain/execution/invocation.mesh.mx:106:20)
-  "policy.membersRead.authorize-if.0": ($s: InvocationCheckScope<unknown>) =>
+  "policy.membersRead.authorize-if.0": ($s: $execution$Invocation$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
   // policy :isMember authorize-if, plain (awaits-helper) (src/domain/execution/invocation.mesh.mx:108:20)
   "policy.isMember.authorize-if.0": (
-    $s: InvocationNewScope<$SharedInput<RecordInvocationInput | CorrectInvocationInput>>,
+    $s: $execution$Invocation$NewScope<
+      $SharedInput<
+        $execution$Invocation$RecordInvocationInput | $execution$Invocation$CorrectInvocationInput
+      >
+    >,
   ) => {
     const isSystem = $.isSystem;
     return (async ({ actor, context }) => isSystem(context) || (await memberOf(actor.id)))($s);
   },
   // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/execution/invocation.mesh.mx:110:20)
   "policy.ownerOrMember.authorize-if.0": (
-    $s: InvocationNewScope<$SharedInput<RecordInvocationInput | CorrectInvocationInput>>,
+    $s: $execution$Invocation$NewScope<
+      $SharedInput<
+        $execution$Invocation$RecordInvocationInput | $execution$Invocation$CorrectInvocationInput
+      >
+    >,
   ) => {
     const isSystem = $.isSystem;
     return (async ({ actor, context }) =>
       isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
   },
   // policy :attemptPerformer authorize-if, plain (awaits-helper) (src/domain/execution/invocation.mesh.mx:112:20)
-  "policy.attemptPerformer.authorize-if.0": ($s: InvocationNewScope<RecordInvocationInput>) => {
+  "policy.attemptPerformer.authorize-if.0": (
+    $s: $execution$Invocation$NewScope<$execution$Invocation$RecordInvocationInput>,
+  ) => {
     const isSystem = $.isSystem;
     return (async ({ input, actor, context }) =>
       isSystem(context) || (await performsAttemptOf(input.attempt, actor.id)))($s);
   },
   // policy :invocationRecorder authorize-if, plain (awaits-helper) (src/domain/execution/invocation.mesh.mx:114:20)
-  "policy.invocationRecorder.authorize-if.0": ($s: InvocationNewScope<CorrectInvocationInput>) => {
+  "policy.invocationRecorder.authorize-if.0": (
+    $s: $execution$Invocation$NewScope<$execution$Invocation$CorrectInvocationInput>,
+  ) => {
     const isSystem = $.isSystem;
     return (async ({ input, actor, context }) =>
       isSystem(context) || (await correctsInvocationOf(input.corrects, actor.id)))($s);

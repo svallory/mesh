@@ -8,54 +8,60 @@ import {
 } from "@meshfw/runtime";
 import { memberOf, roleIn } from "../../../src/domain/identity/identity.helpers";
 import type {
-  EvidenceReference,
-  EvidenceReferenceLoaded,
-  RecordEvidenceReferenceInput,
+  EvidenceReference as $work$EvidenceReference$Record,
+  EvidenceReferenceLoaded as $work$EvidenceReference$Loaded,
+  RecordEvidenceReferenceInput as $work$EvidenceReference$RecordEvidenceReferenceInput,
 } from "./evidenceReference.types";
 
 /** What every expression of EvidenceReference reads; `I` is the input of the action it runs in. */
-export type EvidenceReferenceScope<I = unknown> = $Scope<{
-  self: $DeepReadonly<EvidenceReferenceLoaded>;
+export type $work$EvidenceReference$Scope<I = unknown> = $Scope<{
+  self: $DeepReadonly<$work$EvidenceReference$Loaded>;
   input: $DeepReadonly<I>;
   actor: any;
   context: any;
-  before: $DeepReadonly<EvidenceReference> | null;
+  before: $DeepReadonly<$work$EvidenceReference$Record> | null;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
-export type EvidenceReferenceStoredScope<I = unknown> = EvidenceReferenceScope<I> & {
-  before: $DeepReadonly<EvidenceReference>;
+export type $work$EvidenceReference$StoredScope<I = unknown> = $work$EvidenceReference$Scope<I> & {
+  before: $DeepReadonly<$work$EvidenceReference$Record>;
 };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type EvidenceReferenceCheckScope<I = unknown> = Omit<EvidenceReferenceScope<I>, "before">;
+export type $work$EvidenceReference$CheckScope<I = unknown> = Omit<
+  $work$EvidenceReference$Scope<I>,
+  "before"
+>;
 /** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
-export type EvidenceReferenceNewScope<I = unknown> = Omit<
-  EvidenceReferenceCheckScope<I>,
+export type $work$EvidenceReference$NewScope<I = unknown> = Omit<
+  $work$EvidenceReference$CheckScope<I>,
   "self"
 > & {
   self: $DeepReadonly<
-    Omit<EvidenceReferenceLoaded, "kind" | "locator" | "recordedById" | "recordedBy"> & {
-      [K in "kind" | "locator" | "recordedById" | "recordedBy"]: EvidenceReferenceLoaded[K] | null;
+    Omit<$work$EvidenceReference$Loaded, "kind" | "locator" | "recordedById" | "recordedBy"> & {
+      [K in "kind" | "locator" | "recordedById" | "recordedBy"]:
+        | $work$EvidenceReference$Loaded[K]
+        | null;
     }
   >;
 };
 
-export const expressions = {
+export const $expressions = {
   // set &recordedBy, translated (src/domain/work/evidence-reference.mesh.mx:23:23)
-  "record.step.0.set.recordedBy": ($s: EvidenceReferenceScope<RecordEvidenceReferenceInput>) =>
-    $s.actor?.id,
+  "record.step.0.set.recordedBy": (
+    $s: $work$EvidenceReference$Scope<$work$EvidenceReference$RecordEvidenceReferenceInput>,
+  ) => $s.actor?.id,
   // policy :membersRead authorize-if, translated (src/domain/work/evidence-reference.mesh.mx:26:20)
-  "policy.membersRead.authorize-if.0": ($s: EvidenceReferenceCheckScope<unknown>) =>
+  "policy.membersRead.authorize-if.0": ($s: $work$EvidenceReference$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
   // policy :isMember authorize-if, plain (awaits-helper) (src/domain/work/evidence-reference.mesh.mx:28:20)
   "policy.isMember.authorize-if.0": (
-    $s: EvidenceReferenceNewScope<RecordEvidenceReferenceInput>,
+    $s: $work$EvidenceReference$NewScope<$work$EvidenceReference$RecordEvidenceReferenceInput>,
   ) => {
     const isSystem = $.isSystem;
     return (async ({ actor, context }) => isSystem(context) || (await memberOf(actor.id)))($s);
   },
   // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/work/evidence-reference.mesh.mx:30:20)
   "policy.ownerOrMember.authorize-if.0": (
-    $s: EvidenceReferenceNewScope<RecordEvidenceReferenceInput>,
+    $s: $work$EvidenceReference$NewScope<$work$EvidenceReference$RecordEvidenceReferenceInput>,
   ) => {
     const isSystem = $.isSystem;
     return (async ({ actor, context }) =>

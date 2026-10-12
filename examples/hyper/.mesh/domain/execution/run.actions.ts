@@ -34,7 +34,9 @@ import {
   type EntityReadsBind as $EntityReadsBind,
   type EntityValue as $EntityValue,
   type CastOutput as $CastOutput,
+  type DataOperations as $DataOperations,
   type Issue as $Issue,
+  type LoadOptions as $LoadOptions,
   type Row as $Row,
 } from "@meshfw/runtime";
 import type {
@@ -53,9 +55,9 @@ import type {
 import { startRunInput, cancelRunInput, settleRunInput, readRunInput } from "./run.validators";
 import { tables } from "../../schema";
 import {
-  expressions as $expressions,
-  type RunScope as $Scope,
-  type RunStoredScope as $StoredScope,
+  $expressions,
+  type $execution$Run$Scope as $Scope,
+  type $execution$Run$StoredScope as $StoredScope,
 } from "./run.expressions";
 import { loadPlan as $loadPlan } from "../../load";
 
@@ -661,3 +663,21 @@ export type $ReadOnly = $EntityValue<
   },
   $PrivilegedReadOnly
 >;
+
+/**
+ * Load relationships and computed fields onto Run rows by name. A relationship is loaded by one more query for
+ * all the rows; a computed field loads what its body reads first. The rows you pass are not changed: the result is new
+ * rows of type RunTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so it takes no `policies`
+ * option: every related record the key names is there.
+ */
+export async function loadRunFields<const N extends keyof RunLoadable>(
+  tx: $DataOperations,
+  rows: readonly $Record[],
+  names: readonly N[],
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
+): Promise<RunTxWith<N>[]> {
+  return (await $loadRows($loadPlan, "execution.Run", tx, rows, names, {
+    ...options,
+    policies: false,
+  })) as RunTxWith<N>[];
+}

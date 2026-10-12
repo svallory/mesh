@@ -6,27 +6,34 @@ import {
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
 } from "@meshfw/runtime";
-import type { User, CreateUserInput } from "./user.types";
+import type {
+  User as $blog$User$Record,
+  CreateUserInput as $blog$User$CreateUserInput,
+} from "./user.types";
 
 /** What every expression of User reads; `I` is the input of the action it runs in. */
-export type UserScope<I = unknown> = $Scope<{
-  self: $DeepReadonly<User>;
+export type $blog$User$Scope<I = unknown> = $Scope<{
+  self: $DeepReadonly<$blog$User$Record>;
   input: $DeepReadonly<I>;
   actor: any;
   context: any;
-  before: $DeepReadonly<User> | null;
+  before: $DeepReadonly<$blog$User$Record> | null;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
-export type UserStoredScope<I = unknown> = UserScope<I> & { before: $DeepReadonly<User> };
+export type $blog$User$StoredScope<I = unknown> = $blog$User$Scope<I> & {
+  before: $DeepReadonly<$blog$User$Record>;
+};
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type UserCheckScope<I = unknown> = Omit<UserScope<I>, "before">;
+export type $blog$User$CheckScope<I = unknown> = Omit<$blog$User$Scope<I>, "before">;
 /** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
-export type UserNewScope<I = unknown> = Omit<UserCheckScope<I>, "self"> & {
-  self: $DeepReadonly<Omit<User, "name"> & { [K in "name"]: User[K] | null }>;
+export type $blog$User$NewScope<I = unknown> = Omit<$blog$User$CheckScope<I>, "self"> & {
+  self: $DeepReadonly<
+    Omit<$blog$User$Record, "name"> & { [K in "name"]: $blog$User$Record[K] | null }
+  >;
 };
 
-export const expressions = {
+export const $expressions = {
   // policy :signedIn authorize-if, translated (src/domain/blog/user.mesh.mx:11:20)
-  "policy.signedIn.authorize-if.0": ($s: UserNewScope<CreateUserInput>) =>
+  "policy.signedIn.authorize-if.0": ($s: $blog$User$NewScope<$blog$User$CreateUserInput>) =>
     $.isNotNull($s.actor?.id),
 } as const;

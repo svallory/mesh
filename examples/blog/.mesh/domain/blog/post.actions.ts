@@ -36,7 +36,9 @@ import {
   type EntityReadsBind as $EntityReadsBind,
   type EntityValue as $EntityValue,
   type CastOutput as $CastOutput,
+  type DataOperations as $DataOperations,
   type Issue as $Issue,
+  type LoadOptions as $LoadOptions,
   type Row as $Row,
 } from "@meshfw/runtime";
 import type {
@@ -63,10 +65,7 @@ import {
   destroyPostInput,
 } from "./post.validators";
 import { tables } from "../../schema";
-import {
-  expressions as $expressions,
-  type PostStoredScope as $StoredScope,
-} from "./post.expressions";
+import { $expressions, type $blog$Post$StoredScope as $StoredScope } from "./post.expressions";
 import { loadPlan as $loadPlan } from "../../load";
 
 /**
@@ -672,3 +671,21 @@ export type $ReadOnly = $EntityValue<
   },
   $PrivilegedReadOnly
 >;
+
+/**
+ * Load relationships and computed fields onto Post rows by name. A relationship is loaded by one more query for
+ * all the rows; a computed field loads what its body reads first. The rows you pass are not changed: the result is new
+ * rows of type PostTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so it takes no `policies`
+ * option: every related record the key names is there.
+ */
+export async function loadPostFields<const N extends keyof PostLoadable>(
+  tx: $DataOperations,
+  rows: readonly $Record[],
+  names: readonly N[],
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
+): Promise<PostTxWith<N>[]> {
+  return (await $loadRows($loadPlan, "blog.Post", tx, rows, names, {
+    ...options,
+    policies: false,
+  })) as PostTxWith<N>[];
+}

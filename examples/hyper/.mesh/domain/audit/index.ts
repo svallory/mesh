@@ -5,7 +5,7 @@
 // subfolder. `bind`, `connect`, `disconnect` and `transaction` come from "#mesh"; the other files in this folder are an
 // implementation detail.
 
-export { Event } from "./event.actions";
+export { Event, loadEventFields } from "./event.actions";
 export type {
   RecordEventInput,
   ReadEventInput,
@@ -16,4 +16,3 @@ export type {
   EventLoadNames,
   EventLoadArg,
 } from "./event.types";
-export { loadEventFields } from "../../load";

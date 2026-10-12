@@ -32,7 +32,9 @@ import {
   type EntityReadsBind as $EntityReadsBind,
   type EntityValue as $EntityValue,
   type CastOutput as $CastOutput,
+  type DataOperations as $DataOperations,
   type Issue as $Issue,
+  type LoadOptions as $LoadOptions,
   type Row as $Row,
 } from "@meshfw/runtime";
 import type {
@@ -54,9 +56,9 @@ import {
 } from "./assignment.validators";
 import { tables } from "../../schema";
 import {
-  expressions as $expressions,
-  type AssignmentScope as $Scope,
-  type AssignmentStoredScope as $StoredScope,
+  $expressions,
+  type $work$Assignment$Scope as $Scope,
+  type $work$Assignment$StoredScope as $StoredScope,
 } from "./assignment.expressions";
 import { loadPlan as $loadPlan } from "../../load";
 
@@ -476,3 +478,21 @@ export type $ReadOnly = $EntityValue<
   },
   $PrivilegedReadOnly
 >;
+
+/**
+ * Load relationships and computed fields onto Assignment rows by name. A relationship is loaded by one more query for
+ * all the rows; a computed field loads what its body reads first. The rows you pass are not changed: the result is new
+ * rows of type AssignmentTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so it takes no `policies`
+ * option: every related record the key names is there.
+ */
+export async function loadAssignmentFields<const N extends keyof AssignmentLoadable>(
+  tx: $DataOperations,
+  rows: readonly $Record[],
+  names: readonly N[],
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
+): Promise<AssignmentTxWith<N>[]> {
+  return (await $loadRows($loadPlan, "work.Assignment", tx, rows, names, {
+    ...options,
+    policies: false,
+  })) as AssignmentTxWith<N>[];
+}

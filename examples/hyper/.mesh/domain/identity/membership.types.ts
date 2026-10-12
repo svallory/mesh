@@ -3,7 +3,10 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Collaborator, CollaboratorLoaded } from "./collaborator.types";
+import type {
+  Collaborator as $identity$Collaborator$Record,
+  CollaboratorLoaded as $identity$Collaborator$Loaded,
+} from "./collaborator.types";
 
 export type Membership = {
   id: string;
@@ -18,7 +21,7 @@ export type Membership = {
 };
 
 export type GrantMembershipInput = {
-  collaborator: Collaborator["id"];
+  collaborator: $identity$Collaborator$Record["id"];
   role: "owner" | "member" | "guest";
 };
 
@@ -49,9 +52,9 @@ export type ReadMembershipInput<N extends keyof MembershipLoadable = never> = {
  * returns is shown to every caller who may read a Membership. Return only what each such caller may see.
  */
 export type MembershipLoadable = {
-  collaborator: Collaborator | null;
-  grantedBy: Collaborator | null;
-  revokedBy: Collaborator | null;
+  collaborator: $identity$Collaborator$Record | null;
+  grantedBy: $identity$Collaborator$Record | null;
+  revokedBy: $identity$Collaborator$Record | null;
 };
 
 /** A Membership with the relationships and computed fields named in N loaded. */
@@ -60,9 +63,9 @@ export type MembershipWith<N extends keyof MembershipLoadable> = Membership &
 
 /** What a load through `privileged` attaches to a Membership: it runs no policy, so every related record the key names is there. */
 export type MembershipTxLoadable = {
-  collaborator: Collaborator;
-  grantedBy: Collaborator;
-  revokedBy: Collaborator | null;
+  collaborator: $identity$Collaborator$Record;
+  grantedBy: $identity$Collaborator$Record;
+  revokedBy: $identity$Collaborator$Record | null;
 };
 
 /** A Membership loaded through `privileged`, with the relationships and computed fields named in N. */
@@ -82,9 +85,9 @@ export type MembershipLoadArg<L extends readonly (keyof MembershipLoadable)[]> =
 
 /** A Membership as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
 export type MembershipLoaded = Membership & {
-  collaborator: CollaboratorLoaded;
-  grantedBy: CollaboratorLoaded;
-  revokedBy: CollaboratorLoaded | null;
+  collaborator: $identity$Collaborator$Loaded;
+  grantedBy: $identity$Collaborator$Loaded;
+  revokedBy: $identity$Collaborator$Loaded | null;
 };
 
 export type MembershipFilter =

@@ -5,7 +5,7 @@
 // subfolder. `bind`, `connect`, `disconnect` and `transaction` come from "#mesh"; the other files in this folder are an
 // implementation detail.
 
-export { Collaborator } from "./collaborator.actions";
+export { Collaborator, loadCollaboratorFields } from "./collaborator.actions";
 export type {
   RegisterCollaboratorInput,
   UpdateCollaboratorInput,
@@ -18,7 +18,7 @@ export type {
   CollaboratorLoadNames,
   CollaboratorLoadArg,
 } from "./collaborator.types";
-export { Membership } from "./membership.actions";
+export { Membership, loadMembershipFields } from "./membership.actions";
 export type {
   GrantMembershipInput,
   ChangeRoleMembershipInput,
@@ -41,4 +41,3 @@ export type {
   WorkspaceFilter,
   WorkspaceSort,
 } from "./workspace.types";
-export { loadCollaboratorFields, loadMembershipFields } from "../../load";

@@ -3,9 +3,15 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Submission, SubmissionLoaded } from "./submission.types";
+import type {
+  Submission as $work$Submission$Record,
+  SubmissionLoaded as $work$Submission$Loaded,
+} from "./submission.types";
 
-import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
+import type {
+  Collaborator as $identity$Collaborator$Record,
+  CollaboratorLoaded as $identity$Collaborator$Loaded,
+} from "../identity/collaborator.types";
 
 export type Review = {
   id: string;
@@ -18,13 +24,13 @@ export type Review = {
 };
 
 export type AcceptReviewInput = {
-  submission: Submission["id"];
+  submission: $work$Submission$Record["id"];
   expectedVersion?: number | null | undefined;
 };
 
 export type ReturnReviewInput = {
   reasons: string;
-  submission: Submission["id"];
+  submission: $work$Submission$Record["id"];
   expectedVersion?: number | null | undefined;
 };
 
@@ -43,8 +49,8 @@ export type ReadReviewInput<N extends keyof ReviewLoadable = never> = {
  * returns is shown to every caller who may read a Review. Return only what each such caller may see.
  */
 export type ReviewLoadable = {
-  submission: Submission | null;
-  reviewer: Collaborator | null;
+  submission: $work$Submission$Record | null;
+  reviewer: $identity$Collaborator$Record | null;
 };
 
 /** A Review with the relationships and computed fields named in N loaded. */
@@ -52,8 +58,8 @@ export type ReviewWith<N extends keyof ReviewLoadable> = Review & Pick<ReviewLoa
 
 /** What a load through `privileged` attaches to a Review: it runs no policy, so every related record the key names is there. */
 export type ReviewTxLoadable = {
-  submission: Submission;
-  reviewer: Collaborator;
+  submission: $work$Submission$Record;
+  reviewer: $identity$Collaborator$Record;
 };
 
 /** A Review loaded through `privileged`, with the relationships and computed fields named in N. */
@@ -72,8 +78,8 @@ export type ReviewLoadArg<L extends readonly (keyof ReviewLoadable)[]> = [
 
 /** A Review as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
 export type ReviewLoaded = Review & {
-  submission: SubmissionLoaded;
-  reviewer: CollaboratorLoaded;
+  submission: $work$Submission$Loaded;
+  reviewer: $identity$Collaborator$Loaded;
 };
 
 export type ReviewFilter =

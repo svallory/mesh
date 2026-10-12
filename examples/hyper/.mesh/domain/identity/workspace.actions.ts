@@ -46,9 +46,9 @@ import {
 } from "./workspace.validators";
 import { tables } from "../../schema";
 import {
-  expressions as $expressions,
-  type WorkspaceScope as $Scope,
-  type WorkspaceStoredScope as $StoredScope,
+  $expressions,
+  type $identity$Workspace$Scope as $Scope,
+  type $identity$Workspace$StoredScope as $StoredScope,
 } from "./workspace.expressions";
 
 /**

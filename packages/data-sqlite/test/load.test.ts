@@ -129,7 +129,7 @@ beforeAll(async () => {
   // `bind` and `tables` are `#mesh`'s; the entity values and the load functions are the root module's (`#mesh/domain`).
   domain = await import(join(dir, ".mesh/domain/index.ts"));
   app = { ...await import(join(dir, ".mesh/index.ts")), ...domain } as Generated;
-  expressions = { post: (await import(join(dir, ".mesh/domain/post.expressions.ts"))).expressions };
+  expressions = { post: (await import(join(dir, ".mesh/domain/post.expressions.ts"))).$expressions };
 });
 afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
 

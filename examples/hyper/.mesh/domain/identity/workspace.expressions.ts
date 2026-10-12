@@ -8,32 +8,43 @@ import {
   type SharedInput as $SharedInput,
 } from "@meshfw/runtime";
 import { memberOf, roleIn } from "../../../src/domain/identity/identity.helpers";
-import type { Workspace, CreateWorkspaceInput, RenameWorkspaceInput } from "./workspace.types";
+import type {
+  Workspace as $identity$Workspace$Record,
+  CreateWorkspaceInput as $identity$Workspace$CreateWorkspaceInput,
+  RenameWorkspaceInput as $identity$Workspace$RenameWorkspaceInput,
+} from "./workspace.types";
 
 /** What every expression of Workspace reads; `I` is the input of the action it runs in. */
-export type WorkspaceScope<I = unknown> = $Scope<{
-  self: $DeepReadonly<Workspace>;
+export type $identity$Workspace$Scope<I = unknown> = $Scope<{
+  self: $DeepReadonly<$identity$Workspace$Record>;
   input: $DeepReadonly<I>;
   actor: any;
   context: any;
-  before: $DeepReadonly<Workspace> | null;
+  before: $DeepReadonly<$identity$Workspace$Record> | null;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
-export type WorkspaceStoredScope<I = unknown> = WorkspaceScope<I> & {
-  before: $DeepReadonly<Workspace>;
+export type $identity$Workspace$StoredScope<I = unknown> = $identity$Workspace$Scope<I> & {
+  before: $DeepReadonly<$identity$Workspace$Record>;
 };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type WorkspaceCheckScope<I = unknown> = Omit<WorkspaceScope<I>, "before">;
+export type $identity$Workspace$CheckScope<I = unknown> = Omit<
+  $identity$Workspace$Scope<I>,
+  "before"
+>;
 
-export const expressions = {
+export const $expressions = {
   // check :workspaceActive that, translated (src/domain/identity/workspace.mesh.mx:21:16)
-  "rename.check.workspaceActive.that": ($s: WorkspaceCheckScope<RenameWorkspaceInput>) =>
-    $.eq($s.self.state, "active"),
+  "rename.check.workspaceActive.that": (
+    $s: $identity$Workspace$CheckScope<$identity$Workspace$RenameWorkspaceInput>,
+  ) => $.eq($s.self.state, "active"),
   // check :versionMatches that, translated (src/domain/identity/workspace.mesh.mx:26:16)
-  "rename.check.versionMatches.that": ($s: WorkspaceCheckScope<RenameWorkspaceInput>) =>
-    $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
+  "rename.check.versionMatches.that": (
+    $s: $identity$Workspace$CheckScope<$identity$Workspace$RenameWorkspaceInput>,
+  ) => $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/identity/workspace.mesh.mx:29:19)
-  "rename.check.versionMatches.details": ($s: WorkspaceCheckScope<RenameWorkspaceInput>) => {
+  "rename.check.versionMatches.details": (
+    $s: $identity$Workspace$CheckScope<$identity$Workspace$RenameWorkspaceInput>,
+  ) => {
     const { self } = $s;
     return (({ input }) => ({
       expectedVersion: input.expectedVersion,
@@ -41,21 +52,30 @@ export const expressions = {
     }))($s);
   },
   // set &version, translated (src/domain/identity/workspace.mesh.mx:33:20)
-  "rename.step.0.set.version": ($s: WorkspaceStoredScope<RenameWorkspaceInput>) =>
-    $.add($s.self.version, 1),
+  "rename.step.0.set.version": (
+    $s: $identity$Workspace$StoredScope<$identity$Workspace$RenameWorkspaceInput>,
+  ) => $.add($s.self.version, 1),
   // policy :membersRead authorize-if, translated (src/domain/identity/workspace.mesh.mx:36:20)
-  "policy.membersRead.authorize-if.0": ($s: WorkspaceCheckScope<unknown>) =>
+  "policy.membersRead.authorize-if.0": ($s: $identity$Workspace$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
   // policy :isMember authorize-if, plain (awaits-helper) (src/domain/identity/workspace.mesh.mx:38:20)
   "policy.isMember.authorize-if.0": (
-    $s: WorkspaceCheckScope<$SharedInput<CreateWorkspaceInput | RenameWorkspaceInput>>,
+    $s: $identity$Workspace$CheckScope<
+      $SharedInput<
+        $identity$Workspace$CreateWorkspaceInput | $identity$Workspace$RenameWorkspaceInput
+      >
+    >,
   ) => {
     const isSystem = $.isSystem;
     return (async ({ actor, context }) => isSystem(context) || (await memberOf(actor.id)))($s);
   },
   // policy :ownerOnly authorize-if, plain (awaits-helper) (src/domain/identity/workspace.mesh.mx:40:20)
   "policy.ownerOnly.authorize-if.0": (
-    $s: WorkspaceCheckScope<$SharedInput<CreateWorkspaceInput | RenameWorkspaceInput>>,
+    $s: $identity$Workspace$CheckScope<
+      $SharedInput<
+        $identity$Workspace$CreateWorkspaceInput | $identity$Workspace$RenameWorkspaceInput
+      >
+    >,
   ) => {
     const isSystem = $.isSystem;
     return (async ({ actor, context }) => isSystem(context) || (await roleIn(actor.id, ["owner"])))(

@@ -3,9 +3,12 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Task, TaskLoaded } from "./task.types";
+import type { Task as $work$Task$Record, TaskLoaded as $work$Task$Loaded } from "./task.types";
 
-import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
+import type {
+  Collaborator as $identity$Collaborator$Record,
+  CollaboratorLoaded as $identity$Collaborator$Loaded,
+} from "../identity/collaborator.types";
 
 export type LateResult = {
   id: string;
@@ -18,7 +21,7 @@ export type LateResult = {
 };
 
 export type RecordLateResultInput = {
-  task: Task["id"];
+  task: $work$Task$Record["id"];
   fence: number;
   summary?: string | null | undefined;
   evidence?: unknown | undefined;
@@ -39,8 +42,8 @@ export type ReadLateResultInput<N extends keyof LateResultLoadable = never> = {
  * returns is shown to every caller who may read a LateResult. Return only what each such caller may see.
  */
 export type LateResultLoadable = {
-  task: Task | null;
-  submitter: Collaborator | null;
+  task: $work$Task$Record | null;
+  submitter: $identity$Collaborator$Record | null;
 };
 
 /** A LateResult with the relationships and computed fields named in N loaded. */
@@ -49,8 +52,8 @@ export type LateResultWith<N extends keyof LateResultLoadable> = LateResult &
 
 /** What a load through `privileged` attaches to a LateResult: it runs no policy, so every related record the key names is there. */
 export type LateResultTxLoadable = {
-  task: Task;
-  submitter: Collaborator;
+  task: $work$Task$Record;
+  submitter: $identity$Collaborator$Record;
 };
 
 /** A LateResult loaded through `privileged`, with the relationships and computed fields named in N. */
@@ -70,8 +73,8 @@ export type LateResultLoadArg<L extends readonly (keyof LateResultLoadable)[]> =
 
 /** A LateResult as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
 export type LateResultLoaded = LateResult & {
-  task: TaskLoaded;
-  submitter: CollaboratorLoaded;
+  task: $work$Task$Loaded;
+  submitter: $identity$Collaborator$Loaded;
 };
 
 export type LateResultFilter =

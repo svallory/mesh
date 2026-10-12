@@ -278,6 +278,19 @@ describe("helper names that collide with generated internals", () => {
     const result = buildModel({ root, files: [{ file: "task.mesh.mx", source }] });
     expect(codes(result as never)).toEqual(["MESH_HELPER_NAME"]);
   });
+  // CMP-06 holds for an entity's alias too: `$b$List$value` is the local generated code imports b.List's value under,
+  // so `import { List as $b$List$value }` would make the function bind the name to itself.
+  test.each(["$b$List$value", "$List", "l$List"])("an entity import aliased %s is a build error at the alias", (alias) => {
+    const list = "entity :List\n  attributes\n    uuid :id primary-key\n";
+    const board = `import { List as ${alias} } from "./b/list.mesh.mx"\nentity :Board\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :list entity=${alias}\n`;
+    const result = buildModel({ root: "/project", files: [{ file: "b/list.mesh.mx", source: list }, { file: "board.mesh.mx", source: board }] });
+    expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([expect.objectContaining({
+      code: "MESH_HELPER_NAME",
+      message: `The entity import name ${alias} cannot start with $ or l$: generated code uses those prefixes for its own names`,
+      position: expect.objectContaining({ file: "board.mesh.mx", line: 1, column: 17 }),
+    })]);
+    expect(result.document).toBeNull();
+  });
 });
 
 describe("what loading a computed field needs", () => {

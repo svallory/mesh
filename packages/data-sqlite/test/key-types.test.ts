@@ -51,7 +51,8 @@ test("the record, the input and the schema column all take the integer key's typ
   const types = await Bun.file(join(dir, ".mesh/domain/line.types.ts")).text();
   expect(types).toMatch(/orderId: number;/);
   expect(types).toMatch(/replacesId: number \| null;/);
-  expect(types).toMatch(/order: Order\["id"\];/);
+  // Another entity is imported under a local derived from its FQN, so no bare entity name sits next to another's.
+  expect(types).toMatch(/order: \$Order\$Record\["id"\];/);
   expect(await Bun.file(join(dir, ".mesh/domain/line.validators.ts")).text()).toContain("order: z.int(),");
   const schema = await Bun.file(join(dir, ".mesh/schema.ts")).text();
   expect(schema).toMatch(/orderId: integer\("orderId"\)\.notNull\(\)/);

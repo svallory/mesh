@@ -3,9 +3,12 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { User } from "./user.types";
+import type { User as $blog$User$Record } from "./user.types";
 
-import type { Comment, CommentLoaded } from "./comment.types";
+import type {
+  Comment as $blog$Comment$Record,
+  CommentLoaded as $blog$Comment$Loaded,
+} from "./comment.types";
 
 export type Post = {
   id: string;
@@ -28,7 +31,7 @@ export type CreatePostInput = {
   title: string;
   body?: string | null | undefined;
   metadata?: unknown | undefined;
-  author: User["id"];
+  author: $blog$User$Record["id"];
 };
 
 export type PublishPostInput = {
@@ -66,8 +69,8 @@ export type DestroyPostInput = {
  * returns is shown to every caller who may read a Post. Return only what each such caller may see.
  */
 export type PostLoadable = {
-  author: User | null;
-  comments: Comment[];
+  author: $blog$User$Record | null;
+  comments: $blog$Comment$Record[];
   excerpt: string;
   commentCount: number;
 };
@@ -77,8 +80,8 @@ export type PostWith<N extends keyof PostLoadable> = Post & Pick<PostLoadable, N
 
 /** What a load through `privileged` attaches to a Post: it runs no policy, so every related record the key names is there. */
 export type PostTxLoadable = {
-  author: User;
-  comments: Comment[];
+  author: $blog$User$Record;
+  comments: $blog$Comment$Record[];
   excerpt: string;
   commentCount: number;
 };
@@ -100,8 +103,8 @@ export type PostLoadArg<L extends readonly (keyof PostLoadable)[]> = [PostLoadNa
 
 /** A Post as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
 export type PostLoaded = Post & {
-  author: User;
-  comments: CommentLoaded[];
+  author: $blog$User$Record;
+  comments: $blog$Comment$Loaded[];
   excerpt: string;
   commentCount: number;
 };

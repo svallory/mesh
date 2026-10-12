@@ -5,7 +5,7 @@
 // subfolder. `bind`, `connect`, `disconnect` and `transaction` come from "#mesh"; the other files in this folder are an
 // implementation detail.
 
-export { Assignment } from "./assignment.actions";
+export { Assignment, loadAssignmentFields } from "./assignment.actions";
 export type {
   StartAssignmentInput,
   FinishAssignmentInput,
@@ -19,7 +19,7 @@ export type {
   AssignmentTxLoadable,
   AssignmentTxWith,
 } from "./assignment.types";
-export { Claim } from "./claim.actions";
+export { Claim, loadClaimFields } from "./claim.actions";
 export type {
   AcquireClaimInput,
   RenewClaimInput,
@@ -37,7 +37,7 @@ export type {
   ClaimTxLoadable,
   ClaimTxWith,
 } from "./claim.types";
-export { Completion } from "./completion.actions";
+export { Completion, loadCompletionFields } from "./completion.actions";
 export type {
   RecordCompletionInput,
   ReadCompletionInput,
@@ -50,7 +50,7 @@ export type {
   CompletionTxLoadable,
   CompletionTxWith,
 } from "./completion.types";
-export { Dependency } from "./dependency.actions";
+export { Dependency, loadDependencyFields } from "./dependency.actions";
 export type {
   AddDependencyInput,
   RemoveDependencyInput,
@@ -64,7 +64,7 @@ export type {
   DependencyTxLoadable,
   DependencyTxWith,
 } from "./dependency.types";
-export { EvidenceReference } from "./evidenceReference.actions";
+export { EvidenceReference, loadEvidenceReferenceFields } from "./evidenceReference.actions";
 export type {
   RecordEvidenceReferenceInput,
   ReadEvidenceReferenceInput,
@@ -77,7 +77,7 @@ export type {
   EvidenceReferenceTxLoadable,
   EvidenceReferenceTxWith,
 } from "./evidenceReference.types";
-export { LateResult } from "./lateResult.actions";
+export { LateResult, loadLateResultFields } from "./lateResult.actions";
 export type {
   RecordLateResultInput,
   ReadLateResultInput,
@@ -90,7 +90,7 @@ export type {
   LateResultTxLoadable,
   LateResultTxWith,
 } from "./lateResult.types";
-export { Review } from "./review.actions";
+export { Review, loadReviewFields } from "./review.actions";
 export type {
   AcceptReviewInput,
   ReturnReviewInput,
@@ -104,7 +104,7 @@ export type {
   ReviewTxLoadable,
   ReviewTxWith,
 } from "./review.types";
-export { Submission } from "./submission.actions";
+export { Submission, loadSubmissionFields } from "./submission.actions";
 export type {
   SubmitSubmissionInput,
   WithdrawSubmissionInput,
@@ -120,7 +120,7 @@ export type {
   SubmissionTxLoadable,
   SubmissionTxWith,
 } from "./submission.types";
-export { Task } from "./task.actions";
+export { Task, loadTaskFields } from "./task.actions";
 export type {
   CreateTaskInput,
   UpdateTaskInput,
@@ -142,14 +142,3 @@ export type {
   TaskTxLoadable,
   TaskTxWith,
 } from "./task.types";
-export {
-  loadAssignmentFields,
-  loadClaimFields,
-  loadCompletionFields,
-  loadDependencyFields,
-  loadEvidenceReferenceFields,
-  loadLateResultFields,
-  loadReviewFields,
-  loadSubmissionFields,
-  loadTaskFields,
-} from "../../load";

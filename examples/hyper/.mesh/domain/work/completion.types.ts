@@ -3,11 +3,17 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Task, TaskLoaded } from "./task.types";
+import type { Task as $work$Task$Record, TaskLoaded as $work$Task$Loaded } from "./task.types";
 
-import type { Submission, SubmissionLoaded } from "./submission.types";
+import type {
+  Submission as $work$Submission$Record,
+  SubmissionLoaded as $work$Submission$Loaded,
+} from "./submission.types";
 
-import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
+import type {
+  Collaborator as $identity$Collaborator$Record,
+  CollaboratorLoaded as $identity$Collaborator$Loaded,
+} from "../identity/collaborator.types";
 
 export type Completion = {
   id: string;
@@ -20,8 +26,8 @@ export type Completion = {
 
 export type RecordCompletionInput = {
   rule: "review-accepted" | "performer-is-reviewer" | "review-waived";
-  task: Task["id"];
-  submission?: Submission["id"] | null | undefined;
+  task: $work$Task$Record["id"];
+  submission?: $work$Submission$Record["id"] | null | undefined;
 };
 
 export type ReadCompletionInput<N extends keyof CompletionLoadable = never> = {
@@ -39,9 +45,9 @@ export type ReadCompletionInput<N extends keyof CompletionLoadable = never> = {
  * returns is shown to every caller who may read a Completion. Return only what each such caller may see.
  */
 export type CompletionLoadable = {
-  task: Task | null;
-  submission: Submission | null;
-  completedBy: Collaborator | null;
+  task: $work$Task$Record | null;
+  submission: $work$Submission$Record | null;
+  completedBy: $identity$Collaborator$Record | null;
 };
 
 /** A Completion with the relationships and computed fields named in N loaded. */
@@ -50,9 +56,9 @@ export type CompletionWith<N extends keyof CompletionLoadable> = Completion &
 
 /** What a load through `privileged` attaches to a Completion: it runs no policy, so every related record the key names is there. */
 export type CompletionTxLoadable = {
-  task: Task;
-  submission: Submission | null;
-  completedBy: Collaborator;
+  task: $work$Task$Record;
+  submission: $work$Submission$Record | null;
+  completedBy: $identity$Collaborator$Record;
 };
 
 /** A Completion loaded through `privileged`, with the relationships and computed fields named in N. */
@@ -72,9 +78,9 @@ export type CompletionLoadArg<L extends readonly (keyof CompletionLoadable)[]> =
 
 /** A Completion as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
 export type CompletionLoaded = Completion & {
-  task: TaskLoaded;
-  submission: SubmissionLoaded | null;
-  completedBy: CollaboratorLoaded;
+  task: $work$Task$Loaded;
+  submission: $work$Submission$Loaded | null;
+  completedBy: $identity$Collaborator$Loaded;
 };
 
 export type CompletionFilter =

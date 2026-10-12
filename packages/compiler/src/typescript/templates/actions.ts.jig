@@ -37,7 +37,7 @@ import {
 import { tables } from {{ schemaFromLiteral }};
 @if(expressionsFromLiteral)
 import {
-  expressions as $expressions,
+  $expressions,
   @each(name in scopeImports)
   type {{ name }},
   @end
@@ -175,8 +175,19 @@ import {
   type ActionFrame as $ActionFrame,
   type BindOptions as $BindOptions,
   type DataLayer as $DataLayer,
+  @each(name in runtimeTypes)
+  type {{ name }},
+  @end
 } from "@meshfw/runtime";
-import type { {{ entityName }} as $Record } from {{ typesFromLiteral }};
+import type {
+  {{ entityName }} as $Record,
+  @each(name in typeImports)
+  {{ name }},
+  @end
+} from {{ typesFromLiteral }};
+@if(loadFromLiteral)
+import { loadPlan as $loadPlan } from {{ loadFromLiteral }};
+@end
 
 export function {{ bindName }}(_layer: $DataLayer, _options: $BindOptions = {}, _frame?: $ActionFrame) {
   return Object.freeze({});
@@ -189,4 +200,21 @@ export { $entityValue as {{ entityName }} };
 export type {{ entityName }} = $Record;
 /** The entity value as a function of an entity file sees it: it has no method, and `privileged` of it no read. */
 export type $ReadOnly = typeof $entityValue;
+@end
+@if(loader)
+
+/**
+ * Load relationships and computed fields onto {{ entityName }} rows by name. A relationship is loaded by one more query for
+ * all the rows; a computed field loads what its body reads first. The rows you pass are not changed: the result is new
+ * rows of type {{ loader.with }}<"name" | ...>. It loads as `privileged` does, running no policy, so it takes no `policies`
+ * option: every related record the key names is there.
+ */
+export async function {{ loader.name }}<const N extends keyof {{ loader.loadable }}>(
+  tx: $DataOperations,
+  rows: readonly $Record[],
+  names: readonly N[],
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
+): Promise<{{ loader.with }}<N>[]> {
+  return (await $loadRows($loadPlan, {{ loader.entityLiteral }}, tx, rows, names, { ...options, policies: false })) as {{ loader.with }}<N>[];
+}
 @end

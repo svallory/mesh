@@ -430,7 +430,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
 
   test("quantifiers evaluate on loaded rows, unknown included (test 3)", async () => {
     const { root } = await generated(source);
-    const { expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
+    const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     const f = expressions["go.check.c.that"] as (s: unknown) => unknown;
     const run = (children: unknown) => f(scope({ self: { children } }));
     expect(run([{ state: "done", n: 2 }, { state: "done", n: 0 }])).toBe(true);
@@ -442,7 +442,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
 
   test("now() is the injected clock (test 4)", async () => {
     const { root } = await generated(source);
-    const { expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
+    const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     const late = expressions["go.check.late.that"] as (s: unknown) => unknown;
     const row = { dueAt: new Date(1_000) };
     expect(late(scope({ self: row }, { clock: () => new Date(2_000) }))).toBe(true);
@@ -458,7 +458,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     const plain = (entity(check("() => true")) + "      do\n        run ({ context }) { console.log({ actor: \"before the write\" }, context) }\n").replace("  actions auto", "  computed\n    boolean :a() { return &children.some((c) => (c.title ?? \"\").startsWith(\"a\")) }\n    boolean :b({ self }) { return self.state.toString() === :open }\n    boolean :c() { return self.n.toFixed(0) === \"1\" }\n  actions auto");
     const { root, files } = await generated(plain);
     expect(checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
-    const { expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
+    const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     expect(expressions["computed.c"](scope({ self: { n: 1 } }))).toBe(true);
   }, 30_000);
 
@@ -468,7 +468,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     const computed = built.document!.entities[0]!.computed;
     expect(computed.map((c) => c.body?.plain?.clock)).toEqual([["now"], ["today"], undefined]);
     expect(checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
-    const { expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
+    const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     const at = { clock: () => new Date(86_400_000 * 2 + 5_000) };
     expect(expressions["computed.stamped"](scope({ self: { n: 86_400 * 2 + 5 } }, at))).toBe(true);
     expect(expressions["computed.stamped"](scope({ self: { n: 1 } }, at))).toBe(false);
@@ -493,7 +493,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     const computed = built.document!.entities[0]!.computed;
     expect(computed.map((c) => [c.name, c.body?.plain?.clock])).toEqual([["outer", ["now"]], ["inner", undefined], ["nested", ["now", "today"]], ["cast", ["now"]]]);
     expect(checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
-    const { expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
+    const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     const at = { clock: () => new Date(86_400_000 * 2 + 5_000) };
     expect(expressions["computed.outer"](scope({ self: { n: 86_400_000 * 2 + 5_000 } }, at))).toBe(true);
     expect(expressions["computed.outer"](scope({ self: { n: 1 } }, at))).toBe(false);
@@ -530,13 +530,53 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     const printed = await Bun.file(resolve(root, "generated/domain/task.expressions.ts")).text();
     expect(printed).toContain('import { now } from "../../clock"');
     expect(printed).not.toContain("const now = () => $.now($s)");
-    const { expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
+    const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     // The bound clock says two days in; the import says the epoch. Both paths answer as the import does.
     const at = { clock: () => new Date(86_400_000 * 2) };
     expect(expressions["computed.plainNow"](scope({ self: {} }, at))).toBe(true);
     expect(expressions["go.check.c.that"](scope({ self: { dueAt: new Date(5) } }, at))).toBe(false);
     expect(expressions["go.check.c.that"](scope({ self: { dueAt: new Date(-5) } }, at))).toBe(true);
   });
+  test("a helper import may have any name the file used to declare: every generated module-level name is a $ local", async () => {
+    // PR #92 round 1, item 2: `import { TaskLoaded } from "./helpers"` built, then tsc failed with TS2300 (duplicate
+    // identifier), because the file imported the entity's own types, declared its scopes and exported its functions under
+    // bare names. A helper named `structuredClone` is the author's own: no function binds `cloneValue` over it.
+    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-helper-names-"));
+    roots.push(root);
+    const names = ["Task$Record", "TaskLoaded", "GoTaskInput", "TaskScope", "TaskStoredScope", "TaskCheckScope", "expressions", "structuredClone"];
+    await writeFile(resolve(root, "helpers.ts"), [
+      "export const Task$Record = (): string => \"record\";",
+      "export const TaskLoaded = (n: number): number => n + 1;",
+      ...["GoTaskInput", "TaskScope", "TaskStoredScope", "TaskCheckScope", "expressions"].map((name) => `export const ${name} = (): string => ${JSON.stringify(name)};`),
+      "export const structuredClone = (value: unknown): string => `mine: ${String(value)}`;",
+      "",
+    ].join("\n"));
+    const source = entity(check("({ self }) => TaskLoaded(self.n) > 0 && TaskCheckScope() !== \"\"") +
+      "      do\n        set\n          &title=({ self }) => [Task$Record(), GoTaskInput(), TaskScope(), TaskStoredScope(), expressions(), String(self.n)].join(\",\")\n")
+      .replace("import { Task }", `import { ${names.join(", ")} } from "./helpers"\nimport { Task }`)
+      .replace("  actions auto", "  computed\n    string :copy() { return structuredClone(&n) }\n  actions auto");
+    const built = buildModel({ root, files: [{ file: "task.mesh.mx", source }] });
+    expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    const config = configOf(root);
+    const files = await generateFiles({ document: built.document!, config });
+    await writeGeneratedFiles(files, config);
+    await writeFile(resolve(root, "generated/schema.ts"), "export const tables = { task: {} };\n");
+    const printed = files.find((f) => f.path.endsWith("task.expressions.ts"))!.contents;
+    const helpers = /import \{([^}]*)\} from "\.\.\/\.\.\/helpers"/.exec(printed)![1]!;
+    expect(helpers.split(",").map((name) => name.trim()).filter(Boolean)).toEqual([...names].sort());
+    expect(printed).not.toContain("cloneValue");
+    // What the file itself declares or imports from generated code all starts with `$`: only the helpers do not.
+    const declared = [...printed.matchAll(/^export (?:type|const) ([\w$]+)/gm)].map((match) => match[1]!);
+    expect(declared.length).toBeGreaterThan(0);
+    expect(declared.filter((name) => !name.startsWith("$"))).toEqual([]);
+    const fromTypes = /import type \{([^}]*)\} from "\.\/task\.types"/.exec(printed)![1]!;
+    expect(fromTypes.split(",").map((entry) => entry.trim()).filter(Boolean).map((entry) => entry.split(" as ")[1])).toEqual(["$Task$Record", "$Task$Loaded", "$Task$GoTaskInput"]);
+    const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
+    expect(checkTypes(root, [...paths, "generated/schema.ts"])).toEqual({ code: 0, output: "" });
+    const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
+    expect(expressions["computed.copy"](scope({ self: { n: 3 } }))).toBe("mine: 3");
+    expect(expressions["go.step.0.set.title"](scope({ self: { n: 3 } }))).toBe("record,GoTaskInput,TaskScope,TaskStoredScope,expressions,3");
+  }, 30_000);
 
   test("plain code that shadows a scope name declares no unused binding, and a class with a private member runs", async () => {
     const plain = (entity(check("() => true")) + [
@@ -547,7 +587,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     ].join("\n"));
     const { root, files } = await generated(plain);
     expect(checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
-    const { expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
+    const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     const logs: unknown[][] = [];
     const log = console.log;
     console.log = (...args: unknown[]) => { logs.push(args); };
@@ -561,7 +601,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
 
   test("plain code runs with the authored meaning, `&` and atoms desugared", async () => {
     const { root } = await generated(source);
-    const { expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
+    const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     expect(expressions["computed.label"](scope({ self: { n: 3, title: "x" } }))).toBe("3:x");
   });
 
@@ -923,24 +963,24 @@ ${actions}`;
     }
     // Prettier lays the types out over several lines; compare them without whitespace or semicolons.
     const squash = (text: string) => text.replace(/[\s;]+/g, "");
-    const signature = (text: string, id: string) => new RegExp(`"${id.replaceAll(".", "\\.")}": (?:async )?\\(\\$s: (\\w+)<`).exec(text)?.[1];
+    const signature = (text: string, id: string) => new RegExp(`"${id.replaceAll(".", "\\.")}": (?:async )?\\(\\s*\\$s: ([\\w$]+)<`).exec(text)?.[1];
     test("checks, steps and runs after the write each get the scope that says what self is there; the files type-check", async () => {
       const source = item(`    always types=[:create, :update]\n${checkOf("({ input }) => (input.n ?? &n) > 0")}`
         + make(checkOf("({ input }) => input.n > 0") + "      do\n        set\n          &m=() => &n\n        run [after=:write] ({ self }) { console.log(self.id) }\n")
         + go(checkOf("() => &n > 0") + "      do\n        set\n          &m=({ before }) => before.n\n"));
       const { root, text, files } = await generated(source);
-      expect(signature(text, "always.0.check.c.that")).toBe("ItemNewScope");
-      expect(signature(text, "make.check.c.that")).toBe("ItemNewScope");
-      expect(signature(text, "go.check.c.that")).toBe("ItemCheckScope");
-      expect(signature(text, "make.step.0.set.m")).toBe("ItemScope");
-      expect(signature(text, "make.step.1.run")).toBe("ItemScope");
-      expect(signature(text, "go.step.0.set.m")).toBe("ItemStoredScope");
-      expect(squash(text)).toContain(squash('export type ItemCheckScope<I = unknown> = Omit<ItemScope<I>, "before">;'));
-      expect(squash(text)).toContain(squash('export type ItemNewScope<I = unknown> = Omit<ItemCheckScope<I>, "self"> & { self: $DeepReadonly<Omit<ItemLoaded, "n" | "ownerId" | "owner"> & { [K in "n" | "ownerId" | "owner"]: ItemLoaded[K] | null }> };'));
-      expect(text).not.toContain("ItemCreateScope");
-      await writeFile(resolve(root, "check.ts"), `import type { ItemCheckScope, ItemNewScope } from "./generated/domain/item.expressions";
-declare const check: ItemCheckScope<unknown>;
-declare const fresh: ItemNewScope<unknown>;
+      expect(signature(text, "always.0.check.c.that")).toBe("$Item$NewScope");
+      expect(signature(text, "make.check.c.that")).toBe("$Item$NewScope");
+      expect(signature(text, "go.check.c.that")).toBe("$Item$CheckScope");
+      expect(signature(text, "make.step.0.set.m")).toBe("$Item$Scope");
+      expect(signature(text, "make.step.1.run")).toBe("$Item$Scope");
+      expect(signature(text, "go.step.0.set.m")).toBe("$Item$StoredScope");
+      expect(squash(text)).toContain(squash('export type $Item$CheckScope<I = unknown> = Omit<$Item$Scope<I>, "before">;'));
+      expect(squash(text)).toContain(squash('export type $Item$NewScope<I = unknown> = Omit<$Item$CheckScope<I>, "self"> & { self: $DeepReadonly<Omit<$Item$Loaded, "n" | "ownerId" | "owner"> & { [K in "n" | "ownerId" | "owner"]: $Item$Loaded[K] | null }> };'));
+      expect(text).not.toContain("$Item$CreateScope");
+      await writeFile(resolve(root, "check.ts"), `import type { $Item$CheckScope, $Item$NewScope } from "./generated/domain/item.expressions";
+declare const check: $Item$CheckScope<unknown>;
+declare const fresh: $Item$NewScope<unknown>;
 export const stored: number = check.self.n;
 // @ts-expect-error a check has no before
 export const gone = check.before;
@@ -957,10 +997,10 @@ export const state: "open" | "done" = fresh.self.state;
       const computed = "  computed\n    integer :double() { return &n * 2 }\n    integer :twice() { return &double + 1 }\n    integer :viaOwner() { return &owner.n }\n    boolean :isUnset() { return &n === null }\n    integer :orZero() { return &n ?? 0 }\n    integer :orSelf() { return &n ?? &double }\n    boolean :isOpen() { return &state === :open }\n    integer :plain({ self }) { const q = self.n; return q + 1 }\n  actions auto=[:read]";
       const source = item(make(checkOf("({ input }) => input.n > 0")) + go("")).replace("  actions auto=[:read]", computed);
       const { root, text, files } = await generated(source);
-      expect(squash(text).replace(":|", ":")).toContain(squash('self: $DeepReadonly<Omit<ItemLoaded, "n" | "ownerId" | "owner" | "double" | "twice" | "viaOwner" | "orSelf"> & { [K in "n" | "ownerId" | "owner" | "double" | "twice" | "viaOwner" | "orSelf"]: ItemLoaded[K] | null }>'));
-      await writeFile(resolve(root, "check.ts"), `import type { ItemNewScope, ItemScope } from "./generated/domain/item.expressions";
-declare const fresh: ItemNewScope<unknown>;
-declare const stored: ItemScope<unknown>;
+      expect(squash(text).replace(":|", ":")).toContain(squash('self: $DeepReadonly<Omit<$Item$Loaded, "n" | "ownerId" | "owner" | "double" | "twice" | "viaOwner" | "orSelf"> & { [K in "n" | "ownerId" | "owner" | "double" | "twice" | "viaOwner" | "orSelf"]: $Item$Loaded[K] | null }>'));
+      await writeFile(resolve(root, "check.ts"), `import type { $Item$NewScope, $Item$Scope } from "./generated/domain/item.expressions";
+declare const fresh: $Item$NewScope<unknown>;
+declare const stored: $Item$Scope<unknown>;
 export const nullDouble: number | null = fresh.self.double;
 export const nullTwice: number | null = fresh.self.twice;
 export const nullViaOwner: number | null = fresh.self.viaOwner;
@@ -982,16 +1022,16 @@ export const set: number = stored.self.double;
       const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
       expect(checkTypes(root, [...paths, "generated/schema.ts", "check.ts"])).toEqual({ code: 0, output: "" });
     }, 30_000);
-    test("an integer key: a create's steps before the write get ItemCreateScope, where the key may be null", async () => {
+    test("an integer key: a create's steps before the write get $Item$CreateScope, where the key may be null", async () => {
       const source = item(make(checkOf("() => &seq === null") + "      do\n        set\n          &m=() => &seq ?? 0\n        run [after=:write] ({ self }) { console.log(self.seq + 1) }\n"), "integer :seq primary-key");
       const { root, text, files } = await generated(source);
-      expect(signature(text, "make.check.c.that")).toBe("ItemNewScope");
-      expect(signature(text, "make.step.0.set.m")).toBe("ItemCreateScope");
-      expect(signature(text, "make.step.1.run")).toBe("ItemScope");
-      expect(squash(text)).toContain(squash('export type ItemCreateScope<I = unknown> = Omit<ItemScope<I>, "self"> & { self: $DeepReadonly<Omit<ItemLoaded, "seq"> & { [K in "seq"]: ItemLoaded[K] | null }> };'));
-      await writeFile(resolve(root, "check.ts"), `import type { ItemCreateScope, ItemScope } from "./generated/domain/item.expressions";
-declare const creating: ItemCreateScope<unknown>;
-declare const written: ItemScope<unknown>;
+      expect(signature(text, "make.check.c.that")).toBe("$Item$NewScope");
+      expect(signature(text, "make.step.0.set.m")).toBe("$Item$CreateScope");
+      expect(signature(text, "make.step.1.run")).toBe("$Item$Scope");
+      expect(squash(text)).toContain(squash('export type $Item$CreateScope<I = unknown> = Omit<$Item$Scope<I>, "self"> & { self: $DeepReadonly<Omit<$Item$Loaded, "seq"> & { [K in "seq"]: $Item$Loaded[K] | null }> };'));
+      await writeFile(resolve(root, "check.ts"), `import type { $Item$CreateScope, $Item$Scope } from "./generated/domain/item.expressions";
+declare const creating: $Item$CreateScope<unknown>;
+declare const written: $Item$Scope<unknown>;
 // @ts-expect-error the integer key is null until the data layer writes the row
 export const notYet: number = creating.self.seq;
 export const after: number = written.self.seq;

@@ -8,31 +8,34 @@ import {
   type SharedInput as $SharedInput,
 } from "@meshfw/runtime";
 import type {
-  Assignment,
-  AssignmentLoaded,
-  FinishAssignmentInput,
-  StartAssignmentInput,
+  Assignment as $work$Assignment$Record,
+  AssignmentLoaded as $work$Assignment$Loaded,
+  FinishAssignmentInput as $work$Assignment$FinishAssignmentInput,
+  StartAssignmentInput as $work$Assignment$StartAssignmentInput,
 } from "./assignment.types";
 
 /** What every expression of Assignment reads; `I` is the input of the action it runs in. */
-export type AssignmentScope<I = unknown> = $Scope<{
-  self: $DeepReadonly<AssignmentLoaded>;
+export type $work$Assignment$Scope<I = unknown> = $Scope<{
+  self: $DeepReadonly<$work$Assignment$Loaded>;
   input: $DeepReadonly<I>;
   actor: any;
   context: any;
-  before: $DeepReadonly<Assignment> | null;
+  before: $DeepReadonly<$work$Assignment$Record> | null;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
-export type AssignmentStoredScope<I = unknown> = AssignmentScope<I> & {
-  before: $DeepReadonly<Assignment>;
+export type $work$Assignment$StoredScope<I = unknown> = $work$Assignment$Scope<I> & {
+  before: $DeepReadonly<$work$Assignment$Record>;
 };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type AssignmentCheckScope<I = unknown> = Omit<AssignmentScope<I>, "before">;
+export type $work$Assignment$CheckScope<I = unknown> = Omit<$work$Assignment$Scope<I>, "before">;
 /** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
-export type AssignmentNewScope<I = unknown> = Omit<AssignmentCheckScope<I>, "self"> & {
+export type $work$Assignment$NewScope<I = unknown> = Omit<
+  $work$Assignment$CheckScope<I>,
+  "self"
+> & {
   self: $DeepReadonly<
     Omit<
-      AssignmentLoaded,
+      $work$Assignment$Loaded,
       "startedAt" | "taskId" | "task" | "assigneeId" | "assignee" | "delegatorId" | "delegator"
     > & {
       [K in
@@ -42,29 +45,39 @@ export type AssignmentNewScope<I = unknown> = Omit<AssignmentCheckScope<I>, "sel
         | "assigneeId"
         | "assignee"
         | "delegatorId"
-        | "delegator"]: AssignmentLoaded[K] | null;
+        | "delegator"]: $work$Assignment$Loaded[K] | null;
     }
   >;
 };
 
-export const expressions = {
+export const $expressions = {
   // set &delegator, translated (src/domain/work/assignment.mesh.mx:23:22)
-  "start.step.0.set.delegator": ($s: AssignmentScope<StartAssignmentInput>) => $s.actor?.id,
+  "start.step.0.set.delegator": (
+    $s: $work$Assignment$Scope<$work$Assignment$StartAssignmentInput>,
+  ) => $s.actor?.id,
   // set &startedAt, translated (src/domain/work/assignment.mesh.mx:24:22)
-  "start.step.0.set.startedAt": ($s: AssignmentScope<StartAssignmentInput>) => $.now($s),
+  "start.step.0.set.startedAt": (
+    $s: $work$Assignment$Scope<$work$Assignment$StartAssignmentInput>,
+  ) => $.now($s),
   // check :current that, translated (src/domain/work/assignment.mesh.mx:30:16)
-  "finish.check.current.that": ($s: AssignmentCheckScope<FinishAssignmentInput>) =>
-    $.isNull($s.self.endedAt),
+  "finish.check.current.that": (
+    $s: $work$Assignment$CheckScope<$work$Assignment$FinishAssignmentInput>,
+  ) => $.isNull($s.self.endedAt),
   // set &endedAt, translated (src/domain/work/assignment.mesh.mx:36:20)
-  "finish.step.0.set.endedAt": ($s: AssignmentStoredScope<FinishAssignmentInput>) => $.now($s),
+  "finish.step.0.set.endedAt": (
+    $s: $work$Assignment$StoredScope<$work$Assignment$FinishAssignmentInput>,
+  ) => $.now($s),
   // set &endReason, translated (src/domain/work/assignment.mesh.mx:37:22)
-  "finish.step.0.set.endReason": ($s: AssignmentStoredScope<FinishAssignmentInput>) =>
-    $s.input?.reason,
+  "finish.step.0.set.endReason": (
+    $s: $work$Assignment$StoredScope<$work$Assignment$FinishAssignmentInput>,
+  ) => $s.input?.reason,
   // policy :membersRead authorize-if, translated (src/domain/work/assignment.mesh.mx:40:20)
-  "policy.membersRead.authorize-if.0": ($s: AssignmentCheckScope<unknown>) =>
+  "policy.membersRead.authorize-if.0": ($s: $work$Assignment$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
   // policy :internal authorize-if, translated (src/domain/work/assignment.mesh.mx:42:20)
   "policy.internal.authorize-if.0": (
-    $s: AssignmentNewScope<$SharedInput<StartAssignmentInput | FinishAssignmentInput>>,
+    $s: $work$Assignment$NewScope<
+      $SharedInput<$work$Assignment$StartAssignmentInput | $work$Assignment$FinishAssignmentInput>
+    >,
   ) => $.isSystem($s.context),
 } as const;

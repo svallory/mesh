@@ -32,7 +32,9 @@ import {
   type EntityReadsBind as $EntityReadsBind,
   type EntityValue as $EntityValue,
   type CastOutput as $CastOutput,
+  type DataOperations as $DataOperations,
   type Issue as $Issue,
+  type LoadOptions as $LoadOptions,
   type Row as $Row,
 } from "@meshfw/runtime";
 import type {
@@ -49,7 +51,7 @@ import type {
 } from "./review.types";
 import { acceptReviewInput, returnReviewInput, readReviewInput } from "./review.validators";
 import { tables } from "../../schema";
-import { expressions as $expressions, type ReviewScope as $Scope } from "./review.expressions";
+import { $expressions, type $work$Review$Scope as $Scope } from "./review.expressions";
 import { loadPlan as $loadPlan } from "../../load";
 
 /**
@@ -590,3 +592,21 @@ export type $ReadOnly = $EntityValue<
   },
   $PrivilegedReadOnly
 >;
+
+/**
+ * Load relationships and computed fields onto Review rows by name. A relationship is loaded by one more query for
+ * all the rows; a computed field loads what its body reads first. The rows you pass are not changed: the result is new
+ * rows of type ReviewTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so it takes no `policies`
+ * option: every related record the key names is there.
+ */
+export async function loadReviewFields<const N extends keyof ReviewLoadable>(
+  tx: $DataOperations,
+  rows: readonly $Record[],
+  names: readonly N[],
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
+): Promise<ReviewTxWith<N>[]> {
+  return (await $loadRows($loadPlan, "work.Review", tx, rows, names, {
+    ...options,
+    policies: false,
+  })) as ReviewTxWith<N>[];
+}

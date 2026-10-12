@@ -8,56 +8,63 @@ import {
   type SharedInput as $SharedInput,
 } from "@meshfw/runtime";
 import type {
-  Post,
-  PostLoaded,
-  ArchivePostInput,
-  CreatePostInput,
-  DestroyPostInput,
-  PublishPostInput,
-  PublishedPostInput,
+  Post as $blog$Post$Record,
+  PostLoaded as $blog$Post$Loaded,
+  ArchivePostInput as $blog$Post$ArchivePostInput,
+  CreatePostInput as $blog$Post$CreatePostInput,
+  DestroyPostInput as $blog$Post$DestroyPostInput,
+  PublishPostInput as $blog$Post$PublishPostInput,
+  PublishedPostInput as $blog$Post$PublishedPostInput,
 } from "./post.types";
 
 /** What every expression of Post reads; `I` is the input of the action it runs in. */
-export type PostScope<I = unknown> = $Scope<{
-  self: $DeepReadonly<PostLoaded>;
+export type $blog$Post$Scope<I = unknown> = $Scope<{
+  self: $DeepReadonly<$blog$Post$Loaded>;
   input: $DeepReadonly<I>;
   actor: any;
   context: any;
-  before: $DeepReadonly<Post> | null;
+  before: $DeepReadonly<$blog$Post$Record> | null;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
-export type PostStoredScope<I = unknown> = PostScope<I> & { before: $DeepReadonly<Post> };
+export type $blog$Post$StoredScope<I = unknown> = $blog$Post$Scope<I> & {
+  before: $DeepReadonly<$blog$Post$Record>;
+};
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type PostCheckScope<I = unknown> = Omit<PostScope<I>, "before">;
+export type $blog$Post$CheckScope<I = unknown> = Omit<$blog$Post$Scope<I>, "before">;
 /** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
-export type PostNewScope<I = unknown> = Omit<PostCheckScope<I>, "self"> & {
+export type $blog$Post$NewScope<I = unknown> = Omit<$blog$Post$CheckScope<I>, "self"> & {
   self: $DeepReadonly<
-    Omit<PostLoaded, "title" | "authorId" | "author"> & {
-      [K in "title" | "authorId" | "author"]: PostLoaded[K] | null;
+    Omit<$blog$Post$Loaded, "title" | "authorId" | "author"> & {
+      [K in "title" | "authorId" | "author"]: $blog$Post$Loaded[K] | null;
     }
   >;
 };
 
-export const expressions = {
+export const $expressions = {
   // computed excerpt, plain (unsupported-construct) (src/domain/blog/post.mesh.mx:23:20)
-  "computed.excerpt": ($s: PostScope<unknown>) => {
+  "computed.excerpt": ($s: $blog$Post$Scope<unknown>) => {
     const { self } = $s;
     return (function () {
       return (self.body ?? "").slice(0, 200);
     })();
   },
   // check :titlePresent that, translated (src/domain/blog/post.mesh.mx:34:34)
-  "publish.check.titlePresent.that": ($s: PostCheckScope<PublishPostInput>) =>
+  "publish.check.titlePresent.that": ($s: $blog$Post$CheckScope<$blog$Post$PublishPostInput>) =>
     $.gt($.length($s.self.title), 0),
   // published filter, translated (src/domain/blog/post.mesh.mx:41:14)
-  "published.filter": ($s: PostScope<PublishedPostInput>) => $.eq($s.self.state, "published"),
+  "published.filter": ($s: $blog$Post$Scope<$blog$Post$PublishedPostInput>) =>
+    $.eq($s.self.state, "published"),
   // policy :public authorize-if, translated (src/domain/blog/post.mesh.mx:46:20)
-  "policy.public.authorize-if.0": (_$s: PostCheckScope<unknown>) => true,
+  "policy.public.authorize-if.0": (_$s: $blog$Post$CheckScope<unknown>) => true,
   // policy :signedIn authorize-if, translated (src/domain/blog/post.mesh.mx:48:20)
-  "policy.signedIn.authorize-if.0": ($s: PostNewScope<CreatePostInput>) =>
+  "policy.signedIn.authorize-if.0": ($s: $blog$Post$NewScope<$blog$Post$CreatePostInput>) =>
     $.isNotNull($s.actor?.id),
   // policy :owner authorize-if, translated (src/domain/blog/post.mesh.mx:50:20)
   "policy.owner.authorize-if.0": (
-    $s: PostCheckScope<$SharedInput<PublishPostInput | ArchivePostInput | DestroyPostInput>>,
+    $s: $blog$Post$CheckScope<
+      $SharedInput<
+        $blog$Post$PublishPostInput | $blog$Post$ArchivePostInput | $blog$Post$DestroyPostInput
+      >
+    >,
   ) => $.eq($s.self.author?.id, $s.actor?.id),
 } as const;
