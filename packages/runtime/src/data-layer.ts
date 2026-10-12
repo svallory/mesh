@@ -41,12 +41,16 @@ export interface Comparison<T extends Exclude<Scalar, null> = Exclude<Scalar, nu
  * or a query-library object. A key `and` or `or` holding a list combines filters, and
  * every other key names an attribute; the keys of one object are all required to hold.
  * `{ and: [] }` matches every row and `{ or: [] }` matches none. An attribute named
- * `and` or `or` therefore cannot be filtered.
+ * `and` or `or` therefore cannot be filtered. An attribute whose comparison is `undefined`
+ * is the same as one left out, as for an optional field of a generated filter type
+ * (`toString?: Comparison<string> | undefined`: a caller leaves out an attribute named like
+ * a member of `Object.prototype` by giving it as `undefined`, ENT-18); an operator whose
+ * value is `undefined` is still an error.
  */
 export type Filter =
   | { readonly and: readonly Filter[] }
   | { readonly or: readonly Filter[] }
-  | { readonly [attribute: string]: Comparison };
+  | { readonly [attribute: string]: Comparison | undefined };
 
 /** Attribute names in order of priority; a leading `-` sorts that attribute descending. */
 export type Sort = readonly string[];

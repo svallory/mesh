@@ -146,7 +146,7 @@ export async function loadRows(
   // Work on copies: the caller's rows are never changed, and a field a path loads only to evaluate a body stays off them.
   const work: Work[] = rows.map((row) => ({ ...row }));
   // Rollups last: one over a has-many that the same call loaded is worked out from those rows (below), with no query of its own.
-  const isRollup = (name: string) => entityPlan.computed[name]?.kind === "rollup" && !Object.hasOwn(entityPlan.relations, name);
+  const isRollup = (name: string) => Object.hasOwn(entityPlan.computed, name) && entityPlan.computed[name]!.kind === "rollup" && !Object.hasOwn(entityPlan.relations, name);
   for (const name of [...loads.filter((n) => !isRollup(n)), ...loads.filter(isRollup)]) await ensureField(plan, entity, tx, work, name, options, 0);
   return rows.map((row, index) => {
     const loaded: Row = { ...row };
@@ -185,7 +185,7 @@ function assertServable(plan: LoadPlan, entity: string, entityPlan: EntityPlan, 
     if (relation.kind !== "belongs-to" && relation.column === null) throw new FrameworkError(noBelongsToBack(entity, name, relation));
     return;
   }
-  const computed = entityPlan.computed[name];
+  const computed = Object.hasOwn(entityPlan.computed, name) ? entityPlan.computed[name] : undefined;
   if (computed?.kind === "rollup") rollupShape(plan, entity, entityPlan, name, computed);
 }
 
@@ -216,7 +216,7 @@ async function deniedNames(plan: LoadPlan, entity: string, names: readonly strin
       if (!(await admits(relation.target))) denied.set(name, relation.kind === "has-many" ? [] : null);
       continue;
     }
-    const computed = entityPlan.computed[name];
+    const computed = Object.hasOwn(entityPlan.computed, name) ? entityPlan.computed[name] : undefined;
     if (computed?.kind !== "rollup") continue;
     const over = Object.hasOwn(entityPlan.relations, computed.of[0]!) ? entityPlan.relations[computed.of[0]!] : undefined;
     if (over && !(await admits(over.target))) denied.set(name, computed.fn === "count" ? 0 : null);
@@ -439,7 +439,8 @@ async function ensurePath(
   const [head, ...rest] = path as [string, ...string[]];
   await ensureField(plan, entity, tx, rows, head, options, depth);
   if (rest.length === 0) return;
-  const relation = planOf(plan, entity).relations[head];
+  const relations = planOf(plan, entity).relations;
+  const relation = Object.hasOwn(relations, head) ? relations[head] : undefined;
   if (!relation) throw new FrameworkError(`${entity}#${head} is a computed field, and nothing can be loaded through it (${path.join(".")})`);
   const next: Work[] = [];
   for (const row of rows) {
@@ -551,7 +552,7 @@ export function rejectComputedQuery(entity: string, computed: readonly string[],
     if (filter === null || typeof filter !== "object") return;
     for (const [key, value] of Object.entries(filter)) {
       if ((key === "and" || key === "or") && Array.isArray(value)) value.forEach(walk);
-      else if (computed.includes(key)) fail(key, "filter");
+      else if (value !== undefined && computed.includes(key)) fail(key, "filter");
     }
   };
   walk(query.filter);

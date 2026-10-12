@@ -169,6 +169,8 @@ export function contractV1Checks(makeLayer: () => Promise<DataLayerFixtureV1>, m
       const everything = await read({});
       await expectIds(read, { filter: undefined, sort: undefined, limit: undefined, offset: undefined }, everything, "all four undefined");
       await expectIds(read, { filter: undefined, sort: ["id"], limit: undefined, offset: undefined }, [...everything].sort(), "only sort given");
+      await expectIds(read, { filter: { rank: undefined }, sort: ["id"] }, [...everything].sort(), "an attribute whose comparison is undefined");
+      await expectIds(read, { filter: { or: [{ parentId: { eq: "p1" }, rank: undefined }] }, sort: ["id"] }, ["a2", "a3", "a4", "a6"], "an undefined comparison under or");
       const filter = { parentId: { eq: "p1" } };
       await expectIds(read, { filter, sort: ["createdAt", "id"], limit: 2, offset: undefined }, ["a2", "a3"], "offset undefined");
       await expectIds(read, { filter, sort: ["createdAt", "id"], limit: undefined, offset: 1 }, ["a3", "a4", "a6"], "limit undefined");
@@ -176,6 +178,7 @@ export function contractV1Checks(makeLayer: () => Promise<DataLayerFixtureV1>, m
     ["a malformed query is a FrameworkError and reads nothing", withTasks(async (_read, fixture) => {
       for (const [query, message] of [
         [{ filter: { nope: { eq: 1 } } }, "an unknown attribute"],
+        [{ filter: { nope: undefined } }, "an unknown attribute whose comparison is undefined"],
         [{ filter: { rank: { like: 1 } } }, "an unknown operator"],
         [{ filter: { rank: 1 } }, "a bare value"],
         [{ filter: { rank: {} } }, "an empty comparison"],
