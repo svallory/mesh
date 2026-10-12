@@ -74,7 +74,7 @@ export function bindLateResultReads(layer: $DataLayer, options: $BindOptions = {
             : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
-        return (await $loadRows($loadPlan, "LateResult", tx, $rows, parsed.load, {
+        return (await $loadRows($loadPlan, "work.LateResult", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
@@ -102,7 +102,7 @@ export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, co
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("LateResult", "record", [
+      const $policies = $authorizer("work.LateResult", "record", [
         {
           name: "isMember",
           when: null,
@@ -132,14 +132,18 @@ export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, co
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "LateResult.record"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "work.LateResult#record"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "LateResult", action: "record" },
+        { entity: "work.LateResult", action: "record" },
         parsed,
         context,
         async (tx) => {
@@ -154,17 +158,17 @@ export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, co
           };
           const $record: $Row = { ...$changes, fence: null, taskId: null, submitterId: null };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "LateResult", $record, "action function"),
-            "LateResult.record",
+            $guarded($loadPlan, "work.LateResult", $record, "action function"),
+            "work.LateResult#record",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "LateResult.record"),
+              input: $readOnlyRecord(parsed, "work.LateResult#record"),
               actor: $actor,
               context: $context,
               before: null,
-              ...$composed(compose, tx, context, "LateResult.record", $clock),
+              ...$composed(compose, tx, context, "work.LateResult#record", $clock),
             },
             { clock: $clock },
           ) as unknown as $Scope<RecordLateResultInput>;
@@ -210,7 +214,7 @@ export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, co
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "LateResult", action: "record" },
+            { entity: "work.LateResult", action: "record" },
             null,
             $stored,
             parsed,
@@ -231,7 +235,7 @@ export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, co
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readLateResultInput, input);
       if (
-        !(await $authorizer("LateResult", "read", [
+        !(await $authorizer("work.LateResult", "read", [
           {
             name: "membersRead",
             when: null,
@@ -248,7 +252,7 @@ export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, co
           layer,
           $scope(
             {
-              input: $readOnlyRecord($parsed as never, "LateResult.read"),
+              input: $readOnlyRecord($parsed as never, "work.LateResult#read"),
               actor: $actor,
               context: $context,
             },

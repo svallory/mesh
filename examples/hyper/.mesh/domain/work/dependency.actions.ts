@@ -83,7 +83,7 @@ export function bindDependencyReads(layer: $DataLayer, options: $BindOptions = {
             : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
-        return (await $loadRows($loadPlan, "Dependency", tx, $rows, parsed.load, {
+        return (await $loadRows($loadPlan, "work.Dependency", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
@@ -108,7 +108,7 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Dependency", "add", [
+      const $policies = $authorizer("work.Dependency", "add", [
         {
           name: "isMember",
           when: null,
@@ -138,14 +138,18 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Dependency.add"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "work.Dependency#add"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Dependency", action: "add" },
+        { entity: "work.Dependency", action: "add" },
         parsed,
         context,
         async (tx) => {
@@ -163,17 +167,17 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
             createdById: null,
           };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Dependency", $record, "action function"),
-            "Dependency.add",
+            $guarded($loadPlan, "work.Dependency", $record, "action function"),
+            "work.Dependency#add",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Dependency.add"),
+              input: $readOnlyRecord(parsed, "work.Dependency#add"),
               actor: $actor,
               context: $context,
               before: null,
-              ...$composed(compose, tx, context, "Dependency.add", $clock),
+              ...$composed(compose, tx, context, "work.Dependency#add", $clock),
             },
             { clock: $clock },
           ) as unknown as $Scope<AddDependencyInput>;
@@ -241,7 +245,7 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Dependency", action: "add" },
+            { entity: "work.Dependency", action: "add" },
             null,
             $stored,
             parsed,
@@ -251,8 +255,8 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
           const $written: $Row = { ...$stored };
           const $after = $rescope($s, {
             self: $readOnlyRecord(
-              $guarded($loadPlan, "Dependency", $written, "action function"),
-              "Dependency.add",
+              $guarded($loadPlan, "work.Dependency", $written, "action function"),
+              "work.Dependency#add",
             ),
           });
           await $expressions["add.step.1.run"]($after);
@@ -260,7 +264,7 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
           const $result = await tx.selectByKey(tables.dependency, { id: $stored.id });
           if ($result === undefined)
             throw new $FrameworkError(
-              "Dependency.add: a step after the write deleted the row this action returns",
+              "work.Dependency#add: a step after the write deleted the row this action returns",
             );
           return $result as Dependency;
         },
@@ -274,7 +278,7 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Dependency", "remove", [
+      const $policies = $authorizer("work.Dependency", "remove", [
         {
           name: "isMember",
           when: null,
@@ -304,14 +308,18 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Dependency.remove"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "work.Dependency#remove"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Dependency", action: "remove" },
+        { entity: "work.Dependency", action: "remove" },
         parsed,
         context,
         async (tx) => {
@@ -319,24 +327,24 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.dependency, $key);
-          if ($before === undefined) throw new $NotFoundError("Dependency", $key);
+          if ($before === undefined) throw new $NotFoundError("work.Dependency", $key);
           const $record: $Row = { ...$before };
           const $load = { actor: $actor, context: $context, clock: $clock };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Dependency", $record, "action function"),
-            "Dependency.remove",
+            $guarded($loadPlan, "work.Dependency", $record, "action function"),
+            "work.Dependency#remove",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Dependency.remove"),
+              input: $readOnlyRecord(parsed, "work.Dependency#remove"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "Dependency", $before, "before"),
-                "Dependency.remove",
+                $guarded($loadPlan, "work.Dependency", $before, "before"),
+                "work.Dependency#remove",
               ) as unknown as Dependency,
-              ...$composed(compose, tx, context, "Dependency.remove", $clock),
+              ...$composed(compose, tx, context, "work.Dependency#remove", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<RemoveDependencyInput>;
@@ -345,7 +353,7 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
-          await $loadInto($loadPlan, "Dependency", tx, $record, ["dependent"], $load);
+          await $loadInto($loadPlan, "work.Dependency", tx, $record, ["dependent"], $load);
           await $runCheck($issues, $checks, {
             label: "versionMatches",
             code: "expected-version",
@@ -357,13 +365,13 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
           if ($issues.length > 0) throw new $InvalidInputError($issues);
           // data layer
           if (!(await tx.deleteByKey(tables.dependency, $key)))
-            throw new $NotFoundError("Dependency", $key);
+            throw new $NotFoundError("work.Dependency", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Dependency", action: "remove" },
+            { entity: "work.Dependency", action: "remove" },
             $before,
             null,
             parsed,
@@ -372,8 +380,8 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
           // after the write: the steps marked after=:write run here, inside the transaction, and see the deleted row as it was as self
           const $after = $rescope($s, {
             self: $readOnlyRecord(
-              $guarded($loadPlan, "Dependency", $record, "action function"),
-              "Dependency.remove",
+              $guarded($loadPlan, "work.Dependency", $record, "action function"),
+              "work.Dependency#remove",
             ),
           });
           await $expressions["remove.step.0.run"]($after);
@@ -391,7 +399,7 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readDependencyInput, input);
       if (
-        !(await $authorizer("Dependency", "read", [
+        !(await $authorizer("work.Dependency", "read", [
           {
             name: "membersRead",
             when: null,
@@ -408,7 +416,7 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
           layer,
           $scope(
             {
-              input: $readOnlyRecord($parsed as never, "Dependency.read"),
+              input: $readOnlyRecord($parsed as never, "work.Dependency#read"),
               actor: $actor,
               context: $context,
             },

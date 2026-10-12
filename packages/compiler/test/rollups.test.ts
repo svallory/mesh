@@ -98,7 +98,7 @@ test("a rollup over a relationship that nothing points back at cannot be loaded,
   ] });
   expect(result.diagnostics).toEqual([expect.objectContaining({
     code: "MESH_NO_INVERSE",
-    message: "count :lineCount reads has-many :lines, which cannot be loaded: :Line has no belongs-to back to :Invoice",
+    message: "count :lineCount reads has-many :lines, which cannot be loaded: billing.Line has no belongs-to back to billing.Invoice",
   })]);
   // The same relationship with nothing that reads it builds.
   const unused = buildModel({ root: "/project", files: [
@@ -155,13 +155,13 @@ test.each([
     "count",
     "linnes",
     "MESH_UNKNOWN_MEMBER",
-    "&linnes is not a member of :Invoice. Did you mean &lines?",
+    "&linnes is not a member of billing.Invoice. Did you mean &lines?",
   ],
   [
     "sum",
     "lines.amunt",
     "MESH_UNKNOWN_MEMBER",
-    "&amunt is not a member of :Line. Did you mean &amount?",
+    "&amunt is not a member of billing.Line. Did you mean &amount?",
   ],
 ] as const)("rejects %s of %s with %s", (fn, path, code, message) => {
   const { source, result } = build(fn, path);

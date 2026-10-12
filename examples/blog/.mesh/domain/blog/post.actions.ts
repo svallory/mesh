@@ -93,7 +93,7 @@ export function bindPostReads(layer: $DataLayer, options: $BindOptions = {}) {
       // for its policies and hands it over as `cast`; a read through `tx` casts it here.
       const parsed = cast ?? (await $castInput(layer, readPostInput, input));
       return layer.transaction(async (tx) => {
-        rejectComputedQuery("Post", ["excerpt", "commentCount"], parsed);
+        rejectComputedQuery("blog.Post", ["excerpt", "commentCount"], parsed);
         const $rows = (await tx.select(tables.post, {
           filter: parsed.filter,
           sort: parsed.sort,
@@ -104,7 +104,7 @@ export function bindPostReads(layer: $DataLayer, options: $BindOptions = {}) {
           return $rows as unknown as L extends unknown ? PostTxWith<PostLoadNames<L>>[] : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
-        return (await $loadRows($loadPlan, "Post", tx, $rows, parsed.load, {
+        return (await $loadRows($loadPlan, "blog.Post", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
@@ -131,7 +131,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Post", "create", [
+      const $policies = $authorizer("blog.Post", "create", [
         {
           name: "signedIn",
           when: null,
@@ -148,14 +148,14 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Post.create"), actor: $actor, context: $context },
+          { input: $readOnlyRecord(parsed, "blog.Post#create"), actor: $actor, context: $context },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Post", action: "create" },
+        { entity: "blog.Post", action: "create" },
         parsed,
         context,
         async (tx) => {
@@ -185,7 +185,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Post", action: "create" },
+            { entity: "blog.Post", action: "create" },
             null,
             $stored,
             parsed,
@@ -208,7 +208,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Post", "publish", [
+      const $policies = $authorizer("blog.Post", "publish", [
         {
           name: "owner",
           when: null,
@@ -225,14 +225,14 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Post.publish"), actor: $actor, context: $context },
+          { input: $readOnlyRecord(parsed, "blog.Post#publish"), actor: $actor, context: $context },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Post", action: "publish" },
+        { entity: "blog.Post", action: "publish" },
         parsed,
         context,
         async (tx) => {
@@ -241,31 +241,31 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.post, $key);
-          if ($before === undefined) throw new $NotFoundError("Post", $key);
+          if ($before === undefined) throw new $NotFoundError("blog.Post", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
           const $writes = $writeCount(tx);
           const $load = { actor: $actor, context: $context, clock: $clock };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Post", $record, "action function"),
-            "Post.publish",
+            $guarded($loadPlan, "blog.Post", $record, "action function"),
+            "blog.Post#publish",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Post.publish"),
+              input: $readOnlyRecord(parsed, "blog.Post#publish"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "Post", $before, "before"),
-                "Post.publish",
+                $guarded($loadPlan, "blog.Post", $before, "before"),
+                "blog.Post#publish",
               ) as unknown as Post,
-              ...$composed(compose, tx, context, "Post.publish", $clock),
+              ...$composed(compose, tx, context, "blog.Post#publish", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<PublishPostInput>;
           // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
-          await $loadInto($loadPlan, "Post", tx, $record, ["author"], $load);
+          await $loadInto($loadPlan, "blog.Post", tx, $record, ["author"], $load);
           await $policies.inside($checkScope($s));
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
@@ -281,21 +281,21 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
           const $loads = new Set<string>();
           // do: the steps run in written order, each seeing the record as the ones before it left it
           $changes.state = $record.state = "published";
-          $unloadFrom($loadPlan, "Post", $record);
+          $unloadFrom($loadPlan, "blog.Post", $record);
           $loads.add("comments");
           $loads.add("excerpt");
           // data layer
           $changes.updatedAt = $now;
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.post, $key, $before, "Post.publish");
+          await $checkUnchanged(tx, $writes, tables.post, $key, $before, "blog.Post#publish");
           const $stored = await tx.updateByKey(tables.post, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("Post", $key);
+          if ($stored === undefined) throw new $NotFoundError("blog.Post", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Post", action: "publish" },
+            { entity: "blog.Post", action: "publish" },
             $before,
             $stored,
             parsed,
@@ -303,7 +303,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
           );
           // still inside the transaction: the result, with what a load step named
           return (
-            await $loadRows($loadPlan, "Post", tx, [$stored], [...$loads], {
+            await $loadRows($loadPlan, "blog.Post", tx, [$stored], [...$loads], {
               ...$load,
               policies: true,
             })
@@ -319,7 +319,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Post", "archive", [
+      const $policies = $authorizer("blog.Post", "archive", [
         {
           name: "owner",
           when: null,
@@ -336,14 +336,14 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Post.archive"), actor: $actor, context: $context },
+          { input: $readOnlyRecord(parsed, "blog.Post#archive"), actor: $actor, context: $context },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Post", action: "archive" },
+        { entity: "blog.Post", action: "archive" },
         parsed,
         context,
         async (tx) => {
@@ -351,38 +351,39 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.post, $key);
-          if ($before === undefined) throw new $NotFoundError("Post", $key);
+          if ($before === undefined) throw new $NotFoundError("blog.Post", $key);
           const $record: $Row = { ...$before };
           const $load = { actor: $actor, context: $context, clock: $clock };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Post", $record, "action function"),
-            "Post.archive",
+            $guarded($loadPlan, "blog.Post", $record, "action function"),
+            "blog.Post#archive",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Post.archive"),
+              input: $readOnlyRecord(parsed, "blog.Post#archive"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "Post", $before, "before"),
-                "Post.archive",
+                $guarded($loadPlan, "blog.Post", $before, "before"),
+                "blog.Post#archive",
               ) as unknown as Post,
-              ...$composed(compose, tx, context, "Post.archive", $clock),
+              ...$composed(compose, tx, context, "blog.Post#archive", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<ArchivePostInput>;
           // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
-          await $loadInto($loadPlan, "Post", tx, $record, ["author"], $load);
+          await $loadInto($loadPlan, "blog.Post", tx, $record, ["author"], $load);
           await $policies.inside($checkScope($s));
           // data layer
-          if (!(await tx.deleteByKey(tables.post, $key))) throw new $NotFoundError("Post", $key);
+          if (!(await tx.deleteByKey(tables.post, $key)))
+            throw new $NotFoundError("blog.Post", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Post", action: "archive" },
+            { entity: "blog.Post", action: "archive" },
             $before,
             null,
             parsed,
@@ -413,7 +414,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readPostInput, input);
       if (
-        !(await $authorizer("Post", "read", [
+        !(await $authorizer("blog.Post", "read", [
           {
             name: "public",
             when: null,
@@ -430,7 +431,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
           layer,
           $scope(
             {
-              input: $readOnlyRecord($parsed as never, "Post.read"),
+              input: $readOnlyRecord($parsed as never, "blog.Post#read"),
               actor: $actor,
               context: $context,
             },
@@ -455,7 +456,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Post", "destroy", [
+      const $policies = $authorizer("blog.Post", "destroy", [
         {
           name: "owner",
           when: null,
@@ -472,14 +473,14 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Post.destroy"), actor: $actor, context: $context },
+          { input: $readOnlyRecord(parsed, "blog.Post#destroy"), actor: $actor, context: $context },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Post", action: "destroy" },
+        { entity: "blog.Post", action: "destroy" },
         parsed,
         context,
         async (tx) => {
@@ -487,38 +488,39 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.post, $key);
-          if ($before === undefined) throw new $NotFoundError("Post", $key);
+          if ($before === undefined) throw new $NotFoundError("blog.Post", $key);
           const $record: $Row = { ...$before };
           const $load = { actor: $actor, context: $context, clock: $clock };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Post", $record, "action function"),
-            "Post.destroy",
+            $guarded($loadPlan, "blog.Post", $record, "action function"),
+            "blog.Post#destroy",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Post.destroy"),
+              input: $readOnlyRecord(parsed, "blog.Post#destroy"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "Post", $before, "before"),
-                "Post.destroy",
+                $guarded($loadPlan, "blog.Post", $before, "before"),
+                "blog.Post#destroy",
               ) as unknown as Post,
-              ...$composed(compose, tx, context, "Post.destroy", $clock),
+              ...$composed(compose, tx, context, "blog.Post#destroy", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<DestroyPostInput>;
           // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
-          await $loadInto($loadPlan, "Post", tx, $record, ["author"], $load);
+          await $loadInto($loadPlan, "blog.Post", tx, $record, ["author"], $load);
           await $policies.inside($checkScope($s));
           // data layer
-          if (!(await tx.deleteByKey(tables.post, $key))) throw new $NotFoundError("Post", $key);
+          if (!(await tx.deleteByKey(tables.post, $key)))
+            throw new $NotFoundError("blog.Post", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Post", action: "destroy" },
+            { entity: "blog.Post", action: "destroy" },
             $before,
             null,
             parsed,

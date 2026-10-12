@@ -15,13 +15,13 @@ export function capabilityDiagnostics(document: ModelDocument, adapter: DataAdap
     const key = entity.attributes.find((attribute) => attribute.primaryKey);
     if (key?.type === "integer" && !declared.includes("integer-key-fill")) {
       diagnostics.push(error("MESH_CAPABILITY",
-        `Entity :${entity.name} has the integer primary key :${key.name}, which the data layer fills, and the data adapter "${adapter.name}" does not declare the integer-key-fill capability`,
+        `Entity ${entity.fqn} has the integer primary key :${key.name}, which the data layer fills, and the data adapter "${adapter.name}" does not declare the integer-key-fill capability`,
         key.position, `Use a data adapter that declares integer-key-fill, or make :${key.name} a uuid`));
     }
     for (const field of entity.computed) {
       if ((field.rollup?.fn === "count" || field.rollup?.fn === "max") && !declared.includes("aggregates")) {
         diagnostics.push(error("MESH_CAPABILITY",
-          `Entity :${entity.name} has the ${field.rollup.fn} rollup :${field.name}, which calls the data layer's ${field.rollup.fn}, and the data adapter "${adapter.name}" does not declare the aggregates capability`,
+          `Entity ${entity.fqn} has the ${field.rollup.fn} rollup :${field.name}, which calls the data layer's ${field.rollup.fn}, and the data adapter "${adapter.name}" does not declare the aggregates capability`,
           field.position, "Use a data adapter that declares aggregates, or remove the rollup"));
       }
     }

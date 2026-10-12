@@ -470,7 +470,7 @@ export async function managesTaskOf(tx: Reads, task: { readonly id: string; read
  */
 export async function assigneeMayClaimOf(tx: Reads, taskId: string, actorId: string): Promise<boolean> {
   if ((await roleOf(tx, actorId)) === null) return true;
-  if (!(await taskOf(tx, taskId))) throw new NotFoundError("Task", taskId);
+  if (!(await taskOf(tx, taskId))) throw new NotFoundError("work.Task", taskId);
   const current = await currentAssignmentOf(tx, taskId);
   return current === undefined || current.assigneeId === actorId;
 }

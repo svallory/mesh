@@ -80,7 +80,7 @@ export function bindRunReads(layer: $DataLayer, options: $BindOptions = {}) {
           return $rows as unknown as L extends unknown ? RunTxWith<RunLoadNames<L>>[] : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
-        return (await $loadRows($loadPlan, "Run", tx, $rows, parsed.load, {
+        return (await $loadRows($loadPlan, "execution.Run", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
@@ -105,7 +105,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Run", "start", [
+      const $policies = $authorizer("execution.Run", "start", [
         {
           name: "isMember",
           when: null,
@@ -135,14 +135,18 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Run.start"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "execution.Run#start"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Run", action: "start" },
+        { entity: "execution.Run", action: "start" },
         parsed,
         context,
         async (tx) => {
@@ -168,17 +172,17 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
           };
           const $load = { actor: $actor, context: $context, clock: $clock };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Run", $record, "action function"),
-            "Run.start",
+            $guarded($loadPlan, "execution.Run", $record, "action function"),
+            "execution.Run#start",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Run.start"),
+              input: $readOnlyRecord(parsed, "execution.Run#start"),
               actor: $actor,
               context: $context,
               before: null,
-              ...$composed(compose, tx, context, "Run.start", $clock),
+              ...$composed(compose, tx, context, "execution.Run#start", $clock),
             },
             { clock: $clock },
           ) as unknown as $Scope<StartRunInput>;
@@ -216,7 +220,14 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
               );
             $changes.startedById = $record.startedById = $value;
           }
-          await $loadInto($loadPlan, "Run", tx, $record, ["task", "task.assignments"], $load);
+          await $loadInto(
+            $loadPlan,
+            "execution.Run",
+            tx,
+            $record,
+            ["task", "task.assignments"],
+            $load,
+          );
           {
             const $value = await $expressions["start.step.0.set.responsible"]($s);
             if ($value === undefined || $value === null)
@@ -225,7 +236,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
               );
             $changes.responsibleId = $record.responsibleId = $value;
           }
-          $unloadFrom($loadPlan, "Run", $record);
+          $unloadFrom($loadPlan, "execution.Run", $record);
           // data layer
           const $stored = await tx.insert(tables.run, $changes);
           $noteWrite(tx);
@@ -233,7 +244,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Run", action: "start" },
+            { entity: "execution.Run", action: "start" },
             null,
             $stored,
             parsed,
@@ -251,7 +262,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Run", "cancel", [
+      const $policies = $authorizer("execution.Run", "cancel", [
         {
           name: "isMember",
           when: null,
@@ -294,14 +305,18 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Run.cancel"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "execution.Run#cancel"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Run", action: "cancel" },
+        { entity: "execution.Run", action: "cancel" },
         parsed,
         context,
         async (tx) => {
@@ -309,25 +324,25 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.run, $key);
-          if ($before === undefined) throw new $NotFoundError("Run", $key);
+          if ($before === undefined) throw new $NotFoundError("execution.Run", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
           const $writes = $writeCount(tx);
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Run", $record, "action function"),
-            "Run.cancel",
+            $guarded($loadPlan, "execution.Run", $record, "action function"),
+            "execution.Run#cancel",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Run.cancel"),
+              input: $readOnlyRecord(parsed, "execution.Run#cancel"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "Run", $before, "before"),
-                "Run.cancel",
+                $guarded($loadPlan, "execution.Run", $before, "before"),
+                "execution.Run#cancel",
               ) as unknown as Run,
-              ...$composed(compose, tx, context, "Run.cancel", $clock),
+              ...$composed(compose, tx, context, "execution.Run#cancel", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<CancelRunInput>;
@@ -372,15 +387,15 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
           }
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.run, $key, $before, "Run.cancel");
+          await $checkUnchanged(tx, $writes, tables.run, $key, $before, "execution.Run#cancel");
           const $stored = await tx.updateByKey(tables.run, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("Run", $key);
+          if ($stored === undefined) throw new $NotFoundError("execution.Run", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Run", action: "cancel" },
+            { entity: "execution.Run", action: "cancel" },
             $before,
             $stored,
             parsed,
@@ -398,7 +413,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Run", "settle", [
+      const $policies = $authorizer("execution.Run", "settle", [
         {
           name: "internal",
           when: null,
@@ -415,14 +430,18 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Run.settle"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "execution.Run#settle"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Run", action: "settle" },
+        { entity: "execution.Run", action: "settle" },
         parsed,
         context,
         async (tx) => {
@@ -430,25 +449,25 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.run, $key);
-          if ($before === undefined) throw new $NotFoundError("Run", $key);
+          if ($before === undefined) throw new $NotFoundError("execution.Run", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
           const $writes = $writeCount(tx);
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Run", $record, "action function"),
-            "Run.settle",
+            $guarded($loadPlan, "execution.Run", $record, "action function"),
+            "execution.Run#settle",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Run.settle"),
+              input: $readOnlyRecord(parsed, "execution.Run#settle"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "Run", $before, "before"),
-                "Run.settle",
+                $guarded($loadPlan, "execution.Run", $before, "before"),
+                "execution.Run#settle",
               ) as unknown as Run,
-              ...$composed(compose, tx, context, "Run.settle", $clock),
+              ...$composed(compose, tx, context, "execution.Run#settle", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<SettleRunInput>;
@@ -477,15 +496,15 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
           }
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.run, $key, $before, "Run.settle");
+          await $checkUnchanged(tx, $writes, tables.run, $key, $before, "execution.Run#settle");
           const $stored = await tx.updateByKey(tables.run, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("Run", $key);
+          if ($stored === undefined) throw new $NotFoundError("execution.Run", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Run", action: "settle" },
+            { entity: "execution.Run", action: "settle" },
             $before,
             $stored,
             parsed,
@@ -506,7 +525,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readRunInput, input);
       if (
-        !(await $authorizer("Run", "read", [
+        !(await $authorizer("execution.Run", "read", [
           {
             name: "membersRead",
             when: null,
@@ -523,7 +542,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
           layer,
           $scope(
             {
-              input: $readOnlyRecord($parsed as never, "Run.read"),
+              input: $readOnlyRecord($parsed as never, "execution.Run#read"),
               actor: $actor,
               context: $context,
             },

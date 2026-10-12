@@ -102,7 +102,7 @@ describe("inverse (acceptance 2, ADR-0070, DOM-32)", () => {
     const result = build({ "collaborator.mesh.mx": collaborator(), "membership.mesh.mx": unnamed() });
     expect(result.diagnostics).toEqual([expect.objectContaining({
       code: "MESH_INVERSE_REQUIRED",
-      message: "has-many :memberships of :Collaborator could follow any of 3 belongs-to of :Membership back to :Collaborator (:holder, :grantedBy, :revokedBy)",
+      message: "has-many :memberships of app.Collaborator could follow any of 3 belongs-to of app.Membership back to app.Collaborator (:holder, :grantedBy, :revokedBy)",
       fix: "Choose one: `inverse=:holder`",
     })]);
   });
@@ -147,7 +147,7 @@ describe("inverse (acceptance 2, ADR-0070, DOM-32)", () => {
     const result = build({ "collaborator.mesh.mx": collaborator(" inverse=:collaborater"), "membership.mesh.mx": membership() });
     expect(result.diagnostics).toEqual([expect.objectContaining({
       code: "MESH_INVERSE_UNKNOWN",
-      message: "inverse=:collaborater names no belongs-to of :Membership. Did you mean inverse=:collaborator?",
+      message: "inverse=:collaborater names no belongs-to of app.Membership. Did you mean inverse=:collaborator?",
       position: expect.objectContaining({ file: "app/collaborator.mesh.mx", line: 6 }),
     })]);
     expect(result.document).toBeNull();
@@ -172,7 +172,7 @@ entity :Membership
     const result = build({ "collaborator.mesh.mx": collaborator(" inverse=:workspace"), "membership.mesh.mx": source, "workspace.mesh.mx": workspace });
     expect(result.diagnostics).toEqual([expect.objectContaining({
       code: "MESH_INVERSE_ENTITY",
-      message: "inverse=:workspace is a belongs-to of :Membership that points at :Workspace, not at :Collaborator. The belongs-to from :Membership to :Collaborator: :collaborator.",
+      message: "inverse=:workspace is a belongs-to of app.Membership that points at app.Workspace, not at app.Collaborator. The belongs-to from app.Membership to app.Collaborator: :collaborator.",
     })]);
   });
 
@@ -385,7 +385,7 @@ string :three() { return JSON.stringify(&notes?.at(0)?.doc?.owner?.docCount) }`)
     const result = build({ "doc.mesh.mx": owner, "orphan.mesh.mx": orphan });
     expect(result.diagnostics).toEqual([expect.objectContaining({
       code: "MESH_NO_INVERSE",
-      message: "&hasOrphans reads has-many :orphans, which cannot be loaded: :Orphan has no belongs-to back to :Doc",
+      message: "&hasOrphans reads has-many :orphans, which cannot be loaded: app.Orphan has no belongs-to back to app.Doc",
     })]);
   });
 
@@ -446,7 +446,7 @@ describe("a used has-many with several candidates and no inverse lists them", ()
     const read = result.diagnostics.filter((d) => d.message.startsWith("&member "));
     expect(read).toEqual([expect.objectContaining({
       code: "MESH_INVERSE_REQUIRED",
-      message: "&member reads has-many :memberships, which cannot be loaded: :Membership has 3 belongs-to back to :Collaborator (:holder, :grantedBy, :revokedBy) and has-many :memberships does not say which it follows",
+      message: "&member reads has-many :memberships, which cannot be loaded: app.Membership has 3 belongs-to back to app.Collaborator (:holder, :grantedBy, :revokedBy) and has-many :memberships does not say which it follows",
       fix: "Choose one: `inverse=:holder`",
     })]);
     expect(result.diagnostics.some((d) => d.code === "MESH_NO_INVERSE")).toBe(false);

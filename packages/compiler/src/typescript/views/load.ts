@@ -27,7 +27,7 @@ export interface LoadView {
 }
 
 export interface LoadEntity {
-  /** The entity's name as a quoted string literal: the key of its plan entry and the target other entries name. */
+  /** The entity's FQN (e.g. `blog.Post`) as a quoted string literal: the key of its plan entry and the target other entries name. */
   readonly nameLiteral: string;
   /** The entity's table handle in the schema file, e.g. `tables.task`. */
   readonly table: string;
@@ -52,7 +52,7 @@ export interface LoadFunction {
   readonly record: string;
   readonly loadable: string;
   readonly with: string;
-  /** The entity's name as a quoted string literal. */
+  /** The entity's FQN (e.g. `blog.Post`) as a quoted string literal. */
   readonly entityLiteral: string;
 }
 
@@ -78,12 +78,12 @@ export function loadView(input: EmitInput, generatedPath: string): LoadView {
   const entities = ordered.map((entity): LoadEntity => {
     const record = typeName(entity.name, entity.position);
     const key = entity.attributes.find((attribute) => attribute.primaryKey);
-    if (!key) throw emitError("MESH_EMIT_KEY", `Entity :${entity.name} has no primary key`, entity.position);
+    if (!key) throw emitError("MESH_EMIT_KEY", `Entity ${entity.fqn} has no primary key`, entity.position);
     const relations = entity.relationships.map((relation) => {
       const target = relationTarget(document, entity, relation);
       const targetKey = target.attributes.find((attribute) => attribute.primaryKey);
-      if (!targetKey) throw emitError("MESH_EMIT_KEY", `Entity :${target.name} has no primary key`, target.position);
-      const parts = [`kind: ${JSON.stringify(relation.kind)}`, `target: ${JSON.stringify(target.name)}`];
+      if (!targetKey) throw emitError("MESH_EMIT_KEY", `Entity ${target.fqn} has no primary key`, target.position);
+      const parts = [`kind: ${JSON.stringify(relation.kind)}`, `target: ${JSON.stringify(target.fqn)}`];
       if (relation.kind === "belongs-to") parts.push(`column: ${JSON.stringify(relation.keyColumn)}`, `nullable: ${relation.nullable}`);
       else {
         const back = relation.inverse === undefined ? undefined : target.relationships.find((other) => other.name === relation.inverse);
@@ -113,11 +113,11 @@ export function loadView(input: EmitInput, generatedPath: string): LoadView {
     if (hasLoader(entity)) {
       // A loader is what a `load` step and a function of an entity file call: it runs no policy, so it is typed as `tx` loads.
       const tx = txLoadTypes(entity);
-      loader = { name: loaderName(entity), record, loadable: `${record}Loadable`, with: tx.with, entityLiteral: JSON.stringify(entity.name) };
+      loader = { name: loaderName(entity), record, loadable: `${record}Loadable`, with: tx.with, entityLiteral: JSON.stringify(entity.fqn) };
       typeImports.push({ names: `${record}, ${record}Loadable, ${tx.with}`, fromLiteral: fromLiteral(generatedPath, `${posix.dirname(generatedPath)}/${entityPath(entity)}.types`) });
     }
     return {
-      nameLiteral: JSON.stringify(entity.name),
+      nameLiteral: JSON.stringify(entity.fqn),
       table: `tables.${camelCase(entity.name)}`,
       keyLiteral: JSON.stringify(key.name),
       relations, computed, reads, loader,

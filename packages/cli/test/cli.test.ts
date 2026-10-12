@@ -180,7 +180,7 @@ test.each(["build", "inspect"])("%s errors have exact positions and write no fil
 test.each([["titel", " Did you mean &title?"], ["unknown", ""]])("unknown member %s prints the exact diagnostic", async (name, tail) => {
   const root = await project();
   await writeFile(join(root, sourcePath), source.replace('&title', `&${name}`));
-  expect(run(root, "build")).toEqual({ code: 1, stdout: "", stderr: `${sourcePath}:8:9 error &${name} is not a member of :Todo.${tail}\n1 error, 0 warnings\n` });
+  expect(run(root, "build")).toEqual({ code: 1, stdout: "", stderr: `${sourcePath}:8:9 error &${name} is not a member of todos.Todo.${tail}\n1 error, 0 warnings\n` });
 }, 30_000);
 
 test("missing config is exit 1 with a diagnostic, with no upward search", async () => {
@@ -197,8 +197,8 @@ test("invalid config is exit 1 with exact position", async () => {
 test("explain prints the plan: a create is one insert; usage and unknown names fail", async () => {
   const root = await builtProject();
   expect(run(root, "explain", "Todo", "create")).toEqual({ code: 0, stderr: "0 errors, 0 warnings\n", stdout:
-    "Todo.create (create)\n  strategy     one insert; nothing is read first\n  input        &title\n  policies     none covers it: every call is forbidden (an action no policy covers is denied)\n  checks       none\n  steps        none\n  seams        beforeTransaction: before the transaction opens, for a top-level call only (a call through `actions` or inside `transaction` joins one and runs none)\n               afterWrite: inside the transaction, right after the row is written, before the steps after the write\n               afterCommit: once, after the outermost transaction commits, with every change it made\n" });
-  expect(run(root, "explain", "Todo", "nope")).toEqual({ code: 1, stdout: "", stderr: 'mesh.config.ts:1:1 error Unknown action "nope" of Todo; known actions: create\n1 error, 0 warnings\n' });
+    "todos.Todo#create (create)\n  strategy     one insert; nothing is read first\n  input        &title\n  policies     none covers it: every call is forbidden (an action no policy covers is denied)\n  checks       none\n  steps        none\n  seams        beforeTransaction: before the transaction opens, for a top-level call only (a call through `actions` or inside `transaction` joins one and runs none)\n               afterWrite: inside the transaction, right after the row is written, before the steps after the write\n               afterCommit: once, after the outermost transaction commits, with every change it made\n" });
+  expect(run(root, "explain", "Todo", "nope")).toEqual({ code: 1, stdout: "", stderr: 'mesh.config.ts:1:1 error Unknown action "nope" of todos.Todo; known actions: create\n1 error, 0 warnings\n' });
   expect(run(root, "explain", "Nope", "create").code).toBe(1);
   expect(run(root, "explain", "Todo").code).toBe(2);
   expect(run(root, "explain", "Todo", "create", "extra").code).toBe(2);
@@ -216,8 +216,13 @@ test("inspect prints precisely the built model bytes or the named entity with th
   expect(run(root, "inspect")).toEqual({ code: 0, stdout: bytes, stderr: "0 errors, 0 warnings\n" });
   expect(run(root, "inspect", "Todo")).toEqual({ code: 0, stdout: `${stableJsonStringify(document.entities[0])}\n`, stderr: "0 errors, 0 warnings\n" });
   expect(run(root, "inspect", "todo").code).toBe(1);
+  // PRJ-16: the full FQN and the shortened name pick the same entity, case-sensitively; the output names it by FQN (PRJ-17).
+  expect(run(root, "inspect", "todos.Todo").stdout).toBe(run(root, "inspect", "Todo").stdout);
+  expect(JSON.parse(run(root, "inspect", "Todo").stdout)).toMatchObject({ name: "Todo", fqn: "todos.Todo", module: "todos" });
+  expect(run(root, "inspect", "Todos.Todo").code).toBe(1);
+  expect(run(root, "explain", "todos.Todo", "create").stdout).toStartWith("todos.Todo#create (create)\n");
   expect(document.data).toEqual({ name: "sqlite" });
-  expect(run(root, "inspect", "absent")).toEqual({ code: 1, stdout: "", stderr: 'mesh.config.ts:1:1 error Unknown entity "absent"; known entities: Todo\n1 error, 0 warnings\n' });
+  expect(run(root, "inspect", "absent")).toEqual({ code: 1, stdout: "", stderr: 'mesh.config.ts:1:1 error Unknown entity "absent"; known entities: todos.Todo\n1 error, 0 warnings\n' });
   await rm(join(root, "generated"), { recursive: true });
   expect(run(root, "inspect").stdout).toBe(bytes);
   expect(await Bun.file(join(root, "generated/model.json")).exists()).toBe(false);
@@ -247,7 +252,7 @@ test("inspect orders multiple entities exactly like model.json and lists known n
   const bytes = await readFile(join(root, "generated/model.json"), "utf8");
   expect(run(root, "inspect").stdout).toBe(bytes);
   expect(JSON.parse(bytes).entities.map((entity: { name: string }) => entity.name)).toEqual(["Todo", "Alpha"]);
-  expect(run(root, "inspect", "missing").stderr).toBe('mesh.config.ts:1:1 error Unknown entity "missing"; known entities: Alpha, Todo\n1 error, 0 warnings\n');
+  expect(run(root, "inspect", "missing").stderr).toBe('mesh.config.ts:1:1 error Unknown entity "missing"; known entities: Alpha, todos.Todo\n1 error, 0 warnings\n');
 }, 30_000);
 
 test("build errors are sorted across files and preserve an existing tree", async () => {
@@ -683,7 +688,7 @@ test.each([["build"], ["build", "--check"], ["inspect"], ["inspect", "Item"], ["
   const result = run(root, ...args);
   expect(result.code).toBe(1);
   expect(result.stdout).toBe("");
-  expect(result.stderr).toContain("domain/todos/item.mesh.mx:5:5 error Action :forUser of :Item and Action :for of :UserItem (domain/other/user-item.mesh.mx:5:5) both become the top-level name `forUserItem`");
+  expect(result.stderr).toContain("domain/todos/item.mesh.mx:5:5 error Action :forUser of todos.Item and Action :for of other.UserItem (domain/other/user-item.mesh.mx:5:5) both become the top-level name `forUserItem`");
   expect(result.stderr).toEndWith("1 error, 0 warnings\n");
   expect(await Bun.file(join(root, "generated/model.json")).exists()).toBe(false);
 }, 30_000);

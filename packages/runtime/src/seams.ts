@@ -15,7 +15,7 @@ export type SeamContext = Readonly<ActionContext>;
 
 /** One row an action wrote: the row as it was (`null` for a create) and as written (`null` for a destroy). */
 export interface Change {
-  /** The entity's name, e.g. `Review`. */
+  /** The entity's FQN, e.g. `work.Review`. */
   readonly entity: string;
   /** The action's name, e.g. `accept`. */
   readonly action: string;
@@ -25,6 +25,7 @@ export interface Change {
 
 /** What `beforeTransaction` receives. */
 export interface BeforeTransactionEvent {
+  /** The entity's FQN, e.g. `work.Review`. */
   readonly entity: string;
   readonly action: string;
   /** The validated input of the call. */
@@ -71,6 +72,7 @@ export interface Seams {
 
 /** What names an action to a seam. */
 export interface SeamTarget {
+  /** The entity's FQN, e.g. `work.Review`. */
   readonly entity: string;
   readonly action: string;
 }

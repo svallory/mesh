@@ -160,6 +160,11 @@ export interface Policy {
 }
 export interface Entity {
   name: string;
+  /**
+   * Fully qualified name, computed once by the front end: the module's folders joined by `.`, then `.` and the name
+   * (`work.Review`); at the domain root, the name alone. Every other component reads it and never rebuilds it.
+   */
+  fqn: string;
   table: string;
   file: string;
   module: string;

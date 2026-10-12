@@ -90,11 +90,11 @@ import type { Task, TaskLoadable, TaskTxWith } from "./domain/work/task.types";
  * a caller's load of it runs (none listed: a caller loads none of its records).
  */
 export const loadPlan = {
-  Event: {
+  "audit.Event": {
     table: tables.event,
     key: "seq",
     relations: {
-      task: { kind: "belongs-to", target: "Task", column: "taskId", nullable: true },
+      task: { kind: "belongs-to", target: "work.Task", column: "taskId", nullable: true },
     },
     computed: {},
     reads: [
@@ -112,28 +112,33 @@ export const loadPlan = {
       },
     ],
   },
-  Attempt: {
+  "execution.Attempt": {
     table: tables.attempt,
     key: "id",
     relations: {
-      run: { kind: "belongs-to", target: "Run", column: "runId", nullable: false },
-      task: { kind: "belongs-to", target: "Task", column: "taskId", nullable: false },
+      run: { kind: "belongs-to", target: "execution.Run", column: "runId", nullable: false },
+      task: { kind: "belongs-to", target: "work.Task", column: "taskId", nullable: false },
       performer: {
         kind: "belongs-to",
-        target: "Collaborator",
+        target: "identity.Collaborator",
         column: "performerId",
         nullable: false,
       },
       delegator: {
         kind: "belongs-to",
-        target: "Collaborator",
+        target: "identity.Collaborator",
         column: "delegatorId",
         nullable: false,
       },
-      machine: { kind: "belongs-to", target: "Machine", column: "machineId", nullable: true },
+      machine: {
+        kind: "belongs-to",
+        target: "execution.Machine",
+        column: "machineId",
+        nullable: true,
+      },
       session: {
         kind: "belongs-to",
-        target: "SessionReference",
+        target: "execution.SessionReference",
         column: "sessionId",
         nullable: true,
       },
@@ -154,22 +159,32 @@ export const loadPlan = {
       },
     ],
   },
-  Invocation: {
+  "execution.Invocation": {
     table: tables.invocation,
     key: "id",
     relations: {
-      attempt: { kind: "belongs-to", target: "Attempt", column: "attemptId", nullable: false },
-      task: { kind: "belongs-to", target: "Task", column: "taskId", nullable: false },
+      attempt: {
+        kind: "belongs-to",
+        target: "execution.Attempt",
+        column: "attemptId",
+        nullable: false,
+      },
+      task: { kind: "belongs-to", target: "work.Task", column: "taskId", nullable: false },
       session: {
         kind: "belongs-to",
-        target: "SessionReference",
+        target: "execution.SessionReference",
         column: "sessionId",
         nullable: true,
       },
-      corrects: { kind: "belongs-to", target: "Invocation", column: "correctsId", nullable: true },
+      corrects: {
+        kind: "belongs-to",
+        target: "execution.Invocation",
+        column: "correctsId",
+        nullable: true,
+      },
       recordedBy: {
         kind: "belongs-to",
-        target: "Collaborator",
+        target: "identity.Collaborator",
         column: "recordedById",
         nullable: false,
       },
@@ -190,17 +205,17 @@ export const loadPlan = {
       },
     ],
   },
-  Machine: {
+  "execution.Machine": {
     table: tables.machine,
     key: "id",
     relations: {
       firstReportedBy: {
         kind: "belongs-to",
-        target: "Collaborator",
+        target: "identity.Collaborator",
         column: "firstReportedById",
         nullable: true,
       },
-      attempts: { kind: "has-many", target: "Attempt", column: "machineId" },
+      attempts: { kind: "has-many", target: "execution.Attempt", column: "machineId" },
     },
     computed: {},
     reads: [
@@ -218,25 +233,30 @@ export const loadPlan = {
       },
     ],
   },
-  Run: {
+  "execution.Run": {
     table: tables.run,
     key: "id",
     relations: {
-      task: { kind: "belongs-to", target: "Task", column: "taskId", nullable: false },
+      task: { kind: "belongs-to", target: "work.Task", column: "taskId", nullable: false },
       responsible: {
         kind: "belongs-to",
-        target: "Collaborator",
+        target: "identity.Collaborator",
         column: "responsibleId",
         nullable: false,
       },
       startedBy: {
         kind: "belongs-to",
-        target: "Collaborator",
+        target: "identity.Collaborator",
         column: "startedById",
         nullable: false,
       },
-      parentRun: { kind: "belongs-to", target: "Run", column: "parentRunId", nullable: true },
-      attempts: { kind: "has-many", target: "Attempt", column: "runId" },
+      parentRun: {
+        kind: "belongs-to",
+        target: "execution.Run",
+        column: "parentRunId",
+        nullable: true,
+      },
+      attempts: { kind: "has-many", target: "execution.Attempt", column: "runId" },
     },
     computed: {},
     reads: [
@@ -254,20 +274,25 @@ export const loadPlan = {
       },
     ],
   },
-  SessionReference: {
+  "execution.SessionReference": {
     table: tables.sessionReference,
     key: "id",
     relations: {
-      machine: { kind: "belongs-to", target: "Machine", column: "machineId", nullable: false },
+      machine: {
+        kind: "belongs-to",
+        target: "execution.Machine",
+        column: "machineId",
+        nullable: false,
+      },
       agentProfile: {
         kind: "belongs-to",
-        target: "Collaborator",
+        target: "identity.Collaborator",
         column: "agentProfileId",
         nullable: false,
       },
       recordedBy: {
         kind: "belongs-to",
-        target: "Collaborator",
+        target: "identity.Collaborator",
         column: "recordedById",
         nullable: false,
       },
@@ -288,11 +313,11 @@ export const loadPlan = {
       },
     ],
   },
-  Collaborator: {
+  "identity.Collaborator": {
     table: tables.collaborator,
     key: "id",
     relations: {
-      memberships: { kind: "has-many", target: "Membership", column: "collaboratorId" },
+      memberships: { kind: "has-many", target: "identity.Membership", column: "collaboratorId" },
     },
     computed: {},
     reads: [
@@ -310,25 +335,25 @@ export const loadPlan = {
       },
     ],
   },
-  Membership: {
+  "identity.Membership": {
     table: tables.membership,
     key: "id",
     relations: {
       collaborator: {
         kind: "belongs-to",
-        target: "Collaborator",
+        target: "identity.Collaborator",
         column: "collaboratorId",
         nullable: false,
       },
       grantedBy: {
         kind: "belongs-to",
-        target: "Collaborator",
+        target: "identity.Collaborator",
         column: "grantedById",
         nullable: false,
       },
       revokedBy: {
         kind: "belongs-to",
-        target: "Collaborator",
+        target: "identity.Collaborator",
         column: "revokedById",
         nullable: true,
       },
@@ -349,7 +374,7 @@ export const loadPlan = {
       },
     ],
   },
-  Workspace: {
+  "identity.Workspace": {
     table: tables.workspace,
     key: "id",
     relations: {},
@@ -369,20 +394,20 @@ export const loadPlan = {
       },
     ],
   },
-  Assignment: {
+  "work.Assignment": {
     table: tables.assignment,
     key: "id",
     relations: {
-      task: { kind: "belongs-to", target: "Task", column: "taskId", nullable: false },
+      task: { kind: "belongs-to", target: "work.Task", column: "taskId", nullable: false },
       assignee: {
         kind: "belongs-to",
-        target: "Collaborator",
+        target: "identity.Collaborator",
         column: "assigneeId",
         nullable: false,
       },
       delegator: {
         kind: "belongs-to",
-        target: "Collaborator",
+        target: "identity.Collaborator",
         column: "delegatorId",
         nullable: false,
       },
@@ -403,12 +428,17 @@ export const loadPlan = {
       },
     ],
   },
-  Claim: {
+  "work.Claim": {
     table: tables.claim,
     key: "id",
     relations: {
-      task: { kind: "belongs-to", target: "Task", column: "taskId", nullable: false },
-      holder: { kind: "belongs-to", target: "Collaborator", column: "holderId", nullable: false },
+      task: { kind: "belongs-to", target: "work.Task", column: "taskId", nullable: false },
+      holder: {
+        kind: "belongs-to",
+        target: "identity.Collaborator",
+        column: "holderId",
+        nullable: false,
+      },
     },
     computed: {
       lapsed: { kind: "body", needs: [], evaluate: claimExpressions["computed.lapsed"] },
@@ -428,20 +458,20 @@ export const loadPlan = {
       },
     ],
   },
-  Completion: {
+  "work.Completion": {
     table: tables.completion,
     key: "id",
     relations: {
-      task: { kind: "belongs-to", target: "Task", column: "taskId", nullable: false },
+      task: { kind: "belongs-to", target: "work.Task", column: "taskId", nullable: false },
       submission: {
         kind: "belongs-to",
-        target: "Submission",
+        target: "work.Submission",
         column: "submissionId",
         nullable: true,
       },
       completedBy: {
         kind: "belongs-to",
-        target: "Collaborator",
+        target: "identity.Collaborator",
         column: "completedById",
         nullable: false,
       },
@@ -462,20 +492,25 @@ export const loadPlan = {
       },
     ],
   },
-  Dependency: {
+  "work.Dependency": {
     table: tables.dependency,
     key: "id",
     relations: {
-      dependent: { kind: "belongs-to", target: "Task", column: "dependentId", nullable: false },
+      dependent: {
+        kind: "belongs-to",
+        target: "work.Task",
+        column: "dependentId",
+        nullable: false,
+      },
       prerequisite: {
         kind: "belongs-to",
-        target: "Task",
+        target: "work.Task",
         column: "prerequisiteId",
         nullable: false,
       },
       createdBy: {
         kind: "belongs-to",
-        target: "Collaborator",
+        target: "identity.Collaborator",
         column: "createdById",
         nullable: false,
       },
@@ -496,13 +531,13 @@ export const loadPlan = {
       },
     ],
   },
-  EvidenceReference: {
+  "work.EvidenceReference": {
     table: tables.evidenceReference,
     key: "id",
     relations: {
       recordedBy: {
         kind: "belongs-to",
-        target: "Collaborator",
+        target: "identity.Collaborator",
         column: "recordedById",
         nullable: false,
       },
@@ -523,14 +558,14 @@ export const loadPlan = {
       },
     ],
   },
-  LateResult: {
+  "work.LateResult": {
     table: tables.lateResult,
     key: "id",
     relations: {
-      task: { kind: "belongs-to", target: "Task", column: "taskId", nullable: false },
+      task: { kind: "belongs-to", target: "work.Task", column: "taskId", nullable: false },
       submitter: {
         kind: "belongs-to",
-        target: "Collaborator",
+        target: "identity.Collaborator",
         column: "submitterId",
         nullable: false,
       },
@@ -551,19 +586,19 @@ export const loadPlan = {
       },
     ],
   },
-  Review: {
+  "work.Review": {
     table: tables.review,
     key: "id",
     relations: {
       submission: {
         kind: "belongs-to",
-        target: "Submission",
+        target: "work.Submission",
         column: "submissionId",
         nullable: false,
       },
       reviewer: {
         kind: "belongs-to",
-        target: "Collaborator",
+        target: "identity.Collaborator",
         column: "reviewerId",
         nullable: false,
       },
@@ -584,14 +619,14 @@ export const loadPlan = {
       },
     ],
   },
-  Submission: {
+  "work.Submission": {
     table: tables.submission,
     key: "id",
     relations: {
-      task: { kind: "belongs-to", target: "Task", column: "taskId", nullable: false },
+      task: { kind: "belongs-to", target: "work.Task", column: "taskId", nullable: false },
       submitter: {
         kind: "belongs-to",
-        target: "Collaborator",
+        target: "identity.Collaborator",
         column: "submitterId",
         nullable: false,
       },
@@ -612,20 +647,25 @@ export const loadPlan = {
       },
     ],
   },
-  Task: {
+  "work.Task": {
     table: tables.task,
     key: "id",
     relations: {
-      parent: { kind: "belongs-to", target: "Task", column: "parentId", nullable: true },
-      creator: { kind: "belongs-to", target: "Collaborator", column: "creatorId", nullable: false },
-      children: { kind: "has-many", target: "Task", column: "parentId" },
-      dependencies: { kind: "has-many", target: "Dependency", column: "dependentId" },
-      dependents: { kind: "has-many", target: "Dependency", column: "prerequisiteId" },
-      assignments: { kind: "has-many", target: "Assignment", column: "taskId" },
-      claims: { kind: "has-many", target: "Claim", column: "taskId" },
-      submissions: { kind: "has-many", target: "Submission", column: "taskId" },
-      completions: { kind: "has-many", target: "Completion", column: "taskId" },
-      events: { kind: "has-many", target: "Event", column: "taskId" },
+      parent: { kind: "belongs-to", target: "work.Task", column: "parentId", nullable: true },
+      creator: {
+        kind: "belongs-to",
+        target: "identity.Collaborator",
+        column: "creatorId",
+        nullable: false,
+      },
+      children: { kind: "has-many", target: "work.Task", column: "parentId" },
+      dependencies: { kind: "has-many", target: "work.Dependency", column: "dependentId" },
+      dependents: { kind: "has-many", target: "work.Dependency", column: "prerequisiteId" },
+      assignments: { kind: "has-many", target: "work.Assignment", column: "taskId" },
+      claims: { kind: "has-many", target: "work.Claim", column: "taskId" },
+      submissions: { kind: "has-many", target: "work.Submission", column: "taskId" },
+      completions: { kind: "has-many", target: "work.Completion", column: "taskId" },
+      events: { kind: "has-many", target: "audit.Event", column: "taskId" },
     },
     computed: {
       childrenSettled: {
@@ -690,7 +730,7 @@ export async function loadEventFields<const N extends keyof EventLoadable>(
   names: readonly N[],
   options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<EventWith<N>[]> {
-  return (await $loadRows(loadPlan, "Event", tx, rows, names, {
+  return (await $loadRows(loadPlan, "audit.Event", tx, rows, names, {
     ...options,
     policies: false,
   })) as EventWith<N>[];
@@ -708,7 +748,7 @@ export async function loadAttemptFields<const N extends keyof AttemptLoadable>(
   names: readonly N[],
   options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<AttemptTxWith<N>[]> {
-  return (await $loadRows(loadPlan, "Attempt", tx, rows, names, {
+  return (await $loadRows(loadPlan, "execution.Attempt", tx, rows, names, {
     ...options,
     policies: false,
   })) as AttemptTxWith<N>[];
@@ -726,7 +766,7 @@ export async function loadInvocationFields<const N extends keyof InvocationLoada
   names: readonly N[],
   options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<InvocationTxWith<N>[]> {
-  return (await $loadRows(loadPlan, "Invocation", tx, rows, names, {
+  return (await $loadRows(loadPlan, "execution.Invocation", tx, rows, names, {
     ...options,
     policies: false,
   })) as InvocationTxWith<N>[];
@@ -744,7 +784,7 @@ export async function loadMachineFields<const N extends keyof MachineLoadable>(
   names: readonly N[],
   options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<MachineWith<N>[]> {
-  return (await $loadRows(loadPlan, "Machine", tx, rows, names, {
+  return (await $loadRows(loadPlan, "execution.Machine", tx, rows, names, {
     ...options,
     policies: false,
   })) as MachineWith<N>[];
@@ -762,7 +802,7 @@ export async function loadRunFields<const N extends keyof RunLoadable>(
   names: readonly N[],
   options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<RunTxWith<N>[]> {
-  return (await $loadRows(loadPlan, "Run", tx, rows, names, {
+  return (await $loadRows(loadPlan, "execution.Run", tx, rows, names, {
     ...options,
     policies: false,
   })) as RunTxWith<N>[];
@@ -780,7 +820,7 @@ export async function loadSessionReferenceFields<const N extends keyof SessionRe
   names: readonly N[],
   options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<SessionReferenceTxWith<N>[]> {
-  return (await $loadRows(loadPlan, "SessionReference", tx, rows, names, {
+  return (await $loadRows(loadPlan, "execution.SessionReference", tx, rows, names, {
     ...options,
     policies: false,
   })) as SessionReferenceTxWith<N>[];
@@ -798,7 +838,7 @@ export async function loadCollaboratorFields<const N extends keyof CollaboratorL
   names: readonly N[],
   options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<CollaboratorWith<N>[]> {
-  return (await $loadRows(loadPlan, "Collaborator", tx, rows, names, {
+  return (await $loadRows(loadPlan, "identity.Collaborator", tx, rows, names, {
     ...options,
     policies: false,
   })) as CollaboratorWith<N>[];
@@ -816,7 +856,7 @@ export async function loadMembershipFields<const N extends keyof MembershipLoada
   names: readonly N[],
   options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<MembershipTxWith<N>[]> {
-  return (await $loadRows(loadPlan, "Membership", tx, rows, names, {
+  return (await $loadRows(loadPlan, "identity.Membership", tx, rows, names, {
     ...options,
     policies: false,
   })) as MembershipTxWith<N>[];
@@ -834,7 +874,7 @@ export async function loadAssignmentFields<const N extends keyof AssignmentLoada
   names: readonly N[],
   options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<AssignmentTxWith<N>[]> {
-  return (await $loadRows(loadPlan, "Assignment", tx, rows, names, {
+  return (await $loadRows(loadPlan, "work.Assignment", tx, rows, names, {
     ...options,
     policies: false,
   })) as AssignmentTxWith<N>[];
@@ -852,7 +892,7 @@ export async function loadClaimFields<const N extends keyof ClaimLoadable>(
   names: readonly N[],
   options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<ClaimTxWith<N>[]> {
-  return (await $loadRows(loadPlan, "Claim", tx, rows, names, {
+  return (await $loadRows(loadPlan, "work.Claim", tx, rows, names, {
     ...options,
     policies: false,
   })) as ClaimTxWith<N>[];
@@ -870,7 +910,7 @@ export async function loadCompletionFields<const N extends keyof CompletionLoada
   names: readonly N[],
   options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<CompletionTxWith<N>[]> {
-  return (await $loadRows(loadPlan, "Completion", tx, rows, names, {
+  return (await $loadRows(loadPlan, "work.Completion", tx, rows, names, {
     ...options,
     policies: false,
   })) as CompletionTxWith<N>[];
@@ -888,7 +928,7 @@ export async function loadDependencyFields<const N extends keyof DependencyLoada
   names: readonly N[],
   options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<DependencyTxWith<N>[]> {
-  return (await $loadRows(loadPlan, "Dependency", tx, rows, names, {
+  return (await $loadRows(loadPlan, "work.Dependency", tx, rows, names, {
     ...options,
     policies: false,
   })) as DependencyTxWith<N>[];
@@ -906,7 +946,7 @@ export async function loadEvidenceReferenceFields<const N extends keyof Evidence
   names: readonly N[],
   options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<EvidenceReferenceTxWith<N>[]> {
-  return (await $loadRows(loadPlan, "EvidenceReference", tx, rows, names, {
+  return (await $loadRows(loadPlan, "work.EvidenceReference", tx, rows, names, {
     ...options,
     policies: false,
   })) as EvidenceReferenceTxWith<N>[];
@@ -924,7 +964,7 @@ export async function loadLateResultFields<const N extends keyof LateResultLoada
   names: readonly N[],
   options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<LateResultTxWith<N>[]> {
-  return (await $loadRows(loadPlan, "LateResult", tx, rows, names, {
+  return (await $loadRows(loadPlan, "work.LateResult", tx, rows, names, {
     ...options,
     policies: false,
   })) as LateResultTxWith<N>[];
@@ -942,7 +982,7 @@ export async function loadReviewFields<const N extends keyof ReviewLoadable>(
   names: readonly N[],
   options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<ReviewTxWith<N>[]> {
-  return (await $loadRows(loadPlan, "Review", tx, rows, names, {
+  return (await $loadRows(loadPlan, "work.Review", tx, rows, names, {
     ...options,
     policies: false,
   })) as ReviewTxWith<N>[];
@@ -960,7 +1000,7 @@ export async function loadSubmissionFields<const N extends keyof SubmissionLoada
   names: readonly N[],
   options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<SubmissionTxWith<N>[]> {
-  return (await $loadRows(loadPlan, "Submission", tx, rows, names, {
+  return (await $loadRows(loadPlan, "work.Submission", tx, rows, names, {
     ...options,
     policies: false,
   })) as SubmissionTxWith<N>[];
@@ -978,7 +1018,7 @@ export async function loadTaskFields<const N extends keyof TaskLoadable>(
   names: readonly N[],
   options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<TaskTxWith<N>[]> {
-  return (await $loadRows(loadPlan, "Task", tx, rows, names, {
+  return (await $loadRows(loadPlan, "work.Task", tx, rows, names, {
     ...options,
     policies: false,
   })) as TaskTxWith<N>[];

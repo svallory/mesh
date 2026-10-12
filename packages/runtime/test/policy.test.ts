@@ -79,7 +79,7 @@ describe("POL-03: policies combine without order", () => {
     expect(await decide([policy("a", [allow(false)], when(false)), policy("b", [allow(true)])])).toBe("allowed");
     const error = (await decide([policy("a", [allow(true)], when(false)), policy("b", [forbid(false)], when(false))])) as ForbiddenError;
     expect(error).toMatchObject({ policies: ["a", "b"], reason: "not-applied" });
-    expect(error.message).toBe("Post.publish is forbidden: policies :a, :b cover it, but the `when` of each was false for this call, so none applies, and a call no policy applies to is denied");
+    expect(error.message).toBe("Post#publish is forbidden: policies :a, :b cover it, but the `when` of each was false for this call, so none applies, and a call no policy applies to is denied");
     expect(error.message).not.toContain("policy :open");
     expect(error.breakdown).toEqual([
       { policy: "a", kind: "when", check: "when false", result: false, decisive: true },
@@ -187,7 +187,7 @@ describe("the breakdown", () => {
       { policy: "paid", kind: "forbid-if", check: "forbid-if false", result: false, decisive: false },
     ]);
     expect(JSON.parse(JSON.stringify(error.breakdown))).toEqual(error.breakdown);
-    expect(error.message).toBe("Post.publish is forbidden by policies :owner, :paid");
+    expect(error.message).toBe("Post#publish is forbidden by policies :owner, :paid");
   });
 });
 

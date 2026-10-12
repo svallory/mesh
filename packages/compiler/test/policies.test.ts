@@ -39,7 +39,7 @@ describe("what a policy may name and read", () => {
   test("`actions=` naming an action the entity does not have fails the build, and suggests the nearest", () => {
     const built = build(post("  policies\n    policy :owner actions=[&publsh]\n      authorize-if=() => true\n"));
     expect(codes(built.diagnostics)).toEqual(["error:MESH_UNKNOWN_ACTION"]);
-    expect(built.diagnostics[0]!.message).toBe("&publsh is not an action of :Post: `actions=` names the entity's own actions (&draft, &publish, &remove, &read). Did you mean &publish?");
+    expect(built.diagnostics[0]!.message).toBe("&publsh is not an action of blog.Post: `actions=` names the entity's own actions (&draft, &publish, &remove, &read). Did you mean &publish?");
     expect(built.document).toBeNull();
     // An auto action is named too.
     expect(build(post("  policies\n    policy :owner actions=[&read]\n      authorize-if=() => true\n")).diagnostics).toEqual([]);
@@ -57,7 +57,7 @@ describe("what a policy may name and read", () => {
     for (const line of ["policy :open", "policy :open types=[:update]", "policy :open when=({ actor }) => actor.id !== null"]) {
       const built = build(post(`  policies\n    ${line}\n    policy :rest\n      authorize-if=() => true\n`));
       expect(codes(built.diagnostics)).toEqual(["error:MESH_POLICY_NO_CHECKS"]);
-      expect(built.diagnostics[0]!.message).toBe("policy :open of :Post has no `authorize-if` and no `forbid-if`, so it would pass every call it covers");
+      expect(built.diagnostics[0]!.message).toBe("policy :open of blog.Post has no `authorize-if` and no `forbid-if`, so it would pass every call it covers");
       expect(built.diagnostics[0]!.fix).toContain("`authorize-if=() => true`");
       expect(built.diagnostics[0]!.position.line).toBe(14);
     }
@@ -109,7 +109,7 @@ describe("a read policy that reads the record is refused until M10", () => {
   test("covering a read with a record-reading check is MESH_NOT_IMPLEMENTED, once per policy, naming each read", () => {
     const built = build(post("  policies\n    policy :mine types=[:read, :update]\n      authorize-if=({ actor }) => &authorId === actor.id\n"));
     expect(codes(built.diagnostics)).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
-    expect(built.diagnostics[0]!.message).toBe("policy :mine authorize-if reads the record, and the policy covers read :read of :Post: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10");
+    expect(built.diagnostics[0]!.message).toBe("policy :mine authorize-if reads the record, and the policy covers read :read of blog.Post: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10");
     // The same through tx, and through a `when`.
     expect(codes(build(post("  policies\n    policy :q types=[:read]\n      forbid-if=async ({ tx }) => (await tx.readPost({})).length > 9\n")).diagnostics)).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
     expect(codes(build(post("  policies\n    policy :w types=[:read] when=() => &title !== null\n      authorize-if=() => true\n")).diagnostics)).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
@@ -136,7 +136,7 @@ entity :Post
 ` }] });
     const built = blog("  policies\n    policy :mine\n      authorize-if=({ actor }) => &authorId === actor.id\n");
     expect(codes(built.diagnostics)).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
-    expect(built.diagnostics[0]!.message).toBe("policy :mine authorize-if reads the record, and the policy covers the loads of it (a relationship or a rollup that reaches it) of :Comment: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10");
+    expect(built.diagnostics[0]!.message).toBe("policy :mine authorize-if reads the record, and the policy covers the loads of it (a relationship or a rollup that reaches it) of blog.Comment: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10");
     // Scoped to reads by type, it covers the loads too.
     expect(codes(blog("  policies\n    policy :mine types=[:read]\n      authorize-if=() => &authorId !== null\n").diagnostics)).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
     // Scoped to the writes, it builds, with the warning that no caller then loads a Comment (R2-N2); so does an entity no
@@ -173,10 +173,10 @@ ${covered}` }] });
     const custom = blog("  policies\n    policy :lists actions=[&list]\n      authorize-if=() => true\n");
     expect(codes(custom.diagnostics)).toEqual(["warning:MESH_LOAD_NO_POLICY", "warning:MESH_LOAD_NO_POLICY"]);
     expect(custom.diagnostics.map((d) => [d.message, d.position.line])).toEqual([
-      ["belongs-to :tag of :Post reaches :Tag, and no policy of :Tag covers the read a load runs, so every caller's load of it is null, a count over it 0 and any other rollup null (through `tx` and in a computed field's body it is loaded)", 6],
-      ["has-many :tags of :Shelf reaches :Tag, and no policy of :Tag covers the read a load runs, so every caller's load of it is [], a count over it 0 and any other rollup null (through `tx` and in a computed field's body it is loaded)", 6],
+      ["belongs-to :tag of blog.Post reaches blog.Tag, and no policy of blog.Tag covers the read a load runs, so every caller's load of it is null, a count over it 0 and any other rollup null (through `tx` and in a computed field's body it is loaded)", 6],
+      ["has-many :tags of blog.Shelf reaches blog.Tag, and no policy of blog.Tag covers the read a load runs, so every caller's load of it is [], a count over it 0 and any other rollup null (through `tx` and in a computed field's body it is loaded)", 6],
     ]);
-    expect(custom.diagnostics[0]!.fix).toBe("If callers may load it, give :Tag a policy that covers its read: `types=[:read]`, `actions=[&read]` or no scope");
+    expect(custom.diagnostics[0]!.fix).toBe("If callers may load it, give blog.Tag a policy that covers its read: `types=[:read]`, `actions=[&read]` or no scope");
     // Covered by type, with no scope, or by name: no warning. Neither for an entity with no policy at all, which denies
     // every caller everything (deny by default), nor for Tag's relationship to Shelf, whose policy covers its read.
     for (const covering of ["policy :reads types=[:read]", "policy :any", "policy :named actions=[&read, &list]"])

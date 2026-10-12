@@ -84,7 +84,7 @@ describe("a destroy the :owner policy covers reads the row once under the lock, 
     const { locked, first, post } = await destroyOne({ afterWrite: (_db, event) => { if (event.action === "destroy") seen.push({ entity: event.entity, action: event.action, before: event.before, after: event.after }); } });
     expect(first).toBe(1);
     expect(locked).toBe(2);
-    expect(seen).toEqual([{ entity: "Post", action: "destroy", before: post, after: null }]);
+    expect(seen).toEqual([{ entity: "blog.Post", action: "destroy", before: post, after: null }]);
     const committed: Change[] = [];
     expect((await destroyOne({ afterCommit: ({ changes }) => { committed.push(...changes); } })).locked).toBe(2);
     expect(committed.map((change) => [change.action, change.after])).toEqual([["create", expect.anything()], ["create", expect.anything()], ["destroy", null]]);
@@ -168,7 +168,7 @@ describe("policies (M8a): every action is covered, and a caller the policies do 
       const post = await blog.createPost({ title: "Hello", author: author.id }, context);
       const error = await blog.publishPost({ id: post.id }, context).catch((cause: unknown) => cause);
       expect(error).toBeInstanceOf(ForbiddenError);
-      expect(error).toMatchObject({ code: "forbidden", entity: "Post", action: "publish", policies: ["owner"], message: "Post.publish is forbidden by policy :owner" });
+      expect(error).toMatchObject({ code: "forbidden", entity: "blog.Post", action: "publish", policies: ["owner"], message: "blog.Post#publish is forbidden by policy :owner" });
       // The breakdown is plain data: it survives JSON unchanged.
       const breakdown = (error as ForbiddenError).breakdown;
       expect(breakdown).toEqual([{ policy: "owner", kind: "authorize-if", check: "({ actor }) => &author.id === actor.id", result: false, decisive: true }]);
@@ -526,15 +526,15 @@ describe("connect and disconnect (ADR-0047)", () => {
     const calls: string[] = [];
     const changes: Change[] = [];
     config.seams = {
-      beforeTransaction: ({ entity, action }) => { calls.push(`before ${entity}.${action}`); },
-      afterWrite: (_db, { entity, action }) => { calls.push(`write ${entity}.${action}`); },
+      beforeTransaction: ({ entity, action }) => { calls.push(`before ${entity}#${action}`); },
+      afterWrite: (_db, { entity, action }) => { calls.push(`write ${entity}#${action}`); },
       afterCommit: (event) => { calls.push("commit"); changes.push(...event.changes); },
     };
     try {
       await connect();
       const author = await createUser({ name: "Seamed" }, context);
-      expect(calls).toEqual(["before User.create", "write User.create", "commit"]);
-      expect(changes).toEqual([{ entity: "User", action: "create", before: null, after: author }]);
+      expect(calls).toEqual(["before blog.User#create", "write blog.User#create", "commit"]);
+      expect(changes).toEqual([{ entity: "blog.User", action: "create", before: null, after: author }]);
       await readPost({}, context);
       expect(calls).toHaveLength(3);
     } finally {
@@ -580,8 +580,8 @@ test("a mesh.config.ts that declares seams passes mesh build and build --check, 
     for (const entry of ["package.json", "src", ".mesh"]) cpSync(join(project, entry), join(copy, entry), { recursive: true });
     writeFileSync(join(copy, "mesh.config.ts"), readFileSync(join(project, "mesh.config.ts"), "utf8").replace(
       "  data:", `  seams: {
-    beforeTransaction: ({ entity, action }) => { (globalThis as any).__seamLog.push(\`before \${entity}.\${action}\`); },
-    afterWrite: (_db, { entity, action }) => { (globalThis as any).__seamLog.push(\`write \${entity}.\${action}\`); },
+    beforeTransaction: ({ entity, action }) => { (globalThis as any).__seamLog.push(\`before \${entity}#\${action}\`); },
+    afterWrite: (_db, { entity, action }) => { (globalThis as any).__seamLog.push(\`write \${entity}#\${action}\`); },
     afterCommit: ({ changes }) => { (globalThis as any).__seamLog.push(\`commit \${changes.length}\`); },
   },
   data:`));
@@ -601,7 +601,7 @@ test("a mesh.config.ts that declares seams passes mesh build and build --check, 
       await blog.createUser({ name: "Configured" }, context);
       await blog.readPost({}, context);
     } finally { await mesh.disconnect(); }
-    expect(log).toEqual(["before User.create", "write User.create", "commit 1"]);
+    expect(log).toEqual(["before blog.User#create", "write blog.User#create", "commit 1"]);
   } finally {
     process.chdir(cwd);
     delete (globalThis as any).__seamLog;

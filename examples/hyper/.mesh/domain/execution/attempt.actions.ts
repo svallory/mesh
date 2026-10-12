@@ -90,7 +90,7 @@ export function bindAttemptReads(layer: $DataLayer, options: $BindOptions = {}) 
             : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
-        return (await $loadRows($loadPlan, "Attempt", tx, $rows, parsed.load, {
+        return (await $loadRows($loadPlan, "execution.Attempt", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
@@ -115,7 +115,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Attempt", "start", [
+      const $policies = $authorizer("execution.Attempt", "start", [
         {
           name: "isMember",
           when: null,
@@ -158,14 +158,18 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Attempt.start"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "execution.Attempt#start"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Attempt", action: "start" },
+        { entity: "execution.Attempt", action: "start" },
         parsed,
         context,
         async (tx) => {
@@ -195,17 +199,17 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
           };
           const $load = { actor: $actor, context: $context, clock: $clock };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Attempt", $record, "action function"),
-            "Attempt.start",
+            $guarded($loadPlan, "execution.Attempt", $record, "action function"),
+            "execution.Attempt#start",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Attempt.start"),
+              input: $readOnlyRecord(parsed, "execution.Attempt#start"),
               actor: $actor,
               context: $context,
               before: null,
-              ...$composed(compose, tx, context, "Attempt.start", $clock),
+              ...$composed(compose, tx, context, "execution.Attempt#start", $clock),
             },
             { clock: $clock },
           ) as unknown as $Scope<StartAttemptInput>;
@@ -265,7 +269,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
               );
             $changes.performerId = $record.performerId = $value;
           }
-          await $loadInto($loadPlan, "Attempt", tx, $record, ["run"], $load);
+          await $loadInto($loadPlan, "execution.Attempt", tx, $record, ["run"], $load);
           {
             const $value = await $expressions["start.step.0.set.task"]($s);
             if ($value === undefined || $value === null)
@@ -274,7 +278,14 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
               );
             $changes.taskId = $record.taskId = $value;
           }
-          await $loadInto($loadPlan, "Attempt", tx, $record, ["run", "run.attempts"], $load);
+          await $loadInto(
+            $loadPlan,
+            "execution.Attempt",
+            tx,
+            $record,
+            ["run", "run.attempts"],
+            $load,
+          );
           {
             const $value = await $expressions["start.step.0.set.number"]($s);
             if ($value === undefined || $value === null)
@@ -285,7 +296,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
           }
           await $loadInto(
             $loadPlan,
-            "Attempt",
+            "execution.Attempt",
             tx,
             $record,
             ["run", "run.task", "run.task.assignments"],
@@ -301,7 +312,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
           }
           await $loadInto(
             $loadPlan,
-            "Attempt",
+            "execution.Attempt",
             tx,
             $record,
             ["run", "run.task", "run.task.claims"],
@@ -311,7 +322,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
             const $value = await $expressions["start.step.0.set.claimFence"]($s);
             $changes.claimFence = $record.claimFence = $value === undefined ? null : $value;
           }
-          $unloadFrom($loadPlan, "Attempt", $record);
+          $unloadFrom($loadPlan, "execution.Attempt", $record);
           // data layer
           const $stored = await tx.insert(tables.attempt, $changes);
           $noteWrite(tx);
@@ -319,7 +330,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Attempt", action: "start" },
+            { entity: "execution.Attempt", action: "start" },
             null,
             $stored,
             parsed,
@@ -337,7 +348,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Attempt", "finish", [
+      const $policies = $authorizer("execution.Attempt", "finish", [
         {
           name: "attemptPerformer",
           when: null,
@@ -355,14 +366,18 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Attempt.finish"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "execution.Attempt#finish"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Attempt", action: "finish" },
+        { entity: "execution.Attempt", action: "finish" },
         parsed,
         context,
         async (tx) => {
@@ -370,25 +385,25 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.attempt, $key);
-          if ($before === undefined) throw new $NotFoundError("Attempt", $key);
+          if ($before === undefined) throw new $NotFoundError("execution.Attempt", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
           const $writes = $writeCount(tx);
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Attempt", $record, "action function"),
-            "Attempt.finish",
+            $guarded($loadPlan, "execution.Attempt", $record, "action function"),
+            "execution.Attempt#finish",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Attempt.finish"),
+              input: $readOnlyRecord(parsed, "execution.Attempt#finish"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "Attempt", $before, "before"),
-                "Attempt.finish",
+                $guarded($loadPlan, "execution.Attempt", $before, "before"),
+                "execution.Attempt#finish",
               ) as unknown as Attempt,
-              ...$composed(compose, tx, context, "Attempt.finish", $clock),
+              ...$composed(compose, tx, context, "execution.Attempt#finish", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<FinishAttemptInput>;
@@ -455,15 +470,22 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
           }
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.attempt, $key, $before, "Attempt.finish");
+          await $checkUnchanged(
+            tx,
+            $writes,
+            tables.attempt,
+            $key,
+            $before,
+            "execution.Attempt#finish",
+          );
           const $stored = await tx.updateByKey(tables.attempt, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("Attempt", $key);
+          if ($stored === undefined) throw new $NotFoundError("execution.Attempt", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Attempt", action: "finish" },
+            { entity: "execution.Attempt", action: "finish" },
             $before,
             $stored,
             parsed,
@@ -473,8 +495,8 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
           const $written: $Row = { ...$stored };
           const $after = $rescope($s, {
             self: $readOnlyRecord(
-              $guarded($loadPlan, "Attempt", $written, "action function"),
-              "Attempt.finish",
+              $guarded($loadPlan, "execution.Attempt", $written, "action function"),
+              "execution.Attempt#finish",
             ),
           });
           await $expressions["finish.step.1.run"]($after);
@@ -482,7 +504,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
           const $result = await tx.selectByKey(tables.attempt, { id: $stored.id });
           if ($result === undefined)
             throw new $FrameworkError(
-              "Attempt.finish: a step after the write deleted the row this action returns",
+              "execution.Attempt#finish: a step after the write deleted the row this action returns",
             );
           return $result as Attempt;
         },
@@ -499,7 +521,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Attempt", "reportStopped", [
+      const $policies = $authorizer("execution.Attempt", "reportStopped", [
         {
           name: "attemptPerformer",
           when: null,
@@ -518,7 +540,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
         layer,
         $scope(
           {
-            input: $readOnlyRecord(parsed, "Attempt.reportStopped"),
+            input: $readOnlyRecord(parsed, "execution.Attempt#reportStopped"),
             actor: $actor,
             context: $context,
           },
@@ -528,7 +550,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
       return $runAction(
         layer,
         options.seams,
-        { entity: "Attempt", action: "reportStopped" },
+        { entity: "execution.Attempt", action: "reportStopped" },
         parsed,
         context,
         async (tx) => {
@@ -536,25 +558,25 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.attempt, $key);
-          if ($before === undefined) throw new $NotFoundError("Attempt", $key);
+          if ($before === undefined) throw new $NotFoundError("execution.Attempt", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
           const $writes = $writeCount(tx);
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Attempt", $record, "action function"),
-            "Attempt.reportStopped",
+            $guarded($loadPlan, "execution.Attempt", $record, "action function"),
+            "execution.Attempt#reportStopped",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Attempt.reportStopped"),
+              input: $readOnlyRecord(parsed, "execution.Attempt#reportStopped"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "Attempt", $before, "before"),
-                "Attempt.reportStopped",
+                $guarded($loadPlan, "execution.Attempt", $before, "before"),
+                "execution.Attempt#reportStopped",
               ) as unknown as Attempt,
-              ...$composed(compose, tx, context, "Attempt.reportStopped", $clock),
+              ...$composed(compose, tx, context, "execution.Attempt#reportStopped", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<ReportStoppedAttemptInput>;
@@ -605,16 +627,16 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
             tables.attempt,
             $key,
             $before,
-            "Attempt.reportStopped",
+            "execution.Attempt#reportStopped",
           );
           const $stored = await tx.updateByKey(tables.attempt, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("Attempt", $key);
+          if ($stored === undefined) throw new $NotFoundError("execution.Attempt", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Attempt", action: "reportStopped" },
+            { entity: "execution.Attempt", action: "reportStopped" },
             $before,
             $stored,
             parsed,
@@ -632,7 +654,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Attempt", "abandon", [
+      const $policies = $authorizer("execution.Attempt", "abandon", [
         {
           name: "attemptPerformer",
           when: null,
@@ -650,14 +672,18 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Attempt.abandon"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "execution.Attempt#abandon"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Attempt", action: "abandon" },
+        { entity: "execution.Attempt", action: "abandon" },
         parsed,
         context,
         async (tx) => {
@@ -665,25 +691,25 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.attempt, $key);
-          if ($before === undefined) throw new $NotFoundError("Attempt", $key);
+          if ($before === undefined) throw new $NotFoundError("execution.Attempt", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
           const $writes = $writeCount(tx);
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Attempt", $record, "action function"),
-            "Attempt.abandon",
+            $guarded($loadPlan, "execution.Attempt", $record, "action function"),
+            "execution.Attempt#abandon",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Attempt.abandon"),
+              input: $readOnlyRecord(parsed, "execution.Attempt#abandon"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "Attempt", $before, "before"),
-                "Attempt.abandon",
+                $guarded($loadPlan, "execution.Attempt", $before, "before"),
+                "execution.Attempt#abandon",
               ) as unknown as Attempt,
-              ...$composed(compose, tx, context, "Attempt.abandon", $clock),
+              ...$composed(compose, tx, context, "execution.Attempt#abandon", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<AbandonAttemptInput>;
@@ -728,15 +754,22 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
           }
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.attempt, $key, $before, "Attempt.abandon");
+          await $checkUnchanged(
+            tx,
+            $writes,
+            tables.attempt,
+            $key,
+            $before,
+            "execution.Attempt#abandon",
+          );
           const $stored = await tx.updateByKey(tables.attempt, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("Attempt", $key);
+          if ($stored === undefined) throw new $NotFoundError("execution.Attempt", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Attempt", action: "abandon" },
+            { entity: "execution.Attempt", action: "abandon" },
             $before,
             $stored,
             parsed,
@@ -757,7 +790,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readAttemptInput, input);
       if (
-        !(await $authorizer("Attempt", "read", [
+        !(await $authorizer("execution.Attempt", "read", [
           {
             name: "membersRead",
             when: null,
@@ -774,7 +807,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
           layer,
           $scope(
             {
-              input: $readOnlyRecord($parsed as never, "Attempt.read"),
+              input: $readOnlyRecord($parsed as never, "execution.Attempt#read"),
               actor: $actor,
               context: $context,
             },

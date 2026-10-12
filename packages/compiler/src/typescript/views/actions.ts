@@ -121,7 +121,7 @@ export interface ActionMethod {
   readonly statements: readonly string[];
   /** True for a read action. */
   readonly isRead: boolean;
-  /** For a create, update or destroy, the seam target as an object literal, e.g. `{ entity: "Post", action: "publish" }`, which `$runAction` takes; `null` for a read (a read runs no seam). */
+  /** For a create, update or destroy, the seam target as an object literal, e.g. `{ entity: "blog.Post", action: "publish" }`, which `$runAction` takes; `null` for a read (a read runs no seam). */
   readonly seamTarget: string | null;
   /** For a read, the call of its body in `bind<Entity>Reads` that the method returns after the read's policies, e.g. `$reads.read(input)`; `null` otherwise, when `statements` hold the body. */
   readonly readsCall: string | null;
@@ -211,7 +211,7 @@ function columnOf(entity: Entity, name: string, position: SourcePosition): { nam
   if (attribute) return attribute;
   const relation = entity.relationships.find((r) => r.name === name && r.keyColumn);
   if (relation) return { name: relation.keyColumn!, type: relation.keyType ?? "string", relation: relation.name };
-  throw emitError("MESH_UNKNOWN_MEMBER", `Unknown member &${name} in entity :${entity.name}`, position);
+  throw emitError("MESH_UNKNOWN_MEMBER", `Unknown member &${name} in entity ${entity.fqn}`, position);
 }
 
 /** Global types the generated actions and index files name; an entity's record type must not shadow them. */
@@ -242,7 +242,7 @@ const KEY = "$key";
 export function actionsView({ document }: EmitInput, entity: Entity): ActionsView {
   const recordName = typeName(entity.name, entity.position);
   if (GLOBAL_TYPES.includes(recordName))
-    throw emitError("MESH_EMIT_NAME", `Entity :${entity.name} would generate the type ${recordName}, which shadows the global ${recordName} the generated code uses`,
+    throw emitError("MESH_EMIT_NAME", `Entity ${entity.fqn} would generate the type ${recordName}, which shadows the global ${recordName} the generated code uses`,
       entity.position, "Rename the entity");
   const key = entity.attributes.find((a) => a.primaryKey)!;
   const inputs = entityInputs(entity, document);
@@ -266,14 +266,14 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     return `$expressions[${JSON.stringify(id)}]`;
   };
   // ---- policies (M8): what the pre-check and the in-transaction phase print ---------------------
-  /** `$authorizer("Post", "publish", [...])`: the policies that cover the action, each function with where it runs (`record`). */
+  /** `$authorizer("blog.Post", "publish", [...])`: the policies that cover the action, each function with where it runs (`record`). */
   const authorizerCall = (action: Action, covering: readonly Policy[]): string => {
     runtime.add("authorizer");
     const specs = policySpecs(covering, (expression) => {
       usesExpressions = true;
       return idOf(expression);
     });
-    return `$authorizer(${JSON.stringify(entity.name)}, ${JSON.stringify(action.name)}, ${specs})`;
+    return `$authorizer(${JSON.stringify(entity.fqn)}, ${JSON.stringify(action.name)}, ${specs})`;
   };
   /** The scope the checks before the transaction see: no record yet, only `input`, `actor` and `context`. */
   const preScope = (inputValue: string, where: string) => {
@@ -301,7 +301,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       return parts.length ? `Not run in this version: ${parts.join("; ")}` : null;
     };
     const covering = policiesCovering(entity, action);
-    const where = JSON.stringify(`${entity.name}.${action.name}`);
+    const where = JSON.stringify(`${entity.fqn}#${action.name}`);
     if (action.kind === "read") {
       // The body goes to `bind<Entity>Reads`, which `tx` calls; the method evaluates the read's policies, then calls the body.
       // A read that takes `load` is generic in the names it lists: the result is the record with exactly those loaded.
@@ -370,7 +370,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       runtimeTypes.add("CastOutput");
       readBodies.push({ ...body, unsupported: null, usesParsed: true,
         statements: [
-          ...(computed.length ? [`rejectComputedQuery(${JSON.stringify(entity.name)}, [${computed.join(", ")}], parsed);`] : []),
+          ...(computed.length ? [`rejectComputedQuery(${JSON.stringify(entity.fqn)}, [${computed.join(", ")}], parsed);`] : []),
           ...(loads
             ? [
               `const $rows = (${select}) as ${recordName}[];`,
@@ -379,7 +379,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
               // One instant per call: the caller's (a `tx` read inside an action carries the action's), else this read's own.
               "const $clock = clock ?? $pinClock(options.clock);",
               // From the read action, what the rows load runs the read policies of the entity it reaches (POL-17).
-              `return (await $loadRows($loadPlan, ${JSON.stringify(entity.name)}, tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock, policies })) as unknown as ${txReturnType};`,
+              `return (await $loadRows($loadPlan, ${JSON.stringify(entity.fqn)}, tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock, policies })) as unknown as ${txReturnType};`,
             ]
             : [`return (${select}) as ${recordName}[];`]),
         ] });
@@ -435,7 +435,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       used.load = true;
       used.plan = true;
       runtime.add("loadInto");
-      emit(`await $loadInto($loadPlan, ${JSON.stringify(entity.name)}, tx, ${record}, ${JSON.stringify(paths)}, ${options});`);
+      emit(`await $loadInto($loadPlan, ${JSON.stringify(entity.fqn)}, tx, ${record}, ${JSON.stringify(paths)}, ${options});`);
     };
     // A `when` that holds a step after the write keeps what its condition gave, so that step runs after the write only if it held.
     const whenFlags = new Map<Step, string>();
@@ -482,7 +482,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         // The input fills it after the checks, or a `set` step does before the row is inserted.
         else if (accepted.has(column) || setColumns.has(column)) pending.push(column);
         else throw emitError("MESH_EMIT_UNFILLABLE",
-          `Create action :${action.name} of :${entity.name} cannot fill \`${column}\`: it is not accepted, has no default and is not nullable`,
+          `Create action :${action.name} of ${entity.fqn} cannot fill \`${column}\`: it is not accepted, has no default and is not nullable`,
           position, `Accept &${column} in the action's input, give it a default, make it nullable or fill it with a \`set\` step`);
       };
       for (const attribute of entity.attributes)
@@ -507,12 +507,12 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       if (!reads) {
         runtime.add("wantsChanges");
         head.push(`const $before = $wantsChanges(options.seams) ? await tx.selectByKeyForUpdate(${table}, ${KEY}) : undefined;`);
-        head.push(`if ($wantsChanges(options.seams) && $before === undefined) throw new $NotFoundError(${JSON.stringify(entity.name)}, ${KEY});`);
+        head.push(`if ($wantsChanges(options.seams) && $before === undefined) throw new $NotFoundError(${JSON.stringify(entity.fqn)}, ${KEY});`);
       }
       if (reads) {
         runtimeTypes.add("Row");
         head.push(`const $before = await tx.selectByKeyForUpdate(${table}, ${KEY});`);
-        head.push(`if ($before === undefined) throw new $NotFoundError(${JSON.stringify(entity.name)}, ${KEY});`);
+        head.push(`if ($before === undefined) throw new $NotFoundError(${JSON.stringify(entity.fqn)}, ${KEY});`);
         // the stored record, as the checks see it; the accepted input is applied after them
         head.push(...(writes ? ["const $changes: $Row = {};"] : []), "const $record: $Row = { ...$before };");
         for (const field of input.fields.slice(1)) {
@@ -571,7 +571,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       if (checkNeeds.length > 0 || policyNeeds.length > 0) {
         used.plan = true;
         runtime.add("unloadFrom");
-        emit(`$unloadFrom($loadPlan, ${JSON.stringify(entity.name)}, $record);`);
+        emit(`$unloadFrom($loadPlan, ${JSON.stringify(entity.fqn)}, $record);`);
       }
     }
 
@@ -608,7 +608,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
           if (anyNeeds) {
             used.plan = true;
             runtime.add("unloadFrom");
-            emit(`$unloadFrom($loadPlan, ${JSON.stringify(entity.name)}, $record);`);
+            emit(`$unloadFrom($loadPlan, ${JSON.stringify(entity.fqn)}, $record);`);
           }
         } else if (step.kind === "when") {
           loadFor(step.condition.needs ?? []);
@@ -665,15 +665,15 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         emit(`await $checkUnchanged(tx, $writes, ${table}, ${KEY}, $before, ${where});`);
       }
       emit(`const $stored = await tx.updateByKey(${table}, ${KEY}, $changes);`);
-      emit(`if ($stored === undefined) throw new $NotFoundError(${JSON.stringify(entity.name)}, ${KEY});`);
+      emit(`if ($stored === undefined) throw new $NotFoundError(${JSON.stringify(entity.fqn)}, ${KEY});`);
     } else {
-      emit(`if (!(await tx.deleteByKey(${table}, ${KEY}))) throw new $NotFoundError(${JSON.stringify(entity.name)}, ${KEY});`);
+      emit(`if (!(await tx.deleteByKey(${table}, ${KEY}))) throw new $NotFoundError(${JSON.stringify(entity.fqn)}, ${KEY});`);
     }
     runtime.add("noteWrite");
     emit("$noteWrite(tx);");
     runtime.add("recordWrite");
     optionsUsed = true;
-    const seamTarget = `{ entity: ${JSON.stringify(entity.name)}, action: ${JSON.stringify(action.name)} }`;
+    const seamTarget = `{ entity: ${JSON.stringify(entity.fqn)}, action: ${JSON.stringify(action.name)} }`;
     emit("// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write");
     emit(`await $recordWrite(tx, options.seams, ${seamTarget}, ${action.kind === "create" ? "null" : reads ? "$before" : "$before ?? null"}, ${writes ? "$stored" : "null"}, parsed, context);`);
     let result = "$stored";
@@ -690,7 +690,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       if (loader) {
         used.plan = true;
         runtime.add("guarded");
-        emit(`const $after = $rescope($s, { self: $readOnlyRecord($guarded($loadPlan, ${JSON.stringify(entity.name)}, ${record}, "action function"), ${where}) });`);
+        emit(`const $after = $rescope($s, { self: $readOnlyRecord($guarded($loadPlan, ${JSON.stringify(entity.fqn)}, ${record}, "action function"), ${where}) });`);
       } else emit(`const $after = $rescope($s, { self: $readOnlyRecord(${record}, ${where}) });`);
       emitAfterWrite(steps, record);
       if (writes) {
@@ -698,7 +698,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         runtime.add("FrameworkError");
         emit("// the result: the row as the steps after the write left it, read again by key");
         emit(`const $result = await tx.selectByKey(${table}, { ${propertyName(key.name)}: ${read("$stored", key.name)} });`);
-        emit(`if ($result === undefined) throw new $FrameworkError(${JSON.stringify(`${entity.name}.${action.name}: a step after the write deleted the row this action returns`)});`);
+        emit(`if ($result === undefined) throw new $FrameworkError(${JSON.stringify(`${entity.fqn}#${action.name}: a step after the write deleted the row this action returns`)});`);
         result = "$result";
       }
     }
@@ -716,7 +716,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
           returnType = maybeLoadNames.length ? `${present} & Partial<Pick<${recordName}Loadable, ${maybeLoadNames.map((name) => JSON.stringify(name)).join(" | ")}>>` : present;
         }
         // The caller gets the result, so what it loads runs the read policies of the entity it reaches (POL-17).
-        emit(`return (await $loadRows($loadPlan, ${JSON.stringify(entity.name)}, tx, [${result}], [...$loads], { ...$load, policies: true }))[0] as unknown as ${returnType};`);
+        emit(`return (await $loadRows($loadPlan, ${JSON.stringify(entity.fqn)}, tx, [${result}], [...$loads], { ...$load, policies: true }))[0] as unknown as ${returnType};`);
       } else emit(`return ${result} as ${recordName};`);
     }
 
@@ -739,11 +739,11 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       if (loader) {
         used.plan = true;
         runtime.add("guarded");
-        afterHead.push(`const $self = $readOnlyRecord($guarded($loadPlan, ${JSON.stringify(entity.name)}, $record, "action function"), ${where});`);
+        afterHead.push(`const $self = $readOnlyRecord($guarded($loadPlan, ${JSON.stringify(entity.fqn)}, $record, "action function"), ${where});`);
       } else afterHead.push(`const $self = $readOnlyRecord($record, ${where});`);
       // `before` holds the stored columns only: a relationship or computed field read on it throws instead of coming back undefined.
       const beforeView = action.kind === "create" ? "null"
-        : loader ? `$readOnlyRecord($guarded($loadPlan, ${JSON.stringify(entity.name)}, $before, "before"), ${where}) as unknown as ${recordName}`
+        : loader ? `$readOnlyRecord($guarded($loadPlan, ${JSON.stringify(entity.fqn)}, $before, "before"), ${where}) as unknown as ${recordName}`
           : `$readOnlyRecord($before, ${where}) as unknown as ${recordName}`;
       // `actions` and `tx` come from the binding's composer, bound to this transaction and carrying this call's context (ADR-0068).
       runtime.add("composed");

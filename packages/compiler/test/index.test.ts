@@ -297,7 +297,7 @@ describe("entity names never break the generated files", () => {
       .then(() => undefined, (cause: unknown) => cause);
     expect(error).toBeInstanceOf(EmitError);
     expect((error as EmitError).diagnostic).toMatchObject({ code: "MESH_EMIT_NAME",
-      message: `Entity :${name} would generate the type ${name}, which .mesh/composition.ts declares and #mesh exports for \`actions\` and \`tx\`` });
+      message: `Entity ${name} would generate the type ${name}, which .mesh/composition.ts declares and #mesh exports for \`actions\` and \`tx\`` });
   });
 
   test.each(["Promise", "Partial", "ReturnType"])("an entity named %s, which would shadow a global type the generated code uses, is MESH_EMIT_NAME", (name) => {
@@ -306,6 +306,6 @@ describe("entity names never break the generated files", () => {
     catch (cause) { error = cause; }
     expect(error).toBeInstanceOf(EmitError);
     expect((error as EmitError).diagnostic).toMatchObject({ code: "MESH_EMIT_NAME", fix: "Rename the entity",
-      message: `Entity :${name} would generate the type ${name}, which shadows the global ${name} the generated code uses` });
+      message: `Entity ${name} would generate the type ${name}, which shadows the global ${name} the generated code uses` });
   });
 });

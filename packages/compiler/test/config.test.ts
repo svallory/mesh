@@ -152,7 +152,7 @@ test("duplicate entity names within a module name the first file on the second e
   const built = await loadProject((await loadConfig(root)).config!);
   expect(built.diagnostics).toMatchObject([{
     code: "MESH_DUPLICATE_ENTITY", position: { file: "src/domain/blog/todo.mesh.mx", line: 1, column: 0 },
-    message: 'Duplicate entity :Todo in module "blog"; first declared in src/domain/blog/list.mesh.mx',
+    message: 'Duplicate entity blog.Todo; first declared in src/domain/blog/list.mesh.mx',
   }]);
 });
 test("duplicate root-level entities name the domain root rather than an empty module", async () => {
@@ -161,7 +161,7 @@ test("duplicate root-level entities name the domain root rather than an empty mo
   const built = await loadProject((await loadConfig(root)).config!);
   expect(built.diagnostics).toMatchObject([{
     code: "MESH_DUPLICATE_ENTITY", position: { file: "src/domain/b.mesh.mx", line: 1, column: 0 },
-    message: "Duplicate entity :Todo at the domain root; first declared in src/domain/a.mesh.mx",
+    message: "Duplicate entity Todo; first declared in src/domain/a.mesh.mx",
   }]);
 });
 test("invalid module segment is positioned on the entity line", async () => {

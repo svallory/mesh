@@ -19,7 +19,7 @@ export function unknownMember(
   return {
     severity: "error",
     code: "MESH_UNKNOWN_MEMBER",
-    message: `&${ref.name} is not a member of :${entity.name}.${suggestion ? ` Did you mean &${suggestion}?` : ""}`,
+    message: `&${ref.name} is not a member of ${entity.fqn}.${suggestion ? ` Did you mean &${suggestion}?` : ""}`,
     position: ref.position,
     fix: null,
   };
@@ -105,7 +105,7 @@ export function resolveRollups(
           break;
         }
         if (index === 0) {
-          fail("MESH_ROLLUP_PATH", `\`${ref.name}\` is an attribute of :${entity.name}, not a relationship; \`of\` is a path through relationships`, ref.position);
+          fail("MESH_ROLLUP_PATH", `\`${ref.name}\` is an attribute of ${entity.fqn}, not a relationship; \`of\` is a path through relationships`, ref.position);
           break;
         }
         const fn = computed.rollup.fn;

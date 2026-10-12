@@ -186,6 +186,7 @@ function buildEntity(
   const section = (name: string) => sections.find((t) => t.name === name);
   const entity: Entity = {
     name: declaredName(root),
+    fqn: declaredName(root),
     table: String(opt(root, "table") ?? snakeCase(declaredName(root))),
     file,
     module: "",
@@ -203,6 +204,7 @@ function buildEntity(
     fail("MESH_ENTITY_NAME", `Entity :${entity.name} must have a PascalCase name, such as :Todo`, root);
   const { module, bareUnderscore } = moduleOfFolder(folder);
   entity.module = module;
+  entity.fqn = [...module.split("/").filter(Boolean), entity.name].join(".");
   if (bareUnderscore)
     fail("MESH_GROUP_NAME", `Group folder "_" has no name; write "_" followed by a name, such as "_services"`, root);
   for (const segment of module ? module.split("/") : []) {
@@ -753,7 +755,7 @@ function buildEntity(
       const member = unknownMember(entity, ref, candidates);
       const names = [...candidates].map((name) => `&${name}`).join(", ");
       diagnostics.push({ ...member, code: "MESH_UNKNOWN_ACTION",
-        message: `&${ref.name} is not an action of :${entity.name}: \`actions=\` names the entity's own actions${names ? ` (${names})` : ", and it has none"}.${member.message.includes("Did you mean") ? member.message.slice(member.message.indexOf(" Did you mean")) : ""}` });
+        message: `&${ref.name} is not an action of ${entity.fqn}: \`actions=\` names the entity's own actions${names ? ` (${names})` : ", and it has none"}.${member.message.includes("Did you mean") ? member.message.slice(member.message.indexOf(" Did you mean")) : ""}` });
     } else if (!candidates.has(ref.name))
       diagnostics.push(unknownMember(entity, ref, candidates));
     else if (scope === "sort" || scope === "filter") {
@@ -887,16 +889,15 @@ export function buildModel(project: ProjectDescription): BuildResult {
   }
   const identities = new Map<string, string>();
   for (const entity of document.entities) {
-    const identity = `${entity.module}/${entity.name}`;
-    if (identities.has(identity))
+    if (identities.has(entity.fqn))
       diagnostics.push(
         error(
           "MESH_DUPLICATE_ENTITY",
-          `Duplicate entity :${entity.name} ${entity.module ? `in module ${JSON.stringify(entity.module)}` : "at the domain root"}; first declared in ${identities.get(identity)}`,
+          `Duplicate entity ${entity.fqn}; first declared in ${identities.get(entity.fqn)}`,
           entity.position,
         ),
       );
-    else identities.set(identity, entity.file);
+    else identities.set(entity.fqn, entity.file);
     for (const imported of entity.imports) {
       const target = resolve(rootPath, dirname(entity.file), imported.from);
       const targetEntity = document.entities.find((candidate) => resolve(rootPath, candidate.file) === target);

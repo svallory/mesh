@@ -84,7 +84,7 @@ export class InvalidInputError extends MeshError {
  */
 export class ForbiddenError extends MeshError {
   readonly code = "forbidden";
-  /** The entity, e.g. `Post`. */
+  /** The entity's FQN, e.g. `blog.Post`. */
   readonly entity: string;
   /** The action, e.g. `publish`. */
   readonly action: string;
@@ -111,12 +111,12 @@ export class ForbiddenError extends MeshError {
 function denialMessage({ entity, action, policies, reason }: PolicyDenial): string {
   const names = policies.map((name) => `:${name}`);
   if (reason === "not-applied")
-    return `${entity}.${action} is forbidden: ${names.length === 1 ? "policy" : "policies"} ${names.join(", ")} cover${names.length === 1 ? "s" : ""} it, `
+    return `${entity}#${action} is forbidden: ${names.length === 1 ? "policy" : "policies"} ${names.join(", ")} cover${names.length === 1 ? "s" : ""} it, `
       + `but the \`when\` of each was false for this call, so none applies, and a call no policy applies to is denied`;
   if (policies.length === 0)
-    return `${entity}.${action} is forbidden: no policy of :${entity} covers it, and an action no policy covers is denied. `
+    return `${entity}#${action} is forbidden: no policy of ${entity} covers it, and an action no policy covers is denied. `
       + `To let every caller run it, add to the entity's \`policies\`:\n  policy :open actions=[&${action}] authorize-if=() => true`;
-  return `${entity}.${action} is forbidden by ${names.length === 1 ? "policy" : "policies"} ${names.join(", ")}`;
+  return `${entity}#${action} is forbidden by ${names.length === 1 ? "policy" : "policies"} ${names.join(", ")}`;
 }
 
 function describeKey(key: unknown): string {
@@ -129,7 +129,7 @@ export class NotFoundError extends MeshError {
   readonly code = "not_found";
 
   constructor(
-    /** Name of the entity whose row was requested. */
+    /** FQN of the entity whose row was requested, e.g. `work.Task`. */
     readonly entity: string,
     /** The requested key, whether scalar or composite. */
     readonly key: unknown,

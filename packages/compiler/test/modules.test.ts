@@ -167,7 +167,7 @@ describe("names across modules", () => {
     expect(error).toBeInstanceOf(EmitError);
     expect((error as EmitError).diagnostic).toMatchObject({
       code: "MESH_EMIT_NAME",
-      message: "Entity :Note's binding and Entity :Note's binding (a/note.mesh.mx:1:1) both become the top-level name `bindNote`",
+      message: "Entity b.Note's binding and Entity a.Note's binding (a/note.mesh.mx:1:1) both become the top-level name `bindNote`",
     });
   });
 

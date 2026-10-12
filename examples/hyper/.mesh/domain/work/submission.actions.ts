@@ -90,7 +90,7 @@ export function bindSubmissionReads(layer: $DataLayer, options: $BindOptions = {
             : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
-        return (await $loadRows($loadPlan, "Submission", tx, $rows, parsed.load, {
+        return (await $loadRows($loadPlan, "work.Submission", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
@@ -118,7 +118,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Submission", "submit", [
+      const $policies = $authorizer("work.Submission", "submit", [
         {
           name: "isMember",
           when: null,
@@ -161,14 +161,18 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Submission.submit"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "work.Submission#submit"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Submission", action: "submit" },
+        { entity: "work.Submission", action: "submit" },
         parsed,
         context,
         async (tx) => {
@@ -186,17 +190,17 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           const $record: $Row = { ...$changes, taskVersion: null, taskId: null, submitterId: null };
           const $load = { actor: $actor, context: $context, clock: $clock };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Submission", $record, "action function"),
-            "Submission.submit",
+            $guarded($loadPlan, "work.Submission", $record, "action function"),
+            "work.Submission#submit",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Submission.submit"),
+              input: $readOnlyRecord(parsed, "work.Submission#submit"),
               actor: $actor,
               context: $context,
               before: null,
-              ...$composed(compose, tx, context, "Submission.submit", $clock),
+              ...$composed(compose, tx, context, "work.Submission#submit", $clock),
             },
             { clock: $clock },
           ) as unknown as $Scope<SubmitSubmissionInput>;
@@ -264,7 +268,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
             const $value = await $expressions["submit.step.0.set.summary"]($s);
             $changes.summary = $record.summary = $value === undefined ? null : $value;
           }
-          await $loadInto($loadPlan, "Submission", tx, $record, ["task"], $load);
+          await $loadInto($loadPlan, "work.Submission", tx, $record, ["task"], $load);
           {
             const $value = await $expressions["submit.step.0.set.taskVersion"]($s);
             if ($value === undefined || $value === null)
@@ -273,7 +277,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
               );
             $changes.taskVersion = $record.taskVersion = $value;
           }
-          $unloadFrom($loadPlan, "Submission", $record);
+          $unloadFrom($loadPlan, "work.Submission", $record);
           // data layer
           const $stored = await tx.insert(tables.submission, $changes);
           $noteWrite(tx);
@@ -281,7 +285,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Submission", action: "submit" },
+            { entity: "work.Submission", action: "submit" },
             null,
             $stored,
             parsed,
@@ -291,8 +295,8 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           const $written: $Row = { ...$stored };
           const $after = $rescope($s, {
             self: $readOnlyRecord(
-              $guarded($loadPlan, "Submission", $written, "action function"),
-              "Submission.submit",
+              $guarded($loadPlan, "work.Submission", $written, "action function"),
+              "work.Submission#submit",
             ),
           });
           await $expressions["submit.step.1.run"]($after);
@@ -300,7 +304,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           const $result = await tx.selectByKey(tables.submission, { id: $stored.id });
           if ($result === undefined)
             throw new $FrameworkError(
-              "Submission.submit: a step after the write deleted the row this action returns",
+              "work.Submission#submit: a step after the write deleted the row this action returns",
             );
           return $result as Submission;
         },
@@ -317,7 +321,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Submission", "withdraw", [
+      const $policies = $authorizer("work.Submission", "withdraw", [
         {
           name: "isMember",
           when: null,
@@ -361,7 +365,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
         layer,
         $scope(
           {
-            input: $readOnlyRecord(parsed, "Submission.withdraw"),
+            input: $readOnlyRecord(parsed, "work.Submission#withdraw"),
             actor: $actor,
             context: $context,
           },
@@ -371,7 +375,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
       return $runAction(
         layer,
         options.seams,
-        { entity: "Submission", action: "withdraw" },
+        { entity: "work.Submission", action: "withdraw" },
         parsed,
         context,
         async (tx) => {
@@ -379,26 +383,26 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.submission, $key);
-          if ($before === undefined) throw new $NotFoundError("Submission", $key);
+          if ($before === undefined) throw new $NotFoundError("work.Submission", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
           const $writes = $writeCount(tx);
           const $load = { actor: $actor, context: $context, clock: $clock };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Submission", $record, "action function"),
-            "Submission.withdraw",
+            $guarded($loadPlan, "work.Submission", $record, "action function"),
+            "work.Submission#withdraw",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Submission.withdraw"),
+              input: $readOnlyRecord(parsed, "work.Submission#withdraw"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "Submission", $before, "before"),
-                "Submission.withdraw",
+                $guarded($loadPlan, "work.Submission", $before, "before"),
+                "work.Submission#withdraw",
               ) as unknown as Submission,
-              ...$composed(compose, tx, context, "Submission.withdraw", $clock),
+              ...$composed(compose, tx, context, "work.Submission#withdraw", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<WithdrawSubmissionInput>;
@@ -407,7 +411,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
-          await $loadInto($loadPlan, "Submission", tx, $record, ["task"], $load);
+          await $loadInto($loadPlan, "work.Submission", tx, $record, ["task"], $load);
           await $runCheck($issues, $checks, {
             label: "pending",
             code: "submission.pending",
@@ -426,7 +430,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           if ($issues.length > 0) throw new $InvalidInputError($issues);
           // do: the steps run in written order, each seeing the record as the ones before it left it
           $changes.state = $record.state = "withdrawn";
-          $unloadFrom($loadPlan, "Submission", $record);
+          $unloadFrom($loadPlan, "work.Submission", $record);
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
           await $checkUnchanged(
@@ -435,16 +439,16 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
             tables.submission,
             $key,
             $before,
-            "Submission.withdraw",
+            "work.Submission#withdraw",
           );
           const $stored = await tx.updateByKey(tables.submission, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("Submission", $key);
+          if ($stored === undefined) throw new $NotFoundError("work.Submission", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Submission", action: "withdraw" },
+            { entity: "work.Submission", action: "withdraw" },
             $before,
             $stored,
             parsed,
@@ -454,8 +458,8 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           const $written: $Row = { ...$stored };
           const $after = $rescope($s, {
             self: $readOnlyRecord(
-              $guarded($loadPlan, "Submission", $written, "action function"),
-              "Submission.withdraw",
+              $guarded($loadPlan, "work.Submission", $written, "action function"),
+              "work.Submission#withdraw",
             ),
           });
           await $expressions["withdraw.step.1.run"]($after);
@@ -463,7 +467,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           const $result = await tx.selectByKey(tables.submission, { id: $stored.id });
           if ($result === undefined)
             throw new $FrameworkError(
-              "Submission.withdraw: a step after the write deleted the row this action returns",
+              "work.Submission#withdraw: a step after the write deleted the row this action returns",
             );
           return $result as Submission;
         },
@@ -480,7 +484,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Submission", "settle", [
+      const $policies = $authorizer("work.Submission", "settle", [
         {
           name: "internal",
           when: null,
@@ -497,14 +501,18 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Submission.settle"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "work.Submission#settle"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Submission", action: "settle" },
+        { entity: "work.Submission", action: "settle" },
         parsed,
         context,
         async (tx) => {
@@ -512,25 +520,25 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.submission, $key);
-          if ($before === undefined) throw new $NotFoundError("Submission", $key);
+          if ($before === undefined) throw new $NotFoundError("work.Submission", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
           const $writes = $writeCount(tx);
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Submission", $record, "action function"),
-            "Submission.settle",
+            $guarded($loadPlan, "work.Submission", $record, "action function"),
+            "work.Submission#settle",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Submission.settle"),
+              input: $readOnlyRecord(parsed, "work.Submission#settle"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "Submission", $before, "before"),
-                "Submission.settle",
+                $guarded($loadPlan, "work.Submission", $before, "before"),
+                "work.Submission#settle",
               ) as unknown as Submission,
-              ...$composed(compose, tx, context, "Submission.settle", $clock),
+              ...$composed(compose, tx, context, "work.Submission#settle", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<SettleSubmissionInput>;
@@ -556,15 +564,22 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           }
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.submission, $key, $before, "Submission.settle");
+          await $checkUnchanged(
+            tx,
+            $writes,
+            tables.submission,
+            $key,
+            $before,
+            "work.Submission#settle",
+          );
           const $stored = await tx.updateByKey(tables.submission, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("Submission", $key);
+          if ($stored === undefined) throw new $NotFoundError("work.Submission", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Submission", action: "settle" },
+            { entity: "work.Submission", action: "settle" },
             $before,
             $stored,
             parsed,
@@ -585,7 +600,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Submission", "recordAccepted", [
+      const $policies = $authorizer("work.Submission", "recordAccepted", [
         {
           name: "internal",
           when: null,
@@ -603,7 +618,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
         layer,
         $scope(
           {
-            input: $readOnlyRecord(parsed, "Submission.recordAccepted"),
+            input: $readOnlyRecord(parsed, "work.Submission#recordAccepted"),
             actor: $actor,
             context: $context,
           },
@@ -613,7 +628,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
       return $runAction(
         layer,
         options.seams,
-        { entity: "Submission", action: "recordAccepted" },
+        { entity: "work.Submission", action: "recordAccepted" },
         parsed,
         context,
         async (tx) => {
@@ -630,17 +645,17 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           };
           const $record: $Row = { ...$changes, taskVersion: null, taskId: null, submitterId: null };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Submission", $record, "action function"),
-            "Submission.recordAccepted",
+            $guarded($loadPlan, "work.Submission", $record, "action function"),
+            "work.Submission#recordAccepted",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Submission.recordAccepted"),
+              input: $readOnlyRecord(parsed, "work.Submission#recordAccepted"),
               actor: $actor,
               context: $context,
               before: null,
-              ...$composed(compose, tx, context, "Submission.recordAccepted", $clock),
+              ...$composed(compose, tx, context, "work.Submission#recordAccepted", $clock),
             },
             { clock: $clock },
           ) as unknown as $Scope<RecordAcceptedSubmissionInput>;
@@ -668,7 +683,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Submission", action: "recordAccepted" },
+            { entity: "work.Submission", action: "recordAccepted" },
             null,
             $stored,
             parsed,
@@ -689,7 +704,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readSubmissionInput, input);
       if (
-        !(await $authorizer("Submission", "read", [
+        !(await $authorizer("work.Submission", "read", [
           {
             name: "membersRead",
             when: null,
@@ -706,7 +721,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           layer,
           $scope(
             {
-              input: $readOnlyRecord($parsed as never, "Submission.read"),
+              input: $readOnlyRecord($parsed as never, "work.Submission#read"),
               actor: $actor,
               context: $context,
             },

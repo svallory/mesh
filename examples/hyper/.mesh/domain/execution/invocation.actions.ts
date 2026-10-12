@@ -81,7 +81,7 @@ export function bindInvocationReads(layer: $DataLayer, options: $BindOptions = {
             : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
-        return (await $loadRows($loadPlan, "Invocation", tx, $rows, parsed.load, {
+        return (await $loadRows($loadPlan, "execution.Invocation", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
@@ -109,7 +109,7 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Invocation", "record", [
+      const $policies = $authorizer("execution.Invocation", "record", [
         {
           name: "isMember",
           when: null,
@@ -152,14 +152,18 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Invocation.record"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "execution.Invocation#record"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Invocation", action: "record" },
+        { entity: "execution.Invocation", action: "record" },
         parsed,
         context,
         async (tx) => {
@@ -194,17 +198,17 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
           };
           const $load = { actor: $actor, context: $context, clock: $clock };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Invocation", $record, "action function"),
-            "Invocation.record",
+            $guarded($loadPlan, "execution.Invocation", $record, "action function"),
+            "execution.Invocation#record",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Invocation.record"),
+              input: $readOnlyRecord(parsed, "execution.Invocation#record"),
               actor: $actor,
               context: $context,
               before: null,
-              ...$composed(compose, tx, context, "Invocation.record", $clock),
+              ...$composed(compose, tx, context, "execution.Invocation#record", $clock),
             },
             { clock: $clock },
           ) as unknown as $Scope<RecordInvocationInput>;
@@ -257,7 +261,7 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
           if (parsed.endedAt !== undefined) $changes.endedAt = $record.endedAt = parsed.endedAt;
           if (parsed.session !== undefined) $changes.sessionId = $record.sessionId = parsed.session;
           // do: the steps run in written order, each seeing the record as the ones before it left it
-          await $loadInto($loadPlan, "Invocation", tx, $record, ["attempt"], $load);
+          await $loadInto($loadPlan, "execution.Invocation", tx, $record, ["attempt"], $load);
           {
             const $value = await $expressions["record.step.0.set.task"]($s);
             if ($value === undefined || $value === null)
@@ -274,7 +278,7 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
               );
             $changes.recordedById = $record.recordedById = $value;
           }
-          $unloadFrom($loadPlan, "Invocation", $record);
+          $unloadFrom($loadPlan, "execution.Invocation", $record);
           // data layer
           const $stored = await tx.insert(tables.invocation, $changes);
           $noteWrite(tx);
@@ -282,7 +286,7 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Invocation", action: "record" },
+            { entity: "execution.Invocation", action: "record" },
             null,
             $stored,
             parsed,
@@ -303,7 +307,7 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Invocation", "correct", [
+      const $policies = $authorizer("execution.Invocation", "correct", [
         {
           name: "isMember",
           when: null,
@@ -347,7 +351,7 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
         layer,
         $scope(
           {
-            input: $readOnlyRecord(parsed, "Invocation.correct"),
+            input: $readOnlyRecord(parsed, "execution.Invocation#correct"),
             actor: $actor,
             context: $context,
           },
@@ -357,7 +361,7 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
       return $runAction(
         layer,
         options.seams,
-        { entity: "Invocation", action: "correct" },
+        { entity: "execution.Invocation", action: "correct" },
         parsed,
         context,
         async (tx) => {
@@ -391,17 +395,17 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
             recordedById: null,
           };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Invocation", $record, "action function"),
-            "Invocation.correct",
+            $guarded($loadPlan, "execution.Invocation", $record, "action function"),
+            "execution.Invocation#correct",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Invocation.correct"),
+              input: $readOnlyRecord(parsed, "execution.Invocation#correct"),
               actor: $actor,
               context: $context,
               before: null,
-              ...$composed(compose, tx, context, "Invocation.correct", $clock),
+              ...$composed(compose, tx, context, "execution.Invocation#correct", $clock),
             },
             { clock: $clock },
           ) as unknown as $Scope<CorrectInvocationInput>;
@@ -494,7 +498,7 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Invocation", action: "correct" },
+            { entity: "execution.Invocation", action: "correct" },
             null,
             $stored,
             parsed,
@@ -515,7 +519,7 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readInvocationInput, input);
       if (
-        !(await $authorizer("Invocation", "read", [
+        !(await $authorizer("execution.Invocation", "read", [
           {
             name: "membersRead",
             when: null,
@@ -532,7 +536,7 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
           layer,
           $scope(
             {
-              input: $readOnlyRecord($parsed as never, "Invocation.read"),
+              input: $readOnlyRecord($parsed as never, "execution.Invocation#read"),
               actor: $actor,
               context: $context,
             },

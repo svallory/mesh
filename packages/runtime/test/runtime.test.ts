@@ -8,8 +8,8 @@ const issue = (path: (string | number)[], message: string): Issue => ({ path, me
 test.each([
   [new FrameworkError("misconfigured", { cause }), "FrameworkError", "framework", "misconfigured"],
   [new InvalidInputError([issue(["items", 0, "name"], "required"), issue([], "bad input")], { cause }), "InvalidInputError", "invalid_input", "items.0.name: required\n(input): bad input"],
-  [new NotFoundError("post", { tenant: "one", id: 2 }, { cause }), "NotFoundError", "not_found", 'Entity post not found for {"tenant":"one","id":2}'],
-  [new ForbiddenError({ entity: "Post", action: "publish", policies: ["owner"], breakdown: [] }, { cause }), "ForbiddenError", "forbidden", "Post.publish is forbidden by policy :owner"],
+  [new NotFoundError("work.Task", { tenant: "one", id: 2 }, { cause }), "NotFoundError", "not_found", 'Entity work.Task not found for {"tenant":"one","id":2}'],
+  [new ForbiddenError({ entity: "blog.Post", action: "publish", policies: ["owner"], breakdown: [] }, { cause }), "ForbiddenError", "forbidden", "blog.Post#publish is forbidden by policy :owner"],
 ] as const)("errors preserve name, code, message, cause and inheritance: %s", (error, name, code, message) => {
   expect(error.name).toBe(name);
   expect(error.code).toBe(code);
@@ -44,8 +44,8 @@ test("InvalidInputError rejects an empty issue array with FrameworkError", () =>
 });
 
 test("NotFoundError exposes entity and composite key", () => {
-  const error = new NotFoundError("post", { tenant: "a", id: 3 });
-  expect(error.entity).toBe("post");
+  const error = new NotFoundError("work.Task", { tenant: "a", id: 3 });
+  expect(error.entity).toBe("work.Task");
   expect(error.key).toEqual({ tenant: "a", id: 3 });
 });
 
@@ -55,7 +55,7 @@ test("ForbiddenError copies and freezes its policy breakdown, and names the enti
     { policy: "notPaid", kind: "forbid-if", check: "() => &paid", result: null, decisive: true },
   ];
   const error = new ForbiddenError({ entity: "Invoice", action: "pay", policies: ["owner", "notPaid"], breakdown: checks });
-  expect(error.message).toBe("Invoice.pay is forbidden by policies :owner, :notPaid");
+  expect(error.message).toBe("Invoice#pay is forbidden by policies :owner, :notPaid");
   expect([error.entity, error.action, error.policies]).toEqual(["Invoice", "pay", ["owner", "notPaid"]]);
   expect(error.breakdown).toEqual(checks);
   expect(error.breakdown).not.toBe(checks);
@@ -70,8 +70,8 @@ test("ForbiddenError copies and freezes its policy breakdown, and names the enti
 });
 
 test("ForbiddenError for an action no policy covers shows an open policy to copy", () => {
-  const error = new ForbiddenError({ entity: "Post", action: "archive", policies: [], breakdown: [] });
-  expect(error.message).toBe("Post.archive is forbidden: no policy of :Post covers it, and an action no policy covers is denied. "
+  const error = new ForbiddenError({ entity: "work.Post", action: "archive", policies: [], breakdown: [] });
+  expect(error.message).toBe("work.Post#archive is forbidden: no policy of work.Post covers it, and an action no policy covers is denied. "
     + "To let every caller run it, add to the entity's `policies`:\n  policy :open actions=[&archive] authorize-if=() => true");
 });
 

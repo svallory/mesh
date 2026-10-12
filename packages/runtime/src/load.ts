@@ -25,6 +25,7 @@ import { authorizer, type PolicySpec } from "./policy.ts";
  */
 export interface BelongsToPlan {
   kind: "belongs-to";
+  /** The target entity's FQN (a key of the plan). */
   target: string;
   /** The column on this entity that holds the target's key. */
   column: string;
@@ -32,6 +33,7 @@ export interface BelongsToPlan {
 }
 export interface HasPlan {
   kind: "has-many" | "has-one";
+  /** The target entity's FQN (a key of the plan). */
   target: string;
   /** The column on the target that holds this entity's key; null when the target has no belongs-to back (loading it is an error). */
   column: string | null;
@@ -65,6 +67,7 @@ export interface EntityPlan {
   relations: Readonly<Record<string, RelationPlan>>;
   computed: Readonly<Record<string, ComputedPlan>>;
 }
+/** The plan of every entity, keyed by the entity's FQN (e.g. `blog.Post`); `entity` and `target` arguments of the functions below are FQNs too. */
 export type LoadPlan = Readonly<Record<string, EntityPlan>>;
 
 export interface LoadOptions {
@@ -213,7 +216,7 @@ async function ensureField(
   plan: LoadPlan, entity: string, tx: DataOperations, rows: Work[], name: string, options: LoadOptions, depth: number,
 ): Promise<void> {
   if (depth > MAX_DEPTH)
-    throw new FrameworkError(`Loading ${entity}.${name} went more than ${MAX_DEPTH} levels deep: a computed field reads itself through rows that lead back to each other`);
+    throw new FrameworkError(`Loading ${entity}#${name} went more than ${MAX_DEPTH} levels deep: a computed field reads itself through rows that lead back to each other`);
   const todo = rows.filter((row) => !(name in row));
   if (todo.length === 0) return;
   const entityPlan = planOf(plan, entity);
@@ -261,8 +264,8 @@ export function guarded(plan: LoadPlan, entity: string, row: Work, what = "compu
   const names = (key: string) => Object.hasOwn(entityPlan.relations, key) || Object.hasOwn(entityPlan.computed, key);
   const unloaded = (key: string) =>
     what === "before"
-      ? new FrameworkError(`\`before\` holds the stored columns of ${entity} only, so ${entity}.${key} is not on it: Mesh never loads a relationship or computed field onto \`before\`. Compare the stored key (\`before.${key}Id\` for a relationship), or read the proposed record's in an expression Mesh can see (\`&${key}\`)`)
-      : new FrameworkError(`A plain ${what} read ${entity}.${key}, which was not loaded: Mesh could not tell from the body that it reads it. Write it as one expression (an arrow with comparisons, ?., ?? and the list methods) so Mesh loads what it reads`);
+      ? new FrameworkError(`\`before\` holds the stored columns of ${entity} only, so ${entity}#${key} is not on it: Mesh never loads a relationship or computed field onto \`before\`. Compare the stored key (\`before.${key}Id\` for a relationship), or read the proposed record's in an expression Mesh can see (\`&${key}\`)`)
+      : new FrameworkError(`A plain ${what} read ${entity}#${key}, which was not loaded: Mesh could not tell from the body that it reads it. Write it as one expression (an arrow with comparisons, ?., ?? and the list methods) so Mesh loads what it reads`);
   const wrap = (key: string, value: unknown): unknown => {
     const relation = Object.hasOwn(entityPlan.relations, key) ? entityPlan.relations[key] : undefined;
     if (!relation || value === null || typeof value !== "object") return value;
@@ -402,7 +405,7 @@ async function ensurePath(
   await ensureField(plan, entity, tx, rows, head, options, depth);
   if (rest.length === 0) return;
   const relation = planOf(plan, entity).relations[head];
-  if (!relation) throw new FrameworkError(`${entity}.${head} is a computed field, and nothing can be loaded through it (${path.join(".")})`);
+  if (!relation) throw new FrameworkError(`${entity}#${head} is a computed field, and nothing can be loaded through it (${path.join(".")})`);
   const next: Work[] = [];
   for (const row of rows) {
     const value = row[head];
@@ -412,9 +415,9 @@ async function ensurePath(
   await ensurePath(plan, relation.target, tx, [...new Set(next)], rest, options, depth);
 }
 
-const describe = (entity: string, name: string, relation: RelationPlan) => `${relation.kind} :${name} of :${entity}`;
+const describe = (entity: string, name: string, relation: RelationPlan) => `${relation.kind} :${name} of ${entity}`;
 const noBelongsToBack = (entity: string, name: string, relation: RelationPlan) =>
-  `${describe(entity, name, relation)} cannot be loaded: :${relation.target} has no belongs-to back to :${entity}. Declare one in :${relation.target}, and name it with inverse=:name if there are several`;
+  `${describe(entity, name, relation)} cannot be loaded: ${relation.target} has no belongs-to back to ${entity}. Declare one in ${relation.target}, and name it with inverse=:name if there are several`;
 
 function chunks<T>(list: readonly T[]): T[][] {
   const out: T[][] = [];
@@ -467,17 +470,17 @@ async function loadRelation(
 function rollupShape(
   plan: LoadPlan, entity: string, entityPlan: EntityPlan, name: string, computed: Extract<ComputedPlan, { kind: "rollup" }>,
 ): { path: string; relation: HasPlan & { column: string }; target: EntityPlan; column: string } {
-  const label = `${computed.fn} :${name} of="${computed.of.join(".")}" on :${entity}`;
+  const label = `${computed.fn} :${name} of="${computed.of.join(".")}" on ${entity}`;
   if (computed.fn !== "count" && computed.fn !== "max")
     throw new FrameworkError(`${label} cannot be loaded: only count and max rollups run before Mesh 1.0; sum, avg and min come after it`);
   const [path, attribute, ...more] = computed.of as [string, string?, ...string[]];
   const relation = Object.hasOwn(entityPlan.relations, path) ? entityPlan.relations[path] : undefined;
-  if (!relation) throw new FrameworkError(`${label} cannot be loaded: :${entity} has no relationship ${path}`);
+  if (!relation) throw new FrameworkError(`${label} cannot be loaded: ${entity} has no relationship ${path}`);
   const through = relation.kind === "belongs-to" || more.length > 0 || (attribute !== undefined && Object.hasOwn(planOf(plan, relation.target).relations, attribute));
   if (through)
     throw new FrameworkError(`${label} cannot be loaded yet: a rollup over ${relation.kind === "belongs-to" ? "a belongs-to" : "more than one relationship"} needs a join, which arrives with the SQL evaluator (M10); only a count or max over one has-many or has-one runs now`);
   if (relation.column === null)
-    throw new FrameworkError(`${label} cannot be loaded: :${relation.target} has no belongs-to back to :${entity}`);
+    throw new FrameworkError(`${label} cannot be loaded: ${relation.target} has no belongs-to back to ${entity}`);
   const target = planOf(plan, relation.target);
   return { path, relation: relation as HasPlan & { column: string }, target, column: attribute ?? target.key };
 }
@@ -507,7 +510,7 @@ async function rollup(
  */
 export function rejectComputedQuery(entity: string, computed: readonly string[], query: { filter?: unknown; sort?: unknown }): void {
   const fail = (name: string, what: "filter" | "sort") => {
-    throw new FrameworkError(`A ${what} by ${entity}.${name} is not available yet: ${name} is a computed field or rollup, and filtering and sorting by one is evaluated by the SQL evaluator, which arrives in M10`);
+    throw new FrameworkError(`A ${what} by ${entity}#${name} is not available yet: ${name} is a computed field or rollup, and filtering and sorting by one is evaluated by the SQL evaluator, which arrives in M10`);
   };
   const walk = (filter: unknown): void => {
     if (filter === null || typeof filter !== "object") return;

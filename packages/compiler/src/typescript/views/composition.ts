@@ -57,7 +57,7 @@ export function compositionView(input: EmitInput): CompositionView {
     const own = new Set([record, ...entityInputs(entity, document).map((i) => i.name), ...(hasLoader(entity) ? [`${record}Loadable`, `${record}With`, `${record}LoadNames`, `${record}LoadArg`] : []), ...(hasTxLoadable(entity) ? [`${record}TxLoadable`, `${record}TxWith`] : [])]);
     for (const name of own)
       if (COMPOSITION_TYPES.includes(name))
-        throw emitError("MESH_EMIT_NAME", `Entity :${entity.name} would generate the type ${name}, which .mesh/composition.ts declares and #mesh exports for \`actions\` and \`tx\``, entity.position, "Rename the entity or the action");
+        throw emitError("MESH_EMIT_NAME", `Entity ${entity.fqn} would generate the type ${name}, which .mesh/composition.ts declares and #mesh exports for \`actions\` and \`tx\``, entity.position, "Rename the entity or the action");
     const used = new Set<string>();
     const tx = txLoadTypes(entity);
     for (const method of view.methods) {

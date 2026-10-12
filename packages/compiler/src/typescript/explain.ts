@@ -80,7 +80,7 @@ function section(into: string[], name: string, lines: readonly string[]): void {
 export function explainAction(entity: Entity, actionName: string): string[] | undefined {
   const action: Action | undefined = effectiveActions(entity).find((candidate) => candidate.name === actionName);
   if (!action) return undefined;
-  const lines = [`${entity.name}.${action.name} (${action.kind})`];
+  const lines = [`${entity.fqn}#${action.name} (${action.kind})`];
   if (action.kind === "read") {
     section(lines, "strategy", ["one query: the caller's filter, sort, limit and offset over the table"]);
     section(lines, "policies", policyLines(entity, action));

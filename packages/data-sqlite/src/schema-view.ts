@@ -112,7 +112,7 @@ function tableView(entity: Entity): TableView {
     const previous = owners.get(sqliteNameKey(name));
     if (previous !== undefined) {
       fail("MESH_SCHEMA_DUPLICATE_COLUMN",
-        `"${previous}" and "${name}" in entity ${entity.name} are the same SQLite column: SQLite compares column names without ASCII letter case`,
+        `"${previous}" and "${name}" in entity ${entity.fqn} are the same SQLite column: SQLite compares column names without ASCII letter case`,
         position, "Rename one so the names differ by more than letter case");
     }
     owners.set(sqliteNameKey(name), name);
@@ -137,14 +137,14 @@ export function schemaView({ document }: EmitInput): SchemaView {
   const tables: TableView[] = [];
   const tableOwners = new Map<string, Entity>();
   const exportOwners = new Map<string, Entity>();
-  const describe = (entity: Entity) => `${entity.name} (${entity.file})`;
+  const describe = (entity: Entity) => `${entity.fqn} (${entity.file})`;
   for (const entity of sorted) {
     const view = tableView(entity);
     const sameTable = tableOwners.get(sqliteNameKey(entity.table));
     if (sameTable) {
       fail("MESH_SCHEMA_DUPLICATE_TABLE",
         `Entities ${describe(sameTable)} and ${describe(entity)} both use the SQLite table "${entity.table}"`,
-        entity.position, 'Give each entity its own table="..."');
+        entity.position, 'Set table="..." on one of the two entities');
     }
     const sameExport = exportOwners.get(view.exportName);
     if (sameExport) {

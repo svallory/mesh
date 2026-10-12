@@ -69,6 +69,7 @@ type Result = boolean | null;
 /** `true` and `false` are themselves; anything else (null, undefined, a non-boolean from plain code) is unknown. */
 const outcome = (value: unknown): Result => (value === true ? true : value === false ? false : null);
 
+/** `entity` is the entity's FQN (e.g. `blog.Post`); a denial carries it. */
 export function authorizer(entity: string, action: string, policies: readonly PolicySpec[]): Authorizer {
   const results = new Map<Spec | PolicyCheckSpec, Result>();
   const run = async (spec: Spec | PolicyCheckSpec, scope: object) => {
@@ -129,7 +130,7 @@ export function authorizer(entity: string, action: string, policies: readonly Po
   /** A read policy that reads the record is a filter on the query, which M10 folds; the build refuses it, and this is the guard behind it. */
   const readsTheRecord = (): FrameworkError | undefined => {
     const reads = policies.find((policy) => policy.when?.record || policy.checks.some((check) => check.record));
-    return reads && new FrameworkError(`${entity}.${action} cannot run in this version: policy :${reads.name} reads the record, `
+    return reads && new FrameworkError(`${entity}#${action} cannot run in this version: policy :${reads.name} reads the record, `
       + "and a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10");
   };
   /** A nested call (inside a running transaction) fails that transaction, as a failed cast does; a top-level call rejects. */
@@ -140,7 +141,7 @@ export function authorizer(entity: string, action: string, policies: readonly Po
   /** A check that throws fails the call as a denial does: inside a running transaction, it fails that transaction. */
   const guarded = async (layer: DataLayer, scope: object, wanted: (record: boolean) => boolean) => {
     try { await evaluate(scope, wanted); }
-    catch (error) { await reject(layer, error instanceof Error ? error : new FrameworkError(`A policy check of ${entity}.${action} threw ${String(error)}`)); }
+    catch (error) { await reject(layer, error instanceof Error ? error : new FrameworkError(`A policy check of ${entity}#${action} threw ${String(error)}`)); }
   };
   return Object.freeze({
     async before(layer: DataLayer, scope: object): Promise<void> {

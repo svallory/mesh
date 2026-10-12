@@ -219,7 +219,7 @@ describe("belongs-to", () => {
       await run(db, async (tx) => {
         await tx.insert(app.tables.post, { id: id(11), title: "lost", score: null, postedAt: at(1), authorId: id(99), reviewerId: null, replyToId: null });
         await expect(app.loadPostFields(tx, await rowsOf(tx, "post"), ["author"])).rejects.toThrow(
-          `belongs-to :author of :Post points at Author "${id(99)}", which does not exist`);
+          `belongs-to :author of Post points at Author "${id(99)}", which does not exist`);
       });
     } finally { await db.close(); }
   });
@@ -281,7 +281,7 @@ describe("has-many and has-one", () => {
         expect(loaded.map((a) => a.profile?.bio ?? null)).toEqual(["mathematician", null, null]);
         await tx.insert(app.tables.profile, { id: id(2), bio: "second", authorId: id(1) });
         await expect(app.loadAuthorFields(tx, await rowsOf(tx, "author"), ["profile"])).rejects.toThrow(
-          `has-one :profile of :Author found 2 rows for "${id(1)}", and a has-one is for at most one`);
+          `has-one :profile of Author found 2 rows for "${id(1)}", and a has-one is for at most one`);
       });
     } finally { await db.close(); }
   });
@@ -292,7 +292,7 @@ describe("has-many and has-one", () => {
       await run(db, async (tx) => {
         await seed(tx);
         await expect(app.loadAuthorFields(tx, await rowsOf(tx, "author"), ["orphans"])).rejects.toThrow(
-          "has-many :orphans of :Author cannot be loaded: :Orphan has no belongs-to back to :Author");
+          "has-many :orphans of Author cannot be loaded: Orphan has no belongs-to back to Author");
       });
     } finally { await db.close(); }
   });
@@ -444,7 +444,7 @@ describe("rollups", () => {
       await authors.createAuthor?.({});
       await run(db, async (tx) => { await seed(tx); });
       const refused = (what: "filter" | "sort", name: string) =>
-        `A ${what} by Author.${name} is not available yet: ${name} is a computed field or rollup, and filtering and sorting by one is evaluated by the SQL evaluator, which arrives in M10`;
+        `A ${what} by Author#${name} is not available yet: ${name} is a computed field or rollup, and filtering and sorting by one is evaluated by the SQL evaluator, which arrives in M10`;
       await expect(authors.readAuthor({ filter: { postCount: { gt: 1 } } })).rejects.toThrow(refused("filter", "postCount"));
       await expect(authors.readAuthor({ sort: ["-lastPostedAt"] })).rejects.toThrow(refused("sort", "lastPostedAt"));
       await expect(authors.readAuthor({ filter: { and: [{ name: { eq: "Ada" } }, { or: [{ topScore: { eq: 9 } }] }] } })).rejects.toThrow(refused("filter", "topScore"));
@@ -574,7 +574,7 @@ describe("a computed body that runs as plain code", () => {
       await run(db, async (tx) => {
         await chain(tx);
         await expect(app.loadPostFields(tx, await rowsOf(tx, "post"), ["viaVariable"])).rejects.toThrow(
-          "A plain computed body read Post.answered, which was not loaded");
+          "A plain computed body read Post#answered, which was not loaded");
         await expect(app.loadPostFields(tx, await rowsOf(tx, "post"), ["viaVariable"])).rejects.toBeInstanceOf(FrameworkError);
       });
     } finally { await db.close(); }
@@ -708,9 +708,9 @@ describe("the guarded record of a plain body", () => {
         await pair(tx);
         expect(await only(tx, "parentHasTitle")).toBe(true);
         await expect(app.loadPostFields(tx, await rowsOf(tx, "post"), ["parentHasReplies"])).rejects.toThrow(
-          "A plain computed body read Post.replies, which was not loaded");
+          "A plain computed body read Post#replies, which was not loaded");
         await expect(app.loadPostFields(tx, await rowsOf(tx, "post"), ["keyOfSelf"])).rejects.toThrow(
-          "A plain computed body read Post.comments, which was not loaded");
+          "A plain computed body read Post#comments, which was not loaded");
       });
     } finally { await db.close(); }
   });

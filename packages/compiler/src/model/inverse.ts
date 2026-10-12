@@ -17,18 +17,18 @@ export function inverseProblem(
   const names = (target?.relationships ?? [])
     .filter((other) => other.kind === "belongs-to" && targetOf(target!, other) === owner)
     .map((other) => other.name);
-  const targetName = target?.name ?? relation.entity.identifier;
+  const targetName = target?.fqn ?? relation.entity.identifier;
   if (names.length > 1) {
     const list = names.map((name) => `:${name}`).join(", ");
     return {
       code: "MESH_INVERSE_REQUIRED",
-      because: `:${targetName} has ${names.length} belongs-to back to :${owner.name} (${list}) and ${relation.kind} :${relation.name} does not say which it follows`,
+      because: `${targetName} has ${names.length} belongs-to back to ${owner.fqn} (${list}) and ${relation.kind} :${relation.name} does not say which it follows`,
       fix: `Choose one: \`inverse=:${names[0]}\``,
     };
   }
   return {
     code: "MESH_NO_INVERSE",
-    because: `:${targetName} has no belongs-to back to :${owner.name}`,
-    fix: `Declare a belongs-to to :${owner.name} in the other entity's file, and name it with inverse=:name if there are several`,
+    because: `${targetName} has no belongs-to back to ${owner.fqn}`,
+    fix: `Declare a belongs-to to ${owner.fqn} in the other entity's file, and name it with inverse=:name if there are several`,
   };
 }

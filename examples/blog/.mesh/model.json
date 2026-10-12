@@ -39,6 +39,7 @@
       ],
       "computed": [],
       "file": "src/domain/blog/comment.mesh.mx",
+      "fqn": "blog.Comment",
       "imports": [
         {
           "from": "./post.mesh.mx",
@@ -701,6 +702,7 @@
         }
       ],
       "file": "src/domain/blog/post.mesh.mx",
+      "fqn": "blog.Post",
       "imports": [
         {
           "from": "./user.mesh.mx",
@@ -1062,6 +1064,7 @@
       ],
       "computed": [],
       "file": "src/domain/blog/user.mesh.mx",
+      "fqn": "blog.User",
       "imports": [],
       "module": "blog",
       "name": "User",
