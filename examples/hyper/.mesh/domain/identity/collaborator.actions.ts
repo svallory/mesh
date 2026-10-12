@@ -56,9 +56,9 @@ import {
 } from "./collaborator.validators";
 import { tables } from "../../schema";
 import {
-  expressions as $expressions,
-  type CollaboratorScope as $Scope,
-  type CollaboratorStoredScope as $StoredScope,
+  $expressions,
+  type $identity$Collaborator$Scope as $Scope,
+  type $identity$Collaborator$StoredScope as $StoredScope,
 } from "./collaborator.expressions";
 import { loadPlan as $loadPlan } from "../../load";
 

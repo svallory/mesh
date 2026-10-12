@@ -60,9 +60,9 @@ import {
 } from "./machine.validators";
 import { tables } from "../../schema";
 import {
-  expressions as $expressions,
-  type MachineScope as $Scope,
-  type MachineStoredScope as $StoredScope,
+  $expressions,
+  type $execution$Machine$Scope as $Scope,
+  type $execution$Machine$StoredScope as $StoredScope,
 } from "./machine.expressions";
 import { loadPlan as $loadPlan } from "../../load";
 

@@ -63,9 +63,9 @@ import {
 } from "./attempt.validators";
 import { tables } from "../../schema";
 import {
-  expressions as $expressions,
-  type AttemptScope as $Scope,
-  type AttemptStoredScope as $StoredScope,
+  $expressions,
+  type $execution$Attempt$Scope as $Scope,
+  type $execution$Attempt$StoredScope as $StoredScope,
 } from "./attempt.expressions";
 import { loadPlan as $loadPlan } from "../../load";
 

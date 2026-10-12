@@ -15,32 +15,39 @@ import {
   type $ReadOnly as $identity$Collaborator$ReadOnly,
 } from "../identity/collaborator.actions";
 import type {
-  SessionReference,
-  SessionReferenceLoaded,
-  RecordSessionReferenceInput,
-  RedactSessionReferenceInput,
-  SetAvailabilitySessionReferenceInput,
+  SessionReference as $execution$SessionReference$Record,
+  SessionReferenceLoaded as $execution$SessionReference$Loaded,
+  RecordSessionReferenceInput as $execution$SessionReference$RecordSessionReferenceInput,
+  RedactSessionReferenceInput as $execution$SessionReference$RedactSessionReferenceInput,
+  SetAvailabilitySessionReferenceInput as $execution$SessionReference$SetAvailabilitySessionReferenceInput,
 } from "./sessionReference.types";
 
 /** What every expression of SessionReference reads; `I` is the input of the action it runs in. */
-export type SessionReferenceScope<I = unknown> = $Scope<{
-  self: $DeepReadonly<SessionReferenceLoaded>;
+export type $execution$SessionReference$Scope<I = unknown> = $Scope<{
+  self: $DeepReadonly<$execution$SessionReference$Loaded>;
   input: $DeepReadonly<I>;
   actor: any;
   context: any;
-  before: $DeepReadonly<SessionReference> | null;
+  before: $DeepReadonly<$execution$SessionReference$Record> | null;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
-export type SessionReferenceStoredScope<I = unknown> = SessionReferenceScope<I> & {
-  before: $DeepReadonly<SessionReference>;
-};
+export type $execution$SessionReference$StoredScope<I = unknown> =
+  $execution$SessionReference$Scope<I> & {
+    before: $DeepReadonly<$execution$SessionReference$Record>;
+  };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type SessionReferenceCheckScope<I = unknown> = Omit<SessionReferenceScope<I>, "before">;
+export type $execution$SessionReference$CheckScope<I = unknown> = Omit<
+  $execution$SessionReference$Scope<I>,
+  "before"
+>;
 /** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
-export type SessionReferenceNewScope<I = unknown> = Omit<SessionReferenceCheckScope<I>, "self"> & {
+export type $execution$SessionReference$NewScope<I = unknown> = Omit<
+  $execution$SessionReference$CheckScope<I>,
+  "self"
+> & {
   self: $DeepReadonly<
     Omit<
-      SessionReferenceLoaded,
+      $execution$SessionReference$Loaded,
       | "runtime"
       | "runtimeSessionId"
       | "availability"
@@ -60,14 +67,16 @@ export type SessionReferenceNewScope<I = unknown> = Omit<SessionReferenceCheckSc
         | "agentProfileId"
         | "agentProfile"
         | "recordedById"
-        | "recordedBy"]: SessionReferenceLoaded[K] | null;
+        | "recordedBy"]: $execution$SessionReference$Loaded[K] | null;
     }
   >;
 };
 
-export const expressions = {
+export const $expressions = {
   // check :agentProfile that, plain (uses-privileged) (src/domain/execution/session-reference.mesh.mx:30:16)
-  "record.check.agentProfile.that": ($s: SessionReferenceNewScope<RecordSessionReferenceInput>) => {
+  "record.check.agentProfile.that": (
+    $s: $execution$SessionReference$NewScope<$execution$SessionReference$RecordSessionReferenceInput>,
+  ) => {
     const privileged = $privileged;
     const Collaborator: $identity$Collaborator$ReadOnly = $identity$Collaborator$value;
     return (async ({ input }) =>
@@ -80,28 +89,29 @@ export const expressions = {
   },
   // check :machineRetired that, plain (awaits-helper) (src/domain/execution/session-reference.mesh.mx:35:16)
   "record.check.machineRetired.that": (
-    $s: SessionReferenceNewScope<RecordSessionReferenceInput>,
+    $s: $execution$SessionReference$NewScope<$execution$SessionReference$RecordSessionReferenceInput>,
   ) => {
     return (async ({ input }) => await machineActiveOf(input.machine))($s);
   },
   // set &recordedBy, translated (src/domain/execution/session-reference.mesh.mx:41:23)
-  "record.step.0.set.recordedBy": ($s: SessionReferenceScope<RecordSessionReferenceInput>) =>
-    $s.actor?.id,
+  "record.step.0.set.recordedBy": (
+    $s: $execution$SessionReference$Scope<$execution$SessionReference$RecordSessionReferenceInput>,
+  ) => $s.actor?.id,
   // check :notRedacted that, translated (src/domain/execution/session-reference.mesh.mx:50:16)
   "setAvailability.check.notRedacted.that": (
-    $s: SessionReferenceCheckScope<SetAvailabilitySessionReferenceInput>,
+    $s: $execution$SessionReference$CheckScope<$execution$SessionReference$SetAvailabilitySessionReferenceInput>,
   ) => $.ne($s.self.availability, "redacted"),
   // check :availabilityKept that, translated (src/domain/execution/session-reference.mesh.mx:55:16)
   "setAvailability.check.availabilityKept.that": (
-    $s: SessionReferenceCheckScope<SetAvailabilitySessionReferenceInput>,
+    $s: $execution$SessionReference$CheckScope<$execution$SessionReference$SetAvailabilitySessionReferenceInput>,
   ) => $.ne($.coalesce($s.input?.availability, $s.self.availability), "redacted"),
   // check :versionMatches that, translated (src/domain/execution/session-reference.mesh.mx:60:16)
   "setAvailability.check.versionMatches.that": (
-    $s: SessionReferenceCheckScope<SetAvailabilitySessionReferenceInput>,
+    $s: $execution$SessionReference$CheckScope<$execution$SessionReference$SetAvailabilitySessionReferenceInput>,
   ) => $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/session-reference.mesh.mx:63:19)
   "setAvailability.check.versionMatches.details": (
-    $s: SessionReferenceCheckScope<SetAvailabilitySessionReferenceInput>,
+    $s: $execution$SessionReference$CheckScope<$execution$SessionReference$SetAvailabilitySessionReferenceInput>,
   ) => {
     const { self } = $s;
     return (({ input }) => ({
@@ -111,18 +121,19 @@ export const expressions = {
   },
   // set &version, translated (src/domain/execution/session-reference.mesh.mx:67:20)
   "setAvailability.step.0.set.version": (
-    $s: SessionReferenceStoredScope<SetAvailabilitySessionReferenceInput>,
+    $s: $execution$SessionReference$StoredScope<$execution$SessionReference$SetAvailabilitySessionReferenceInput>,
   ) => $.add($s.self.version, 1),
   // check :notRedacted that, translated (src/domain/execution/session-reference.mesh.mx:74:16)
-  "redact.check.notRedacted.that": ($s: SessionReferenceCheckScope<RedactSessionReferenceInput>) =>
-    $.ne($s.self.availability, "redacted"),
+  "redact.check.notRedacted.that": (
+    $s: $execution$SessionReference$CheckScope<$execution$SessionReference$RedactSessionReferenceInput>,
+  ) => $.ne($s.self.availability, "redacted"),
   // check :versionMatches that, translated (src/domain/execution/session-reference.mesh.mx:79:16)
   "redact.check.versionMatches.that": (
-    $s: SessionReferenceCheckScope<RedactSessionReferenceInput>,
+    $s: $execution$SessionReference$CheckScope<$execution$SessionReference$RedactSessionReferenceInput>,
   ) => $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/session-reference.mesh.mx:82:19)
   "redact.check.versionMatches.details": (
-    $s: SessionReferenceCheckScope<RedactSessionReferenceInput>,
+    $s: $execution$SessionReference$CheckScope<$execution$SessionReference$RedactSessionReferenceInput>,
   ) => {
     const { self } = $s;
     return (({ input }) => ({
@@ -131,15 +142,19 @@ export const expressions = {
     }))($s);
   },
   // set &version, translated (src/domain/execution/session-reference.mesh.mx:88:20)
-  "redact.step.0.set.version": ($s: SessionReferenceStoredScope<RedactSessionReferenceInput>) =>
-    $.add($s.self.version, 1),
+  "redact.step.0.set.version": (
+    $s: $execution$SessionReference$StoredScope<$execution$SessionReference$RedactSessionReferenceInput>,
+  ) => $.add($s.self.version, 1),
   // policy :membersRead authorize-if, translated (src/domain/execution/session-reference.mesh.mx:91:20)
-  "policy.membersRead.authorize-if.0": ($s: SessionReferenceCheckScope<unknown>) =>
+  "policy.membersRead.authorize-if.0": ($s: $execution$SessionReference$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
   // policy :isMember authorize-if, plain (awaits-helper) (src/domain/execution/session-reference.mesh.mx:93:20)
   "policy.isMember.authorize-if.0": (
-    $s: SessionReferenceNewScope<
-      $SharedInput<RecordSessionReferenceInput | RedactSessionReferenceInput>
+    $s: $execution$SessionReference$NewScope<
+      $SharedInput<
+        | $execution$SessionReference$RecordSessionReferenceInput
+        | $execution$SessionReference$RedactSessionReferenceInput
+      >
     >,
   ) => {
     const isSystem = $.isSystem;
@@ -147,7 +162,7 @@ export const expressions = {
   },
   // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/execution/session-reference.mesh.mx:95:20)
   "policy.ownerOrMember.authorize-if.0": (
-    $s: SessionReferenceNewScope<RecordSessionReferenceInput>,
+    $s: $execution$SessionReference$NewScope<$execution$SessionReference$RecordSessionReferenceInput>,
   ) => {
     const isSystem = $.isSystem;
     return (async ({ actor, context }) =>
@@ -155,7 +170,7 @@ export const expressions = {
   },
   // policy :ownerOnly authorize-if, plain (awaits-helper) (src/domain/execution/session-reference.mesh.mx:97:20)
   "policy.ownerOnly.authorize-if.0": (
-    $s: SessionReferenceCheckScope<RedactSessionReferenceInput>,
+    $s: $execution$SessionReference$CheckScope<$execution$SessionReference$RedactSessionReferenceInput>,
   ) => {
     const isSystem = $.isSystem;
     return (async ({ actor, context }) => isSystem(context) || (await roleIn(actor.id, ["owner"])))(
@@ -164,6 +179,6 @@ export const expressions = {
   },
   // policy :sessionRecorder authorize-if, translated (src/domain/execution/session-reference.mesh.mx:99:20)
   "policy.sessionRecorder.authorize-if.0": (
-    $s: SessionReferenceCheckScope<SetAvailabilitySessionReferenceInput>,
+    $s: $execution$SessionReference$CheckScope<$execution$SessionReference$SetAvailabilitySessionReferenceInput>,
   ) => $.or($.isSystem($s.context), $.eq($s.self.recordedById, $s.actor?.id)),
 } as const;

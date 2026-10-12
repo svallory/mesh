@@ -76,9 +76,9 @@ import {
 } from "./task.validators";
 import { tables } from "../../schema";
 import {
-  expressions as $expressions,
-  type TaskScope as $Scope,
-  type TaskStoredScope as $StoredScope,
+  $expressions,
+  type $work$Task$Scope as $Scope,
+  type $work$Task$StoredScope as $StoredScope,
 } from "./task.expressions";
 import { loadPlan as $loadPlan } from "../../load";
 

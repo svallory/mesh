@@ -56,9 +56,9 @@ import {
 } from "./dependency.validators";
 import { tables } from "../../schema";
 import {
-  expressions as $expressions,
-  type DependencyScope as $Scope,
-  type DependencyStoredScope as $StoredScope,
+  $expressions,
+  type $work$Dependency$Scope as $Scope,
+  type $work$Dependency$StoredScope as $StoredScope,
 } from "./dependency.expressions";
 import { loadPlan as $loadPlan } from "../../load";
 

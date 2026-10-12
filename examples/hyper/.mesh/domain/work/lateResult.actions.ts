@@ -47,10 +47,7 @@ import type {
 } from "./lateResult.types";
 import { recordLateResultInput, readLateResultInput } from "./lateResult.validators";
 import { tables } from "../../schema";
-import {
-  expressions as $expressions,
-  type LateResultScope as $Scope,
-} from "./lateResult.expressions";
+import { $expressions, type $work$LateResult$Scope as $Scope } from "./lateResult.expressions";
 import { loadPlan as $loadPlan } from "../../load";
 
 /**

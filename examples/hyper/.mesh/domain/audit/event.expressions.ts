@@ -6,25 +6,31 @@ import {
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
 } from "@meshfw/runtime";
-import type { Event, EventLoaded, RecordEventInput } from "./event.types";
+import type {
+  Event as $audit$Event$Record,
+  EventLoaded as $audit$Event$Loaded,
+  RecordEventInput as $audit$Event$RecordEventInput,
+} from "./event.types";
 
 /** What every expression of Event reads; `I` is the input of the action it runs in. */
-export type EventScope<I = unknown> = $Scope<{
-  self: $DeepReadonly<EventLoaded>;
+export type $audit$Event$Scope<I = unknown> = $Scope<{
+  self: $DeepReadonly<$audit$Event$Loaded>;
   input: $DeepReadonly<I>;
   actor: any;
   context: any;
-  before: $DeepReadonly<Event> | null;
+  before: $DeepReadonly<$audit$Event$Record> | null;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
-export type EventStoredScope<I = unknown> = EventScope<I> & { before: $DeepReadonly<Event> };
+export type $audit$Event$StoredScope<I = unknown> = $audit$Event$Scope<I> & {
+  before: $DeepReadonly<$audit$Event$Record>;
+};
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type EventCheckScope<I = unknown> = Omit<EventScope<I>, "before">;
+export type $audit$Event$CheckScope<I = unknown> = Omit<$audit$Event$Scope<I>, "before">;
 /** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
-export type EventNewScope<I = unknown> = Omit<EventCheckScope<I>, "self"> & {
+export type $audit$Event$NewScope<I = unknown> = Omit<$audit$Event$CheckScope<I>, "self"> & {
   self: $DeepReadonly<
     Omit<
-      EventLoaded,
+      $audit$Event$Loaded,
       | "seq"
       | "type"
       | "workspaceId"
@@ -44,15 +50,16 @@ export type EventNewScope<I = unknown> = Omit<EventCheckScope<I>, "self"> & {
         | "recordVersion"
         | "actor"
         | "caller"
-        | "occurredAt"]: EventLoaded[K] | null;
+        | "occurredAt"]: $audit$Event$Loaded[K] | null;
     }
   >;
 };
 
-export const expressions = {
+export const $expressions = {
   // policy :membersRead authorize-if, translated (src/domain/audit/event.mesh.mx:39:20)
-  "policy.membersRead.authorize-if.0": ($s: EventCheckScope<unknown>) =>
+  "policy.membersRead.authorize-if.0": ($s: $audit$Event$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
   // policy :internal authorize-if, translated (src/domain/audit/event.mesh.mx:41:20)
-  "policy.internal.authorize-if.0": ($s: EventNewScope<RecordEventInput>) => $.isSystem($s.context),
+  "policy.internal.authorize-if.0": ($s: $audit$Event$NewScope<$audit$Event$RecordEventInput>) =>
+    $.isSystem($s.context),
 } as const;

@@ -48,8 +48,8 @@ import {
 } from "./evidenceReference.validators";
 import { tables } from "../../schema";
 import {
-  expressions as $expressions,
-  type EvidenceReferenceScope as $Scope,
+  $expressions,
+  type $work$EvidenceReference$Scope as $Scope,
 } from "./evidenceReference.expressions";
 import { loadPlan as $loadPlan } from "../../load";
 

@@ -4,24 +4,24 @@
 
 import type { LoadPlan as $LoadPlan } from "@meshfw/runtime";
 import { tables } from "./schema";
-import { expressions as $audit$Event$expressions } from "./domain/audit/event.expressions";
-import { expressions as $execution$Attempt$expressions } from "./domain/execution/attempt.expressions";
-import { expressions as $execution$Invocation$expressions } from "./domain/execution/invocation.expressions";
-import { expressions as $execution$Machine$expressions } from "./domain/execution/machine.expressions";
-import { expressions as $execution$Run$expressions } from "./domain/execution/run.expressions";
-import { expressions as $execution$SessionReference$expressions } from "./domain/execution/sessionReference.expressions";
-import { expressions as $identity$Collaborator$expressions } from "./domain/identity/collaborator.expressions";
-import { expressions as $identity$Membership$expressions } from "./domain/identity/membership.expressions";
-import { expressions as $identity$Workspace$expressions } from "./domain/identity/workspace.expressions";
-import { expressions as $work$Assignment$expressions } from "./domain/work/assignment.expressions";
-import { expressions as $work$Claim$expressions } from "./domain/work/claim.expressions";
-import { expressions as $work$Completion$expressions } from "./domain/work/completion.expressions";
-import { expressions as $work$Dependency$expressions } from "./domain/work/dependency.expressions";
-import { expressions as $work$EvidenceReference$expressions } from "./domain/work/evidenceReference.expressions";
-import { expressions as $work$LateResult$expressions } from "./domain/work/lateResult.expressions";
-import { expressions as $work$Review$expressions } from "./domain/work/review.expressions";
-import { expressions as $work$Submission$expressions } from "./domain/work/submission.expressions";
-import { expressions as $work$Task$expressions } from "./domain/work/task.expressions";
+import { $expressions as $audit$Event$expressions } from "./domain/audit/event.expressions";
+import { $expressions as $execution$Attempt$expressions } from "./domain/execution/attempt.expressions";
+import { $expressions as $execution$Invocation$expressions } from "./domain/execution/invocation.expressions";
+import { $expressions as $execution$Machine$expressions } from "./domain/execution/machine.expressions";
+import { $expressions as $execution$Run$expressions } from "./domain/execution/run.expressions";
+import { $expressions as $execution$SessionReference$expressions } from "./domain/execution/sessionReference.expressions";
+import { $expressions as $identity$Collaborator$expressions } from "./domain/identity/collaborator.expressions";
+import { $expressions as $identity$Membership$expressions } from "./domain/identity/membership.expressions";
+import { $expressions as $identity$Workspace$expressions } from "./domain/identity/workspace.expressions";
+import { $expressions as $work$Assignment$expressions } from "./domain/work/assignment.expressions";
+import { $expressions as $work$Claim$expressions } from "./domain/work/claim.expressions";
+import { $expressions as $work$Completion$expressions } from "./domain/work/completion.expressions";
+import { $expressions as $work$Dependency$expressions } from "./domain/work/dependency.expressions";
+import { $expressions as $work$EvidenceReference$expressions } from "./domain/work/evidenceReference.expressions";
+import { $expressions as $work$LateResult$expressions } from "./domain/work/lateResult.expressions";
+import { $expressions as $work$Review$expressions } from "./domain/work/review.expressions";
+import { $expressions as $work$Submission$expressions } from "./domain/work/submission.expressions";
+import { $expressions as $work$Task$expressions } from "./domain/work/task.expressions";
 
 /**
  * What `loadRows` follows: each entity's table and key, its relationships and its computed fields, and the read policies

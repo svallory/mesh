@@ -51,7 +51,7 @@ import type {
 } from "./review.types";
 import { acceptReviewInput, returnReviewInput, readReviewInput } from "./review.validators";
 import { tables } from "../../schema";
-import { expressions as $expressions, type ReviewScope as $Scope } from "./review.expressions";
+import { $expressions, type $work$Review$Scope as $Scope } from "./review.expressions";
 import { loadPlan as $loadPlan } from "../../load";
 
 /**

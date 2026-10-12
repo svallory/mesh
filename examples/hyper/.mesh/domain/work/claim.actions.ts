@@ -68,9 +68,9 @@ import {
 } from "./claim.validators";
 import { tables } from "../../schema";
 import {
-  expressions as $expressions,
-  type ClaimScope as $Scope,
-  type ClaimStoredScope as $StoredScope,
+  $expressions,
+  type $work$Claim$Scope as $Scope,
+  type $work$Claim$StoredScope as $StoredScope,
 } from "./claim.expressions";
 import { loadPlan as $loadPlan } from "../../load";
 

@@ -55,9 +55,9 @@ import type {
 import { startRunInput, cancelRunInput, settleRunInput, readRunInput } from "./run.validators";
 import { tables } from "../../schema";
 import {
-  expressions as $expressions,
-  type RunScope as $Scope,
-  type RunStoredScope as $StoredScope,
+  $expressions,
+  type $execution$Run$Scope as $Scope,
+  type $execution$Run$StoredScope as $StoredScope,
 } from "./run.expressions";
 import { loadPlan as $loadPlan } from "../../load";
 

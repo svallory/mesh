@@ -38,7 +38,7 @@ import type {
 } from "./event.types";
 import { recordEventInput, readEventInput } from "./event.validators";
 import { tables } from "../../schema";
-import { expressions as $expressions } from "./event.expressions";
+import { $expressions } from "./event.expressions";
 import { loadPlan as $loadPlan } from "../../load";
 
 /**

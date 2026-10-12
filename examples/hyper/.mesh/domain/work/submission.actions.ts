@@ -63,9 +63,9 @@ import {
 } from "./submission.validators";
 import { tables } from "../../schema";
 import {
-  expressions as $expressions,
-  type SubmissionScope as $Scope,
-  type SubmissionStoredScope as $StoredScope,
+  $expressions,
+  type $work$Submission$Scope as $Scope,
+  type $work$Submission$StoredScope as $StoredScope,
 } from "./submission.expressions";
 import { loadPlan as $loadPlan } from "../../load";
 

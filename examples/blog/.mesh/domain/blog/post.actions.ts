@@ -65,10 +65,7 @@ import {
   destroyPostInput,
 } from "./post.validators";
 import { tables } from "../../schema";
-import {
-  expressions as $expressions,
-  type PostStoredScope as $StoredScope,
-} from "./post.expressions";
+import { $expressions, type $blog$Post$StoredScope as $StoredScope } from "./post.expressions";
 import { loadPlan as $loadPlan } from "../../load";
 
 /**

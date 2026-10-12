@@ -56,9 +56,9 @@ import {
 } from "./assignment.validators";
 import { tables } from "../../schema";
 import {
-  expressions as $expressions,
-  type AssignmentScope as $Scope,
-  type AssignmentStoredScope as $StoredScope,
+  $expressions,
+  type $work$Assignment$Scope as $Scope,
+  type $work$Assignment$StoredScope as $StoredScope,
 } from "./assignment.expressions";
 import { loadPlan as $loadPlan } from "../../load";
 

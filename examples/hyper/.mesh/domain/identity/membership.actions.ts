@@ -58,9 +58,9 @@ import {
 } from "./membership.validators";
 import { tables } from "../../schema";
 import {
-  expressions as $expressions,
-  type MembershipScope as $Scope,
-  type MembershipStoredScope as $StoredScope,
+  $expressions,
+  type $identity$Membership$Scope as $Scope,
+  type $identity$Membership$StoredScope as $StoredScope,
 } from "./membership.expressions";
 import { loadPlan as $loadPlan } from "../../load";
 

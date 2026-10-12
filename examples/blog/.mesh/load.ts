@@ -4,9 +4,9 @@
 
 import type { LoadPlan as $LoadPlan } from "@meshfw/runtime";
 import { tables } from "./schema";
-import { expressions as $blog$Comment$expressions } from "./domain/blog/comment.expressions";
-import { expressions as $blog$Post$expressions } from "./domain/blog/post.expressions";
-import { expressions as $blog$User$expressions } from "./domain/blog/user.expressions";
+import { $expressions as $blog$Comment$expressions } from "./domain/blog/comment.expressions";
+import { $expressions as $blog$Post$expressions } from "./domain/blog/post.expressions";
+import { $expressions as $blog$User$expressions } from "./domain/blog/user.expressions";
 
 /**
  * What `loadRows` follows: each entity's table and key, its relationships and its computed fields, and the read policies

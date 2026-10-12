@@ -35,7 +35,7 @@ import type {
 } from "./comment.types";
 import { readCommentInput } from "./comment.validators";
 import { tables } from "../../schema";
-import { expressions as $expressions } from "./comment.expressions";
+import { $expressions } from "./comment.expressions";
 import { loadPlan as $loadPlan } from "../../load";
 
 /**

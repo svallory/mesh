@@ -6,40 +6,50 @@ import {
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
 } from "@meshfw/runtime";
-import type { Completion, CompletionLoaded, RecordCompletionInput } from "./completion.types";
+import type {
+  Completion as $work$Completion$Record,
+  CompletionLoaded as $work$Completion$Loaded,
+  RecordCompletionInput as $work$Completion$RecordCompletionInput,
+} from "./completion.types";
 
 /** What every expression of Completion reads; `I` is the input of the action it runs in. */
-export type CompletionScope<I = unknown> = $Scope<{
-  self: $DeepReadonly<CompletionLoaded>;
+export type $work$Completion$Scope<I = unknown> = $Scope<{
+  self: $DeepReadonly<$work$Completion$Loaded>;
   input: $DeepReadonly<I>;
   actor: any;
   context: any;
-  before: $DeepReadonly<Completion> | null;
+  before: $DeepReadonly<$work$Completion$Record> | null;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
-export type CompletionStoredScope<I = unknown> = CompletionScope<I> & {
-  before: $DeepReadonly<Completion>;
+export type $work$Completion$StoredScope<I = unknown> = $work$Completion$Scope<I> & {
+  before: $DeepReadonly<$work$Completion$Record>;
 };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type CompletionCheckScope<I = unknown> = Omit<CompletionScope<I>, "before">;
+export type $work$Completion$CheckScope<I = unknown> = Omit<$work$Completion$Scope<I>, "before">;
 /** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
-export type CompletionNewScope<I = unknown> = Omit<CompletionCheckScope<I>, "self"> & {
+export type $work$Completion$NewScope<I = unknown> = Omit<
+  $work$Completion$CheckScope<I>,
+  "self"
+> & {
   self: $DeepReadonly<
-    Omit<CompletionLoaded, "rule" | "taskId" | "task" | "completedById" | "completedBy"> & {
+    Omit<$work$Completion$Loaded, "rule" | "taskId" | "task" | "completedById" | "completedBy"> & {
       [K in "rule" | "taskId" | "task" | "completedById" | "completedBy"]:
-        | CompletionLoaded[K]
+        | $work$Completion$Loaded[K]
         | null;
     }
   >;
 };
 
-export const expressions = {
+export const $expressions = {
   // set &completedBy, translated (src/domain/work/completion.mesh.mx:22:24)
-  "record.step.0.set.completedBy": ($s: CompletionScope<RecordCompletionInput>) => $s.actor?.id,
+  "record.step.0.set.completedBy": (
+    $s: $work$Completion$Scope<$work$Completion$RecordCompletionInput>,
+  ) => $s.actor?.id,
   // policy :membersRead authorize-if, translated (src/domain/work/completion.mesh.mx:25:20)
-  "policy.membersRead.authorize-if.0": ($s: CompletionCheckScope<unknown>) =>
+  "policy.membersRead.authorize-if.0": ($s: $work$Completion$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
   // policy :internal authorize-if, translated (src/domain/work/completion.mesh.mx:27:20)
-  "policy.internal.authorize-if.0": ($s: CompletionNewScope<RecordCompletionInput>) =>
-    $.isSystem($s.context),
+  "policy.internal.authorize-if.0": (
+    $s: $work$Completion$NewScope<$work$Completion$RecordCompletionInput>,
+  ) => $.isSystem($s.context),
 } as const;

@@ -43,10 +43,7 @@ import type {
 } from "./completion.types";
 import { recordCompletionInput, readCompletionInput } from "./completion.validators";
 import { tables } from "../../schema";
-import {
-  expressions as $expressions,
-  type CompletionScope as $Scope,
-} from "./completion.expressions";
+import { $expressions, type $work$Completion$Scope as $Scope } from "./completion.expressions";
 import { loadPlan as $loadPlan } from "../../load";
 
 /**

@@ -58,9 +58,9 @@ import {
 } from "./sessionReference.validators";
 import { tables } from "../../schema";
 import {
-  expressions as $expressions,
-  type SessionReferenceScope as $Scope,
-  type SessionReferenceStoredScope as $StoredScope,
+  $expressions,
+  type $execution$SessionReference$Scope as $Scope,
+  type $execution$SessionReference$StoredScope as $StoredScope,
 } from "./sessionReference.expressions";
 import { loadPlan as $loadPlan } from "../../load";
 

@@ -54,10 +54,7 @@ import {
   readInvocationInput,
 } from "./invocation.validators";
 import { tables } from "../../schema";
-import {
-  expressions as $expressions,
-  type InvocationScope as $Scope,
-} from "./invocation.expressions";
+import { $expressions, type $execution$Invocation$Scope as $Scope } from "./invocation.expressions";
 import { loadPlan as $loadPlan } from "../../load";
 
 /**
