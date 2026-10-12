@@ -1,6 +1,6 @@
 import { parseArgs } from "node:util";
 import { join } from "node:path";
-import { EmitError, explainAction, RESERVED_COMMAND_WORDS, buildEmitters, generatedImportDiagnostics, generateFiles, loadAdapterBuild, loadConfig, loadProject, stableJsonStringify, writeGeneratedFiles, type AdapterBuild, type ResolvedConfig } from "@meshfw/compiler";
+import { EmitError, explainAction, RESERVED_COMMAND_WORDS, buildEmitters, generatedImportDiagnostics, generateFiles, loadAdapterBuild, loadConfig, loadProject, resolveName, stableJsonStringify, writeGeneratedFiles, type AdapterBuild, type ResolvedConfig } from "@meshfw/compiler";
 import type { Diagnostic } from "@meshfw/model";
 import { compareText, diagnostic, printDiagnostics } from "./diagnostics.ts";
 import { exportGenerators } from "./export.ts";
@@ -86,12 +86,13 @@ export async function runCli(args: string[], root = process.cwd(), io = {
         }
         const files = await generateFiles({ config, document: built.document }, adapter.build);
         if (command.kind === "explain") {
-          const entity = built.document.entities.find((candidate) => candidate.name === command.entity);
-          if (!entity) diagnostics.push(diagnostic("mesh.config.ts", `Unknown entity "${command.entity}"; known entities: ${built.document.entities.map((candidate) => candidate.name).sort(compareText).join(", ")}`));
+          const resolved = resolveName(built.document, command.entity!);
+          if (resolved.kind !== "found") diagnostics.push(diagnostic("mesh.config.ts", resolved.message));
           else {
+            const entity = resolved.entity;
             const plan = explainAction(entity, command.action!);
             if (plan) json = `${plan.join("\n")}\n`;
-            else diagnostics.push(diagnostic("mesh.config.ts", `Unknown action "${command.action}" of ${entity.name}; known actions: ${effectiveNames(entity).join(", ")}`));
+            else diagnostics.push(diagnostic("mesh.config.ts", `Unknown action "${command.action}" of ${entity.fqn}; known actions: ${effectiveNames(entity).join(", ")}`));
           }
         } else if (command.kind === "inspect") {
           if (command.entity === undefined) {
@@ -100,9 +101,9 @@ export async function runCli(args: string[], root = process.cwd(), io = {
             if (!modelFile) throw new Error("The compiler did not produce model.json; report this emitter bug");
             json = modelFile.contents;
           } else {
-            const entity = built.document.entities.find((candidate) => candidate.name === command.entity);
-            if (entity) json = `${stableJsonStringify(entity)}\n`;
-            else diagnostics.push(diagnostic("mesh.config.ts", `Unknown entity "${command.entity}"; known entities: ${built.document.entities.map((entity) => entity.name).sort(compareText).join(", ")}`));
+            const resolved = resolveName(built.document, command.entity);
+            if (resolved.kind === "found") json = `${stableJsonStringify(resolved.entity)}\n`;
+            else diagnostics.push(diagnostic("mesh.config.ts", resolved.message));
           }
         } else {
           errorFile = projectPath(root, config.output);
