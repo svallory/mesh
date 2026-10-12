@@ -106,7 +106,7 @@ describe("`async` before a `:name` method under Mesh's contracts", () => {
       diagnostics: [
         {
           severity: "error",
-          code: "MX_DIALECT_ERROR",
+          code: "MESH_SYNTAX",
           message: "`async :l(…) { … }` is not supported: a `:name` method value cannot be async; remove `async`",
           line: 3,
           column: 17,

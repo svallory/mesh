@@ -1,6 +1,8 @@
 // MX's diagnostic codes reach Mesh's output as MX gives them (MX alpha.23: every error and warning has a stable code).
 // A Mesh hook's `MESH_*` code is unchanged; `MESH_SYNTAX` is only the fallback for a diagnostic that arrives with none.
 import { describe, expect, test } from "bun:test";
+import { readFileSync, readdirSync } from "node:fs";
+import { fixture, fixtureDir } from "./helpers.ts";
 import { buildModel, meshDiagnostic, parseEntitySource, type MxDiagnostic } from "../src/front-end/build.ts";
 import { build, keyed } from "./v4.ts";
 
@@ -48,5 +50,26 @@ describe("meshDiagnostic", () => {
   test("a warning keeps its severity and code", () => {
     const d = meshDiagnostic({ ...base, severity: "warning", code: "MX_DUPLICATE_ATTRIBUTE" } as MxDiagnostic, "a.mesh.mx");
     expect([d.severity, d.code]).toEqual(["warning", "MX_DUPLICATE_ATTRIBUTE"]);
+  });
+});
+
+// `MX_DIALECT_ERROR` is MX's code for a Mesh hook that fails without naming a code, `MX_DIALECT_HOOK_ERROR` for one that throws.
+// Both would present a Mesh error as MX's, so no Mesh fixture may produce either.
+describe("no Mesh hook error is reported as MX's", () => {
+  const forbidden = /MX_DIALECT_ERROR|MX_DIALECT_HOOK_ERROR/;
+  test.each([
+    "fixtures/atom-contracts.json",
+    "fixtures/mesh-corpus/__golden__/golden.json",
+  ])("%s records neither code", (rel) => {
+    const text = readFileSync(new URL(rel, import.meta.url), "utf8");
+    expect(text).toContain('"code"');
+    expect(forbidden.test(text)).toBe(false);
+  });
+  test("no negative fixture produces either code", () => {
+    const files = readdirSync(`${fixtureDir}negative`).filter((f) => f.endsWith(".mesh.mx"));
+    expect(files.length).toBeGreaterThan(20);
+    for (const f of files) {
+      for (const d of build(fixture(`negative/${f}`).source).diagnostics) expect(d.code, f).not.toMatch(forbidden);
+    }
   });
 });

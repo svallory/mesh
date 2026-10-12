@@ -41,7 +41,7 @@ export function lowerMember(text: string, span: SourceSpan, ctx: TriggerContext)
       });
     case "attribute":
       // After a kind (`sort asc &dueOn`) a member names a field.
-      if (ctx.valueForm !== null) ctx.fail(`\`${text}\` is a member reference and takes no value`);
+      if (ctx.valueForm !== null) ctx.fail(`\`${text}\` is a member reference and takes no value`, { code: "MESH_SYNTAX" });
       return ctx.attribute("member", { kind: "member", name, span });
     case "line":
       return ctx.child("member", [
@@ -50,6 +50,6 @@ export function lowerMember(text: string, span: SourceSpan, ctx: TriggerContext)
       ]);
     default:
       // The member row is registered in no other list.
-      return ctx.fail(`\`${text}\` is not allowed here`);
+      return ctx.fail(`\`${text}\` is not allowed here`, { code: "MESH_SYNTAX" });
   }
 }

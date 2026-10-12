@@ -7,7 +7,8 @@ import { MESH_DIALECT } from "../src/front-end/dialect.ts";
 test("a malformed contract in the dialect's contracts stops every file of the dialect, naming the entry", () => {
   const broken = { box: { attributes: { a: { type: "string", pattern: "^x" } } } } as unknown as Record<string, CustomTag>;
   const found = lowerSource("<div/>", "/v/x.mesh.mx", { dialect: { ...MESH_DIALECT, contracts: broken } }).diagnostics;
-  expect(found.map((d) => d.code)).toEqual(["MX_INVALID_DIALECT_CONTRACT"]);
+  // The entry is refused by Mesh's own `checkContract` hook, so its `MESH_SYNTAX` passes through (MX wraps only a hook error with no code).
+  expect(found.map((d) => d.code)).toEqual(["MESH_SYNTAX"]);
   expect(found[0]?.message).toContain("`dialect.contracts.box`");
 });
 
