@@ -111,7 +111,7 @@ export function bindTaskReads(
       // for its policies and hands it over as `cast`; a `privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readTaskInputSchema, input));
       return layer.transaction(async (tx) => {
-        rejectComputedQuery(
+        const $filter = rejectComputedQuery(
           "work.Task",
           [
             "childrenSettled",
@@ -126,7 +126,7 @@ export function bindTaskReads(
           parsed,
         );
         const $rows = (await tx.select(tables.tasks, {
-          filter: parsed.filter,
+          filter: $filter,
           sort: parsed.sort,
           limit: parsed.limit,
           offset: parsed.offset,

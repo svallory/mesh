@@ -110,9 +110,9 @@ export function bindPostReads(
       // for its policies and hands it over as `cast`; a `privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readPostInputSchema, input));
       return layer.transaction(async (tx) => {
-        rejectComputedQuery("blog.Post", ["excerpt", "commentCount"], parsed);
+        const $filter = rejectComputedQuery("blog.Post", ["excerpt", "commentCount"], parsed);
         const $rows = (await tx.select(tables.posts, {
-          filter: parsed.filter,
+          filter: $filter,
           sort: parsed.sort,
           limit: parsed.limit,
           offset: parsed.offset,

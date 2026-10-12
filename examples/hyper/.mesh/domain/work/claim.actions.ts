@@ -103,9 +103,9 @@ export function bindClaimReads(
       // for its policies and hands it over as `cast`; a `privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readClaimInputSchema, input));
       return layer.transaction(async (tx) => {
-        rejectComputedQuery("work.Claim", ["lapsed"], parsed);
+        const $filter = rejectComputedQuery("work.Claim", ["lapsed"], parsed);
         const $rows = (await tx.select(tables.claims, {
-          filter: parsed.filter,
+          filter: $filter,
           sort: parsed.sort,
           limit: parsed.limit,
           offset: parsed.offset,
