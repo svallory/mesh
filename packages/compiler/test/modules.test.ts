@@ -277,7 +277,7 @@ describe("names across modules", () => {
     expect(error).toBeInstanceOf(EmitError);
     expect((error as EmitError).diagnostic).toMatchObject({
       code: "MESH_EMIT_NAME",
-      message: "Entity b.Note's binding and Entity a.Note's binding (a/note.mesh.mx:1:1) both become the top-level name `bindNote`",
+      message: "the bind function of entity a.Note (a/note.mesh.mx:1:1) and the bind function of entity b.Note would both be named bindNote in the generated code",
     });
   });
 
@@ -289,6 +289,7 @@ describe("names across modules", () => {
     });
     const error = await generateFiles({ document, config: configOf("/project", ".mesh") }).then(() => undefined, (cause: unknown) => cause);
     expect((error as EmitError).diagnostic).toMatchObject({ code: "MESH_EMIT_NAME",
-      fix: "Rename one of them: `actions` and `tx` hold every action of the project by this name" });
+      message: "the action a.Item#forUser (a/item.mesh.mx:6:5) and the action b.UserItem#for would both be actions.forUserItem",
+      fix: "Rename one of the two: an action or an entity; `actions` and `tx` hold every action of the project by its action name followed by its entity's name" });
   });
 });

@@ -237,7 +237,7 @@ describe("the specifiers", () => {
 describe("entity values on the connected binding", () => {
   test("before connect, an entity call throws a FrameworkError naming the entity by FQN and the action", async () => {
     await expect(app.orders.Order.place({ item: "x", amount: 1 })).rejects.toThrow(new FrameworkError(
-      "sales.orders.Order.place was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own"));
+      "sales.orders.Order#place was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own"));
     await expect(app.domain.Realm.make({ label: "x" })).rejects.toBeInstanceOf(FrameworkError);
   });
 

@@ -78,7 +78,7 @@ export function bindPostReads(layer: $DataLayer, options: $BindOptions = {}) {
       return $failJoined(
         layer,
         new $FrameworkError(
-          "publishedPost cannot run in this version: its filter and sort are evaluated by the SQL evaluator, which arrives in M10",
+          "blog.Post#published cannot run in this version: its filter and sort are evaluated by the SQL evaluator, which arrives in M10",
         ),
       );
     },

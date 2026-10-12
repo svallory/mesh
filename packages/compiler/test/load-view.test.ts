@@ -138,7 +138,7 @@ describe("the load generator", () => {
     const fields = "entity :AuthorFields table=\"author_fields\"\n  attributes\n    uuid :id primary-key\n  actions\n    read :load\n";
     const document = documentOf({ author, post, lonely, "author-fields": fields });
     await expect(generateFiles(input(document))).rejects.toThrow(
-      /Entity app.Author's load function and Action :load of app.AuthorFields .* both become the top-level name `loadAuthorFields`/);
+      /: the action app.AuthorFields#load \(app\/author-fields.mesh.mx:5:5\) and the load function of entity app.Author would both be named loadAuthorFields in the generated code$/);
     await expect(generateFiles(input(document))).rejects.toBeInstanceOf(EmitError);
   });
 

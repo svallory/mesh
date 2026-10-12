@@ -196,7 +196,7 @@ describe("actions view", () => {
     // The body lives in the reads table (`bindArticleReads`), which `tx` uses; the method evaluates the read's policies, then calls it.
     expect(view.readsBindName).toBe("bindArticleReads");
     const live = view.reads.find((m) => m.name === "live")!;
-    expect(live.unsupported).toBe('"liveArticle cannot run in this version: its filter is evaluated by the SQL evaluator, which arrives in M10"');
+    expect(live.unsupported).toBe('"blog.Article#live cannot run in this version: its filter is evaluated by the SQL evaluator, which arrives in M10"');
     expect(live.statements).toEqual([]);
     const read = view.reads.find((m) => m.name === "read")!;
     expect(read).toMatchObject({ unsupported: null, usesParsed: true, statements: [
@@ -288,7 +288,7 @@ describe("build errors", () => {
     const twice = { "x/ab.mesh.mx": a, "y/ab.mesh.mx": a };
     const error = emitErrorOf(() => actionsGenerator.views(inputOf(documentOf(twice))));
     expect(error.diagnostic.code).toBe("MESH_EMIT_NAME");
-    expect(error.diagnostic.message).toBe("Entity y.Ab's binding and Entity x.Ab's binding (x/ab.mesh.mx:1:1) both become the top-level name `bindAb`");
+    expect(error.diagnostic.message).toBe("the bind function of entity x.Ab (x/ab.mesh.mx:1:1) and the bind function of entity y.Ab would both be named bindAb in the generated code");
     expect(error.diagnostic.position.file).toBe("y/ab.mesh.mx");
   });
 
@@ -297,7 +297,7 @@ describe("build errors", () => {
     const two = "entity :ForUserItem\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n";
     const three = "entity :UserItem\n  attributes\n    uuid :id primary-key\n  actions\n    read :for\n";
     const error = emitErrorOf(() => actionsGenerator.views(inputOf(documentOf({ "a/item.mesh.mx": one, "b/user-item.mesh.mx": three, "c/x.mesh.mx": two }))));
-    expect(error.diagnostic.message).toBe("Action :for of b.UserItem and Action :forUser of a.Item (a/item.mesh.mx:5:5) both become the top-level name `forUserItem`");
+    expect(error.diagnostic.message).toBe("the action a.Item#forUser (a/item.mesh.mx:5:5) and the action b.UserItem#for would both be actions.forUserItem");
     expect(error.diagnostic.position).toMatchObject({ file: "b/user-item.mesh.mx", line: 5 });
   });
 

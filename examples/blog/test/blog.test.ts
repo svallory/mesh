@@ -158,7 +158,7 @@ test("a read with filter and sort throws the M4 FrameworkError instead of return
   try {
     await blog.run(async () => {
       await expect(Post.published({}, context)).rejects.toThrow(
-        new FrameworkError("publishedPost cannot run in this version: its filter and sort are evaluated by the SQL evaluator, which arrives in M10"));
+        new FrameworkError("blog.Post#published cannot run in this version: its filter and sort are evaluated by the SQL evaluator, which arrives in M10"));
     });
   } finally { await db.close(); }
 });
@@ -531,7 +531,7 @@ describe("connect and disconnect (ADR-0047)", () => {
 
   test("a call before connect throws FrameworkError, and disconnect without connect does nothing", async () => {
     await expect(Post.read({}, context)).rejects.toThrow(new FrameworkError(
-      "blog.Post.read was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own"));
+      "blog.Post#read was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own"));
     await disconnect();
   });
 

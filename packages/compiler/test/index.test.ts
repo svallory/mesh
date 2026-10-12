@@ -146,7 +146,7 @@ describe("the generated index", () => {
     const notes = await import(resolve(root, ".mesh/domain/notes/index.ts"));
     const { closes } = await import(resolve(root, "mesh.config.ts"));
     await expect(notes.Note.create({ text: "a" })).rejects.toThrow(
-      new FrameworkError("notes.Note.create was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own"));
+      new FrameworkError("notes.Note#create was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own"));
     await mesh.disconnect();
     expect(closes.count).toBe(0);
     await mesh.connect();

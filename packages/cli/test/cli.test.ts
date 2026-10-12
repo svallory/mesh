@@ -688,7 +688,7 @@ test.each([["build"], ["build", "--check"], ["inspect"], ["inspect", "Item"], ["
   const result = run(root, ...args);
   expect(result.code).toBe(1);
   expect(result.stdout).toBe("");
-  expect(result.stderr).toContain("domain/todos/item.mesh.mx:5:5 error Action :forUser of todos.Item and Action :for of other.UserItem (domain/other/user-item.mesh.mx:5:5) both become the top-level name `forUserItem`");
+  expect(result.stderr).toContain("domain/todos/item.mesh.mx:5:5 error the action other.UserItem#for (domain/other/user-item.mesh.mx:5:5) and the action todos.Item#forUser would both be actions.forUserItem");
   expect(result.stderr).toEndWith("1 error, 0 warnings\n");
   expect(await Bun.file(join(root, "generated/model.json")).exists()).toBe(false);
 }, 30_000);
