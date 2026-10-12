@@ -78,7 +78,17 @@ describe("Mesh's golden parse corpus", () => {
   test("the old-relationship fixture is the unknown attribute `value` at 5:14", () => {
     const golden = JSON.parse(readFileSync(GOLDEN, "utf8"));
     expect(golden["entities/packages/compiler/test/fixtures/negative/old-relationship.mesh.mx"]).toEqual({
-      diagnostics: [{ severity: "error", message: "`<belongs-to>`: unknown attribute `value`", line: 5, column: 14, offset: 81 }],
+      diagnostics: [
+        {
+          severity: "error",
+          code: "MX_UNKNOWN_ATTRIBUTE",
+          message: "`<belongs-to>`: unknown attribute `value`",
+          line: 5,
+          column: 14,
+          offset: 81,
+          end: { line: 5, column: 20, offset: 87 },
+        },
+      ],
     });
   });
 
@@ -96,10 +106,12 @@ describe("`async` before a `:name` method under Mesh's contracts", () => {
       diagnostics: [
         {
           severity: "error",
+          code: "MESH_SYNTAX",
           message: "`async :l(…) { … }` is not supported: a `:name` method value cannot be async; remove `async`",
           line: 3,
           column: 17,
           offset: 38,
+          end: { line: 3, column: 19, offset: 40 },
         },
       ],
     } as LowerSourceResult);

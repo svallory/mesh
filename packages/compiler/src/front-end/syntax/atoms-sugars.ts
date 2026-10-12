@@ -108,24 +108,25 @@ function atom(
   span: SourceSpan,
   ctx: TriggerContext,
 ): TriggerResult {
-  if (text.startsWith("::")) ctx.fail(reserved(text.slice(2)));
+  if (text.startsWith("::")) ctx.fail(reserved(text.slice(2)), { code: "MESH_SYNTAX" });
   const name = text.slice(1);
   switch (ctx.use) {
     case "member-object":
-      ctx.fail(misuse(name, "member access"));
+      ctx.fail(misuse(name, "member access"), { code: "MESH_SYNTAX" });
       break;
     case "callee":
-      ctx.fail(misuse(name, "a call"));
+      ctx.fail(misuse(name, "a call"), { code: "MESH_SYNTAX" });
       break;
     case "unary":
-      ctx.fail(misuse(name, `the unary operator \`${ctx.operator}\``));
+      ctx.fail(misuse(name, `the unary operator \`${ctx.operator}\``), { code: "MESH_SYNTAX" });
       break;
     case "spread":
-      ctx.fail(misuse(name, "spreading"));
+      ctx.fail(misuse(name, "spreading"), { code: "MESH_SYNTAX" });
       break;
     case "key":
       ctx.fail(
         `\`:${name}\` cannot be an object key: an atom is a value; write \`${name}:\` for the key, or \`[:${name}]\` to compute it from the atom`,
+        { code: "MESH_SYNTAX" },
       );
   }
   return ctx.expression({
@@ -144,26 +145,28 @@ function nameSugar(
   ctx: TriggerContext,
   at: SourceSpan,
 ): TriggerAttribute[] {
-  if (name.startsWith(":")) ctx.fail(reserved(name.slice(1)));
+  if (name.startsWith(":")) ctx.fail(reserved(name.slice(1)), { code: "MESH_SYNTAX" });
   const second = name.indexOf(":");
   if (second >= 0) {
     // At the second `:name`, as core's own check put it.
     const from = at.sourceStart + 1 + second;
     ctx.fail(SECOND_NAME, {
       at: { sourceStart: from, sourceEnd: at.sourceEnd },
+      code: "MESH_SYNTAX",
     });
   }
   if (!IDENTIFIER.test(name)) {
     ctx.fail(
       `\`:${name}\` is not name sugar; \`:name\` takes an identifier (\`:email\`, \`:first-name\`)`,
+      { code: "MESH_SYNTAX" },
     );
   }
-  if (ctx.valueForm === ":=") ctx.fail(BOUND, { at });
-  if (ctx.valueForm === "async-method") ctx.fail(asyncMethod(name), { at });
+  if (ctx.valueForm === ":=") ctx.fail(BOUND, { at, code: "MESH_SYNTAX" });
+  if (ctx.valueForm === "async-method") ctx.fail(asyncMethod(name), { at, code: "MESH_SYNTAX" });
   if (ctx.valueForm === "arguments") {
     ctx.fail(
       `arguments are not allowed on \`:name\`: \`:${name}(…)\` is name sugar, not an attribute method`,
-      { at },
+      { at, code: "MESH_SYNTAX" },
     );
   }
   // A second spaced `:name` follows the duplicate rule (last wins, with a
@@ -367,7 +370,7 @@ function checkDeclares(fail: Fail, tag: string, declares: unknown): void {
   if (declares === undefined) return;
   const entries: unknown[] = Array.isArray(declares) ? declares : [declares];
   const reject = (problem: string): never =>
-    fail(`Invalid \`declares\` of tag "${tag}": ${problem}`);
+    fail(`Invalid \`declares\` of tag "${tag}": ${problem}`, { code: "MESH_SYNTAX" });
   if (entries.length === 0) reject("it has no entries");
   for (const entry of entries as Array<Record<string, unknown>>) {
     if (typeof entry !== "object" || entry === null) {
@@ -406,7 +409,7 @@ function checkAttributeFields(
   declaration: AtomDeclaration,
 ): void {
   const reject = (problem: string): never =>
-    fail(`Invalid "${attrName}" attribute declaration of ${owner}: ${problem}`);
+    fail(`Invalid "${attrName}" attribute declaration of ${owner}: ${problem}`, { code: "MESH_SYNTAX" });
   for (const key of ["values", "pattern", "ref"] as const) {
     if (declaration[key] !== undefined && declaration.type !== "atom") {
       reject(`\`${key}\` requires \`type: "atom"\``);
@@ -597,7 +600,7 @@ function scopeOwner(
   }
   return unit.fail(
     `\`${declared.name}\` declares ${/^[aeiou]/.test(declared.kind) ? "an" : "a"} \`${declared.kind}\` scoped to ${orList(names)}, but has no such ancestor`,
-    { at: declared.span },
+    { at: declared.span, code: "MESH_SYNTAX" },
   );
 }
 
@@ -685,7 +688,7 @@ function declare(unit: LoweredUnit): Scopes {
           : `\`${decl.kind}\` (it clashes with the \`${clash.kind}\` of the same name)`;
       unit.fail(
         `\`${decl.name}\` is already declared as ${label} at ${at.line}:${at.column + 1}`,
-        { at: decl.span, also: [clash.span, decl.span] },
+        { at: decl.span, also: [clash.span, decl.span], code: "MESH_SYNTAX" },
       );
     }
     same.push(decl);
@@ -828,13 +831,13 @@ function checkAtom(
     const near = nearestName(atom.name, values);
     unit.fail(
       `${owner}: \`:${atom.name}\` is not one of ${atomList(values)}${near ? `; did you mean \`:${near}\`?` : ""}`,
-      { at: atom.span },
+      { at: atom.span, code: "MESH_SYNTAX" },
     );
   }
   if (pattern !== undefined && !new RegExp(pattern).test(atom.name)) {
     unit.fail(
       `${owner}: \`:${atom.name}\` does not match the pattern /${pattern}/`,
-      { at: atom.span },
+      { at: atom.span, code: "MESH_SYNTAX" },
     );
   }
   if (ref === undefined) return;
@@ -849,7 +852,7 @@ function checkAtom(
     : "none declared";
   unit.fail(
     `${owner}: \`:${atom.name}\` is not a declared ${kinds.join(" or ")} here (${listed})${near ? `; did you mean \`:${near}\`?` : ""}`,
-    { at: atom.span },
+    { at: atom.span, code: "MESH_SYNTAX" },
   );
 }
 
@@ -875,7 +878,7 @@ function checkStringForRef(
   const at = attr.value?.span ?? attr.nameSpan;
   unit.fail(
     `${label}: attribute ${attr.label} must be atom, got string (${listed}); write it as \`:${text}\``,
-    at ? { at } : undefined,
+    at ? { at, code: "MESH_SYNTAX" } : { code: "MESH_SYNTAX" },
   );
 }
 

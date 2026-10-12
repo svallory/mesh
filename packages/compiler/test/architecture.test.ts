@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
+import { checkHookFailCodes } from "./repository-checks.ts";
 import { MESH_EXTENSIONS } from "../src/front-end/extensions.ts";
 
 // A plain import scan: no dependency, no TypeScript resolver.
@@ -60,4 +61,8 @@ test("only the extensions list spells an entity file extension", () => {
     })
     .map((file) => relative(src, file));
   expect(offenders).toEqual([]);
+});
+
+test("every hook diagnostic Mesh raises through MX names its MESH_* code", () => {
+  expect(checkHookFailCodes(src)).toEqual([]);
 });

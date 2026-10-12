@@ -40,11 +40,11 @@ test("deduplication preserves distinct failures at the same position", () => {
 });
 
 // MX's member-line errors (an input assignment, options after the line) are
-// MESH_SYNTAX at MX's position; a `set` line without a value is the builder's
+// MX's own codes at MX's position; a `set` line without a value is the builder's
 // MESH_MEMBER_LINE_OPTIONS at the line.
 test.each([
-  ['      input\n        &title="new"\n', "MESH_SYNTAX", 8, 8, 1],
-  ["      do\n        set\n          &title=1 min=2\n", "MESH_SYNTAX", 9, 19, 1],
+  ['      input\n        &title="new"\n', "MX_UNKNOWN_ATTRIBUTE", 8, 8, 1],
+  ["      do\n        set\n          &title=1 min=2\n", "MX_PARSE_INVALID_CHARACTER", 9, 19, 1],
   ["      do\n        set\n          &title\n", "MESH_MEMBER_LINE_OPTIONS", 9, 10, 0],
 ] as const)("invalid member-line shape: %s", (body, code, line, column, mxErrors) => {
   const source = title + "  actions\n    update :change\n" + body;
@@ -73,7 +73,7 @@ test.each([
   const source = keyed + `    ${field}\n`;
   expect(parse(source).diagnostics).toHaveLength(1);
   expect(build(source).diagnostics).toEqual([
-    expect.objectContaining({ code: "MESH_SYNTAX" }),
+    expect.objectContaining({ code: "MX_UNKNOWN_ATTRIBUTE" }),
   ]);
 });
 

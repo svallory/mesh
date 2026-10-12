@@ -5698,7 +5698,13 @@
     "message": "`<update>` must be inside `<actions>`; found at the top level",
     "line": 1,
     "column": 0,
-    "offset": 0
+    "offset": 0,
+    "code": "MX_PARENT_NOT_ALLOWED",
+    "end": {
+     "line": 1,
+     "column": 6,
+     "offset": 6
+    }
    }
   ]
  },
@@ -5709,7 +5715,13 @@
     "message": "`<read>` must be inside `<actions>`; found at the top level",
     "line": 1,
     "column": 0,
-    "offset": 0
+    "offset": 0,
+    "code": "MX_PARENT_NOT_ALLOWED",
+    "end": {
+     "line": 1,
+     "column": 4,
+     "offset": 4
+    }
    }
   ]
  },
@@ -5720,7 +5732,13 @@
     "message": "`<do>` must be inside `<create>`, `<read>`, `<update>`, `<destroy>`, `<always>`; found at the top level",
     "line": 1,
     "column": 0,
-    "offset": 0
+    "offset": 0,
+    "code": "MX_PARENT_NOT_ALLOWED",
+    "end": {
+     "line": 1,
+     "column": 2,
+     "offset": 2
+    }
    }
   ]
  },
@@ -5731,7 +5749,13 @@
     "message": "`<computed>` must be inside `<entity>`; found at the top level",
     "line": 1,
     "column": 0,
-    "offset": 0
+    "offset": 0,
+    "code": "MX_PARENT_NOT_ALLOWED",
+    "end": {
+     "line": 1,
+     "column": 8,
+     "offset": 8
+    }
    }
   ]
  },
@@ -5743,7 +5767,12 @@
     "line": 6,
     "column": 2,
     "offset": 133,
-    "code": "MX_UNKNOWN_TAG"
+    "code": "MX_UNKNOWN_TAG",
+    "end": {
+     "line": 6,
+     "column": 7,
+     "offset": 138
+    }
    }
   ]
  },
@@ -32173,7 +32202,12 @@
     "line": 7,
     "column": 8,
     "offset": 100,
-    "code": "MESH_UNSPACED_NAME"
+    "code": "MESH_UNSPACED_NAME",
+    "end": {
+     "line": 7,
+     "column": 11,
+     "offset": 103
+    }
    }
   ]
  },
@@ -32184,7 +32218,13 @@
     "message": "`<asc>`: unknown attribute `:id` (`name`)",
     "line": 7,
     "column": 12,
-    "offset": 99
+    "offset": 99,
+    "code": "MX_UNKNOWN_ATTRIBUTE",
+    "end": {
+     "line": 7,
+     "column": 15,
+     "offset": 102
+    }
    }
   ]
  },
@@ -32195,7 +32235,13 @@
     "message": "`<check>`: attribute `code` must be string, got atom",
     "line": 7,
     "column": 39,
-    "offset": 134
+    "offset": 134,
+    "code": "MX_INVALID_ATTRIBUTE_VALUE",
+    "end": {
+     "line": 7,
+     "column": 43,
+     "offset": 138
+    }
    }
   ]
  },
@@ -32206,7 +32252,13 @@
     "message": "`<check>`: missing required attribute `that`",
     "line": 7,
     "column": 8,
-    "offset": 103
+    "offset": 103,
+    "code": "MX_MISSING_ATTRIBUTE",
+    "end": {
+     "line": 7,
+     "column": 13,
+     "offset": 108
+    }
    }
   ]
  },
@@ -32217,7 +32269,13 @@
     "message": "the data tree is static; this file's consumer does not evaluate `<const>`",
     "line": 1,
     "column": 0,
-    "offset": 0
+    "offset": 0,
+    "code": "MX_STRUCTURAL_CONSTRUCT",
+    "end": {
+     "line": 1,
+     "column": 6,
+     "offset": 6
+    }
    }
   ]
  },
@@ -33442,7 +33500,8 @@
     "message": "Missing ending \"for\" tag",
     "line": 1,
     "column": 0,
-    "offset": 0
+    "offset": 0,
+    "code": "MX_PARSE_MISSING_END_TAG"
    }
   ]
  },
@@ -33453,7 +33512,13 @@
     "message": "`<has-many>`: unknown attribute `nullable`",
     "line": 5,
     "column": 32,
-    "offset": 99
+    "offset": 99,
+    "code": "MX_UNKNOWN_ATTRIBUTE",
+    "end": {
+     "line": 5,
+     "column": 40,
+     "offset": 107
+    }
    }
   ]
  },
@@ -33464,7 +33529,13 @@
     "message": "Tag does not support arguments. Write the condition as a value attribute instead: `<if=condition>`.",
     "line": 1,
     "column": 4,
-    "offset": 4
+    "offset": 4,
+    "code": "MX_UNSUPPORTED_CONSTRUCT",
+    "end": {
+     "line": 1,
+     "column": 8,
+     "offset": 8
+    }
    }
   ]
  },
@@ -33475,7 +33546,13 @@
     "message": "tag variable `/x` on `<let>`: the data tree is static; a binding without evaluation means nothing",
     "line": 1,
     "column": 0,
-    "offset": 0
+    "offset": 0,
+    "code": "MX_NOT_IN_DATA_FILE",
+    "end": {
+     "line": 1,
+     "column": 4,
+     "offset": 4
+    }
    },
    {
     "severity": "error",
@@ -33483,7 +33560,12 @@
     "line": 1,
     "column": 0,
     "offset": 0,
-    "code": "MX_UNKNOWN_TAG"
+    "code": "MX_UNKNOWN_TAG",
+    "end": {
+     "line": 1,
+     "column": 4,
+     "offset": 4
+    }
    }
   ]
  },
@@ -33839,7 +33921,13 @@
     "message": "`<member>` (inline contract): unknown attribute `value`",
     "line": 7,
     "column": 8,
-    "offset": 100
+    "offset": 100,
+    "code": "MX_UNKNOWN_ATTRIBUTE",
+    "end": {
+     "line": 7,
+     "column": 11,
+     "offset": 103
+    }
    }
   ]
  },
@@ -33850,7 +33938,8 @@
     "message": "A \"member\" trigger line ends after its text; only whitespace may follow it on the line.",
     "line": 7,
     "column": 12,
-    "offset": 104
+    "offset": 104,
+    "code": "MX_PARSE_INVALID_CHARACTER"
    }
   ]
  },
@@ -33861,7 +33950,13 @@
     "message": "`<create>`: unknown attribute `accept`",
     "line": 5,
     "column": 19,
-    "offset": 80
+    "offset": 80,
+    "code": "MX_UNKNOWN_ATTRIBUTE",
+    "end": {
+     "line": 5,
+     "column": 28,
+     "offset": 89
+    }
    }
   ]
  },
@@ -33873,7 +33968,12 @@
     "line": 6,
     "column": 6,
     "offset": 86,
-    "code": "MX_UNKNOWN_TAG"
+    "code": "MX_UNKNOWN_TAG",
+    "end": {
+     "line": 6,
+     "column": 15,
+     "offset": 95
+    }
    }
   ]
  },
@@ -33884,7 +33984,13 @@
     "message": "`<entity>`: unknown attribute `module`",
     "line": 1,
     "column": 13,
-    "offset": 13
+    "offset": 13,
+    "code": "MX_UNKNOWN_ATTRIBUTE",
+    "end": {
+     "line": 1,
+     "column": 26,
+     "offset": 26
+    }
    }
   ]
  },
@@ -33895,7 +34001,13 @@
     "message": "`<belongs-to>`: unknown attribute `value`",
     "line": 5,
     "column": 14,
-    "offset": 81
+    "offset": 81,
+    "code": "MX_UNKNOWN_ATTRIBUTE",
+    "end": {
+     "line": 5,
+     "column": 20,
+     "offset": 87
+    }
    }
   ]
  },
@@ -33906,7 +34018,13 @@
     "message": "`<boolean>`: unknown attribute `primary-key`",
     "line": 3,
     "column": 16,
-    "offset": 42
+    "offset": 42,
+    "code": "MX_UNKNOWN_ATTRIBUTE",
+    "end": {
+     "line": 3,
+     "column": 27,
+     "offset": 53
+    }
    }
   ]
  },
@@ -35190,7 +35308,13 @@
     "message": "`<entity>`: unknown attribute `typo`",
     "line": 1,
     "column": 13,
-    "offset": 13
+    "offset": 13,
+    "code": "MX_UNKNOWN_ATTRIBUTE",
+    "end": {
+     "line": 1,
+     "column": 17,
+     "offset": 17
+    }
    }
   ]
  },
@@ -35202,7 +35326,12 @@
     "line": 1,
     "column": 0,
     "offset": 0,
-    "code": "MX_UNKNOWN_TAG"
+    "code": "MX_UNKNOWN_TAG",
+    "end": {
+     "line": 1,
+     "column": 6,
+     "offset": 6
+    }
    }
   ]
  },

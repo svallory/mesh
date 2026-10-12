@@ -801,6 +801,25 @@ export function parseEntitySource(source: string, file: string) {
   });
 }
 
+/** One diagnostic MX's `lowerSource` reports (`IrDiagnostic`), as Mesh's own. */
+export type MxDiagnostic = ReturnType<typeof parseEntitySource>["diagnostics"][number];
+
+/**
+ * Every code passes through as MX gives it: MX's own `MX_*` codes (stable since alpha.23, so one error has one code
+ * in the editor and in the build's diagnostics) and Mesh's hook codes (`ctx.fail(message, { code: "MESH_X" })`). Only a
+ * diagnostic that arrives with no code is a syntax error to Mesh; MX gives every error a code, so that is a
+ * fallback and not a path any entity source is known to reach.
+ */
+export function meshDiagnostic(d: MxDiagnostic, file: string): Diagnostic {
+  return {
+    severity: d.severity,
+    code: d.code ?? "MESH_SYNTAX",
+    message: d.message,
+    position: { file, line: d.line, column: d.column, offset: d.offset },
+    fix: null,
+  };
+}
+
 /** Parse with closed MX contracts, then project the static tree without executing it. */
 export function buildModel(project: ProjectDescription): BuildResult {
   const diagnostics: Diagnostic[] = [];
@@ -846,15 +865,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
     const file = path.file;
     const parsed = parseEntitySource(input.source, file);
     diagnostics.push(
-      ...parsed.diagnostics.map((d): Diagnostic => ({
-        severity: d.severity,
-        // Mesh's own codes ride in `IrDiagnostic.code` (`ctx.fail(message, { code })`, MX alpha.18). Any other
-        // diagnostic, MX's own `MX_*` codes included, is a syntax error to Mesh.
-        code: d.code?.startsWith("MESH_") ? d.code : "MESH_SYNTAX",
-        message: d.message,
-        position: { file, line: d.line, column: d.column, offset: d.offset },
-        fix: null,
-      })),
+      ...parsed.diagnostics.map((d) => meshDiagnostic(d, file)),
     );
     if (!parsed.ir) continue;
     const roots = tags(parsed.ir.body);
