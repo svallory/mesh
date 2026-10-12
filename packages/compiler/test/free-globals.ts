@@ -50,7 +50,8 @@ const GLOBAL_DECLARATIONS = /\/node_modules\/(?:.*\/)?(?:lib\.[\w.]+\.d\.ts|@typ
  * The identifiers of `files` (absolute paths in the program of `tsconfig`, except `$globals.ts`) that read a global by
  * its name: each resolves to a symbol declared only in a global declaration file. A reference to an import resolves to
  * the import in the file itself, and a member name (`$.now`, `x.length`, a key) is skipped, so what remains is a name
- * the generated code takes from the global scope, which an entity of that name would hide. No global is exempt:
+ * the generated code takes from the global scope, which an entity of that name would hide. A shorthand property
+ * (`{ Promise }`) is both a key and a read: it is resolved to the variable it reads. No global is exempt:
  * `undefined`, which generated code names and no module can declare, is a symbol with no declaration, so it is never
  * reported. In the files of an entity named after a global the name resolves to the entity, not the global, so there a
  * misuse is a type error, which the strict tsc run of `packages/cli/test/generated-names.test.ts` reports.
@@ -74,6 +75,13 @@ export async function freeGlobals(tsconfig: string, files: readonly string[]): P
       };
       visit(source);
       const symbols = await project.checker.getSymbolAtLocation(identifiers);
+      // The name of a shorthand property (`{ Promise }`) is the property itself to `getSymbolAtLocation`; the variable it
+      // reads is the shorthand's value symbol.
+      for (const [index, identifier] of identifiers.entries()) {
+        const parent = identifier.parent as Node & { name?: Node };
+        if (parent.kind === SyntaxKind.ShorthandPropertyAssignment && parent.name === identifier)
+          symbols[index] = await project.checker.getShorthandAssignmentValueSymbol(parent);
+      }
       const lines = source.getLineStarts();
       identifiers.forEach((identifier, index) => {
         const declarations = symbols[index]?.declarations ?? [];

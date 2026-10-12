@@ -1,6 +1,7 @@
 import { Promise } from "./promise.mesh.mx"
 import { Map as context } from "./map.mesh.mx"
 import { input } from "./boolean.helpers"
+import { Count, tally } from "./boolean.measure"
 
 entity :Boolean
   attributes
@@ -11,7 +12,7 @@ entity :Boolean
     belongs-to :next entity=Promise nullable
     belongs-to :holder entity=context nullable
   computed
-    integer :size() { return &name.length }
+    integer :size() { const length: Count = &name.length; const same: typeof tally = (n) => n; return same(length) }
   actions auto=[:read]
     create :create
       input

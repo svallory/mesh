@@ -8,6 +8,7 @@
 // registered function or `structuredClone` is shadowed by an import of that name, as a JavaScript global would be.
 // `Boolean` imports `Map` as `context` and a helper named `input` (EXP-12): inside its functions the scope roots
 // shadow both, as parameters would, and its `when` step, which holds an after-write `run`, keeps its condition in a flag.
+// Its computed field names two helpers only in types (`Count`, `typeof tally`), which the expressions file imports as types.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -159,6 +160,15 @@ describe("entities named after the globals generated code uses", () => {
     expect(expressions).toContain("const { input } = $s;\n    const Promise: $globals$Promise$ReadOnly = $globals$Promise$value;");
     // Outside the functions the alias is the entity: `belongs-to :holder entity=context` is Map.
     expect(await generated("domain/globals/boolean.types.ts")).toMatch(/\bholder: \$globals\$Map\$/);
+  });
+
+  test("a helper a function names only in a type is imported as a type", async () => {
+    // Boolean's computed `size` names `Count` and `typeof tally` and reads neither as a value: MX strips the types from
+    // the node the front end reads, so the back end finds both in the printed function (the tsc run below checks it).
+    const expressions = await generated("domain/globals/boolean.expressions.ts");
+    expect(expressions).toContain('import type { Count, tally } from "../../../domain/globals/boolean.measure";');
+    expect(expressions).toContain("const length: Count = self.name.length;");
+    expect(expressions).toContain("const same: typeof tally = (n) => n;");
   });
 
   test("a when step that holds an after-write run keeps its condition without naming the global Boolean", async () => {

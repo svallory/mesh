@@ -253,8 +253,9 @@ function freeVariables(fn: N, ctx: ConvertContext, clock: Set<string>, names: Na
 }
 
 /**
- * What a function names besides its scope: the entities, whether it calls an entity's action, the helpers it names and
- * whether it calls the global `structuredClone`.
+ * What a function names besides its scope: the entities, whether it calls an entity's action, the helpers it reads as
+ * values and whether it calls the global `structuredClone`. The node has no types (MX strips them), so a helper named only
+ * in a type is left to the TypeScript back end (`typeNames` in `typescript/type-names.ts`).
  */
 interface Names { entities: Set<string>; acts: boolean; helpers: Set<string>; structuredClone?: true; privileged?: SourcePosition[] }
 

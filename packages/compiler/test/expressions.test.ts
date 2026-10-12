@@ -675,6 +675,58 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(logs).toEqual([[{ id: "i" }, { id: "a" }, { system: true }, { n: 1 }]]);
   }, 30_000);
 
+  test("a helper a function names only in a type is imported as a type, unless a type or variable of the function hides it", async () => {
+    // MX strips the types from the node the front end reads, so `PlainReason.helpers` has only the helpers read as values;
+    // the back end finds the rest in the printed function (`typeNames`). Before, `const limit: Money` built with no error
+    // and tsc failed with TS2304 (cannot find name), since the file did not import `Money`.
+    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-type-helpers-"));
+    roots.push(root);
+    await writeFile(resolve(root, "money.ts"), "export type Money = number;\nexport interface Shape { n: number }\nexport type Cents = number;\n");
+    await writeFile(resolve(root, "helpers.ts"), [
+      "export const fmt = (n: number): string => `#${n}`;",
+      "export const big = (n: number): boolean => n > 100;",
+      "export const label = (): string => \"label\";",
+      "",
+    ].join("\n"));
+    const steps = [
+      // `typeof fmt` and `Money`: a value read in a type position and a type reference.
+      "run () { const f: typeof fmt = (n) => `${n}!`; const m: Money = 2; console.log(f(m)) }",
+      // `big` read as a value, and named in a type too: an ordinary import.
+      "run () { const b: typeof big = big; console.log(b(101)) }",
+      // Each name hidden: a local type, a local variable (for `typeof`), a type parameter, a local interface.
+      "run () { type Cents = string; const c: Cents = \"c\"; const label = 1; const l: typeof label = label; const id = <Shape,>(x: Shape): Shape => x; console.log(c, l, id(3)) }",
+      "run () { interface Money { a: number } const m: Money = { a: 1 }; console.log(m.a) }",
+    ];
+    const source = entity(check("() => { const limit: Money = 1; return &n > limit }") + "      do\n" + steps.map((step) => `        ${step}\n`).join(""))
+      .replace("import { Task }", 'import { Money, Shape, Cents } from "./money"\nimport { fmt, big, label } from "./helpers"\nimport { Task }');
+    const built = buildModel({ root, files: [{ file: "task.mesh.mx", source }] });
+    expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    const go = built.document!.entities[0]!.actions.find((a) => a.name === "go")!;
+    const helpersOf = (index: number) => { const step = go.do[index]!; return step.kind === "run" ? step.fn.plain?.helpers : undefined; };
+    // The front end sees only the value read.
+    expect([helpersOf(0), helpersOf(1), helpersOf(2), helpersOf(3)]).toEqual([undefined, ["big"], undefined, undefined]);
+    expect(go.validate[0]!.that.plain?.helpers).toBeUndefined();
+    const config = configOf(root);
+    const files = await generateFiles({ document: built.document!, config });
+    await writeGeneratedFiles(files, config);
+    await writeFile(resolve(root, "generated/schema.ts"), "export const tables = { task: {} };\n");
+    const printed = files.find((f) => f.path.endsWith("task.expressions.ts"))!.contents;
+    // `Shape`, `Cents` and `label` are hidden wherever they are named, so neither module imports them.
+    expect(printed).toContain('import type { Money } from "../../money";\nimport { big, type fmt } from "../../helpers";\n');
+    expect(printed).not.toMatch(/\b(Cents|Shape|label)\b[^\n]*from/);
+    const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
+    expect(checkTypes(root, [...paths, "generated/schema.ts"])).toEqual({ code: 0, output: "" });
+    const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
+    const logs: unknown[][] = [];
+    const log = console.log;
+    console.log = (...args: unknown[]) => { logs.push(args); };
+    try {
+      for (const index of [0, 1, 2, 3]) await expressions[`go.step.${index}.run`](scope({ self: { n: 2 }, input: {}, actor: null, context: {}, before: { n: 2 } }));
+    } finally { console.log = log; }
+    expect(logs).toEqual([["2!"], [true], ["c", 1, 3], [1]]);
+    expect(await expressions["go.check.c.that"](scope({ self: { n: 2 }, input: {}, actor: null, context: {} }))).toBe(true);
+  }, 30_000);
+
   test("a helper import may have any name the file used to declare: every generated module-level name is a $ local", async () => {
     // PR #92 round 1, item 2: `import { TaskLoaded } from "./helpers"` built, then tsc failed with TS2300 (duplicate
     // identifier), because the file imported the entity's own types, declared its scopes and exported its functions under

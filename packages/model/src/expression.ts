@@ -69,9 +69,11 @@ export interface PlainReason {
   /** The authored text calls a method of an entity it names (`Task.touch(...)`): it runs another action. */
   acts?: true;
   /**
-   * The functions the authored text names that it imports from a helper module, by the name the file imports them under,
-   * sorted (POL-21: a policy that names one runs inside the transaction). The expressions file imports these. A free scope
-   * name (`input`, `context`) is the root, never a helper of that name (EXP-12).
+   * The helpers the authored text reads as values (a call, a reference) that it imports from a helper module, by the name
+   * the file imports them under, sorted (POL-21: a policy that names one runs inside the transaction). The expressions file
+   * imports these. A free scope name (`input`, `context`) is the root, never a helper of that name (EXP-12). A helper
+   * named only in a type (`const x: Money`, `typeof fmt`) is not here: MX strips the types from the node the front end
+   * reads, so the TypeScript back end finds it in the printed function and imports it as a type.
    */
   helpers?: string[];
   /**

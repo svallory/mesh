@@ -5,6 +5,7 @@ import type { EmitInput } from "../emit.ts";
 import { emitError } from "../emit-error.ts";
 import { newInstanceComputed, newInstanceGaps, newInstanceMembers } from "../../model/new-instance.ts";
 import { printExpression, type EntityLocals } from "../expression-printer.ts";
+import { typeNames } from "../type-names.ts";
 import { globalsImport, type GlobalsImport } from "./globals.ts";
 import { hasLoader } from "./load.ts";
 import { entityFileComment } from "./types.ts";
@@ -67,12 +68,24 @@ export interface ExpressionsView {
   readonly newScope: ScopeDeclaration | null;
   /** The scope of a step that can run on a create before the write, where the integer key is still null; null when none uses it. */
   readonly createScope: ScopeDeclaration | null;
-  /** Imports of the helper functions the expressions call, one per module. */
-  readonly helperImports: readonly { names: string; fromLiteral: string }[];
+  /** Imports of the helpers the expressions name, one per module. */
+  readonly helperImports: readonly HelperImport[];
   /** One function per expression, in the order of the entity file. */
   readonly entries: readonly ExpressionEntry[];
   /** The globals the scope types name (`$Omit`), from `$globals.ts`; null when they name none. */
   readonly globals: GlobalsImport | null;
+}
+/** One import of the entity file's helpers into the expressions file. */
+export interface HelperImport {
+  /** `import type` when every name is named only in a type, else `import`. */
+  readonly keyword: "import" | "import type";
+  /**
+   * The names as printed, sorted: `fmt, type Money`, where `type` marks a helper the functions name only in a type
+   * (`const x: Money`, `typeof fmt`), or `Money` alone when `keyword` is `import type`.
+   */
+  readonly names: string;
+  /** The helper module from the expressions file, a quoted string literal, e.g. `"../../../domain/work/money"`. */
+  readonly fromLiteral: string;
 }
 /** A scope type the file declares: its exported name and its definition, a generic over `I`, the input. */
 export interface ScopeDeclaration {
@@ -260,13 +273,6 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     if (expression.tree) helpersIn(expression.tree, used);
     else for (const name of expression.plain!.helpers ?? []) used.add(name);
   }
-  const byModule = new Map<string, string[]>();
-  for (const name of [...used].filter((n) => helperFrom.has(n)).sort()) {
-    const absolute = posix.join(dirname(entity.file), helperFrom.get(name)!);
-    let relativePath = posix.relative(dirname(generatedPath), absolute);
-    if (!relativePath.startsWith(".")) relativePath = `./${relativePath}`;
-    byModule.set(relativePath, [...(byModule.get(relativePath) ?? []), name]);
-  }
   // The entities the functions name, each from its actions file, imported under its FQN-derived locals and bound in each
   // function under the name the entity file gives it (CMP-16).
   const named = new Set(found.flatMap(({ expression }) => expression.plain?.entities ?? []));
@@ -295,6 +301,28 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
         .replace(/[\r\n\u2028\u2029]/g, " "),
       code: printExpression(f.expression, `${scopeOf(f.scope)}<${inputOf(f.actions)}>`, f.boolean, f.run === true, locals),
     }));
+  // A helper a plain function names only in a type: the front end never sees it (MX strips the types from the node it
+  // reads), so the printed function is parsed for it (`typeNames`), and the file imports it as a type.
+  const unread = new Set([...helperFrom.keys()].filter((name) => !used.has(name)));
+  const typed = new Set<string>();
+  found.forEach(({ expression }, index) => {
+    if (!expression.tree && unread.size) for (const name of typeNames(entries[index]!.code, unread)) typed.add(name);
+  });
+  const byModule = new Map<string, string[]>();
+  for (const name of [...used, ...typed].filter((n) => helperFrom.has(n)).sort()) {
+    const absolute = posix.join(dirname(entity.file), helperFrom.get(name)!);
+    let relativePath = posix.relative(dirname(generatedPath), absolute);
+    if (!relativePath.startsWith(".")) relativePath = `./${relativePath}`;
+    byModule.set(relativePath, [...(byModule.get(relativePath) ?? []), name]);
+  }
+  const helperImports = [...byModule].map(([from, names]): HelperImport => {
+    const typeOnly = names.every((name) => typed.has(name));
+    return {
+      keyword: typeOnly ? "import type" : "import",
+      names: names.map((name) => (!typeOnly && typed.has(name) ? `type ${name}` : name)).join(", "),
+      fromLiteral: JSON.stringify(from),
+    };
+  });
   const usesExpr = entries.some((e) => e.code.includes("$."));
   // `structuredClone` cannot copy the read-only views a function is handed (they are proxies), so a function that calls
   // the global binds it to `cloneValue`. The front end decided which functions do: not one that binds the name itself,
@@ -321,7 +349,7 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     checkScope,
     newScope,
     createScope,
-    helperImports: [...byModule].map(([from, names]) => ({ names: names.join(", "), fromLiteral: JSON.stringify(from) })),
+    helperImports,
     entries,
     // Only the scope types: the functions' code is authored, and a `$Omit` in a string there is no reference.
     globals: globalsImport(`${entityPath(entity)}.expressions`, { checkScope, newScope, createScope }),

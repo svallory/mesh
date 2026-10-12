@@ -18,7 +18,7 @@ import {
   @end
 } from "@meshfw/runtime";
 @each(helper in helperImports)
-import { {{ helper.names }} } from {{ helper.fromLiteral }};
+{{ helper.keyword }} { {{ helper.names }} } from {{ helper.fromLiteral }};
 @end
 @each(imported in entityImports)
 import { {{ imported.names }} } from {{ imported.fromLiteral }};
