@@ -429,10 +429,12 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
           `${entity.fqn}#${action.name} cannot run in this version: its ${parts} ${action.filter && action.sort ? "are" : "is"} evaluated by the SQL evaluator, which arrives in M10`), statements: [] });
         return method;
       }
-      const query = ["filter", "sort", "limit", "offset"].map((name) => `${name}: ${read("parsed", name)}`).join(", ");
       // A filter or sort by a computed field or rollup is the SQL evaluator's job (M10): say so before touching the database.
+      // What the data layer gets is the filter less the computed fields given as `undefined`, which are left out.
       const computed = computedColumns(entity).map((column) => JSON.stringify(column.name));
       if (computed.length) runtime.add("rejectComputedQuery");
+      const query = ["filter", "sort", "limit", "offset"]
+        .map((name) => `${name}: ${name === "filter" && computed.length ? "$filter" : read("parsed", name)}`).join(", ");
       const select = `await tx.select(${table}, { ${query} })`;
       if (loads) {
         // The names were validated before the transaction opened. The rows are read, then loaded in the same transaction.
@@ -444,7 +446,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       runtimeTypes.add("CastOutput");
       readBodies.push({ ...body, unsupported: null, usesParsed: true,
         statements: [
-          ...(computed.length ? [`rejectComputedQuery(${JSON.stringify(entity.fqn)}, [${computed.join(", ")}], parsed);`] : []),
+          ...(computed.length ? [`const $filter = rejectComputedQuery(${JSON.stringify(entity.fqn)}, [${computed.join(", ")}], parsed);`] : []),
           ...(loads
             ? [
               `const $rows = (${select}) as ${recordName}[];`,

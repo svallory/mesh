@@ -127,9 +127,12 @@ export interface PlannedInput {
 /**
  * The name of the validator (a Zod schema) of a generated type: the type's name with the first letter after any leading
  * underscores in lower case, then `Schema` (`CreateUserInput` gives `createUserInputSchema`, `UserFilter` gives
- * `userFilterSchema`). Every validator in a validators file is named this way, so none is spelled like a type there, even
- * where the first letter has no lower case (`_1stItemInput`): every other type it names ends in `Input`, `Filter`, `Sort`,
- * `Loadable` or `Shape`, and the record's type is the entity's name, which every validator holds and adds to.
+ * `userFilterSchema`). Every validator is named this way, so it ends in `InputSchema`, `FilterSchema` or `SortSchema`, even
+ * where the first letter has no lower case (`_1stItemInput` gives `_1stItemInputSchema`). No other plain name in a
+ * generated file ends that way: Mesh's own names end in other words (`Input`, `Filter`, `Sort`, `With`, `LoadNames`,
+ * `LoadArg`, `Loadable`, `Shape`, `Reads`), other entities' names come in under `$` aliases, and an entity's own name
+ * (`Item`, `bindItem`) ends that way only when the entity is named so (`ItemInputSchema`), and then every validator holds
+ * that name and adds to it. So no validator is spelled like another name.
  */
 export function schemaName(type: string): string {
   const leading = /^_*/.exec(type)![0].length;
