@@ -32,9 +32,9 @@ The vocabulary is Mesh's own, informed by Ash ([ADR-0049](../decisions/0049-voca
 
 ## The MX features syntax v4 depends on
 
-Measured on `@mxlang/core` `0.1.0-alpha.22` through the compiler's parse (`parseEntitySource`: only `dialect: MESH_DIALECT`, which carries the production contracts and `structural: "reject"`, `unknownTags: "reject"`, `imports: "pass"`), on an Invoice with each spelling below. Every row parses with no diagnostic.
+Measured on `@mxlang/core` `0.1.0-alpha.21` through the compiler's parse (`parseEntitySource`: only `dialect: MESH_DIALECT`, which carries the production contracts and `structural: "reject"`, `unknownTags: "reject"`, `imports: "pass"`), on an Invoice with each spelling below. Every row parses with no diagnostic.
 
-| Feature | Used for | State on alpha.22 |
+| Feature | Used for | State on alpha.21 |
 |---|---|---|
 | Atoms and `kind :name` | Declarations and fixed-set/enum values | Parses; a whole-value atom (`inverse=:owner`) is claimed by the dialect's `mesh:Atom` node type and lowers to a `static` attribute with `atom: { name, span }`, exactly as on alpha.15; expression atoms have `extra.mxAtom`. `Attr.node` stays unset |
 | Comments | `// …` before the entity, at the end of a line and on their own line in a body | Parse under structural rejection |
