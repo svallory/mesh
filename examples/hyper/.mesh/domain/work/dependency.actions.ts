@@ -50,9 +50,9 @@ import type {
   ReadDependencyInput,
 } from "./dependency.types";
 import {
-  addDependencyInput,
-  removeDependencyInput,
-  readDependencyInput,
+  addDependencyInputSchema,
+  removeDependencyInputSchema,
+  readDependencyInputSchema,
 } from "./dependency.validators";
 import { tables } from "../../schema";
 import {
@@ -78,11 +78,11 @@ export function bindDependencyReads(
       context?: unknown,
       clock?: () => $Date,
       policies?: boolean,
-      cast?: $CastOutput<typeof readDependencyInput>,
+      cast?: $CastOutput<typeof readDependencyInputSchema>,
     ): $Promise<L extends unknown ? DependencyTxWith<DependencyLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
       // for its policies and hands it over as `cast`; a `privileged` read casts it here.
-      const parsed = cast ?? (await $castInput(layer, readDependencyInput, input));
+      const parsed = cast ?? (await $castInput(layer, readDependencyInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.dependencies, {
           filter: parsed.filter,
@@ -121,7 +121,7 @@ export function bindDependency(
   return $Object.freeze({
     async add(input: AddDependencyInput, ...[context]: $ContextArgument): $Promise<Dependency> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, addDependencyInput, input);
+      const parsed = await $castInput(layer, addDependencyInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -175,16 +175,22 @@ export function bindDependency(
             // transaction: opens here; what follows commits together or not at all
             const $now = $clock();
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Omit<$Record, "dependentId" | "prerequisiteId" | "createdById"> & {
+              dependentId: $Record["dependentId"] | null;
+              prerequisiteId: $Record["prerequisiteId"] | null;
+              createdById: $Record["createdById"] | null;
+            } = {
               id: $uuidv7(),
               createdAt: $now,
-            };
-            const $record: $Row = {
-              ...$changes,
               dependentId: null,
               prerequisiteId: null,
               createdById: null,
             };
+            const $record: $Omit<$Record, "dependentId" | "prerequisiteId" | "createdById"> & {
+              dependentId: $Record["dependentId"] | null;
+              prerequisiteId: $Record["prerequisiteId"] | null;
+              createdById: $Record["createdById"] | null;
+            } = { ...$changes };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Dependency", $record, "action function"),
               "work.Dependency#add",
@@ -243,9 +249,9 @@ export function bindDependency(
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // the input: the member inputs the caller sent, applied now that the checks have passed
-            if (parsed.dependent !== undefined)
+            if ($Object.hasOwn(parsed, "dependent") && parsed.dependent !== undefined)
               $changes.dependentId = $record.dependentId = parsed.dependent;
-            if (parsed.prerequisite !== undefined)
+            if ($Object.hasOwn(parsed, "prerequisite") && parsed.prerequisite !== undefined)
               $changes.prerequisiteId = $record.prerequisiteId = parsed.prerequisite;
             // do: the steps run in written order, each seeing the record as the ones before it left it
             {
@@ -293,7 +299,7 @@ export function bindDependency(
 
     async remove(input: RemoveDependencyInput, ...[context]: $ContextArgument): $Promise<void> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, removeDependencyInput, input);
+      const parsed = await $castInput(layer, removeDependencyInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -347,9 +353,11 @@ export function bindDependency(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.dependencies, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.dependencies, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("work.Dependency", $key);
-            const $record: $Row = { ...$before };
+            const $record: $Record = { ...$before };
             const $load = { actor: $actor, context: $context, clock: $clock, frame };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Dependency", $record, "action function"),
@@ -419,7 +427,7 @@ export function bindDependency(
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $parsed = await $castInput(layer, readDependencyInput, input);
+      const $parsed = await $castInput(layer, readDependencyInputSchema, input);
       if (
         !(await $authorizer(
           "work.Dependency",

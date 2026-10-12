@@ -102,8 +102,8 @@ describe("a create and a json", () => {
     expect(statements).toContain("payload: null");
     expect(statements).toContain('filled: {"a":1}');
     const sent = view.methods.find((m) => m.name === "create")!.statements.join("\n");
-    expect(sent).toContain("payload: parsed.payload === undefined ? null : parsed.payload");
-    expect(sent).toContain('filled: parsed.filled === undefined ? {"a":1} : parsed.filled');
+    expect(sent).toContain('payload: $Object.hasOwn(parsed, "payload") && parsed.payload !== undefined ? parsed.payload : null');
+    expect(sent).toContain('filled: $Object.hasOwn(parsed, "filled") && parsed.filled !== undefined ? parsed.filled : {"a":1}');
   });
 
   test("the types: the record and the inputs say unknown, and a json input is optional on a create", async () => {
@@ -118,26 +118,26 @@ describe("a create and a json", () => {
 
   test("the validators accept null and every JSON value, reject what JSON cannot hold, and take no json as required", async () => {
     const { root } = await generated();
-    const { createNoteInput, bareNoteInput, readNoteInput } = await import(resolve(root, "generated/domain/m/note.validators.ts"));
-    const create = (payload: unknown) => createNoteInput.safeParse({ title: "t", payload }).success;
+    const { createNoteInputSchema, bareNoteInputSchema, readNoteInputSchema } = await import(resolve(root, "generated/domain/m/note.validators.ts"));
+    const create = (payload: unknown) => createNoteInputSchema.safeParse({ title: "t", payload }).success;
     for (const value of [null, {}, [], "", "s", 0, -1.5, true, false, { a: [1, { b: null }] }, [null, [[]]], undefined]) expect(create(value)).toBe(true);
     for (const value of [() => 1, new Date(), new Map(), Symbol("s"), 1n, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, { a: undefined }, { a: () => 1 }, [undefined], new (class X {})()])
       expect(create(value)).toBe(false);
-    expect(createNoteInput.safeParse({ title: "t" }).success).toBe(true);
-    expect(createNoteInput.safeParse({ title: "t", filled: null }).success).toBe(true);
-    expect(createNoteInput.safeParse({}).success).toBe(false);
-    for (const extra of [null, {}, [1], "s", 0, false]) expect(bareNoteInput.safeParse({ title: "t", extra }).success).toBe(true);
-    expect(bareNoteInput.safeParse({ title: "t" }).success).toBe(true);
-    for (const extra of [Number.NaN, 1n, () => 1, new Date()]) expect(bareNoteInput.safeParse({ title: "t", extra }).success).toBe(false);
+    expect(createNoteInputSchema.safeParse({ title: "t" }).success).toBe(true);
+    expect(createNoteInputSchema.safeParse({ title: "t", filled: null }).success).toBe(true);
+    expect(createNoteInputSchema.safeParse({}).success).toBe(false);
+    for (const extra of [null, {}, [1], "s", 0, false]) expect(bareNoteInputSchema.safeParse({ title: "t", extra }).success).toBe(true);
+    expect(bareNoteInputSchema.safeParse({ title: "t" }).success).toBe(true);
+    for (const extra of [Number.NaN, 1n, () => 1, new Date()]) expect(bareNoteInputSchema.safeParse({ title: "t", extra }).success).toBe(false);
     // A cyclic object: pinned as before ENT-03 (the schema is Zod's `z.json()`; it is the data layer that cannot store it).
     const cyclic: Record<string, unknown> = {}; cyclic.self = cyclic;
     let outcome: boolean | "threw";
-    try { outcome = createNoteInput.safeParse({ title: "t", payload: cyclic }).success; } catch { outcome = "threw"; }
+    try { outcome = createNoteInputSchema.safeParse({ title: "t", payload: cyclic }).success; } catch { outcome = "threw"; }
     expect(outcome).toBe(true);
     // The internal read inputs are not attributes: they keep rejecting null.
-    expect(readNoteInput.safeParse({}).success).toBe(true);
-    expect(readNoteInput.safeParse({ filter: null }).success).toBe(false);
-    expect(readNoteInput.safeParse({ sort: null }).success).toBe(false);
-    expect(readNoteInput.safeParse({ filter: {}, sort: ["id"] }).success).toBe(true);
+    expect(readNoteInputSchema.safeParse({}).success).toBe(true);
+    expect(readNoteInputSchema.safeParse({ filter: null }).success).toBe(false);
+    expect(readNoteInputSchema.safeParse({ sort: null }).success).toBe(false);
+    expect(readNoteInputSchema.safeParse({ filter: {}, sort: ["id"] }).success).toBe(true);
   });
 });

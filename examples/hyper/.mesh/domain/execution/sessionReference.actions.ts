@@ -35,7 +35,6 @@ import {
   type DataOperations as $DataOperations,
   type Issue as $Issue,
   type LoadOptions as $LoadOptions,
-  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   SessionReference as $Record,
@@ -51,10 +50,10 @@ import type {
   ReadSessionReferenceInput,
 } from "./sessionReference.types";
 import {
-  recordSessionReferenceInput,
-  setAvailabilitySessionReferenceInput,
-  redactSessionReferenceInput,
-  readSessionReferenceInput,
+  recordSessionReferenceInputSchema,
+  setAvailabilitySessionReferenceInputSchema,
+  redactSessionReferenceInputSchema,
+  readSessionReferenceInputSchema,
 } from "./sessionReference.validators";
 import { tables } from "../../schema";
 import {
@@ -63,7 +62,14 @@ import {
   type $execution$SessionReference$StoredScope as $StoredScope,
 } from "./sessionReference.expressions";
 import { loadPlan as $loadPlan } from "../../load";
-import { $Date, $Object, type $Omit, type $Pick, type $Promise } from "../../$globals";
+import {
+  $Date,
+  $Object,
+  type $Omit,
+  type $Partial,
+  type $Pick,
+  type $Promise,
+} from "../../$globals";
 
 /**
  * The reads of this entity without their policies: what `privileged(SessionReference)` runs (TXN-16). The read actions
@@ -80,13 +86,13 @@ export function bindSessionReferenceReads(
       context?: unknown,
       clock?: () => $Date,
       policies?: boolean,
-      cast?: $CastOutput<typeof readSessionReferenceInput>,
+      cast?: $CastOutput<typeof readSessionReferenceInputSchema>,
     ): $Promise<
       L extends unknown ? SessionReferenceTxWith<SessionReferenceLoadNames<L>>[] : never
     > {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
       // for its policies and hands it over as `cast`; a `privileged` read casts it here.
-      const parsed = cast ?? (await $castInput(layer, readSessionReferenceInput, input));
+      const parsed = cast ?? (await $castInput(layer, readSessionReferenceInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.session_references, {
           filter: parsed.filter,
@@ -130,7 +136,7 @@ export function bindSessionReference(
       ...[context]: $ContextArgument
     ): $Promise<SessionReference> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, recordSessionReferenceInput, input);
+      const parsed = await $castInput(layer, recordSessionReferenceInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -184,14 +190,26 @@ export function bindSessionReference(
             // transaction: opens here; what follows commits together or not at all
             const $now = $clock();
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Omit<
+              $Record,
+              | "runtime"
+              | "runtimeSessionId"
+              | "availability"
+              | "machineId"
+              | "agentProfileId"
+              | "recordedById"
+            > & {
+              runtime: $Record["runtime"] | null;
+              runtimeSessionId: $Record["runtimeSessionId"] | null;
+              availability: $Record["availability"] | null;
+              machineId: $Record["machineId"] | null;
+              agentProfileId: $Record["agentProfileId"] | null;
+              recordedById: $Record["recordedById"] | null;
+            } = {
               id: $uuidv7(),
               location: null,
               version: 1,
               recordedAt: $now,
-            };
-            const $record: $Row = {
-              ...$changes,
               runtime: null,
               runtimeSessionId: null,
               availability: null,
@@ -199,6 +217,22 @@ export function bindSessionReference(
               agentProfileId: null,
               recordedById: null,
             };
+            const $record: $Omit<
+              $Record,
+              | "runtime"
+              | "runtimeSessionId"
+              | "availability"
+              | "machineId"
+              | "agentProfileId"
+              | "recordedById"
+            > & {
+              runtime: $Record["runtime"] | null;
+              runtimeSessionId: $Record["runtimeSessionId"] | null;
+              availability: $Record["availability"] | null;
+              machineId: $Record["machineId"] | null;
+              agentProfileId: $Record["agentProfileId"] | null;
+              recordedById: $Record["recordedById"] | null;
+            } = { ...$changes };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.SessionReference", $record, "action function"),
               "execution.SessionReference#record",
@@ -242,16 +276,17 @@ export function bindSessionReference(
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // the input: the member inputs the caller sent, applied now that the checks have passed
-            if (parsed.runtime !== undefined) $changes.runtime = $record.runtime = parsed.runtime;
-            if (parsed.runtimeSessionId !== undefined)
+            if ($Object.hasOwn(parsed, "runtime") && parsed.runtime !== undefined)
+              $changes.runtime = $record.runtime = parsed.runtime;
+            if ($Object.hasOwn(parsed, "runtimeSessionId") && parsed.runtimeSessionId !== undefined)
               $changes.runtimeSessionId = $record.runtimeSessionId = parsed.runtimeSessionId;
-            if (parsed.availability !== undefined)
+            if ($Object.hasOwn(parsed, "availability") && parsed.availability !== undefined)
               $changes.availability = $record.availability = parsed.availability;
-            if (parsed.location !== undefined)
+            if ($Object.hasOwn(parsed, "location") && parsed.location !== undefined)
               $changes.location = $record.location = parsed.location;
-            if (parsed.machine !== undefined)
+            if ($Object.hasOwn(parsed, "machine") && parsed.machine !== undefined)
               $changes.machineId = $record.machineId = parsed.machine;
-            if (parsed.agentProfile !== undefined)
+            if ($Object.hasOwn(parsed, "agentProfile") && parsed.agentProfile !== undefined)
               $changes.agentProfileId = $record.agentProfileId = parsed.agentProfile;
             // do: the steps run in written order, each seeing the record as the ones before it left it
             {
@@ -287,7 +322,7 @@ export function bindSessionReference(
       ...[context]: $ContextArgument
     ): $Promise<SessionReference> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, setAvailabilitySessionReferenceInput, input);
+      const parsed = await $castInput(layer, setAvailabilitySessionReferenceInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -329,10 +364,12 @@ export function bindSessionReference(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.session_references, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.session_references, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("execution.SessionReference", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.SessionReference", $record, "action function"),
@@ -392,9 +429,9 @@ export function bindSessionReference(
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // the input: the member inputs the caller sent, applied now that the checks have passed
-            if (parsed.availability !== undefined)
+            if ($Object.hasOwn(parsed, "availability") && parsed.availability !== undefined)
               $changes.availability = $record.availability = parsed.availability;
-            if (parsed.location !== undefined)
+            if ($Object.hasOwn(parsed, "location") && parsed.location !== undefined)
               $changes.location = $record.location = parsed.location;
             // do: the steps run in written order, each seeing the record as the ones before it left it
             {
@@ -440,7 +477,7 @@ export function bindSessionReference(
       ...[context]: $ContextArgument
     ): $Promise<SessionReference> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, redactSessionReferenceInput, input);
+      const parsed = await $castInput(layer, redactSessionReferenceInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -494,10 +531,12 @@ export function bindSessionReference(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.session_references, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.session_references, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("execution.SessionReference", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.SessionReference", $record, "action function"),
@@ -594,7 +633,7 @@ export function bindSessionReference(
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $parsed = await $castInput(layer, readSessionReferenceInput, input);
+      const $parsed = await $castInput(layer, readSessionReferenceInputSchema, input);
       if (
         !(await $authorizer(
           "execution.SessionReference",

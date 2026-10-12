@@ -33,7 +33,7 @@ import type {
   CommentTxLoadable,
   ReadCommentInput,
 } from "./comment.types";
-import { readCommentInput } from "./comment.validators";
+import { readCommentInputSchema } from "./comment.validators";
 import { tables } from "../../schema";
 import { $expressions } from "./comment.expressions";
 import { loadPlan as $loadPlan } from "../../load";
@@ -54,11 +54,11 @@ export function bindCommentReads(
       context?: unknown,
       clock?: () => $Date,
       policies?: boolean,
-      cast?: $CastOutput<typeof readCommentInput>,
+      cast?: $CastOutput<typeof readCommentInputSchema>,
     ): $Promise<L extends unknown ? CommentTxWith<CommentLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
       // for its policies and hands it over as `cast`; a `privileged` read casts it here.
-      const parsed = cast ?? (await $castInput(layer, readCommentInput, input));
+      const parsed = cast ?? (await $castInput(layer, readCommentInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.comments, {
           filter: parsed.filter,
@@ -103,7 +103,7 @@ export function bindComment(
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $parsed = await $castInput(layer, readCommentInput, input);
+      const $parsed = await $castInput(layer, readCommentInputSchema, input);
       if (
         !(await $authorizer(
           "blog.Comment",

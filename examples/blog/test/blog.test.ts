@@ -460,6 +460,21 @@ describe("reads take a filter, sort, limit and offset", () => {
     } finally { await db.close(); }
   });
 
+  test("an attribute whose comparison is undefined is left out, as in the filter type", async () => {
+    const { db, blog, author } = await seeded(titles);
+    try {
+      await blog.run(async () => {
+        const sort = ["title"] as const;
+        expect(titlesOf(await Post.read({ filter: { title: undefined }, sort }, context))).toEqual(["alpha", "bravo", "charlie", "delta", "echo"]);
+        expect(titlesOf(await Post.read({ filter: { authorId: { eq: author.id }, title: undefined, views: undefined }, sort, limit: 2 }, context))).toEqual(["alpha", "bravo"]);
+        expect(titlesOf(await Post.read({ filter: { or: [{ title: { eq: "delta" }, body: undefined }, { title: undefined, views: { gt: 0 } }] }, sort }, context))).toEqual(["delta"]);
+        // A computed field given as undefined too: the read leaves it out of what the data layer gets, which has no column for it.
+        expect(titlesOf(await Post.read({ filter: { excerpt: undefined, commentCount: undefined, title: { eq: "delta" } } }, context))).toEqual(["delta"]);
+        expect(titlesOf(await Post.read({ filter: { or: [{ excerpt: undefined }, { title: { eq: "echo" } }] }, sort }, context))).toEqual(["alpha", "bravo", "charlie", "delta", "echo"]);
+      });
+    } finally { await db.close(); }
+  });
+
   test("filter, sort and limit together return the expected page", async () => {
     const { db, blog, author } = await seeded(titles);
     try {
@@ -481,7 +496,6 @@ describe("reads take a filter, sort, limit and offset", () => {
     ["a bad list under and", { filter: { and: { title: { eq: "a" } } } }],
     ["an operand that is undefined", { filter: { title: { eq: undefined } } }],
     ["a comparison with no operator", { filter: { title: {} } }],
-    ["an attribute that is undefined", { filter: { title: undefined } }],
     ["an unknown sort key", { sort: ["nope"] }],
     ["a sort that is not a list", { sort: "title" }],
     ["a negative limit", { limit: -1 }],

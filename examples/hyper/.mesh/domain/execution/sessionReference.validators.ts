@@ -43,29 +43,29 @@ const comparison = <T extends z.ZodType>(value: T) =>
       message: "a comparison needs an operator",
     });
 
-export const sessionReferenceFilter: z.ZodType<SessionReferenceFilter> = z.lazy(
+export const sessionReferenceFilterSchema: z.ZodType<SessionReferenceFilter> = z.lazy(
   () =>
     z.union([
-      z.strictObject({ and: z.array(sessionReferenceFilter).readonly() }),
-      z.strictObject({ or: z.array(sessionReferenceFilter).readonly() }),
+      z.strictObject({ and: z.array(sessionReferenceFilterSchema).readonly() }),
+      z.strictObject({ or: z.array(sessionReferenceFilterSchema).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).exactOptional(),
-        runtime: comparison(z.string()).exactOptional(),
-        runtimeSessionId: comparison(z.string()).exactOptional(),
+        id: comparison(z.uuid()).optional(),
+        runtime: comparison(z.string()).optional(),
+        runtimeSessionId: comparison(z.string()).optional(),
         availability: comparison(
           z.enum(["complete", "partial", "unavailable", "redacted"]),
-        ).exactOptional(),
-        location: comparison(z.string()).exactOptional(),
-        version: comparison(z.int()).exactOptional(),
-        recordedAt: comparison(z.date()).exactOptional(),
-        machineId: comparison(z.uuid()).exactOptional(),
-        agentProfileId: comparison(z.uuid()).exactOptional(),
-        recordedById: comparison(z.uuid()).exactOptional(),
+        ).optional(),
+        location: comparison(z.string()).optional(),
+        version: comparison(z.int()).optional(),
+        recordedAt: comparison(z.date()).optional(),
+        machineId: comparison(z.uuid()).optional(),
+        agentProfileId: comparison(z.uuid()).optional(),
+        recordedById: comparison(z.uuid()).optional(),
       }),
     ]) as unknown as z.ZodType<SessionReferenceFilter>,
 );
 
-export const sessionReferenceSort = z
+export const sessionReferenceSortSchema = z
   .array(
     z.enum([
       "id",
@@ -92,7 +92,7 @@ export const sessionReferenceSort = z
   )
   .readonly();
 
-export const recordSessionReferenceInput = z.strictObject({
+export const recordSessionReferenceInputSchema = z.strictObject({
   runtime: z.string(),
   runtimeSessionId: z.string(),
   availability: z.enum(["complete", "partial", "unavailable", "redacted"]),
@@ -102,10 +102,10 @@ export const recordSessionReferenceInput = z.strictObject({
 }) satisfies z.ZodType<RecordSessionReferenceInput>;
 
 export type RecordSessionReferenceInputShape = Assert<
-  SameShape<z.output<typeof recordSessionReferenceInput>, RecordSessionReferenceInput>
+  SameShape<z.output<typeof recordSessionReferenceInputSchema>, RecordSessionReferenceInput>
 >;
 
-export const setAvailabilitySessionReferenceInput = z.strictObject({
+export const setAvailabilitySessionReferenceInputSchema = z.strictObject({
   id: z.uuid(),
   availability: z.enum(["complete", "partial", "unavailable", "redacted"]).optional(),
   location: z.string().nullable().optional(),
@@ -115,24 +115,24 @@ export const setAvailabilitySessionReferenceInput = z.strictObject({
 
 export type SetAvailabilitySessionReferenceInputShape = Assert<
   SameShape<
-    z.output<typeof setAvailabilitySessionReferenceInput>,
+    z.output<typeof setAvailabilitySessionReferenceInputSchema>,
     SetAvailabilitySessionReferenceInput
   >
 >;
 
-export const redactSessionReferenceInput = z.strictObject({
+export const redactSessionReferenceInputSchema = z.strictObject({
   id: z.uuid(),
   reason: z.string().min(1),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<RedactSessionReferenceInput>;
 
 export type RedactSessionReferenceInputShape = Assert<
-  SameShape<z.output<typeof redactSessionReferenceInput>, RedactSessionReferenceInput>
+  SameShape<z.output<typeof redactSessionReferenceInputSchema>, RedactSessionReferenceInput>
 >;
 
-export const readSessionReferenceInput = z.strictObject({
-  filter: sessionReferenceFilter.optional(),
-  sort: sessionReferenceSort.optional(),
+export const readSessionReferenceInputSchema = z.strictObject({
+  filter: sessionReferenceFilterSchema.optional(),
+  sort: sessionReferenceSortSchema.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
   load: z
@@ -143,7 +143,7 @@ export const readSessionReferenceInput = z.strictObject({
 
 export type ReadSessionReferenceInputShape = Assert<
   SameShape<
-    z.output<typeof readSessionReferenceInput>,
+    z.output<typeof readSessionReferenceInputSchema>,
     ReadSessionReferenceInput<keyof SessionReferenceLoadable>
   >
 >;

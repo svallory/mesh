@@ -115,9 +115,56 @@ export const loadGenerics = (entity: Entity, forFunction: boolean) => {
 export const takesLoad = (input: PlannedInput) => input.fields.some((field) => field.query === "load");
 export const hasRead = (entity: Entity) => effectiveActions(entity).some((action) => action.kind === "read");
 export interface PlannedInput {
+  /** The input's type: `ArchiveItemInput` for `:archive` of `Item` (`inputNames`). */
   name: string;
+  /** The value of its validator: `archiveItemInputSchema` (`inputNames`). */
+  validator: string;
+  /** The action it is the input of, as written: what a message about a generated name names. */
+  action: string;
   position: SourcePosition;
   fields: PlannedField[];
+}
+/**
+ * The name of the validator (a Zod schema) of a generated type: the type's name with the first letter after any leading
+ * underscores in lower case, then `Schema` (`CreateUserInput` gives `createUserInputSchema`, `UserFilter` gives
+ * `userFilterSchema`). Every validator is named this way, so it ends in `InputSchema`, `FilterSchema` or `SortSchema`, even
+ * where the first letter has no lower case (`_1stItemInput` gives `_1stItemInputSchema`). No other plain name in a
+ * generated file ends that way: Mesh's own names end in other words (`Input`, `Filter`, `Sort`, `With`, `LoadNames`,
+ * `LoadArg`, `Loadable`, `Shape`, `Reads`), other entities' names come in under `$` aliases, and an entity's own name
+ * (`Item`, `bindItem`) ends that way only when the entity is named so (`ItemInputSchema`), and then every validator holds
+ * that name and adds to it. So no validator is spelled like another name.
+ */
+export function schemaName(type: string): string {
+  const leading = /^_*/.exec(type)![0].length;
+  return `${type.slice(0, leading)}${type.charAt(leading).toLowerCase()}${type.slice(leading + 1)}Schema`;
+}
+/**
+ * The two names an action's input gives the generated files: its type, the action's name in PascalCase, the entity's and
+ * `Input` (`ArchiveItemInput`), and its validator (`schemaName`: `archiveItemInputSchema`). PascalCase keeps leading
+ * underscores and drops every other one (`pascalCase`), so `_archive` gives `_ArchiveItemInput` and
+ * `_archiveItemInputSchema`, and `archive_` gives what `archive` gives. The method of the entity value is the action's
+ * name as written, so it needs no name here.
+ */
+export function inputNames(action: Pick<Action, "name" | "position">, entity: Entity): { name: string; validator: string } {
+  const name = `${typeName(action.name, action.position)}${typeName(entity.name, entity.position)}Input`;
+  return { name, validator: schemaName(name) };
+}
+/**
+ * Two actions whose inputs would get one generated name are `MESH_EMIT_NAME` naming both: PascalCase drops the
+ * underscores inside and at the end of a name, so `fooBar` and `foo_bar`, or `archive` and `archive_`, give one type.
+ * The build fails rather than spell the names apart, so that every generated name stays the PascalCase of the action
+ * (PR #92, ENT-18).
+ */
+function checkInputNames(entity: Entity, inputs: readonly PlannedInput[]): void {
+  const taken = new Map<string, string>();
+  for (const input of inputs) {
+    for (const [kind, name] of [["type", input.name], ["value", input.validator]] as const) {
+      const other = taken.get(name);
+      if (other !== undefined)
+        throw emitError("MESH_EMIT_NAME", `Entity ${entity.fqn} would generate the ${kind} ${name} twice: for :${other} and for :${input.action}`, input.position, "Rename one of the two actions");
+      taken.set(name, input.action);
+    }
+  }
 }
 /** The TypeScript type of an attribute type's values as generated code prints it: `Date` through its `$` alias. */
 export function tsTypeOf(type: AttributeType): string {
@@ -162,7 +209,7 @@ export function entityInputs(
       `Entity ${entity.fqn} has no primary key`,
       entity.position,
     );
-  return effectiveActions(entity).map((action) => {
+  const inputs = effectiveActions(entity).map((action): PlannedInput => {
     const fields: PlannedField[] =
       action.kind === "update" || action.kind === "destroy"
         ? [{ attribute: key, optional: false }]
@@ -247,12 +294,10 @@ export function entityInputs(
           optional: true,
           query: name,
         });
-    return {
-      name: `${typeName(action.name, action.position)}${typeName(entity.name, entity.position)}Input`,
-      position: action.position,
-      fields,
-    };
+    return { ...inputNames(action, entity), action: action.name, position: action.position, fields };
   });
+  checkInputNames(entity, inputs);
+  return inputs;
 }
 export function entitySegment(entity: Entity): string {
   return pathSegment({
@@ -310,18 +355,4 @@ export function entityLocal(entity: Entity, role: string): string {
 /** An entity's generated files below the output directory, without the kind and extension: `domain/work/task`. */
 export function entityPath(entity: Entity): string {
   return `${modulePath(entity.module, entity.position)}/${entitySegment(entity)}`;
-}
-/** PascalCase with the first letter lower-cased: the same word rule, for values (`publish`, `blogPost`). */
-export function camelCase(name: string): string {
-  const pascal = pascalCase(name);
-  const leading = /^_*/.exec(pascal)?.[0] ?? "";
-  const rest = pascal.slice(leading.length);
-  return leading + (rest[0] ?? "").toLowerCase() + rest.slice(1);
-}
-/** A value name: `camelCase(name)`, or `MESH_EMIT_NAME` when that is not a TypeScript identifier. */
-export function valueName(name: string, position: SourcePosition): string {
-  const result = camelCase(name);
-  if (!IDENTIFIER.test(result))
-    throw emitError("MESH_EMIT_NAME", `${JSON.stringify(name)} does not become a valid TypeScript name`, position);
-  return result;
 }

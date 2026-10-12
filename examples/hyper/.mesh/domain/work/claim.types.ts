@@ -115,16 +115,16 @@ export type ClaimFilter =
   | { and: readonly ClaimFilter[] }
   | { or: readonly ClaimFilter[] }
   | {
-      id?: $Comparison<string>;
-      fence?: $Comparison<number>;
-      acquiredAt?: $Comparison<$Date>;
-      expiresAt?: $Comparison<$Date>;
-      endedAt?: $Comparison<$Date>;
-      endReason?: $Comparison<string>;
-      state?: $Comparison<"active" | "released" | "revoked" | "expired">;
-      taskId?: $Comparison<string>;
-      holderId?: $Comparison<string>;
-      lapsed?: $Comparison<boolean>;
+      id?: $Comparison<string> | undefined;
+      fence?: $Comparison<number> | undefined;
+      acquiredAt?: $Comparison<$Date> | undefined;
+      expiresAt?: $Comparison<$Date> | undefined;
+      endedAt?: $Comparison<$Date> | undefined;
+      endReason?: $Comparison<string> | undefined;
+      state?: $Comparison<"active" | "released" | "revoked" | "expired"> | undefined;
+      taskId?: $Comparison<string> | undefined;
+      holderId?: $Comparison<string> | undefined;
+      lapsed?: $Comparison<boolean> | undefined;
     };
 
 export type ClaimSort = readonly (

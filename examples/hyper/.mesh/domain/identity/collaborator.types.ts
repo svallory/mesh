@@ -78,11 +78,11 @@ export type CollaboratorFilter =
   | { and: readonly CollaboratorFilter[] }
   | { or: readonly CollaboratorFilter[] }
   | {
-      id?: $Comparison<string>;
-      kind?: $Comparison<"human" | "agent">;
-      name?: $Comparison<string>;
-      state?: $Comparison<"active" | "retired">;
-      version?: $Comparison<number>;
+      id?: $Comparison<string> | undefined;
+      kind?: $Comparison<"human" | "agent"> | undefined;
+      name?: $Comparison<string> | undefined;
+      state?: $Comparison<"active" | "retired"> | undefined;
+      version?: $Comparison<number> | undefined;
     };
 
 export type CollaboratorSort = readonly (

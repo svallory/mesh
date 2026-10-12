@@ -58,13 +58,13 @@ import type {
   ReadClaimInput,
 } from "./claim.types";
 import {
-  acquireClaimInput,
-  renewClaimInput,
-  releaseClaimInput,
-  revokeClaimInput,
-  expireClaimInput,
-  endClaimInput,
-  readClaimInput,
+  acquireClaimInputSchema,
+  renewClaimInputSchema,
+  releaseClaimInputSchema,
+  revokeClaimInputSchema,
+  expireClaimInputSchema,
+  endClaimInputSchema,
+  readClaimInputSchema,
 } from "./claim.validators";
 import { tables } from "../../schema";
 import {
@@ -73,7 +73,14 @@ import {
   type $work$Claim$StoredScope as $StoredScope,
 } from "./claim.expressions";
 import { loadPlan as $loadPlan } from "../../load";
-import { $Date, $Object, type $Omit, type $Pick, type $Promise } from "../../$globals";
+import {
+  $Date,
+  $Object,
+  type $Omit,
+  type $Partial,
+  type $Pick,
+  type $Promise,
+} from "../../$globals";
 
 /**
  * The reads of this entity without their policies: what `privileged(Claim)` runs (TXN-16). The read actions
@@ -90,15 +97,15 @@ export function bindClaimReads(
       context?: unknown,
       clock?: () => $Date,
       policies?: boolean,
-      cast?: $CastOutput<typeof readClaimInput>,
+      cast?: $CastOutput<typeof readClaimInputSchema>,
     ): $Promise<L extends unknown ? ClaimTxWith<ClaimLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
       // for its policies and hands it over as `cast`; a `privileged` read casts it here.
-      const parsed = cast ?? (await $castInput(layer, readClaimInput, input));
+      const parsed = cast ?? (await $castInput(layer, readClaimInputSchema, input));
       return layer.transaction(async (tx) => {
-        rejectComputedQuery("work.Claim", ["lapsed"], parsed);
+        const $filter = rejectComputedQuery("work.Claim", ["lapsed"], parsed);
         const $rows = (await tx.select(tables.claims, {
-          filter: parsed.filter,
+          filter: $filter,
           sort: parsed.sort,
           limit: parsed.limit,
           offset: parsed.offset,
@@ -132,7 +139,7 @@ export function bindClaim(
   return $Object.freeze({
     async acquire(input: AcquireClaimInput, ...[context]: $ContextArgument): $Promise<Claim> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, acquireClaimInput, input);
+      const parsed = await $castInput(layer, acquireClaimInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -198,20 +205,36 @@ export function bindClaim(
           frame.within(tx, $clock, "work.Claim#acquire", async () => {
             // transaction: opens here; what follows commits together or not at all
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Omit<
+              $Record,
+              "fence" | "acquiredAt" | "expiresAt" | "taskId" | "holderId"
+            > & {
+              fence: $Record["fence"] | null;
+              acquiredAt: $Record["acquiredAt"] | null;
+              expiresAt: $Record["expiresAt"] | null;
+              taskId: $Record["taskId"] | null;
+              holderId: $Record["holderId"] | null;
+            } = {
               id: $uuidv7(),
               endedAt: null,
               endReason: null,
               state: "active",
-            };
-            const $record: $Row = {
-              ...$changes,
               fence: null,
               acquiredAt: null,
               expiresAt: null,
               taskId: null,
               holderId: null,
             };
+            const $record: $Omit<
+              $Record,
+              "fence" | "acquiredAt" | "expiresAt" | "taskId" | "holderId"
+            > & {
+              fence: $Record["fence"] | null;
+              acquiredAt: $Record["acquiredAt"] | null;
+              expiresAt: $Record["expiresAt"] | null;
+              taskId: $Record["taskId"] | null;
+              holderId: $Record["holderId"] | null;
+            } = { ...$changes };
             const $load = { actor: $actor, context: $context, clock: $clock, frame };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Claim", $record, "action function"),
@@ -250,7 +273,8 @@ export function bindClaim(
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // the input: the member inputs the caller sent, applied now that the checks have passed
-            if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
+            if ($Object.hasOwn(parsed, "task") && parsed.task !== undefined)
+              $changes.taskId = $record.taskId = parsed.task;
             // do: the steps run in written order, each seeing the record as the ones before it left it
             await $expressions["acquire.step.0.run"]($s);
             {
@@ -324,7 +348,7 @@ export function bindClaim(
 
     async renew(input: RenewClaimInput, ...[context]: $ContextArgument): $Promise<Claim> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, renewClaimInput, input);
+      const parsed = await $castInput(layer, renewClaimInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -387,10 +411,12 @@ export function bindClaim(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.claims, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.claims, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("work.Claim", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $load = { actor: $actor, context: $context, clock: $clock, frame };
             const $self = $readOnlyRecord(
@@ -497,7 +523,7 @@ export function bindClaim(
 
     async release(input: ReleaseClaimInput, ...[context]: $ContextArgument): $Promise<Claim> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, releaseClaimInput, input);
+      const parsed = await $castInput(layer, releaseClaimInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -564,10 +590,12 @@ export function bindClaim(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.claims, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.claims, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("work.Claim", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $load = { actor: $actor, context: $context, clock: $clock, frame };
             const $self = $readOnlyRecord(
@@ -675,7 +703,7 @@ export function bindClaim(
 
     async revoke(input: RevokeClaimInput, ...[context]: $ContextArgument): $Promise<Claim> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, revokeClaimInput, input);
+      const parsed = await $castInput(layer, revokeClaimInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -738,10 +766,12 @@ export function bindClaim(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.claims, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.claims, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("work.Claim", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $load = { actor: $actor, context: $context, clock: $clock, frame };
             const $self = $readOnlyRecord(
@@ -834,7 +864,7 @@ export function bindClaim(
 
     async expire(input: ExpireClaimInput, ...[context]: $ContextArgument): $Promise<Claim> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, expireClaimInput, input);
+      const parsed = await $castInput(layer, expireClaimInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -871,10 +901,12 @@ export function bindClaim(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.claims, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.claims, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("work.Claim", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Claim", $record, "action function"),
@@ -954,7 +986,7 @@ export function bindClaim(
 
     async end(input: EndClaimInput, ...[context]: $ContextArgument): $Promise<Claim> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, endClaimInput, input);
+      const parsed = await $castInput(layer, endClaimInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -991,10 +1023,12 @@ export function bindClaim(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.claims, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.claims, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("work.Claim", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Claim", $record, "action function"),
@@ -1072,7 +1106,7 @@ export function bindClaim(
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $parsed = await $castInput(layer, readClaimInput, input);
+      const $parsed = await $castInput(layer, readClaimInputSchema, input);
       if (
         !(await $authorizer(
           "work.Claim",

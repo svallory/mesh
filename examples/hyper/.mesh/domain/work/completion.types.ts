@@ -89,12 +89,12 @@ export type CompletionFilter =
   | { and: readonly CompletionFilter[] }
   | { or: readonly CompletionFilter[] }
   | {
-      id?: $Comparison<string>;
-      rule?: $Comparison<"review-accepted" | "performer-is-reviewer" | "review-waived">;
-      completedAt?: $Comparison<$Date>;
-      taskId?: $Comparison<string>;
-      submissionId?: $Comparison<string>;
-      completedById?: $Comparison<string>;
+      id?: $Comparison<string> | undefined;
+      rule?: $Comparison<"review-accepted" | "performer-is-reviewer" | "review-waived"> | undefined;
+      completedAt?: $Comparison<$Date> | undefined;
+      taskId?: $Comparison<string> | undefined;
+      submissionId?: $Comparison<string> | undefined;
+      completedById?: $Comparison<string> | undefined;
     };
 
 export type CompletionSort = readonly (

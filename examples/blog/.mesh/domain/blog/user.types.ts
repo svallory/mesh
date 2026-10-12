@@ -23,8 +23,8 @@ export type UserFilter =
   | { and: readonly UserFilter[] }
   | { or: readonly UserFilter[] }
   | {
-      id?: $Comparison<string>;
-      name?: $Comparison<string>;
+      id?: $Comparison<string> | undefined;
+      name?: $Comparison<string> | undefined;
     };
 
 export type UserSort = readonly ("id" | "-id" | "name" | "-name")[];

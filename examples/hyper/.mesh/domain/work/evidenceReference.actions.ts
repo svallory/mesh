@@ -29,7 +29,6 @@ import {
   type CastOutput as $CastOutput,
   type DataOperations as $DataOperations,
   type LoadOptions as $LoadOptions,
-  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   EvidenceReference as $Record,
@@ -43,8 +42,8 @@ import type {
   ReadEvidenceReferenceInput,
 } from "./evidenceReference.types";
 import {
-  recordEvidenceReferenceInput,
-  readEvidenceReferenceInput,
+  recordEvidenceReferenceInputSchema,
+  readEvidenceReferenceInputSchema,
 } from "./evidenceReference.validators";
 import { tables } from "../../schema";
 import {
@@ -69,13 +68,13 @@ export function bindEvidenceReferenceReads(
       context?: unknown,
       clock?: () => $Date,
       policies?: boolean,
-      cast?: $CastOutput<typeof readEvidenceReferenceInput>,
+      cast?: $CastOutput<typeof readEvidenceReferenceInputSchema>,
     ): $Promise<
       L extends unknown ? EvidenceReferenceTxWith<EvidenceReferenceLoadNames<L>>[] : never
     > {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
       // for its policies and hands it over as `cast`; a `privileged` read casts it here.
-      const parsed = cast ?? (await $castInput(layer, readEvidenceReferenceInput, input));
+      const parsed = cast ?? (await $castInput(layer, readEvidenceReferenceInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.evidence_references, {
           filter: parsed.filter,
@@ -119,7 +118,7 @@ export function bindEvidenceReference(
       ...[context]: $ContextArgument
     ): $Promise<EvidenceReference> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, recordEvidenceReferenceInput, input);
+      const parsed = await $castInput(layer, recordEvidenceReferenceInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -173,13 +172,24 @@ export function bindEvidenceReference(
             // transaction: opens here; what follows commits together or not at all
             const $now = $clock();
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Omit<$Record, "kind" | "locator" | "recordedById"> & {
+              kind: $Record["kind"] | null;
+              locator: $Record["locator"] | null;
+              recordedById: $Record["recordedById"] | null;
+            } = {
               id: $uuidv7(),
               contentHash: null,
               description: null,
               recordedAt: $now,
+              kind: null,
+              locator: null,
+              recordedById: null,
             };
-            const $record: $Row = { ...$changes, kind: null, locator: null, recordedById: null };
+            const $record: $Omit<$Record, "kind" | "locator" | "recordedById"> & {
+              kind: $Record["kind"] | null;
+              locator: $Record["locator"] | null;
+              recordedById: $Record["recordedById"] | null;
+            } = { ...$changes };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.EvidenceReference", $record, "action function"),
               "work.EvidenceReference#record",
@@ -197,11 +207,13 @@ export function bindEvidenceReference(
             // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
             await $policies.inside($checkScope($s));
             // the input: the member inputs the caller sent, applied now that the checks have passed
-            if (parsed.kind !== undefined) $changes.kind = $record.kind = parsed.kind;
-            if (parsed.locator !== undefined) $changes.locator = $record.locator = parsed.locator;
-            if (parsed.contentHash !== undefined)
+            if ($Object.hasOwn(parsed, "kind") && parsed.kind !== undefined)
+              $changes.kind = $record.kind = parsed.kind;
+            if ($Object.hasOwn(parsed, "locator") && parsed.locator !== undefined)
+              $changes.locator = $record.locator = parsed.locator;
+            if ($Object.hasOwn(parsed, "contentHash") && parsed.contentHash !== undefined)
               $changes.contentHash = $record.contentHash = parsed.contentHash;
-            if (parsed.description !== undefined)
+            if ($Object.hasOwn(parsed, "description") && parsed.description !== undefined)
               $changes.description = $record.description = parsed.description;
             // do: the steps run in written order, each seeing the record as the ones before it left it
             {
@@ -242,7 +254,7 @@ export function bindEvidenceReference(
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $parsed = await $castInput(layer, readEvidenceReferenceInput, input);
+      const $parsed = await $castInput(layer, readEvidenceReferenceInputSchema, input);
       if (
         !(await $authorizer(
           "work.EvidenceReference",

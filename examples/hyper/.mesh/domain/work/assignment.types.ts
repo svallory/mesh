@@ -91,14 +91,14 @@ export type AssignmentFilter =
   | { and: readonly AssignmentFilter[] }
   | { or: readonly AssignmentFilter[] }
   | {
-      id?: $Comparison<string>;
-      reviewWaived?: $Comparison<boolean>;
-      startedAt?: $Comparison<$Date>;
-      endedAt?: $Comparison<$Date>;
-      endReason?: $Comparison<"reassigned" | "unassigned">;
-      taskId?: $Comparison<string>;
-      assigneeId?: $Comparison<string>;
-      delegatorId?: $Comparison<string>;
+      id?: $Comparison<string> | undefined;
+      reviewWaived?: $Comparison<boolean> | undefined;
+      startedAt?: $Comparison<$Date> | undefined;
+      endedAt?: $Comparison<$Date> | undefined;
+      endReason?: $Comparison<"reassigned" | "unassigned"> | undefined;
+      taskId?: $Comparison<string> | undefined;
+      assigneeId?: $Comparison<string> | undefined;
+      delegatorId?: $Comparison<string> | undefined;
     };
 
 export type AssignmentSort = readonly (

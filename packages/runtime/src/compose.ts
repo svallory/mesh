@@ -20,6 +20,56 @@ export function failJoined(layer: DataLayer, cause: unknown): Promise<never> {
   return layer.transaction(() => Promise.reject(cause)).then(rethrow, rethrow);
 }
 
+/** A plain object: one an object literal, `JSON.parse` or `Object.create(null)` makes, not an instance of a class. */
+function isPlain(value: object): boolean {
+  const prototype: unknown = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+/**
+ * A copy of a caller's input for the validator, in which every plain object, at any depth, has no prototype; arrays are
+ * copied around their items and anything else (a `Date`) is kept. A member input may be named like a member of
+ * `Object.prototype` (`toString`, `constructor`: ENT-18), and so may a key of a read's `filter`. On a plain object a key
+ * the caller left out reads as the inherited method, which the validator would refuse ("expected string, received
+ * function"); on the copy it reads `undefined`, as any other name does.
+ */
+function withoutPrototypes(value: unknown, seen = new Map<object, unknown>()): unknown {
+  if (value === null || typeof value !== "object") return value;
+  if (seen.has(value)) return seen.get(value);
+  if (Array.isArray(value)) {
+    const list: unknown[] = [];
+    seen.set(value, list);
+    for (const item of value) list.push(withoutPrototypes(item, seen));
+    return list;
+  }
+  if (!isPlain(value)) return value;
+  const copy: Record<string, unknown> = Object.create(null);
+  seen.set(value, copy);
+  for (const [key, member] of Object.entries(value)) copy[key] = withoutPrototypes(member, seen);
+  return copy;
+}
+
+/**
+ * The validator's output with the ordinary prototype at any depth: the action gets ordinary objects, as the caller would
+ * write them (`input.hasOwnProperty(...)`, `String(input)` and `input instanceof Object` work). Zod 4, which the generated
+ * validators use, already rebuilds every object it hands back with that prototype, `z.strictObject` and `z.json()` values
+ * alike, so for them this changes nothing. It is a safety net for a validator that hands back objects of the copy
+ * `withoutPrototypes` made, which have none. Those are the cast's own copies, so they are changed in place, with no copy.
+ * Only prototypes change, never keys.
+ */
+function ordinary(value: unknown, seen = new Set<object>()): unknown {
+  if (value === null || typeof value !== "object" || seen.has(value)) return value;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    for (const item of value) ordinary(item, seen);
+    return value;
+  }
+  if (!isPlain(value)) return value;
+  if (Object.getPrototypeOf(value) === null) Object.setPrototypeOf(value, Object.prototype);
+  for (const member of Object.values(value)) ordinary(member, seen);
+  return value;
+}
+
 /**
  * Cast a generated function's input. The cast runs before the function opens or joins a transaction. First the layer
  * says whether the call runs inside a transaction, and refuses it if that transaction has already failed
@@ -27,13 +77,17 @@ export function failJoined(layer: DataLayer, cause: unknown): Promise<never> {
  * (`#mesh/domain/<module>`) or from a function of an entity file, a failed cast goes through `failJoined`: it fails that transaction like any other failed call,
  * even when the caller catches it. At top level the caller gets the cast error at once, as from `parseInput`: no
  * transaction opens and no lock is taken.
+ *
+ * The validator sees the input's own members only (`withoutPrototypes`); the action gets ordinary objects (`ordinary`).
+ * There a member input named like a member of `Object.prototype` that the caller left out reads as the inherited member
+ * (ENT-18's accepted cost), so generated code tells a given member by `$Object.hasOwn`.
  */
 export async function castInput<T>(layer: DataLayer, schema: StandardSchemaV1<unknown, T>, input: unknown): Promise<T> {
   const joined = layer.refuseIfFailed();
   // An `await`, not `.catch`: the error's async stack then keeps the generated function that called this, so its first
   // frame outside Mesh's packages is still the generated action (blog acceptance 3).
   try {
-    return await parseInput(schema, input);
+    return ordinary(await parseInput(schema, withoutPrototypes(input))) as T;
   } catch (cause) {
     if (!joined) throw cause;
     return failJoined(layer, cause);

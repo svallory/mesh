@@ -1,0 +1,83 @@
+// Every name ENT-18 accepts that names a member of Object.prototype or a function, as an attribute.
+entity :Fields
+  attributes
+    uuid :id primary-key
+    string :constructor min=1 max=20
+    string :prototype max=20 nullable
+    string :hasOwnProperty max=20 nullable
+    string :isPrototypeOf max=20 nullable
+    string :propertyIsEnumerable max=20 nullable
+    string :toLocaleString max=20 nullable
+    string :toString min=1 max=20
+    integer :valueOf min=0 nullable
+    string :__defineGetter__ max=20 nullable
+    string :__defineSetter__ max=20 nullable
+    string :__lookupGetter__ max=20 nullable
+    string :__lookupSetter__ max=20 nullable
+  computed
+    string :joined() { return [&constructor, &prototype, &hasOwnProperty, &isPrototypeOf, &propertyIsEnumerable, &toLocaleString, &toString, &valueOf, &__defineGetter__, &__defineSetter__, &__lookupGetter__, &__lookupSetter__].join("|") }
+    boolean :same() { return &constructor === &toString }
+  actions auto=[:read]
+    create :create
+      input
+        &constructor
+        &prototype
+        &hasOwnProperty
+        &isPrototypeOf
+        &propertyIsEnumerable
+        &toLocaleString
+        &toString
+        &valueOf
+        &__defineGetter__
+        &__defineSetter__
+        &__lookupGetter__
+        &__lookupSetter__
+      validate
+        check :typed that=({ input }) => { return Object.values(input).every((value) => value === undefined || value === null || typeof value === "string" || typeof value === "number") } code="typed" message="An input is not a string or a number"
+    update :edit
+      input
+        &constructor
+        &prototype
+        &hasOwnProperty
+        &isPrototypeOf
+        &propertyIsEnumerable
+        &toLocaleString
+        &toString
+        &valueOf
+        &__defineGetter__
+        &__defineSetter__
+        &__lookupGetter__
+        &__lookupSetter__
+      validate
+        check :not_bad_constructor that=({ input }) => (input.constructor ?? "") !== "bad" code="bad" message="constructor is bad"
+        check :not_bad_prototype that=({ input }) => (input.prototype ?? "") !== "bad" code="bad" message="prototype is bad"
+        check :not_bad_hasOwnProperty that=({ input }) => (input.hasOwnProperty ?? "") !== "bad" code="bad" message="hasOwnProperty is bad"
+        check :not_bad_isPrototypeOf that=({ input }) => (input.isPrototypeOf ?? "") !== "bad" code="bad" message="isPrototypeOf is bad"
+        check :not_bad_propertyIsEnumerable that=({ input }) => (input.propertyIsEnumerable ?? "") !== "bad" code="bad" message="propertyIsEnumerable is bad"
+        check :not_bad_toLocaleString that=({ input }) => (input.toLocaleString ?? "") !== "bad" code="bad" message="toLocaleString is bad"
+        check :not_bad_toString that=({ input }) => (input.toString ?? "") !== "bad" code="bad" message="toString is bad"
+        check :not_bad_valueOf that=({ input }) => (input.valueOf ?? 0) !== 13 code="bad" message="valueOf is bad"
+        check :not_bad__defineGetter__ that=({ input }) => (input.__defineGetter__ ?? "") !== "bad" code="bad" message="__defineGetter__ is bad"
+        check :not_bad__defineSetter__ that=({ input }) => (input.__defineSetter__ ?? "") !== "bad" code="bad" message="__defineSetter__ is bad"
+        check :not_bad__lookupGetter__ that=({ input }) => (input.__lookupGetter__ ?? "") !== "bad" code="bad" message="__lookupGetter__ is bad"
+        check :not_bad__lookupSetter__ that=({ input }) => (input.__lookupSetter__ ?? "") !== "bad" code="bad" message="__lookupSetter__ is bad"
+    update :stamp
+      input
+        string :mark
+      do
+        set
+          &constructor=({ input }) => input.mark
+          &prototype=({ input }) => input.mark
+          &hasOwnProperty=({ input }) => input.mark
+          &isPrototypeOf=({ input }) => input.mark
+          &propertyIsEnumerable=({ input }) => input.mark
+          &toLocaleString=({ input }) => input.mark
+          &toString=() => { return &toString + "!" }
+          &valueOf=() => { return (&valueOf ?? 0) + 1 }
+          &__defineGetter__=({ input }) => input.mark
+          &__defineSetter__=({ input }) => input.mark
+          &__lookupGetter__=({ input }) => input.mark
+          &__lookupSetter__=({ input }) => input.mark
+  policies
+    policy :anyone types=[:create, :read, :update]
+      authorize-if=() => true

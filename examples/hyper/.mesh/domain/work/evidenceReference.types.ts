@@ -78,13 +78,13 @@ export type EvidenceReferenceFilter =
   | { and: readonly EvidenceReferenceFilter[] }
   | { or: readonly EvidenceReferenceFilter[] }
   | {
-      id?: $Comparison<string>;
-      kind?: $Comparison<string>;
-      locator?: $Comparison<string>;
-      contentHash?: $Comparison<string>;
-      description?: $Comparison<string>;
-      recordedAt?: $Comparison<$Date>;
-      recordedById?: $Comparison<string>;
+      id?: $Comparison<string> | undefined;
+      kind?: $Comparison<string> | undefined;
+      locator?: $Comparison<string> | undefined;
+      contentHash?: $Comparison<string> | undefined;
+      description?: $Comparison<string> | undefined;
+      recordedAt?: $Comparison<$Date> | undefined;
+      recordedById?: $Comparison<string> | undefined;
     };
 
 export type EvidenceReferenceSort = readonly (

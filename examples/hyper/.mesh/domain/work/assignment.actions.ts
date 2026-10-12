@@ -35,7 +35,6 @@ import {
   type DataOperations as $DataOperations,
   type Issue as $Issue,
   type LoadOptions as $LoadOptions,
-  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   Assignment as $Record,
@@ -50,9 +49,9 @@ import type {
   ReadAssignmentInput,
 } from "./assignment.types";
 import {
-  startAssignmentInput,
-  finishAssignmentInput,
-  readAssignmentInput,
+  startAssignmentInputSchema,
+  finishAssignmentInputSchema,
+  readAssignmentInputSchema,
 } from "./assignment.validators";
 import { tables } from "../../schema";
 import {
@@ -61,7 +60,14 @@ import {
   type $work$Assignment$StoredScope as $StoredScope,
 } from "./assignment.expressions";
 import { loadPlan as $loadPlan } from "../../load";
-import { $Date, $Object, type $Omit, type $Pick, type $Promise } from "../../$globals";
+import {
+  $Date,
+  $Object,
+  type $Omit,
+  type $Partial,
+  type $Pick,
+  type $Promise,
+} from "../../$globals";
 
 /**
  * The reads of this entity without their policies: what `privileged(Assignment)` runs (TXN-16). The read actions
@@ -78,11 +84,11 @@ export function bindAssignmentReads(
       context?: unknown,
       clock?: () => $Date,
       policies?: boolean,
-      cast?: $CastOutput<typeof readAssignmentInput>,
+      cast?: $CastOutput<typeof readAssignmentInputSchema>,
     ): $Promise<L extends unknown ? AssignmentTxWith<AssignmentLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
       // for its policies and hands it over as `cast`; a `privileged` read casts it here.
-      const parsed = cast ?? (await $castInput(layer, readAssignmentInput, input));
+      const parsed = cast ?? (await $castInput(layer, readAssignmentInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.assignments, {
           filter: parsed.filter,
@@ -121,7 +127,7 @@ export function bindAssignment(
   return $Object.freeze({
     async start(input: StartAssignmentInput, ...[context]: $ContextArgument): $Promise<Assignment> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, startAssignmentInput, input);
+      const parsed = await $castInput(layer, startAssignmentInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -161,19 +167,30 @@ export function bindAssignment(
           frame.within(tx, $clock, "work.Assignment#start", async () => {
             // transaction: opens here; what follows commits together or not at all
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Omit<
+              $Record,
+              "startedAt" | "taskId" | "assigneeId" | "delegatorId"
+            > & {
+              startedAt: $Record["startedAt"] | null;
+              taskId: $Record["taskId"] | null;
+              assigneeId: $Record["assigneeId"] | null;
+              delegatorId: $Record["delegatorId"] | null;
+            } = {
               id: $uuidv7(),
               reviewWaived: false,
               endedAt: null,
               endReason: null,
-            };
-            const $record: $Row = {
-              ...$changes,
               startedAt: null,
               taskId: null,
               assigneeId: null,
               delegatorId: null,
             };
+            const $record: $Omit<$Record, "startedAt" | "taskId" | "assigneeId" | "delegatorId"> & {
+              startedAt: $Record["startedAt"] | null;
+              taskId: $Record["taskId"] | null;
+              assigneeId: $Record["assigneeId"] | null;
+              delegatorId: $Record["delegatorId"] | null;
+            } = { ...$changes };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Assignment", $record, "action function"),
               "work.Assignment#start",
@@ -189,10 +206,11 @@ export function bindAssignment(
               { clock: $clock },
             ) as unknown as $Scope<StartAssignmentInput>;
             // the input: the member inputs the caller sent, applied now that the checks have passed
-            if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
-            if (parsed.assignee !== undefined)
+            if ($Object.hasOwn(parsed, "task") && parsed.task !== undefined)
+              $changes.taskId = $record.taskId = parsed.task;
+            if ($Object.hasOwn(parsed, "assignee") && parsed.assignee !== undefined)
               $changes.assigneeId = $record.assigneeId = parsed.assignee;
-            if (parsed.reviewWaived !== undefined)
+            if ($Object.hasOwn(parsed, "reviewWaived") && parsed.reviewWaived !== undefined)
               $changes.reviewWaived = $record.reviewWaived = parsed.reviewWaived;
             // do: the steps run in written order, each seeing the record as the ones before it left it
             {
@@ -236,7 +254,7 @@ export function bindAssignment(
       ...[context]: $ContextArgument
     ): $Promise<Assignment> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, finishAssignmentInput, input);
+      const parsed = await $castInput(layer, finishAssignmentInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -277,10 +295,12 @@ export function bindAssignment(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.assignments, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.assignments, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("work.Assignment", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Assignment", $record, "action function"),
@@ -357,7 +377,7 @@ export function bindAssignment(
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $parsed = await $castInput(layer, readAssignmentInput, input);
+      const $parsed = await $castInput(layer, readAssignmentInputSchema, input);
       if (
         !(await $authorizer(
           "work.Assignment",

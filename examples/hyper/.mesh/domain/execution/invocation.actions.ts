@@ -34,7 +34,6 @@ import {
   type DataOperations as $DataOperations,
   type Issue as $Issue,
   type LoadOptions as $LoadOptions,
-  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   Invocation as $Record,
@@ -49,9 +48,9 @@ import type {
   ReadInvocationInput,
 } from "./invocation.types";
 import {
-  recordInvocationInput,
-  correctInvocationInput,
-  readInvocationInput,
+  recordInvocationInputSchema,
+  correctInvocationInputSchema,
+  readInvocationInputSchema,
 } from "./invocation.validators";
 import { tables } from "../../schema";
 import { $expressions, type $execution$Invocation$Scope as $Scope } from "./invocation.expressions";
@@ -73,11 +72,11 @@ export function bindInvocationReads(
       context?: unknown,
       clock?: () => $Date,
       policies?: boolean,
-      cast?: $CastOutput<typeof readInvocationInput>,
+      cast?: $CastOutput<typeof readInvocationInputSchema>,
     ): $Promise<L extends unknown ? InvocationTxWith<InvocationLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
       // for its policies and hands it over as `cast`; a `privileged` read casts it here.
-      const parsed = cast ?? (await $castInput(layer, readInvocationInput, input));
+      const parsed = cast ?? (await $castInput(layer, readInvocationInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.invocations, {
           filter: parsed.filter,
@@ -119,7 +118,7 @@ export function bindInvocation(
       ...[context]: $ContextArgument
     ): $Promise<Invocation> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, recordInvocationInput, input);
+      const parsed = await $castInput(layer, recordInvocationInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -186,7 +185,15 @@ export function bindInvocation(
             // transaction: opens here; what follows commits together or not at all
             const $now = $clock();
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Omit<
+              $Record,
+              "usageSource" | "attemptId" | "taskId" | "recordedById"
+            > & {
+              usageSource: $Record["usageSource"] | null;
+              attemptId: $Record["attemptId"] | null;
+              taskId: $Record["taskId"] | null;
+              recordedById: $Record["recordedById"] | null;
+            } = {
               id: $uuidv7(),
               requestedProvider: null,
               requestedModel: null,
@@ -204,14 +211,20 @@ export function bindInvocation(
               recordedAt: $now,
               sessionId: null,
               correctsId: null,
-            };
-            const $record: $Row = {
-              ...$changes,
               usageSource: null,
               attemptId: null,
               taskId: null,
               recordedById: null,
             };
+            const $record: $Omit<
+              $Record,
+              "usageSource" | "attemptId" | "taskId" | "recordedById"
+            > & {
+              usageSource: $Record["usageSource"] | null;
+              attemptId: $Record["attemptId"] | null;
+              taskId: $Record["taskId"] | null;
+              recordedById: $Record["recordedById"] | null;
+            } = { ...$changes };
             const $load = { actor: $actor, context: $context, clock: $clock, frame };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.Invocation", $record, "action function"),
@@ -248,34 +261,38 @@ export function bindInvocation(
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // the input: the member inputs the caller sent, applied now that the checks have passed
-            if (parsed.attempt !== undefined)
+            if ($Object.hasOwn(parsed, "attempt") && parsed.attempt !== undefined)
               $changes.attemptId = $record.attemptId = parsed.attempt;
-            if (parsed.requestedProvider !== undefined)
+            if (
+              $Object.hasOwn(parsed, "requestedProvider") &&
+              parsed.requestedProvider !== undefined
+            )
               $changes.requestedProvider = $record.requestedProvider = parsed.requestedProvider;
-            if (parsed.requestedModel !== undefined)
+            if ($Object.hasOwn(parsed, "requestedModel") && parsed.requestedModel !== undefined)
               $changes.requestedModel = $record.requestedModel = parsed.requestedModel;
-            if (parsed.actualProvider !== undefined)
+            if ($Object.hasOwn(parsed, "actualProvider") && parsed.actualProvider !== undefined)
               $changes.actualProvider = $record.actualProvider = parsed.actualProvider;
-            if (parsed.actualModel !== undefined)
+            if ($Object.hasOwn(parsed, "actualModel") && parsed.actualModel !== undefined)
               $changes.actualModel = $record.actualModel = parsed.actualModel;
-            if (parsed.inputTokens !== undefined)
+            if ($Object.hasOwn(parsed, "inputTokens") && parsed.inputTokens !== undefined)
               $changes.inputTokens = $record.inputTokens = parsed.inputTokens;
-            if (parsed.outputTokens !== undefined)
+            if ($Object.hasOwn(parsed, "outputTokens") && parsed.outputTokens !== undefined)
               $changes.outputTokens = $record.outputTokens = parsed.outputTokens;
-            if (parsed.cacheReadTokens !== undefined)
+            if ($Object.hasOwn(parsed, "cacheReadTokens") && parsed.cacheReadTokens !== undefined)
               $changes.cacheReadTokens = $record.cacheReadTokens = parsed.cacheReadTokens;
-            if (parsed.cacheWriteTokens !== undefined)
+            if ($Object.hasOwn(parsed, "cacheWriteTokens") && parsed.cacheWriteTokens !== undefined)
               $changes.cacheWriteTokens = $record.cacheWriteTokens = parsed.cacheWriteTokens;
-            if (parsed.usageSource !== undefined)
+            if ($Object.hasOwn(parsed, "usageSource") && parsed.usageSource !== undefined)
               $changes.usageSource = $record.usageSource = parsed.usageSource;
-            if (parsed.estimatedCost !== undefined)
+            if ($Object.hasOwn(parsed, "estimatedCost") && parsed.estimatedCost !== undefined)
               $changes.estimatedCost = $record.estimatedCost = parsed.estimatedCost;
-            if (parsed.pricingBasis !== undefined)
+            if ($Object.hasOwn(parsed, "pricingBasis") && parsed.pricingBasis !== undefined)
               $changes.pricingBasis = $record.pricingBasis = parsed.pricingBasis;
-            if (parsed.startedAt !== undefined)
+            if ($Object.hasOwn(parsed, "startedAt") && parsed.startedAt !== undefined)
               $changes.startedAt = $record.startedAt = parsed.startedAt;
-            if (parsed.endedAt !== undefined) $changes.endedAt = $record.endedAt = parsed.endedAt;
-            if (parsed.session !== undefined)
+            if ($Object.hasOwn(parsed, "endedAt") && parsed.endedAt !== undefined)
+              $changes.endedAt = $record.endedAt = parsed.endedAt;
+            if ($Object.hasOwn(parsed, "session") && parsed.session !== undefined)
               $changes.sessionId = $record.sessionId = parsed.session;
             // do: the steps run in written order, each seeing the record as the ones before it left it
             await $loadInto($loadPlan, "execution.Invocation", tx, $record, ["attempt"], $load);
@@ -321,7 +338,7 @@ export function bindInvocation(
       ...[context]: $ContextArgument
     ): $Promise<Invocation> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, correctInvocationInput, input);
+      const parsed = await $castInput(layer, correctInvocationInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -388,7 +405,15 @@ export function bindInvocation(
             // transaction: opens here; what follows commits together or not at all
             const $now = $clock();
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Omit<
+              $Record,
+              "usageSource" | "attemptId" | "taskId" | "recordedById"
+            > & {
+              usageSource: $Record["usageSource"] | null;
+              attemptId: $Record["attemptId"] | null;
+              taskId: $Record["taskId"] | null;
+              recordedById: $Record["recordedById"] | null;
+            } = {
               id: $uuidv7(),
               requestedProvider: null,
               requestedModel: null,
@@ -406,14 +431,20 @@ export function bindInvocation(
               recordedAt: $now,
               sessionId: null,
               correctsId: null,
-            };
-            const $record: $Row = {
-              ...$changes,
               usageSource: null,
               attemptId: null,
               taskId: null,
               recordedById: null,
             };
+            const $record: $Omit<
+              $Record,
+              "usageSource" | "attemptId" | "taskId" | "recordedById"
+            > & {
+              usageSource: $Record["usageSource"] | null;
+              attemptId: $Record["attemptId"] | null;
+              taskId: $Record["taskId"] | null;
+              recordedById: $Record["recordedById"] | null;
+            } = { ...$changes };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.Invocation", $record, "action function"),
               "execution.Invocation#correct",
@@ -456,35 +487,40 @@ export function bindInvocation(
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // the input: the member inputs the caller sent, applied now that the checks have passed
-            if (parsed.corrects !== undefined)
+            if ($Object.hasOwn(parsed, "corrects") && parsed.corrects !== undefined)
               $changes.correctsId = $record.correctsId = parsed.corrects;
-            if (parsed.reason !== undefined) $changes.reason = $record.reason = parsed.reason;
-            if (parsed.requestedProvider !== undefined)
+            if ($Object.hasOwn(parsed, "reason") && parsed.reason !== undefined)
+              $changes.reason = $record.reason = parsed.reason;
+            if (
+              $Object.hasOwn(parsed, "requestedProvider") &&
+              parsed.requestedProvider !== undefined
+            )
               $changes.requestedProvider = $record.requestedProvider = parsed.requestedProvider;
-            if (parsed.requestedModel !== undefined)
+            if ($Object.hasOwn(parsed, "requestedModel") && parsed.requestedModel !== undefined)
               $changes.requestedModel = $record.requestedModel = parsed.requestedModel;
-            if (parsed.actualProvider !== undefined)
+            if ($Object.hasOwn(parsed, "actualProvider") && parsed.actualProvider !== undefined)
               $changes.actualProvider = $record.actualProvider = parsed.actualProvider;
-            if (parsed.actualModel !== undefined)
+            if ($Object.hasOwn(parsed, "actualModel") && parsed.actualModel !== undefined)
               $changes.actualModel = $record.actualModel = parsed.actualModel;
-            if (parsed.inputTokens !== undefined)
+            if ($Object.hasOwn(parsed, "inputTokens") && parsed.inputTokens !== undefined)
               $changes.inputTokens = $record.inputTokens = parsed.inputTokens;
-            if (parsed.outputTokens !== undefined)
+            if ($Object.hasOwn(parsed, "outputTokens") && parsed.outputTokens !== undefined)
               $changes.outputTokens = $record.outputTokens = parsed.outputTokens;
-            if (parsed.cacheReadTokens !== undefined)
+            if ($Object.hasOwn(parsed, "cacheReadTokens") && parsed.cacheReadTokens !== undefined)
               $changes.cacheReadTokens = $record.cacheReadTokens = parsed.cacheReadTokens;
-            if (parsed.cacheWriteTokens !== undefined)
+            if ($Object.hasOwn(parsed, "cacheWriteTokens") && parsed.cacheWriteTokens !== undefined)
               $changes.cacheWriteTokens = $record.cacheWriteTokens = parsed.cacheWriteTokens;
-            if (parsed.usageSource !== undefined)
+            if ($Object.hasOwn(parsed, "usageSource") && parsed.usageSource !== undefined)
               $changes.usageSource = $record.usageSource = parsed.usageSource;
-            if (parsed.estimatedCost !== undefined)
+            if ($Object.hasOwn(parsed, "estimatedCost") && parsed.estimatedCost !== undefined)
               $changes.estimatedCost = $record.estimatedCost = parsed.estimatedCost;
-            if (parsed.pricingBasis !== undefined)
+            if ($Object.hasOwn(parsed, "pricingBasis") && parsed.pricingBasis !== undefined)
               $changes.pricingBasis = $record.pricingBasis = parsed.pricingBasis;
-            if (parsed.startedAt !== undefined)
+            if ($Object.hasOwn(parsed, "startedAt") && parsed.startedAt !== undefined)
               $changes.startedAt = $record.startedAt = parsed.startedAt;
-            if (parsed.endedAt !== undefined) $changes.endedAt = $record.endedAt = parsed.endedAt;
-            if (parsed.session !== undefined)
+            if ($Object.hasOwn(parsed, "endedAt") && parsed.endedAt !== undefined)
+              $changes.endedAt = $record.endedAt = parsed.endedAt;
+            if ($Object.hasOwn(parsed, "session") && parsed.session !== undefined)
               $changes.sessionId = $record.sessionId = parsed.session;
             // do: the steps run in written order, each seeing the record as the ones before it left it
             {
@@ -539,7 +575,7 @@ export function bindInvocation(
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $parsed = await $castInput(layer, readInvocationInput, input);
+      const $parsed = await $castInput(layer, readInvocationInputSchema, input);
       if (
         !(await $authorizer(
           "execution.Invocation",

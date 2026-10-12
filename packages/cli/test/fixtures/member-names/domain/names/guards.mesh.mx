@@ -1,0 +1,41 @@
+// Every name ENT-18 accepts that names a member of Object.prototype or a function, as a policy. Each denies a call
+// whose label is its own name: half a create, before the transaction (reading the input), half an update, inside it
+// (reading the stored record).
+entity :Guards
+  attributes
+    uuid :id primary-key
+    string :label min=1 max=40
+  actions auto=[:read]
+    create :create
+      input
+        &label
+    update :relabel
+      input
+        &label
+  policies
+    policy :anyone types=[:create, :read, :update]
+      authorize-if=() => true
+    policy :constructor actions=[&create]
+      forbid-if=({ input }) => input.label === "constructor"
+    policy :prototype actions=[&relabel]
+      forbid-if=() => &label === "prototype"
+    policy :hasOwnProperty actions=[&create]
+      forbid-if=({ input }) => input.label === "hasOwnProperty"
+    policy :isPrototypeOf actions=[&relabel]
+      forbid-if=() => &label === "isPrototypeOf"
+    policy :propertyIsEnumerable actions=[&create]
+      forbid-if=({ input }) => input.label === "propertyIsEnumerable"
+    policy :toLocaleString actions=[&relabel]
+      forbid-if=() => &label === "toLocaleString"
+    policy :toString actions=[&create]
+      forbid-if=({ input }) => input.label === "toString"
+    policy :valueOf actions=[&relabel]
+      forbid-if=() => &label === "valueOf"
+    policy :__defineGetter__ actions=[&create]
+      forbid-if=({ input }) => input.label === "__defineGetter__"
+    policy :__defineSetter__ actions=[&relabel]
+      forbid-if=() => &label === "__defineSetter__"
+    policy :__lookupGetter__ actions=[&create]
+      forbid-if=({ input }) => input.label === "__lookupGetter__"
+    policy :__lookupSetter__ actions=[&relabel]
+      forbid-if=() => &label === "__lookupSetter__"

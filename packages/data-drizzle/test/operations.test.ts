@@ -152,3 +152,53 @@ test("bun:sqlite: a handle that is not a Drizzle SQLite table is refused before 
     }
   } finally { database.close(); }
 });
+
+// ENT-18: a column may be named like a member of `Object.prototype`. Drizzle reads `row[column]` for every column of the
+// table, where a column the row leaves out would read as the method every object inherits.
+const named = sqliteTable("named", {
+  constructor: text("constructor").primaryKey().notNull(),
+  toString: text("toString"),
+  valueOf: integer("valueOf"),
+});
+function namedOperations() {
+  const database = new Database(":memory:");
+  database.run('CREATE TABLE named ("constructor" text PRIMARY KEY NOT NULL, "toString" text, "valueOf" integer)');
+  const db = drizzle(database);
+  const commands: DrizzleCommands<SQLiteTable> = {
+    table: (handle) => drizzleTable(handle, SQLiteTable, "SQLite"),
+    insert: (target, values) => db.insert(target).values(values).returning().get()!,
+    select: (target) => db.select().from(target).all(),
+    aggregate: () => null,
+    update: (target, condition, changes) => db.update(target).set(changes).where(condition).returning().all(),
+    delete: (target, condition) => db.delete(target).where(condition).returning().all(),
+  };
+  return { operations: drizzleOperations(commands, () => {}), database };
+}
+
+test("bun:sqlite: an insert that leaves out a column named like an Object.prototype member stores no value in it", async () => {
+  const { operations, database } = namedOperations();
+  try {
+    expect(await operations.insert(named, { constructor: "k", valueOf: 2 })).toEqual({ constructor: "k", toString: null, valueOf: 2 });
+    expect(await operations.insert(named, { constructor: "j", toString: "t" })).toEqual({ constructor: "j", toString: "t", valueOf: null });
+    expect(await operations.selectByKey(named, { constructor: "k" })).toEqual({ constructor: "k", toString: null, valueOf: 2 });
+  } finally { database.close(); }
+});
+
+test("bun:sqlite: a row that leaves out a key named like an Object.prototype member gets a generated key", async () => {
+  const { operations, database } = namedOperations();
+  try {
+    const stored = await operations.insert(named, { toString: "t" });
+    expect(typeof stored.constructor).toBe("string");
+    expect(stored.constructor as unknown as string).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(stored).toEqual({ constructor: stored.constructor, toString: "t", valueOf: null });
+  } finally { database.close(); }
+});
+
+test("bun:sqlite: an update that leaves out a column named like an Object.prototype member keeps its value", async () => {
+  const { operations, database } = namedOperations();
+  try {
+    await operations.insert(named, { constructor: "k", toString: "t", valueOf: 2 });
+    expect(await operations.updateByKey(named, { constructor: "k" }, { valueOf: 3 })).toEqual({ constructor: "k", toString: "t", valueOf: 3 });
+    expect(await operations.updateByKey(named, { constructor: "k" }, { toString: "u" })).toEqual({ constructor: "k", toString: "u", valueOf: 3 });
+  } finally { database.close(); }
+});

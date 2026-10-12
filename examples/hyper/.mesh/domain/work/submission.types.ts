@@ -105,14 +105,14 @@ export type SubmissionFilter =
   | { and: readonly SubmissionFilter[] }
   | { or: readonly SubmissionFilter[] }
   | {
-      id?: $Comparison<string>;
-      summary?: $Comparison<string>;
-      fence?: $Comparison<number>;
-      taskVersion?: $Comparison<number>;
-      state?: $Comparison<"pending" | "accepted" | "returned" | "withdrawn">;
-      submittedAt?: $Comparison<$Date>;
-      taskId?: $Comparison<string>;
-      submitterId?: $Comparison<string>;
+      id?: $Comparison<string> | undefined;
+      summary?: $Comparison<string> | undefined;
+      fence?: $Comparison<number> | undefined;
+      taskVersion?: $Comparison<number> | undefined;
+      state?: $Comparison<"pending" | "accepted" | "returned" | "withdrawn"> | undefined;
+      submittedAt?: $Comparison<$Date> | undefined;
+      taskId?: $Comparison<string> | undefined;
+      submitterId?: $Comparison<string> | undefined;
     };
 
 export type SubmissionSort = readonly (

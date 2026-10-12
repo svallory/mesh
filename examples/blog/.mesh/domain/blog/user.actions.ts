@@ -23,10 +23,9 @@ import {
   type EntityReadsBind as $EntityReadsBind,
   type EntityValue as $EntityValue,
   type CastOutput as $CastOutput,
-  type Row as $Row,
 } from "@meshfw/runtime";
 import type { User as $Record, CreateUserInput, ReadUserInput } from "./user.types";
-import { createUserInput, readUserInput } from "./user.validators";
+import { createUserInputSchema, readUserInputSchema } from "./user.validators";
 import { tables } from "../../schema";
 import { $expressions } from "./user.expressions";
 import { $Date, $Object, type $Promise } from "../../$globals";
@@ -46,11 +45,11 @@ export function bindUserReads(
       _context?: unknown,
       _clock?: () => $Date,
       _policies?: boolean,
-      cast?: $CastOutput<typeof readUserInput>,
+      cast?: $CastOutput<typeof readUserInputSchema>,
     ): $Promise<User[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
       // for its policies and hands it over as `cast`; a `privileged` read casts it here.
-      const parsed = cast ?? (await $castInput(layer, readUserInput, input));
+      const parsed = cast ?? (await $castInput(layer, readUserInputSchema, input));
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.users, {
           filter: parsed.filter,
@@ -76,7 +75,7 @@ export function bindUser(
   return $Object.freeze({
     async create(input: CreateUserInput, ...[context]: $ContextArgument): $Promise<User> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, createUserInput, input);
+      const parsed = await $castInput(layer, createUserInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -112,7 +111,7 @@ export function bindUser(
           frame.within(tx, $clock, "blog.User#create", async () => {
             // transaction: opens here; what follows commits together or not at all
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Record = {
               id: $uuidv7(),
               name: parsed.name,
             };
@@ -141,7 +140,7 @@ export function bindUser(
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $parsed = await $castInput(layer, readUserInput, input);
+      const $parsed = await $castInput(layer, readUserInputSchema, input);
       if (
         !(await $authorizer(
           "blog.User",

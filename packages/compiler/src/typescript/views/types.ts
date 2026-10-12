@@ -142,11 +142,8 @@ export interface TypeMember {
 export function typesView({ document }: EmitInput, entity: Entity): TypesView {
   const recordName = typeName(entity.name, entity.position);
   const inputs = entityInputs(entity, document);
-  const declared = new Set([recordName]);
-  for (const input of inputs) {
-    if (declared.has(input.name)) throw emitError("MESH_EMIT_NAME", `Entity ${entity.fqn} would generate the type ${input.name} twice`, input.position);
-    declared.add(input.name);
-  }
+  // `entityInputs` refuses two actions whose inputs get one name (`checkInputNames`).
+  const declared = new Set([recordName, ...inputs.map((input) => input.name)]);
   if (entity.relationships.length + entity.computed.length > 0)
     for (const name of [`${recordName}Loadable`, `${recordName}With`, `${recordName}LoadNames`, `${recordName}LoadArg`, `${recordName}Loaded`, ...(hasTxLoadable(entity) ? [`${recordName}TxLoadable`, `${recordName}TxWith`] : [])]) {
       if (declared.has(name)) throw emitError("MESH_EMIT_NAME", `Entity ${entity.fqn} would generate the type ${name} twice`, entity.position);
@@ -268,7 +265,9 @@ function queryDeclaration(entity: Entity): QueryDeclaration {
     filterName: filterTypeName(entity),
     filterMembers: columns
       .filter((column) => column.name !== "and" && column.name !== "or")
-      .map((column): TypeMember => ({ name: column.name, optional: true, key: propertyName(column.name), type: `$Comparison<${baseType(column)}>` })),
+      // `| undefined`, as on an optional input field: a filter literal may leave out a member named like a member of
+      // `Object.prototype` (`toString`, ENT-18) only by giving it as `undefined`, since TypeScript reads the inherited one.
+      .map((column): TypeMember => ({ name: column.name, optional: true, key: propertyName(column.name), type: `$Comparison<${baseType(column)}> | undefined` })),
     sortName: sortTypeName(entity),
     sortKeys: columns.flatMap((column) => [JSON.stringify(column.name), JSON.stringify(`-${column.name}`)]),
   };

@@ -103,20 +103,20 @@ describe("actions view", () => {
     const view = viewOf("Article");
     expect(view.bindName).toBe("bindArticle");
     expect(view.methods.map((m) => [m.name, m.labelLiteral, m.inputType, m.validator, m.returnType])).toEqual([
-      ["create", '"blog.Article#create"', "CreateArticleInput", "createArticleInput", "Article"],
-      ["rename", '"blog.Article#rename"', "RenameArticleInput", "renameArticleInput", "Article"],
-      ["publish", '"blog.Article#publish"', "PublishArticleInput", "publishArticleInput", 'ArticleWith<"author">'],
-      ["purge", '"blog.Article#purge"', "PurgeArticleInput", "purgeArticleInput", "void"],
-      ["live", '"blog.Article#live"', '$Omit<LiveArticleInput, "load"> & ArticleLoadArg<L>', "liveArticleInput", "(L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)"],
-      ["load", '"blog.Article#load"', '$Omit<LoadArticleInput, "load"> & ArticleLoadArg<L>', "loadArticleInput", "(L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)"],
-      ["read", '"blog.Article#read"', '$Omit<ReadArticleInput, "load"> & ArticleLoadArg<L>', "readArticleInput", "(L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)"],
-      ["destroy", '"blog.Article#destroy"', "DestroyArticleInput", "destroyArticleInput", "void"],
+      ["create", '"blog.Article#create"', "CreateArticleInput", "createArticleInputSchema", "Article"],
+      ["rename", '"blog.Article#rename"', "RenameArticleInput", "renameArticleInputSchema", "Article"],
+      ["publish", '"blog.Article#publish"', "PublishArticleInput", "publishArticleInputSchema", 'ArticleWith<"author">'],
+      ["purge", '"blog.Article#purge"', "PurgeArticleInput", "purgeArticleInputSchema", "void"],
+      ["live", '"blog.Article#live"', '$Omit<LiveArticleInput, "load"> & ArticleLoadArg<L>', "liveArticleInputSchema", "(L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)"],
+      ["load", '"blog.Article#load"', '$Omit<LoadArticleInput, "load"> & ArticleLoadArg<L>', "loadArticleInputSchema", "(L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)"],
+      ["read", '"blog.Article#read"', '$Omit<ReadArticleInput, "load"> & ArticleLoadArg<L>', "readArticleInputSchema", "(L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)"],
+      ["destroy", '"blog.Article#destroy"', "DestroyArticleInput", "destroyArticleInputSchema", "void"],
     ]);
     expect(view.runtimeValues).toEqual([
       "FrameworkError as $FrameworkError", "InvalidInputError as $InvalidInputError", "NO_FRAME as $NO_FRAME", "NotFoundError as $NotFoundError", "authorizer as $authorizer", "castInput as $castInput", "checkScope as $checkScope",
       "checkUnchanged as $checkUnchanged", "entity as $entity", "failJoined as $failJoined", "guarded as $guarded", "loadRows as $loadRows",
       "noteWrite as $noteWrite", "pinClock as $pinClock", "readOnlyRecord as $readOnlyRecord", "recordWrite as $recordWrite", "runAction as $runAction", "runCheck as $runCheck", "scope as $scope", "uuidv7 as $uuidv7", "wantsChanges as $wantsChanges", "writeCount as $writeCount"]);
-    expect(view.runtimeTypes).toEqual(["CastOutput as $CastOutput", "DataOperations as $DataOperations", "Issue as $Issue", "LoadOptions as $LoadOptions", "Row as $Row"]);
+    expect(view.runtimeTypes).toEqual(["CastOutput as $CastOutput", "DataOperations as $DataOperations", "Issue as $Issue", "LoadOptions as $LoadOptions"]);
     expect(view.typesFromLiteral).toBe('"./article.types"');
     expect(view.validatorsFromLiteral).toBe('"./article.validators"');
     expect(view.schemaFromLiteral).toBe('"../../schema"');
@@ -127,7 +127,8 @@ describe("actions view", () => {
     expect(create.statements.slice(1)).toEqual([
       "const $now = $clock();",
       "// plan: a create is one insert; nothing is read first",
-      "const $changes: $Row = {",
+      // ENT-18: typed with the record's own columns, so a column named `toString` is that column, not the inherited method
+      "const $changes: $Omit<$Record, \"title\" | \"authorId\"> & { title: $Record[\"title\"] | null; authorId: $Record[\"authorId\"] | null } = {",
       // ACT-27: the uuid key is filled when the instance is built, not by the data layer at the write
       "id: $uuidv7(),",
       "body: null,",
@@ -137,14 +138,16 @@ describe("actions view", () => {
       "insertedAt: $now,",
       "updatedAt: $now,",
       "editorId: null,",
+      // what the input fills is null on the instance the checks see and in the row until the input is applied
+      "title: null,",
+      "authorId: null,",
       "};",
-      // what the input fills is null on the instance the checks see, and not in the row until the input is applied
-      "const $record: $Row = { ...$changes, title: null, authorId: null };",
+      "const $record: $Omit<$Record, \"title\" | \"authorId\"> & { title: $Record[\"title\"] | null; authorId: $Record[\"authorId\"] | null } = { ...$changes };",
       "// the input: the member inputs the caller sent, applied now that the checks have passed",
-      "if (parsed.title !== undefined) $changes.title = $record.title = parsed.title;",
-      "if (parsed.body !== undefined) $changes.body = $record.body = parsed.body;",
-      "if (parsed.views !== undefined) $changes.views = $record.views = parsed.views;",
-      "if (parsed.author !== undefined) $changes.authorId = $record.authorId = parsed.author;",
+      'if ($Object.hasOwn(parsed, "title") && parsed.title !== undefined) $changes.title = $record.title = parsed.title;',
+      'if ($Object.hasOwn(parsed, "body") && parsed.body !== undefined) $changes.body = $record.body = parsed.body;',
+      'if ($Object.hasOwn(parsed, "views") && parsed.views !== undefined) $changes.views = $record.views = parsed.views;',
+      'if ($Object.hasOwn(parsed, "author") && parsed.author !== undefined) $changes.authorId = $record.authorId = parsed.author;',
       "// do: the steps run in written order, each seeing the record as the ones before it left it",
       "$changes.pinned = $record.pinned = true;",
       "// data layer",
@@ -169,15 +172,15 @@ describe("actions view", () => {
   test("update reads the row under the lock, runs the checks, then applies the accepted input and writes only what changed", () => {
     const [, rename, publish] = viewOf("Article").methods;
     const text = rename!.statements.join("\n");
-    expect(text).toContain("const $before = await tx.selectByKeyForUpdate(tables.articles, $key);");
+    expect(text).toContain("const $before = (await tx.selectByKeyForUpdate(tables.articles, $key)) as $Record | undefined;");
     expect(text).toContain('if ($before === undefined) throw new $NotFoundError("blog.Article", $key);');
-    expect(text).toContain("if (parsed.title !== undefined) $changes.title = $record.title = parsed.title;");
-    expect(text).toContain("if (parsed.editor !== undefined) $changes.editorId = $record.editorId = parsed.editor;");
+    expect(text).toContain('if ($Object.hasOwn(parsed, "title") && parsed.title !== undefined) $changes.title = $record.title = parsed.title;');
+    expect(text).toContain('if ($Object.hasOwn(parsed, "editor") && parsed.editor !== undefined) $changes.editorId = $record.editorId = parsed.editor;');
     // ACT-01: the checks see the stored record; the input is applied after them, before the steps and the write
     const at = (line: string) => rename!.statements.findIndex((statement) => statement.startsWith(line));
-    expect(at("await $runCheck")).toBeGreaterThan(at("const $record: $Row = { ...$before };"));
-    expect(at("if (parsed.title !== undefined)")).toBeGreaterThan(at("if ($issues.length > 0)"));
-    expect(at("const $stored = await tx.updateByKey")).toBeGreaterThan(at("if (parsed.editor !== undefined)"));
+    expect(at("await $runCheck")).toBeGreaterThan(at("const $record: $Record = { ...$before };"));
+    expect(at('if ($Object.hasOwn(parsed, "title") && parsed.title !== undefined)')).toBeGreaterThan(at("if ($issues.length > 0)"));
+    expect(at("const $stored = await tx.updateByKey")).toBeGreaterThan(at('if ($Object.hasOwn(parsed, "editor") && parsed.editor !== undefined)'));
     expect(text).toContain("$changes.updatedAt = $now;");
     expect(text).toContain("const $stored = await tx.updateByKey(tables.articles, $key, $changes);");
     // always types=[:update]: its check runs on every update, before the action's own
@@ -208,7 +211,7 @@ describe("actions view", () => {
       'return (await $loadRows($loadPlan, "blog.Article", tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock, policies, frame })) as unknown as (L extends unknown ? ArticleTxWith<ArticleLoadNames<L>>[] : never);'],
       generics: "<const L extends readonly (keyof ArticleLoadable)[] = readonly []>",
       // The read action casts its input once, for its policies, and hands it over as `cast` (R2-N4); a `privileged` read casts it in the body.
-      contextParam: ", context?: unknown, clock?: () => $Date, policies?: boolean, cast?: $CastOutput<typeof readArticleInput>" });
+      contextParam: ", context?: unknown, clock?: () => $Date, policies?: boolean, cast?: $CastOutput<typeof readArticleInputSchema>" });
     // The read action asks for the load's policies (`true`); a caller's result is typed with `ArticleWith`, where the author may be null.
     expect(view.methods.filter((m) => m.isRead).map((m) => [m.name, m.readsCall, m.statements])).toEqual([
       ["live", "$reads.live(input, context)", []],
@@ -220,7 +223,7 @@ describe("actions view", () => {
     const readMethod = view.methods.find((m) => m.name === "read")!;
     // The checks see the cast input, as a write's do (N2 of the review); an invalid input is reported as one, denied or not.
     expect(readMethod.preCheck.slice(4)).toEqual([
-      "const $parsed = await $castInput(layer, readArticleInput, input);",
+      "const $parsed = await $castInput(layer, readArticleInputSchema, input);",
       'if (!(await $authorizer("blog.Article", "read", [{ name: "everyone", when: null, checks: [{ kind: "authorize-if", check: "() => true", record: false, run: $expressions["policy.everyone.authorize-if.0"] }] }], frame).filter(layer, $scope({ input: $readOnlyRecord($parsed as never, "blog.Article#read"), actor: $actor, context: $context }, { clock: $clock })))) return [] as unknown as (L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never);',
     ]);
   });
@@ -452,7 +455,7 @@ describe("explain", () => {
     const rename = methods.find((m) => m.name === "rename")!.statements;
     const at = (line: string) => rename.findIndex((statement) => statement.startsWith(line));
     // The count is taken after the locked read and before any function runs, and checked just before the write.
-    expect(at("const $writes = $writeCount(tx);")).toBeGreaterThan(at("const $before = await tx.selectByKeyForUpdate"));
+    expect(at("const $writes = $writeCount(tx);")).toBeGreaterThan(at("const $before = (await tx.selectByKeyForUpdate"));
     expect(at("const $writes = $writeCount(tx);")).toBeLessThan(at("const $self = "));
     expect(rename[at("const $stored = await tx.updateByKey(") - 1]).toBe('await $checkUnchanged(tx, $writes, tables.articles, $key, $before, "blog.Article#rename");');
     expect(rename[at("const $stored = ") + 2]).toBe("$noteWrite(tx);");

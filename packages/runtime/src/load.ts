@@ -146,7 +146,7 @@ export async function loadRows(
   // Work on copies: the caller's rows are never changed, and a field a path loads only to evaluate a body stays off them.
   const work: Work[] = rows.map((row) => ({ ...row }));
   // Rollups last: one over a has-many that the same call loaded is worked out from those rows (below), with no query of its own.
-  const isRollup = (name: string) => entityPlan.computed[name]?.kind === "rollup" && !Object.hasOwn(entityPlan.relations, name);
+  const isRollup = (name: string) => Object.hasOwn(entityPlan.computed, name) && entityPlan.computed[name]!.kind === "rollup" && !Object.hasOwn(entityPlan.relations, name);
   for (const name of [...loads.filter((n) => !isRollup(n)), ...loads.filter(isRollup)]) await ensureField(plan, entity, tx, work, name, options, 0);
   return rows.map((row, index) => {
     const loaded: Row = { ...row };
@@ -185,7 +185,7 @@ function assertServable(plan: LoadPlan, entity: string, entityPlan: EntityPlan, 
     if (relation.kind !== "belongs-to" && relation.column === null) throw new FrameworkError(noBelongsToBack(entity, name, relation));
     return;
   }
-  const computed = entityPlan.computed[name];
+  const computed = Object.hasOwn(entityPlan.computed, name) ? entityPlan.computed[name] : undefined;
   if (computed?.kind === "rollup") rollupShape(plan, entity, entityPlan, name, computed);
 }
 
@@ -216,7 +216,7 @@ async function deniedNames(plan: LoadPlan, entity: string, names: readonly strin
       if (!(await admits(relation.target))) denied.set(name, relation.kind === "has-many" ? [] : null);
       continue;
     }
-    const computed = entityPlan.computed[name];
+    const computed = Object.hasOwn(entityPlan.computed, name) ? entityPlan.computed[name] : undefined;
     if (computed?.kind !== "rollup") continue;
     const over = Object.hasOwn(entityPlan.relations, computed.of[0]!) ? entityPlan.relations[computed.of[0]!] : undefined;
     if (over && !(await admits(over.target))) denied.set(name, computed.fn === "count" ? 0 : null);
@@ -241,7 +241,8 @@ async function ensureField(
 ): Promise<void> {
   if (depth > MAX_DEPTH)
     throw new FrameworkError(`Loading ${entity}#${name} went more than ${MAX_DEPTH} levels deep: a computed field reads itself through rows that lead back to each other`);
-  const todo = rows.filter((row) => !(name in row));
+  // Own members only: a field may be named like a member of `Object.prototype` (`toString`, ENT-18), which every row inherits.
+  const todo = rows.filter((row) => !Object.hasOwn(row, name));
   if (todo.length === 0) return;
   const entityPlan = planOf(plan, entity);
   if (Object.hasOwn(entityPlan.relations, name)) {
@@ -309,16 +310,18 @@ export function guarded(plan: LoadPlan, entity: string, row: Work, what = "compu
     return made;
   };
   const guard: Work = new Proxy(row, {
+    // A field is loaded when the row holds it as its own: a relationship or computed field named like a member of
+    // `Object.prototype` (`constructor`, `toString`: ENT-18) is not loaded because every row inherits that member.
     get(target, key, receiver) {
       if (typeof key !== "string") return Reflect.get(target, key, receiver);
-      if (!(key in target)) {
+      if (!Object.hasOwn(target, key)) {
         if (names(key)) throw unloaded(key);
-        return undefined;
+        return Reflect.get(target, key, receiver);
       }
       return wrap(key, target[key]);
     },
     has(target, key) {
-      if (typeof key === "string" && !(key in target) && names(key)) throw unloaded(key);
+      if (typeof key === "string" && !Object.hasOwn(target, key) && names(key)) throw unloaded(key);
       return Reflect.has(target, key);
     },
     getOwnPropertyDescriptor(target, key) {
@@ -436,7 +439,8 @@ async function ensurePath(
   const [head, ...rest] = path as [string, ...string[]];
   await ensureField(plan, entity, tx, rows, head, options, depth);
   if (rest.length === 0) return;
-  const relation = planOf(plan, entity).relations[head];
+  const relations = planOf(plan, entity).relations;
+  const relation = Object.hasOwn(relations, head) ? relations[head] : undefined;
   if (!relation) throw new FrameworkError(`${entity}#${head} is a computed field, and nothing can be loaded through it (${path.join(".")})`);
   const next: Work[] = [];
   for (const row of rows) {
@@ -522,7 +526,7 @@ async function rollup(
 ): Promise<unknown> {
   const { path, relation, target, column } = rollupShape(plan, entity, entityPlan, name, computed);
   // The rows are already here: the same answer the data layer gives (nulls are skipped; none is null, a count is 0), with no query.
-  if (path in row) {
+  if (Object.hasOwn(row, path)) {
     const loaded = row[path];
     const related = (Array.isArray(loaded) ? loaded : loaded === null || loaded === undefined ? [] : [loaded]) as Row[];
     const values = related.map((r) => r[column]).filter((value) => value !== null && value !== undefined);
@@ -539,24 +543,42 @@ async function rollup(
  * A caller's `filter` or `sort` naming a computed field or rollup of the entity fails here, with the milestone
  * that brings it, because the SQL evaluator (M10) is what filters and sorts by one. A read does it before
  * it touches the database, so a wrong result is never returned.
+ *
+ * Returns the filter to hand the data layer: the caller's, less every computed field whose comparison is `undefined`,
+ * at any depth under `and` and `or`. Such a field is one left out: a generated filter type writes it as
+ * `toString?: $Comparison<string> | undefined`, and a filter literal leaves out one named like a member of the Object
+ * interface (`toString`, `valueOf`: ENT-18) only by giving it as `undefined`. The data layer has no column for it, so it
+ * never sees it. A stored column given as `undefined` stays: the data layer leaves it out (`Filter`). A filter with
+ * nothing to take out is returned as it is.
  */
-export function rejectComputedQuery(entity: string, computed: readonly string[], query: { filter?: unknown; sort?: unknown }): void {
+export function rejectComputedQuery<F>(entity: string, computed: readonly string[], query: { readonly filter?: F | undefined; readonly sort?: unknown }): F | undefined {
   const fail = (name: string, what: "filter" | "sort") => {
     throw new FrameworkError(`A ${what} by ${entity}#${name} is not available yet: ${name} is a computed field or rollup, and filtering and sorting by one is evaluated by the SQL evaluator, which arrives in M10`);
   };
-  const walk = (filter: unknown): void => {
-    if (filter === null || typeof filter !== "object") return;
+  const clean = (filter: unknown): unknown => {
+    if (filter === null || typeof filter !== "object" || Array.isArray(filter)) return filter;
+    const kept: [string, unknown][] = [];
+    let changed = false;
     for (const [key, value] of Object.entries(filter)) {
-      if ((key === "and" || key === "or") && Array.isArray(value)) value.forEach(walk);
-      else if (computed.includes(key)) fail(key, "filter");
+      if ((key === "and" || key === "or") && Array.isArray(value)) {
+        const items = value.map(clean);
+        const inner = items.some((item, index) => item !== value[index]);
+        changed ||= inner;
+        kept.push([key, inner ? items : value]);
+      } else if (computed.includes(key)) {
+        if (value !== undefined) fail(key, "filter");
+        changed = true;
+      } else kept.push([key, value]);
     }
+    return changed ? Object.fromEntries(kept) : filter;
   };
-  walk(query.filter);
+  const filter = clean(query.filter) as F | undefined;
   if (Array.isArray(query.sort))
     for (const key of query.sort) {
       const name = typeof key === "string" && key.startsWith("-") ? key.slice(1) : key;
       if (typeof name === "string" && computed.includes(name)) fail(name, "sort");
     }
+  return filter;
 }
 
 /**

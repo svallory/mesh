@@ -44,34 +44,34 @@ const comparison = <T extends z.ZodType>(value: T) =>
       message: "a comparison needs an operator",
     });
 
-export const attemptFilter: z.ZodType<AttemptFilter> = z.lazy(
+export const attemptFilterSchema: z.ZodType<AttemptFilter> = z.lazy(
   () =>
     z.union([
-      z.strictObject({ and: z.array(attemptFilter).readonly() }),
-      z.strictObject({ or: z.array(attemptFilter).readonly() }),
+      z.strictObject({ and: z.array(attemptFilterSchema).readonly() }),
+      z.strictObject({ or: z.array(attemptFilterSchema).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).exactOptional(),
-        step: comparison(z.string()).exactOptional(),
-        number: comparison(z.int()).exactOptional(),
-        claimFence: comparison(z.int()).exactOptional(),
-        runtime: comparison(z.string()).exactOptional(),
+        id: comparison(z.uuid()).optional(),
+        step: comparison(z.string()).optional(),
+        number: comparison(z.int()).optional(),
+        claimFence: comparison(z.int()).optional(),
+        runtime: comparison(z.string()).optional(),
         state: comparison(
           z.enum(["running", "succeeded", "failed", "stopped", "abandoned"]),
-        ).exactOptional(),
-        endedAt: comparison(z.date()).exactOptional(),
-        version: comparison(z.int()).exactOptional(),
-        startedAt: comparison(z.date()).exactOptional(),
-        runId: comparison(z.uuid()).exactOptional(),
-        taskId: comparison(z.uuid()).exactOptional(),
-        performerId: comparison(z.uuid()).exactOptional(),
-        delegatorId: comparison(z.uuid()).exactOptional(),
-        machineId: comparison(z.uuid()).exactOptional(),
-        sessionId: comparison(z.uuid()).exactOptional(),
+        ).optional(),
+        endedAt: comparison(z.date()).optional(),
+        version: comparison(z.int()).optional(),
+        startedAt: comparison(z.date()).optional(),
+        runId: comparison(z.uuid()).optional(),
+        taskId: comparison(z.uuid()).optional(),
+        performerId: comparison(z.uuid()).optional(),
+        delegatorId: comparison(z.uuid()).optional(),
+        machineId: comparison(z.uuid()).optional(),
+        sessionId: comparison(z.uuid()).optional(),
       }),
     ]) as unknown as z.ZodType<AttemptFilter>,
 );
 
-export const attemptSort = z
+export const attemptSortSchema = z
   .array(
     z.enum([
       "id",
@@ -108,7 +108,7 @@ export const attemptSort = z
   )
   .readonly();
 
-export const startAttemptInput = z.strictObject({
+export const startAttemptInputSchema = z.strictObject({
   run: z.uuid(),
   step: z.string().optional(),
   runtime: z.string().nullable().optional(),
@@ -117,10 +117,10 @@ export const startAttemptInput = z.strictObject({
 }) satisfies z.ZodType<StartAttemptInput>;
 
 export type StartAttemptInputShape = Assert<
-  SameShape<z.output<typeof startAttemptInput>, StartAttemptInput>
+  SameShape<z.output<typeof startAttemptInputSchema>, StartAttemptInput>
 >;
 
-export const finishAttemptInput = z.strictObject({
+export const finishAttemptInputSchema = z.strictObject({
   id: z.uuid(),
   result: z.enum(["succeeded", "failed"]),
   outputs: (z.json() as z.ZodType<unknown>).nullable().optional(),
@@ -130,32 +130,32 @@ export const finishAttemptInput = z.strictObject({
 }) satisfies z.ZodType<FinishAttemptInput>;
 
 export type FinishAttemptInputShape = Assert<
-  SameShape<z.output<typeof finishAttemptInput>, FinishAttemptInput>
+  SameShape<z.output<typeof finishAttemptInputSchema>, FinishAttemptInput>
 >;
 
-export const reportStoppedAttemptInput = z.strictObject({
+export const reportStoppedAttemptInputSchema = z.strictObject({
   id: z.uuid(),
   reason: z.string().min(1),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<ReportStoppedAttemptInput>;
 
 export type ReportStoppedAttemptInputShape = Assert<
-  SameShape<z.output<typeof reportStoppedAttemptInput>, ReportStoppedAttemptInput>
+  SameShape<z.output<typeof reportStoppedAttemptInputSchema>, ReportStoppedAttemptInput>
 >;
 
-export const abandonAttemptInput = z.strictObject({
+export const abandonAttemptInputSchema = z.strictObject({
   id: z.uuid(),
   note: z.string().nullable().optional(),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<AbandonAttemptInput>;
 
 export type AbandonAttemptInputShape = Assert<
-  SameShape<z.output<typeof abandonAttemptInput>, AbandonAttemptInput>
+  SameShape<z.output<typeof abandonAttemptInputSchema>, AbandonAttemptInput>
 >;
 
-export const readAttemptInput = z.strictObject({
-  filter: attemptFilter.optional(),
-  sort: attemptSort.optional(),
+export const readAttemptInputSchema = z.strictObject({
+  filter: attemptFilterSchema.optional(),
+  sort: attemptSortSchema.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
   load: z
@@ -165,5 +165,5 @@ export const readAttemptInput = z.strictObject({
 }) satisfies z.ZodType<ReadAttemptInput<keyof AttemptLoadable>>;
 
 export type ReadAttemptInputShape = Assert<
-  SameShape<z.output<typeof readAttemptInput>, ReadAttemptInput<keyof AttemptLoadable>>
+  SameShape<z.output<typeof readAttemptInputSchema>, ReadAttemptInput<keyof AttemptLoadable>>
 >;

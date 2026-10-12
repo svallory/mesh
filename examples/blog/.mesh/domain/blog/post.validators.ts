@@ -45,32 +45,32 @@ const comparison = <T extends z.ZodType>(value: T) =>
       message: "a comparison needs an operator",
     });
 
-export const postFilter: z.ZodType<PostFilter> = z.lazy(
+export const postFilterSchema: z.ZodType<PostFilter> = z.lazy(
   () =>
     z.union([
-      z.strictObject({ and: z.array(postFilter).readonly() }),
-      z.strictObject({ or: z.array(postFilter).readonly() }),
+      z.strictObject({ and: z.array(postFilterSchema).readonly() }),
+      z.strictObject({ or: z.array(postFilterSchema).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).exactOptional(),
-        title: comparison(z.string()).exactOptional(),
-        body: comparison(z.string()).exactOptional(),
-        views: comparison(z.int()).exactOptional(),
-        rating: comparison(z.number()).exactOptional(),
-        price: comparison(z.number()).exactOptional(),
-        featured: comparison(z.boolean()).exactOptional(),
-        publicationDate: comparison(z.date()).exactOptional(),
-        publishedAt: comparison(z.date()).exactOptional(),
-        state: comparison(z.enum(["draft", "published"])).exactOptional(),
-        insertedAt: comparison(z.date()).exactOptional(),
-        updatedAt: comparison(z.date()).exactOptional(),
-        authorId: comparison(z.uuid()).exactOptional(),
-        excerpt: comparison(z.string()).exactOptional(),
-        commentCount: comparison(z.int()).exactOptional(),
+        id: comparison(z.uuid()).optional(),
+        title: comparison(z.string()).optional(),
+        body: comparison(z.string()).optional(),
+        views: comparison(z.int()).optional(),
+        rating: comparison(z.number()).optional(),
+        price: comparison(z.number()).optional(),
+        featured: comparison(z.boolean()).optional(),
+        publicationDate: comparison(z.date()).optional(),
+        publishedAt: comparison(z.date()).optional(),
+        state: comparison(z.enum(["draft", "published"])).optional(),
+        insertedAt: comparison(z.date()).optional(),
+        updatedAt: comparison(z.date()).optional(),
+        authorId: comparison(z.uuid()).optional(),
+        excerpt: comparison(z.string()).optional(),
+        commentCount: comparison(z.int()).optional(),
       }),
     ]) as unknown as z.ZodType<PostFilter>,
 );
 
-export const postSort = z
+export const postSortSchema = z
   .array(
     z.enum([
       "id",
@@ -107,7 +107,7 @@ export const postSort = z
   )
   .readonly();
 
-export const createPostInput = z.strictObject({
+export const createPostInputSchema = z.strictObject({
   title: z.string().min(1).max(200),
   body: z.string().nullable().optional(),
   metadata: (z.json() as z.ZodType<unknown>).nullable().optional(),
@@ -115,28 +115,28 @@ export const createPostInput = z.strictObject({
 }) satisfies z.ZodType<CreatePostInput>;
 
 export type CreatePostInputShape = Assert<
-  SameShape<z.output<typeof createPostInput>, CreatePostInput>
+  SameShape<z.output<typeof createPostInputSchema>, CreatePostInput>
 >;
 
-export const publishPostInput = z.strictObject({
+export const publishPostInputSchema = z.strictObject({
   id: z.uuid(),
 }) satisfies z.ZodType<PublishPostInput>;
 
 export type PublishPostInputShape = Assert<
-  SameShape<z.output<typeof publishPostInput>, PublishPostInput>
+  SameShape<z.output<typeof publishPostInputSchema>, PublishPostInput>
 >;
 
-export const archivePostInput = z.strictObject({
+export const archivePostInputSchema = z.strictObject({
   id: z.uuid(),
 }) satisfies z.ZodType<ArchivePostInput>;
 
 export type ArchivePostInputShape = Assert<
-  SameShape<z.output<typeof archivePostInput>, ArchivePostInput>
+  SameShape<z.output<typeof archivePostInputSchema>, ArchivePostInput>
 >;
 
-export const publishedPostInput = z.strictObject({
-  filter: postFilter.optional(),
-  sort: postSort.optional(),
+export const publishedPostInputSchema = z.strictObject({
+  filter: postFilterSchema.optional(),
+  sort: postSortSchema.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
   load: z
@@ -146,12 +146,12 @@ export const publishedPostInput = z.strictObject({
 }) satisfies z.ZodType<PublishedPostInput<keyof PostLoadable>>;
 
 export type PublishedPostInputShape = Assert<
-  SameShape<z.output<typeof publishedPostInput>, PublishedPostInput<keyof PostLoadable>>
+  SameShape<z.output<typeof publishedPostInputSchema>, PublishedPostInput<keyof PostLoadable>>
 >;
 
-export const readPostInput = z.strictObject({
-  filter: postFilter.optional(),
-  sort: postSort.optional(),
+export const readPostInputSchema = z.strictObject({
+  filter: postFilterSchema.optional(),
+  sort: postSortSchema.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
   load: z
@@ -161,13 +161,13 @@ export const readPostInput = z.strictObject({
 }) satisfies z.ZodType<ReadPostInput<keyof PostLoadable>>;
 
 export type ReadPostInputShape = Assert<
-  SameShape<z.output<typeof readPostInput>, ReadPostInput<keyof PostLoadable>>
+  SameShape<z.output<typeof readPostInputSchema>, ReadPostInput<keyof PostLoadable>>
 >;
 
-export const destroyPostInput = z.strictObject({
+export const destroyPostInputSchema = z.strictObject({
   id: z.uuid(),
 }) satisfies z.ZodType<DestroyPostInput>;
 
 export type DestroyPostInputShape = Assert<
-  SameShape<z.output<typeof destroyPostInput>, DestroyPostInput>
+  SameShape<z.output<typeof destroyPostInputSchema>, DestroyPostInput>
 >;

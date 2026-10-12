@@ -88,13 +88,13 @@ export type ReviewFilter =
   | { and: readonly ReviewFilter[] }
   | { or: readonly ReviewFilter[] }
   | {
-      id?: $Comparison<string>;
-      decision?: $Comparison<"accept" | "return">;
-      reasons?: $Comparison<string>;
-      ruleApplied?: $Comparison<"parent-assignee" | "parent-creator" | "task-creator">;
-      decidedAt?: $Comparison<$Date>;
-      submissionId?: $Comparison<string>;
-      reviewerId?: $Comparison<string>;
+      id?: $Comparison<string> | undefined;
+      decision?: $Comparison<"accept" | "return"> | undefined;
+      reasons?: $Comparison<string> | undefined;
+      ruleApplied?: $Comparison<"parent-assignee" | "parent-creator" | "task-creator"> | undefined;
+      decidedAt?: $Comparison<$Date> | undefined;
+      submissionId?: $Comparison<string> | undefined;
+      reviewerId?: $Comparison<string> | undefined;
     };
 
 export type ReviewSort = readonly (

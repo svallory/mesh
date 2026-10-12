@@ -31,7 +31,6 @@ import {
   type EntityValue as $EntityValue,
   type CastOutput as $CastOutput,
   type Issue as $Issue,
-  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   Workspace as $Record,
@@ -40,9 +39,9 @@ import type {
   ReadWorkspaceInput,
 } from "./workspace.types";
 import {
-  createWorkspaceInput,
-  renameWorkspaceInput,
-  readWorkspaceInput,
+  createWorkspaceInputSchema,
+  renameWorkspaceInputSchema,
+  readWorkspaceInputSchema,
 } from "./workspace.validators";
 import { tables } from "../../schema";
 import {
@@ -50,7 +49,7 @@ import {
   type $identity$Workspace$Scope as $Scope,
   type $identity$Workspace$StoredScope as $StoredScope,
 } from "./workspace.expressions";
-import { $Date, $Object, type $Promise } from "../../$globals";
+import { $Date, $Object, type $Partial, type $Promise } from "../../$globals";
 
 /**
  * The reads of this entity without their policies: what `privileged(Workspace)` runs (TXN-16). The read actions
@@ -67,11 +66,11 @@ export function bindWorkspaceReads(
       _context?: unknown,
       _clock?: () => $Date,
       _policies?: boolean,
-      cast?: $CastOutput<typeof readWorkspaceInput>,
+      cast?: $CastOutput<typeof readWorkspaceInputSchema>,
     ): $Promise<Workspace[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
       // for its policies and hands it over as `cast`; a `privileged` read casts it here.
-      const parsed = cast ?? (await $castInput(layer, readWorkspaceInput, input));
+      const parsed = cast ?? (await $castInput(layer, readWorkspaceInputSchema, input));
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.workspaces, {
           filter: parsed.filter,
@@ -97,7 +96,7 @@ export function bindWorkspace(
   return $Object.freeze({
     async create(input: CreateWorkspaceInput, ...[context]: $ContextArgument): $Promise<Workspace> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, createWorkspaceInput, input);
+      const parsed = await $castInput(layer, createWorkspaceInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -150,14 +149,18 @@ export function bindWorkspace(
           frame.within(tx, $clock, "identity.Workspace#create", async () => {
             // transaction: opens here; what follows commits together or not at all
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Record = {
               id: $uuidv7(),
-              name: parsed.name === undefined ? null : parsed.name,
-              location: parsed.location === undefined ? "local" : parsed.location,
+              name:
+                $Object.hasOwn(parsed, "name") && parsed.name !== undefined ? parsed.name : null,
+              location:
+                $Object.hasOwn(parsed, "location") && parsed.location !== undefined
+                  ? parsed.location
+                  : "local",
               state: "active",
               version: 1,
             };
-            const $record: $Row = { ...$changes };
+            const $record: $Record = { ...$changes };
             const $self = $readOnlyRecord($record, "identity.Workspace#create");
             const $s = $scope(
               {
@@ -193,7 +196,7 @@ export function bindWorkspace(
 
     async rename(input: RenameWorkspaceInput, ...[context]: $ContextArgument): $Promise<Workspace> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, renameWorkspaceInput, input);
+      const parsed = await $castInput(layer, renameWorkspaceInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -247,10 +250,12 @@ export function bindWorkspace(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.workspaces, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.workspaces, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("identity.Workspace", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $self = $readOnlyRecord($record, "identity.Workspace#rename");
             const $s = $scope(
@@ -288,7 +293,8 @@ export function bindWorkspace(
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // the input: the member inputs the caller sent, applied now that the checks have passed
-            if (parsed.name !== undefined) $changes.name = $record.name = parsed.name;
+            if ($Object.hasOwn(parsed, "name") && parsed.name !== undefined)
+              $changes.name = $record.name = parsed.name;
             // do: the steps run in written order, each seeing the record as the ones before it left it
             {
               const $value = await $expressions["rename.step.0.set.version"]($s);
@@ -333,7 +339,7 @@ export function bindWorkspace(
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $parsed = await $castInput(layer, readWorkspaceInput, input);
+      const $parsed = await $castInput(layer, readWorkspaceInputSchema, input);
       if (
         !(await $authorizer(
           "identity.Workspace",

@@ -41,23 +41,23 @@ const comparison = <T extends z.ZodType>(value: T) =>
       message: "a comparison needs an operator",
     });
 
-export const lateResultFilter: z.ZodType<LateResultFilter> = z.lazy(
+export const lateResultFilterSchema: z.ZodType<LateResultFilter> = z.lazy(
   () =>
     z.union([
-      z.strictObject({ and: z.array(lateResultFilter).readonly() }),
-      z.strictObject({ or: z.array(lateResultFilter).readonly() }),
+      z.strictObject({ and: z.array(lateResultFilterSchema).readonly() }),
+      z.strictObject({ or: z.array(lateResultFilterSchema).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).exactOptional(),
-        fence: comparison(z.int()).exactOptional(),
-        summary: comparison(z.string()).exactOptional(),
-        recordedAt: comparison(z.date()).exactOptional(),
-        taskId: comparison(z.uuid()).exactOptional(),
-        submitterId: comparison(z.uuid()).exactOptional(),
+        id: comparison(z.uuid()).optional(),
+        fence: comparison(z.int()).optional(),
+        summary: comparison(z.string()).optional(),
+        recordedAt: comparison(z.date()).optional(),
+        taskId: comparison(z.uuid()).optional(),
+        submitterId: comparison(z.uuid()).optional(),
       }),
     ]) as unknown as z.ZodType<LateResultFilter>,
 );
 
-export const lateResultSort = z
+export const lateResultSortSchema = z
   .array(
     z.enum([
       "id",
@@ -76,7 +76,7 @@ export const lateResultSort = z
   )
   .readonly();
 
-export const recordLateResultInput = z.strictObject({
+export const recordLateResultInputSchema = z.strictObject({
   task: z.uuid(),
   fence: z.int().min(1),
   summary: z.string().nullable().optional(),
@@ -84,12 +84,12 @@ export const recordLateResultInput = z.strictObject({
 }) satisfies z.ZodType<RecordLateResultInput>;
 
 export type RecordLateResultInputShape = Assert<
-  SameShape<z.output<typeof recordLateResultInput>, RecordLateResultInput>
+  SameShape<z.output<typeof recordLateResultInputSchema>, RecordLateResultInput>
 >;
 
-export const readLateResultInput = z.strictObject({
-  filter: lateResultFilter.optional(),
-  sort: lateResultSort.optional(),
+export const readLateResultInputSchema = z.strictObject({
+  filter: lateResultFilterSchema.optional(),
+  sort: lateResultSortSchema.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
   load: z
@@ -99,5 +99,8 @@ export const readLateResultInput = z.strictObject({
 }) satisfies z.ZodType<ReadLateResultInput<keyof LateResultLoadable>>;
 
 export type ReadLateResultInputShape = Assert<
-  SameShape<z.output<typeof readLateResultInput>, ReadLateResultInput<keyof LateResultLoadable>>
+  SameShape<
+    z.output<typeof readLateResultInputSchema>,
+    ReadLateResultInput<keyof LateResultLoadable>
+  >
 >;

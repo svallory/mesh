@@ -42,22 +42,22 @@ const comparison = <T extends z.ZodType>(value: T) =>
       message: "a comparison needs an operator",
     });
 
-export const dependencyFilter: z.ZodType<DependencyFilter> = z.lazy(
+export const dependencyFilterSchema: z.ZodType<DependencyFilter> = z.lazy(
   () =>
     z.union([
-      z.strictObject({ and: z.array(dependencyFilter).readonly() }),
-      z.strictObject({ or: z.array(dependencyFilter).readonly() }),
+      z.strictObject({ and: z.array(dependencyFilterSchema).readonly() }),
+      z.strictObject({ or: z.array(dependencyFilterSchema).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).exactOptional(),
-        createdAt: comparison(z.date()).exactOptional(),
-        dependentId: comparison(z.uuid()).exactOptional(),
-        prerequisiteId: comparison(z.uuid()).exactOptional(),
-        createdById: comparison(z.uuid()).exactOptional(),
+        id: comparison(z.uuid()).optional(),
+        createdAt: comparison(z.date()).optional(),
+        dependentId: comparison(z.uuid()).optional(),
+        prerequisiteId: comparison(z.uuid()).optional(),
+        createdById: comparison(z.uuid()).optional(),
       }),
     ]) as unknown as z.ZodType<DependencyFilter>,
 );
 
-export const dependencySort = z
+export const dependencySortSchema = z
   .array(
     z.enum([
       "id",
@@ -74,29 +74,29 @@ export const dependencySort = z
   )
   .readonly();
 
-export const addDependencyInput = z.strictObject({
+export const addDependencyInputSchema = z.strictObject({
   dependent: z.uuid(),
   prerequisite: z.uuid(),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<AddDependencyInput>;
 
 export type AddDependencyInputShape = Assert<
-  SameShape<z.output<typeof addDependencyInput>, AddDependencyInput>
+  SameShape<z.output<typeof addDependencyInputSchema>, AddDependencyInput>
 >;
 
-export const removeDependencyInput = z.strictObject({
+export const removeDependencyInputSchema = z.strictObject({
   id: z.uuid(),
   reason: z.string().nullable().optional(),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<RemoveDependencyInput>;
 
 export type RemoveDependencyInputShape = Assert<
-  SameShape<z.output<typeof removeDependencyInput>, RemoveDependencyInput>
+  SameShape<z.output<typeof removeDependencyInputSchema>, RemoveDependencyInput>
 >;
 
-export const readDependencyInput = z.strictObject({
-  filter: dependencyFilter.optional(),
-  sort: dependencySort.optional(),
+export const readDependencyInputSchema = z.strictObject({
+  filter: dependencyFilterSchema.optional(),
+  sort: dependencySortSchema.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
   load: z
@@ -106,5 +106,8 @@ export const readDependencyInput = z.strictObject({
 }) satisfies z.ZodType<ReadDependencyInput<keyof DependencyLoadable>>;
 
 export type ReadDependencyInputShape = Assert<
-  SameShape<z.output<typeof readDependencyInput>, ReadDependencyInput<keyof DependencyLoadable>>
+  SameShape<
+    z.output<typeof readDependencyInputSchema>,
+    ReadDependencyInput<keyof DependencyLoadable>
+  >
 >;

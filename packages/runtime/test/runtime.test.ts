@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import * as runtime from "@meshfw/runtime";
-import { ForbiddenError, FrameworkError, InvalidInputError, MeshError, NotFoundError, parseInput } from "@meshfw/runtime";
-import type { Issue, PolicyCheck, StandardSchemaV1 } from "@meshfw/runtime";
+import { castInput, ForbiddenError, FrameworkError, InvalidInputError, MeshError, NotFoundError, parseInput } from "@meshfw/runtime";
+import type { DataLayer, Issue, PolicyCheck, StandardSchemaV1 } from "@meshfw/runtime";
 
 const cause = new Error("original");
 const issue = (path: (string | number)[], message: string): Issue => ({ path, message, label: null, code: null, source: null, details: null });
@@ -118,6 +118,62 @@ test("parseInput maps missing and empty paths to input issues for async failures
 test.each([false, true])("parseInput propagates validator exceptions unchanged (async=%s)", async (async) => {
   const validator = schema(async ? () => Promise.reject(cause) : () => { throw cause; });
   await expect(parseInput(validator, {})).rejects.toBe(cause);
+});
+
+// ENT-18: a member input may be named like a member of Object.prototype. The validator must not read the inherited
+// method for a key the caller left out; the action gets ordinary objects, as the caller writes them.
+test("castInput hands the validator plain objects without a prototype, and the action ordinary ones", async () => {
+  const layer = { refuseIfFailed: () => false } as unknown as DataLayer;
+  const at = new Date(0);
+  const input = { label: "x", filter: { and: [{ toString: { eq: "t" } }] }, data: JSON.parse('{"__proto__": 1, "deep": {"n": 2}}'), at, tags: ["a"] };
+  const seen: unknown[] = [];
+  const validator = schema((value) => {
+    const copy = value as Record<string, unknown>;
+    const filter = copy.filter as { and: Record<string, unknown>[] };
+    const data = copy.data as Record<string, unknown>;
+    // What the validator sees, read while it runs: no plain object in it inherits anything.
+    seen.push(Object.getPrototypeOf(copy), copy.toString, Object.getPrototypeOf(filter), Object.getPrototypeOf(filter.and[0]),
+      filter.and[0]!.constructor, Object.getPrototypeOf(data), Object.getPrototypeOf(data.deep), copy.at);
+    // Unlike Zod, which rebuilds every object it hands back with the ordinary prototype, this validator hands `data` back as
+    // the copy it was given: the case `ordinary` is the safety net for.
+    return { value: { ...copy, filter: { and: filter.and.map((item) => ({ ...item })) } } };
+  });
+  const parsed = (await castInput(layer, validator, input)) as Record<string, unknown>;
+  expect(seen).toEqual([null, undefined, null, null, undefined, null, null, at]);
+  // The action's input is ordinary: what TypeScript allows on an object works on it.
+  expect(Object.getPrototypeOf(parsed)).toBe(Object.prototype);
+  expect(parsed instanceof Object).toBe(true);
+  expect(parsed.hasOwnProperty("label")).toBe(true);
+  expect(String(parsed)).toBe("[object Object]");
+  // So a member named like a member of Object.prototype that the caller left out reads the inherited one (the cost
+  // ENT-18 accepts); generated code tells a given member by `Object.hasOwn`.
+  expect(parsed.toString).toBe(Object.prototype.toString);
+  expect(Object.hasOwn(parsed, "toString")).toBe(false);
+  expect(Object.getPrototypeOf(parsed.filter)).toBe(Object.prototype);
+  expect(Object.getPrototypeOf((parsed.filter as { and: object[] }).and[0])).toBe(Object.prototype);
+  // What the validator handed back of its copy is ordinary again at every depth; `ordinary` changes prototypes, never keys.
+  // (Zod's `z.json()` itself drops a `__proto__` key, so through a generated validator that key does not reach the action.)
+  const data = parsed.data as Record<string, unknown>;
+  expect(Object.getPrototypeOf(data)).toBe(Object.prototype);
+  expect(Object.keys(data)).toEqual(["__proto__", "deep"]);
+  expect(Object.getOwnPropertyDescriptor(data, "__proto__")?.value).toBe(1);
+  expect(Object.getPrototypeOf(data.deep)).toBe(Object.prototype);
+  expect(data).not.toBe(input.data);
+  expect(parsed.at).toBe(at);
+  expect(parsed.tags).toEqual(["a"]);
+  // The caller's input is not touched.
+  expect(Object.getPrototypeOf(input)).toBe(Object.prototype);
+  expect(Object.getPrototypeOf(input.filter)).toBe(Object.prototype);
+});
+
+test("castInput gives back a cyclic value the validator kept, with its cycle and ordinary prototypes", async () => {
+  const layer = { refuseIfFailed: () => false } as unknown as DataLayer;
+  const loop: Record<string, unknown> = { n: 1 };
+  loop.self = loop;
+  const parsed = (await castInput(layer, schema((value) => ({ value })), { data: loop })) as { data: Record<string, unknown> };
+  expect(parsed.data).not.toBe(loop);
+  expect(parsed.data.self).toBe(parsed.data);
+  expect(Object.getPrototypeOf(parsed.data)).toBe(Object.prototype);
 });
 
 test("parseInput rejects malformed failure with no issues rather than accepting input", async () => {

@@ -37,7 +37,6 @@ import {
   type DataOperations as $DataOperations,
   type Issue as $Issue,
   type LoadOptions as $LoadOptions,
-  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   Machine as $Record,
@@ -52,11 +51,11 @@ import type {
   ReadMachineInput,
 } from "./machine.types";
 import {
-  registerMachineInput,
-  reportMachineInput,
-  updateMachineInput,
-  retireMachineInput,
-  readMachineInput,
+  registerMachineInputSchema,
+  reportMachineInputSchema,
+  updateMachineInputSchema,
+  retireMachineInputSchema,
+  readMachineInputSchema,
 } from "./machine.validators";
 import { tables } from "../../schema";
 import {
@@ -65,7 +64,14 @@ import {
   type $execution$Machine$StoredScope as $StoredScope,
 } from "./machine.expressions";
 import { loadPlan as $loadPlan } from "../../load";
-import { $Date, $Object, type $Omit, type $Pick, type $Promise } from "../../$globals";
+import {
+  $Date,
+  $Object,
+  type $Omit,
+  type $Partial,
+  type $Pick,
+  type $Promise,
+} from "../../$globals";
 
 /**
  * The reads of this entity without their policies: what `privileged(Machine)` runs (TXN-16). The read actions
@@ -82,11 +88,11 @@ export function bindMachineReads(
       context?: unknown,
       clock?: () => $Date,
       policies?: boolean,
-      cast?: $CastOutput<typeof readMachineInput>,
+      cast?: $CastOutput<typeof readMachineInputSchema>,
     ): $Promise<L extends unknown ? MachineWith<MachineLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
       // for its policies and hands it over as `cast`; a `privileged` read casts it here.
-      const parsed = cast ?? (await $castInput(layer, readMachineInput, input));
+      const parsed = cast ?? (await $castInput(layer, readMachineInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.machines, {
           filter: parsed.filter,
@@ -123,7 +129,7 @@ export function bindMachine(
   return $Object.freeze({
     async register(input: RegisterMachineInput, ...[context]: $ContextArgument): $Promise<Machine> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, registerMachineInput, input);
+      const parsed = await $castInput(layer, registerMachineInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -177,15 +183,18 @@ export function bindMachine(
             // transaction: opens here; what follows commits together or not at all
             const $now = $clock();
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Omit<$Record, "name"> & { name: $Record["name"] | null } = {
               id: $uuidv7(),
               platform: null,
               state: "active",
               version: 1,
               registeredAt: $now,
               firstReportedById: null,
+              name: null,
             };
-            const $record: $Row = { ...$changes, name: null };
+            const $record: $Omit<$Record, "name"> & { name: $Record["name"] | null } = {
+              ...$changes,
+            };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.Machine", $record, "action function"),
               "execution.Machine#register",
@@ -214,8 +223,9 @@ export function bindMachine(
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // the input: the member inputs the caller sent, applied now that the checks have passed
-            if (parsed.name !== undefined) $changes.name = $record.name = parsed.name;
-            if (parsed.platform !== undefined)
+            if ($Object.hasOwn(parsed, "name") && parsed.name !== undefined)
+              $changes.name = $record.name = parsed.name;
+            if ($Object.hasOwn(parsed, "platform") && parsed.platform !== undefined)
               $changes.platform = $record.platform = parsed.platform;
             // do: the steps run in written order, each seeing the record as the ones before it left it
             {
@@ -245,7 +255,7 @@ export function bindMachine(
 
     async report(input: ReportMachineInput, ...[context]: $ContextArgument): $Promise<Machine> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, reportMachineInput, input);
+      const parsed = await $castInput(layer, reportMachineInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -286,15 +296,18 @@ export function bindMachine(
             // transaction: opens here; what follows commits together or not at all
             const $now = $clock();
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Omit<$Record, "name"> & { name: $Record["name"] | null } = {
               id: $uuidv7(),
               platform: null,
               state: "active",
               version: 1,
               registeredAt: $now,
               firstReportedById: null,
+              name: null,
             };
-            const $record: $Row = { ...$changes, name: null };
+            const $record: $Omit<$Record, "name"> & { name: $Record["name"] | null } = {
+              ...$changes,
+            };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.Machine", $record, "action function"),
               "execution.Machine#report",
@@ -321,7 +334,8 @@ export function bindMachine(
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // the input: the member inputs the caller sent, applied now that the checks have passed
-            if (parsed.name !== undefined) $changes.name = $record.name = parsed.name;
+            if ($Object.hasOwn(parsed, "name") && parsed.name !== undefined)
+              $changes.name = $record.name = parsed.name;
             // do: the steps run in written order, each seeing the record as the ones before it left it
             {
               const $value = await $expressions["report.step.0.set.firstReportedBy"]($s);
@@ -350,7 +364,7 @@ export function bindMachine(
 
     async update(input: UpdateMachineInput, ...[context]: $ContextArgument): $Promise<Machine> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, updateMachineInput, input);
+      const parsed = await $castInput(layer, updateMachineInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -404,10 +418,12 @@ export function bindMachine(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.machines, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.machines, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("execution.Machine", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.Machine", $record, "action function"),
@@ -448,7 +464,7 @@ export function bindMachine(
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // the input: the member inputs the caller sent, applied now that the checks have passed
-            if (parsed.platform !== undefined)
+            if ($Object.hasOwn(parsed, "platform") && parsed.platform !== undefined)
               $changes.platform = $record.platform = parsed.platform;
             // do: the steps run in written order, each seeing the record as the ones before it left it
             {
@@ -491,7 +507,7 @@ export function bindMachine(
 
     async retire(input: RetireMachineInput, ...[context]: $ContextArgument): $Promise<Machine> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, retireMachineInput, input);
+      const parsed = await $castInput(layer, retireMachineInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -545,10 +561,12 @@ export function bindMachine(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.machines, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.machines, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("execution.Machine", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $load = { actor: $actor, context: $context, clock: $clock, frame };
             const $self = $readOnlyRecord(
@@ -646,7 +664,7 @@ export function bindMachine(
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $parsed = await $castInput(layer, readMachineInput, input);
+      const $parsed = await $castInput(layer, readMachineInputSchema, input);
       if (
         !(await $authorizer(
           "execution.Machine",

@@ -128,7 +128,7 @@ test.each([
   [keyed + "    uuid :other primary-key\n", "MESH_PRIMARY_KEY"],
   [keyed + "    enum :status\n", "MESH_ENUM_VALUES"],
   [keyed + "    string :title\n    integer :title\n", "MESH_DUPLICATE_MEMBER"],
-  [keyed + "    string :constructor\n", "MESH_ATTRIBUTE_NAME"],
+  [keyed + "    string :__proto__\n", "MESH_ATTRIBUTE_NAME"],
   [
     keyed +
       "  actions\n    create :create\n      input\n        &id\n        uuid :id\n",

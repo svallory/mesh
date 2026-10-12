@@ -42,25 +42,25 @@ const comparison = <T extends z.ZodType>(value: T) =>
       message: "a comparison needs an operator",
     });
 
-export const assignmentFilter: z.ZodType<AssignmentFilter> = z.lazy(
+export const assignmentFilterSchema: z.ZodType<AssignmentFilter> = z.lazy(
   () =>
     z.union([
-      z.strictObject({ and: z.array(assignmentFilter).readonly() }),
-      z.strictObject({ or: z.array(assignmentFilter).readonly() }),
+      z.strictObject({ and: z.array(assignmentFilterSchema).readonly() }),
+      z.strictObject({ or: z.array(assignmentFilterSchema).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).exactOptional(),
-        reviewWaived: comparison(z.boolean()).exactOptional(),
-        startedAt: comparison(z.date()).exactOptional(),
-        endedAt: comparison(z.date()).exactOptional(),
-        endReason: comparison(z.enum(["reassigned", "unassigned"])).exactOptional(),
-        taskId: comparison(z.uuid()).exactOptional(),
-        assigneeId: comparison(z.uuid()).exactOptional(),
-        delegatorId: comparison(z.uuid()).exactOptional(),
+        id: comparison(z.uuid()).optional(),
+        reviewWaived: comparison(z.boolean()).optional(),
+        startedAt: comparison(z.date()).optional(),
+        endedAt: comparison(z.date()).optional(),
+        endReason: comparison(z.enum(["reassigned", "unassigned"])).optional(),
+        taskId: comparison(z.uuid()).optional(),
+        assigneeId: comparison(z.uuid()).optional(),
+        delegatorId: comparison(z.uuid()).optional(),
       }),
     ]) as unknown as z.ZodType<AssignmentFilter>,
 );
 
-export const assignmentSort = z
+export const assignmentSortSchema = z
   .array(
     z.enum([
       "id",
@@ -83,28 +83,28 @@ export const assignmentSort = z
   )
   .readonly();
 
-export const startAssignmentInput = z.strictObject({
+export const startAssignmentInputSchema = z.strictObject({
   task: z.uuid(),
   assignee: z.uuid(),
   reviewWaived: z.boolean().optional(),
 }) satisfies z.ZodType<StartAssignmentInput>;
 
 export type StartAssignmentInputShape = Assert<
-  SameShape<z.output<typeof startAssignmentInput>, StartAssignmentInput>
+  SameShape<z.output<typeof startAssignmentInputSchema>, StartAssignmentInput>
 >;
 
-export const finishAssignmentInput = z.strictObject({
+export const finishAssignmentInputSchema = z.strictObject({
   id: z.uuid(),
   reason: z.enum(["reassigned", "unassigned"]),
 }) satisfies z.ZodType<FinishAssignmentInput>;
 
 export type FinishAssignmentInputShape = Assert<
-  SameShape<z.output<typeof finishAssignmentInput>, FinishAssignmentInput>
+  SameShape<z.output<typeof finishAssignmentInputSchema>, FinishAssignmentInput>
 >;
 
-export const readAssignmentInput = z.strictObject({
-  filter: assignmentFilter.optional(),
-  sort: assignmentSort.optional(),
+export const readAssignmentInputSchema = z.strictObject({
+  filter: assignmentFilterSchema.optional(),
+  sort: assignmentSortSchema.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
   load: z
@@ -114,5 +114,8 @@ export const readAssignmentInput = z.strictObject({
 }) satisfies z.ZodType<ReadAssignmentInput<keyof AssignmentLoadable>>;
 
 export type ReadAssignmentInputShape = Assert<
-  SameShape<z.output<typeof readAssignmentInput>, ReadAssignmentInput<keyof AssignmentLoadable>>
+  SameShape<
+    z.output<typeof readAssignmentInputSchema>,
+    ReadAssignmentInput<keyof AssignmentLoadable>
+  >
 >;

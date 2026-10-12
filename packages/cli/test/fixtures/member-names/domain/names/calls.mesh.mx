@@ -1,0 +1,69 @@
+// Every name ENT-18 accepts that names a member of Object.prototype or a function, as an action, and action names
+// with a leading or trailing underscore, or leading underscores before a digit (`_1st`, `__2`, whose input type has no
+// lower-case letter for its validator to differ by): each is a method of the entity value under the name as written.
+entity :Calls
+  attributes
+    uuid :id primary-key
+    string :last nullable
+  actions auto=[:read]
+    create :constructor
+      input
+        &last
+    read :toString
+    read :valueOf
+    destroy :__lookupSetter__
+    update :prototype
+      do
+        set
+          &last="prototype"
+    update :hasOwnProperty
+      do
+        set
+          &last="hasOwnProperty"
+    update :isPrototypeOf
+      do
+        set
+          &last="isPrototypeOf"
+    update :propertyIsEnumerable
+      do
+        set
+          &last="propertyIsEnumerable"
+    update :toLocaleString
+      do
+        set
+          &last="toLocaleString"
+    update :__defineGetter__
+      do
+        set
+          &last="__defineGetter__"
+    update :__defineSetter__
+      do
+        set
+          &last="__defineSetter__"
+    update :__lookupGetter__
+      do
+        set
+          &last="__lookupGetter__"
+    update :_archive
+      do
+        set
+          &last="_archive"
+    update :archive_
+      do
+        set
+          &last="archive_"
+    update :__archive__
+      do
+        set
+          &last="__archive__"
+    update :_1st
+      do
+        set
+          &last="_1st"
+    update :__2
+      do
+        set
+          &last="__2"
+  policies
+    policy :anyone types=[:create, :read, :update, :destroy]
+      authorize-if=() => true

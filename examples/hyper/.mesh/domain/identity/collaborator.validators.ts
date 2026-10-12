@@ -43,22 +43,22 @@ const comparison = <T extends z.ZodType>(value: T) =>
       message: "a comparison needs an operator",
     });
 
-export const collaboratorFilter: z.ZodType<CollaboratorFilter> = z.lazy(
+export const collaboratorFilterSchema: z.ZodType<CollaboratorFilter> = z.lazy(
   () =>
     z.union([
-      z.strictObject({ and: z.array(collaboratorFilter).readonly() }),
-      z.strictObject({ or: z.array(collaboratorFilter).readonly() }),
+      z.strictObject({ and: z.array(collaboratorFilterSchema).readonly() }),
+      z.strictObject({ or: z.array(collaboratorFilterSchema).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).exactOptional(),
-        kind: comparison(z.enum(["human", "agent"])).exactOptional(),
-        name: comparison(z.string()).exactOptional(),
-        state: comparison(z.enum(["active", "retired"])).exactOptional(),
-        version: comparison(z.int()).exactOptional(),
+        id: comparison(z.uuid()).optional(),
+        kind: comparison(z.enum(["human", "agent"])).optional(),
+        name: comparison(z.string()).optional(),
+        state: comparison(z.enum(["active", "retired"])).optional(),
+        version: comparison(z.int()).optional(),
       }),
     ]) as unknown as z.ZodType<CollaboratorFilter>,
 );
 
-export const collaboratorSort = z
+export const collaboratorSortSchema = z
   .array(
     z.enum([
       "id",
@@ -75,16 +75,16 @@ export const collaboratorSort = z
   )
   .readonly();
 
-export const registerCollaboratorInput = z.strictObject({
+export const registerCollaboratorInputSchema = z.strictObject({
   kind: z.enum(["human", "agent"]),
   name: z.string(),
 }) satisfies z.ZodType<RegisterCollaboratorInput>;
 
 export type RegisterCollaboratorInputShape = Assert<
-  SameShape<z.output<typeof registerCollaboratorInput>, RegisterCollaboratorInput>
+  SameShape<z.output<typeof registerCollaboratorInputSchema>, RegisterCollaboratorInput>
 >;
 
-export const updateCollaboratorInput = z.strictObject({
+export const updateCollaboratorInputSchema = z.strictObject({
   id: z.uuid(),
   name: z.string().optional(),
   kind: z.enum(["human", "agent"]).nullable().optional(),
@@ -92,22 +92,22 @@ export const updateCollaboratorInput = z.strictObject({
 }) satisfies z.ZodType<UpdateCollaboratorInput>;
 
 export type UpdateCollaboratorInputShape = Assert<
-  SameShape<z.output<typeof updateCollaboratorInput>, UpdateCollaboratorInput>
+  SameShape<z.output<typeof updateCollaboratorInputSchema>, UpdateCollaboratorInput>
 >;
 
-export const retireCollaboratorInput = z.strictObject({
+export const retireCollaboratorInputSchema = z.strictObject({
   id: z.uuid(),
   reason: z.string().nullable().optional(),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<RetireCollaboratorInput>;
 
 export type RetireCollaboratorInputShape = Assert<
-  SameShape<z.output<typeof retireCollaboratorInput>, RetireCollaboratorInput>
+  SameShape<z.output<typeof retireCollaboratorInputSchema>, RetireCollaboratorInput>
 >;
 
-export const readCollaboratorInput = z.strictObject({
-  filter: collaboratorFilter.optional(),
-  sort: collaboratorSort.optional(),
+export const readCollaboratorInputSchema = z.strictObject({
+  filter: collaboratorFilterSchema.optional(),
+  sort: collaboratorSortSchema.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
   load: z
@@ -118,7 +118,7 @@ export const readCollaboratorInput = z.strictObject({
 
 export type ReadCollaboratorInputShape = Assert<
   SameShape<
-    z.output<typeof readCollaboratorInput>,
+    z.output<typeof readCollaboratorInputSchema>,
     ReadCollaboratorInput<keyof CollaboratorLoadable>
   >
 >;

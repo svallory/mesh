@@ -113,16 +113,16 @@ export type RunFilter =
   | { and: readonly RunFilter[] }
   | { or: readonly RunFilter[] }
   | {
-      id?: $Comparison<string>;
-      state?: $Comparison<"running" | "succeeded" | "failed" | "canceled">;
-      cancelReason?: $Comparison<string>;
-      endedAt?: $Comparison<$Date>;
-      version?: $Comparison<number>;
-      startedAt?: $Comparison<$Date>;
-      taskId?: $Comparison<string>;
-      responsibleId?: $Comparison<string>;
-      startedById?: $Comparison<string>;
-      parentRunId?: $Comparison<string>;
+      id?: $Comparison<string> | undefined;
+      state?: $Comparison<"running" | "succeeded" | "failed" | "canceled"> | undefined;
+      cancelReason?: $Comparison<string> | undefined;
+      endedAt?: $Comparison<$Date> | undefined;
+      version?: $Comparison<number> | undefined;
+      startedAt?: $Comparison<$Date> | undefined;
+      taskId?: $Comparison<string> | undefined;
+      responsibleId?: $Comparison<string> | undefined;
+      startedById?: $Comparison<string> | undefined;
+      parentRunId?: $Comparison<string> | undefined;
     };
 
 export type RunSort = readonly (

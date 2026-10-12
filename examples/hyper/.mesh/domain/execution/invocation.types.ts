@@ -149,27 +149,27 @@ export type InvocationFilter =
   | { and: readonly InvocationFilter[] }
   | { or: readonly InvocationFilter[] }
   | {
-      id?: $Comparison<string>;
-      requestedProvider?: $Comparison<string>;
-      requestedModel?: $Comparison<string>;
-      actualProvider?: $Comparison<string>;
-      actualModel?: $Comparison<string>;
-      inputTokens?: $Comparison<number>;
-      outputTokens?: $Comparison<number>;
-      cacheReadTokens?: $Comparison<number>;
-      cacheWriteTokens?: $Comparison<number>;
-      usageSource?: $Comparison<"runtime" | "provider" | "estimate">;
-      estimatedCost?: $Comparison<number>;
-      pricingBasis?: $Comparison<string>;
-      startedAt?: $Comparison<$Date>;
-      endedAt?: $Comparison<$Date>;
-      reason?: $Comparison<string>;
-      recordedAt?: $Comparison<$Date>;
-      attemptId?: $Comparison<string>;
-      taskId?: $Comparison<string>;
-      sessionId?: $Comparison<string>;
-      correctsId?: $Comparison<string>;
-      recordedById?: $Comparison<string>;
+      id?: $Comparison<string> | undefined;
+      requestedProvider?: $Comparison<string> | undefined;
+      requestedModel?: $Comparison<string> | undefined;
+      actualProvider?: $Comparison<string> | undefined;
+      actualModel?: $Comparison<string> | undefined;
+      inputTokens?: $Comparison<number> | undefined;
+      outputTokens?: $Comparison<number> | undefined;
+      cacheReadTokens?: $Comparison<number> | undefined;
+      cacheWriteTokens?: $Comparison<number> | undefined;
+      usageSource?: $Comparison<"runtime" | "provider" | "estimate"> | undefined;
+      estimatedCost?: $Comparison<number> | undefined;
+      pricingBasis?: $Comparison<string> | undefined;
+      startedAt?: $Comparison<$Date> | undefined;
+      endedAt?: $Comparison<$Date> | undefined;
+      reason?: $Comparison<string> | undefined;
+      recordedAt?: $Comparison<$Date> | undefined;
+      attemptId?: $Comparison<string> | undefined;
+      taskId?: $Comparison<string> | undefined;
+      sessionId?: $Comparison<string> | undefined;
+      correctsId?: $Comparison<string> | undefined;
+      recordedById?: $Comparison<string> | undefined;
     };
 
 export type InvocationSort = readonly (

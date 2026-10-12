@@ -62,9 +62,9 @@ export type CommentFilter =
   | { and: readonly CommentFilter[] }
   | { or: readonly CommentFilter[] }
   | {
-      id?: $Comparison<string>;
-      body?: $Comparison<string>;
-      postId?: $Comparison<string>;
+      id?: $Comparison<string> | undefined;
+      body?: $Comparison<string> | undefined;
+      postId?: $Comparison<string> | undefined;
     };
 
 export type CommentSort = readonly ("id" | "-id" | "body" | "-body" | "postId" | "-postId")[];

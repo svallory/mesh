@@ -55,11 +55,11 @@ import type {
   ReadAttemptInput,
 } from "./attempt.types";
 import {
-  startAttemptInput,
-  finishAttemptInput,
-  reportStoppedAttemptInput,
-  abandonAttemptInput,
-  readAttemptInput,
+  startAttemptInputSchema,
+  finishAttemptInputSchema,
+  reportStoppedAttemptInputSchema,
+  abandonAttemptInputSchema,
+  readAttemptInputSchema,
 } from "./attempt.validators";
 import { tables } from "../../schema";
 import {
@@ -68,7 +68,14 @@ import {
   type $execution$Attempt$StoredScope as $StoredScope,
 } from "./attempt.expressions";
 import { loadPlan as $loadPlan } from "../../load";
-import { $Date, $Object, type $Omit, type $Pick, type $Promise } from "../../$globals";
+import {
+  $Date,
+  $Object,
+  type $Omit,
+  type $Partial,
+  type $Pick,
+  type $Promise,
+} from "../../$globals";
 
 /**
  * The reads of this entity without their policies: what `privileged(Attempt)` runs (TXN-16). The read actions
@@ -85,11 +92,11 @@ export function bindAttemptReads(
       context?: unknown,
       clock?: () => $Date,
       policies?: boolean,
-      cast?: $CastOutput<typeof readAttemptInput>,
+      cast?: $CastOutput<typeof readAttemptInputSchema>,
     ): $Promise<L extends unknown ? AttemptTxWith<AttemptLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
       // for its policies and hands it over as `cast`; a `privileged` read casts it here.
-      const parsed = cast ?? (await $castInput(layer, readAttemptInput, input));
+      const parsed = cast ?? (await $castInput(layer, readAttemptInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.attempts, {
           filter: parsed.filter,
@@ -128,7 +135,7 @@ export function bindAttempt(
   return $Object.freeze({
     async start(input: StartAttemptInput, ...[context]: $ContextArgument): $Promise<Attempt> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, startAttemptInput, input);
+      const parsed = await $castInput(layer, startAttemptInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -195,7 +202,16 @@ export function bindAttempt(
             // transaction: opens here; what follows commits together or not at all
             const $now = $clock();
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Omit<
+              $Record,
+              "number" | "runId" | "taskId" | "performerId" | "delegatorId"
+            > & {
+              number: $Record["number"] | null;
+              runId: $Record["runId"] | null;
+              taskId: $Record["taskId"] | null;
+              performerId: $Record["performerId"] | null;
+              delegatorId: $Record["delegatorId"] | null;
+            } = {
               id: $uuidv7(),
               step: "main",
               claimFence: null,
@@ -207,15 +223,22 @@ export function bindAttempt(
               startedAt: $now,
               machineId: null,
               sessionId: null,
-            };
-            const $record: $Row = {
-              ...$changes,
               number: null,
               runId: null,
               taskId: null,
               performerId: null,
               delegatorId: null,
             };
+            const $record: $Omit<
+              $Record,
+              "number" | "runId" | "taskId" | "performerId" | "delegatorId"
+            > & {
+              number: $Record["number"] | null;
+              runId: $Record["runId"] | null;
+              taskId: $Record["taskId"] | null;
+              performerId: $Record["performerId"] | null;
+              delegatorId: $Record["delegatorId"] | null;
+            } = { ...$changes };
             const $load = { actor: $actor, context: $context, clock: $clock, frame };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.Attempt", $record, "action function"),
@@ -273,12 +296,15 @@ export function bindAttempt(
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // the input: the member inputs the caller sent, applied now that the checks have passed
-            if (parsed.run !== undefined) $changes.runId = $record.runId = parsed.run;
-            if (parsed.step !== undefined) $changes.step = $record.step = parsed.step;
-            if (parsed.runtime !== undefined) $changes.runtime = $record.runtime = parsed.runtime;
-            if (parsed.machine !== undefined)
+            if ($Object.hasOwn(parsed, "run") && parsed.run !== undefined)
+              $changes.runId = $record.runId = parsed.run;
+            if ($Object.hasOwn(parsed, "step") && parsed.step !== undefined)
+              $changes.step = $record.step = parsed.step;
+            if ($Object.hasOwn(parsed, "runtime") && parsed.runtime !== undefined)
+              $changes.runtime = $record.runtime = parsed.runtime;
+            if ($Object.hasOwn(parsed, "machine") && parsed.machine !== undefined)
               $changes.machineId = $record.machineId = parsed.machine;
-            if (parsed.session !== undefined)
+            if ($Object.hasOwn(parsed, "session") && parsed.session !== undefined)
               $changes.sessionId = $record.sessionId = parsed.session;
             // do: the steps run in written order, each seeing the record as the ones before it left it
             {
@@ -365,7 +391,7 @@ export function bindAttempt(
 
     async finish(input: FinishAttemptInput, ...[context]: $ContextArgument): $Promise<Attempt> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, finishAttemptInput, input);
+      const parsed = await $castInput(layer, finishAttemptInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -407,10 +433,12 @@ export function bindAttempt(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.attempts, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.attempts, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("execution.Attempt", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.Attempt", $record, "action function"),
@@ -540,7 +568,7 @@ export function bindAttempt(
       ...[context]: $ContextArgument
     ): $Promise<Attempt> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, reportStoppedAttemptInput, input);
+      const parsed = await $castInput(layer, reportStoppedAttemptInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -582,10 +610,12 @@ export function bindAttempt(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.attempts, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.attempts, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("execution.Attempt", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.Attempt", $record, "action function"),
@@ -675,7 +705,7 @@ export function bindAttempt(
 
     async abandon(input: AbandonAttemptInput, ...[context]: $ContextArgument): $Promise<Attempt> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, abandonAttemptInput, input);
+      const parsed = await $castInput(layer, abandonAttemptInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -717,10 +747,12 @@ export function bindAttempt(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.attempts, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.attempts, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("execution.Attempt", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.Attempt", $record, "action function"),
@@ -816,7 +848,7 @@ export function bindAttempt(
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $parsed = await $castInput(layer, readAttemptInput, input);
+      const $parsed = await $castInput(layer, readAttemptInputSchema, input);
       if (
         !(await $authorizer(
           "execution.Attempt",

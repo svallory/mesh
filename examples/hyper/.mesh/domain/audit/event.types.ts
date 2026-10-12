@@ -86,20 +86,20 @@ export type EventFilter =
   | { and: readonly EventFilter[] }
   | { or: readonly EventFilter[] }
   | {
-      seq?: $Comparison<number>;
-      type?: $Comparison<string>;
-      schemaVersion?: $Comparison<number>;
-      workspaceId?: $Comparison<string>;
-      recordType?: $Comparison<
-        "workspace" | "collaborator" | "membership" | "task" | "evidence-reference"
-      >;
-      recordId?: $Comparison<string>;
-      recordVersion?: $Comparison<number>;
-      actor?: $Comparison<string>;
-      caller?: $Comparison<string>;
-      occurredAt?: $Comparison<$Date>;
-      recordedAt?: $Comparison<$Date>;
-      taskId?: $Comparison<string>;
+      seq?: $Comparison<number> | undefined;
+      type?: $Comparison<string> | undefined;
+      schemaVersion?: $Comparison<number> | undefined;
+      workspaceId?: $Comparison<string> | undefined;
+      recordType?:
+        | $Comparison<"workspace" | "collaborator" | "membership" | "task" | "evidence-reference">
+        | undefined;
+      recordId?: $Comparison<string> | undefined;
+      recordVersion?: $Comparison<number> | undefined;
+      actor?: $Comparison<string> | undefined;
+      caller?: $Comparison<string> | undefined;
+      occurredAt?: $Comparison<$Date> | undefined;
+      recordedAt?: $Comparison<$Date> | undefined;
+      taskId?: $Comparison<string> | undefined;
     };
 
 export type EventSort = readonly (
