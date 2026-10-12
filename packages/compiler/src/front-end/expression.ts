@@ -98,7 +98,7 @@ function lexicalNames(statements: readonly N[], names: Set<string>): void {
  * A function's `var`s share the scope of its parameters, so `function f(at = now()) { var now = 0 }` binds no clock.
  * JavaScript gives that default the outer `now`, but Bun's engine does not when the outer binding is two or more
  * functions up, which a printed function's clock always is: it throws `ReferenceError: now is not defined` (Bun
- * 1.3.14; Node gives the outer one). Binding no clock keeps the failure at the type check (TS2304) instead of at run time.
+ * 1.3.14 and 1.4.2; Node gives the outer one). Binding no clock keeps the failure at the type check (TS2304) instead of at run time.
  */
 function scopeNames(n: N): Set<string> | undefined {
   const names = new Set<string>();

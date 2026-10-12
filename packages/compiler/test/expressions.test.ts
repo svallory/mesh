@@ -423,7 +423,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
   }, 30_000);
 
   test("a parameter default beside a body `var` of the same name binds no clock, so the type check refuses it", () => {
-    // PR #65 round 2, N4. JavaScript gives `at = now()` the outer `now`, but Bun 1.3.14 throws "now is not defined"
+    // PR #65 round 2, N4. JavaScript gives `at = now()` the outer `now`, but Bun 1.3.14 and 1.4.2 throw "now is not defined"
     // whenever that binding is two or more functions up, as a printed function's clock always is. Binding no clock
     // keeps the failure at the type check (TS2304) instead of at run time; see `scopeNames`.
     const source = entity(check("() => true")).replace("  actions auto",

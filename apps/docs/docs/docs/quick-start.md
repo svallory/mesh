@@ -13,7 +13,7 @@ Create a runnable project, then call one action. You do not need to write an ent
 
 ## Requirements
 
-- **Bun 1.3.14 or later** — [install Bun](https://bun.sh/docs/installation). Mesh runs on Bun, not Node.js; use Bun for package commands.
+- **Bun 1.4.2 or later** — [install Bun](https://bun.sh/docs/installation). Mesh runs on Bun, not Node.js; use Bun for package commands.
 - **Git 2.x** — [install Git](https://git-scm.com/downloads), to track your domain and the code Mesh builds from it.
 - **An editor**, such as the current stable version of [Visual Studio Code](https://code.visualstudio.com/download). Any editor that can edit TypeScript and text files works.
 
@@ -21,7 +21,7 @@ Create a runnable project, then call one action. You do not need to write an ent
 Copy this prompt into your coding agent:
 
 ```text
-Check this machine for Bun 1.3.14 or later, Git 2.x,
+Check this machine for Bun 1.4.2 or later, Git 2.x,
 and an editor (the current stable Visual Studio Code is fine).
 Verify each installed version and that each tool opens or runs.
 Install or update anything missing or too old, asking before changes.
