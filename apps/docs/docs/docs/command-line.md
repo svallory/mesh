@@ -50,7 +50,7 @@ Writes the project configuration and folders, asking the same questions as the s
 mesh build
 ```
 
-Reads your entity files, checks them and writes the types, action functions, input validators and schema to the configured output folder. Rebuild after changing an entity file, then commit the source and generated changes together. `mesh build` does not run the TypeScript compiler: type-check the project including `.mesh/` as well (`tsc --noEmit`, which the starter's `typecheck` script runs), because some mistakes in your own helpers, such as a missing `await`, show up only there.
+Reads your entity files, checks them and writes the types, action functions, input validators and schema to the configured output folder. Rebuild after changing an entity file, then commit the source and generated changes together. `mesh build` does not run the TypeScript compiler: type-check the project including `.mesh/` as well (`tsc --noEmit`), because some mistakes in your own helpers, such as a missing `await`, show up only there.
 
 ### What a build error looks like
 
