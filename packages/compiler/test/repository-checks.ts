@@ -137,6 +137,15 @@ export function checkGeneratedImports(root: string): string[] {
 
 const runtimeForbidden = ["@meshfw/model", "@meshfw/compiler", "drizzle-orm", "drizzle-kit"];
 
+/**
+ * The lines of the run-time library allowed past the web rule, each whole and in one file. Async context has no web
+ * standard yet, and the binding in scope (CMP-16, PRJ-19) needs it: `entity.ts` imports `AsyncLocalStorage`, as the
+ * SQLite adapter does. Any other mention in that file, a comment included, still fails.
+ */
+const WEB_EXCEPTIONS: readonly { readonly file: string; readonly line: string }[] = [
+  { file: "packages/runtime/src/entity.ts", line: 'import { AsyncLocalStorage } from "node:async_hooks";\n' },
+];
+
 /** M2's text rules reuse M1's directory walker, scanning every runtime source file. */
 export function checkRuntime(root: string, rule: "imports" | "web"): string[] {
   const dir = join(root, "packages/runtime/src");
@@ -157,7 +166,9 @@ export function checkRuntime(root: string, rule: "imports" | "web"): string[] {
     } else {
       // Plain text on purpose, like M1: even comments and strings fail.
       // No parsing or token adjacency assumptions: inter-token comments cannot hide a mention.
+      const path = relative(root, file).split(sep).join("/");
       for (const match of source.matchAll(/bun:|node:|\bBun\b/g)) {
+        if (WEB_EXCEPTIONS.some((allowed) => allowed.file === path && source.startsWith(allowed.line, source.lastIndexOf("\n", match.index) + 1))) continue;
         report(file, source, match.index, `Runtime must use web-standard APIs; forbidden text ${match[0]} (including comments and strings)`);
       }
     }
