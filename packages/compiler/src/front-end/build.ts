@@ -806,7 +806,7 @@ export type MxDiagnostic = ReturnType<typeof parseEntitySource>["diagnostics"][n
 
 /**
  * Every code passes through as MX gives it: MX's own `MX_*` codes (stable since alpha.23, so one error has one code
- * in the editor and in `mesh build`) and Mesh's hook codes (`ctx.fail(message, { code: "MESH_X" })`). Only a
+ * in the editor and in the build's diagnostics) and Mesh's hook codes (`ctx.fail(message, { code: "MESH_X" })`). Only a
  * diagnostic that arrives with no code is a syntax error to Mesh; MX gives every error a code, so that is a
  * fallback and not a path any entity source is known to reach.
  */
