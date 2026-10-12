@@ -1,6 +1,7 @@
 import { Collaborator } from "../identity/collaborator.mesh.mx"
 import { Attempt } from "./attempt.mesh.mx"
 import { memberOf, roleIn } from "../identity/identity.helpers"
+import { Mesh } from "meshfw"
 
 entity :Machine table="machines"
   attributes
@@ -20,7 +21,7 @@ entity :Machine table="machines"
         &platform
       validate
         check :nameFree [
-          that=async ({ input }) => (await privileged(Machine).read({ filter: { name: { eq: input.name } }, limit: 1 })).length === 0
+          that=async ({ input }) => (await Mesh.privileged(Machine).read({ filter: { name: { eq: input.name } }, limit: 1 })).length === 0
           code="machine.name-free"
           message="a machine already has that name"
         ]
@@ -32,7 +33,7 @@ entity :Machine table="machines"
         &name
       validate
         check :nameFree [
-          that=async ({ input }) => (await privileged(Machine).read({ filter: { name: { eq: input.name } }, limit: 1 })).length === 0
+          that=async ({ input }) => (await Mesh.privileged(Machine).read({ filter: { name: { eq: input.name } }, limit: 1 })).length === 0
           code="machine.name-free"
           message="a machine already has that name"
         ]
@@ -85,12 +86,12 @@ entity :Machine table="machines"
           &version=() => &version + 1
   policies
     policy :membersRead types=[:read]
-      authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
+      authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null
     policy :isMember actions=[&register, &update, &retire]
-      authorize-if=async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)
+      authorize-if=async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)
     policy :ownerOrMember actions=[&register]
-      authorize-if=async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])
+      authorize-if=async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])
     policy :ownerOnly actions=[&update, &retire]
-      authorize-if=async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner])
+      authorize-if=async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner])
     policy :internal actions=[&report]
-      authorize-if=({ context }) => isSystem(context)
+      authorize-if=({ context }) => Mesh.isSystem(context)

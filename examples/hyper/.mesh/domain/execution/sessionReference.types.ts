@@ -75,14 +75,14 @@ export type SessionReferenceLoadable = {
 export type SessionReferenceWith<N extends keyof SessionReferenceLoadable> = SessionReference &
   $Pick<SessionReferenceLoadable, N>;
 
-/** What a load through `privileged` attaches to a SessionReference: it runs no policy, so every related record the key names is there. */
+/** What a load through `Mesh.privileged` attaches to a SessionReference: it runs no policy, so every related record the key names is there. */
 export type SessionReferenceTxLoadable = {
   machine: $execution$Machine$Record;
   agentProfile: $identity$Collaborator$Record;
   recordedBy: $identity$Collaborator$Record;
 };
 
-/** A SessionReference loaded through `privileged`, with the relationships and computed fields named in N. */
+/** A SessionReference loaded through `Mesh.privileged`, with the relationships and computed fields named in N. */
 export type SessionReferenceTxWith<N extends keyof SessionReferenceLoadable> = SessionReference &
   $Pick<SessionReferenceTxLoadable, N>;
 

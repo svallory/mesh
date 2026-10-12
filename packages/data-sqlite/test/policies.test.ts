@@ -1,5 +1,5 @@
 // M8a: policies run, and an action no policy covers is denied. A domain with policies of every shape (actor-only,
-// record-reading, through `privileged`, `isSystem(context)`, unknown results), built, generated, pushed to SQLite and called
+// record-reading, through `privileged`, `Mesh.isSystem(context)`, unknown results), built, generated, pushed to SQLite and called
 // through the generated functions. Lead rulings of M8a: where each check runs (ACT-28, POL-08), reads filtered, TXN-06
 // as built, `system` as a reserved boolean, the error, deny by default.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -7,13 +7,17 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
-import { ForbiddenError, FrameworkError, InvalidInputError, NotFoundError, type DataLayer, type Seams } from "@meshfw/runtime";
+import { ForbiddenError, FrameworkError, InvalidInputError, Mesh, NotFoundError, type DataLayer, type Seams } from "@meshfw/runtime";
 import build from "../src/build.ts";
 import { callsOf } from "./calls.ts";
 import { createSchema, sqlite } from "../src/index.ts";
 
+/** `Mesh.privileged` over an entity value this test takes untyped from the generated barrel: its reads, untyped too. */
+const privilegedOf = (entity: unknown): any => Mesh.privileged(entity as never);
+
 const board = `import { Audit } from "./audit.mesh.mx"
 
+import { Mesh } from "meshfw"
 entity :Board table="boards"
   attributes
     uuid :id primary-key
@@ -52,7 +56,7 @@ entity :Board table="boards"
     policy :signedIn types=[:create, :read]
       authorize-if=({ actor }) => actor.id !== null
     policy :quota actions=[&open]
-      forbid-if=async ({ actor }) => (await privileged(Board).read({ filter: { ownerId: { eq: actor.id } } })).length >= 2
+      forbid-if=async ({ actor }) => (await Mesh.privileged(Board).read({ filter: { ownerId: { eq: actor.id } } })).length >= 2
     policy :owner types=[:update, :destroy]
       authorize-if=({ actor }) => &ownerId === actor.id
     policy :frozen actions=[&rename, &give]
@@ -105,7 +109,8 @@ const gate = `entity :Gate table="gates"
       authorize-if=() => &level < 5
 `;
 
-const audit = `entity :Audit table="audits"
+const audit = `import { Mesh } from "meshfw"
+entity :Audit table="audits"
   attributes
     uuid :id primary-key
     string :what
@@ -115,7 +120,7 @@ const audit = `entity :Audit table="audits"
         &what
   policies
     policy :internal actions=[&log]
-      authorize-if=({ context }) => isSystem(context)
+      authorize-if=({ context }) => Mesh.isSystem(context)
     policy :readers types=[:read]
       authorize-if=() => true
 `;
@@ -479,11 +484,11 @@ describe("where each check runs (ACT-28, POL-08)", () => {
 });
 
 describe("a nested call is checked against the nested action's policies (TXN-06)", () => {
-  test("a direct call without system is forbidden; with system, isSystem(context) admits it", async () => {
+  test("a direct call without system is forbidden; with system, Mesh.isSystem(context) admits it", async () => {
     const { db, mesh } = await fresh();
     try {
       const error = await denial(mesh.logAudit({ what: "x" }, alice));
-      expect(error.breakdown).toEqual([{ policy: "internal", kind: "authorize-if", check: "({ context }) => isSystem(context)", result: false, decisive: true }]);
+      expect(error.breakdown).toEqual([{ policy: "internal", kind: "authorize-if", check: "({ context }) => Mesh.isSystem(context)", result: false, decisive: true }]);
       await mesh.logAudit({ what: "system" }, { ...alice, system: true });
       // Only the boolean true counts.
       await denial(mesh.logAudit({ what: "x" }, { ...alice, system: "true" }));
@@ -512,7 +517,7 @@ describe("a nested call is checked against the nested action's policies (TXN-06)
       await mesh.openBoard({ ownerId: "alice", name: "Plans" }, alice);
       // The anonymous caller's own read gives no rows; the same read through `privileged`, given the same context, reads the row.
       expect(await mesh.readBoard({}, anonymous)).toEqual([]);
-      const seen = await mesh.transaction(async () => (await app.privileged(app.domain.Board).read({}, anonymous)).length);
+      const seen = await mesh.transaction(async () => (await privilegedOf(app.domain.Board).read({}, anonymous)).length);
       expect(seen).toBe(1);
     } finally { await db.close(); }
   });
@@ -631,7 +636,7 @@ entity :Item table="items"
   test("through privileged nothing is filtered: the same caller's read inside a transaction sees every row", async () => {
     const { db, mesh } = await stocked();
     try {
-      const [inside] = await mesh.transaction(() => loads.privileged(loads.domain.Shelf).read({ load }, alice));
+      const [inside] = await mesh.transaction(() => privilegedOf(loads.domain.Shelf).read({ load }, alice));
       expect(inside).toMatchObject({ keeper: { name: "Kay" }, itemCount: 2, topRank: 7 });
       expect(inside.items).toHaveLength(2);
       // And the loader a `run` or a test calls directly runs none either.
@@ -666,7 +671,8 @@ entity :Item table="items"
 
   test("the types say so: a caller's belongs-to is `| null`, through privileged it is not, and the generated tree type-checks", async () => {
     await Bun.write(join(loadsDir, "use.ts"), `import type { DataOperations, LoadOptions } from "@meshfw/runtime";
-import { privileged, transaction } from "./.mesh/index.ts";
+import { Mesh } from "@meshfw/runtime";
+import { transaction } from "./.mesh/index.ts";
 import { Shelf, loadShelfFields } from "./.mesh/domain/index.ts";
 export async function use(): Promise<string[]> {
   const [shelf] = await Shelf.read({ load: ["keeper", "items"] }, { actor: { id: "a" } });
@@ -676,7 +682,7 @@ export async function use(): Promise<string[]> {
   const shown = await Shelf.show({ id: "x" }, { actor: { id: "a" } });
   // @ts-expect-error the same for a write's load step
   shown.keeper.name;
-  const inside = await transaction(async () => (await privileged(Shelf).read({ load: ["keeper"] }, { actor: { id: "a" } }))[0]!.keeper.name);
+  const inside = await transaction(async () => (await Mesh.privileged(Shelf).read({ load: ["keeper"] }, { actor: { id: "a" } }))[0]!.keeper.name);
   return [name, maybe ?? "", inside, String(shelf!.items.length)];
 }
 // The loader a \`run\` or a test calls runs no policy, so its options have no \`policies\` (R2-N1).

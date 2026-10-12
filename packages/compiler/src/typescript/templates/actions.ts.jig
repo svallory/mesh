@@ -52,7 +52,7 @@ import { loadPlan as $loadPlan } from {{ loadFromLiteral }};
 
 @if(readsBindName)
 /**
- * The reads of this entity without their policies: what `privileged({{ entityName }})` runs (TXN-16). The read actions
+ * The reads of this entity without their policies: what `Mesh.privileged({{ entityName }})` runs (TXN-16). The read actions
  * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
 export function {{ readsBindName }}(layer: $DataLayer, {{ readsOptionsName }}: $BindOptions = {}, {{ readsFrameName }}: $ActionFrame = $NO_FRAME) {
@@ -65,7 +65,7 @@ export function {{ readsBindName }}(layer: $DataLayer, {{ readsOptionsName }}: $
       @else
       @if(body.usesParsed)~
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
+      // for its policies and hands it over as `cast`; a `Mesh.privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, {{ body.validator }}, input));
       @else~
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
@@ -147,7 +147,7 @@ export { $entityValue as {{ entityName }} };
 /** The record type, under the entity value's name. */
 export type {{ entityName }} = $Record;
 
-/** What `privileged({{ entityName }})` returns (TXN-16): one function per read action, run with no policy. */
+/** What `Mesh.privileged({{ entityName }})` returns (TXN-16): one function per read action, run with no policy. */
 export interface $Privileged {
   @each(member in privilegedMembers)
   {{ member }}
@@ -163,7 +163,7 @@ export interface $PrivilegedReadOnly {
 
 /**
  * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
- * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ * and so is what `Mesh.privileged` of it resolves with. The expressions files bind the entity value under this type.
  */
 export type $ReadOnly = $EntityValue<{
   @each(member in readOnlyMembers)
@@ -204,7 +204,7 @@ const $entityValue = $entity({{ fqnLiteral }}, {{ bindName }}, null, () => ({}))
 export { $entityValue as {{ entityName }} };
 /** The record type, under the entity value's name. */
 export type {{ entityName }} = $Record;
-/** The entity value as a function of an entity file sees it: it has no method, and `privileged` of it no read. */
+/** The entity value as a function of an entity file sees it: it has no method, and `Mesh.privileged` of it no read. */
 export type $ReadOnly = typeof $entityValue;
 @end
 @if(loader)
@@ -212,7 +212,7 @@ export type $ReadOnly = typeof $entityValue;
 /**
  * Load relationships and computed fields onto {{ entityName }} rows by name. A relationship is loaded by one more query for
  * all the rows; a computed field loads what its body reads first. The rows you pass are not changed: the result is new
- * rows of type {{ loader.with }}<"name" | ...>. It loads as `privileged` does, running no policy, so it takes no `policies`
+ * rows of type {{ loader.with }}<"name" | ...>. It loads as `Mesh.privileged` does, running no policy, so it takes no `policies`
  * option: every related record the key names is there.
  */
 export async function {{ loader.name }}<const N extends keyof {{ loader.loadable }}>(

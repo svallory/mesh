@@ -126,11 +126,11 @@ describe("the layout", () => {
 });
 
 describe("what each barrel holds", () => {
-  test("#mesh re-exports bind, connect, disconnect, transaction, Binding, privileged, Privileged and tables, and names every module in its header", async () => {
+  test("#mesh re-exports bind, connect, disconnect, transaction, Binding, the type Privileged and tables, and no Mesh function, and names every module in its header", async () => {
     const index = (await contentsOf(".mesh/index.ts"))!;
     expect(code(index)).toBe([
       'export { bind, connect, disconnect, transaction, type Binding } from "./binding";',
-      'export { privileged, type Privileged } from "@meshfw/runtime";',
+      'export type { Privileged } from "@meshfw/runtime";',
       'export { tables } from "./schema";',
     ].join("\n"));
     for (const specifier of ["#mesh/domain", "#mesh/domain/billing", "#mesh/domain/sales/orders", "#mesh/domain/schema"])

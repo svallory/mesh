@@ -93,7 +93,7 @@ export interface LoadOptions {
   actor?: unknown;
   /** Read by a computed body as `context`. */
   context?: unknown;
-  /** The clock `now()` reads, as everywhere an expression runs. */
+  /** The clock `Mesh.now()` reads, as everywhere an expression runs. */
   clock?: Clock | undefined;
   /**
    * `loadRows` only: the names are what a caller asked for, so each relationship and rollup runs the read policies of the
@@ -130,7 +130,7 @@ export async function loadRows(
   names: readonly string[],
   given: LoadOptions = {},
 ): Promise<Row[]> {
-  // One instant for the whole call: every row and computed field reads the same `now()`.
+  // One instant for the whole call: every row and computed field reads the same `Mesh.now()`.
   const options = { ...given, clock: pinClock(given.clock) };
   const entityPlan = planOf(plan, entity);
   for (const name of names)

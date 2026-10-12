@@ -1,0 +1,19 @@
+import { Mesh as M } from "meshfw"
+
+entity :Note
+  attributes
+    uuid :id primary-key
+    string :text
+    timestamp :at
+  computed
+    string :stamp() { const at = M.now(); return at.toISOString() }
+  actions auto=[:read]
+    create :write
+      input
+        &text
+      do
+        set
+          &at=() => M.now()
+  policies
+    policy :anyone
+      authorize-if=() => true

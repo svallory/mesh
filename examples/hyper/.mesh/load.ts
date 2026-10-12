@@ -42,7 +42,7 @@ export const loadPlan = {
         checks: [
           {
             kind: "authorize-if",
-            check: "({ actor, context }) => isSystem(context) || actor.role != null",
+            check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
             record: false,
             run: ($s: never) => $audit$Event$expressions["policy.membersRead.authorize-if.0"]($s),
           },
@@ -89,7 +89,7 @@ export const loadPlan = {
         checks: [
           {
             kind: "authorize-if",
-            check: "({ actor, context }) => isSystem(context) || actor.role != null",
+            check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
             record: false,
             run: ($s: never) =>
               $execution$Attempt$expressions["policy.membersRead.authorize-if.0"]($s),
@@ -136,7 +136,7 @@ export const loadPlan = {
         checks: [
           {
             kind: "authorize-if",
-            check: "({ actor, context }) => isSystem(context) || actor.role != null",
+            check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
             record: false,
             run: ($s: never) =>
               $execution$Invocation$expressions["policy.membersRead.authorize-if.0"]($s),
@@ -165,7 +165,7 @@ export const loadPlan = {
         checks: [
           {
             kind: "authorize-if",
-            check: "({ actor, context }) => isSystem(context) || actor.role != null",
+            check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
             record: false,
             run: ($s: never) =>
               $execution$Machine$expressions["policy.membersRead.authorize-if.0"]($s),
@@ -207,7 +207,7 @@ export const loadPlan = {
         checks: [
           {
             kind: "authorize-if",
-            check: "({ actor, context }) => isSystem(context) || actor.role != null",
+            check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
             record: false,
             run: ($s: never) => $execution$Run$expressions["policy.membersRead.authorize-if.0"]($s),
           },
@@ -246,7 +246,7 @@ export const loadPlan = {
         checks: [
           {
             kind: "authorize-if",
-            check: "({ actor, context }) => isSystem(context) || actor.role != null",
+            check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
             record: false,
             run: ($s: never) =>
               $execution$SessionReference$expressions["policy.membersRead.authorize-if.0"]($s),
@@ -269,7 +269,7 @@ export const loadPlan = {
         checks: [
           {
             kind: "authorize-if",
-            check: "({ actor, context }) => isSystem(context) || actor.role != null",
+            check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
             record: false,
             run: ($s: never) =>
               $identity$Collaborator$expressions["policy.membersRead.authorize-if.0"]($s),
@@ -309,7 +309,7 @@ export const loadPlan = {
         checks: [
           {
             kind: "authorize-if",
-            check: "({ actor, context }) => isSystem(context) || actor.role != null",
+            check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
             record: false,
             run: ($s: never) =>
               $identity$Membership$expressions["policy.membersRead.authorize-if.0"]($s),
@@ -330,7 +330,7 @@ export const loadPlan = {
         checks: [
           {
             kind: "authorize-if",
-            check: "({ actor, context }) => isSystem(context) || actor.role != null",
+            check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
             record: false,
             run: ($s: never) =>
               $identity$Workspace$expressions["policy.membersRead.authorize-if.0"]($s),
@@ -365,7 +365,7 @@ export const loadPlan = {
         checks: [
           {
             kind: "authorize-if",
-            check: "({ actor, context }) => isSystem(context) || actor.role != null",
+            check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
             record: false,
             run: ($s: never) =>
               $work$Assignment$expressions["policy.membersRead.authorize-if.0"]($s),
@@ -400,7 +400,7 @@ export const loadPlan = {
         checks: [
           {
             kind: "authorize-if",
-            check: "({ actor, context }) => isSystem(context) || actor.role != null",
+            check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
             record: false,
             run: ($s: never) => $work$Claim$expressions["policy.membersRead.authorize-if.0"]($s),
           },
@@ -434,7 +434,7 @@ export const loadPlan = {
         checks: [
           {
             kind: "authorize-if",
-            check: "({ actor, context }) => isSystem(context) || actor.role != null",
+            check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
             record: false,
             run: ($s: never) =>
               $work$Completion$expressions["policy.membersRead.authorize-if.0"]($s),
@@ -474,7 +474,7 @@ export const loadPlan = {
         checks: [
           {
             kind: "authorize-if",
-            check: "({ actor, context }) => isSystem(context) || actor.role != null",
+            check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
             record: false,
             run: ($s: never) =>
               $work$Dependency$expressions["policy.membersRead.authorize-if.0"]($s),
@@ -502,7 +502,7 @@ export const loadPlan = {
         checks: [
           {
             kind: "authorize-if",
-            check: "({ actor, context }) => isSystem(context) || actor.role != null",
+            check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
             record: false,
             run: ($s: never) =>
               $work$EvidenceReference$expressions["policy.membersRead.authorize-if.0"]($s),
@@ -531,7 +531,7 @@ export const loadPlan = {
         checks: [
           {
             kind: "authorize-if",
-            check: "({ actor, context }) => isSystem(context) || actor.role != null",
+            check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
             record: false,
             run: ($s: never) =>
               $work$LateResult$expressions["policy.membersRead.authorize-if.0"]($s),
@@ -565,7 +565,7 @@ export const loadPlan = {
         checks: [
           {
             kind: "authorize-if",
-            check: "({ actor, context }) => isSystem(context) || actor.role != null",
+            check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
             record: false,
             run: ($s: never) => $work$Review$expressions["policy.membersRead.authorize-if.0"]($s),
           },
@@ -593,7 +593,7 @@ export const loadPlan = {
         checks: [
           {
             kind: "authorize-if",
-            check: "({ actor, context }) => isSystem(context) || actor.role != null",
+            check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
             record: false,
             run: ($s: never) =>
               $work$Submission$expressions["policy.membersRead.authorize-if.0"]($s),
@@ -667,7 +667,7 @@ export const loadPlan = {
         checks: [
           {
             kind: "authorize-if",
-            check: "({ actor, context }) => isSystem(context) || actor.role != null",
+            check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
             record: false,
             run: ($s: never) => $work$Task$expressions["policy.membersRead.authorize-if.0"]($s),
           },

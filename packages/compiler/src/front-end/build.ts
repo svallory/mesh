@@ -88,7 +88,12 @@ interface ImportProblem {
   message: string;
   offset: number;
 }
-/** Entity files import other entities by name only: `import { List } from "./list…"`, a relative path to an entity file. */
+/** The package an entity file imports `Mesh` from (PRJ-22). */
+const MESHFW = "meshfw";
+/**
+ * Entity files import other entities by name only: `import { List } from "./list…"`, a relative path to an entity file.
+ * The one other package they import from is "meshfw", for `Mesh` alone (PRJ-22).
+ */
 function readImports(imports: readonly IrImport[]): {
   imports: ParsedImport[];
   problems: ImportProblem[];
@@ -114,10 +119,21 @@ function readImports(imports: readonly IrImport[]): {
       });
       continue;
     }
-    if (!from.startsWith("./") && !from.startsWith("../")) {
+    // `import { Mesh } from "meshfw"`: Mesh's own functions (PRJ-22), the one import an entity file takes from a package.
+    if (from === MESHFW) {
+      const other = names.find((name) => name.imported !== "Mesh");
+      if (other) {
+        problems.push({
+          code: "MESH_UNKNOWN_IMPORT",
+          message: `"meshfw" gives an entity file \`Mesh\` alone, and \`${other.imported}\` is not it: import \`Mesh\` (\`import { Mesh } from "meshfw"\`) and call its functions as its members`,
+          offset: other.span.sourceStart,
+        });
+        continue;
+      }
+    } else if (!from.startsWith("./") && !from.startsWith("../")) {
       problems.push({
         code: "MESH_UNKNOWN_IMPORT",
-        message: "The import path must be relative (start with ./ or ../)",
+        message: `The import path must be relative (start with ./ or ../), or be "meshfw" for Mesh's own functions (\`import { Mesh } from "meshfw"\`)`,
         offset,
       });
       continue;
@@ -213,7 +229,7 @@ function buildEntity(
         identifiers: i.names,
         ...(renames ? { imported: i.bindings.map((binding) => binding.imported) } : {}),
         from: i.from,
-        ...(hasMeshExtension(i.from) ? {} : { helper: true as const }),
+        ...(i.from === MESHFW ? { mesh: true as const } : hasMeshExtension(i.from) ? {} : { helper: true as const }),
         position: at(i.offset),
       };
       importDetails.set(value, i);
@@ -245,24 +261,30 @@ function buildEntity(
     return ref;
   };
   const helperImports = new Map<string, string>();
+  const meshImports = new Set<string>();
   for (const entry of entity.imports) {
-    const helper = !hasMeshExtension(entry.from);
+    const helper = entry.helper === true;
     for (const [index, name] of entry.identifiers.entries()) {
       if (helper) helperImports.set(name, entry.from);
+      if (entry.mesh) meshImports.add(name);
       // Generated code names its own internals `$...` (an entity's locals `$work$Task$value`) and prints every authored
       // local as `l$...` (CMP-06): no name an import binds, a helper's or an entity's alias, may start with either.
       if (/^(\$|l\$)/.test(name)) {
         const localOffset = importDetails.get(entry)?.bindings[index]?.localOffset;
         fail(
           "MESH_HELPER_NAME",
-          `The ${helper ? "helper" : "entity import"} name ${name} cannot start with $ or l$: generated code uses those prefixes for its own names`,
+          `The ${helper ? "helper" : entry.mesh ? "Mesh import" : "entity import"} name ${name} cannot start with $ or l$: generated code uses those prefixes for its own names`,
           localOffset === undefined ? entry.position : at(localOffset),
         );
       }
     }
   }
   // The entities a function in this file can name (CMP-16): its own and each one it imports, by the name the file gives it.
-  const entities = new Set([entity.name, ...entity.imports.filter((entry) => !entry.helper).flatMap((entry) => entry.identifiers)]);
+  const entities = new Set([entity.name, ...entity.imports.filter((entry) => !entry.helper && !entry.mesh).flatMap((entry) => entry.identifiers)]);
+  // `Mesh` under the entity's own name would give one name two meanings in a function of the file (PRJ-22).
+  for (const entry of entity.imports)
+    if (entry.mesh && entry.identifiers.includes(entity.name))
+      fail("MESH_DUPLICATE_IMPORT", `Duplicate import identifier ${entity.name}: the entity is named ${entity.name} too`, entry.position);
   const expr = (a: Attr | undefined, scope: "expression" | "filter" = "expression", runStep = false): Expression =>
     expression(
       a,
@@ -279,6 +301,7 @@ function buildEntity(
         helpers: helperImports,
         imported: new Set(importNames.keys()),
         entities,
+        mesh: meshImports,
         report: (d) => {
           if (!diagnostics.some((x) => x.code === d.code && x.position.file === d.position.file && x.position.offset === d.position.offset)) diagnostics.push(d);
         },
@@ -912,6 +935,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
       );
     else identities.set(entity.fqn, entity.file);
     for (const imported of entity.imports) {
+      if (imported.mesh) continue; // "meshfw" is a package, not a file of the project
       const target = resolve(rootPath, dirname(entity.file), imported.from);
       const targetEntity = document.entities.find((candidate) => resolve(rootPath, candidate.file) === target);
       if (hasMeshExtension(imported.from) && targetEntity) {

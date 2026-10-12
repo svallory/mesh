@@ -4,7 +4,7 @@
 // method names in camelCase (`attempt.start` is `attemptStart`); a generated action is a method of the entity's value
 // (`Attempt.start`, from `#mesh/domain/execution`).
 import type { ActionContext } from "@meshfw/runtime";
-import { privileged } from "#mesh";
+import { Mesh } from "meshfw";
 import { Attempt, Machine, SessionReference, type RecordSessionReferenceInput, type StartAttemptInput } from "#mesh/domain/execution";
 import { nested } from "../../context";
 import { connected, type Binding } from "../binding";
@@ -15,7 +15,7 @@ import { connected, type Binding } from "../binding";
  * records the report refuses it (`machine.retired`).
  */
 async function machineNamed(name: string, context: ActionContext): Promise<string> {
-  const [machine] = await privileged(Machine).read({ filter: { name: { eq: name } }, limit: 1 });
+  const [machine] = await Mesh.privileged(Machine).read({ filter: { name: { eq: name } }, limit: 1 });
   return machine ? machine.id : (await Machine.report({ name }, nested(context))).id;
 }
 

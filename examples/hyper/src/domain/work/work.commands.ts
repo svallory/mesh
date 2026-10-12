@@ -5,7 +5,7 @@
 // Hyper's method names in camelCase (`task.complete` is `taskComplete`), so none can be taken for a generated action,
 // which is a method of the entity's value (`Task.complete`, from `#mesh/domain/work`).
 import type { ActionContext } from "@meshfw/runtime";
-import { privileged } from "#mesh";
+import { Mesh } from "meshfw";
 import { Run } from "#mesh/domain/execution";
 import {
   Claim,
@@ -38,7 +38,7 @@ export type SubmissionSubmitted = { readonly outcome: "submitted"; readonly task
 export type ReviewAccepted = { readonly task: Task; readonly review: Review; readonly completion: Completion; readonly warnings: BlockReason[] };
 
 async function taskOf(id: string): Promise<Task> {
-  const [task] = await privileged(Task).read({ filter: { id: { eq: id } } });
+  const [task] = await Mesh.privileged(Task).read({ filter: { id: { eq: id } } });
   if (!task) throw new Error(`Task ${id} not found`);
   return task as Task;
 }
@@ -53,16 +53,16 @@ export async function taskComplete(input: CompleteTaskInput, context: ActionCont
   return binding.transaction(async () => {
     // Read inside the transaction: a call queued behind another one decides stale or not when it runs.
     const now = binding.clock();
-    const stale = staleClaim(await privileged(Claim).read({ filter: { taskId: { eq: input.id } } }), input.fence, context.actor.id, now);
+    const stale = staleClaim(await Mesh.privileged(Claim).read({ filter: { taskId: { eq: input.id } } }), input.fence, context.actor.id, now);
     if (stale) {
       const lateResult = await LateResult.record({ task: input.id, fence: stale.fence, summary: input.summary ?? null, evidence: input.evidence ?? [] }, context);
       return { outcome: "late-result-recorded", lateResult } as const;
     }
-    const earlier = new Set((await privileged(Completion).read({ filter: { taskId: { eq: input.id } } })).map((completion) => completion.id));
+    const earlier = new Set((await Mesh.privileged(Completion).read({ filter: { taskId: { eq: input.id } } })).map((completion) => completion.id));
     const task = await Task.complete(input, context);
-    const completion = (await privileged(Completion).read({ filter: { taskId: { eq: task.id } } })).find((row) => !earlier.has(row.id));
+    const completion = (await Mesh.privileged(Completion).read({ filter: { taskId: { eq: task.id } } })).find((row) => !earlier.has(row.id));
     if (!completion) throw new Error(`Task.complete recorded no completion for Task ${task.id}`);
-    const [submission] = completion.submissionId === null ? [] : await privileged(Submission).read({ filter: { id: { eq: completion.submissionId } } });
+    const [submission] = completion.submissionId === null ? [] : await Mesh.privileged(Submission).read({ filter: { id: { eq: completion.submissionId } } });
     return { outcome: "completed", task, completion, submission: submission ?? null, warnings: await blockReasonsOf(task.id) } as const;
   });
 }
@@ -74,7 +74,7 @@ export async function taskComplete(input: CompleteTaskInput, context: ActionCont
 export async function submissionSubmit(input: SubmitSubmissionInput, context: ActionContext, binding: Binding = connected): Promise<SubmissionSubmitted | LateResultRecorded> {
   return binding.transaction(async () => {
     const now = binding.clock();
-    const stale = staleClaim(await privileged(Claim).read({ filter: { taskId: { eq: input.task } } }), input.fence, context.actor.id, now);
+    const stale = staleClaim(await Mesh.privileged(Claim).read({ filter: { taskId: { eq: input.task } } }), input.fence, context.actor.id, now);
     if (stale) {
       const lateResult = await LateResult.record({ task: input.task, fence: stale.fence, summary: input.summary, evidence: input.evidence ?? [] }, context);
       return { outcome: "late-result-recorded", lateResult } as const;
@@ -88,7 +88,7 @@ export async function submissionSubmit(input: SubmitSubmissionInput, context: Ac
 export async function reviewAccept(input: AcceptReviewInput, context: ActionContext, binding: Binding = connected): Promise<ReviewAccepted> {
   return binding.transaction(async () => {
     const review = await Review.accept(input, context);
-    const [completion] = await privileged(Completion).read({ filter: { submissionId: { eq: review.submissionId } } });
+    const [completion] = await Mesh.privileged(Completion).read({ filter: { submissionId: { eq: review.submissionId } } });
     if (!completion) throw new Error(`Review.accept recorded no completion for submission ${review.submissionId}`);
     return { task: await taskOf(completion.taskId), review, completion, warnings: await blockReasonsOf(completion.taskId) };
   });
@@ -103,7 +103,7 @@ export async function reviewAccept(input: AcceptReviewInput, context: ActionCont
 export async function taskCancel(input: CancelTaskInput, context: ActionContext, binding: Binding = connected): Promise<{ readonly task: Task }> {
   return binding.transaction(async () => {
     const task = await Task.cancel(input, context);
-    for (const run of await privileged(Run).read({ filter: { taskId: { eq: task.id }, state: { eq: "running" } } }))
+    for (const run of await Mesh.privileged(Run).read({ filter: { taskId: { eq: task.id }, state: { eq: "running" } } }))
       await Run.cancel({ id: run.id, reason: "task canceled" }, nested(context));
     return { task };
   });

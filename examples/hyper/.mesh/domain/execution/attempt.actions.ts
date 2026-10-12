@@ -78,7 +78,7 @@ import {
 } from "../../$globals";
 
 /**
- * The reads of this entity without their policies: what `privileged(Attempt)` runs (TXN-16). The read actions
+ * The reads of this entity without their policies: what `Mesh.privileged(Attempt)` runs (TXN-16). The read actions
  * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
 export function bindAttemptReads(
@@ -95,7 +95,7 @@ export function bindAttemptReads(
       cast?: $CastOutput<typeof readAttemptInputSchema>,
     ): $Promise<L extends unknown ? AttemptTxWith<AttemptLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
+      // for its policies and hands it over as `cast`; a `Mesh.privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readAttemptInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.attempts, {
@@ -147,7 +147,8 @@ export function bindAttempt(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -160,7 +161,7 @@ export function bindAttempt(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -173,7 +174,7 @@ export function bindAttempt(
             {
               kind: "authorize-if",
               check:
-                "async ({ input, actor, context }) => isSystem(context) || await claimerOf(input.run, actor.id, now())",
+                "async ({ input, actor, context }) => Mesh.isSystem(context) || await claimerOf(input.run, actor.id, Mesh.now())",
               record: true,
               run: $expressions["policy.attemptClaimer.authorize-if.0"],
             },
@@ -263,35 +264,35 @@ export function bindAttempt(
               label: "claimer",
               code: "attempt.claimer",
               message: "the claim on the task is no longer the actor's; claim it again to report",
-              source: { file: "src/domain/execution/attempt.mesh.mx", line: 41, column: 9 },
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 42, column: 9 },
               that: $expressions["start.check.claimer.that"],
             });
             await $runCheck($issues, $checks, {
               label: "runRunning",
               code: "attempt.run-running",
               message: "the run is not running",
-              source: { file: "src/domain/execution/attempt.mesh.mx", line: 46, column: 9 },
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 47, column: 9 },
               that: $expressions["start.check.runRunning.that"],
             });
             await $runCheck($issues, $checks, {
               label: "stepIdle",
               code: "attempt.step-idle",
               message: "an attempt of this step is already running",
-              source: { file: "src/domain/execution/attempt.mesh.mx", line: 51, column: 9 },
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 52, column: 9 },
               that: $expressions["start.check.stepIdle.that"],
             });
             await $runCheck($issues, $checks, {
               label: "session",
               code: "attempt.session",
               message: "the session reference does not exist",
-              source: { file: "src/domain/execution/attempt.mesh.mx", line: 56, column: 9 },
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 57, column: 9 },
               that: $expressions["start.check.session.that"],
             });
             await $runCheck($issues, $checks, {
               label: "machineRetired",
               code: "machine.retired",
               message: "the machine is retired; report the host by a new name",
-              source: { file: "src/domain/execution/attempt.mesh.mx", line: 61, column: 9 },
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 62, column: 9 },
               that: $expressions["start.check.machineRetired.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -311,7 +312,7 @@ export function bindAttempt(
               const $value = await $expressions["start.step.0.set.performer"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &performer (src/domain/execution/attempt.mesh.mx:68:22) produced no value, and the relationship performer is required",
+                  "set &performer (src/domain/execution/attempt.mesh.mx:69:22) produced no value, and the relationship performer is required",
                 );
               $changes.performerId = $record.performerId = $value;
             }
@@ -320,7 +321,7 @@ export function bindAttempt(
               const $value = await $expressions["start.step.0.set.task"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &task (src/domain/execution/attempt.mesh.mx:69:17) produced no value, and the relationship task is required",
+                  "set &task (src/domain/execution/attempt.mesh.mx:70:17) produced no value, and the relationship task is required",
                 );
               $changes.taskId = $record.taskId = $value;
             }
@@ -336,7 +337,7 @@ export function bindAttempt(
               const $value = await $expressions["start.step.0.set.number"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &number (src/domain/execution/attempt.mesh.mx:70:19) produced no value, and number is required",
+                  "set &number (src/domain/execution/attempt.mesh.mx:71:19) produced no value, and number is required",
                 );
               $changes.number = $record.number = $value;
             }
@@ -352,7 +353,7 @@ export function bindAttempt(
               const $value = await $expressions["start.step.0.set.delegator"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &delegator (src/domain/execution/attempt.mesh.mx:71:22) produced no value, and the relationship delegator is required",
+                  "set &delegator (src/domain/execution/attempt.mesh.mx:72:22) produced no value, and the relationship delegator is required",
                 );
               $changes.delegatorId = $record.delegatorId = $value;
             }
@@ -404,7 +405,7 @@ export function bindAttempt(
             {
               kind: "authorize-if",
               check:
-                "({ self, actor, context }) => isSystem(context) || self.performerId === actor.id",
+                "({ self, actor, context }) => Mesh.isSystem(context) || self.performerId === actor.id",
               record: true,
               run: $expressions["policy.attemptPerformer.authorize-if.0"],
             },
@@ -466,21 +467,21 @@ export function bindAttempt(
               label: "running",
               code: "attempt.running",
               message: "the attempt has ended",
-              source: { file: "src/domain/execution/attempt.mesh.mx", line: 81, column: 9 },
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 82, column: 9 },
               that: $expressions["finish.check.running.that"],
             });
             await $runCheck($issues, $checks, {
               label: "error",
               code: "attempt.error",
               message: "only a failed attempt reports an error",
-              source: { file: "src/domain/execution/attempt.mesh.mx", line: 86, column: 9 },
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 87, column: 9 },
               that: $expressions["finish.check.error.that"],
             });
             await $runCheck($issues, $checks, {
               label: "evidence",
               code: "attempt.evidence",
               message: "an evidence reference does not exist",
-              source: { file: "src/domain/execution/attempt.mesh.mx", line: 91, column: 9 },
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 92, column: 9 },
               that: $expressions["finish.check.evidence.that"],
               details: $expressions["finish.check.evidence.details"],
             });
@@ -488,7 +489,7 @@ export function bindAttempt(
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/execution/attempt.mesh.mx", line: 97, column: 9 },
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 98, column: 9 },
               that: $expressions["finish.check.versionMatches.that"],
               details: $expressions["finish.check.versionMatches.details"],
             });
@@ -498,7 +499,7 @@ export function bindAttempt(
               const $value = await $expressions["finish.step.0.set.state"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &state (src/domain/execution/attempt.mesh.mx:105:18) produced no value, and state is required",
+                  "set &state (src/domain/execution/attempt.mesh.mx:106:18) produced no value, and state is required",
                 );
               $changes.state = $record.state = $value;
             }
@@ -514,7 +515,7 @@ export function bindAttempt(
               const $value = await $expressions["finish.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/execution/attempt.mesh.mx:108:20) produced no value, and version is required",
+                  "set &version (src/domain/execution/attempt.mesh.mx:109:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -581,7 +582,7 @@ export function bindAttempt(
             {
               kind: "authorize-if",
               check:
-                "({ self, actor, context }) => isSystem(context) || self.performerId === actor.id",
+                "({ self, actor, context }) => Mesh.isSystem(context) || self.performerId === actor.id",
               record: true,
               run: $expressions["policy.attemptPerformer.authorize-if.0"],
             },
@@ -643,14 +644,14 @@ export function bindAttempt(
               label: "running",
               code: "attempt.running",
               message: "the attempt has ended",
-              source: { file: "src/domain/execution/attempt.mesh.mx", line: 119, column: 9 },
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 120, column: 9 },
               that: $expressions["reportStopped.check.running.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/execution/attempt.mesh.mx", line: 124, column: 9 },
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 125, column: 9 },
               that: $expressions["reportStopped.check.versionMatches.that"],
               details: $expressions["reportStopped.check.versionMatches.details"],
             });
@@ -669,7 +670,7 @@ export function bindAttempt(
               const $value = await $expressions["reportStopped.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/execution/attempt.mesh.mx:135:20) produced no value, and version is required",
+                  "set &version (src/domain/execution/attempt.mesh.mx:136:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -718,7 +719,7 @@ export function bindAttempt(
             {
               kind: "authorize-if",
               check:
-                "({ self, actor, context }) => isSystem(context) || self.performerId === actor.id",
+                "({ self, actor, context }) => Mesh.isSystem(context) || self.performerId === actor.id",
               record: true,
               run: $expressions["policy.attemptPerformer.authorize-if.0"],
             },
@@ -780,14 +781,14 @@ export function bindAttempt(
               label: "running",
               code: "attempt.running",
               message: "the attempt has ended",
-              source: { file: "src/domain/execution/attempt.mesh.mx", line: 141, column: 9 },
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 142, column: 9 },
               that: $expressions["abandon.check.running.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/execution/attempt.mesh.mx", line: 146, column: 9 },
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 147, column: 9 },
               that: $expressions["abandon.check.versionMatches.that"],
               details: $expressions["abandon.check.versionMatches.details"],
             });
@@ -806,7 +807,7 @@ export function bindAttempt(
               const $value = await $expressions["abandon.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/execution/attempt.mesh.mx:157:20) produced no value, and version is required",
+                  "set &version (src/domain/execution/attempt.mesh.mx:158:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -844,7 +845,7 @@ export function bindAttempt(
       input: $Omit<ReadAttemptInput, "load"> & AttemptLoadArg<L>,
       ...[context]: $ContextArgument
     ): $Promise<L extends unknown ? AttemptWith<AttemptLoadNames<L>>[] : never> {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `Mesh.privileged` read skips them
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
@@ -860,7 +861,7 @@ export function bindAttempt(
               checks: [
                 {
                   kind: "authorize-if",
-                  check: "({ actor, context }) => isSystem(context) || actor.role != null",
+                  check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
                   record: false,
                   run: $expressions["policy.membersRead.authorize-if.0"],
                 },
@@ -932,7 +933,7 @@ export { $entityValue as Attempt };
 /** The record type, under the entity value's name. */
 export type Attempt = $Record;
 
-/** What `privileged(Attempt)` returns (TXN-16): one function per read action, run with no policy. */
+/** What `Mesh.privileged(Attempt)` returns (TXN-16): one function per read action, run with no policy. */
 export interface $Privileged {
   read<const L extends readonly (keyof AttemptLoadable)[] = readonly []>(
     input: $Omit<ReadAttemptInput, "load"> & AttemptLoadArg<L>,
@@ -955,7 +956,7 @@ export interface $PrivilegedReadOnly {
 
 /**
  * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
- * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ * and so is what `Mesh.privileged` of it resolves with. The expressions files bind the entity value under this type.
  */
 export type $ReadOnly = $EntityValue<
   {
@@ -988,7 +989,7 @@ export type $ReadOnly = $EntityValue<
 /**
  * Load relationships and computed fields onto Attempt rows by name. A relationship is loaded by one more query for
  * all the rows; a computed field loads what its body reads first. The rows you pass are not changed: the result is new
- * rows of type AttemptTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so it takes no `policies`
+ * rows of type AttemptTxWith<"name" | ...>. It loads as `Mesh.privileged` does, running no policy, so it takes no `policies`
  * option: every related record the key names is there.
  */
 export async function loadAttemptFields<const N extends keyof AttemptLoadable>(

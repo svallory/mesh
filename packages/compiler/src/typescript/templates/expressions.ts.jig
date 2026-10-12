@@ -8,8 +8,8 @@ import {
   @if(usesExpr)
   expr as $,
   @end
-  @if(usesPrivileged)
-  privileged as $privileged,
+  @if(usesMesh)
+  meshIn as $mesh,
   @end
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,

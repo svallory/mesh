@@ -168,6 +168,8 @@ describe("members named like members of Object.prototype or of a function (ENT-1
     const app = await import(join(root, ".mesh/index.ts"));
     const { names } = await import(join(root, ".mesh/domain/index.ts"));
     const { sqlite, createSchema } = await import(Bun.resolveSync("@meshfw/data-sqlite", root));
+    // Mesh's functions, as the application imports them (PRJ-22).
+    const { Mesh } = await import(Bun.resolveSync("meshfw", root));
     const layer = sqlite({ file: ":memory:" });
     await createSchema(layer, app.tables);
     const anyone = { actor: { id: "someone" } };
@@ -247,8 +249,8 @@ describe("members named like members of Object.prototype or of a function (ENT-1
         for (const action of UPDATES) expect(await names.Calls[action]({ id: made.id }, anyone)).toEqual({ id: made.id, last: action });
         expect(await names.Calls.toString({}, anyone)).toEqual([{ id: made.id, last: "__2" }]);
         expect(await names.Calls.valueOf({ filter: { last: { eq: "__2" } } }, anyone)).toEqual([{ id: made.id, last: "__2" }]);
-        expect(await app.privileged(names.Calls).toString({})).toEqual([{ id: made.id, last: "__2" }]);
-        expect(await app.privileged(names.Calls).valueOf({})).toEqual([{ id: made.id, last: "__2" }]);
+        expect(await Mesh.privileged(names.Calls).toString({})).toEqual([{ id: made.id, last: "__2" }]);
+        expect(await Mesh.privileged(names.Calls).valueOf({})).toEqual([{ id: made.id, last: "__2" }]);
         expect(await names.Calls.__lookupSetter__({ id: made.id }, anyone)).toBeUndefined();
         expect(await names.Calls.read({}, anyone)).toEqual([]);
 

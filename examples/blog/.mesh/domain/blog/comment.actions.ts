@@ -40,7 +40,7 @@ import { loadPlan as $loadPlan } from "../../load";
 import { $Date, $Object, type $Omit, type $Pick, type $Promise } from "../../$globals";
 
 /**
- * The reads of this entity without their policies: what `privileged(Comment)` runs (TXN-16). The read actions
+ * The reads of this entity without their policies: what `Mesh.privileged(Comment)` runs (TXN-16). The read actions
  * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
 export function bindCommentReads(
@@ -57,7 +57,7 @@ export function bindCommentReads(
       cast?: $CastOutput<typeof readCommentInputSchema>,
     ): $Promise<L extends unknown ? CommentTxWith<CommentLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
+      // for its policies and hands it over as `cast`; a `Mesh.privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readCommentInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.comments, {
@@ -99,7 +99,7 @@ export function bindComment(
       input: $Omit<ReadCommentInput, "load"> & CommentLoadArg<L>,
       ...[context]: $ContextArgument
     ): $Promise<L extends unknown ? CommentWith<CommentLoadNames<L>>[] : never> {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `Mesh.privileged` read skips them
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
@@ -168,7 +168,7 @@ export { $entityValue as Comment };
 /** The record type, under the entity value's name. */
 export type Comment = $Record;
 
-/** What `privileged(Comment)` returns (TXN-16): one function per read action, run with no policy. */
+/** What `Mesh.privileged(Comment)` returns (TXN-16): one function per read action, run with no policy. */
 export interface $Privileged {
   read<const L extends readonly (keyof CommentLoadable)[] = readonly []>(
     input: $Omit<ReadCommentInput, "load"> & CommentLoadArg<L>,
@@ -191,7 +191,7 @@ export interface $PrivilegedReadOnly {
 
 /**
  * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
- * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ * and so is what `Mesh.privileged` of it resolves with. The expressions files bind the entity value under this type.
  */
 export type $ReadOnly = $EntityValue<
   {
@@ -211,7 +211,7 @@ export type $ReadOnly = $EntityValue<
 /**
  * Load relationships and computed fields onto Comment rows by name. A relationship is loaded by one more query for
  * all the rows; a computed field loads what its body reads first. The rows you pass are not changed: the result is new
- * rows of type CommentTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so it takes no `policies`
+ * rows of type CommentTxWith<"name" | ...>. It loads as `Mesh.privileged` does, running no policy, so it takes no `policies`
  * option: every related record the key names is there.
  */
 export async function loadCommentFields<const N extends keyof CommentLoadable>(

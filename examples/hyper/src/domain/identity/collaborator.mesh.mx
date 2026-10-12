@@ -1,5 +1,6 @@
 import { Membership } from "./membership.mesh.mx"
 import { memberOf, nameFreeOf, retireKeepsAnOwnerOf, roleIn } from "./identity.helpers"
+import { Mesh } from "meshfw"
 
 entity :Collaborator table="collaborators"
   attributes
@@ -78,10 +79,10 @@ entity :Collaborator table="collaborators"
           &version=() => &version + 1
   policies
     policy :membersRead types=[:read]
-      authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
+      authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null
     policy :isMember actions=[&register, &update, &retire]
-      authorize-if=async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)
+      authorize-if=async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)
     policy :ownerOnly actions=[&register, &retire]
-      authorize-if=async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner])
+      authorize-if=async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner])
     policy :collaboratorSelfOrOwner actions=[&update]
-      authorize-if=async ({ self, actor, context }) => isSystem(context) || self.id === actor.id || await roleIn(actor.id, [:owner])
+      authorize-if=async ({ self, actor, context }) => Mesh.isSystem(context) || self.id === actor.id || await roleIn(actor.id, [:owner])

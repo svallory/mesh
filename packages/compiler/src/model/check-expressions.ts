@@ -25,7 +25,7 @@ import { policyCovers } from "./policies.ts";
  */
 export interface CheckOptions {
   /** What printing a translated function as plain code needs, kept by the front end for demotion: the edits that turn it into TypeScript and the scope names it reads. */
-  demotionOf: (expression: Expression) => { edits: SourceEdit[]; roots: string[]; clock?: ("now" | "today")[]; isSystem?: true; helpers?: string[] };
+  demotionOf: (expression: Expression) => { edits: SourceEdit[]; roots: string[]; clock?: ("now" | "today")[]; isSystem?: true; helpers?: string[]; mesh?: string[] };
 }
 
 interface Ty {
@@ -203,7 +203,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
           if (owner.unfilled !== undefined)
             report("error", "MESH_EXPR_NULLABLE_ACCESS",
               `\`.${n.name}\` is read through \`&${owner.unfilled}\`, which is null on a create here: \`validate\` sees the new instance before the input is applied`, n.position,
-              `read the caller's value as \`input.${owner.unfilled}\` (a related record through \`privileged(${owner.entity?.name ?? "<Entity>"}).read\`), or write \`?.${n.name}\` for null on a create`);
+              `read the caller's value as \`input.${owner.unfilled}\` (a related record through \`Mesh.privileged(${owner.entity?.name ?? "<Entity>"}).read\`), or write \`?.${n.name}\` for null on a create`);
           else
             report("error", "MESH_EXPR_NULLABLE_ACCESS",
               `\`.${n.name}\` is read through a value that may be null`, n.position,
@@ -338,7 +338,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     if (diagnostics.some((d) => d.severity === "error" && d.position.file === position.file && d.position.offset >= e.position.offset && d.position.offset <= e.position.offset + e.source.length)) return;
     report("warning", "MESH_EXPR_PLAIN",
       `this expression runs as plain TypeScript with JavaScript's rules for null, not Mesh's, because of ${detail}`, position,
-      "rewrite it with comparisons, `&&`, `||`, `!`, `??`, `?.`, `now()`, `today()` and the list methods some, every, find and filter to have Mesh translate it");
+      "rewrite it with comparisons, `&&`, `||`, `!`, `??`, `?.`, `Mesh.now()`, `Mesh.today()` and the list methods some, every, find and filter to have Mesh translate it");
     void e;
   }
 

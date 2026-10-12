@@ -101,6 +101,12 @@ export const postDocument: ModelDocument = {
           from: "./invoice.helpers",
           position: at("import { formatMoney"),
         },
+        {
+          identifiers: ["Mesh"],
+          from: "meshfw",
+          mesh: true,
+          position: at("import { Mesh }"),
+        },
       ],
       attributes: [
         field("id", "uuid", { primaryKey: true }),
@@ -156,7 +162,7 @@ export const postDocument: ModelDocument = {
           name: "isOverdue",
           type: "boolean",
           body: expr(
-            "() {\n      return &status === :sent && &dueOn < today()\n    }",
+            "() {\n      return &status === :sent && &dueOn < Mesh.today()\n    }",
           ),
           position: at("boolean :isOverdue"),
         },

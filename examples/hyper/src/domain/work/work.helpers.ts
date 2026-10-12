@@ -1,7 +1,7 @@
 // Helpers for the work entity files and the work functions. The pure ones take values (rows already read, ids, a
-// time) and never the model; the ones whose names end in `Of` read through `privileged`, which runs the entity's
+// time) and never the model; the ones whose names end in `Of` read through `Mesh.privileged`, which runs the entity's
 // reads with no policy inside the running transaction, and hand what they read to a pure one. Each names the Hyper rule or change it follows.
-import { privileged } from "#mesh";
+import { Mesh } from "meshfw";
 import { Assignment, Claim, Completion, Dependency, EvidenceReference, Submission, Task } from "#mesh/domain/work";
 import { FrameworkError, NotFoundError } from "@meshfw/runtime";
 import { roleOf } from "../identity/identity.helpers";
@@ -177,15 +177,15 @@ export function reviewerOf(task: { readonly creatorId: string }, parent: { reado
 /** Reads the parent and its assignments, then applies the reviewer rule. */
 export async function reviewerFor(task: { readonly parentId: string | null; readonly creatorId: string }): Promise<Reviewer> {
   if (task.parentId === null) return reviewerOf(task, null);
-  const [parent] = await privileged(Task).read({ filter: { id: { eq: task.parentId } } });
+  const [parent] = await Mesh.privileged(Task).read({ filter: { id: { eq: task.parentId } } });
   if (!parent) return reviewerOf(task, null);
-  const assignments = await privileged(Assignment).read({ filter: { taskId: { eq: parent.id }, endedAt: { nil: true } } });
+  const assignments = await Mesh.privileged(Assignment).read({ filter: { taskId: { eq: parent.id }, endedAt: { nil: true } } });
   return reviewerOf(task, { creatorId: parent.creatorId, assignments });
 }
 
 /** Reads the Task by id, then applies the reviewer rule. */
 export async function reviewerOfTask(taskId: string): Promise<Reviewer> {
-  const [task] = await privileged(Task).read({ filter: { id: { eq: taskId } } });
+  const [task] = await Mesh.privileged(Task).read({ filter: { id: { eq: taskId } } });
   if (!task) throw new Error(`Task ${taskId} not found`);
   return reviewerFor(task);
 }
@@ -200,10 +200,10 @@ export function mayCompleteWithoutReview(actorId: string, reviewer: Reviewer, as
   return actorId === reviewer.collaboratorId || (current !== undefined && current.reviewWaived && current.assigneeId === actorId);
 }
 
-/** `task.review-required` read through `privileged`: the reviewer of `task` and its own current assignment. */
+/** `task.review-required` read through `Mesh.privileged`: the reviewer of `task` and its own current assignment. */
 export async function reviewNotRequiredOf(task: { readonly id: string; readonly parentId: string | null; readonly creatorId: string }, actorId: string): Promise<boolean> {
   const reviewer = await reviewerFor(task);
-  const assignments = await privileged(Assignment).read({ filter: { taskId: { eq: task.id }, endedAt: { nil: true } } });
+  const assignments = await Mesh.privileged(Assignment).read({ filter: { taskId: { eq: task.id }, endedAt: { nil: true } } });
   return mayCompleteWithoutReview(actorId, reviewer, assignments);
 }
 
@@ -231,8 +231,8 @@ export function ownPending<S extends SubmissionFacts>(submissions: readonly S[],
  * was forged or misrouted, which no input can cause, so it is a `FrameworkError` and the transaction rolls back.
  */
 export async function acceptedSubmissionOf(taskId: string, submissionId: string): Promise<string> {
-  const [submission] = await privileged(Submission).read({ filter: { id: { eq: submissionId } } });
-  const named = await privileged(Completion).read({ filter: { submissionId: { eq: submissionId } }, limit: 1 });
+  const [submission] = await Mesh.privileged(Submission).read({ filter: { id: { eq: submissionId } } });
+  const named = await Mesh.privileged(Completion).read({ filter: { submissionId: { eq: submissionId } }, limit: 1 });
   if (!submission || submission.taskId !== taskId || submission.state !== "accepted" || named.length > 0)
     throw new FrameworkError(`a review-accepted completion of Task ${taskId} names submission ${submissionId}, which is not an accepted submission of that Task that no completion names yet`);
   return submission.id;
@@ -261,11 +261,11 @@ export function blockReasons(prerequisites: readonly { readonly id: string; read
     : { kind: "dependency", taskId: p.id, message: `blocked: waiting for ${p.title}` });
 }
 
-/** The block reasons of the Task `taskId`, read through `privileged`, in the order the dependencies were added. */
+/** The block reasons of the Task `taskId`, read through `Mesh.privileged`, in the order the dependencies were added. */
 export async function blockReasonsOf(taskId: string): Promise<BlockReason[]> {
-  const dependencies = await privileged(Dependency).read({ filter: { dependentId: { eq: taskId } }, sort: ["createdAt", "id"] });
+  const dependencies = await Mesh.privileged(Dependency).read({ filter: { dependentId: { eq: taskId } }, sort: ["createdAt", "id"] });
   if (dependencies.length === 0) return [];
-  const prerequisites = await privileged(Task).read({ filter: { id: { in: dependencies.map((d) => d.prerequisiteId) } } });
+  const prerequisites = await Mesh.privileged(Task).read({ filter: { id: { in: dependencies.map((d) => d.prerequisiteId) } } });
   const byId = new Map(prerequisites.map((task) => [task.id, task]));
   return blockReasons(dependencies.map((d) => byId.get(d.prerequisiteId)!).filter((task) => task !== undefined));
 }
@@ -282,7 +282,7 @@ export async function missingEvidenceOf(evidence: unknown): Promise<string[]> {
   const ids = evidence.filter((id): id is string => typeof id === "string");
   if (ids.length !== evidence.length) return evidence.filter((id) => typeof id !== "string").map(text);
   if (ids.length === 0) return [];
-  const found = new Set((await privileged(EvidenceReference).read({ filter: { id: { in: ids } } })).map((row) => row.id));
+  const found = new Set((await Mesh.privileged(EvidenceReference).read({ filter: { id: { in: ids } } })).map((row) => row.id));
   return ids.filter((id) => !found.has(id));
 }
 
@@ -292,7 +292,7 @@ export async function noContainmentCycleOf(taskId: string, parentId: string | nu
   for (let id = parentId ?? null; id !== null && !seen.has(id);) {
     if (id === taskId) return false;
     seen.add(id);
-    const [task] = await privileged(Task).read({ filter: { id: { eq: id } } });
+    const [task] = await Mesh.privileged(Task).read({ filter: { id: { eq: id } } });
     id = task?.parentId ?? null;
   }
   return true;
@@ -309,26 +309,26 @@ export async function prerequisiteReachesOf(prerequisiteId: string, dependentId:
     if (id === dependentId) return true;
     if (seen.has(id)) continue;
     seen.add(id);
-    queue = [...queue, ...(await privileged(Dependency).read({ filter: { dependentId: { eq: id } } })).map((d) => d.prerequisiteId)];
+    queue = [...queue, ...(await Mesh.privileged(Dependency).read({ filter: { dependentId: { eq: id } } })).map((d) => d.prerequisiteId)];
   }
   return false;
 }
 
 /** `dependency.exists` (`tasks/dependency/rules.ex:10-14`): the ids among `ids` that name no Task. */
 export async function missingTasksOf(ids: readonly string[]): Promise<string[]> {
-  const found = new Set((await privileged(Task).read({ filter: { id: { in: [...ids] } } })).map((task) => task.id));
+  const found = new Set((await Mesh.privileged(Task).read({ filter: { id: { in: [...ids] } } })).map((task) => task.id));
   return ids.filter((id) => !found.has(id));
 }
 
 /** The version of the Task `taskId`, or null when there is none (`dependency.exists` reports that). */
 export async function taskVersionOf(taskId: string): Promise<number | null> {
-  const [task] = await privileged(Task).read({ filter: { id: { eq: taskId } }, limit: 1 });
+  const [task] = await Mesh.privileged(Task).read({ filter: { id: { eq: taskId } }, limit: 1 });
   return task ? task.version : null;
 }
 
 /** `dependency.duplicate` (`tasks/dependency/rules.ex:19-26`). */
 export async function dependencyExistsOf(dependentId: string, prerequisiteId: string): Promise<boolean> {
-  return (await privileged(Dependency).read({ filter: { dependentId: { eq: dependentId }, prerequisiteId: { eq: prerequisiteId } }, limit: 1 })).length > 0;
+  return (await Mesh.privileged(Dependency).read({ filter: { dependentId: { eq: dependentId }, prerequisiteId: { eq: prerequisiteId } }, limit: 1 })).length > 0;
 }
 
 /** `claim.task-ready`'s details (`tasks/claim/rules.ex:36-47`): the derived state and the block reasons behind it. */
@@ -337,13 +337,13 @@ export async function readinessOf(taskId: string): Promise<{ derivedState: Deriv
 }
 
 // The reads a create's check makes. In `validate`, a create's `self` is the new instance before the input is applied
-// (ACT-27), so `&task` is not the Task the caller names yet: the check reads that Task through `privileged`, by the id
+// (ACT-27), so `&task` is not the Task the caller names yet: the check reads that Task through `Mesh.privileged`, by the id
 // in `input` (POL-08). A privileged read takes `load`, so the helpers below read the Task with the computed fields and
 // rollups the checks need (`derivedState`, `maxFence`, `inReview`) instead of deriving them from rows.
 
 /** The Task `taskId`, or undefined when there is none. */
 export async function taskOf(taskId: string) {
-  return (await privileged(Task).read({ filter: { id: { eq: taskId } }, limit: 1 }))[0];
+  return (await Mesh.privileged(Task).read({ filter: { id: { eq: taskId } }, limit: 1 }))[0];
 }
 
 /** `task.open` on the Task a create names (`tasks/rules.ex:13-16`): it exists and is open. */
@@ -377,18 +377,18 @@ export function taskChanges(stored: { readonly title: string; readonly intent: s
 
 /** The claims on the Task `taskId`, every state. */
 export async function claimsOf(taskId: string) {
-  return privileged(Claim).read({ filter: { taskId: { eq: taskId } } });
+  return Mesh.privileged(Claim).read({ filter: { taskId: { eq: taskId } } });
 }
 
-/** `claim.current-fence`'s details for the Task `taskId`, read through `privileged` (`fenceDetails`). */
+/** `claim.current-fence`'s details for the Task `taskId`, read through `Mesh.privileged` (`fenceDetails`). */
 export async function fenceDetailsOf(taskId: string, fence: number | null | undefined, actorId: string, now: Date): Promise<{ currentFence: number | null; stale: boolean }> {
-  const [task] = await privileged(Task).read({ filter: { id: { eq: taskId } }, limit: 1, load: ["maxFence", "claims"] });
+  const [task] = await Mesh.privileged(Task).read({ filter: { id: { eq: taskId } }, limit: 1, load: ["maxFence", "claims"] });
   return fenceDetails(task?.maxFence ?? null, task?.claims ?? [], fence, actorId, now);
 }
 
 /** The Task's `inReview`: a submission of it is pending. */
 export async function inReviewOf(taskId: string): Promise<boolean> {
-  const [task] = await privileged(Task).read({ filter: { id: { eq: taskId } }, limit: 1, load: ["inReview"] });
+  const [task] = await Mesh.privileged(Task).read({ filter: { id: { eq: taskId } }, limit: 1, load: ["inReview"] });
   return task?.inReview ?? false;
 }
 
@@ -400,7 +400,7 @@ export type DerivedState = "ready" | "blocked" | "claimed" | "in-review" | "done
  * the Task does not exist.
  */
 export async function derivedStateOf(taskId: string): Promise<DerivedState | null> {
-  const [task] = await privileged(Task).read({ filter: { id: { eq: taskId } }, limit: 1, load: ["derivedState"] });
+  const [task] = await Mesh.privileged(Task).read({ filter: { id: { eq: taskId } }, limit: 1, load: ["derivedState"] });
   return task?.derivedState ?? null;
 }
 
@@ -415,7 +415,7 @@ export interface SubmittedVersions {
 
 /** The submission `submissionId`'s state and its Task's versions, for `review.accept` and `review.return`. */
 export async function submittedVersionsOf(submissionId: string): Promise<SubmittedVersions> {
-  const [submission] = await privileged(Submission).read({ filter: { id: { eq: submissionId } }, limit: 1 });
+  const [submission] = await Mesh.privileged(Submission).read({ filter: { id: { eq: submissionId } }, limit: 1 });
   if (!submission) return { state: null, submitted: null, current: null };
   return { state: submission.state, submitted: submission.taskVersion, current: await taskVersionOf(submission.taskId) };
 }
@@ -434,14 +434,14 @@ export async function reviewerRuleOf(taskId: string): Promise<ReviewerRule> {
   return (await reviewerOfTask(taskId)).rule;
 }
 
-// The work entities' policies (M8b). Each reads through `privileged` inside the transaction, so it sees the locked state, and
+// The work entities' policies (M8b). Each reads through `Mesh.privileged` inside the transaction, so it sees the locked state, and
 // each is the per-command rule of one of Hyper's checks; the role gate those checks start from (`Role.gate`,
 // `checks/role.ex:46-63`) is the policies `isMember` and `ownerOrMember` beside them. Unlike Hyper's checks, these deny
 // a guest or a collaborator with no membership too (fail closed); the spec accepts the extra failure (PROTOCOL.md:114).
 
-/** The Task's current assignment, read through `privileged`. */
+/** The Task's current assignment, read through `Mesh.privileged`. */
 async function currentAssignmentOf(taskId: string) {
-  return currentAssignment(await privileged(Assignment).read({ filter: { taskId: { eq: taskId }, endedAt: { nil: true } } }));
+  return currentAssignment(await Mesh.privileged(Assignment).read({ filter: { taskId: { eq: taskId }, endedAt: { nil: true } } }));
 }
 
 /**
@@ -512,7 +512,7 @@ export async function heldAClaimOf(taskId: string, actorId: string): Promise<boo
  * not exist passes, and the content checks report it.
  */
 export async function reviewsSubmissionOf(submissionId: string, actorId: string): Promise<boolean> {
-  const [submission] = await privileged(Submission).read({ filter: { id: { eq: submissionId } }, limit: 1 });
+  const [submission] = await Mesh.privileged(Submission).read({ filter: { id: { eq: submissionId } }, limit: 1 });
   if (!submission) return true;
   return (await reviewerOfTask(submission.taskId)).collaboratorId === actorId;
 }

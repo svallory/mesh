@@ -74,13 +74,13 @@ export type SubmissionLoadable = {
 export type SubmissionWith<N extends keyof SubmissionLoadable> = Submission &
   $Pick<SubmissionLoadable, N>;
 
-/** What a load through `privileged` attaches to a Submission: it runs no policy, so every related record the key names is there. */
+/** What a load through `Mesh.privileged` attaches to a Submission: it runs no policy, so every related record the key names is there. */
 export type SubmissionTxLoadable = {
   task: $work$Task$Record;
   submitter: $identity$Collaborator$Record;
 };
 
-/** A Submission loaded through `privileged`, with the relationships and computed fields named in N. */
+/** A Submission loaded through `Mesh.privileged`, with the relationships and computed fields named in N. */
 export type SubmissionTxWith<N extends keyof SubmissionLoadable> = Submission &
   $Pick<SubmissionTxLoadable, N>;
 

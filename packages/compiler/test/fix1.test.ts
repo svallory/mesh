@@ -65,7 +65,7 @@ test("fix10: import diagnostics distinguish duplicates, forms and relative paths
   // MX itself refuses an import that is not one ES import declaration (decision 193).
   expect(buildModel(project('import x = require("./list.mesh.mx")\n' + keyed)).diagnostics).toEqual([expect.objectContaining({ code: "MX_INVALID_STATEMENT", position: expect.objectContaining({ line: 1, column: 0 }) })]);
   const nonrelative = build('import { List } from "lists"\n' + keyed);
-  expect(nonrelative.diagnostics).toEqual([expect.objectContaining({ code: "MESH_UNKNOWN_IMPORT", message: "The import path must be relative (start with ./ or ../)" })]);
+  expect(nonrelative.diagnostics).toEqual([expect.objectContaining({ code: "MESH_UNKNOWN_IMPORT", message: "The import path must be relative (start with ./ or ../), or be \"meshfw\" for Mesh's own functions (`import { Mesh } from \"meshfw\"`)" })]);
 });
 
 test("fix11: existing but unconfigured entity imports are rejected", () => {

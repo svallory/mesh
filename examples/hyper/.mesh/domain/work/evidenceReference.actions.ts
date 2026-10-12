@@ -54,7 +54,7 @@ import { loadPlan as $loadPlan } from "../../load";
 import { $Date, $Object, type $Omit, type $Pick, type $Promise } from "../../$globals";
 
 /**
- * The reads of this entity without their policies: what `privileged(EvidenceReference)` runs (TXN-16). The read actions
+ * The reads of this entity without their policies: what `Mesh.privileged(EvidenceReference)` runs (TXN-16). The read actions
  * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
 export function bindEvidenceReferenceReads(
@@ -73,7 +73,7 @@ export function bindEvidenceReferenceReads(
       L extends unknown ? EvidenceReferenceTxWith<EvidenceReferenceLoadNames<L>>[] : never
     > {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
+      // for its policies and hands it over as `cast`; a `Mesh.privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readEvidenceReferenceInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.evidence_references, {
@@ -130,7 +130,8 @@ export function bindEvidenceReference(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -143,7 +144,7 @@ export function bindEvidenceReference(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -220,7 +221,7 @@ export function bindEvidenceReference(
               const $value = await $expressions["record.step.0.set.recordedBy"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &recordedBy (src/domain/work/evidence-reference.mesh.mx:23:23) produced no value, and the relationship recordedBy is required",
+                  "set &recordedBy (src/domain/work/evidence-reference.mesh.mx:24:23) produced no value, and the relationship recordedBy is required",
                 );
               $changes.recordedById = $record.recordedById = $value;
             }
@@ -250,7 +251,7 @@ export function bindEvidenceReference(
     ): $Promise<
       L extends unknown ? EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[] : never
     > {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `Mesh.privileged` read skips them
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
@@ -266,7 +267,7 @@ export function bindEvidenceReference(
               checks: [
                 {
                   kind: "authorize-if",
-                  check: "({ actor, context }) => isSystem(context) || actor.role != null",
+                  check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
                   record: false,
                   run: $expressions["policy.membersRead.authorize-if.0"],
                 },
@@ -332,7 +333,7 @@ export { $entityValue as EvidenceReference };
 /** The record type, under the entity value's name. */
 export type EvidenceReference = $Record;
 
-/** What `privileged(EvidenceReference)` returns (TXN-16): one function per read action, run with no policy. */
+/** What `Mesh.privileged(EvidenceReference)` returns (TXN-16): one function per read action, run with no policy. */
 export interface $Privileged {
   read<const L extends readonly (keyof EvidenceReferenceLoadable)[] = readonly []>(
     input: $Omit<ReadEvidenceReferenceInput, "load"> & EvidenceReferenceLoadArg<L>,
@@ -355,7 +356,7 @@ export interface $PrivilegedReadOnly {
 
 /**
  * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
- * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ * and so is what `Mesh.privileged` of it resolves with. The expressions files bind the entity value under this type.
  */
 export type $ReadOnly = $EntityValue<
   {
@@ -379,7 +380,7 @@ export type $ReadOnly = $EntityValue<
 /**
  * Load relationships and computed fields onto EvidenceReference rows by name. A relationship is loaded by one more query for
  * all the rows; a computed field loads what its body reads first. The rows you pass are not changed: the result is new
- * rows of type EvidenceReferenceTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so it takes no `policies`
+ * rows of type EvidenceReferenceTxWith<"name" | ...>. It loads as `Mesh.privileged` does, running no policy, so it takes no `policies`
  * option: every related record the key names is there.
  */
 export async function loadEvidenceReferenceFields<const N extends keyof EvidenceReferenceLoadable>(

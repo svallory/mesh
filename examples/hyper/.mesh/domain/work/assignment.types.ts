@@ -58,14 +58,14 @@ export type AssignmentLoadable = {
 export type AssignmentWith<N extends keyof AssignmentLoadable> = Assignment &
   $Pick<AssignmentLoadable, N>;
 
-/** What a load through `privileged` attaches to a Assignment: it runs no policy, so every related record the key names is there. */
+/** What a load through `Mesh.privileged` attaches to a Assignment: it runs no policy, so every related record the key names is there. */
 export type AssignmentTxLoadable = {
   task: $work$Task$Record;
   assignee: $identity$Collaborator$Record;
   delegator: $identity$Collaborator$Record;
 };
 
-/** A Assignment loaded through `privileged`, with the relationships and computed fields named in N. */
+/** A Assignment loaded through `Mesh.privileged`, with the relationships and computed fields named in N. */
 export type AssignmentTxWith<N extends keyof AssignmentLoadable> = Assignment &
   $Pick<AssignmentTxLoadable, N>;
 

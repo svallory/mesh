@@ -31,7 +31,7 @@ import { $expressions } from "./user.expressions";
 import { $Date, $Object, type $Promise } from "../../$globals";
 
 /**
- * The reads of this entity without their policies: what `privileged(User)` runs (TXN-16). The read actions
+ * The reads of this entity without their policies: what `Mesh.privileged(User)` runs (TXN-16). The read actions
  * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
 export function bindUserReads(
@@ -48,7 +48,7 @@ export function bindUserReads(
       cast?: $CastOutput<typeof readUserInputSchema>,
     ): $Promise<User[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
+      // for its policies and hands it over as `cast`; a `Mesh.privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readUserInputSchema, input));
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.users, {
@@ -136,7 +136,7 @@ export function bindUser(
     },
 
     async read(input: ReadUserInput, ...[context]: $ContextArgument): $Promise<User[]> {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `Mesh.privileged` read skips them
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
@@ -200,7 +200,7 @@ export { $entityValue as User };
 /** The record type, under the entity value's name. */
 export type User = $Record;
 
-/** What `privileged(User)` returns (TXN-16): one function per read action, run with no policy. */
+/** What `Mesh.privileged(User)` returns (TXN-16): one function per read action, run with no policy. */
 export interface $Privileged {
   read(input: ReadUserInput, context?: $ActionContext): $Promise<User[]>;
 }
@@ -212,7 +212,7 @@ export interface $PrivilegedReadOnly {
 
 /**
  * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
- * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ * and so is what `Mesh.privileged` of it resolves with. The expressions files bind the entity value under this type.
  */
 export type $ReadOnly = $EntityValue<
   {

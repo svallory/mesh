@@ -1,5 +1,6 @@
 import { Collaborator } from "./collaborator.mesh.mx"
 import { collaboratorActiveOf, keepsAnOwnerOf, memberOf, noActiveMembershipOf, roleIn } from "./identity.helpers"
+import { Mesh } from "meshfw"
 
 entity :Membership table="memberships"
   attributes
@@ -31,7 +32,7 @@ entity :Membership table="memberships"
         ]
       do
         set
-          &grantedAt=() => now()
+          &grantedAt=() => Mesh.now()
           &grantedBy=({ actor }) => actor.id
     update :changeRole
       input
@@ -86,13 +87,13 @@ entity :Membership table="memberships"
       do
         set
           &state=:revoked
-          &revokedAt=() => now()
+          &revokedAt=() => Mesh.now()
           &revokedBy=({ actor }) => actor.id
           &version=() => &version + 1
   policies
     policy :membersRead types=[:read]
-      authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
+      authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null
     policy :isMember actions=[&grant, &changeRole, &revoke]
-      authorize-if=async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)
+      authorize-if=async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)
     policy :ownerOnly actions=[&grant, &changeRole, &revoke]
-      authorize-if=async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner])
+      authorize-if=async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner])

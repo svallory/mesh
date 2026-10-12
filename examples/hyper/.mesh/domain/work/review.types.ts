@@ -58,13 +58,13 @@ export type ReviewLoadable = {
 /** A Review with the relationships and computed fields named in N loaded. */
 export type ReviewWith<N extends keyof ReviewLoadable> = Review & $Pick<ReviewLoadable, N>;
 
-/** What a load through `privileged` attaches to a Review: it runs no policy, so every related record the key names is there. */
+/** What a load through `Mesh.privileged` attaches to a Review: it runs no policy, so every related record the key names is there. */
 export type ReviewTxLoadable = {
   submission: $work$Submission$Record;
   reviewer: $identity$Collaborator$Record;
 };
 
-/** A Review loaded through `privileged`, with the relationships and computed fields named in N. */
+/** A Review loaded through `Mesh.privileged`, with the relationships and computed fields named in N. */
 export type ReviewTxWith<N extends keyof ReviewLoadable> = Review & $Pick<ReviewTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */

@@ -3,7 +3,7 @@
 
 import {
   expr as $,
-  privileged as $privileged,
+  meshIn as $mesh,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
   type SharedInput as $SharedInput,
@@ -93,29 +93,29 @@ export type $work$Task$NewScope<I = unknown> = $Omit<$work$Task$CheckScope<I>, "
 };
 
 export const $expressions = {
-  // computed childrenSettled, translated (src/domain/work/task.mesh.mx:33:29)
+  // computed childrenSettled, translated (src/domain/work/task.mesh.mx:34:29)
   "computed.childrenSettled": ($s: $work$Task$Scope<unknown>) =>
     $.every($s.self.children, (l$c: any) => $.ne(l$c.state, "open")),
-  // computed claimed, translated (src/domain/work/task.mesh.mx:34:21)
+  // computed claimed, translated (src/domain/work/task.mesh.mx:35:21)
   "computed.claimed": ($s: $work$Task$Scope<unknown>) =>
     $.some($s.self.claims, (l$c: any) =>
       $.and($.eq(l$c.state, "active"), $.gt(l$c.expiresAt, $.now($s))),
     ),
-  // computed lapsedClaim, translated (src/domain/work/task.mesh.mx:35:25)
+  // computed lapsedClaim, translated (src/domain/work/task.mesh.mx:36:25)
   "computed.lapsedClaim": ($s: $work$Task$Scope<unknown>) =>
     $.some($s.self.claims, (l$c: any) =>
       $.and($.eq(l$c.state, "active"), $.lte(l$c.expiresAt, $.now($s))),
     ),
-  // computed inReview, translated (src/domain/work/task.mesh.mx:36:22)
+  // computed inReview, translated (src/domain/work/task.mesh.mx:37:22)
   "computed.inReview": ($s: $work$Task$Scope<unknown>) =>
     $.some($s.self.submissions, (l$s: any) => $.eq(l$s.state, "pending")),
-  // computed assigned, translated (src/domain/work/task.mesh.mx:37:22)
+  // computed assigned, translated (src/domain/work/task.mesh.mx:38:22)
   "computed.assigned": ($s: $work$Task$Scope<unknown>) =>
     $.some($s.self.assignments, (l$a: any) => $.isNull(l$a.endedAt)),
-  // computed blocked, translated (src/domain/work/task.mesh.mx:38:21)
+  // computed blocked, translated (src/domain/work/task.mesh.mx:39:21)
   "computed.blocked": ($s: $work$Task$Scope<unknown>) =>
     $.some($s.self.dependencies, (l$d: any) => $.ne(l$d.prerequisite?.state, "done")),
-  // computed derivedState, translated (src/domain/work/task.mesh.mx:40:96)
+  // computed derivedState, translated (src/domain/work/task.mesh.mx:41:96)
   "computed.derivedState": ($s: $work$Task$Scope<unknown>) =>
     $.cond(
       $.eq($s.self.state, "done"),
@@ -130,23 +130,23 @@ export const $expressions = {
         ),
       ),
     ),
-  // check :parentOpen that, plain (awaits-helper) (src/domain/work/task.mesh.mx:50:16)
+  // check :parentOpen that, plain (awaits-helper) (src/domain/work/task.mesh.mx:51:16)
   "create.check.parentOpen.that": ($s: $work$Task$NewScope<$work$Task$CreateTaskInput>) => {
     return (async ({ input }) => await parentOpenOf(input.parent ?? null))($s);
   },
-  // set &creator, translated (src/domain/work/task.mesh.mx:56:20)
+  // set &creator, translated (src/domain/work/task.mesh.mx:57:20)
   "create.step.0.set.creator": ($s: $work$Task$Scope<$work$Task$CreateTaskInput>) => $s.actor?.id,
-  // check :taskOpen that, translated (src/domain/work/task.mesh.mx:64:16)
+  // check :taskOpen that, translated (src/domain/work/task.mesh.mx:65:16)
   "update.check.taskOpen.that": ($s: $work$Task$CheckScope<$work$Task$UpdateTaskInput>) =>
     $.eq($s.self.state, "open"),
-  // check :taskChanges that, plain (reads-record-in-helper) (src/domain/work/task.mesh.mx:69:16)
+  // check :taskChanges that, plain (reads-record-in-helper) (src/domain/work/task.mesh.mx:70:16)
   "update.check.taskChanges.that": ($s: $work$Task$CheckScope<$work$Task$UpdateTaskInput>) => {
     return (({ self, input }) => taskChanges(self, input))($s);
   },
-  // check :versionMatches that, translated (src/domain/work/task.mesh.mx:74:16)
+  // check :versionMatches that, translated (src/domain/work/task.mesh.mx:75:16)
   "update.check.versionMatches.that": ($s: $work$Task$CheckScope<$work$Task$UpdateTaskInput>) =>
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:77:19)
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:78:19)
   "update.check.versionMatches.details": (
     $s: $work$Task$CheckScope<$work$Task$UpdateTaskInput>,
   ) => {
@@ -156,17 +156,17 @@ export const $expressions = {
       actualVersion: self.version,
     }))($s);
   },
-  // set &version, translated (src/domain/work/task.mesh.mx:81:20)
+  // set &version, translated (src/domain/work/task.mesh.mx:82:20)
   "update.step.0.set.version": ($s: $work$Task$StoredScope<$work$Task$UpdateTaskInput>) =>
     $.add($s.self.version, 1),
-  // check :taskOpen that, translated (src/domain/work/task.mesh.mx:88:16)
+  // check :taskOpen that, translated (src/domain/work/task.mesh.mx:89:16)
   "setPriority.check.taskOpen.that": ($s: $work$Task$CheckScope<$work$Task$SetPriorityTaskInput>) =>
     $.eq($s.self.state, "open"),
-  // check :versionMatches that, translated (src/domain/work/task.mesh.mx:93:16)
+  // check :versionMatches that, translated (src/domain/work/task.mesh.mx:94:16)
   "setPriority.check.versionMatches.that": (
     $s: $work$Task$CheckScope<$work$Task$SetPriorityTaskInput>,
   ) => $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:96:19)
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:97:19)
   "setPriority.check.versionMatches.details": (
     $s: $work$Task$CheckScope<$work$Task$SetPriorityTaskInput>,
   ) => {
@@ -176,28 +176,28 @@ export const $expressions = {
       actualVersion: self.version,
     }))($s);
   },
-  // set &version, translated (src/domain/work/task.mesh.mx:100:20)
+  // set &version, translated (src/domain/work/task.mesh.mx:101:20)
   "setPriority.step.0.set.version": ($s: $work$Task$StoredScope<$work$Task$SetPriorityTaskInput>) =>
     $.add($s.self.version, 1),
-  // check :taskOpen that, translated (src/domain/work/task.mesh.mx:107:16)
+  // check :taskOpen that, translated (src/domain/work/task.mesh.mx:108:16)
   "move.check.taskOpen.that": ($s: $work$Task$CheckScope<$work$Task$MoveTaskInput>) =>
     $.eq($s.self.state, "open"),
-  // check :parentOpen that, plain (awaits-helper) (src/domain/work/task.mesh.mx:112:16)
+  // check :parentOpen that, plain (awaits-helper) (src/domain/work/task.mesh.mx:113:16)
   "move.check.parentOpen.that": ($s: $work$Task$CheckScope<$work$Task$MoveTaskInput>) => {
     return (async ({ self, input }) => await parentOpenOf(movedParent(self, input.parent)))($s);
   },
-  // check :noCycle that, plain (awaits-helper) (src/domain/work/task.mesh.mx:117:16)
+  // check :noCycle that, plain (awaits-helper) (src/domain/work/task.mesh.mx:118:16)
   "move.check.noCycle.that": ($s: $work$Task$CheckScope<$work$Task$MoveTaskInput>) => {
     const { self } = $s;
     return (async ({ input }) => await noContainmentCycleOf(self.id, input.parent))($s);
   },
-  // check :noActiveClaim that, translated (src/domain/work/task.mesh.mx:122:16)
+  // check :noActiveClaim that, translated (src/domain/work/task.mesh.mx:123:16)
   "move.check.noActiveClaim.that": ($s: $work$Task$CheckScope<$work$Task$MoveTaskInput>) =>
     $.not($s.self.claimed),
-  // check :versionMatches that, translated (src/domain/work/task.mesh.mx:127:16)
+  // check :versionMatches that, translated (src/domain/work/task.mesh.mx:128:16)
   "move.check.versionMatches.that": ($s: $work$Task$CheckScope<$work$Task$MoveTaskInput>) =>
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:130:19)
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:131:19)
   "move.check.versionMatches.details": ($s: $work$Task$CheckScope<$work$Task$MoveTaskInput>) => {
     const { self } = $s;
     return (({ input }) => ({
@@ -205,16 +205,16 @@ export const $expressions = {
       actualVersion: self.version,
     }))($s);
   },
-  // set &version, translated (src/domain/work/task.mesh.mx:134:20)
+  // set &version, translated (src/domain/work/task.mesh.mx:135:20)
   "move.step.0.set.version": ($s: $work$Task$StoredScope<$work$Task$MoveTaskInput>) =>
     $.add($s.self.version, 1),
-  // check :taskSettled that, translated (src/domain/work/task.mesh.mx:141:16)
+  // check :taskSettled that, translated (src/domain/work/task.mesh.mx:142:16)
   "reopen.check.taskSettled.that": ($s: $work$Task$CheckScope<$work$Task$ReopenTaskInput>) =>
     $.ne($s.self.state, "open"),
-  // check :versionMatches that, translated (src/domain/work/task.mesh.mx:146:16)
+  // check :versionMatches that, translated (src/domain/work/task.mesh.mx:147:16)
   "reopen.check.versionMatches.that": ($s: $work$Task$CheckScope<$work$Task$ReopenTaskInput>) =>
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:149:19)
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:150:19)
   "reopen.check.versionMatches.details": (
     $s: $work$Task$CheckScope<$work$Task$ReopenTaskInput>,
   ) => {
@@ -224,22 +224,22 @@ export const $expressions = {
       actualVersion: self.version,
     }))($s);
   },
-  // set &reopenedAt, translated (src/domain/work/task.mesh.mx:154:23)
+  // set &reopenedAt, translated (src/domain/work/task.mesh.mx:155:23)
   "reopen.step.0.set.reopenedAt": ($s: $work$Task$StoredScope<$work$Task$ReopenTaskInput>) =>
     $.now($s),
-  // set &version, translated (src/domain/work/task.mesh.mx:155:20)
+  // set &version, translated (src/domain/work/task.mesh.mx:156:20)
   "reopen.step.0.set.version": ($s: $work$Task$StoredScope<$work$Task$ReopenTaskInput>) =>
     $.add($s.self.version, 1),
-  // set &version, translated (src/domain/work/task.mesh.mx:159:20)
+  // set &version, translated (src/domain/work/task.mesh.mx:160:20)
   "touch.step.0.set.version": ($s: $work$Task$StoredScope<$work$Task$TouchTaskInput>) =>
     $.add($s.self.version, 1),
-  // check :taskOpen that, translated (src/domain/work/task.mesh.mx:166:16)
+  // check :taskOpen that, translated (src/domain/work/task.mesh.mx:167:16)
   "cancel.check.taskOpen.that": ($s: $work$Task$CheckScope<$work$Task$CancelTaskInput>) =>
     $.eq($s.self.state, "open"),
-  // check :versionMatches that, translated (src/domain/work/task.mesh.mx:171:16)
+  // check :versionMatches that, translated (src/domain/work/task.mesh.mx:172:16)
   "cancel.check.versionMatches.that": ($s: $work$Task$CheckScope<$work$Task$CancelTaskInput>) =>
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:174:19)
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:175:19)
   "cancel.check.versionMatches.details": (
     $s: $work$Task$CheckScope<$work$Task$CancelTaskInput>,
   ) => {
@@ -249,23 +249,23 @@ export const $expressions = {
       actualVersion: self.version,
     }))($s);
   },
-  // set &version, translated (src/domain/work/task.mesh.mx:179:20)
+  // set &version, translated (src/domain/work/task.mesh.mx:180:20)
   "cancel.step.0.set.version": ($s: $work$Task$StoredScope<$work$Task$CancelTaskInput>) =>
     $.add($s.self.version, 1),
-  // run, plain (run-step) (src/domain/work/task.mesh.mx:180:28)
+  // run, plain (run-step) (src/domain/work/task.mesh.mx:181:28)
   "cancel.step.1.run": ($s: $work$Task$StoredScope<$work$Task$CancelTaskInput>) => {
-    const privileged = $privileged;
+    const Mesh = $mesh($s);
     const Claim: $work$Claim$ReadOnly = $work$Claim$value;
     const Submission: $work$Submission$ReadOnly = $work$Submission$value;
     return (async function ({ self, context }) {
       for (const claim of openClaims(
-        await privileged(Claim).read({ filter: { taskId: { eq: self.id } } }),
+        await Mesh.privileged(Claim).read({ filter: { taskId: { eq: self.id } } }),
       ))
         await Claim.end(
           { id: claim.id, outcome: "revoked", reason: "task canceled" },
           { ...context, system: true },
         );
-      for (const submission of await privileged(Submission).read({
+      for (const submission of await Mesh.privileged(Submission).read({
         filter: { taskId: { eq: self.id }, state: { eq: "pending" } },
       }))
         await Submission.settle(
@@ -274,33 +274,33 @@ export const $expressions = {
         );
     })($s);
   },
-  // check :taskOpen that, translated (src/domain/work/task.mesh.mx:194:16)
+  // check :taskOpen that, translated (src/domain/work/task.mesh.mx:195:16)
   "complete.check.taskOpen.that": ($s: $work$Task$CheckScope<$work$Task$CompleteTaskInput>) =>
     $.eq($s.self.state, "open"),
-  // check :childrenSettled that, translated (src/domain/work/task.mesh.mx:199:16)
+  // check :childrenSettled that, translated (src/domain/work/task.mesh.mx:200:16)
   "complete.check.childrenSettled.that": (
     $s: $work$Task$CheckScope<$work$Task$CompleteTaskInput>,
   ) => $s.self.childrenSettled,
-  // check :childrenSettled details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:202:19)
+  // check :childrenSettled details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:203:19)
   "complete.check.childrenSettled.details": (
     $s: $work$Task$CheckScope<$work$Task$CompleteTaskInput>,
   ) => {
     const { self } = $s;
     return (() => ({ openChildren: openChildren(self.children) }))();
   },
-  // check :reviewRequired that, plain (awaits-helper) (src/domain/work/task.mesh.mx:205:16)
+  // check :reviewRequired that, plain (awaits-helper) (src/domain/work/task.mesh.mx:206:16)
   "complete.check.reviewRequired.that": (
     $s: $work$Task$CheckScope<$work$Task$CompleteTaskInput>,
   ) => {
     return (async ({ self, actor }) => await reviewNotRequiredOf(self, actor.id))($s);
   },
-  // check :reviewRequired details, plain (awaits-helper) (src/domain/work/task.mesh.mx:208:19)
+  // check :reviewRequired details, plain (awaits-helper) (src/domain/work/task.mesh.mx:209:19)
   "complete.check.reviewRequired.details": (
     $s: $work$Task$CheckScope<$work$Task$CompleteTaskInput>,
   ) => {
     return (async ({ self }) => ({ reviewerId: (await reviewerFor(self)).collaboratorId }))($s);
   },
-  // check :noForeignSubmission that, translated (src/domain/work/task.mesh.mx:211:16)
+  // check :noForeignSubmission that, translated (src/domain/work/task.mesh.mx:212:16)
   "complete.check.noForeignSubmission.that": (
     $s: $work$Task$CheckScope<$work$Task$CompleteTaskInput>,
   ) =>
@@ -309,27 +309,29 @@ export const $expressions = {
         $.and($.eq(l$s.state, "pending"), $.ne(l$s.submitterId, $s.actor?.id)),
       ),
     ),
-  // check :currentFence that, plain (reads-record-in-helper) (src/domain/work/task.mesh.mx:216:16)
+  // check :currentFence that, plain (reads-record-in-helper) (src/domain/work/task.mesh.mx:217:16)
   "complete.check.currentFence.that": ($s: $work$Task$CheckScope<$work$Task$CompleteTaskInput>) => {
     const { self } = $s;
-    const now = () => $.now($s);
-    return (({ input, actor }) => fenceIsCurrent(self.claims, input.fence, actor.id, now()))($s);
+    const Mesh = $mesh($s);
+    return (({ input, actor }) => fenceIsCurrent(self.claims, input.fence, actor.id, Mesh.now()))(
+      $s,
+    );
   },
-  // check :currentFence details, plain (reads-record-in-helper) (src/domain/work/task.mesh.mx:219:19)
+  // check :currentFence details, plain (reads-record-in-helper) (src/domain/work/task.mesh.mx:220:19)
   "complete.check.currentFence.details": (
     $s: $work$Task$CheckScope<$work$Task$CompleteTaskInput>,
   ) => {
     const { self } = $s;
-    const now = () => $.now($s);
+    const Mesh = $mesh($s);
     return (({ input, actor }) =>
-      fenceDetails(self.maxFence, self.claims, input.fence, actor.id, now()))($s);
+      fenceDetails(self.maxFence, self.claims, input.fence, actor.id, Mesh.now()))($s);
   },
-  // check :claimNotInvalidated that, plain (reads-record-in-helper) (src/domain/work/task.mesh.mx:222:16)
+  // check :claimNotInvalidated that, plain (reads-record-in-helper) (src/domain/work/task.mesh.mx:223:16)
   "complete.check.claimNotInvalidated.that": (
     $s: $work$Task$CheckScope<$work$Task$CompleteTaskInput>,
   ) => {
     const { self } = $s;
-    const now = () => $.now($s);
+    const Mesh = $mesh($s);
     return (({ input, actor, context }) =>
       claimNotInvalidated(
         self.claims,
@@ -337,21 +339,27 @@ export const $expressions = {
         actor.id,
         self.completions,
         self.reopenedAt,
-        now(),
+        Mesh.now(),
         context.completion,
       ))($s);
   },
-  // check :claimNotInvalidated details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:225:19)
+  // check :claimNotInvalidated details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:226:19)
   "complete.check.claimNotInvalidated.details": (
     $s: $work$Task$CheckScope<$work$Task$CompleteTaskInput>,
   ) => {
     const { self } = $s;
-    const now = () => $.now($s);
+    const Mesh = $mesh($s);
     return (({ actor }) => ({
-      fences: invalidatedFences(self.claims, actor.id, self.completions, self.reopenedAt, now()),
+      fences: invalidatedFences(
+        self.claims,
+        actor.id,
+        self.completions,
+        self.reopenedAt,
+        Mesh.now(),
+      ),
     }))($s);
   },
-  // check :ownSubmissionPending that, translated (src/domain/work/task.mesh.mx:228:16)
+  // check :ownSubmissionPending that, translated (src/domain/work/task.mesh.mx:229:16)
   "complete.check.ownSubmissionPending.that": (
     $s: $work$Task$CheckScope<$work$Task$CompleteTaskInput>,
   ) =>
@@ -363,22 +371,22 @@ export const $expressions = {
         ),
       ),
     ),
-  // check :evidenceExists that, plain (awaits-helper) (src/domain/work/task.mesh.mx:233:16)
+  // check :evidenceExists that, plain (awaits-helper) (src/domain/work/task.mesh.mx:234:16)
   "complete.check.evidenceExists.that": (
     $s: $work$Task$CheckScope<$work$Task$CompleteTaskInput>,
   ) => {
     return (async ({ input }) => (await missingEvidenceOf(input.evidence ?? [])).length === 0)($s);
   },
-  // check :evidenceExists details, plain (awaits-helper) (src/domain/work/task.mesh.mx:236:19)
+  // check :evidenceExists details, plain (awaits-helper) (src/domain/work/task.mesh.mx:237:19)
   "complete.check.evidenceExists.details": (
     $s: $work$Task$CheckScope<$work$Task$CompleteTaskInput>,
   ) => {
     return (async ({ input }) => ({ missing: await missingEvidenceOf(input.evidence ?? []) }))($s);
   },
-  // check :versionMatches that, translated (src/domain/work/task.mesh.mx:239:16)
+  // check :versionMatches that, translated (src/domain/work/task.mesh.mx:240:16)
   "complete.check.versionMatches.that": ($s: $work$Task$CheckScope<$work$Task$CompleteTaskInput>) =>
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:242:19)
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:243:19)
   "complete.check.versionMatches.details": (
     $s: $work$Task$CheckScope<$work$Task$CompleteTaskInput>,
   ) => {
@@ -388,13 +396,12 @@ export const $expressions = {
       actualVersion: self.version,
     }))($s);
   },
-  // set &version, translated (src/domain/work/task.mesh.mx:247:20)
+  // set &version, translated (src/domain/work/task.mesh.mx:248:20)
   "complete.step.0.set.version": ($s: $work$Task$StoredScope<$work$Task$CompleteTaskInput>) =>
     $.add($s.self.version, 1),
-  // run, plain (run-step) (src/domain/work/task.mesh.mx:248:28)
+  // run, plain (run-step) (src/domain/work/task.mesh.mx:249:28)
   "complete.step.1.run": ($s: $work$Task$StoredScope<$work$Task$CompleteTaskInput>) => {
-    const now = () => $.now($s);
-    const privileged = $privileged;
+    const Mesh = $mesh($s);
     const Claim: $work$Claim$ReadOnly = $work$Claim$value;
     const Completion: $work$Completion$ReadOnly = $work$Completion$value;
     const Submission: $work$Submission$ReadOnly = $work$Submission$value;
@@ -419,7 +426,7 @@ export const $expressions = {
           submission = recorded.id;
         } else {
           const own = ownPending(
-            await privileged(Submission).read({
+            await Mesh.privileged(Submission).read({
               filter: { taskId: { eq: self.id }, state: { eq: "pending" } },
             }),
             actor.id,
@@ -435,8 +442,8 @@ export const $expressions = {
       }
       await Completion.record({ task: self.id, submission, rule }, { ...context, system: true });
       const live = claimToRelease(
-        await privileged(Claim).read({ filter: { taskId: { eq: self.id } } }),
-        now(),
+        await Mesh.privileged(Claim).read({ filter: { taskId: { eq: self.id } } }),
+        Mesh.now(),
       );
       if (live)
         await Claim.end(
@@ -445,18 +452,18 @@ export const $expressions = {
         );
     })($s);
   },
-  // check :taskOpen that, translated (src/domain/work/task.mesh.mx:276:16)
+  // check :taskOpen that, translated (src/domain/work/task.mesh.mx:277:16)
   "assign.check.taskOpen.that": ($s: $work$Task$CheckScope<$work$Task$AssignTaskInput>) =>
     $.eq($s.self.state, "open"),
-  // check :assigneeActive that, plain (awaits-helper) (src/domain/work/task.mesh.mx:281:16)
+  // check :assigneeActive that, plain (awaits-helper) (src/domain/work/task.mesh.mx:282:16)
   "assign.check.assigneeActive.that": ($s: $work$Task$CheckScope<$work$Task$AssignTaskInput>) => {
     return (async ({ input }) => await collaboratorActiveOf(input.assignee))($s);
   },
-  // check :assigneeRole that, plain (awaits-helper) (src/domain/work/task.mesh.mx:286:16)
+  // check :assigneeRole that, plain (awaits-helper) (src/domain/work/task.mesh.mx:287:16)
   "assign.check.assigneeRole.that": ($s: $work$Task$CheckScope<$work$Task$AssignTaskInput>) => {
     return (async ({ input }) => await assignableOf(input.assignee))($s);
   },
-  // check :assignmentChanges that, plain (reads-record-in-helper) (src/domain/work/task.mesh.mx:291:16)
+  // check :assignmentChanges that, plain (reads-record-in-helper) (src/domain/work/task.mesh.mx:292:16)
   "assign.check.assignmentChanges.that": (
     $s: $work$Task$CheckScope<$work$Task$AssignTaskInput>,
   ) => {
@@ -464,10 +471,10 @@ export const $expressions = {
     return (({ input }) =>
       assignmentChanges(self.assignments, input.assignee, input.waiveReview ?? false))($s);
   },
-  // check :versionMatches that, translated (src/domain/work/task.mesh.mx:296:16)
+  // check :versionMatches that, translated (src/domain/work/task.mesh.mx:297:16)
   "assign.check.versionMatches.that": ($s: $work$Task$CheckScope<$work$Task$AssignTaskInput>) =>
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:299:19)
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:300:19)
   "assign.check.versionMatches.details": (
     $s: $work$Task$CheckScope<$work$Task$AssignTaskInput>,
   ) => {
@@ -477,24 +484,24 @@ export const $expressions = {
       actualVersion: self.version,
     }))($s);
   },
-  // set &version, translated (src/domain/work/task.mesh.mx:303:20)
+  // set &version, translated (src/domain/work/task.mesh.mx:304:20)
   "assign.step.0.set.version": ($s: $work$Task$StoredScope<$work$Task$AssignTaskInput>) =>
     $.add($s.self.version, 1),
-  // run, plain (run-step) (src/domain/work/task.mesh.mx:304:28)
+  // run, plain (run-step) (src/domain/work/task.mesh.mx:305:28)
   "assign.step.1.run": ($s: $work$Task$StoredScope<$work$Task$AssignTaskInput>) => {
-    const privileged = $privileged;
+    const Mesh = $mesh($s);
     const Assignment: $work$Assignment$ReadOnly = $work$Assignment$value;
     const Claim: $work$Claim$ReadOnly = $work$Claim$value;
     return (async function ({ self, input, context }) {
       const current = currentAssignment(
-        await privileged(Assignment).read({
+        await Mesh.privileged(Assignment).read({
           filter: { taskId: { eq: self.id }, endedAt: { nil: true } },
         }),
       );
       if (current) {
         if (current.assigneeId !== input.assignee)
           for (const claim of openClaims(
-            await privileged(Claim).read({ filter: { taskId: { eq: self.id } } }),
+            await Mesh.privileged(Claim).read({ filter: { taskId: { eq: self.id } } }),
             current.assigneeId,
           ))
             await Claim.end(
@@ -512,14 +519,14 @@ export const $expressions = {
       );
     })($s);
   },
-  // check :assignmentCurrent that, translated (src/domain/work/task.mesh.mx:320:16)
+  // check :assignmentCurrent that, translated (src/domain/work/task.mesh.mx:321:16)
   "unassign.check.assignmentCurrent.that": (
     $s: $work$Task$CheckScope<$work$Task$UnassignTaskInput>,
   ) => $s.self.assigned,
-  // check :versionMatches that, translated (src/domain/work/task.mesh.mx:325:16)
+  // check :versionMatches that, translated (src/domain/work/task.mesh.mx:326:16)
   "unassign.check.versionMatches.that": ($s: $work$Task$CheckScope<$work$Task$UnassignTaskInput>) =>
     $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:328:19)
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:329:19)
   "unassign.check.versionMatches.details": (
     $s: $work$Task$CheckScope<$work$Task$UnassignTaskInput>,
   ) => {
@@ -529,23 +536,23 @@ export const $expressions = {
       actualVersion: self.version,
     }))($s);
   },
-  // set &version, translated (src/domain/work/task.mesh.mx:332:20)
+  // set &version, translated (src/domain/work/task.mesh.mx:333:20)
   "unassign.step.0.set.version": ($s: $work$Task$StoredScope<$work$Task$UnassignTaskInput>) =>
     $.add($s.self.version, 1),
-  // run, plain (run-step) (src/domain/work/task.mesh.mx:333:28)
+  // run, plain (run-step) (src/domain/work/task.mesh.mx:334:28)
   "unassign.step.1.run": ($s: $work$Task$StoredScope<$work$Task$UnassignTaskInput>) => {
-    const privileged = $privileged;
+    const Mesh = $mesh($s);
     const Assignment: $work$Assignment$ReadOnly = $work$Assignment$value;
     const Claim: $work$Claim$ReadOnly = $work$Claim$value;
     return (async function ({ self, context }) {
       const current = currentAssignment(
-        await privileged(Assignment).read({
+        await Mesh.privileged(Assignment).read({
           filter: { taskId: { eq: self.id }, endedAt: { nil: true } },
         }),
       );
       if (!current) return;
       for (const claim of openClaims(
-        await privileged(Claim).read({ filter: { taskId: { eq: self.id } } }),
+        await Mesh.privileged(Claim).read({ filter: { taskId: { eq: self.id } } }),
         current.assigneeId,
       ))
         await Claim.end(
@@ -558,10 +565,10 @@ export const $expressions = {
       );
     })($s);
   },
-  // policy :membersRead authorize-if, translated (src/domain/work/task.mesh.mx:342:20)
+  // policy :membersRead authorize-if, translated (src/domain/work/task.mesh.mx:343:20)
   "policy.membersRead.authorize-if.0": ($s: $work$Task$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
-  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/work/task.mesh.mx:344:20)
+  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/work/task.mesh.mx:345:20)
   "policy.isMember.authorize-if.0": (
     $s: $work$Task$NewScope<
       $SharedInput<
@@ -577,10 +584,10 @@ export const $expressions = {
       >
     >,
   ) => {
-    const isSystem = $.isSystem;
-    return (async ({ actor, context }) => isSystem(context) || (await memberOf(actor.id)))($s);
+    const Mesh = $mesh($s);
+    return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
-  // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/work/task.mesh.mx:346:20)
+  // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/work/task.mesh.mx:347:20)
   "policy.ownerOrMember.authorize-if.0": (
     $s: $work$Task$NewScope<
       $SharedInput<
@@ -596,42 +603,42 @@ export const $expressions = {
       >
     >,
   ) => {
-    const isSystem = $.isSystem;
+    const Mesh = $mesh($s);
     return (async ({ actor, context }) =>
-      isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
+      Mesh.isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
   },
-  // policy :taskManager authorize-if, plain (awaits-helper) (src/domain/work/task.mesh.mx:348:20)
+  // policy :taskManager authorize-if, plain (awaits-helper) (src/domain/work/task.mesh.mx:349:20)
   "policy.taskManager.authorize-if.0": (
     $s: $work$Task$CheckScope<
       $SharedInput<$work$Task$ReopenTaskInput | $work$Task$CancelTaskInput>
     >,
   ) => {
-    const isSystem = $.isSystem;
+    const Mesh = $mesh($s);
     return (async ({ self, actor, context }) =>
-      isSystem(context) || (await managesTaskOf(self, actor.id, true)))($s);
+      Mesh.isSystem(context) || (await managesTaskOf(self, actor.id, true)))($s);
   },
-  // policy :taskUnassigner authorize-if, plain (awaits-helper) (src/domain/work/task.mesh.mx:350:20)
+  // policy :taskUnassigner authorize-if, plain (awaits-helper) (src/domain/work/task.mesh.mx:351:20)
   "policy.taskUnassigner.authorize-if.0": (
     $s: $work$Task$CheckScope<$work$Task$UnassignTaskInput>,
   ) => {
-    const isSystem = $.isSystem;
+    const Mesh = $mesh($s);
     return (async ({ self, actor, context }) =>
-      isSystem(context) || (await managesTaskOf(self, actor.id, false)))($s);
+      Mesh.isSystem(context) || (await managesTaskOf(self, actor.id, false)))($s);
   },
-  // policy :claimHolder authorize-if, plain (awaits-helper) (src/domain/work/task.mesh.mx:352:20)
+  // policy :claimHolder authorize-if, plain (awaits-helper) (src/domain/work/task.mesh.mx:353:20)
   "policy.claimHolder.authorize-if.0": (
     $s: $work$Task$CheckScope<$work$Task$CompleteTaskInput>,
   ) => {
-    const now = () => $.now($s);
-    const isSystem = $.isSystem;
+    const Mesh = $mesh($s);
     return (async ({ self, input, actor, context }) =>
-      isSystem(context) || (await noOtherHolderOf(self.id, input.fence, actor.id, now())))($s);
+      Mesh.isSystem(context) ||
+      (await noOtherHolderOf(self.id, input.fence, actor.id, Mesh.now())))($s);
   },
-  // policy :reviewCompletion forbid-if, translated (src/domain/work/task.mesh.mx:354:17)
+  // policy :reviewCompletion forbid-if, translated (src/domain/work/task.mesh.mx:355:17)
   "policy.reviewCompletion.forbid-if.0": (
     $s: $work$Task$CheckScope<$work$Task$CompleteTaskInput>,
   ) => $.and($.isNotNull($s.context?.completion), $.not($.isSystem($s.context))),
-  // policy :internal authorize-if, translated (src/domain/work/task.mesh.mx:356:20)
+  // policy :internal authorize-if, translated (src/domain/work/task.mesh.mx:357:20)
   "policy.internal.authorize-if.0": ($s: $work$Task$CheckScope<$work$Task$TouchTaskInput>) =>
     $.isSystem($s.context),
 } as const;

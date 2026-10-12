@@ -74,7 +74,7 @@ import {
 } from "../../$globals";
 
 /**
- * The reads of this entity without their policies: what `privileged(Run)` runs (TXN-16). The read actions
+ * The reads of this entity without their policies: what `Mesh.privileged(Run)` runs (TXN-16). The read actions
  * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
 export function bindRunReads(
@@ -91,7 +91,7 @@ export function bindRunReads(
       cast?: $CastOutput<typeof readRunInputSchema>,
     ): $Promise<L extends unknown ? RunTxWith<RunLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
+      // for its policies and hands it over as `cast`; a `Mesh.privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readRunInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.runs, {
@@ -141,7 +141,8 @@ export function bindRun(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -154,7 +155,7 @@ export function bindRun(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -230,14 +231,14 @@ export function bindRun(
               label: "taskOpen",
               code: "run.task-open",
               message: "runs serve open tasks",
-              source: { file: "src/domain/execution/run.mesh.mx", line: 31, column: 9 },
+              source: { file: "src/domain/execution/run.mesh.mx", line: 32, column: 9 },
               that: $expressions["start.check.taskOpen.that"],
             });
             await $runCheck($issues, $checks, {
               label: "parentRunning",
               code: "run.parent-running",
               message: "the parent run is not running",
-              source: { file: "src/domain/execution/run.mesh.mx", line: 36, column: 9 },
+              source: { file: "src/domain/execution/run.mesh.mx", line: 37, column: 9 },
               that: $expressions["start.check.parentRunning.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -253,7 +254,7 @@ export function bindRun(
               const $value = await $expressions["start.step.0.set.startedBy"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &startedBy (src/domain/execution/run.mesh.mx:43:22) produced no value, and the relationship startedBy is required",
+                  "set &startedBy (src/domain/execution/run.mesh.mx:44:22) produced no value, and the relationship startedBy is required",
                 );
               $changes.startedById = $record.startedById = $value;
             }
@@ -269,7 +270,7 @@ export function bindRun(
               const $value = await $expressions["start.step.0.set.responsible"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &responsible (src/domain/execution/run.mesh.mx:44:24) produced no value, and the relationship responsible is required",
+                  "set &responsible (src/domain/execution/run.mesh.mx:45:24) produced no value, and the relationship responsible is required",
                 );
               $changes.responsibleId = $record.responsibleId = $value;
             }
@@ -308,7 +309,8 @@ export function bindRun(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -321,7 +323,7 @@ export function bindRun(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -334,7 +336,7 @@ export function bindRun(
             {
               kind: "authorize-if",
               check:
-                "async ({ self, actor, context }) => isSystem(context) || await cancelsRunOf(self, actor.id)",
+                "async ({ self, actor, context }) => Mesh.isSystem(context) || await cancelsRunOf(self, actor.id)",
               record: true,
               run: $expressions["policy.runCanceler.authorize-if.0"],
             },
@@ -396,14 +398,14 @@ export function bindRun(
               label: "cancelable",
               code: "run.cancelable",
               message: "the run is not running",
-              source: { file: "src/domain/execution/run.mesh.mx", line: 50, column: 9 },
+              source: { file: "src/domain/execution/run.mesh.mx", line: 51, column: 9 },
               that: $expressions["cancel.check.cancelable.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/execution/run.mesh.mx", line: 55, column: 9 },
+              source: { file: "src/domain/execution/run.mesh.mx", line: 56, column: 9 },
               that: $expressions["cancel.check.versionMatches.that"],
               details: $expressions["cancel.check.versionMatches.details"],
             });
@@ -422,7 +424,7 @@ export function bindRun(
               const $value = await $expressions["cancel.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/execution/run.mesh.mx:66:20) produced no value, and version is required",
+                  "set &version (src/domain/execution/run.mesh.mx:67:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -463,7 +465,7 @@ export function bindRun(
           checks: [
             {
               kind: "authorize-if",
-              check: "({ context }) => isSystem(context)",
+              check: "({ context }) => Mesh.isSystem(context)",
               record: false,
               run: $expressions["policy.internal.authorize-if.0"],
             },
@@ -524,7 +526,7 @@ export function bindRun(
               const $value = await $expressions["settle.step.0.set.state"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &state (src/domain/execution/run.mesh.mx:73:18) produced no value, and state is required",
+                  "set &state (src/domain/execution/run.mesh.mx:74:18) produced no value, and state is required",
                 );
               $changes.state = $record.state = $value;
             }
@@ -536,7 +538,7 @@ export function bindRun(
               const $value = await $expressions["settle.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/execution/run.mesh.mx:75:20) produced no value, and version is required",
+                  "set &version (src/domain/execution/run.mesh.mx:76:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -567,7 +569,7 @@ export function bindRun(
       input: $Omit<ReadRunInput, "load"> & RunLoadArg<L>,
       ...[context]: $ContextArgument
     ): $Promise<L extends unknown ? RunWith<RunLoadNames<L>>[] : never> {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `Mesh.privileged` read skips them
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
@@ -583,7 +585,7 @@ export function bindRun(
               checks: [
                 {
                   kind: "authorize-if",
-                  check: "({ actor, context }) => isSystem(context) || actor.role != null",
+                  check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
                   record: false,
                   run: $expressions["policy.membersRead.authorize-if.0"],
                 },
@@ -648,7 +650,7 @@ export { $entityValue as Run };
 /** The record type, under the entity value's name. */
 export type Run = $Record;
 
-/** What `privileged(Run)` returns (TXN-16): one function per read action, run with no policy. */
+/** What `Mesh.privileged(Run)` returns (TXN-16): one function per read action, run with no policy. */
 export interface $Privileged {
   read<const L extends readonly (keyof RunLoadable)[] = readonly []>(
     input: $Omit<ReadRunInput, "load"> & RunLoadArg<L>,
@@ -670,7 +672,7 @@ export interface $PrivilegedReadOnly {
 
 /**
  * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
- * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ * and so is what `Mesh.privileged` of it resolves with. The expressions files bind the entity value under this type.
  */
 export type $ReadOnly = $EntityValue<
   {
@@ -692,7 +694,7 @@ export type $ReadOnly = $EntityValue<
 /**
  * Load relationships and computed fields onto Run rows by name. A relationship is loaded by one more query for
  * all the rows; a computed field loads what its body reads first. The rows you pass are not changed: the result is new
- * rows of type RunTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so it takes no `policies`
+ * rows of type RunTxWith<"name" | ...>. It loads as `Mesh.privileged` does, running no policy, so it takes no `policies`
  * option: every related record the key names is there.
  */
 export async function loadRunFields<const N extends keyof RunLoadable>(

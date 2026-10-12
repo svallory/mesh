@@ -1,4 +1,5 @@
 import { Object } from "./object.mesh.mx"
+import { Mesh } from "meshfw"
 
 entity :Date
   attributes
@@ -8,7 +9,7 @@ entity :Date
   relationships
     belongs-to :next entity=Object nullable
   computed
-    boolean :past() { return &at <= now() }
+    boolean :past() { return &at <= Mesh.now() }
   actions auto=[:read]
     create :create
       input

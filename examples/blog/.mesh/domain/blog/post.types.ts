@@ -80,7 +80,7 @@ export type PostLoadable = {
 /** A Post with the relationships and computed fields named in N loaded. */
 export type PostWith<N extends keyof PostLoadable> = Post & $Pick<PostLoadable, N>;
 
-/** What a load through `privileged` attaches to a Post: it runs no policy, so every related record the key names is there. */
+/** What a load through `Mesh.privileged` attaches to a Post: it runs no policy, so every related record the key names is there. */
 export type PostTxLoadable = {
   author: $blog$User$Record;
   comments: $blog$Comment$Record[];
@@ -88,7 +88,7 @@ export type PostTxLoadable = {
   commentCount: number;
 };
 
-/** A Post loaded through `privileged`, with the relationships and computed fields named in N. */
+/** A Post loaded through `Mesh.privileged`, with the relationships and computed fields named in N. */
 export type PostTxWith<N extends keyof PostLoadable> = Post & $Pick<PostTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */

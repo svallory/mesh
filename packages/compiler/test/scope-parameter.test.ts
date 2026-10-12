@@ -85,10 +85,10 @@ test("the parameter has the scope type: a member the scope lacks fails the type 
   expect(result.output).toContain("nope");
 });
 
-test("`before` read through a plain parameter, and `privileged` or an entity call in a computed field with one, are still refused", () => {
+test("`before` read through a plain parameter, and `Mesh.privileged` or an entity call in a computed field with one, are still refused", () => {
   const built = (src: string) => buildModel({ root: "/p", files: [{ file: "task.mesh.mx", source: src }] }).diagnostics.map((d) => d.code);
   expect(built(entity(`        check :c [\n          that=(s) => s.before.n > 0\n          code="c"\n          message="m"\n        ]\n`))).toContain("MESH_VALIDATE_BEFORE");
-  expect(built(entity("", "  computed\n    boolean :x(s) { return s.self !== undefined && privileged(Task) !== undefined }\n"))).toContain("MESH_COMPUTED_COMPOSES");
+  expect(built('import { Mesh } from "meshfw"\n' + entity("", "  computed\n    boolean :x(s) { return s.self !== undefined && Mesh.privileged(Task) !== undefined }\n"))).toContain("MESH_COMPUTED_COMPOSES");
   expect(built(entity("", "  computed\n    boolean :x(s) { return s.self !== undefined && Task.read({}) !== undefined }\n"))).toContain("MESH_COMPUTED_COMPOSES");
   // `tx` is no scope name any more: through a plain parameter it is an unknown member, which TypeScript refuses.
   expect(built(entity("", "  computed\n    boolean :x(s) { return s.tx !== undefined }\n"))).not.toContain("MESH_COMPUTED_COMPOSES");

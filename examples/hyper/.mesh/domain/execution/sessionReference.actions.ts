@@ -72,7 +72,7 @@ import {
 } from "../../$globals";
 
 /**
- * The reads of this entity without their policies: what `privileged(SessionReference)` runs (TXN-16). The read actions
+ * The reads of this entity without their policies: what `Mesh.privileged(SessionReference)` runs (TXN-16). The read actions
  * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
 export function bindSessionReferenceReads(
@@ -91,7 +91,7 @@ export function bindSessionReferenceReads(
       L extends unknown ? SessionReferenceTxWith<SessionReferenceLoadNames<L>>[] : never
     > {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
+      // for its policies and hands it over as `cast`; a `Mesh.privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readSessionReferenceInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.session_references, {
@@ -148,7 +148,8 @@ export function bindSessionReference(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -161,7 +162,7 @@ export function bindSessionReference(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -258,7 +259,7 @@ export function bindSessionReference(
               message: "the agent profile is not a collaborator",
               source: {
                 file: "src/domain/execution/session-reference.mesh.mx",
-                line: 29,
+                line: 30,
                 column: 9,
               },
               that: $expressions["record.check.agentProfile.that"],
@@ -269,7 +270,7 @@ export function bindSessionReference(
               message: "the machine is retired; report the host by a new name",
               source: {
                 file: "src/domain/execution/session-reference.mesh.mx",
-                line: 34,
+                line: 35,
                 column: 9,
               },
               that: $expressions["record.check.machineRetired.that"],
@@ -293,7 +294,7 @@ export function bindSessionReference(
               const $value = await $expressions["record.step.0.set.recordedBy"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &recordedBy (src/domain/execution/session-reference.mesh.mx:41:23) produced no value, and the relationship recordedBy is required",
+                  "set &recordedBy (src/domain/execution/session-reference.mesh.mx:42:23) produced no value, and the relationship recordedBy is required",
                 );
               $changes.recordedById = $record.recordedById = $value;
             }
@@ -335,7 +336,7 @@ export function bindSessionReference(
             {
               kind: "authorize-if",
               check:
-                "({ self, actor, context }) => isSystem(context) || self.recordedById === actor.id",
+                "({ self, actor, context }) => Mesh.isSystem(context) || self.recordedById === actor.id",
               record: true,
               run: $expressions["policy.sessionRecorder.authorize-if.0"],
             },
@@ -399,7 +400,7 @@ export function bindSessionReference(
               message: "the session is redacted and cannot be changed",
               source: {
                 file: "src/domain/execution/session-reference.mesh.mx",
-                line: 49,
+                line: 50,
                 column: 9,
               },
               that: $expressions["setAvailability.check.notRedacted.that"],
@@ -410,7 +411,7 @@ export function bindSessionReference(
               message: "availability is complete, partial or unavailable; redact with redact",
               source: {
                 file: "src/domain/execution/session-reference.mesh.mx",
-                line: 54,
+                line: 55,
                 column: 9,
               },
               that: $expressions["setAvailability.check.availabilityKept.that"],
@@ -421,7 +422,7 @@ export function bindSessionReference(
               message: "the record is at another version; read it again and retry",
               source: {
                 file: "src/domain/execution/session-reference.mesh.mx",
-                line: 59,
+                line: 60,
                 column: 9,
               },
               that: $expressions["setAvailability.check.versionMatches.that"],
@@ -438,7 +439,7 @@ export function bindSessionReference(
               const $value = await $expressions["setAvailability.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/execution/session-reference.mesh.mx:67:20) produced no value, and version is required",
+                  "set &version (src/domain/execution/session-reference.mesh.mx:68:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -489,7 +490,8 @@ export function bindSessionReference(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -502,7 +504,7 @@ export function bindSessionReference(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner])",
               record: true,
               run: $expressions["policy.ownerOnly.authorize-if.0"],
             },
@@ -566,7 +568,7 @@ export function bindSessionReference(
               message: "the session is redacted and cannot be changed",
               source: {
                 file: "src/domain/execution/session-reference.mesh.mx",
-                line: 73,
+                line: 74,
                 column: 9,
               },
               that: $expressions["redact.check.notRedacted.that"],
@@ -577,7 +579,7 @@ export function bindSessionReference(
               message: "the record is at another version; read it again and retry",
               source: {
                 file: "src/domain/execution/session-reference.mesh.mx",
-                line: 78,
+                line: 79,
                 column: 9,
               },
               that: $expressions["redact.check.versionMatches.that"],
@@ -591,7 +593,7 @@ export function bindSessionReference(
               const $value = await $expressions["redact.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/execution/session-reference.mesh.mx:88:20) produced no value, and version is required",
+                  "set &version (src/domain/execution/session-reference.mesh.mx:89:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -629,7 +631,7 @@ export function bindSessionReference(
       input: $Omit<ReadSessionReferenceInput, "load"> & SessionReferenceLoadArg<L>,
       ...[context]: $ContextArgument
     ): $Promise<L extends unknown ? SessionReferenceWith<SessionReferenceLoadNames<L>>[] : never> {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `Mesh.privileged` read skips them
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
@@ -645,7 +647,7 @@ export function bindSessionReference(
               checks: [
                 {
                   kind: "authorize-if",
-                  check: "({ actor, context }) => isSystem(context) || actor.role != null",
+                  check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
                   record: false,
                   run: $expressions["policy.membersRead.authorize-if.0"],
                 },
@@ -723,7 +725,7 @@ export { $entityValue as SessionReference };
 /** The record type, under the entity value's name. */
 export type SessionReference = $Record;
 
-/** What `privileged(SessionReference)` returns (TXN-16): one function per read action, run with no policy. */
+/** What `Mesh.privileged(SessionReference)` returns (TXN-16): one function per read action, run with no policy. */
 export interface $Privileged {
   read<const L extends readonly (keyof SessionReferenceLoadable)[] = readonly []>(
     input: $Omit<ReadSessionReferenceInput, "load"> & SessionReferenceLoadArg<L>,
@@ -746,7 +748,7 @@ export interface $PrivilegedReadOnly {
 
 /**
  * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
- * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ * and so is what `Mesh.privileged` of it resolves with. The expressions files bind the entity value under this type.
  */
 export type $ReadOnly = $EntityValue<
   {
@@ -778,7 +780,7 @@ export type $ReadOnly = $EntityValue<
 /**
  * Load relationships and computed fields onto SessionReference rows by name. A relationship is loaded by one more query for
  * all the rows; a computed field loads what its body reads first. The rows you pass are not changed: the result is new
- * rows of type SessionReferenceTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so it takes no `policies`
+ * rows of type SessionReferenceTxWith<"name" | ...>. It loads as `Mesh.privileged` does, running no policy, so it takes no `policies`
  * option: every related record the key names is there.
  */
 export async function loadSessionReferenceFields<const N extends keyof SessionReferenceLoadable>(

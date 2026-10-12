@@ -1,0 +1,36 @@
+import { Mesh } from "meshfw"
+import { Note } from "./note.mesh.mx"
+import { appClock } from "./clock"
+
+entity :Task
+  attributes
+    uuid :id primary-key
+    string :title min=1
+    timestamp :dueAt nullable
+    timestamp :closedAt nullable
+  computed
+    boolean :overdue() { return &dueAt < Mesh.now() }
+    integer :daysLeft() { const due = &dueAt; return due === null ? null : Math.floor((due.getTime() - Mesh.today().getTime()) / 86400000) }
+  actions auto=[:read]
+    create :open
+      input
+        &title
+        &dueAt
+      validate
+        check :notPast that=({ input, context }) => Mesh.isSystem(context) || input.dueAt === null || input.dueAt >= Mesh.today() code="past" message="A task is not due in the past"
+    update :close
+      do
+        set
+          &closedAt=() => Mesh.now()
+        run [after=:write] async ({ self, context }) {
+          const notes = await Mesh.privileged(Note).read({})
+          await Note.write({ text: `${self.title} closed at ${Mesh.now().toISOString()} after ${notes.length} notes` }, context)
+        }
+    update :touch
+      do
+        run () { appClock() }
+  policies
+    policy :anyone types=[:create, :read]
+      authorize-if=() => true
+    policy :closer types=[:update]
+      authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.id === "owner"

@@ -4,6 +4,7 @@ import { SessionReference } from "./session-reference.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
 import { attemptSessionOf, correctsInvocationOf, performsAttemptOf } from "./execution.helpers"
 import { memberOf, roleIn } from "../identity/identity.helpers"
+import { Mesh } from "meshfw"
 
 entity :Invocation table="invocations"
   attributes
@@ -82,7 +83,7 @@ entity :Invocation table="invocations"
         &session
       validate
         check :notCorrected [
-          that=async ({ input }) => input.corrects != null && (await privileged(Invocation).read({ filter: { correctsId: { eq: input.corrects } }, limit: 1 })).length === 0
+          that=async ({ input }) => input.corrects != null && (await Mesh.privileged(Invocation).read({ filter: { correctsId: { eq: input.corrects } }, limit: 1 })).length === 0
           code="invocation.not-corrected"
           message="the invocation is already corrected"
         ]
@@ -98,17 +99,17 @@ entity :Invocation table="invocations"
         ]
       do
         set
-          &attempt=async ({ input }) => (await privileged(Invocation).read({ filter: { id: { eq: input.corrects ?? "" } } })).map((corrected) => corrected.attemptId)[0]
-          &task=async ({ input }) => (await privileged(Invocation).read({ filter: { id: { eq: input.corrects ?? "" } } })).map((corrected) => corrected.taskId)[0]
+          &attempt=async ({ input }) => (await Mesh.privileged(Invocation).read({ filter: { id: { eq: input.corrects ?? "" } } })).map((corrected) => corrected.attemptId)[0]
+          &task=async ({ input }) => (await Mesh.privileged(Invocation).read({ filter: { id: { eq: input.corrects ?? "" } } })).map((corrected) => corrected.taskId)[0]
           &recordedBy=({ actor }) => actor.id
   policies
     policy :membersRead types=[:read]
-      authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
+      authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null
     policy :isMember actions=[&record, &correct]
-      authorize-if=async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)
+      authorize-if=async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)
     policy :ownerOrMember actions=[&record, &correct]
-      authorize-if=async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])
+      authorize-if=async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])
     policy :attemptPerformer actions=[&record]
-      authorize-if=async ({ input, actor, context }) => isSystem(context) || await performsAttemptOf(input.attempt, actor.id)
+      authorize-if=async ({ input, actor, context }) => Mesh.isSystem(context) || await performsAttemptOf(input.attempt, actor.id)
     policy :invocationRecorder actions=[&correct]
-      authorize-if=async ({ input, actor, context }) => isSystem(context) || await correctsInvocationOf(input.corrects, actor.id)
+      authorize-if=async ({ input, actor, context }) => Mesh.isSystem(context) || await correctsInvocationOf(input.corrects, actor.id)

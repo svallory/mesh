@@ -4,8 +4,9 @@
 // (`fixtures/generated-names/domain/globals`) gives each one a create with a `match=` attribute and a belongs-to to the
 // next one in a ring, a rename with a check, a computed field and two policies; `Object` imports `Promise` as `now`,
 // `Record` imports `Date` as `structuredClone` and `Set` imports `Map` as `isSystem`, and each counts that entity's rows
-// in a `set` step. Generated code reaches the globals it needs through `.mesh/$globals.ts` under `$` names, and a
-// registered function or `structuredClone` is shadowed by an import of that name, as a JavaScript global would be.
+// in a `set` step. Generated code reaches the globals it needs through `.mesh/$globals.ts` under `$` names,
+// `structuredClone` is shadowed by an import of that name, as a JavaScript global would be, and an import named like one of
+// Mesh's functions is only that import: Mesh's functions are members of `Mesh` (PRJ-22), which `Date` imports from meshfw.
 // `Boolean` imports `Map` as `context` and a helper named `input` (EXP-12): inside its functions the scope roots
 // shadow both, as parameters would, and its `when` step, which holds an after-write `run`, keeps its condition in a flag.
 // Its computed field names two helpers only in types (`Count`, `typeof tally`), which the expressions file imports as types.
@@ -133,7 +134,7 @@ describe("entities named after the globals generated code uses", () => {
     expect(binding).toContain('import type { $Partial, $Promise } from "./$globals";');
   });
 
-  test("an import named like a registered function or structuredClone is the entity it imports", async () => {
+  test("an import named like one of Mesh's functions or structuredClone is the entity it imports", async () => {
     // Object imports Promise as `now`: its expressions bind `now` to Promise's value, never to the clock.
     const object = await generated("domain/globals/object.expressions.ts");
     expect(object).toContain("const now: $globals$Promise$ReadOnly = $globals$Promise$value;");
@@ -146,7 +147,7 @@ describe("entities named after the globals generated code uses", () => {
     const set = await generated("domain/globals/set.expressions.ts");
     expect(set).toContain("const isSystem: $globals$Map$ReadOnly = $globals$Map$value;");
     expect(set).not.toContain("$.isSystem");
-    // Date has no such import, so its computed field's `now()` is the clock.
+    // Date imports Mesh, so its computed field's `Mesh.now()` is the clock.
     expect(await generated("domain/globals/date.expressions.ts")).toContain("$.now(");
   });
 

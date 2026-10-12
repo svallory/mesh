@@ -1,4 +1,5 @@
 import { Task } from "../work/task.mesh.mx"
+import { Mesh } from "meshfw"
 
 entity :Event table="events"
   attributes
@@ -36,6 +37,6 @@ entity :Event table="events"
         &task
   policies
     policy :membersRead types=[:read]
-      authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
+      authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null
     policy :internal actions=[&record]
-      authorize-if=({ context }) => isSystem(context)
+      authorize-if=({ context }) => Mesh.isSystem(context)

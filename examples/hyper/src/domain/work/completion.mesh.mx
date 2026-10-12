@@ -1,6 +1,7 @@
 import { Task } from "./task.mesh.mx"
 import { Submission } from "./submission.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
+import { Mesh } from "meshfw"
 
 entity :Completion table="completions"
   attributes
@@ -22,6 +23,6 @@ entity :Completion table="completions"
           &completedBy=({ actor }) => actor.id
   policies
     policy :membersRead types=[:read]
-      authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
+      authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null
     policy :internal actions=[&record]
-      authorize-if=({ context }) => isSystem(context)
+      authorize-if=({ context }) => Mesh.isSystem(context)

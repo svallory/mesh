@@ -60,7 +60,7 @@ import { loadPlan as $loadPlan } from "../../load";
 import { $Date, $Object, type $Omit, type $Pick, type $Promise } from "../../$globals";
 
 /**
- * The reads of this entity without their policies: what `privileged(Review)` runs (TXN-16). The read actions
+ * The reads of this entity without their policies: what `Mesh.privileged(Review)` runs (TXN-16). The read actions
  * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
 export function bindReviewReads(
@@ -77,7 +77,7 @@ export function bindReviewReads(
       cast?: $CastOutput<typeof readReviewInputSchema>,
     ): $Promise<L extends unknown ? ReviewTxWith<ReviewLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
+      // for its policies and hands it over as `cast`; a `Mesh.privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readReviewInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.reviews, {
@@ -127,7 +127,8 @@ export function bindReview(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -140,7 +141,7 @@ export function bindReview(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -153,7 +154,7 @@ export function bindReview(
             {
               kind: "authorize-if",
               check:
-                "async ({ input, actor, context }) => isSystem(context) || await reviewsSubmissionOf(input.submission, actor.id)",
+                "async ({ input, actor, context }) => Mesh.isSystem(context) || await reviewsSubmissionOf(input.submission, actor.id)",
               record: true,
               run: $expressions["policy.reviewReviewer.authorize-if.0"],
             },
@@ -232,14 +233,14 @@ export function bindReview(
               label: "pending",
               code: "submission.pending",
               message: "the submission is not pending",
-              source: { file: "src/domain/work/review.mesh.mx", line: 23, column: 9 },
+              source: { file: "src/domain/work/review.mesh.mx", line: 24, column: 9 },
               that: $expressions["accept.check.pending.that"],
             });
             await $runCheck($issues, $checks, {
               label: "taskVersion",
               code: "submission.task-version",
               message: "the task changed since this was submitted; return it for rework",
-              source: { file: "src/domain/work/review.mesh.mx", line: 28, column: 9 },
+              source: { file: "src/domain/work/review.mesh.mx", line: 29, column: 9 },
               that: $expressions["accept.check.taskVersion.that"],
               details: $expressions["accept.check.taskVersion.details"],
             });
@@ -247,7 +248,7 @@ export function bindReview(
               label: "versionMatches",
               code: "expected-version",
               message: "the task is at another version; read it again and retry",
-              source: { file: "src/domain/work/review.mesh.mx", line: 34, column: 9 },
+              source: { file: "src/domain/work/review.mesh.mx", line: 35, column: 9 },
               that: $expressions["accept.check.versionMatches.that"],
               details: $expressions["accept.check.versionMatches.details"],
             });
@@ -261,7 +262,7 @@ export function bindReview(
               const $value = await $expressions["accept.step.0.set.reviewer"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &reviewer (src/domain/work/review.mesh.mx:43:21) produced no value, and the relationship reviewer is required",
+                  "set &reviewer (src/domain/work/review.mesh.mx:44:21) produced no value, and the relationship reviewer is required",
                 );
               $changes.reviewerId = $record.reviewerId = $value;
             }
@@ -270,7 +271,7 @@ export function bindReview(
               const $value = await $expressions["accept.step.0.set.ruleApplied"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &ruleApplied (src/domain/work/review.mesh.mx:44:24) produced no value, and ruleApplied is required",
+                  "set &ruleApplied (src/domain/work/review.mesh.mx:45:24) produced no value, and ruleApplied is required",
                 );
               $changes.ruleApplied = $record.ruleApplied = $value;
             }
@@ -324,7 +325,8 @@ export function bindReview(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -337,7 +339,7 @@ export function bindReview(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -350,7 +352,7 @@ export function bindReview(
             {
               kind: "authorize-if",
               check:
-                "async ({ input, actor, context }) => isSystem(context) || await reviewsSubmissionOf(input.submission, actor.id)",
+                "async ({ input, actor, context }) => Mesh.isSystem(context) || await reviewsSubmissionOf(input.submission, actor.id)",
               record: true,
               run: $expressions["policy.reviewReviewer.authorize-if.0"],
             },
@@ -429,14 +431,14 @@ export function bindReview(
               label: "pending",
               code: "submission.pending",
               message: "the submission is not pending",
-              source: { file: "src/domain/work/review.mesh.mx", line: 55, column: 9 },
+              source: { file: "src/domain/work/review.mesh.mx", line: 56, column: 9 },
               that: $expressions["return.check.pending.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the task is at another version; read it again and retry",
-              source: { file: "src/domain/work/review.mesh.mx", line: 60, column: 9 },
+              source: { file: "src/domain/work/review.mesh.mx", line: 61, column: 9 },
               that: $expressions["return.check.versionMatches.that"],
               details: $expressions["return.check.versionMatches.details"],
             });
@@ -454,7 +456,7 @@ export function bindReview(
               const $value = await $expressions["return.step.0.set.reviewer"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &reviewer (src/domain/work/review.mesh.mx:70:21) produced no value, and the relationship reviewer is required",
+                  "set &reviewer (src/domain/work/review.mesh.mx:71:21) produced no value, and the relationship reviewer is required",
                 );
               $changes.reviewerId = $record.reviewerId = $value;
             }
@@ -463,7 +465,7 @@ export function bindReview(
               const $value = await $expressions["return.step.0.set.ruleApplied"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &ruleApplied (src/domain/work/review.mesh.mx:71:24) produced no value, and ruleApplied is required",
+                  "set &ruleApplied (src/domain/work/review.mesh.mx:72:24) produced no value, and ruleApplied is required",
                 );
               $changes.ruleApplied = $record.ruleApplied = $value;
             }
@@ -507,7 +509,7 @@ export function bindReview(
       input: $Omit<ReadReviewInput, "load"> & ReviewLoadArg<L>,
       ...[context]: $ContextArgument
     ): $Promise<L extends unknown ? ReviewWith<ReviewLoadNames<L>>[] : never> {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `Mesh.privileged` read skips them
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
@@ -523,7 +525,7 @@ export function bindReview(
               checks: [
                 {
                   kind: "authorize-if",
-                  check: "({ actor, context }) => isSystem(context) || actor.role != null",
+                  check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
                   record: false,
                   run: $expressions["policy.membersRead.authorize-if.0"],
                 },
@@ -584,7 +586,7 @@ export { $entityValue as Review };
 /** The record type, under the entity value's name. */
 export type Review = $Record;
 
-/** What `privileged(Review)` returns (TXN-16): one function per read action, run with no policy. */
+/** What `Mesh.privileged(Review)` returns (TXN-16): one function per read action, run with no policy. */
 export interface $Privileged {
   read<const L extends readonly (keyof ReviewLoadable)[] = readonly []>(
     input: $Omit<ReadReviewInput, "load"> & ReviewLoadArg<L>,
@@ -607,7 +609,7 @@ export interface $PrivilegedReadOnly {
 
 /**
  * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
- * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ * and so is what `Mesh.privileged` of it resolves with. The expressions files bind the entity value under this type.
  */
 export type $ReadOnly = $EntityValue<
   {
@@ -629,7 +631,7 @@ export type $ReadOnly = $EntityValue<
 /**
  * Load relationships and computed fields onto Review rows by name. A relationship is loaded by one more query for
  * all the rows; a computed field loads what its body reads first. The rows you pass are not changed: the result is new
- * rows of type ReviewTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so it takes no `policies`
+ * rows of type ReviewTxWith<"name" | ...>. It loads as `Mesh.privileged` does, running no policy, so it takes no `policies`
  * option: every related record the key names is there.
  */
 export async function loadReviewFields<const N extends keyof ReviewLoadable>(

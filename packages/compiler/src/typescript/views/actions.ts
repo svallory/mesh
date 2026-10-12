@@ -72,7 +72,7 @@ export interface ActionsView {
   /** What `bind<Entity>Reads` names its third parameter, the binding's frame: `frame`, or `_frame` when no body loads. */
   readonly readsFrameName: string;
   /**
-   * The members of `$Privileged`, what `privileged(<Entity>)` returns: one per read action, `(input, context?)`, resolving
+   * The members of `$Privileged`, what `Mesh.privileged(<Entity>)` returns: one per read action, `(input, context?)`, resolving
    * with what the read gives with no policy run (`<Entity>TxWith` when it loads). Each printed in full.
    */
   readonly privilegedMembers: readonly string[];
@@ -408,7 +408,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         optionsUsed = true;
       }
       const preCheck = unsupportedRead ? [] : [
-        "// pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them",
+        "// pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `Mesh.privileged` read skips them",
         "const $context = (context ?? {}) as unknown as { [key: string]: unknown };",
         "const $actor = $context.actor;",
         "const $clock = $pinClock(options.clock);",
@@ -802,7 +802,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     const prelude: string[] = [];
     used.options = true;
     runtime.add("pinClock");
-    // One instant per action call: the policies, the scope's `now()`, the `$now` stamps, the `load` step and every `privileged` read read it.
+    // One instant per action call: the policies, the scope's `Mesh.now()`, the `$now` stamps, the `load` step and every `Mesh.privileged` read read it.
     if (used.now) prelude.push("const $now = $clock();");
     const afterHead: string[] = [];
     if (used.load) afterHead.push("const $load = { actor: $actor, context: $context, clock: $clock, frame };");
@@ -845,7 +845,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     frameUsed = true;
     return { ...base, returnType, txReturnType: returnType, contextName: "context", notRun: notRun([]), unsupported: null, usesParsed: true, statements, isRead: false, seamTarget, readsCall: null, preCheck };
   });
-  // What `privileged(<Entity>)` returns, and the entity value and those reads as a function of an entity file sees them,
+  // What `Mesh.privileged(<Entity>)` returns, and the entity value and those reads as a function of an entity file sees them,
   // every result deeply read-only (ACT-09). Written out, not mapped, because a read is generic in the names its `load`
   // lists and a mapped type would erase that; a read's read-only result is the read-only record intersected with the
   // read-only loaded members, since a deep-readonly conditional type over the generic `L` cannot be related to its twin.

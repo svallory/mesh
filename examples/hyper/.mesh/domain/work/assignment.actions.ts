@@ -70,7 +70,7 @@ import {
 } from "../../$globals";
 
 /**
- * The reads of this entity without their policies: what `privileged(Assignment)` runs (TXN-16). The read actions
+ * The reads of this entity without their policies: what `Mesh.privileged(Assignment)` runs (TXN-16). The read actions
  * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
 export function bindAssignmentReads(
@@ -87,7 +87,7 @@ export function bindAssignmentReads(
       cast?: $CastOutput<typeof readAssignmentInputSchema>,
     ): $Promise<L extends unknown ? AssignmentTxWith<AssignmentLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
+      // for its policies and hands it over as `cast`; a `Mesh.privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readAssignmentInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.assignments, {
@@ -139,7 +139,7 @@ export function bindAssignment(
           checks: [
             {
               kind: "authorize-if",
-              check: "({ context }) => isSystem(context)",
+              check: "({ context }) => Mesh.isSystem(context)",
               record: false,
               run: $expressions["policy.internal.authorize-if.0"],
             },
@@ -217,7 +217,7 @@ export function bindAssignment(
               const $value = await $expressions["start.step.0.set.delegator"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &delegator (src/domain/work/assignment.mesh.mx:23:22) produced no value, and the relationship delegator is required",
+                  "set &delegator (src/domain/work/assignment.mesh.mx:24:22) produced no value, and the relationship delegator is required",
                 );
               $changes.delegatorId = $record.delegatorId = $value;
             }
@@ -225,7 +225,7 @@ export function bindAssignment(
               const $value = await $expressions["start.step.0.set.startedAt"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &startedAt (src/domain/work/assignment.mesh.mx:24:22) produced no value, and startedAt is required",
+                  "set &startedAt (src/domain/work/assignment.mesh.mx:25:22) produced no value, and startedAt is required",
                 );
               $changes.startedAt = $record.startedAt = $value;
             }
@@ -266,7 +266,7 @@ export function bindAssignment(
           checks: [
             {
               kind: "authorize-if",
-              check: "({ context }) => isSystem(context)",
+              check: "({ context }) => Mesh.isSystem(context)",
               record: false,
               run: $expressions["policy.internal.authorize-if.0"],
             },
@@ -326,7 +326,7 @@ export function bindAssignment(
               label: "current",
               code: "assignment.current",
               message: "the assignment has already ended",
-              source: { file: "src/domain/work/assignment.mesh.mx", line: 29, column: 9 },
+              source: { file: "src/domain/work/assignment.mesh.mx", line: 30, column: 9 },
               that: $expressions["finish.check.current.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -373,7 +373,7 @@ export function bindAssignment(
       input: $Omit<ReadAssignmentInput, "load"> & AssignmentLoadArg<L>,
       ...[context]: $ContextArgument
     ): $Promise<L extends unknown ? AssignmentWith<AssignmentLoadNames<L>>[] : never> {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `Mesh.privileged` read skips them
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
@@ -389,7 +389,7 @@ export function bindAssignment(
               checks: [
                 {
                   kind: "authorize-if",
-                  check: "({ actor, context }) => isSystem(context) || actor.role != null",
+                  check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
                   record: false,
                   run: $expressions["policy.membersRead.authorize-if.0"],
                 },
@@ -452,7 +452,7 @@ export { $entityValue as Assignment };
 /** The record type, under the entity value's name. */
 export type Assignment = $Record;
 
-/** What `privileged(Assignment)` returns (TXN-16): one function per read action, run with no policy. */
+/** What `Mesh.privileged(Assignment)` returns (TXN-16): one function per read action, run with no policy. */
 export interface $Privileged {
   read<const L extends readonly (keyof AssignmentLoadable)[] = readonly []>(
     input: $Omit<ReadAssignmentInput, "load"> & AssignmentLoadArg<L>,
@@ -475,7 +475,7 @@ export interface $PrivilegedReadOnly {
 
 /**
  * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
- * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ * and so is what `Mesh.privileged` of it resolves with. The expressions files bind the entity value under this type.
  */
 export type $ReadOnly = $EntityValue<
   {
@@ -503,7 +503,7 @@ export type $ReadOnly = $EntityValue<
 /**
  * Load relationships and computed fields onto Assignment rows by name. A relationship is loaded by one more query for
  * all the rows; a computed field loads what its body reads first. The rows you pass are not changed: the result is new
- * rows of type AssignmentTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so it takes no `policies`
+ * rows of type AssignmentTxWith<"name" | ...>. It loads as `Mesh.privileged` does, running no policy, so it takes no `policies`
  * option: every related record the key names is there.
  */
 export async function loadAssignmentFields<const N extends keyof AssignmentLoadable>(

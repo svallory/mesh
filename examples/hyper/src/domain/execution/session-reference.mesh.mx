@@ -2,6 +2,7 @@ import { Machine } from "./machine.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
 import { machineActiveOf } from "./execution.helpers"
 import { memberOf, roleIn } from "../identity/identity.helpers"
+import { Mesh } from "meshfw"
 
 entity :SessionReference table="session_references"
   attributes
@@ -27,7 +28,7 @@ entity :SessionReference table="session_references"
         &agentProfile
       validate
         check :agentProfile [
-          that=async ({ input }) => (await privileged(Collaborator).read({ filter: { id: { eq: input.agentProfile } }, limit: 1 })).length > 0
+          that=async ({ input }) => (await Mesh.privileged(Collaborator).read({ filter: { id: { eq: input.agentProfile } }, limit: 1 })).length > 0
           code="session.agent-profile"
           message="the agent profile is not a collaborator"
         ]
@@ -88,12 +89,12 @@ entity :SessionReference table="session_references"
           &version=() => &version + 1
   policies
     policy :membersRead types=[:read]
-      authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
+      authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null
     policy :isMember actions=[&record, &redact]
-      authorize-if=async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)
+      authorize-if=async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)
     policy :ownerOrMember actions=[&record]
-      authorize-if=async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])
+      authorize-if=async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])
     policy :ownerOnly actions=[&redact]
-      authorize-if=async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner])
+      authorize-if=async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner])
     policy :sessionRecorder actions=[&setAvailability]
-      authorize-if=({ self, actor, context }) => isSystem(context) || self.recordedById === actor.id
+      authorize-if=({ self, actor, context }) => Mesh.isSystem(context) || self.recordedById === actor.id

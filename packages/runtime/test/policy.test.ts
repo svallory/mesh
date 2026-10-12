@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { authorizer, ForbiddenError, FrameworkError, isSystem, type DataLayer, type PolicySpec } from "@meshfw/runtime";
+import { authorizer, ForbiddenError, FrameworkError, Mesh, type DataLayer, type PolicySpec } from "@meshfw/runtime";
 
 /** A layer outside any transaction: `before` and `filter` then reject at once. */
 const layer = { refuseIfFailed: () => false } as unknown as DataLayer;
@@ -237,7 +237,7 @@ test("TXN-18: a read policy's checks run marked, so a privileged read inside thr
   expect(marks).toEqual([]);
 });
 
-test("isSystem is true only for a context whose system key is true", () => {
-  expect(isSystem({ system: true })).toBe(true);
-  for (const value of [{ system: false }, { system: "true" }, {}, null, undefined, true, "system"]) expect(isSystem(value)).toBe(false);
+test("Mesh.isSystem is true only for a context whose system key is true", () => {
+  expect(Mesh.isSystem({ system: true })).toBe(true);
+  for (const value of [{ system: false }, { system: "true" }, {}, null, undefined, true, "system"]) expect(Mesh.isSystem(value)).toBe(false);
 });

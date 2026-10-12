@@ -52,30 +52,30 @@ export type $work$Assignment$NewScope<I = unknown> = $Omit<
 };
 
 export const $expressions = {
-  // set &delegator, translated (src/domain/work/assignment.mesh.mx:23:22)
+  // set &delegator, translated (src/domain/work/assignment.mesh.mx:24:22)
   "start.step.0.set.delegator": (
     $s: $work$Assignment$Scope<$work$Assignment$StartAssignmentInput>,
   ) => $s.actor?.id,
-  // set &startedAt, translated (src/domain/work/assignment.mesh.mx:24:22)
+  // set &startedAt, translated (src/domain/work/assignment.mesh.mx:25:22)
   "start.step.0.set.startedAt": (
     $s: $work$Assignment$Scope<$work$Assignment$StartAssignmentInput>,
   ) => $.now($s),
-  // check :current that, translated (src/domain/work/assignment.mesh.mx:30:16)
+  // check :current that, translated (src/domain/work/assignment.mesh.mx:31:16)
   "finish.check.current.that": (
     $s: $work$Assignment$CheckScope<$work$Assignment$FinishAssignmentInput>,
   ) => $.isNull($s.self.endedAt),
-  // set &endedAt, translated (src/domain/work/assignment.mesh.mx:36:20)
+  // set &endedAt, translated (src/domain/work/assignment.mesh.mx:37:20)
   "finish.step.0.set.endedAt": (
     $s: $work$Assignment$StoredScope<$work$Assignment$FinishAssignmentInput>,
   ) => $.now($s),
-  // set &endReason, translated (src/domain/work/assignment.mesh.mx:37:22)
+  // set &endReason, translated (src/domain/work/assignment.mesh.mx:38:22)
   "finish.step.0.set.endReason": (
     $s: $work$Assignment$StoredScope<$work$Assignment$FinishAssignmentInput>,
   ) => $s.input?.reason,
-  // policy :membersRead authorize-if, translated (src/domain/work/assignment.mesh.mx:40:20)
+  // policy :membersRead authorize-if, translated (src/domain/work/assignment.mesh.mx:41:20)
   "policy.membersRead.authorize-if.0": ($s: $work$Assignment$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
-  // policy :internal authorize-if, translated (src/domain/work/assignment.mesh.mx:42:20)
+  // policy :internal authorize-if, translated (src/domain/work/assignment.mesh.mx:43:20)
   "policy.internal.authorize-if.0": (
     $s: $work$Assignment$NewScope<
       $SharedInput<$work$Assignment$StartAssignmentInput | $work$Assignment$FinishAssignmentInput>

@@ -3,6 +3,7 @@ import { Collaborator } from "../identity/collaborator.mesh.mx"
 import { Task } from "./task.mesh.mx"
 import { reviewerRuleOf, reviewsSubmissionOf, submittedVersionsOf, taskUnchangedSinceSubmit } from "./work.helpers"
 import { memberOf, roleIn } from "../identity/identity.helpers"
+import { Mesh } from "meshfw"
 
 entity :Review table="reviews"
   attributes
@@ -75,10 +76,10 @@ entity :Review table="reviews"
         }
   policies
     policy :membersRead types=[:read]
-      authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
+      authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null
     policy :isMember actions=[&accept, &return]
-      authorize-if=async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)
+      authorize-if=async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)
     policy :ownerOrMember actions=[&accept, &return]
-      authorize-if=async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])
+      authorize-if=async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])
     policy :reviewReviewer actions=[&accept, &return]
-      authorize-if=async ({ input, actor, context }) => isSystem(context) || await reviewsSubmissionOf(input.submission, actor.id)
+      authorize-if=async ({ input, actor, context }) => Mesh.isSystem(context) || await reviewsSubmissionOf(input.submission, actor.id)

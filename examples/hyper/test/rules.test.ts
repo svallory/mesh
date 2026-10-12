@@ -863,7 +863,7 @@ const PORT_ONLY: Record<string, Case> = {
 /**
  * Hyper's rule that is a permission check, ported as a policy (M8b): the passing case is a call the policy admits, the
  * failing one a `ForbiddenError` naming the policy. `role` re-runs the role gate under the workspace lock for six actions
- * (`memberships/rules.ex:12-17`); a policy that reads the role through `privileged` runs inside the transaction, so it covers
+ * (`memberships/rules.ex:12-17`); a policy that reads the role through `Mesh.privileged` runs inside the transaction, so it covers
  * the rule. (`attempt.claimer`, Hyper's other rule that denies through `Role.deny`, is both a rule and the policy
  * `attemptClaimer`, as in Hyper, and its cases are in RULES.)
  */

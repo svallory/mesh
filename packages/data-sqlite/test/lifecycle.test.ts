@@ -29,6 +29,7 @@ entity :Member table="members"
 `;
 
 const task = `import { Member } from "./member.mesh.mx"
+import { Mesh } from "meshfw"
 entity :Task table="tasks"
   attributes
     uuid :id primary-key
@@ -70,15 +71,15 @@ entity :Task table="tasks"
         &reviewer
       validate
         check :underQuota [
-          that=async ({ input }) => (await privileged(Task).read({ filter: { ownerId: { eq: input.owner } } })).length < 2
-          when=async ({ input }) => (await privileged(Member).read({ filter: { id: { eq: input.owner } } }))[0]?.plan === "free"
+          that=async ({ input }) => (await Mesh.privileged(Task).read({ filter: { ownerId: { eq: input.owner } } })).length < 2
+          when=async ({ input }) => (await Mesh.privileged(Member).read({ filter: { id: { eq: input.owner } } }))[0]?.plan === "free"
           code="task.quota"
           message="free members have 2 tasks"
           details=() => ({ limit: 2 })
         ]
       do
         set
-          &openedAt=() => now()
+          &openedAt=() => Mesh.now()
           &creator=({ actor }) => actor.id
     create :openAs
       input
@@ -86,7 +87,7 @@ entity :Task table="tasks"
         &owner
       do
         set
-          &openedAt=() => now()
+          &openedAt=() => Mesh.now()
           &reviewer=({ actor }) => actor.id
     update :rename
       input
@@ -164,7 +165,7 @@ entity :Task table="tasks"
           &state=:done
         when=() => &priority >= 5
           set
-            &doneAt=() => now()
+            &doneAt=() => Mesh.now()
           when=() => &priority >= 9
             set
               &note="critical"
@@ -204,7 +205,7 @@ entity :Task table="tasks"
         string :what
       do
         set
-          &openedAt=() => now()
+          &openedAt=() => Mesh.now()
         run({ self, input }) {
           const target: any = self;
           if (input.what === "json" && target.meta) target.meta.injected = true;
@@ -246,7 +247,7 @@ entity :Task table="tasks"
         ]
       do
         set
-          &openedAt=() => now()
+          &openedAt=() => Mesh.now()
         when=({ input }) => { if (input.site === "when") { const m: any = input; if (input.what === "json" && m.meta) m.meta.injected = true; if (input.what === "array" && m.meta) m.meta.list.push(9); if (input.what === "date" && m.doneAt) m.doneAt.setUTCFullYear(2000); if (input.what === "scalar") m.title = "changed"; } return false }
           set
             &note="never"
@@ -284,7 +285,7 @@ entity :Task table="tasks"
         &rank
       do
         set
-          &openedAt=() => now()
+          &openedAt=() => Mesh.now()
     create :rankQuick
       input
         &title
@@ -292,7 +293,7 @@ entity :Task table="tasks"
         &reviewer
       do
         set
-          &openedAt=() => now()
+          &openedAt=() => Mesh.now()
     update :peek
       do
         run({ before, context }) {
@@ -467,7 +468,7 @@ describe("create", () => {
       expect(error.code).toBe("invalid_input");
       expect(error.issues).toEqual([{
         label: "titleNotShouting", code: "task.shouting", path: [], message: "do not shout", details: null,
-        source: { file: "src/domain/task.mesh.mx", line: 26, column: 9 },
+        source: { file: "src/domain/task.mesh.mx", line: 27, column: 9 },
       }]);
       expect(error.message).toBe("titleNotShouting: do not shout");
     } finally { await world.db.close(); }

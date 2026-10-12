@@ -78,7 +78,7 @@ import {
 } from "../../$globals";
 
 /**
- * The reads of this entity without their policies: what `privileged(Submission)` runs (TXN-16). The read actions
+ * The reads of this entity without their policies: what `Mesh.privileged(Submission)` runs (TXN-16). The read actions
  * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
 export function bindSubmissionReads(
@@ -95,7 +95,7 @@ export function bindSubmissionReads(
       cast?: $CastOutput<typeof readSubmissionInputSchema>,
     ): $Promise<L extends unknown ? SubmissionTxWith<SubmissionLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
+      // for its policies and hands it over as `cast`; a `Mesh.privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readSubmissionInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.submissions, {
@@ -150,7 +150,8 @@ export function bindSubmission(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -163,7 +164,7 @@ export function bindSubmission(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -176,7 +177,7 @@ export function bindSubmission(
             {
               kind: "authorize-if",
               check:
-                "async ({ input, actor, context }) => isSystem(context) || await heldAClaimOf(input.task, actor.id)",
+                "async ({ input, actor, context }) => Mesh.isSystem(context) || await heldAClaimOf(input.task, actor.id)",
               record: true,
               run: $expressions["policy.claimHolder.authorize-if.0"],
             },
@@ -249,14 +250,14 @@ export function bindSubmission(
               label: "taskOpen",
               code: "task.open",
               message: "the task is not open; reopen it first",
-              source: { file: "src/domain/work/submission.mesh.mx", line: 28, column: 9 },
+              source: { file: "src/domain/work/submission.mesh.mx", line: 29, column: 9 },
               that: $expressions["submit.check.taskOpen.that"],
             });
             await $runCheck($issues, $checks, {
               label: "currentFence",
               code: "claim.current-fence",
               message: "the fence is not your current claim; claim the task again",
-              source: { file: "src/domain/work/submission.mesh.mx", line: 33, column: 9 },
+              source: { file: "src/domain/work/submission.mesh.mx", line: 34, column: 9 },
               that: $expressions["submit.check.currentFence.that"],
               details: $expressions["submit.check.currentFence.details"],
             });
@@ -264,14 +265,14 @@ export function bindSubmission(
               label: "nonePending",
               code: "submission.none-pending",
               message: "a submission is already pending; wait for its review or withdraw it",
-              source: { file: "src/domain/work/submission.mesh.mx", line: 39, column: 9 },
+              source: { file: "src/domain/work/submission.mesh.mx", line: 40, column: 9 },
               that: $expressions["submit.check.nonePending.that"],
             });
             await $runCheck($issues, $checks, {
               label: "evidenceExists",
               code: "evidence.exists",
               message: "an evidence reference does not exist",
-              source: { file: "src/domain/work/submission.mesh.mx", line: 44, column: 9 },
+              source: { file: "src/domain/work/submission.mesh.mx", line: 45, column: 9 },
               that: $expressions["submit.check.evidenceExists.that"],
               details: $expressions["submit.check.evidenceExists.details"],
             });
@@ -279,7 +280,7 @@ export function bindSubmission(
               label: "versionMatches",
               code: "expected-version",
               message: "the task is at another version; read it again and retry",
-              source: { file: "src/domain/work/submission.mesh.mx", line: 50, column: 9 },
+              source: { file: "src/domain/work/submission.mesh.mx", line: 51, column: 9 },
               that: $expressions["submit.check.versionMatches.that"],
               details: $expressions["submit.check.versionMatches.details"],
             });
@@ -294,7 +295,7 @@ export function bindSubmission(
               const $value = await $expressions["submit.step.0.set.submitter"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &submitter (src/domain/work/submission.mesh.mx:58:22) produced no value, and the relationship submitter is required",
+                  "set &submitter (src/domain/work/submission.mesh.mx:59:22) produced no value, and the relationship submitter is required",
                 );
               $changes.submitterId = $record.submitterId = $value;
             }
@@ -311,7 +312,7 @@ export function bindSubmission(
               const $value = await $expressions["submit.step.0.set.taskVersion"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &taskVersion (src/domain/work/submission.mesh.mx:61:24) produced no value, and taskVersion is required",
+                  "set &taskVersion (src/domain/work/submission.mesh.mx:62:24) produced no value, and taskVersion is required",
                 );
               $changes.taskVersion = $record.taskVersion = $value;
             }
@@ -368,7 +369,8 @@ export function bindSubmission(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -381,7 +383,7 @@ export function bindSubmission(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -394,7 +396,7 @@ export function bindSubmission(
             {
               kind: "authorize-if",
               check:
-                "({ self, actor, context }) => isSystem(context) || self.submitterId === actor.id",
+                "({ self, actor, context }) => Mesh.isSystem(context) || self.submitterId === actor.id",
               record: true,
               run: $expressions["policy.submissionSubmitter.authorize-if.0"],
             },
@@ -458,14 +460,14 @@ export function bindSubmission(
               label: "pending",
               code: "submission.pending",
               message: "the submission is not pending",
-              source: { file: "src/domain/work/submission.mesh.mx", line: 72, column: 9 },
+              source: { file: "src/domain/work/submission.mesh.mx", line: 73, column: 9 },
               that: $expressions["withdraw.check.pending.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the task is at another version; read it again and retry",
-              source: { file: "src/domain/work/submission.mesh.mx", line: 77, column: 9 },
+              source: { file: "src/domain/work/submission.mesh.mx", line: 78, column: 9 },
               that: $expressions["withdraw.check.versionMatches.that"],
               details: $expressions["withdraw.check.versionMatches.details"],
             });
@@ -535,7 +537,7 @@ export function bindSubmission(
           checks: [
             {
               kind: "authorize-if",
-              check: "({ context }) => isSystem(context)",
+              check: "({ context }) => Mesh.isSystem(context)",
               record: false,
               run: $expressions["policy.internal.authorize-if.0"],
             },
@@ -595,7 +597,7 @@ export function bindSubmission(
               label: "pending",
               code: "submission.pending",
               message: "the submission is not pending",
-              source: { file: "src/domain/work/submission.mesh.mx", line: 93, column: 9 },
+              source: { file: "src/domain/work/submission.mesh.mx", line: 94, column: 9 },
               that: $expressions["settle.check.pending.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -604,7 +606,7 @@ export function bindSubmission(
               const $value = await $expressions["settle.step.0.set.state"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &state (src/domain/work/submission.mesh.mx:100:18) produced no value, and state is required",
+                  "set &state (src/domain/work/submission.mesh.mx:101:18) produced no value, and state is required",
                 );
               $changes.state = $record.state = $value;
             }
@@ -655,7 +657,7 @@ export function bindSubmission(
           checks: [
             {
               kind: "authorize-if",
-              check: "({ context }) => isSystem(context)",
+              check: "({ context }) => Mesh.isSystem(context)",
               record: false,
               run: $expressions["policy.internal.authorize-if.0"],
             },
@@ -734,7 +736,7 @@ export function bindSubmission(
               const $value = await $expressions["recordAccepted.step.0.set.submitter"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &submitter (src/domain/work/submission.mesh.mx:110:22) produced no value, and the relationship submitter is required",
+                  "set &submitter (src/domain/work/submission.mesh.mx:111:22) produced no value, and the relationship submitter is required",
                 );
               $changes.submitterId = $record.submitterId = $value;
             }
@@ -763,7 +765,7 @@ export function bindSubmission(
       input: $Omit<ReadSubmissionInput, "load"> & SubmissionLoadArg<L>,
       ...[context]: $ContextArgument
     ): $Promise<L extends unknown ? SubmissionWith<SubmissionLoadNames<L>>[] : never> {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `Mesh.privileged` read skips them
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
@@ -779,7 +781,7 @@ export function bindSubmission(
               checks: [
                 {
                   kind: "authorize-if",
-                  check: "({ actor, context }) => isSystem(context) || actor.role != null",
+                  check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
                   record: false,
                   run: $expressions["policy.membersRead.authorize-if.0"],
                 },
@@ -853,7 +855,7 @@ export { $entityValue as Submission };
 /** The record type, under the entity value's name. */
 export type Submission = $Record;
 
-/** What `privileged(Submission)` returns (TXN-16): one function per read action, run with no policy. */
+/** What `Mesh.privileged(Submission)` returns (TXN-16): one function per read action, run with no policy. */
 export interface $Privileged {
   read<const L extends readonly (keyof SubmissionLoadable)[] = readonly []>(
     input: $Omit<ReadSubmissionInput, "load"> & SubmissionLoadArg<L>,
@@ -876,7 +878,7 @@ export interface $PrivilegedReadOnly {
 
 /**
  * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
- * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ * and so is what `Mesh.privileged` of it resolves with. The expressions files bind the entity value under this type.
  */
 export type $ReadOnly = $EntityValue<
   {
@@ -912,7 +914,7 @@ export type $ReadOnly = $EntityValue<
 /**
  * Load relationships and computed fields onto Submission rows by name. A relationship is loaded by one more query for
  * all the rows; a computed field loads what its body reads first. The rows you pass are not changed: the result is new
- * rows of type SubmissionTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so it takes no `policies`
+ * rows of type SubmissionTxWith<"name" | ...>. It loads as `Mesh.privileged` does, running no policy, so it takes no `policies`
  * option: every related record the key names is there.
  */
 export async function loadSubmissionFields<const N extends keyof SubmissionLoadable>(

@@ -72,7 +72,7 @@ import {
 } from "../../$globals";
 
 /**
- * The reads of this entity without their policies: what `privileged(Membership)` runs (TXN-16). The read actions
+ * The reads of this entity without their policies: what `Mesh.privileged(Membership)` runs (TXN-16). The read actions
  * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
 export function bindMembershipReads(
@@ -89,7 +89,7 @@ export function bindMembershipReads(
       cast?: $CastOutput<typeof readMembershipInputSchema>,
     ): $Promise<L extends unknown ? MembershipTxWith<MembershipLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
+      // for its policies and hands it over as `cast`; a `Mesh.privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readMembershipInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.memberships, {
@@ -141,7 +141,8 @@ export function bindMembership(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -154,7 +155,7 @@ export function bindMembership(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner])",
               record: true,
               run: $expressions["policy.ownerOnly.authorize-if.0"],
             },
@@ -233,14 +234,14 @@ export function bindMembership(
               label: "collaboratorActive",
               code: "collaborator.active",
               message: "the collaborator is retired",
-              source: { file: "src/domain/identity/membership.mesh.mx", line: 22, column: 9 },
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 23, column: 9 },
               that: $expressions["grant.check.collaboratorActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "noneActive",
               code: "membership.none-active",
               message: "the collaborator already has an active membership; change its role instead",
-              source: { file: "src/domain/identity/membership.mesh.mx", line: 27, column: 9 },
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 28, column: 9 },
               that: $expressions["grant.check.noneActive.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -254,7 +255,7 @@ export function bindMembership(
               const $value = await $expressions["grant.step.0.set.grantedAt"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &grantedAt (src/domain/identity/membership.mesh.mx:34:22) produced no value, and grantedAt is required",
+                  "set &grantedAt (src/domain/identity/membership.mesh.mx:35:22) produced no value, and grantedAt is required",
                 );
               $changes.grantedAt = $record.grantedAt = $value;
             }
@@ -262,7 +263,7 @@ export function bindMembership(
               const $value = await $expressions["grant.step.0.set.grantedBy"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &grantedBy (src/domain/identity/membership.mesh.mx:35:22) produced no value, and the relationship grantedBy is required",
+                  "set &grantedBy (src/domain/identity/membership.mesh.mx:36:22) produced no value, and the relationship grantedBy is required",
                 );
               $changes.grantedById = $record.grantedById = $value;
             }
@@ -303,7 +304,8 @@ export function bindMembership(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -316,7 +318,7 @@ export function bindMembership(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner])",
               record: true,
               run: $expressions["policy.ownerOnly.authorize-if.0"],
             },
@@ -378,28 +380,28 @@ export function bindMembership(
               label: "membershipActive",
               code: "membership.active",
               message: "the membership is revoked",
-              source: { file: "src/domain/identity/membership.mesh.mx", line: 41, column: 9 },
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 42, column: 9 },
               that: $expressions["changeRole.check.membershipActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "roleChanges",
               code: "membership.unchanged",
               message: "the member already has that role",
-              source: { file: "src/domain/identity/membership.mesh.mx", line: 46, column: 9 },
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 47, column: 9 },
               that: $expressions["changeRole.check.roleChanges.that"],
             });
             await $runCheck($issues, $checks, {
               label: "lastOwner",
               code: "membership.last-owner",
               message: "the workspace would have no owner; grant another owner first",
-              source: { file: "src/domain/identity/membership.mesh.mx", line: 51, column: 9 },
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 52, column: 9 },
               that: $expressions["changeRole.check.lastOwner.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/identity/membership.mesh.mx", line: 56, column: 9 },
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 57, column: 9 },
               that: $expressions["changeRole.check.versionMatches.that"],
               details: $expressions["changeRole.check.versionMatches.details"],
             });
@@ -412,7 +414,7 @@ export function bindMembership(
               const $value = await $expressions["changeRole.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/identity/membership.mesh.mx:64:20) produced no value, and version is required",
+                  "set &version (src/domain/identity/membership.mesh.mx:65:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -463,7 +465,8 @@ export function bindMembership(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -476,7 +479,7 @@ export function bindMembership(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner])",
               record: true,
               run: $expressions["policy.ownerOnly.authorize-if.0"],
             },
@@ -538,21 +541,21 @@ export function bindMembership(
               label: "membershipActive",
               code: "membership.active",
               message: "the membership is revoked",
-              source: { file: "src/domain/identity/membership.mesh.mx", line: 70, column: 9 },
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 71, column: 9 },
               that: $expressions["revoke.check.membershipActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "lastOwner",
               code: "membership.last-owner",
               message: "the workspace would have no owner; grant another owner first",
-              source: { file: "src/domain/identity/membership.mesh.mx", line: 75, column: 9 },
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 76, column: 9 },
               that: $expressions["revoke.check.lastOwner.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/identity/membership.mesh.mx", line: 80, column: 9 },
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 81, column: 9 },
               that: $expressions["revoke.check.versionMatches.that"],
               details: $expressions["revoke.check.versionMatches.details"],
             });
@@ -571,7 +574,7 @@ export function bindMembership(
               const $value = await $expressions["revoke.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/identity/membership.mesh.mx:91:20) produced no value, and version is required",
+                  "set &version (src/domain/identity/membership.mesh.mx:92:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -609,7 +612,7 @@ export function bindMembership(
       input: $Omit<ReadMembershipInput, "load"> & MembershipLoadArg<L>,
       ...[context]: $ContextArgument
     ): $Promise<L extends unknown ? MembershipWith<MembershipLoadNames<L>>[] : never> {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `Mesh.privileged` read skips them
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
@@ -625,7 +628,7 @@ export function bindMembership(
               checks: [
                 {
                   kind: "authorize-if",
-                  check: "({ actor, context }) => isSystem(context) || actor.role != null",
+                  check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
                   record: false,
                   run: $expressions["policy.membersRead.authorize-if.0"],
                 },
@@ -695,7 +698,7 @@ export { $entityValue as Membership };
 /** The record type, under the entity value's name. */
 export type Membership = $Record;
 
-/** What `privileged(Membership)` returns (TXN-16): one function per read action, run with no policy. */
+/** What `Mesh.privileged(Membership)` returns (TXN-16): one function per read action, run with no policy. */
 export interface $Privileged {
   read<const L extends readonly (keyof MembershipLoadable)[] = readonly []>(
     input: $Omit<ReadMembershipInput, "load"> & MembershipLoadArg<L>,
@@ -718,7 +721,7 @@ export interface $PrivilegedReadOnly {
 
 /**
  * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
- * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ * and so is what `Mesh.privileged` of it resolves with. The expressions files bind the entity value under this type.
  */
 export type $ReadOnly = $EntityValue<
   {
@@ -750,7 +753,7 @@ export type $ReadOnly = $EntityValue<
 /**
  * Load relationships and computed fields onto Membership rows by name. A relationship is loaded by one more query for
  * all the rows; a computed field loads what its body reads first. The rows you pass are not changed: the result is new
- * rows of type MembershipTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so it takes no `policies`
+ * rows of type MembershipTxWith<"name" | ...>. It loads as `Mesh.privileged` does, running no policy, so it takes no `policies`
  * option: every related record the key names is there.
  */
 export async function loadMembershipFields<const N extends keyof MembershipLoadable>(

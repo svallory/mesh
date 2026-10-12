@@ -3,6 +3,7 @@
 
 import {
   expr as $,
+  meshIn as $mesh,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
   type SharedInput as $SharedInput,
@@ -62,35 +63,35 @@ export type $identity$Membership$NewScope<I = unknown> = $Omit<
 };
 
 export const $expressions = {
-  // check :collaboratorActive that, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:23:16)
+  // check :collaboratorActive that, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:24:16)
   "grant.check.collaboratorActive.that": (
     $s: $identity$Membership$NewScope<$identity$Membership$GrantMembershipInput>,
   ) => {
     return (async ({ input }) => await collaboratorActiveOf(input.collaborator))($s);
   },
-  // check :noneActive that, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:28:16)
+  // check :noneActive that, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:29:16)
   "grant.check.noneActive.that": (
     $s: $identity$Membership$NewScope<$identity$Membership$GrantMembershipInput>,
   ) => {
     return (async ({ input }) => await noActiveMembershipOf(input.collaborator))($s);
   },
-  // set &grantedAt, translated (src/domain/identity/membership.mesh.mx:34:22)
+  // set &grantedAt, translated (src/domain/identity/membership.mesh.mx:35:22)
   "grant.step.0.set.grantedAt": (
     $s: $identity$Membership$Scope<$identity$Membership$GrantMembershipInput>,
   ) => $.now($s),
-  // set &grantedBy, translated (src/domain/identity/membership.mesh.mx:35:22)
+  // set &grantedBy, translated (src/domain/identity/membership.mesh.mx:36:22)
   "grant.step.0.set.grantedBy": (
     $s: $identity$Membership$Scope<$identity$Membership$GrantMembershipInput>,
   ) => $s.actor?.id,
-  // check :membershipActive that, translated (src/domain/identity/membership.mesh.mx:42:16)
+  // check :membershipActive that, translated (src/domain/identity/membership.mesh.mx:43:16)
   "changeRole.check.membershipActive.that": (
     $s: $identity$Membership$CheckScope<$identity$Membership$ChangeRoleMembershipInput>,
   ) => $.eq($s.self.state, "active"),
-  // check :roleChanges that, translated (src/domain/identity/membership.mesh.mx:47:16)
+  // check :roleChanges that, translated (src/domain/identity/membership.mesh.mx:48:16)
   "changeRole.check.roleChanges.that": (
     $s: $identity$Membership$CheckScope<$identity$Membership$ChangeRoleMembershipInput>,
   ) => $.ne($.coalesce($s.input?.role, $s.self.role), $s.self.role),
-  // check :lastOwner that, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:52:16)
+  // check :lastOwner that, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:53:16)
   "changeRole.check.lastOwner.that": (
     $s: $identity$Membership$CheckScope<$identity$Membership$ChangeRoleMembershipInput>,
   ) => {
@@ -100,11 +101,11 @@ export const $expressions = {
         self.state === "active" && self.role === "owner" && (input.role ?? self.role) !== "owner",
       ))($s);
   },
-  // check :versionMatches that, translated (src/domain/identity/membership.mesh.mx:57:16)
+  // check :versionMatches that, translated (src/domain/identity/membership.mesh.mx:58:16)
   "changeRole.check.versionMatches.that": (
     $s: $identity$Membership$CheckScope<$identity$Membership$ChangeRoleMembershipInput>,
   ) => $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/identity/membership.mesh.mx:60:19)
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/identity/membership.mesh.mx:61:19)
   "changeRole.check.versionMatches.details": (
     $s: $identity$Membership$CheckScope<$identity$Membership$ChangeRoleMembershipInput>,
   ) => {
@@ -114,15 +115,15 @@ export const $expressions = {
       actualVersion: self.version,
     }))($s);
   },
-  // set &version, translated (src/domain/identity/membership.mesh.mx:64:20)
+  // set &version, translated (src/domain/identity/membership.mesh.mx:65:20)
   "changeRole.step.0.set.version": (
     $s: $identity$Membership$StoredScope<$identity$Membership$ChangeRoleMembershipInput>,
   ) => $.add($s.self.version, 1),
-  // check :membershipActive that, translated (src/domain/identity/membership.mesh.mx:71:16)
+  // check :membershipActive that, translated (src/domain/identity/membership.mesh.mx:72:16)
   "revoke.check.membershipActive.that": (
     $s: $identity$Membership$CheckScope<$identity$Membership$RevokeMembershipInput>,
   ) => $.eq($s.self.state, "active"),
-  // check :lastOwner that, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:76:16)
+  // check :lastOwner that, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:77:16)
   "revoke.check.lastOwner.that": (
     $s: $identity$Membership$CheckScope<$identity$Membership$RevokeMembershipInput>,
   ) => {
@@ -131,11 +132,11 @@ export const $expressions = {
       $s,
     );
   },
-  // check :versionMatches that, translated (src/domain/identity/membership.mesh.mx:81:16)
+  // check :versionMatches that, translated (src/domain/identity/membership.mesh.mx:82:16)
   "revoke.check.versionMatches.that": (
     $s: $identity$Membership$CheckScope<$identity$Membership$RevokeMembershipInput>,
   ) => $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/identity/membership.mesh.mx:84:19)
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/identity/membership.mesh.mx:85:19)
   "revoke.check.versionMatches.details": (
     $s: $identity$Membership$CheckScope<$identity$Membership$RevokeMembershipInput>,
   ) => {
@@ -145,22 +146,22 @@ export const $expressions = {
       actualVersion: self.version,
     }))($s);
   },
-  // set &revokedAt, translated (src/domain/identity/membership.mesh.mx:89:22)
+  // set &revokedAt, translated (src/domain/identity/membership.mesh.mx:90:22)
   "revoke.step.0.set.revokedAt": (
     $s: $identity$Membership$StoredScope<$identity$Membership$RevokeMembershipInput>,
   ) => $.now($s),
-  // set &revokedBy, translated (src/domain/identity/membership.mesh.mx:90:22)
+  // set &revokedBy, translated (src/domain/identity/membership.mesh.mx:91:22)
   "revoke.step.0.set.revokedBy": (
     $s: $identity$Membership$StoredScope<$identity$Membership$RevokeMembershipInput>,
   ) => $s.actor?.id,
-  // set &version, translated (src/domain/identity/membership.mesh.mx:91:20)
+  // set &version, translated (src/domain/identity/membership.mesh.mx:92:20)
   "revoke.step.0.set.version": (
     $s: $identity$Membership$StoredScope<$identity$Membership$RevokeMembershipInput>,
   ) => $.add($s.self.version, 1),
-  // policy :membersRead authorize-if, translated (src/domain/identity/membership.mesh.mx:94:20)
+  // policy :membersRead authorize-if, translated (src/domain/identity/membership.mesh.mx:95:20)
   "policy.membersRead.authorize-if.0": ($s: $identity$Membership$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
-  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:96:20)
+  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:97:20)
   "policy.isMember.authorize-if.0": (
     $s: $identity$Membership$NewScope<
       $SharedInput<
@@ -170,10 +171,10 @@ export const $expressions = {
       >
     >,
   ) => {
-    const isSystem = $.isSystem;
-    return (async ({ actor, context }) => isSystem(context) || (await memberOf(actor.id)))($s);
+    const Mesh = $mesh($s);
+    return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
-  // policy :ownerOnly authorize-if, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:98:20)
+  // policy :ownerOnly authorize-if, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:99:20)
   "policy.ownerOnly.authorize-if.0": (
     $s: $identity$Membership$NewScope<
       $SharedInput<
@@ -183,9 +184,8 @@ export const $expressions = {
       >
     >,
   ) => {
-    const isSystem = $.isSystem;
-    return (async ({ actor, context }) => isSystem(context) || (await roleIn(actor.id, ["owner"])))(
-      $s,
-    );
+    const Mesh = $mesh($s);
+    return (async ({ actor, context }) =>
+      Mesh.isSystem(context) || (await roleIn(actor.id, ["owner"])))($s);
   },
 } as const;
