@@ -134,7 +134,7 @@ entity :Invoice
       authorize-if=({ actor }) => isStaff(actor)
 ```
 
-Only relative, named imports of files inside `src/domain/` are allowed. An imported helper in a translated expression must be pure: it may not read the clock, the network or anything Mesh did not hand it. A helper that does not read the record, such as `isStaff(actor)`, runs once before the query and enters SQL as a bound value. A `run` step is different: it is plain code and may call anything.
+Only relative, named imports of files inside `src/domain/` are allowed. An import name, whether a helper or an alias for another entity, may not start with `$` or `l$`: Mesh uses those prefixes for the names it generates, and the build refuses the binding (`MESH_HELPER_NAME`). An imported helper in a translated expression must be pure: it may not read the clock, the network or anything Mesh did not hand it. A helper that does not read the record, such as `isStaff(actor)`, runs once before the query and enters SQL as a bound value. A `run` step is different: it is plain code and may call anything.
 
 ### What a translated arrow may use
 
@@ -147,7 +147,7 @@ Comparisons, `&&`, `||`, `!`, numeric `+ - * /`, `.length`, `today()`, member re
 | `:Todo` | yes | The entity's declared name, in PascalCase; also its named export |
 | `table` | no | The database table; defaults to the entity's name in snake_case |
 
-The folder that holds the file is the module. Entities in `src/domain/todo/` belong together; no line repeats the folder's name. A plain nested folder is a submodule (`todo/reminders`), while a folder starting with `_` only organises files and is left out of the module (`todo/_scheduling/` is module `todo`); the `ignore` option in `mesh.config.ts` excludes files from Mesh. Another entity is imported by relative path. Two folders may each declare an `entity :List` without conflict: their paths distinguish them, each module's import specifier (`#mesh/domain/<module>`) exports its own entity value `List`, and Mesh names them by their fully qualified names, `school.List` and `work.List`, wherever it writes an entity's name (errors, seams, `mesh inspect`). When both would be stored in the table `list`, the build fails naming both by those names, and a `table=` on one of them resolves it. See [Project structure](./project-structure.md#the-domain).
+The folder that holds the file is the module. Entities in `src/domain/todo/` belong together; no line repeats the folder's name. A plain nested folder is a submodule (`todo/reminders`), while a folder starting with `_` only organises files and is left out of the module (`todo/_scheduling/` is module `todo`); the `ignore` option in `mesh.config.ts` excludes files from Mesh. Another entity is imported by relative path. Two folders may each declare an `entity :List` without conflict: their paths distinguish them, each module's import specifier (`#mesh/domain/<module>`) exports its own entity value `List`, and Mesh names them by their fully qualified names, `school.List` and `work.List`, wherever it writes an entity's name (errors, seams, `mesh inspect`). When both would be stored in the table `list`, the build fails naming both by those names, and a `table=` on one of them resolves it. No name Mesh generates is unique across the project: two modules may declare entities of one name, and the generated files tell them apart internally. See [Project structure](./project-structure.md#the-domain).
 
 ## attributes
 
