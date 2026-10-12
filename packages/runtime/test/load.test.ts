@@ -81,8 +81,8 @@ describe("loadRows", () => {
 
   test("a required belongs-to with no key, or whose row is missing, is an error", async () => {
     const { tx, handle } = memory({ owners: [{ id: 1 }] });
-    await expect(loadRows(plan(handle), "Node", tx, [{ id: 1, ownerId: null }], ["owner"])).rejects.toThrow("belongs-to :owner of :Node has no key in ownerId, and it is not nullable");
-    await expect(loadRows(plan(handle), "Node", tx, [{ id: 1, ownerId: 2 }], ["owner"])).rejects.toThrow("belongs-to :owner of :Node points at Owner 2, which does not exist");
+    await expect(loadRows(plan(handle), "Node", tx, [{ id: 1, ownerId: null }], ["owner"])).rejects.toThrow("belongs-to :owner of Node has no key in ownerId, and it is not nullable");
+    await expect(loadRows(plan(handle), "Node", tx, [{ id: 1, ownerId: 2 }], ["owner"])).rejects.toThrow("belongs-to :owner of Node points at Owner 2, which does not exist");
   });
 
   test("has-many: one empty list per row without children, in the order the layer returns", async () => {
@@ -96,12 +96,12 @@ describe("loadRows", () => {
     const { tx, handle } = memory({ badges: [{ id: 1, nodeId: 1 }, { id: 2, nodeId: 3 }, { id: 3, nodeId: 3 }] });
     const ok = await loadRows(plan(handle), "Node", tx, [{ id: 1 }, { id: 2 }], ["badge"]);
     expect(ok.map((r) => (r.badge as Row | null)?.id ?? null)).toEqual([1, null]);
-    await expect(loadRows(plan(handle), "Node", tx, [{ id: 3 }], ["badge"])).rejects.toThrow("has-one :badge of :Node found 2 rows for 3");
+    await expect(loadRows(plan(handle), "Node", tx, [{ id: 3 }], ["badge"])).rejects.toThrow("has-one :badge of Node found 2 rows for 3");
   });
 
   test("a has-many with no key back says what to declare", async () => {
     const { tx, handle } = memory({});
-    await expect(loadRows(plan(handle), "Node", tx, [{ id: 1 }], ["loose"])).rejects.toThrow("has-many :loose of :Node cannot be loaded: :Badge has no belongs-to back to :Node. Declare one in :Badge, and name it with inverse=:name if there are several");
+    await expect(loadRows(plan(handle), "Node", tx, [{ id: 1 }], ["loose"])).rejects.toThrow("has-many :loose of Node cannot be loaded: Badge has no belongs-to back to Node. Declare one in Badge, and name it with inverse=:name if there are several");
   });
 
   test("more keys than a chunk are several queries, and every row is served", async () => {
@@ -167,18 +167,18 @@ describe("loadRows", () => {
     test("sum, avg, min, a path through two relationships and a belongs-to are errors that say when", async () => {
       const { tx, handle } = memory({});
       const row = [{ id: 1, ownerId: 1 }];
-      await expect(loadRows(plan(handle), "Node", tx, row, ["sizeSum"])).rejects.toThrow('sum :sizeSum of="children.size" on :Node cannot be loaded: only count and max rollups run before Mesh 1.0; sum, avg and min come after it');
+      await expect(loadRows(plan(handle), "Node", tx, row, ["sizeSum"])).rejects.toThrow('sum :sizeSum of="children.size" on Node cannot be loaded: only count and max rollups run before Mesh 1.0; sum, avg and min come after it');
       await expect(loadRows(plan(handle), "Node", tx, row, ["deep"])).rejects.toThrow("a rollup over more than one relationship needs a join, which arrives with the SQL evaluator (M10)");
       await expect(loadRows(plan(handle), "Node", tx, row, ["ownerCount"])).rejects.toThrow("a rollup over a belongs-to needs a join");
-      await expect(loadRows(plan(handle), "Node", tx, row, ["badRelation"])).rejects.toThrow(":Node has no relationship nowhere");
-      await expect(loadRows(plan(handle), "Node", tx, row, ["looseCount"])).rejects.toThrow(":Badge has no belongs-to back to :Node");
+      await expect(loadRows(plan(handle), "Node", tx, row, ["badRelation"])).rejects.toThrow("Node has no relationship nowhere");
+      await expect(loadRows(plan(handle), "Node", tx, row, ["looseCount"])).rejects.toThrow("Badge has no belongs-to back to Node");
     });
   });
 });
 
 describe("rejectComputedQuery", () => {
   const names = ["total", "depth"];
-  const refused = (what: string, name: string) => `A ${what} by Doc.${name} is not available yet: ${name} is a computed field or rollup, and filtering and sorting by one is evaluated by the SQL evaluator, which arrives in M10`;
+  const refused = (what: string, name: string) => `A ${what} by Doc#${name} is not available yet: ${name} is a computed field or rollup, and filtering and sorting by one is evaluated by the SQL evaluator, which arrives in M10`;
   test("a filter or sort that names a computed field fails, naming M10", () => {
     expect(() => rejectComputedQuery("Doc", names, { filter: { total: { gt: 1 } } })).toThrow(refused("filter", "total"));
     expect(() => rejectComputedQuery("Doc", names, { sort: ["title", "-depth"] })).toThrow(refused("sort", "depth"));
@@ -259,7 +259,7 @@ describe("what a caller loads runs the read policies of the entity it reaches (P
     const guest = await loadRows(guarded(handle), "Node", tx, rows, ["owner"], { actor: { id: "guest" }, policies: true });
     expect(guest[0]!.owner).toBeNull();
     await expect(loadRows(guarded(handle), "Node", tx, rows, ["owner"], { actor: { id: "admin" }, policies: true }))
-      .rejects.toThrow("belongs-to :owner of :Node points at Owner 99, which does not exist");
+      .rejects.toThrow("belongs-to :owner of Node points at Owner 99, which does not exist");
     // A load that cannot be served is an error for every caller: a denied one is told so too, with no query.
     const unserved = await loadRows(guarded(handle), "Node", tx, rows, ["looseCount"], { actor: { id: "guest" }, policies: true }).catch((error: unknown) => error);
     expect(unserved).toBeInstanceOf(FrameworkError);
