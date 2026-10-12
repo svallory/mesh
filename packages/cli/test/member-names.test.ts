@@ -43,7 +43,7 @@ const PACKAGE = {
   imports: { "#mesh": "./.mesh/index.ts", "#mesh/domain": "./.mesh/domain/index.ts", "#mesh/domain/*": "./.mesh/domain/*/index.ts" },
 };
 /** Type-level checks through the specifiers: each name is the member it declares, never the inherited one. */
-const CHECK = `import { Calls, Fields, Loads, type EditFieldsInput, type FieldsFilter, type LoadsLoadable } from "#mesh/domain/names";
+const CHECK = `import { Calls, Fields, Loads, type EditFieldsInput, type FieldsFilter, type LoadsFilter, type LoadsLoadable } from "#mesh/domain/names";
 
 export const made: Fields["constructor"] = "";
 export const text: string = null as unknown as Fields["toString"];
@@ -69,12 +69,18 @@ const unset = {
 export const byIdGiven: FieldsFilter = { ...unset, id: { eq: "x" } };
 // @ts-expect-error \`constructor\`, left out, is read as the inherited Function
 export const byId: FieldsFilter = { id: { eq: "x" } };
+// A computed field too: the read takes it out of what it hands the data layer, which has no column for it.
+export const byLabelGiven: LoadsFilter = { toString: undefined, valueOf: undefined, label: { eq: "x" } };
+// @ts-expect-error \`toString\`, left out, is read as the inherited method
+export const byLabel: LoadsFilter = { label: { eq: "x" } };
 export const reads = () => [
   Fields.read({ filter: { ...unset, id: { eq: "x" } } }),
   Fields.read({ filter: { ...unset, toString: { eq: "t" } }, sort: ["-toString"] }),
   Fields.read({ filter: { or: [{ ...unset, toString: { eq: "t" } }, { ...unset, constructor: { eq: "c" } }] } }),
   // A filter of an entity with no such column leaves out what it does not compare.
   Calls.read({ filter: { last: { eq: "x" } } }),
+  Loads.read({ filter: { toString: undefined, valueOf: undefined, label: { eq: "x" } } }),
+  Loads.read({ filter: { or: [{ toString: undefined, valueOf: undefined, label: { eq: "x" } }, { toString: undefined, valueOf: undefined, id: { eq: "y" } }] } }),
 ];
 `;
 
@@ -273,6 +279,14 @@ describe("members named like members of Object.prototype or of a function (ENT-1
         // Not loaded, none of them is on the record: the row's own members are its columns.
         const [plain] = await names.Loads.read({ filter: { id: { eq: alone.id } } }, anyone);
         expect(Object.keys(plain).sort()).toEqual(["constructorId", "id", "label"]);
+        // A computed field given as undefined, as the filter type has a caller write it, is left out: the data layer, which
+        // has no column for it, never sees it. Compared, it is still the SQL evaluator's (M10).
+        const unset = { toString: undefined, valueOf: undefined };
+        expect(await names.Loads.read({ filter: { ...unset, label: { eq: "alone" } } }, anyone)).toEqual([alone]);
+        expect(await names.Loads.read({ filter: { or: [{ ...unset, label: { eq: "alone" } }, { ...unset, id: { eq: linked.id } }] }, sort: ["label"] }, anyone))
+          .toEqual([alone, linked]);
+        expect(await names.Loads.read({ filter: { and: [unset, { label: { eq: "linked" } }] } }, anyone)).toEqual([linked]);
+        await expect(names.Loads.read({ filter: { ...unset, valueOf: { eq: "ALONE:none" } } }, anyone)).rejects.toThrow("arrives in M10");
       });
     } finally {
       await layer.close();
