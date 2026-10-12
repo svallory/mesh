@@ -37,6 +37,7 @@
 import type { Dialect, UnknownTag, UnknownTagExplanation } from "@mxlang/core";
 import { MESH_SYNTAX } from "./syntax/mesh.ts";
 import MESH_CONTRACTS from "./contracts.ts";
+import { deepFreeze } from "./deep-freeze.ts";
 
 /** The message, from the tag name alone: `uuid:id` is written `uuid :id`; `:x` has no kind, the parent's default tag names it. */
 function unspacedMessage(name: string, defaultTag: string | undefined): string {
@@ -66,7 +67,7 @@ function explainUnknownTag(tag: UnknownTag): UnknownTagExplanation | undefined {
   };
 }
 
-export const MESH_DIALECT: Dialect = Object.freeze({
+export const MESH_DIALECT: Dialect = deepFreeze({
   id: "mesh",
   name: "Mesh",
   tagRules: "none",
