@@ -47,7 +47,7 @@ test("Quick start is requirements, installation, running and a short domain call
   expect(quick).toContain('import { connect, disconnect } from "#mesh";\nimport { createList } from "#mesh/domain/todo";');
   const prompt = /Let an agent check[\s\S]*?```text\n([\s\S]*?)```/.exec(quick)![1]!;
   expect(prompt.trim().split("\n").length).toBeLessThanOrEqual(6);
-  for (const requirement of ["Bun 1.3.14", "Git 2.x", "Visual Studio Code", "Verify", "Install", "Report"]) {
+  for (const requirement of ["Bun 1.4.2", "Git 2.x", "Visual Studio Code", "Verify", "Install", "Report"]) {
     expect(prompt).toContain(requirement);
   }
   expect(page("tutorial")).toContain("Replace the starter's `src/domain/todo/list.mesh.mx`");
