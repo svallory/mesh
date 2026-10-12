@@ -1,5 +1,5 @@
 // M5 in Hyper: the effects inside the Task and Run aggregates run in the entity files' actions (entity calls,
-// `privileged` reads, `after=:write`); the effects across aggregates, the late result and the warnings run in the command functions of
+// `Mesh.privileged` reads, `after=:write`); the effects across aggregates, the late result and the warnings run in the command functions of
 // `src/domain/<module>/<module>.commands.ts`, each one application transaction. Roadmap M5 acceptance tests 1, 2, 3, 6
 // and 10, the version rule of PROTOCOL.md §4.5, and the naming rule of the functions.
 import { describe, expect, test } from "bun:test";
@@ -476,7 +476,7 @@ describe("PROTOCOL.md §4.5: the Task's version goes up by one per committed com
 describe("the command functions", () => {
   test("follow Hyper's method names in camelCase, and none is a name `#mesh` or a module's index exports", () => {
     // `#mesh` holds only the framework's names; every entity value is its module's.
-    expect(Object.keys(mesh).sort()).toEqual(["bind", "connect", "disconnect", "privileged", "tables", "transaction"]);
+    expect(Object.keys(mesh).sort()).toEqual(["bind", "connect", "disconnect", "tables", "transaction"]);
     const exported = new Set([mesh, audit, execution, identity, work].flatMap((module) => Object.keys(module)));
     // The key lists, not a spread of the modules: a name two modules export would be one key of a spread.
     const names = [workCommands, identityCommands, executionCommands].flatMap((module) => Object.keys(module));

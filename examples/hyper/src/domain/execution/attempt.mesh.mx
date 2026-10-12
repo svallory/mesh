@@ -6,6 +6,7 @@ import { SessionReference } from "./session-reference.mesh.mx"
 import { heldFence, missingEvidenceOf } from "../work/work.helpers"
 import { attemptOutcome, claimerOf, delegatorFor, machineActiveOf, nextNumber, runRunningOf, settlesRun, stepIdleOf } from "./execution.helpers"
 import { memberOf, roleIn } from "../identity/identity.helpers"
+import { Mesh } from "meshfw"
 
 entity :Attempt table="attempts"
   attributes
@@ -39,7 +40,7 @@ entity :Attempt table="attempts"
         // (`runs/checks/reporter.ex:35-41`) refuses a caller that holds no live claim on the run's Task, and the rule
         // (`runs/attempt/rules.ex:15-30`) still runs on a call made as `system`, which every policy admits.
         check :claimer [
-          that=async ({ input, actor }) => await claimerOf(input.run, actor.id, now())
+          that=async ({ input, actor }) => await claimerOf(input.run, actor.id, Mesh.now())
           code="attempt.claimer"
           message="the claim on the task is no longer the actor's; claim it again to report"
         ]
@@ -54,7 +55,7 @@ entity :Attempt table="attempts"
           message="an attempt of this step is already running"
         ]
         check :session [
-          that=async ({ input }) => input.session == null || (await privileged(SessionReference).read({ filter: { id: { eq: input.session } }, limit: 1 })).length > 0
+          that=async ({ input }) => input.session == null || (await Mesh.privileged(SessionReference).read({ filter: { id: { eq: input.session } }, limit: 1 })).length > 0
           code="attempt.session"
           message="the session reference does not exist"
         ]
@@ -69,7 +70,7 @@ entity :Attempt table="attempts"
           &task=() => &run.taskId
           &number=() => nextNumber(&run.attempts, &step)
           &delegator=() => delegatorFor(&run.task.assignments, &run.startedById)
-          &claimFence=({ actor }) => heldFence(&run.task.claims, actor.id, now())
+          &claimFence=({ actor }) => heldFence(&run.task.claims, actor.id, Mesh.now())
     update :finish
       input
         enum :result values=[:succeeded, :failed]
@@ -103,11 +104,11 @@ entity :Attempt table="attempts"
       do
         set
           &state=({ input }) => input.result
-          &endedAt=() => now()
+          &endedAt=() => Mesh.now()
           &outcome=({ input }) => attemptOutcome({ outputs: input.outputs, evidence: input.evidence, error: input.error })
           &version=() => &version + 1
         run [after=:write] ({ self, input, context }) {
-          const [run] = await privileged(Run).read({ filter: { id: { eq: self.runId } } });
+          const [run] = await Mesh.privileged(Run).read({ filter: { id: { eq: self.runId } } });
           if (run && settlesRun(run.state, input.result, input.error))
             await Run.settle({ id: run.id, result: input.result, outcome: self.outcome }, { ...context, system: true });
         }
@@ -130,7 +131,7 @@ entity :Attempt table="attempts"
       do
         set
           &state=:stopped
-          &endedAt=() => now()
+          &endedAt=() => Mesh.now()
           &outcome=({ input }) => attemptOutcome({ reason: input.reason })
           &version=() => &version + 1
     update :abandon
@@ -152,18 +153,18 @@ entity :Attempt table="attempts"
       do
         set
           &state=:abandoned
-          &endedAt=() => now()
+          &endedAt=() => Mesh.now()
           &outcome=({ input }) => attemptOutcome({ note: input.note })
           &version=() => &version + 1
   policies
     policy :membersRead types=[:read]
-      authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
+      authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null
     policy :isMember actions=[&start]
-      authorize-if=async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)
+      authorize-if=async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)
     policy :ownerOrMember actions=[&start]
-      authorize-if=async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])
+      authorize-if=async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])
     // `start`'s rule `attempt.claimer` repeats this check for a call made as `system`.
     policy :attemptClaimer actions=[&start]
-      authorize-if=async ({ input, actor, context }) => isSystem(context) || await claimerOf(input.run, actor.id, now())
+      authorize-if=async ({ input, actor, context }) => Mesh.isSystem(context) || await claimerOf(input.run, actor.id, Mesh.now())
     policy :attemptPerformer actions=[&finish, &reportStopped, &abandon]
-      authorize-if=({ self, actor, context }) => isSystem(context) || self.performerId === actor.id
+      authorize-if=({ self, actor, context }) => Mesh.isSystem(context) || self.performerId === actor.id

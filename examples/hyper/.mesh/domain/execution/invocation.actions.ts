@@ -58,7 +58,7 @@ import { loadPlan as $loadPlan } from "../../load";
 import { $Date, $Object, type $Omit, type $Pick, type $Promise } from "../../$globals";
 
 /**
- * The reads of this entity without their policies: what `privileged(Invocation)` runs (TXN-16). The read actions
+ * The reads of this entity without their policies: what `Mesh.privileged(Invocation)` runs (TXN-16). The read actions
  * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
 export function bindInvocationReads(
@@ -75,7 +75,7 @@ export function bindInvocationReads(
       cast?: $CastOutput<typeof readInvocationInputSchema>,
     ): $Promise<L extends unknown ? InvocationTxWith<InvocationLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
+      // for its policies and hands it over as `cast`; a `Mesh.privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readInvocationInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.invocations, {
@@ -130,7 +130,8 @@ export function bindInvocation(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -143,7 +144,7 @@ export function bindInvocation(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -156,7 +157,7 @@ export function bindInvocation(
             {
               kind: "authorize-if",
               check:
-                "async ({ input, actor, context }) => isSystem(context) || await performsAttemptOf(input.attempt, actor.id)",
+                "async ({ input, actor, context }) => Mesh.isSystem(context) || await performsAttemptOf(input.attempt, actor.id)",
               record: true,
               run: $expressions["policy.attemptPerformer.authorize-if.0"],
             },
@@ -249,14 +250,14 @@ export function bindInvocation(
               label: "session",
               code: "invocation.session",
               message: "the session is not the attempt's session",
-              source: { file: "src/domain/execution/invocation.mesh.mx", line: 51, column: 9 },
+              source: { file: "src/domain/execution/invocation.mesh.mx", line: 52, column: 9 },
               that: $expressions["record.check.session.that"],
             });
             await $runCheck($issues, $checks, {
               label: "costUnknown",
               code: "invocation.cost-unknown",
               message: "the cost is unknown while a token count it needs is unknown",
-              source: { file: "src/domain/execution/invocation.mesh.mx", line: 56, column: 9 },
+              source: { file: "src/domain/execution/invocation.mesh.mx", line: 57, column: 9 },
               that: $expressions["record.check.costUnknown.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -300,7 +301,7 @@ export function bindInvocation(
               const $value = await $expressions["record.step.0.set.task"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &task (src/domain/execution/invocation.mesh.mx:63:17) produced no value, and the relationship task is required",
+                  "set &task (src/domain/execution/invocation.mesh.mx:64:17) produced no value, and the relationship task is required",
                 );
               $changes.taskId = $record.taskId = $value;
             }
@@ -308,7 +309,7 @@ export function bindInvocation(
               const $value = await $expressions["record.step.0.set.recordedBy"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &recordedBy (src/domain/execution/invocation.mesh.mx:64:23) produced no value, and the relationship recordedBy is required",
+                  "set &recordedBy (src/domain/execution/invocation.mesh.mx:65:23) produced no value, and the relationship recordedBy is required",
                 );
               $changes.recordedById = $record.recordedById = $value;
             }
@@ -350,7 +351,8 @@ export function bindInvocation(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -363,7 +365,7 @@ export function bindInvocation(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -376,7 +378,7 @@ export function bindInvocation(
             {
               kind: "authorize-if",
               check:
-                "async ({ input, actor, context }) => isSystem(context) || await correctsInvocationOf(input.corrects, actor.id)",
+                "async ({ input, actor, context }) => Mesh.isSystem(context) || await correctsInvocationOf(input.corrects, actor.id)",
               record: true,
               run: $expressions["policy.invocationRecorder.authorize-if.0"],
             },
@@ -468,21 +470,21 @@ export function bindInvocation(
               label: "notCorrected",
               code: "invocation.not-corrected",
               message: "the invocation is already corrected",
-              source: { file: "src/domain/execution/invocation.mesh.mx", line: 84, column: 9 },
+              source: { file: "src/domain/execution/invocation.mesh.mx", line: 85, column: 9 },
               that: $expressions["correct.check.notCorrected.that"],
             });
             await $runCheck($issues, $checks, {
               label: "reason",
               code: "invocation.reason",
               message: "a correction gives a reason",
-              source: { file: "src/domain/execution/invocation.mesh.mx", line: 89, column: 9 },
+              source: { file: "src/domain/execution/invocation.mesh.mx", line: 90, column: 9 },
               that: $expressions["correct.check.reason.that"],
             });
             await $runCheck($issues, $checks, {
               label: "costUnknown",
               code: "invocation.cost-unknown",
               message: "the cost is unknown while a token count it needs is unknown",
-              source: { file: "src/domain/execution/invocation.mesh.mx", line: 94, column: 9 },
+              source: { file: "src/domain/execution/invocation.mesh.mx", line: 95, column: 9 },
               that: $expressions["correct.check.costUnknown.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -527,7 +529,7 @@ export function bindInvocation(
               const $value = await $expressions["correct.step.0.set.attempt"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &attempt (src/domain/execution/invocation.mesh.mx:101:20) produced no value, and the relationship attempt is required",
+                  "set &attempt (src/domain/execution/invocation.mesh.mx:102:20) produced no value, and the relationship attempt is required",
                 );
               $changes.attemptId = $record.attemptId = $value;
             }
@@ -535,7 +537,7 @@ export function bindInvocation(
               const $value = await $expressions["correct.step.0.set.task"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &task (src/domain/execution/invocation.mesh.mx:102:17) produced no value, and the relationship task is required",
+                  "set &task (src/domain/execution/invocation.mesh.mx:103:17) produced no value, and the relationship task is required",
                 );
               $changes.taskId = $record.taskId = $value;
             }
@@ -543,7 +545,7 @@ export function bindInvocation(
               const $value = await $expressions["correct.step.0.set.recordedBy"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &recordedBy (src/domain/execution/invocation.mesh.mx:103:23) produced no value, and the relationship recordedBy is required",
+                  "set &recordedBy (src/domain/execution/invocation.mesh.mx:104:23) produced no value, and the relationship recordedBy is required",
                 );
               $changes.recordedById = $record.recordedById = $value;
             }
@@ -571,7 +573,7 @@ export function bindInvocation(
       input: $Omit<ReadInvocationInput, "load"> & InvocationLoadArg<L>,
       ...[context]: $ContextArgument
     ): $Promise<L extends unknown ? InvocationWith<InvocationLoadNames<L>>[] : never> {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `Mesh.privileged` read skips them
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
@@ -587,7 +589,7 @@ export function bindInvocation(
               checks: [
                 {
                   kind: "authorize-if",
-                  check: "({ actor, context }) => isSystem(context) || actor.role != null",
+                  check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
                   record: false,
                   run: $expressions["policy.membersRead.authorize-if.0"],
                 },
@@ -650,7 +652,7 @@ export { $entityValue as Invocation };
 /** The record type, under the entity value's name. */
 export type Invocation = $Record;
 
-/** What `privileged(Invocation)` returns (TXN-16): one function per read action, run with no policy. */
+/** What `Mesh.privileged(Invocation)` returns (TXN-16): one function per read action, run with no policy. */
 export interface $Privileged {
   read<const L extends readonly (keyof InvocationLoadable)[] = readonly []>(
     input: $Omit<ReadInvocationInput, "load"> & InvocationLoadArg<L>,
@@ -673,7 +675,7 @@ export interface $PrivilegedReadOnly {
 
 /**
  * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
- * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ * and so is what `Mesh.privileged` of it resolves with. The expressions files bind the entity value under this type.
  */
 export type $ReadOnly = $EntityValue<
   {
@@ -701,7 +703,7 @@ export type $ReadOnly = $EntityValue<
 /**
  * Load relationships and computed fields onto Invocation rows by name. A relationship is loaded by one more query for
  * all the rows; a computed field loads what its body reads first. The rows you pass are not changed: the result is new
- * rows of type InvocationTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so it takes no `policies`
+ * rows of type InvocationTxWith<"name" | ...>. It loads as `Mesh.privileged` does, running no policy, so it takes no `policies`
  * option: every related record the key names is there.
  */
 export async function loadInvocationFields<const N extends keyof InvocationLoadable>(

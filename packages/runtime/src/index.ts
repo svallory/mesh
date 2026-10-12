@@ -2,7 +2,7 @@
 export interface ActionContext {
   /**
    * Reserved (ADR-0071): the application sets it on a call it makes on its own behalf. Mesh skips no policy for it; a
-   * policy admits such a call by testing `isSystem(context)`.
+   * policy admits such a call by testing `Mesh.isSystem(context)`.
    */
   system?: boolean;
 }
@@ -26,7 +26,7 @@ export type { DataAdapter } from "./data-adapter.ts";
 export { defineConfig, type MeshConfig, type ExtensionDescriptor } from "./config.ts";
 export { expr, pinClock, rescope, scope, systemClock } from "./expr.ts";
 export { checkScope, runCheck } from "./lifecycle.ts";
-export { authorizer, isSystem, type Authorizer, type PolicyCheckSpec, type PolicySpec } from "./policy.ts";
+export { authorizer, type Authorizer, type PolicyCheckSpec, type PolicySpec } from "./policy.ts";
 export type { BindOptions, CheckSpec, SharedInput } from "./lifecycle.ts";
 export type { Clock, Scope } from "./expr.ts";
 export { loadRows, loadInto, unloadFrom, guarded, readOnlyRecord, cloneValue, type DeepReadonly, type Writable, rejectComputedQuery, CHUNK } from "./load.ts";
@@ -34,6 +34,7 @@ export { castInput, checkUnchanged, failJoined, noteWrite, writeCount } from "./
 export type { CastOutput } from "./compose.ts";
 export type { LoadPlan, EntityPlan, RelationPlan, BelongsToPlan, HasPlan, ComputedPlan, LoadOptions } from "./load.ts";
 export { recordWrite, runAction, wantsChanges } from "./seams.ts";
+export { Mesh, meshIn, type MeshFunctions } from "./mesh.ts";
 export type { AfterCommitEvent, AfterWriteEvent, BeforeTransactionEvent, Change, SeamContext, SeamDb, SeamTarget, Seams } from "./seams.ts";
-export { BIND, BIND_READS, ENTITY, NO_FRAME, bindDomain, bindingInScope, connectBinding, entity, isEntityValue, privileged, releaseBinding, settled } from "./entity.ts";
+export { BIND, BIND_READS, ENTITY, NO_FRAME, bindDomain, bindingInScope, connectBinding, entity, isEntityValue, releaseBinding, settled } from "./entity.ts";
 export type { ActionFrame, AsyncFrame, Binding, EntityBind, EntityCall, EntityReadsBind, EntityValue, Privileged } from "./entity.ts";

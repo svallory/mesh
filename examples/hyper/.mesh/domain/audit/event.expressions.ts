@@ -57,10 +57,10 @@ export type $audit$Event$NewScope<I = unknown> = $Omit<$audit$Event$CheckScope<I
 };
 
 export const $expressions = {
-  // policy :membersRead authorize-if, translated (src/domain/audit/event.mesh.mx:39:20)
+  // policy :membersRead authorize-if, translated (src/domain/audit/event.mesh.mx:40:20)
   "policy.membersRead.authorize-if.0": ($s: $audit$Event$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
-  // policy :internal authorize-if, translated (src/domain/audit/event.mesh.mx:41:20)
+  // policy :internal authorize-if, translated (src/domain/audit/event.mesh.mx:42:20)
   "policy.internal.authorize-if.0": ($s: $audit$Event$NewScope<$audit$Event$RecordEventInput>) =>
     $.isSystem($s.context),
 } as const;

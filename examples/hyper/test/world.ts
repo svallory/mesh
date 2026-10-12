@@ -35,7 +35,7 @@ function trackRoles({ changes }: AfterCommitEvent): void {
 
 /**
  * The context of a call made as `collaborator`, as HA builds it: the actor's id and the role of its active membership
- * when the call is made (`null` without one). Only the read policies use the role; write policies read it through `privileged`.
+ * when the call is made (`null` without one). Only the read policies use the role; write policies read it through `Mesh.privileged`.
  */
 export const as = (collaborator: { readonly id: string }): ActionContext => ({ actor: { id: collaborator.id, role: roles.get(collaborator.id) ?? null } });
 

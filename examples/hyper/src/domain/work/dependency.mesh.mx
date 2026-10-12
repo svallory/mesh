@@ -2,6 +2,7 @@ import { Task } from "./task.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
 import { dependencyExistsOf, missingTasksOf, prerequisiteReachesOf, taskVersionOf } from "./work.helpers"
 import { memberOf, roleIn } from "../identity/identity.helpers"
+import { Mesh } from "meshfw"
 
 entity :Dependency table="dependencies"
   attributes
@@ -68,8 +69,8 @@ entity :Dependency table="dependencies"
         }
   policies
     policy :membersRead types=[:read]
-      authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
+      authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null
     policy :isMember actions=[&add, &remove]
-      authorize-if=async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)
+      authorize-if=async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)
     policy :ownerOrMember actions=[&add, &remove]
-      authorize-if=async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])
+      authorize-if=async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])

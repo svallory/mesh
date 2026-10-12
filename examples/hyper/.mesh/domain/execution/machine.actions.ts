@@ -74,7 +74,7 @@ import {
 } from "../../$globals";
 
 /**
- * The reads of this entity without their policies: what `privileged(Machine)` runs (TXN-16). The read actions
+ * The reads of this entity without their policies: what `Mesh.privileged(Machine)` runs (TXN-16). The read actions
  * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
 export function bindMachineReads(
@@ -91,7 +91,7 @@ export function bindMachineReads(
       cast?: $CastOutput<typeof readMachineInputSchema>,
     ): $Promise<L extends unknown ? MachineWith<MachineLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
+      // for its policies and hands it over as `cast`; a `Mesh.privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readMachineInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.machines, {
@@ -141,7 +141,8 @@ export function bindMachine(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -154,7 +155,7 @@ export function bindMachine(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -218,7 +219,7 @@ export function bindMachine(
               label: "nameFree",
               code: "machine.name-free",
               message: "a machine already has that name",
-              source: { file: "src/domain/execution/machine.mesh.mx", line: 22, column: 9 },
+              source: { file: "src/domain/execution/machine.mesh.mx", line: 23, column: 9 },
               that: $expressions["register.check.nameFree.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -267,7 +268,7 @@ export function bindMachine(
           checks: [
             {
               kind: "authorize-if",
-              check: "({ context }) => isSystem(context)",
+              check: "({ context }) => Mesh.isSystem(context)",
               record: false,
               run: $expressions["policy.internal.authorize-if.0"],
             },
@@ -329,7 +330,7 @@ export function bindMachine(
               label: "nameFree",
               code: "machine.name-free",
               message: "a machine already has that name",
-              source: { file: "src/domain/execution/machine.mesh.mx", line: 34, column: 9 },
+              source: { file: "src/domain/execution/machine.mesh.mx", line: 35, column: 9 },
               that: $expressions["report.check.nameFree.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -376,7 +377,8 @@ export function bindMachine(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -389,7 +391,7 @@ export function bindMachine(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner])",
               record: true,
               run: $expressions["policy.ownerOnly.authorize-if.0"],
             },
@@ -451,14 +453,14 @@ export function bindMachine(
               label: "machineActive",
               code: "machine.active",
               message: "the machine is retired",
-              source: { file: "src/domain/execution/machine.mesh.mx", line: 47, column: 9 },
+              source: { file: "src/domain/execution/machine.mesh.mx", line: 48, column: 9 },
               that: $expressions["update.check.machineActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/execution/machine.mesh.mx", line: 52, column: 9 },
+              source: { file: "src/domain/execution/machine.mesh.mx", line: 53, column: 9 },
               that: $expressions["update.check.versionMatches.that"],
               details: $expressions["update.check.versionMatches.details"],
             });
@@ -471,7 +473,7 @@ export function bindMachine(
               const $value = await $expressions["update.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/execution/machine.mesh.mx:60:20) produced no value, and version is required",
+                  "set &version (src/domain/execution/machine.mesh.mx:61:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -519,7 +521,8 @@ export function bindMachine(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -532,7 +535,7 @@ export function bindMachine(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner])",
               record: true,
               run: $expressions["policy.ownerOnly.authorize-if.0"],
             },
@@ -596,21 +599,21 @@ export function bindMachine(
               label: "machineActive",
               code: "machine.active",
               message: "the machine is retired",
-              source: { file: "src/domain/execution/machine.mesh.mx", line: 66, column: 9 },
+              source: { file: "src/domain/execution/machine.mesh.mx", line: 67, column: 9 },
               that: $expressions["retire.check.machineActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "machineIdle",
               code: "machine.idle",
               message: "an attempt on this machine is reported running",
-              source: { file: "src/domain/execution/machine.mesh.mx", line: 71, column: 9 },
+              source: { file: "src/domain/execution/machine.mesh.mx", line: 72, column: 9 },
               that: $expressions["retire.check.machineIdle.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/execution/machine.mesh.mx", line: 76, column: 9 },
+              source: { file: "src/domain/execution/machine.mesh.mx", line: 77, column: 9 },
               that: $expressions["retire.check.versionMatches.that"],
               details: $expressions["retire.check.versionMatches.details"],
             });
@@ -621,7 +624,7 @@ export function bindMachine(
               const $value = await $expressions["retire.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/execution/machine.mesh.mx:85:20) produced no value, and version is required",
+                  "set &version (src/domain/execution/machine.mesh.mx:86:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -660,7 +663,7 @@ export function bindMachine(
       input: $Omit<ReadMachineInput, "load"> & MachineLoadArg<L>,
       ...[context]: $ContextArgument
     ): $Promise<L extends unknown ? MachineWith<MachineLoadNames<L>>[] : never> {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `Mesh.privileged` read skips them
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
@@ -676,7 +679,7 @@ export function bindMachine(
               checks: [
                 {
                   kind: "authorize-if",
-                  check: "({ actor, context }) => isSystem(context) || actor.role != null",
+                  check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
                   record: false,
                   run: $expressions["policy.membersRead.authorize-if.0"],
                 },
@@ -739,7 +742,7 @@ export { $entityValue as Machine };
 /** The record type, under the entity value's name. */
 export type Machine = $Record;
 
-/** What `privileged(Machine)` returns (TXN-16): one function per read action, run with no policy. */
+/** What `Mesh.privileged(Machine)` returns (TXN-16): one function per read action, run with no policy. */
 export interface $Privileged {
   read<const L extends readonly (keyof MachineLoadable)[] = readonly []>(
     input: $Omit<ReadMachineInput, "load"> & MachineLoadArg<L>,
@@ -762,7 +765,7 @@ export interface $PrivilegedReadOnly {
 
 /**
  * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
- * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ * and so is what `Mesh.privileged` of it resolves with. The expressions files bind the entity value under this type.
  */
 export type $ReadOnly = $EntityValue<
   {
@@ -798,7 +801,7 @@ export type $ReadOnly = $EntityValue<
 /**
  * Load relationships and computed fields onto Machine rows by name. A relationship is loaded by one more query for
  * all the rows; a computed field loads what its body reads first. The rows you pass are not changed: the result is new
- * rows of type MachineWith<"name" | ...>. It loads as `privileged` does, running no policy, so it takes no `policies`
+ * rows of type MachineWith<"name" | ...>. It loads as `Mesh.privileged` does, running no policy, so it takes no `policies`
  * option: every related record the key names is there.
  */
 export async function loadMachineFields<const N extends keyof MachineLoadable>(

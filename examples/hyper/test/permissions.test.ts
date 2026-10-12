@@ -136,7 +136,7 @@ describe("roadmap M8 acceptance tests on Hyper", () => {
 
   test("(5) a membership revoked inside the same transaction is seen by the next write's policy", () => within(async (w) => {
     // `as(w.bob)` is built before the revoke and still says `member`: the write policies read the role through
-    // `privileged`.
+    // `Mesh.privileged`.
     const bob = as(w.bob);
     const denied = await deniedBy(w.hyper.transaction(async () => {
       await Membership.revoke({ id: w.memberships.bob.id, reason: "left" }, as(w.alice));

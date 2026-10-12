@@ -51,7 +51,7 @@ import { loadPlan as $loadPlan } from "../../load";
 import { $Date, $Object, type $Omit, type $Pick, type $Promise } from "../../$globals";
 
 /**
- * The reads of this entity without their policies: what `privileged(LateResult)` runs (TXN-16). The read actions
+ * The reads of this entity without their policies: what `Mesh.privileged(LateResult)` runs (TXN-16). The read actions
  * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
 export function bindLateResultReads(
@@ -68,7 +68,7 @@ export function bindLateResultReads(
       cast?: $CastOutput<typeof readLateResultInputSchema>,
     ): $Promise<L extends unknown ? LateResultTxWith<LateResultLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
+      // for its policies and hands it over as `cast`; a `Mesh.privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readLateResultInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.late_results, {
@@ -123,7 +123,8 @@ export function bindLateResult(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -136,7 +137,7 @@ export function bindLateResult(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -206,14 +207,14 @@ export function bindLateResult(
               label: "staleFence",
               code: "claim.stale-fence",
               message: "only a fence you held that expired or was revoked records a late result",
-              source: { file: "src/domain/work/late-result.mesh.mx", line: 24, column: 9 },
+              source: { file: "src/domain/work/late-result.mesh.mx", line: 25, column: 9 },
               that: $expressions["record.check.staleFence.that"],
             });
             await $runCheck($issues, $checks, {
               label: "evidenceExists",
               code: "evidence.exists",
               message: "an evidence reference does not exist",
-              source: { file: "src/domain/work/late-result.mesh.mx", line: 29, column: 9 },
+              source: { file: "src/domain/work/late-result.mesh.mx", line: 30, column: 9 },
               that: $expressions["record.check.evidenceExists.that"],
               details: $expressions["record.check.evidenceExists.details"],
             });
@@ -232,7 +233,7 @@ export function bindLateResult(
               const $value = await $expressions["record.step.0.set.submitter"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &submitter (src/domain/work/late-result.mesh.mx:37:22) produced no value, and the relationship submitter is required",
+                  "set &submitter (src/domain/work/late-result.mesh.mx:38:22) produced no value, and the relationship submitter is required",
                 );
               $changes.submitterId = $record.submitterId = $value;
             }
@@ -260,7 +261,7 @@ export function bindLateResult(
       input: $Omit<ReadLateResultInput, "load"> & LateResultLoadArg<L>,
       ...[context]: $ContextArgument
     ): $Promise<L extends unknown ? LateResultWith<LateResultLoadNames<L>>[] : never> {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `Mesh.privileged` read skips them
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
@@ -276,7 +277,7 @@ export function bindLateResult(
               checks: [
                 {
                   kind: "authorize-if",
-                  check: "({ actor, context }) => isSystem(context) || actor.role != null",
+                  check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
                   record: false,
                   run: $expressions["policy.membersRead.authorize-if.0"],
                 },
@@ -335,7 +336,7 @@ export { $entityValue as LateResult };
 /** The record type, under the entity value's name. */
 export type LateResult = $Record;
 
-/** What `privileged(LateResult)` returns (TXN-16): one function per read action, run with no policy. */
+/** What `Mesh.privileged(LateResult)` returns (TXN-16): one function per read action, run with no policy. */
 export interface $Privileged {
   read<const L extends readonly (keyof LateResultLoadable)[] = readonly []>(
     input: $Omit<ReadLateResultInput, "load"> & LateResultLoadArg<L>,
@@ -358,7 +359,7 @@ export interface $PrivilegedReadOnly {
 
 /**
  * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
- * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ * and so is what `Mesh.privileged` of it resolves with. The expressions files bind the entity value under this type.
  */
 export type $ReadOnly = $EntityValue<
   {
@@ -382,7 +383,7 @@ export type $ReadOnly = $EntityValue<
 /**
  * Load relationships and computed fields onto LateResult rows by name. A relationship is loaded by one more query for
  * all the rows; a computed field loads what its body reads first. The rows you pass are not changed: the result is new
- * rows of type LateResultTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so it takes no `policies`
+ * rows of type LateResultTxWith<"name" | ...>. It loads as `Mesh.privileged` does, running no policy, so it takes no `policies`
  * option: every related record the key names is there.
  */
 export async function loadLateResultFields<const N extends keyof LateResultLoadable>(

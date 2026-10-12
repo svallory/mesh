@@ -56,14 +56,14 @@ export type CompletionLoadable = {
 export type CompletionWith<N extends keyof CompletionLoadable> = Completion &
   $Pick<CompletionLoadable, N>;
 
-/** What a load through `privileged` attaches to a Completion: it runs no policy, so every related record the key names is there. */
+/** What a load through `Mesh.privileged` attaches to a Completion: it runs no policy, so every related record the key names is there. */
 export type CompletionTxLoadable = {
   task: $work$Task$Record;
   submission: $work$Submission$Record | null;
   completedBy: $identity$Collaborator$Record;
 };
 
-/** A Completion loaded through `privileged`, with the relationships and computed fields named in N. */
+/** A Completion loaded through `Mesh.privileged`, with the relationships and computed fields named in N. */
 export type CompletionTxWith<N extends keyof CompletionLoadable> = Completion &
   $Pick<CompletionTxLoadable, N>;
 

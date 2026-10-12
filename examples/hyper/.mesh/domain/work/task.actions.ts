@@ -91,7 +91,7 @@ import {
 } from "../../$globals";
 
 /**
- * The reads of this entity without their policies: what `privileged(Task)` runs (TXN-16). The read actions
+ * The reads of this entity without their policies: what `Mesh.privileged(Task)` runs (TXN-16). The read actions
  * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
 export function bindTaskReads(
@@ -108,7 +108,7 @@ export function bindTaskReads(
       cast?: $CastOutput<typeof readTaskInputSchema>,
     ): $Promise<L extends unknown ? TaskTxWith<TaskLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
+      // for its policies and hands it over as `cast`; a `Mesh.privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readTaskInputSchema, input));
       return layer.transaction(async (tx) => {
         const $filter = rejectComputedQuery(
@@ -172,7 +172,8 @@ export function bindTask(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -185,7 +186,7 @@ export function bindTask(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -252,7 +253,7 @@ export function bindTask(
               label: "parentOpen",
               code: "task.parent-open",
               message: "the parent task is not open",
-              source: { file: "src/domain/work/task.mesh.mx", line: 49, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 50, column: 9 },
               that: $expressions["create.check.parentOpen.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -270,7 +271,7 @@ export function bindTask(
               const $value = await $expressions["create.step.0.set.creator"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &creator (src/domain/work/task.mesh.mx:56:20) produced no value, and the relationship creator is required",
+                  "set &creator (src/domain/work/task.mesh.mx:57:20) produced no value, and the relationship creator is required",
                 );
               $changes.creatorId = $record.creatorId = $value;
             }
@@ -308,7 +309,8 @@ export function bindTask(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -321,7 +323,7 @@ export function bindTask(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -379,21 +381,21 @@ export function bindTask(
               label: "taskOpen",
               code: "task.open",
               message: "the task is not open; reopen it first",
-              source: { file: "src/domain/work/task.mesh.mx", line: 63, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 64, column: 9 },
               that: $expressions["update.check.taskOpen.that"],
             });
             await $runCheck($issues, $checks, {
               label: "taskChanges",
               code: "task.unchanged",
               message: "nothing to change: every field already has that value",
-              source: { file: "src/domain/work/task.mesh.mx", line: 68, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 69, column: 9 },
               that: $expressions["update.check.taskChanges.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/work/task.mesh.mx", line: 73, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 74, column: 9 },
               that: $expressions["update.check.versionMatches.that"],
               details: $expressions["update.check.versionMatches.details"],
             });
@@ -408,7 +410,7 @@ export function bindTask(
               const $value = await $expressions["update.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/work/task.mesh.mx:81:20) produced no value, and version is required",
+                  "set &version (src/domain/work/task.mesh.mx:82:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -449,7 +451,8 @@ export function bindTask(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -462,7 +465,7 @@ export function bindTask(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -524,14 +527,14 @@ export function bindTask(
               label: "taskOpen",
               code: "task.open",
               message: "the task is not open; reopen it first",
-              source: { file: "src/domain/work/task.mesh.mx", line: 87, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 88, column: 9 },
               that: $expressions["setPriority.check.taskOpen.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/work/task.mesh.mx", line: 92, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 93, column: 9 },
               that: $expressions["setPriority.check.versionMatches.that"],
               details: $expressions["setPriority.check.versionMatches.details"],
             });
@@ -544,7 +547,7 @@ export function bindTask(
               const $value = await $expressions["setPriority.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/work/task.mesh.mx:100:20) produced no value, and version is required",
+                  "set &version (src/domain/work/task.mesh.mx:101:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -592,7 +595,8 @@ export function bindTask(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -605,7 +609,7 @@ export function bindTask(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -665,35 +669,35 @@ export function bindTask(
               label: "taskOpen",
               code: "task.open",
               message: "the task is not open; reopen it first",
-              source: { file: "src/domain/work/task.mesh.mx", line: 106, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 107, column: 9 },
               that: $expressions["move.check.taskOpen.that"],
             });
             await $runCheck($issues, $checks, {
               label: "parentOpen",
               code: "task.parent-open",
               message: "the parent task is not open",
-              source: { file: "src/domain/work/task.mesh.mx", line: 111, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 112, column: 9 },
               that: $expressions["move.check.parentOpen.that"],
             });
             await $runCheck($issues, $checks, {
               label: "noCycle",
               code: "task.no-cycle",
               message: "the new parent is this task or one of its descendants",
-              source: { file: "src/domain/work/task.mesh.mx", line: 116, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 117, column: 9 },
               that: $expressions["move.check.noCycle.that"],
             });
             await $runCheck($issues, $checks, {
               label: "noActiveClaim",
               code: "task.no-active-claim",
               message: "release or revoke the active claim first",
-              source: { file: "src/domain/work/task.mesh.mx", line: 121, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 122, column: 9 },
               that: $expressions["move.check.noActiveClaim.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/work/task.mesh.mx", line: 126, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 127, column: 9 },
               that: $expressions["move.check.versionMatches.that"],
               details: $expressions["move.check.versionMatches.details"],
             });
@@ -707,7 +711,7 @@ export function bindTask(
               const $value = await $expressions["move.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/work/task.mesh.mx:134:20) produced no value, and version is required",
+                  "set &version (src/domain/work/task.mesh.mx:135:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -749,7 +753,8 @@ export function bindTask(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -762,7 +767,7 @@ export function bindTask(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -775,7 +780,7 @@ export function bindTask(
             {
               kind: "authorize-if",
               check:
-                "async ({ self, actor, context }) => isSystem(context) || await managesTaskOf(self, actor.id, true)",
+                "async ({ self, actor, context }) => Mesh.isSystem(context) || await managesTaskOf(self, actor.id, true)",
               record: true,
               run: $expressions["policy.taskManager.authorize-if.0"],
             },
@@ -833,14 +838,14 @@ export function bindTask(
               label: "taskSettled",
               code: "task.settled",
               message: "the task is already open",
-              source: { file: "src/domain/work/task.mesh.mx", line: 140, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 141, column: 9 },
               that: $expressions["reopen.check.taskSettled.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/work/task.mesh.mx", line: 145, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 146, column: 9 },
               that: $expressions["reopen.check.versionMatches.that"],
               details: $expressions["reopen.check.versionMatches.details"],
             });
@@ -855,7 +860,7 @@ export function bindTask(
               const $value = await $expressions["reopen.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/work/task.mesh.mx:155:20) produced no value, and version is required",
+                  "set &version (src/domain/work/task.mesh.mx:156:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -896,7 +901,7 @@ export function bindTask(
           checks: [
             {
               kind: "authorize-if",
-              check: "({ context }) => isSystem(context)",
+              check: "({ context }) => Mesh.isSystem(context)",
               record: false,
               run: $expressions["policy.internal.authorize-if.0"],
             },
@@ -950,7 +955,7 @@ export function bindTask(
               const $value = await $expressions["touch.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/work/task.mesh.mx:159:20) produced no value, and version is required",
+                  "set &version (src/domain/work/task.mesh.mx:160:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -991,7 +996,8 @@ export function bindTask(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -1004,7 +1010,7 @@ export function bindTask(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -1017,7 +1023,7 @@ export function bindTask(
             {
               kind: "authorize-if",
               check:
-                "async ({ self, actor, context }) => isSystem(context) || await managesTaskOf(self, actor.id, true)",
+                "async ({ self, actor, context }) => Mesh.isSystem(context) || await managesTaskOf(self, actor.id, true)",
               record: true,
               run: $expressions["policy.taskManager.authorize-if.0"],
             },
@@ -1075,14 +1081,14 @@ export function bindTask(
               label: "taskOpen",
               code: "task.open",
               message: "the task is not open; reopen it first",
-              source: { file: "src/domain/work/task.mesh.mx", line: 165, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 166, column: 9 },
               that: $expressions["cancel.check.taskOpen.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/work/task.mesh.mx", line: 170, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 171, column: 9 },
               that: $expressions["cancel.check.versionMatches.that"],
               details: $expressions["cancel.check.versionMatches.details"],
             });
@@ -1093,7 +1099,7 @@ export function bindTask(
               const $value = await $expressions["cancel.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/work/task.mesh.mx:179:20) produced no value, and version is required",
+                  "set &version (src/domain/work/task.mesh.mx:180:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -1149,7 +1155,8 @@ export function bindTask(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -1162,7 +1169,7 @@ export function bindTask(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -1175,7 +1182,7 @@ export function bindTask(
             {
               kind: "authorize-if",
               check:
-                "async ({ self, input, actor, context }) => isSystem(context) || await noOtherHolderOf(self.id, input.fence, actor.id, now())",
+                "async ({ self, input, actor, context }) => Mesh.isSystem(context) || await noOtherHolderOf(self.id, input.fence, actor.id, Mesh.now())",
               record: true,
               run: $expressions["policy.claimHolder.authorize-if.0"],
             },
@@ -1187,7 +1194,7 @@ export function bindTask(
           checks: [
             {
               kind: "forbid-if",
-              check: "({ context }) => context.completion != null && !isSystem(context)",
+              check: "({ context }) => context.completion != null && !Mesh.isSystem(context)",
               record: false,
               run: $expressions["policy.reviewCompletion.forbid-if.0"],
             },
@@ -1258,14 +1265,14 @@ export function bindTask(
               label: "taskOpen",
               code: "task.open",
               message: "the task is not open; reopen it first",
-              source: { file: "src/domain/work/task.mesh.mx", line: 193, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 194, column: 9 },
               that: $expressions["complete.check.taskOpen.that"],
             });
             await $runCheck($issues, $checks, {
               label: "childrenSettled",
               code: "task.children-settled",
               message: "complete or cancel every child first",
-              source: { file: "src/domain/work/task.mesh.mx", line: 198, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 199, column: 9 },
               that: $expressions["complete.check.childrenSettled.that"],
               details: $expressions["complete.check.childrenSettled.details"],
             });
@@ -1273,7 +1280,7 @@ export function bindTask(
               label: "reviewRequired",
               code: "task.review-required",
               message: "a review is required: submit the work for the reviewer to review",
-              source: { file: "src/domain/work/task.mesh.mx", line: 204, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 205, column: 9 },
               that: $expressions["complete.check.reviewRequired.that"],
               details: $expressions["complete.check.reviewRequired.details"],
             });
@@ -1281,14 +1288,14 @@ export function bindTask(
               label: "noForeignSubmission",
               code: "task.no-foreign-submission",
               message: "another collaborator's submission is pending review",
-              source: { file: "src/domain/work/task.mesh.mx", line: 210, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 211, column: 9 },
               that: $expressions["complete.check.noForeignSubmission.that"],
             });
             await $runCheck($issues, $checks, {
               label: "currentFence",
               code: "claim.current-fence",
               message: "the fence is not your current claim; claim the task again",
-              source: { file: "src/domain/work/task.mesh.mx", line: 215, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 216, column: 9 },
               that: $expressions["complete.check.currentFence.that"],
               details: $expressions["complete.check.currentFence.details"],
             });
@@ -1297,7 +1304,7 @@ export function bindTask(
               code: "claim.invalidated",
               message:
                 "your claim on this task was invalidated; claim it again and complete with the new fence",
-              source: { file: "src/domain/work/task.mesh.mx", line: 221, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 222, column: 9 },
               that: $expressions["complete.check.claimNotInvalidated.that"],
               details: $expressions["complete.check.claimNotInvalidated.details"],
             });
@@ -1305,14 +1312,14 @@ export function bindTask(
               label: "ownSubmissionPending",
               code: "submission.pending",
               message: "your submission is pending review; withdraw it first",
-              source: { file: "src/domain/work/task.mesh.mx", line: 227, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 228, column: 9 },
               that: $expressions["complete.check.ownSubmissionPending.that"],
             });
             await $runCheck($issues, $checks, {
               label: "evidenceExists",
               code: "evidence.exists",
               message: "an evidence reference does not exist",
-              source: { file: "src/domain/work/task.mesh.mx", line: 232, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 233, column: 9 },
               that: $expressions["complete.check.evidenceExists.that"],
               details: $expressions["complete.check.evidenceExists.details"],
             });
@@ -1320,7 +1327,7 @@ export function bindTask(
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/work/task.mesh.mx", line: 238, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 239, column: 9 },
               that: $expressions["complete.check.versionMatches.that"],
               details: $expressions["complete.check.versionMatches.details"],
             });
@@ -1331,7 +1338,7 @@ export function bindTask(
               const $value = await $expressions["complete.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/work/task.mesh.mx:247:20) produced no value, and version is required",
+                  "set &version (src/domain/work/task.mesh.mx:248:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -1388,7 +1395,8 @@ export function bindTask(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -1401,7 +1409,7 @@ export function bindTask(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -1461,35 +1469,35 @@ export function bindTask(
               label: "taskOpen",
               code: "task.open",
               message: "the task is not open; reopen it first",
-              source: { file: "src/domain/work/task.mesh.mx", line: 275, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 276, column: 9 },
               that: $expressions["assign.check.taskOpen.that"],
             });
             await $runCheck($issues, $checks, {
               label: "assigneeActive",
               code: "collaborator.active",
               message: "the collaborator is retired",
-              source: { file: "src/domain/work/task.mesh.mx", line: 280, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 281, column: 9 },
               that: $expressions["assign.check.assigneeActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "assigneeRole",
               code: "assignment.assignee-role",
               message: "only members and owners can be assigned",
-              source: { file: "src/domain/work/task.mesh.mx", line: 285, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 286, column: 9 },
               that: $expressions["assign.check.assigneeRole.that"],
             });
             await $runCheck($issues, $checks, {
               label: "assignmentChanges",
               code: "assignment.unchanged",
               message: "assignee and review waiver are unchanged",
-              source: { file: "src/domain/work/task.mesh.mx", line: 290, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 291, column: 9 },
               that: $expressions["assign.check.assignmentChanges.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/work/task.mesh.mx", line: 295, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 296, column: 9 },
               that: $expressions["assign.check.versionMatches.that"],
               details: $expressions["assign.check.versionMatches.details"],
             });
@@ -1499,7 +1507,7 @@ export function bindTask(
               const $value = await $expressions["assign.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/work/task.mesh.mx:303:20) produced no value, and version is required",
+                  "set &version (src/domain/work/task.mesh.mx:304:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -1556,7 +1564,8 @@ export function bindTask(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -1569,7 +1578,7 @@ export function bindTask(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -1582,7 +1591,7 @@ export function bindTask(
             {
               kind: "authorize-if",
               check:
-                "async ({ self, actor, context }) => isSystem(context) || await managesTaskOf(self, actor.id, false)",
+                "async ({ self, actor, context }) => Mesh.isSystem(context) || await managesTaskOf(self, actor.id, false)",
               record: true,
               run: $expressions["policy.taskUnassigner.authorize-if.0"],
             },
@@ -1646,14 +1655,14 @@ export function bindTask(
               label: "assignmentCurrent",
               code: "assignment.current",
               message: "the task has no current assignment",
-              source: { file: "src/domain/work/task.mesh.mx", line: 319, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 320, column: 9 },
               that: $expressions["unassign.check.assignmentCurrent.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/work/task.mesh.mx", line: 324, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 325, column: 9 },
               that: $expressions["unassign.check.versionMatches.that"],
               details: $expressions["unassign.check.versionMatches.details"],
             });
@@ -1663,7 +1672,7 @@ export function bindTask(
               const $value = await $expressions["unassign.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/work/task.mesh.mx:332:20) produced no value, and version is required",
+                  "set &version (src/domain/work/task.mesh.mx:333:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -1710,7 +1719,7 @@ export function bindTask(
       input: $Omit<ReadTaskInput, "load"> & TaskLoadArg<L>,
       ...[context]: $ContextArgument
     ): $Promise<L extends unknown ? TaskWith<TaskLoadNames<L>>[] : never> {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `Mesh.privileged` read skips them
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
@@ -1726,7 +1735,7 @@ export function bindTask(
               checks: [
                 {
                   kind: "authorize-if",
-                  check: "({ actor, context }) => isSystem(context) || actor.role != null",
+                  check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
                   record: false,
                   run: $expressions["policy.membersRead.authorize-if.0"],
                 },
@@ -1819,7 +1828,7 @@ export { $entityValue as Task };
 /** The record type, under the entity value's name. */
 export type Task = $Record;
 
-/** What `privileged(Task)` returns (TXN-16): one function per read action, run with no policy. */
+/** What `Mesh.privileged(Task)` returns (TXN-16): one function per read action, run with no policy. */
 export interface $Privileged {
   read<const L extends readonly (keyof TaskLoadable)[] = readonly []>(
     input: $Omit<ReadTaskInput, "load"> & TaskLoadArg<L>,
@@ -1841,7 +1850,7 @@ export interface $PrivilegedReadOnly {
 
 /**
  * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
- * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ * and so is what `Mesh.privileged` of it resolves with. The expressions files bind the entity value under this type.
  */
 export type $ReadOnly = $EntityValue<
   {
@@ -1873,7 +1882,7 @@ export type $ReadOnly = $EntityValue<
 /**
  * Load relationships and computed fields onto Task rows by name. A relationship is loaded by one more query for
  * all the rows; a computed field loads what its body reads first. The rows you pass are not changed: the result is new
- * rows of type TaskTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so it takes no `policies`
+ * rows of type TaskTxWith<"name" | ...>. It loads as `Mesh.privileged` does, running no policy, so it takes no `policies`
  * option: every related record the key names is there.
  */
 export async function loadTaskFields<const N extends keyof TaskLoadable>(

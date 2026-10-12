@@ -52,13 +52,13 @@ export type LateResultLoadable = {
 export type LateResultWith<N extends keyof LateResultLoadable> = LateResult &
   $Pick<LateResultLoadable, N>;
 
-/** What a load through `privileged` attaches to a LateResult: it runs no policy, so every related record the key names is there. */
+/** What a load through `Mesh.privileged` attaches to a LateResult: it runs no policy, so every related record the key names is there. */
 export type LateResultTxLoadable = {
   task: $work$Task$Record;
   submitter: $identity$Collaborator$Record;
 };
 
-/** A LateResult loaded through `privileged`, with the relationships and computed fields named in N. */
+/** A LateResult loaded through `Mesh.privileged`, with the relationships and computed fields named in N. */
 export type LateResultTxWith<N extends keyof LateResultLoadable> = LateResult &
   $Pick<LateResultTxLoadable, N>;
 

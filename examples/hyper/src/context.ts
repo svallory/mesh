@@ -11,7 +11,7 @@ declare module "@meshfw/runtime" {
      * application reads when the call comes in, as Hyper's router resolves the actor (`transport/router.ex:102-120`).
      * HA, the socket server, reads both from the database at call entry, refuses an unknown or retired actor there,
      * and never copies them from the request's payload (decision POL-20). Only the read policies (`membersRead`) use
-     * `role`: a write policy reads the role through `privileged`, inside the transaction, so a membership revoked a
+     * `role`: a write policy reads the role through `Mesh.privileged`, inside the transaction, so a membership revoked a
      * moment ago is refused on the next write (ADR-0074); it never reads `actor.role`.
      */
     actor: { id: string; role: Role | null };
@@ -23,7 +23,7 @@ declare module "@meshfw/runtime" {
      * Set only by `review.accept` on its nested `task.complete`, as Hyper's engine passes the completion through
      * the changeset context (`tasks/review/changes/review.ex:25-31`): the Completion then records rule
      * `review-accepted` and names the accepted submission. Task `complete` refuses a call that sets it without
-     * `system` (policy `reviewCompletion`), and reads the submission through `privileged` and throws a
+     * `system` (policy `reviewCompletion`), and reads the submission through `Mesh.privileged` and throws a
      * `FrameworkError` unless it is an accepted submission of that Task that no completion names yet
      * (`acceptedSubmissionOf` in `src/domain/work/work.helpers.ts`).
      */
@@ -34,7 +34,7 @@ declare module "@meshfw/runtime" {
 /**
  * The context of a nested call: the caller's, with `system` set (ADR-0071). Hyper authorizes only the command the
  * actor sent and runs every nested call with `authorize?: false` (`pipeline/changes.ex:26-31`); each policy of the
- * port admits such a call through `isSystem(context)`, and the actor stays on the context for what the call records.
+ * port admits such a call through `Mesh.isSystem(context)`, and the actor stays on the context for what the call records.
  */
 export function nested(context: ActionContext): ActionContext {
   return { ...context, system: true };

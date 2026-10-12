@@ -1,5 +1,6 @@
 import { Task } from "./task.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
+import { Mesh } from "meshfw"
 
 entity :Assignment table="assignments"
   attributes
@@ -21,7 +22,7 @@ entity :Assignment table="assignments"
       do
         set
           &delegator=({ actor }) => actor.id
-          &startedAt=() => now()
+          &startedAt=() => Mesh.now()
     update :finish
       input
         enum :reason values=[:reassigned, :unassigned]
@@ -33,10 +34,10 @@ entity :Assignment table="assignments"
         ]
       do
         set
-          &endedAt=() => now()
+          &endedAt=() => Mesh.now()
           &endReason=({ input }) => input.reason
   policies
     policy :membersRead types=[:read]
-      authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
+      authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null
     policy :internal actions=[&start, &finish]
-      authorize-if=({ context }) => isSystem(context)
+      authorize-if=({ context }) => Mesh.isSystem(context)

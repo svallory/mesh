@@ -22,7 +22,7 @@ bun add -d drizzle-kit
 
 | Package | What it is |
 |:--|:--|
-| `meshfw` (dev) | The `mesh` command |
+| `meshfw` | The `mesh` command, and `Mesh`, which application code imports at run time |
 | `@meshfw/runtime` | `defineConfig`, and what generated code imports: the action context's type, the error classes, the data-layer contract. `connect()` loads `mesh.config.ts` in the running program, so the config imports only run-time packages |
 | `@meshfw/data-sqlite` or `@meshfw/data-postgres` | Exactly one data adapter |
 | `zod`, `drizzle-orm`, `@opentelemetry/api` | Imported by generated code itself, so they are ordinary dependencies of your project, not hidden behind `@meshfw/runtime` |

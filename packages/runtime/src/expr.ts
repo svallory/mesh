@@ -114,7 +114,7 @@ export function cond<T>(c: unknown, a: T, b: T): T {
 }
 
 /**
- * `isSystem(context)`: true only when the value is an object whose `system` key is `true` (ADR-0071). Never unknown: a missing
+ * `Mesh.isSystem(context)`: true only when the value is an object whose `system` key is `true` (ADR-0071). Never unknown: a missing
  * context, a missing key or any other value is false, so a policy that admits internal writes with it fails closed.
  */
 export const isSystem = (context: unknown): boolean =>

@@ -10,9 +10,12 @@ import { join, resolve } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
 import { openPolicies } from "./open-policy.ts";
-import { FrameworkError, InvalidInputError } from "@meshfw/runtime";
+import { FrameworkError, InvalidInputError, Mesh } from "@meshfw/runtime";
 import build from "../src/build.ts";
 import { createSchema, sqlite } from "../src/index.ts";
+
+/** `Mesh.privileged` over an entity value this test takes untyped from the generated barrel: its reads, untyped too. */
+const privilegedOf = (entity: unknown): any => Mesh.privileged(entity as never);
 
 const order = `import { Invoice } from "../../billing/invoice.mesh.mx"
 
@@ -121,7 +124,10 @@ export { default as config } from "./mesh.config";
 export const resolveHere = (specifier: string): Promise<unknown> => import(specifier);
 `;
 /** Type-level checks: what each specifier exports and does not. */
-const CHECK = `import { bind, connect, disconnect, privileged, tables, transaction, type Binding, type Privileged } from "#mesh";
+const CHECK = `import { bind, connect, disconnect, tables, transaction, type Binding, type Privileged } from "#mesh";
+import { Mesh } from "@meshfw/runtime";
+// @ts-expect-error #mesh exports none of Mesh's functions: an application imports Mesh from meshfw
+import { privileged } from "#mesh";
 // @ts-expect-error #mesh no longer exports the handles' types
 import type { Actions, Reads } from "#mesh";
 // @ts-expect-error #mesh exports no entity value: it is its module's
@@ -153,14 +159,14 @@ export async function main(): Promise<[Order, Invoice[], Tag, Column]> {
   // The same entity value through the namespaces of the barrels above its folder.
   const viaSales: typeof Order = sales.orders.Order;
   const viaRoot: typeof Invoice = domain.billing.Invoice;
-  const reads: Privileged<typeof Invoice> = privileged(Invoice);
+  const reads: Privileged<typeof Invoice> = Mesh.privileged(Invoice);
   const both = await transaction(async () => {
     const invoices = await reads.read({});
     await Invoice.settle({ id: invoices[0]!.id }, { trail: [] });
     return invoices;
   });
-  // @ts-expect-error privileged takes an entity value
-  privileged(placed);
+  // @ts-expect-error Mesh.privileged takes an entity value
+  Mesh.privileged(placed);
   const tag = await Tag.make({ label: "t" });
   const column = await Column.make({ label: "c" });
   await Promise.all([Shipment.make({ label: "s" }), Entry.make({ label: "e" }), Contract.make({ label: "k" }), Piece.make({ label: "p" }), Realm.make({ label: "r" })]);
@@ -201,8 +207,8 @@ afterAll(async () => {
 });
 
 describe("the specifiers", () => {
-  test("#mesh exports bind, connect, disconnect, privileged, tables and transaction, and nothing else", () => {
-    expect(Object.keys(app.mesh).sort()).toEqual(["bind", "connect", "disconnect", "privileged", "tables", "transaction"]);
+  test("#mesh exports bind, connect, disconnect, tables and transaction, and nothing else: no Mesh function", () => {
+    expect(Object.keys(app.mesh).sort()).toEqual(["bind", "connect", "disconnect", "tables", "transaction"]);
   });
 
   test("each barrel exports its own entities' values and one namespace per subfolder, and only those", () => {
@@ -285,7 +291,7 @@ describe("entity values on the connected binding", () => {
     const result = await app.mesh.transaction(async (...given: unknown[]) => {
       expect(given).toEqual([]);
       const made = await Order.place({ item: "desk", amount: 7 }, { trail });
-      const [bill] = await app.mesh.privileged(Invoice).read({ filter: { ref: { eq: made.id } } });
+      const [bill] = await privilegedOf(Invoice).read({ filter: { ref: { eq: made.id } } });
       await Invoice.settle({ id: bill.id }, { trail });
       return made.id;
     });
@@ -315,7 +321,7 @@ describe("entity values on the connected binding", () => {
       expect(labels(await Column.read({}))).not.toContain("own");
       expect(labels(await Column.read({}))).toContain("connected");
       // `transaction` from #mesh takes the binding in scope too.
-      expect(await bound.run(() => app.mesh.transaction(async () => labels(await app.mesh.privileged(Column).read({}))))).toEqual(["own"]);
+      expect(await bound.run(() => app.mesh.transaction(async () => labels(await privilegedOf(Column).read({}))))).toEqual(["own"]);
     } finally { await own.close(); }
   });
 

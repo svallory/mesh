@@ -113,7 +113,7 @@ export async function disconnect(): $Promise<void> {
 /**
  * Open a transaction, or join the running one, on the binding in scope (the innermost `run` or `transaction` this call
  * is made inside), else on the connected one, and call `fn` inside it, handing it nothing (TXN-20): every entity call and
- * `privileged` read made in it joins the transaction, each with the context it passes. Resolves with what `fn` resolves
+ * `Mesh.privileged` read made in it joins the transaction, each with the context it passes. Resolves with what `fn` resolves
  * with. A call that fails fails the whole transaction, even when `fn` catches it.
  */
 export async function transaction<T>(fn: () => $Promise<T>): $Promise<T> {

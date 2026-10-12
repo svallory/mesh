@@ -70,7 +70,7 @@ import {
 } from "../../$globals";
 
 /**
- * The reads of this entity without their policies: what `privileged(Collaborator)` runs (TXN-16). The read actions
+ * The reads of this entity without their policies: what `Mesh.privileged(Collaborator)` runs (TXN-16). The read actions
  * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
 export function bindCollaboratorReads(
@@ -87,7 +87,7 @@ export function bindCollaboratorReads(
       cast?: $CastOutput<typeof readCollaboratorInputSchema>,
     ): $Promise<L extends unknown ? CollaboratorWith<CollaboratorLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
+      // for its policies and hands it over as `cast`; a `Mesh.privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readCollaboratorInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.collaborators, {
@@ -142,7 +142,8 @@ export function bindCollaborator(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -155,7 +156,7 @@ export function bindCollaborator(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner])",
               record: true,
               run: $expressions["policy.ownerOnly.authorize-if.0"],
             },
@@ -220,7 +221,7 @@ export function bindCollaborator(
               label: "nameUnique",
               code: "collaborator.name-unique",
               message: "another active collaborator has that name",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 19, column: 9 },
+              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 20, column: 9 },
               that: $expressions["register.check.nameUnique.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -266,7 +267,8 @@ export function bindCollaborator(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -279,7 +281,7 @@ export function bindCollaborator(
             {
               kind: "authorize-if",
               check:
-                "async ({ self, actor, context }) => isSystem(context) || self.id === actor.id || await roleIn(actor.id, [:owner])",
+                "async ({ self, actor, context }) => Mesh.isSystem(context) || self.id === actor.id || await roleIn(actor.id, [:owner])",
               record: true,
               run: $expressions["policy.collaboratorSelfOrOwner.authorize-if.0"],
             },
@@ -341,28 +343,28 @@ export function bindCollaborator(
               label: "collaboratorActive",
               code: "collaborator.active",
               message: "the collaborator is retired",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 30, column: 9 },
+              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 31, column: 9 },
               that: $expressions["update.check.collaboratorActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "kindImmutable",
               code: "collaborator.kind-immutable",
               message: "a collaborator keeps its kind",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 35, column: 9 },
+              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 36, column: 9 },
               that: $expressions["update.check.kindImmutable.that"],
             });
             await $runCheck($issues, $checks, {
               label: "nameUnique",
               code: "collaborator.name-unique",
               message: "another active collaborator has that name",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 40, column: 9 },
+              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 41, column: 9 },
               that: $expressions["update.check.nameUnique.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 45, column: 9 },
+              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 46, column: 9 },
               that: $expressions["update.check.versionMatches.that"],
               details: $expressions["update.check.versionMatches.details"],
             });
@@ -375,7 +377,7 @@ export function bindCollaborator(
               const $value = await $expressions["update.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/identity/collaborator.mesh.mx:53:20) produced no value, and version is required",
+                  "set &version (src/domain/identity/collaborator.mesh.mx:54:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -426,7 +428,8 @@ export function bindCollaborator(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -439,7 +442,7 @@ export function bindCollaborator(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner])",
               record: true,
               run: $expressions["policy.ownerOnly.authorize-if.0"],
             },
@@ -501,21 +504,21 @@ export function bindCollaborator(
               label: "collaboratorActive",
               code: "collaborator.active",
               message: "the collaborator is retired",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 59, column: 9 },
+              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 60, column: 9 },
               that: $expressions["retire.check.collaboratorActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "lastOwner",
               code: "membership.last-owner",
               message: "the workspace would have no owner; grant another owner first",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 64, column: 9 },
+              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 65, column: 9 },
               that: $expressions["retire.check.lastOwner.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 69, column: 9 },
+              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 70, column: 9 },
               that: $expressions["retire.check.versionMatches.that"],
               details: $expressions["retire.check.versionMatches.details"],
             });
@@ -526,7 +529,7 @@ export function bindCollaborator(
               const $value = await $expressions["retire.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/identity/collaborator.mesh.mx:78:20) produced no value, and version is required",
+                  "set &version (src/domain/identity/collaborator.mesh.mx:79:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -564,7 +567,7 @@ export function bindCollaborator(
       input: $Omit<ReadCollaboratorInput, "load"> & CollaboratorLoadArg<L>,
       ...[context]: $ContextArgument
     ): $Promise<L extends unknown ? CollaboratorWith<CollaboratorLoadNames<L>>[] : never> {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `Mesh.privileged` read skips them
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
@@ -580,7 +583,7 @@ export function bindCollaborator(
               checks: [
                 {
                   kind: "authorize-if",
-                  check: "({ actor, context }) => isSystem(context) || actor.role != null",
+                  check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
                   record: false,
                   run: $expressions["policy.membersRead.authorize-if.0"],
                 },
@@ -644,7 +647,7 @@ export { $entityValue as Collaborator };
 /** The record type, under the entity value's name. */
 export type Collaborator = $Record;
 
-/** What `privileged(Collaborator)` returns (TXN-16): one function per read action, run with no policy. */
+/** What `Mesh.privileged(Collaborator)` returns (TXN-16): one function per read action, run with no policy. */
 export interface $Privileged {
   read<const L extends readonly (keyof CollaboratorLoadable)[] = readonly []>(
     input: $Omit<ReadCollaboratorInput, "load"> & CollaboratorLoadArg<L>,
@@ -667,7 +670,7 @@ export interface $PrivilegedReadOnly {
 
 /**
  * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
- * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ * and so is what `Mesh.privileged` of it resolves with. The expressions files bind the entity value under this type.
  */
 export type $ReadOnly = $EntityValue<
   {
@@ -699,7 +702,7 @@ export type $ReadOnly = $EntityValue<
 /**
  * Load relationships and computed fields onto Collaborator rows by name. A relationship is loaded by one more query for
  * all the rows; a computed field loads what its body reads first. The rows you pass are not changed: the result is new
- * rows of type CollaboratorWith<"name" | ...>. It loads as `privileged` does, running no policy, so it takes no `policies`
+ * rows of type CollaboratorWith<"name" | ...>. It loads as `Mesh.privileged` does, running no policy, so it takes no `policies`
  * option: every related record the key names is there.
  */
 export async function loadCollaboratorFields<const N extends keyof CollaboratorLoadable>(

@@ -8,14 +8,18 @@ import { join, resolve } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
 import { openPolicies } from "./open-policy.ts";
-import { FrameworkError, InvalidInputError, NotFoundError, type DataOperations } from "@meshfw/runtime";
+import { FrameworkError, InvalidInputError, Mesh, NotFoundError, type DataOperations } from "@meshfw/runtime";
 import build from "../src/build.ts";
 import { callsOf } from "./calls.ts";
 import { createSchema, sqlite } from "../src/index.ts";
 
+/** `Mesh.privileged` over an entity value this test takes untyped from the generated barrel: its reads, untyped too. */
+const privilegedOf = (entity: unknown): any => Mesh.privileged(entity as never);
+
 const account = `import { Entry } from "./entry.mesh.mx"
 import { Audit } from "./audit.mesh.mx"
 import { auditInTransaction, directDeposit, later } from "./helpers"
+import { Mesh } from "meshfw"
 entity :Account table="accounts"
   attributes
     integer :id primary-key
@@ -84,7 +88,7 @@ entity :Account table="accounts"
             if (input.phase === "validate") await Account.deposit({ id: input.target ?? 0, amount: -1 }, context);
             if (input.phase === "run") await Audit.fail({ what: "refused" }, context);
             if (input.phase === "missing") await Account.deposit({ id: 987654, amount: 1 }, context);
-            if (input.phase === "read") await privileged(Account).read({ limit: -1 });
+            if (input.phase === "read") await Mesh.privileged(Account).read({ limit: -1 });
             if (input.phase === "deep") await Audit.relay({ what: "deep" }, context);
           } catch (error) {
             context.log.push(\`caught \${(error as Error).constructor.name}\`);
@@ -144,9 +148,9 @@ entity :Account table="accounts"
         string :how
       do
         run({ input, context }) {
-          if (input.how === "privileged") { const [row] = await privileged(Account).read({}); (row as any).name = "changed through privileged"; }
+          if (input.how === "privileged") { const [row] = await Mesh.privileged(Account).read({}); (row as any).name = "changed through privileged"; }
           if (input.how === "result") { const audit = await Audit.log({ what: "meddled" }, context); (audit as any).what = "changed"; }
-          if (input.how === "other") { const [row] = await privileged(Audit).read({}); (row as any).what = "changed through privileged"; }
+          if (input.how === "other") { const [row] = await Mesh.privileged(Audit).read({}); (row as any).what = "changed through privileged"; }
         }
     update :stash
       do
@@ -207,7 +211,7 @@ entity :Account table="accounts"
     destroy :close
       do
         run [after=:write] ({ self, context }) {
-          const left = await privileged(Account).read({ filter: { id: { eq: self.id } } });
+          const left = await Mesh.privileged(Account).read({ filter: { id: { eq: self.id } } });
           await Audit.log({ what: \`closed \${self.name} with \${self.balance}, \${left.length} left\` }, context);
         }
 `;
@@ -235,6 +239,7 @@ entity :Entry table="entries"
 
 const audit = `import { peek, peekLater } from "./peek"
 
+import { Mesh } from "meshfw"
 entity :Audit table="audits"
   attributes
     integer :id primary-key
@@ -251,7 +256,7 @@ entity :Audit table="audits"
         set
           &by=({ actor }) => actor?.id ?? null
         run [after=:write] ({ self, context }) {
-          const rows = await privileged(Audit).read({ filter: { id: { eq: self.id } } });
+          const rows = await Mesh.privileged(Audit).read({ filter: { id: { eq: self.id } } });
           context.log?.push(\`audit "\${self.what}" by \${self.by ?? "nobody"}; privileged sees \${rows.length}\`);
         }
     create :fail
@@ -334,7 +339,8 @@ entity :Doc table="docs"
  * \`Account\` is still loading.
  */
 const helpers = `import { Account, Audit } from "../../.mesh/domain/index.ts";
-import { privileged, transaction } from "../../.mesh/index.ts";
+import { Mesh } from "@meshfw/runtime";
+import { transaction } from "../../.mesh/index.ts";
 type Deposit = (input: { id: number; amount: number }) => Promise<unknown>;
 type Log = (input: { what: string }) => Promise<unknown>;
 /** An entity value called directly, as an application imports it from \`#mesh/domain\`. */
@@ -348,16 +354,16 @@ export function later<T>(fn: () => Promise<T>): Promise<T> {
 export async function auditInTransaction(what: string): Promise<number> {
   return transaction(async () => {
     await (Audit.log as Log)({ what });
-    return (await privileged(Audit).read({})).length;
+    return (await Mesh.privileged(Audit).read({})).length;
   });
 }
 `;
 
 /** \`Audit\`'s computed field calls this: the privileged read it makes is refused while the field is evaluated (TXN-18). */
 const peek = `import { Audit } from "../../.mesh/domain/index.ts";
-import { privileged } from "../../.mesh/index.ts";
+import { Mesh } from "@meshfw/runtime";
 export function peek(): boolean {
-  void privileged(Audit);
+  void Mesh.privileged(Audit);
   return true;
 }
 /**
@@ -368,7 +374,7 @@ export function peek(): boolean {
  */
 export const peekLater = (async (id: number) => {
   await Promise.resolve();
-  return privileged(Audit) !== undefined && id > 0;
+  return Mesh.privileged(Audit) !== undefined && id > 0;
 }) as unknown as (id: number) => boolean;
 `;
 
@@ -456,7 +462,8 @@ describe("the generated files", () => {
     await Bun.write(join(dir, "context.ts"), 'import "@meshfw/runtime";\ndeclare module "@meshfw/runtime" {\n  interface ActionContext {\n    actor: { id: string };\n    log: string[];\n    stash?: unknown;\n  }\n}\nexport {};\n');
     await Bun.write(join(dir, "check-context.ts"), [
       'import { Account } from "./.mesh/domain/index.ts";',
-      'import { bind, privileged } from "./.mesh/index.ts";',
+      'import { Mesh } from "@meshfw/runtime";',
+      'import { bind } from "./.mesh/index.ts";',
       "const mesh = bind(null as never);",
       "export async function calls(): Promise<void> {",
       "  // @ts-expect-error a top-level call needs the context",
@@ -466,7 +473,7 @@ describe("the generated files", () => {
       "  // @ts-expect-error inside the application's transaction too: nothing carries a context to the calls",
       '  await mesh.transaction(async () => { await Account.open({ name: "x" }); });',
       "  // A privileged read takes a context only for what it loads, and may leave it out.",
-      '  await mesh.transaction(async () => { await privileged(Account).read({}); });',
+      '  await mesh.transaction(async () => { await Mesh.privileged(Account).read({}); });',
       "}",
       "",
     ].join("\n"));
@@ -488,7 +495,8 @@ describe("the generated files", () => {
       'import type { $ReadOnly as AccountView } from "./.mesh/domain/account.actions.ts";',
       'import type { $ReadOnly as EntryView } from "./.mesh/domain/entry.actions.ts";',
       'import { Account } from "./.mesh/domain/index.ts";',
-      'import { bind, privileged } from "./.mesh/index.ts";',
+      'import { Mesh } from "@meshfw/runtime";',
+      'import { bind } from "./.mesh/index.ts";',
       "declare const s: AccountStoredScope<DepositAccountInput>;",
       "// The entity values as a function of an entity file sees them.",
       "declare const A: AccountView;",
@@ -515,11 +523,11 @@ describe("the generated files", () => {
       "  // @ts-expect-error the record a nested action returns is read-only",
       '  (await A.open({ name: "a" }, context)).name = "b";',
       "  // @ts-expect-error a row read through privileged is read-only",
-      '  (await privileged(A).read({}))[0]!.name = "b";',
+      '  (await Mesh.privileged(A).read({}))[0]!.name = "b";',
       "  // @ts-expect-error privileged holds the reads only",
-      '  await privileged(A).open({ name: "a" });',
+      '  await Mesh.privileged(A).open({ name: "a" });',
       "  // @ts-expect-error a privileged read takes the read's input",
-      '  await privileged(A).read({ limit: "all" });',
+      '  await Mesh.privileged(A).read({ limit: "all" });',
       "  // @ts-expect-error the scope holds no `actions` and no `tx` any more",
       "  void s.actions; void s.tx;",
       "  // A copy is the function's own: cloneValue (structuredClone in an entity file) drops read-only.",
@@ -531,8 +539,8 @@ describe("the generated files", () => {
       "  const count: number = await mesh.transaction(async () => {",
       '    const opened = await Account.open({ name: "x" }, context);',
       '    opened.name = "plain";',
-      '    (await privileged(Account).read({}))[0]!.name = "plain";',
-      "    return (await privileged(Account).read({})).length;",
+      '    (await Mesh.privileged(Account).read({}))[0]!.name = "plain";',
+      "    return (await Mesh.privileged(Account).read({})).length;",
       "  });",
       "  // @ts-expect-error the calls are typed there too",
       "  await mesh.transaction(async () => Account.open({ name: 1 }, context));",
@@ -609,7 +617,7 @@ describe("the afterWrite seam (ACT-09)", () => {
       seams: {
         afterWrite: async (_db: unknown, { entity, action }: { entity: string; action: string }) => {
           if (!entity.endsWith("Account") || action !== "open") return;
-          const rows = await app.privileged(Audit).read({});
+          const rows = await privilegedOf(Audit).read({});
           rows.push({ what: "pushed" });
           const logged = await Audit.log({ what: "from the seam" }, { actor: alice, log });
           logged.what = "changed in place";
@@ -624,7 +632,7 @@ describe("the afterWrite seam (ACT-09)", () => {
       // The audit's own step after its write ran as a step, and saw its row through privileged.
       expect(log).toContain('audit "from the seam" by alice; privileged sees 1');
       // A change made in place is never persisted.
-      expect((await binding.run(() => app.privileged(Audit).read({}))).map((row: { what: string }) => row.what).sort()).toEqual(["from the seam", "opened 1"]);
+      expect((await binding.run(() => privilegedOf(Audit).read({}))).map((row: { what: string }) => row.what).sort()).toEqual(["from the seam", "opened 1"]);
     } finally { await db.close(); }
   });
 });
@@ -718,7 +726,7 @@ describe("a computed field (TXN-18)", () => {
       await world.mesh.logAudit({ what: "x" }, world.ctx);
       const error = await failure(world.mesh.readAudit({ load: ["peeked"] }, world.ctx));
       expect(error).toBeInstanceOf(FrameworkError);
-      expect((error as Error).message).toStartWith("privileged(Audit) was called while computed :peeked of Audit is evaluated");
+      expect((error as Error).message).toStartWith("Mesh.privileged(Audit) was called while computed :peeked of Audit is evaluated");
       // Not loaded, the field's body never runs.
       expect(await world.mesh.readAudit({}, world.ctx)).toHaveLength(1);
     } finally { await world.db.close(); }
@@ -733,7 +741,7 @@ describe("a computed field (TXN-18)", () => {
       const loading = binding.run(() => world.db.transaction((tx: DataOperations) => (domain as any).loadAuditFields(tx, rows, ["peeked"])));
       const error = await failure(loading);
       expect(error).toBeInstanceOf(FrameworkError);
-      expect((error as Error).message).toStartWith("privileged(Audit) was called while computed :peeked of Audit is evaluated");
+      expect((error as Error).message).toStartWith("Mesh.privileged(Audit) was called while computed :peeked of Audit is evaluated");
     } finally { await world.db.close(); }
   });
 
@@ -777,7 +785,7 @@ describe("the application transaction", () => {
         await Account.deposit({ id: a.id, amount: 5 }, world.ctx);
         // Records handed to the application are plain: changing one changes nothing stored.
         a.name = "changed";
-        return { count: (await app.privileged(Account).read({})).length, label: "done" };
+        return { count: (await privilegedOf(Account).read({})).length, label: "done" };
       });
       expect(result).toEqual({ count: 1, label: "done" });
       expect((await rows(world)).accounts).toMatchObject([{ name: "Ada", balance: 15 }]);
@@ -791,7 +799,7 @@ describe("the application transaction", () => {
         await Account.open({ name: "Ada" }, world.ctx);
         const seen = await world.mesh.transaction(async () => {
           await Account.open({ name: "Bo" }, world.ctx);
-          return (await app.privileged(Account).read({})).length;
+          return (await privilegedOf(Account).read({})).length;
         });
         expect(seen).toBe(2);
         throw new Error("after both");
@@ -862,7 +870,7 @@ describe("the application transaction", () => {
       expect((fromRun as Error).message).toBe(ENDED);
       let read!: Promise<unknown>;
       await world.mesh.transaction(async () => {
-        read = new Promise((resolve) => setTimeout(resolve, 20)).then(() => app.privileged(Account).read({}));
+        read = new Promise((resolve) => setTimeout(resolve, 20)).then(() => privilegedOf(Account).read({}));
       });
       expect(((await failure(read)) as Error).message).toBe(ENDED);
       expect((await rows(world)).accounts.map((row: { name: string }) => row.name)).toEqual(["Ada"]);
@@ -1045,9 +1053,9 @@ describe("calls joined to one transaction run one at a time (decisions log, 2026
       const opened = await world.mesh.openAccount({ name: "Ada", balance: 10 }, world.ctx);
       const seen = await world.mesh.transaction(async () => {
         const [first, , second] = await Promise.all([
-          app.privileged(Account).read({}),
+          privilegedOf(Account).read({}),
           Account.deposit({ id: opened.id, amount: 5 }, world.ctx),
-          app.privileged(Account).read({}),
+          privilegedOf(Account).read({}),
         ]);
         return [first[0].balance, second[0].balance];
       });
@@ -1135,7 +1143,7 @@ describe("a call that joins a failed transaction is refused before it does anyth
         refusals.push(await world.mesh.tallyAudit({ what: 5 } as never, world.ctx).catch((cause: unknown) => cause));
         refusals.push(await world.mesh.openAccount({ name: "never" }, world.ctx).catch((cause: unknown) => cause));
         refusals.push(await world.mesh.readAccount({}, world.ctx).catch((cause: unknown) => cause));
-        refusals.push(await app.privileged(Account).read({}).catch((cause: unknown) => cause));
+        refusals.push(await privilegedOf(Account).read({}).catch((cause: unknown) => cause));
       }));
       expect(refusals.map(refusedBy)).toEqual(["audit refused", "audit refused", "audit refused", "audit refused", "audit refused"]);
       expect(world.log).not.toContain("tally ran");

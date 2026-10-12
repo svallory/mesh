@@ -4,7 +4,8 @@
 // transaction, and `db` is the four by-key operations.
 import { describe, expect, spyOn, test } from "bun:test";
 import { FrameworkError, type AfterCommitEvent, type AfterWriteEvent, type BeforeTransactionEvent, type SeamDb, type Seams } from "@meshfw/runtime";
-import { bind, privileged, tables } from "#mesh";
+import { bind, tables } from "#mesh";
+import { Mesh } from "meshfw";
 import { Collaborator, Workspace } from "#mesh/domain/identity";
 import { Claim, Completion, Dependency, Review, Submission, Task } from "#mesh/domain/work";
 import { submissionSubmit } from "../src/domain/work/work.commands";
@@ -288,7 +289,7 @@ describe("acceptance 4: afterCommit runs once, after the commit, with every chan
         expect(rec.commits).toHaveLength(1);
         expect(rec.commits[0]!.changes).toHaveLength(2);
         await expect(watched.transaction(async () => { await Task.create({ title: "Lost" }, as(w.alice)); throw boom; })).rejects.toBe(boom);
-        await watched.transaction(async () => { await privileged(Task).read({}); });
+        await watched.transaction(async () => { await Mesh.privileged(Task).read({}); });
         expect(rec.commits).toHaveLength(1);
         // A joined call that failed and was caught still rolls the whole transaction back: nothing is reported.
         await expect(watched.transaction(async () => {

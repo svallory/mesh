@@ -34,12 +34,12 @@ export type CommentLoadable = {
 /** A Comment with the relationships and computed fields named in N loaded. */
 export type CommentWith<N extends keyof CommentLoadable> = Comment & $Pick<CommentLoadable, N>;
 
-/** What a load through `privileged` attaches to a Comment: it runs no policy, so every related record the key names is there. */
+/** What a load through `Mesh.privileged` attaches to a Comment: it runs no policy, so every related record the key names is there. */
 export type CommentTxLoadable = {
   post: $blog$Post$Record;
 };
 
-/** A Comment loaded through `privileged`, with the relationships and computed fields named in N. */
+/** A Comment loaded through `Mesh.privileged`, with the relationships and computed fields named in N. */
 export type CommentTxWith<N extends keyof CommentLoadable> = Comment & $Pick<CommentTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */

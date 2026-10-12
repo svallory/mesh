@@ -3,6 +3,7 @@
 
 import {
   expr as $,
+  meshIn as $mesh,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
   type SharedInput as $SharedInput,
@@ -52,32 +53,32 @@ export type $execution$Run$NewScope<I = unknown> = $Omit<$execution$Run$CheckSco
 };
 
 export const $expressions = {
-  // check :taskOpen that, plain (awaits-helper) (src/domain/execution/run.mesh.mx:32:16)
+  // check :taskOpen that, plain (awaits-helper) (src/domain/execution/run.mesh.mx:33:16)
   "start.check.taskOpen.that": ($s: $execution$Run$NewScope<$execution$Run$StartRunInput>) => {
     return (async ({ input }) => await taskOpenOf(input.task))($s);
   },
-  // check :parentRunning that, plain (awaits-helper) (src/domain/execution/run.mesh.mx:37:16)
+  // check :parentRunning that, plain (awaits-helper) (src/domain/execution/run.mesh.mx:38:16)
   "start.check.parentRunning.that": ($s: $execution$Run$NewScope<$execution$Run$StartRunInput>) => {
     return (async ({ input }) => input.parentRun == null || (await runRunningOf(input.parentRun)))(
       $s,
     );
   },
-  // set &startedBy, translated (src/domain/execution/run.mesh.mx:43:22)
+  // set &startedBy, translated (src/domain/execution/run.mesh.mx:44:22)
   "start.step.0.set.startedBy": ($s: $execution$Run$Scope<$execution$Run$StartRunInput>) =>
     $s.actor?.id,
-  // set &responsible, plain (reads-record-in-helper) (src/domain/execution/run.mesh.mx:44:24)
+  // set &responsible, plain (reads-record-in-helper) (src/domain/execution/run.mesh.mx:45:24)
   "start.step.0.set.responsible": ($s: $execution$Run$Scope<$execution$Run$StartRunInput>) => {
     const { self } = $s;
     return (({ actor }) => responsibleFor(self.task.assignments, actor.id))($s);
   },
-  // check :cancelable that, translated (src/domain/execution/run.mesh.mx:51:16)
+  // check :cancelable that, translated (src/domain/execution/run.mesh.mx:52:16)
   "cancel.check.cancelable.that": ($s: $execution$Run$CheckScope<$execution$Run$CancelRunInput>) =>
     $.eq($s.self.state, "running"),
-  // check :versionMatches that, translated (src/domain/execution/run.mesh.mx:56:16)
+  // check :versionMatches that, translated (src/domain/execution/run.mesh.mx:57:16)
   "cancel.check.versionMatches.that": (
     $s: $execution$Run$CheckScope<$execution$Run$CancelRunInput>,
   ) => $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/run.mesh.mx:59:19)
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/run.mesh.mx:60:19)
   "cancel.check.versionMatches.details": (
     $s: $execution$Run$CheckScope<$execution$Run$CancelRunInput>,
   ) => {
@@ -87,56 +88,56 @@ export const $expressions = {
       actualVersion: self.version,
     }))($s);
   },
-  // set &endedAt, translated (src/domain/execution/run.mesh.mx:64:20)
+  // set &endedAt, translated (src/domain/execution/run.mesh.mx:65:20)
   "cancel.step.0.set.endedAt": ($s: $execution$Run$StoredScope<$execution$Run$CancelRunInput>) =>
     $.now($s),
-  // set &cancelReason, translated (src/domain/execution/run.mesh.mx:65:25)
+  // set &cancelReason, translated (src/domain/execution/run.mesh.mx:66:25)
   "cancel.step.0.set.cancelReason": (
     $s: $execution$Run$StoredScope<$execution$Run$CancelRunInput>,
   ) => $s.input?.reason,
-  // set &version, translated (src/domain/execution/run.mesh.mx:66:20)
+  // set &version, translated (src/domain/execution/run.mesh.mx:67:20)
   "cancel.step.0.set.version": ($s: $execution$Run$StoredScope<$execution$Run$CancelRunInput>) =>
     $.add($s.self.version, 1),
-  // set &state, translated (src/domain/execution/run.mesh.mx:73:18)
+  // set &state, translated (src/domain/execution/run.mesh.mx:74:18)
   "settle.step.0.set.state": ($s: $execution$Run$StoredScope<$execution$Run$SettleRunInput>) =>
     $s.input?.result,
-  // set &endedAt, translated (src/domain/execution/run.mesh.mx:74:20)
+  // set &endedAt, translated (src/domain/execution/run.mesh.mx:75:20)
   "settle.step.0.set.endedAt": ($s: $execution$Run$StoredScope<$execution$Run$SettleRunInput>) =>
     $.now($s),
-  // set &version, translated (src/domain/execution/run.mesh.mx:75:20)
+  // set &version, translated (src/domain/execution/run.mesh.mx:76:20)
   "settle.step.0.set.version": ($s: $execution$Run$StoredScope<$execution$Run$SettleRunInput>) =>
     $.add($s.self.version, 1),
-  // policy :membersRead authorize-if, translated (src/domain/execution/run.mesh.mx:78:20)
+  // policy :membersRead authorize-if, translated (src/domain/execution/run.mesh.mx:79:20)
   "policy.membersRead.authorize-if.0": ($s: $execution$Run$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
-  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/execution/run.mesh.mx:80:20)
+  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/execution/run.mesh.mx:81:20)
   "policy.isMember.authorize-if.0": (
     $s: $execution$Run$NewScope<
       $SharedInput<$execution$Run$StartRunInput | $execution$Run$CancelRunInput>
     >,
   ) => {
-    const isSystem = $.isSystem;
-    return (async ({ actor, context }) => isSystem(context) || (await memberOf(actor.id)))($s);
+    const Mesh = $mesh($s);
+    return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
-  // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/execution/run.mesh.mx:82:20)
+  // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/execution/run.mesh.mx:83:20)
   "policy.ownerOrMember.authorize-if.0": (
     $s: $execution$Run$NewScope<
       $SharedInput<$execution$Run$StartRunInput | $execution$Run$CancelRunInput>
     >,
   ) => {
-    const isSystem = $.isSystem;
+    const Mesh = $mesh($s);
     return (async ({ actor, context }) =>
-      isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
+      Mesh.isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
   },
-  // policy :runCanceler authorize-if, plain (awaits-helper) (src/domain/execution/run.mesh.mx:84:20)
+  // policy :runCanceler authorize-if, plain (awaits-helper) (src/domain/execution/run.mesh.mx:85:20)
   "policy.runCanceler.authorize-if.0": (
     $s: $execution$Run$CheckScope<$execution$Run$CancelRunInput>,
   ) => {
-    const isSystem = $.isSystem;
+    const Mesh = $mesh($s);
     return (async ({ self, actor, context }) =>
-      isSystem(context) || (await cancelsRunOf(self, actor.id)))($s);
+      Mesh.isSystem(context) || (await cancelsRunOf(self, actor.id)))($s);
   },
-  // policy :internal authorize-if, translated (src/domain/execution/run.mesh.mx:86:20)
+  // policy :internal authorize-if, translated (src/domain/execution/run.mesh.mx:87:20)
   "policy.internal.authorize-if.0": (
     $s: $execution$Run$CheckScope<$execution$Run$SettleRunInput>,
   ) => $.isSystem($s.context),

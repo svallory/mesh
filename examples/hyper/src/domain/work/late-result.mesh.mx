@@ -2,6 +2,7 @@ import { Task } from "./task.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
 import { claimsOf, isStale, missingEvidenceOf } from "./work.helpers"
 import { memberOf, roleIn } from "../identity/identity.helpers"
+import { Mesh } from "meshfw"
 
 entity :LateResult table="late_results"
   attributes
@@ -22,7 +23,7 @@ entity :LateResult table="late_results"
         &evidence
       validate
         check :staleFence [
-          that=async ({ input, actor }) => isStale(await claimsOf(input.task), input.fence, actor.id, now())
+          that=async ({ input, actor }) => isStale(await claimsOf(input.task), input.fence, actor.id, Mesh.now())
           code="claim.stale-fence"
           message="only a fence you held that expired or was revoked records a late result"
         ]
@@ -37,8 +38,8 @@ entity :LateResult table="late_results"
           &submitter=({ actor }) => actor.id
   policies
     policy :membersRead types=[:read]
-      authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
+      authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null
     policy :isMember actions=[&record]
-      authorize-if=async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)
+      authorize-if=async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)
     policy :ownerOrMember actions=[&record]
-      authorize-if=async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])
+      authorize-if=async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])

@@ -78,7 +78,12 @@
   },
   "dependencies": {
     "@meshfw/compiler": "workspace:*",
-    "@meshfw/model": "workspace:*",
+    "@meshfw/model": "workspace:*"
+  },
+  "peerDependencies": {
+    "@meshfw/runtime": "workspace:*"
+  },
+  "devDependencies": {
     "@meshfw/runtime": "workspace:*"
   },
   "files": [

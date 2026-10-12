@@ -52,7 +52,7 @@ import {
 import { $Date, $Object, type $Partial, type $Promise } from "../../$globals";
 
 /**
- * The reads of this entity without their policies: what `privileged(Workspace)` runs (TXN-16). The read actions
+ * The reads of this entity without their policies: what `Mesh.privileged(Workspace)` runs (TXN-16). The read actions
  * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
 export function bindWorkspaceReads(
@@ -69,7 +69,7 @@ export function bindWorkspaceReads(
       cast?: $CastOutput<typeof readWorkspaceInputSchema>,
     ): $Promise<Workspace[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
+      // for its policies and hands it over as `cast`; a `Mesh.privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readWorkspaceInputSchema, input));
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.workspaces, {
@@ -108,7 +108,8 @@ export function bindWorkspace(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -121,7 +122,7 @@ export function bindWorkspace(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner])",
               record: true,
               run: $expressions["policy.ownerOnly.authorize-if.0"],
             },
@@ -208,7 +209,8 @@ export function bindWorkspace(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -221,7 +223,7 @@ export function bindWorkspace(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner])",
               record: true,
               run: $expressions["policy.ownerOnly.authorize-if.0"],
             },
@@ -280,14 +282,14 @@ export function bindWorkspace(
               label: "workspaceActive",
               code: "workspace.active",
               message: "the workspace has moved; it can no longer be changed",
-              source: { file: "src/domain/identity/workspace.mesh.mx", line: 20, column: 9 },
+              source: { file: "src/domain/identity/workspace.mesh.mx", line: 21, column: 9 },
               that: $expressions["rename.check.workspaceActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/identity/workspace.mesh.mx", line: 25, column: 9 },
+              source: { file: "src/domain/identity/workspace.mesh.mx", line: 26, column: 9 },
               that: $expressions["rename.check.versionMatches.that"],
               details: $expressions["rename.check.versionMatches.details"],
             });
@@ -300,7 +302,7 @@ export function bindWorkspace(
               const $value = await $expressions["rename.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/identity/workspace.mesh.mx:33:20) produced no value, and version is required",
+                  "set &version (src/domain/identity/workspace.mesh.mx:34:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -335,7 +337,7 @@ export function bindWorkspace(
     },
 
     async read(input: ReadWorkspaceInput, ...[context]: $ContextArgument): $Promise<Workspace[]> {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `Mesh.privileged` read skips them
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
@@ -351,7 +353,7 @@ export function bindWorkspace(
               checks: [
                 {
                   kind: "authorize-if",
-                  check: "({ actor, context }) => isSystem(context) || actor.role != null",
+                  check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
                   record: false,
                   run: $expressions["policy.membersRead.authorize-if.0"],
                 },
@@ -403,7 +405,7 @@ export { $entityValue as Workspace };
 /** The record type, under the entity value's name. */
 export type Workspace = $Record;
 
-/** What `privileged(Workspace)` returns (TXN-16): one function per read action, run with no policy. */
+/** What `Mesh.privileged(Workspace)` returns (TXN-16): one function per read action, run with no policy. */
 export interface $Privileged {
   read(input: ReadWorkspaceInput, context?: $ActionContext): $Promise<Workspace[]>;
 }
@@ -415,7 +417,7 @@ export interface $PrivilegedReadOnly {
 
 /**
  * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
- * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ * and so is what `Mesh.privileged` of it resolves with. The expressions files bind the entity value under this type.
  */
 export type $ReadOnly = $EntityValue<
   {

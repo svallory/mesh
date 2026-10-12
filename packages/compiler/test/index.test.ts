@@ -255,7 +255,7 @@ describe("entity names never break the generated files", () => {
       .toEqual({ code: 0, output: "" });
     const mesh = await import(resolve(root, ".mesh/index.ts"));
     const domain = await import(resolve(root, ".mesh/domain/index.ts"));
-    expect(Object.keys(mesh).sort()).toEqual(["bind", "connect", "disconnect", "privileged", "tables", "transaction"]);
+    expect(Object.keys(mesh).sort()).toEqual(["bind", "connect", "disconnect", "tables", "transaction"]);
     const rows: object[] = [];
     const bound = mesh.bind({ transaction: (run: (tx: object) => Promise<unknown>) => run({ insert: async (_t: object, row: object) => { rows.push(row); return row; } }), refuseIfFailed: () => false, close: async () => {} });
     for (const name of names) expect((await bound.run(() => domain[name].create({ label: name }))).label).toBe(name);

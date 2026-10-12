@@ -63,14 +63,14 @@ export type MembershipLoadable = {
 export type MembershipWith<N extends keyof MembershipLoadable> = Membership &
   $Pick<MembershipLoadable, N>;
 
-/** What a load through `privileged` attaches to a Membership: it runs no policy, so every related record the key names is there. */
+/** What a load through `Mesh.privileged` attaches to a Membership: it runs no policy, so every related record the key names is there. */
 export type MembershipTxLoadable = {
   collaborator: $identity$Collaborator$Record;
   grantedBy: $identity$Collaborator$Record;
   revokedBy: $identity$Collaborator$Record | null;
 };
 
-/** A Membership loaded through `privileged`, with the relationships and computed fields named in N. */
+/** A Membership loaded through `Mesh.privileged`, with the relationships and computed fields named in N. */
 export type MembershipTxWith<N extends keyof MembershipLoadable> = Membership &
   $Pick<MembershipTxLoadable, N>;
 

@@ -78,7 +78,7 @@ export type RunLoadable = {
 /** A Run with the relationships and computed fields named in N loaded. */
 export type RunWith<N extends keyof RunLoadable> = Run & $Pick<RunLoadable, N>;
 
-/** What a load through `privileged` attaches to a Run: it runs no policy, so every related record the key names is there. */
+/** What a load through `Mesh.privileged` attaches to a Run: it runs no policy, so every related record the key names is there. */
 export type RunTxLoadable = {
   task: $work$Task$Record;
   responsible: $identity$Collaborator$Record;
@@ -87,7 +87,7 @@ export type RunTxLoadable = {
   attempts: $execution$Attempt$Record[];
 };
 
-/** A Run loaded through `privileged`, with the relationships and computed fields named in N. */
+/** A Run loaded through `Mesh.privileged`, with the relationships and computed fields named in N. */
 export type RunTxWith<N extends keyof RunLoadable> = Run & $Pick<RunTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */

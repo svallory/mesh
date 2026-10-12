@@ -8,9 +8,12 @@ import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
 import { callsOf } from "./calls.ts";
 import { openPolicies } from "./open-policy.ts";
-import { FrameworkError, InvalidInputError, type DataOperations } from "@meshfw/runtime";
+import { FrameworkError, InvalidInputError, Mesh, type DataOperations } from "@meshfw/runtime";
 import build from "../src/build.ts";
 import { createSchema, sqlite } from "../src/index.ts";
+
+/** `Mesh.privileged` over an entity value this test takes untyped from the generated barrel: its reads, untyped too. */
+const privilegedOf = (entity: unknown): any => Mesh.privileged(entity as never);
 
 const project = `import { Task } from "./task.mesh.mx"
 entity :Project table="projects"
@@ -33,6 +36,7 @@ entity :Project table="projects"
         &rank
 `;
 const task = `import { Project } from "./project.mesh.mx"
+import { Mesh } from "meshfw"
 entity :Task table="tasks"
   attributes
     uuid :id primary-key
@@ -49,9 +53,9 @@ entity :Task table="tasks"
         &priority
         &project
       validate
-        check :roomInProject that=async ({ input }) => ((await privileged(Project).read({ filter: { id: { eq: input.project } }, load: ["taskCount"] }))[0]?.taskCount ?? 0) < 3 code="project_full" message="a project holds three tasks"
-        check :projectNotBanned that=async ({ input, context }) => (await privileged(Project).read({ filter: { id: { eq: input.project } }, load: ["label", "viewer"] }, context))[0]?.label !== "BANNED" code="banned" message="that project is banned"
-        check :viewerIsKnown that=async ({ input, context }) => (await privileged(Project).read({ filter: { id: { eq: input.project } }, load: ["viewer"] }, context))[0]?.viewer === "alice" code="not_alice" message="only alice adds tasks"
+        check :roomInProject that=async ({ input }) => ((await Mesh.privileged(Project).read({ filter: { id: { eq: input.project } }, load: ["taskCount"] }))[0]?.taskCount ?? 0) < 3 code="project_full" message="a project holds three tasks"
+        check :projectNotBanned that=async ({ input, context }) => (await Mesh.privileged(Project).read({ filter: { id: { eq: input.project } }, load: ["label", "viewer"] }, context))[0]?.label !== "BANNED" code="banned" message="that project is banned"
+        check :viewerIsKnown that=async ({ input, context }) => (await Mesh.privileged(Project).read({ filter: { id: { eq: input.project } }, load: ["viewer"] }, context))[0]?.viewer === "alice" code="not_alice" message="only alice adds tasks"
     create :addBlind
       input
         &title
@@ -124,7 +128,8 @@ describe("the generated files", () => {
 
   test("the result of a read is typed to the names passed: a loaded field is readable, an unloaded one is a type error", async () => {
     await Bun.write(join(dir, "check-load.ts"), [
-      'import { bind, privileged } from "./.mesh/index.ts";',
+      'import { Mesh } from "@meshfw/runtime";',
+      'import { bind } from "./.mesh/index.ts";',
       'import { Project, Task, type ProjectWith, type ReadProjectInput } from "./.mesh/domain/index.ts";',
       "const mesh = bind(null as never);",
       "const context = { actor: { id: 'a' } };",
@@ -156,14 +161,14 @@ describe("the generated files", () => {
       "  const wrong: ReadProjectInput<'label'> = { load: ['busy'] };",
       "  // The application's transaction keeps the same typing, through `privileged` and through the entity value.",
       "  await mesh.transaction(async () => {",
-      "    const [a] = await privileged(Project).read({ load: ['label'] });",
+      "    const [a] = await Mesh.privileged(Project).read({ load: ['label'] });",
       "    const label: string = a!.label;",
       "    // @ts-expect-error not loaded",
       "    void a!.taskCount;",
       "    const [b] = await Project.read({ load: ['taskCount'] }, context);",
       "    const count: number = b!.taskCount;",
       "    // @ts-expect-error not a loadable name",
-      "    await privileged(Project).read({ load: ['nope'] });",
+      "    await Mesh.privileged(Project).read({ load: ['nope'] });",
       "    void label; void count;",
       "  });",
       "  // An entity with a relationship and nothing else takes `load` too; Task has both.",
@@ -172,7 +177,7 @@ describe("the generated files", () => {
       "  // @ts-expect-error a caller's belongs-to can be null",
       "  void t!.project.name;",
       "  const projectName: string | undefined = t!.project?.name;",
-      "  await mesh.transaction(async () => { const [inside] = await privileged(Task).read({ load: ['project'] }); const sure: string = inside!.project.name; void sure; });",
+      "  await mesh.transaction(async () => { const [inside] = await Mesh.privileged(Task).read({ load: ['project'] }); const sure: string = inside!.project.name; void sure; });",
       "  void name; void tasks; void label; void count; void same; void input; void wrong; void projectName;",
       "}",
       "",
@@ -230,7 +235,7 @@ describe("the generated files", () => {
 
   test("the read-only types an entity file's functions see keep what is loaded and what is not; the entity values are assignable to them", async () => {
     await Bun.write(join(dir, "check-readonly.ts"), [
-      'import { privileged } from "./.mesh/index.ts";',
+      'import { Mesh } from "@meshfw/runtime";',
       'import { Project, Task } from "./.mesh/domain/index.ts";',
       'import type { $ReadOnly as ProjectView } from "./.mesh/domain/project.actions.ts";',
       'import type { $ReadOnly as TaskView } from "./.mesh/domain/task.actions.ts";',
@@ -238,17 +243,17 @@ describe("the generated files", () => {
       "const P: ProjectView = Project;",
       "const T: TaskView = Task;",
       "async function helper(): Promise<number> {",
-      "  const [p] = await privileged(P).read({ load: ['label'] });",
+      "  const [p] = await Mesh.privileged(P).read({ load: ['label'] });",
       "  const label: string = p!.label;",
       "  // @ts-expect-error not loaded through the read-only reads either",
       "  void p!.taskCount;",
-      "  const [bare] = await privileged(P).read({});",
+      "  const [bare] = await Mesh.privileged(P).read({});",
       "  // @ts-expect-error nothing loaded, nothing readable",
       "  void bare!.label;",
       "  // @ts-expect-error a record read through them is read-only",
       "  p!.name = 'x';",
       "  // @ts-expect-error and so is a loaded list",
-      "  (await privileged(P).read({ load: ['tasks'] }))[0]!.tasks.push((await privileged(T).read({}))[0]!);",
+      "  (await Mesh.privileged(P).read({ load: ['tasks'] }))[0]!.tasks.push((await Mesh.privileged(T).read({}))[0]!);",
       "  const [t] = await T.read({ load: ['project'] }, { actor: { id: 'a' } });",
       "  // A caller's belongs-to can be null; `privileged` keeps the policy-free typing, where it cannot.",
       "  // @ts-expect-error a caller's belongs-to can be null",
@@ -256,11 +261,11 @@ describe("the generated files", () => {
       "  // @ts-expect-error what an entity call returns there is read-only too",
       "  t!.title = 'x';",
       "  const projectName: string | undefined = t!.project?.name;",
-      "  const [u] = await privileged(T).read({ load: ['project'] });",
+      "  const [u] = await Mesh.privileged(T).read({ load: ['project'] });",
       "  const sure: string = u!.project.name;",
       "  void sure;",
       "  // @ts-expect-error a name that is not loadable",
-      "  await privileged(P).read({ load: ['nope'] });",
+      "  await Mesh.privileged(P).read({ load: ['nope'] });",
       "  void label; void projectName;",
       "  return 1;",
       "}",
@@ -274,8 +279,8 @@ describe("the generated files", () => {
 
   test("a check of an entity file that reads a field it did not load is a type error in the generated expressions file", async () => {
     const wrong = task.replace(
-      '(await privileged(Project).read({ filter: { id: { eq: input.project } }, load: ["viewer"] }, context))[0]?.viewer === "alice"',
-      '(await privileged(Project).read({ filter: { id: { eq: input.project } }, load: ["viewer"] }, context))[0]?.taskCount === 1',
+      '(await Mesh.privileged(Project).read({ filter: { id: { eq: input.project } }, load: ["viewer"] }, context))[0]?.viewer === "alice"',
+      '(await Mesh.privileged(Project).read({ filter: { id: { eq: input.project } }, load: ["viewer"] }, context))[0]?.taskCount === 1',
     );
     expect(wrong).not.toBe(task);
     const broken = await generate(".reads-load-unloaded-", { project, task: wrong });
@@ -417,7 +422,7 @@ describe("a read through `privileged` with load", () => {
     const { Project } = domain as any;
     try {
       await mesh.transaction(async () => {
-        const [viaPrivileged] = await app.privileged(Project).read({ filter: { name: { eq: "ada" } }, load: ["taskCount", "viewer"] }, { actor: { id: "dora" } });
+        const [viaPrivileged] = await privilegedOf(Project).read({ filter: { name: { eq: "ada" } }, load: ["taskCount", "viewer"] }, { actor: { id: "dora" } });
         expect(viaPrivileged).toMatchObject({ taskCount: 3, viewer: "dora" });
         const [viaEntity] = await Project.read({ filter: { name: { eq: "ada" } }, load: ["label"] }, { actor: { id: "dora" } });
         expect(viaEntity.label).toBe("ADA");
@@ -450,7 +455,7 @@ describe("a read through `privileged` with load", () => {
     const { db, mesh } = await seeded();
     try {
       const error = await mesh.transaction(async () => {
-        try { await app.privileged((domain as any).Project).read({ load: ["nope"] }); } catch { /* caught, and the transaction is failed all the same */ }
+        try { await privilegedOf((domain as any).Project).read({ load: ["nope"] }); } catch { /* caught, and the transaction is failed all the same */ }
       }).then(() => undefined, (e: unknown) => e);
       expect(error).toBeInstanceOf(FrameworkError);
     } finally { await db.close(); }
@@ -458,9 +463,9 @@ describe("a read through `privileged` with load", () => {
 });
 
 describe("the clock", () => {
-  test("a computed field that reads now() reads the binding's clock, through a caller's read and through privileged", async () => {
+  test("a computed field that reads Mesh.now() reads the binding's clock, through a caller's read and through privileged", async () => {
     const source = {
-      stamp: 'entity :Stamp table="stamps"\n  attributes\n    uuid :id primary-key\n    timestamp :at\n  computed\n    boolean :past() { return &at < now() }\n  actions auto=[:read]\n',
+      stamp: 'import { Mesh } from "meshfw"\nentity :Stamp table="stamps"\n  attributes\n    uuid :id primary-key\n    timestamp :at\n  computed\n    boolean :past() { return &at < Mesh.now() }\n  actions auto=[:read]\n',
     };
     const clockDir = await generate(".reads-load-clock-", source);
     try {
@@ -474,15 +479,15 @@ describe("the clock", () => {
       const ctx = { actor: alice };
       expect((await early.readStamp({ load: ["past"] }, ctx))[0].past).toBe(false);
       expect((await late.readStamp({ load: ["past"] }, ctx))[0].past).toBe(true);
-      expect(await late.transaction(async () => (await clock.privileged(clockDomain.Stamp).read({ load: ["past"] }))[0].past)).toBe(true);
-      expect(await early.transaction(async () => (await clock.privileged(clockDomain.Stamp).read({ load: ["past"] }))[0].past)).toBe(false);
+      expect(await late.transaction(async () => (await privilegedOf(clockDomain.Stamp).read({ load: ["past"] }))[0].past)).toBe(true);
+      expect(await early.transaction(async () => (await privilegedOf(clockDomain.Stamp).read({ load: ["past"] }))[0].past)).toBe(false);
       await db.close();
     } finally { await rm(clockDir, { recursive: true, force: true }); }
   });
 
-  test("one instant per call: every row and field of a load, and a create's check and its privileged read, see the same now()", async () => {
+  test("one instant per call: every row and field of a load, and a create's check and its privileged read, see the same Mesh.now()", async () => {
     const source = {
-      stamp: 'entity :Stamp table="stamps"\n  attributes\n    uuid :id primary-key\n    timestamp :at\n  computed\n    boolean :past() { return &at < now() }\n    timestamp :seen() { return now() }\n  actions auto=[:read]\n    create :add\n      input\n        &at\n      validate\n        check :same that=async () => (await privileged(Stamp).read({ load: ["seen", "past"] })).every((row) => row.seen.getTime() === now().getTime() && row.past === (row.at < now())) code="skewed" message="the load and the check read two instants"\n',
+      stamp: 'import { Mesh } from "meshfw"\nentity :Stamp table="stamps"\n  attributes\n    uuid :id primary-key\n    timestamp :at\n  computed\n    boolean :past() { return &at < Mesh.now() }\n    timestamp :seen() { return Mesh.now() }\n  actions auto=[:read]\n    create :add\n      input\n        &at\n      validate\n        check :same that=async () => (await Mesh.privileged(Stamp).read({ load: ["seen", "past"] })).every((row) => row.seen.getTime() === Mesh.now().getTime() && row.past === (row.at < Mesh.now())) code="skewed" message="the load and the check read two instants"\n',
     };
     const clockDir = await generate(".reads-load-instant-", source);
     try {
@@ -504,9 +509,9 @@ describe("the clock", () => {
       expect(ticks).toBe(1);
       // The same through the application's transaction.
       ticks = 0;
-      const viaPrivileged = await mesh.transaction(async () => clock.privileged(clockDomain.Stamp).read({ load: ["seen"] }));
+      const viaPrivileged = await mesh.transaction(async () => privilegedOf(clockDomain.Stamp).read({ load: ["seen"] }));
       expect(new Set(viaPrivileged.map((row: any) => row.seen.getTime())).size).toBe(1);
-      // A create's check: its `now()` and the field its `privileged` read loaded are one instant (TXN-16), so the check passes
+      // A create's check: its `Mesh.now()` and the field its `privileged` read loaded are one instant (TXN-16), so the check passes
       // (it fails with `skewed` when the load takes a fresh reading of the clock).
       ticks = 0;
       await expect(mesh.addStamp({ at: new Date(2_500) }, ctx)).resolves.toBeDefined();

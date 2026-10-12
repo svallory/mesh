@@ -3,7 +3,7 @@
 
 import {
   expr as $,
-  privileged as $privileged,
+  meshIn as $mesh,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
   type SharedInput as $SharedInput,
@@ -53,43 +53,43 @@ export type $execution$Machine$NewScope<I = unknown> = $Omit<
 };
 
 export const $expressions = {
-  // check :nameFree that, plain (uses-privileged) (src/domain/execution/machine.mesh.mx:23:16)
+  // check :nameFree that, plain (uses-privileged) (src/domain/execution/machine.mesh.mx:24:16)
   "register.check.nameFree.that": (
     $s: $execution$Machine$NewScope<$execution$Machine$RegisterMachineInput>,
   ) => {
-    const privileged = $privileged;
+    const Mesh = $mesh($s);
     const Machine: $execution$Machine$ReadOnly = $execution$Machine$value;
     return (async ({ input }) =>
-      (await privileged(Machine).read({ filter: { name: { eq: input.name } }, limit: 1 }))
+      (await Mesh.privileged(Machine).read({ filter: { name: { eq: input.name } }, limit: 1 }))
         .length === 0)($s);
   },
-  // set &firstReportedBy, translated (src/domain/execution/machine.mesh.mx:29:28)
+  // set &firstReportedBy, translated (src/domain/execution/machine.mesh.mx:30:28)
   "register.step.0.set.firstReportedBy": (
     $s: $execution$Machine$Scope<$execution$Machine$RegisterMachineInput>,
   ) => $s.actor?.id,
-  // check :nameFree that, plain (uses-privileged) (src/domain/execution/machine.mesh.mx:35:16)
+  // check :nameFree that, plain (uses-privileged) (src/domain/execution/machine.mesh.mx:36:16)
   "report.check.nameFree.that": (
     $s: $execution$Machine$NewScope<$execution$Machine$ReportMachineInput>,
   ) => {
-    const privileged = $privileged;
+    const Mesh = $mesh($s);
     const Machine: $execution$Machine$ReadOnly = $execution$Machine$value;
     return (async ({ input }) =>
-      (await privileged(Machine).read({ filter: { name: { eq: input.name } }, limit: 1 }))
+      (await Mesh.privileged(Machine).read({ filter: { name: { eq: input.name } }, limit: 1 }))
         .length === 0)($s);
   },
-  // set &firstReportedBy, translated (src/domain/execution/machine.mesh.mx:41:28)
+  // set &firstReportedBy, translated (src/domain/execution/machine.mesh.mx:42:28)
   "report.step.0.set.firstReportedBy": (
     $s: $execution$Machine$Scope<$execution$Machine$ReportMachineInput>,
   ) => $s.actor?.id,
-  // check :machineActive that, translated (src/domain/execution/machine.mesh.mx:48:16)
+  // check :machineActive that, translated (src/domain/execution/machine.mesh.mx:49:16)
   "update.check.machineActive.that": (
     $s: $execution$Machine$CheckScope<$execution$Machine$UpdateMachineInput>,
   ) => $.eq($s.self.state, "active"),
-  // check :versionMatches that, translated (src/domain/execution/machine.mesh.mx:53:16)
+  // check :versionMatches that, translated (src/domain/execution/machine.mesh.mx:54:16)
   "update.check.versionMatches.that": (
     $s: $execution$Machine$CheckScope<$execution$Machine$UpdateMachineInput>,
   ) => $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/machine.mesh.mx:56:19)
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/machine.mesh.mx:57:19)
   "update.check.versionMatches.details": (
     $s: $execution$Machine$CheckScope<$execution$Machine$UpdateMachineInput>,
   ) => {
@@ -99,23 +99,23 @@ export const $expressions = {
       actualVersion: self.version,
     }))($s);
   },
-  // set &version, translated (src/domain/execution/machine.mesh.mx:60:20)
+  // set &version, translated (src/domain/execution/machine.mesh.mx:61:20)
   "update.step.0.set.version": (
     $s: $execution$Machine$StoredScope<$execution$Machine$UpdateMachineInput>,
   ) => $.add($s.self.version, 1),
-  // check :machineActive that, translated (src/domain/execution/machine.mesh.mx:67:16)
+  // check :machineActive that, translated (src/domain/execution/machine.mesh.mx:68:16)
   "retire.check.machineActive.that": (
     $s: $execution$Machine$CheckScope<$execution$Machine$RetireMachineInput>,
   ) => $.eq($s.self.state, "active"),
-  // check :machineIdle that, translated (src/domain/execution/machine.mesh.mx:72:16)
+  // check :machineIdle that, translated (src/domain/execution/machine.mesh.mx:73:16)
   "retire.check.machineIdle.that": (
     $s: $execution$Machine$CheckScope<$execution$Machine$RetireMachineInput>,
   ) => $.not($.some($s.self.attempts, (l$a: any) => $.eq(l$a.state, "running"))),
-  // check :versionMatches that, translated (src/domain/execution/machine.mesh.mx:77:16)
+  // check :versionMatches that, translated (src/domain/execution/machine.mesh.mx:78:16)
   "retire.check.versionMatches.that": (
     $s: $execution$Machine$CheckScope<$execution$Machine$RetireMachineInput>,
   ) => $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/machine.mesh.mx:80:19)
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/machine.mesh.mx:81:19)
   "retire.check.versionMatches.details": (
     $s: $execution$Machine$CheckScope<$execution$Machine$RetireMachineInput>,
   ) => {
@@ -125,14 +125,14 @@ export const $expressions = {
       actualVersion: self.version,
     }))($s);
   },
-  // set &version, translated (src/domain/execution/machine.mesh.mx:85:20)
+  // set &version, translated (src/domain/execution/machine.mesh.mx:86:20)
   "retire.step.0.set.version": (
     $s: $execution$Machine$StoredScope<$execution$Machine$RetireMachineInput>,
   ) => $.add($s.self.version, 1),
-  // policy :membersRead authorize-if, translated (src/domain/execution/machine.mesh.mx:88:20)
+  // policy :membersRead authorize-if, translated (src/domain/execution/machine.mesh.mx:89:20)
   "policy.membersRead.authorize-if.0": ($s: $execution$Machine$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
-  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/execution/machine.mesh.mx:90:20)
+  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/execution/machine.mesh.mx:91:20)
   "policy.isMember.authorize-if.0": (
     $s: $execution$Machine$NewScope<
       $SharedInput<
@@ -142,29 +142,28 @@ export const $expressions = {
       >
     >,
   ) => {
-    const isSystem = $.isSystem;
-    return (async ({ actor, context }) => isSystem(context) || (await memberOf(actor.id)))($s);
+    const Mesh = $mesh($s);
+    return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
-  // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/execution/machine.mesh.mx:92:20)
+  // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/execution/machine.mesh.mx:93:20)
   "policy.ownerOrMember.authorize-if.0": (
     $s: $execution$Machine$NewScope<$execution$Machine$RegisterMachineInput>,
   ) => {
-    const isSystem = $.isSystem;
+    const Mesh = $mesh($s);
     return (async ({ actor, context }) =>
-      isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
+      Mesh.isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
   },
-  // policy :ownerOnly authorize-if, plain (awaits-helper) (src/domain/execution/machine.mesh.mx:94:20)
+  // policy :ownerOnly authorize-if, plain (awaits-helper) (src/domain/execution/machine.mesh.mx:95:20)
   "policy.ownerOnly.authorize-if.0": (
     $s: $execution$Machine$CheckScope<
       $SharedInput<$execution$Machine$UpdateMachineInput | $execution$Machine$RetireMachineInput>
     >,
   ) => {
-    const isSystem = $.isSystem;
-    return (async ({ actor, context }) => isSystem(context) || (await roleIn(actor.id, ["owner"])))(
-      $s,
-    );
+    const Mesh = $mesh($s);
+    return (async ({ actor, context }) =>
+      Mesh.isSystem(context) || (await roleIn(actor.id, ["owner"])))($s);
   },
-  // policy :internal authorize-if, translated (src/domain/execution/machine.mesh.mx:96:20)
+  // policy :internal authorize-if, translated (src/domain/execution/machine.mesh.mx:97:20)
   "policy.internal.authorize-if.0": (
     $s: $execution$Machine$NewScope<$execution$Machine$ReportMachineInput>,
   ) => $.isSystem($s.context),

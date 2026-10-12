@@ -1,4 +1,5 @@
 import { memberOf, roleIn } from "./identity.helpers"
+import { Mesh } from "meshfw"
 
 entity :Workspace table="workspaces"
   attributes
@@ -33,8 +34,8 @@ entity :Workspace table="workspaces"
           &version=() => &version + 1
   policies
     policy :membersRead types=[:read]
-      authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
+      authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null
     policy :isMember actions=[&create, &rename]
-      authorize-if=async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)
+      authorize-if=async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)
     policy :ownerOnly actions=[&create, &rename]
-      authorize-if=async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner])
+      authorize-if=async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner])

@@ -94,7 +94,7 @@ export type EntityValue<M extends object, P extends object = {}> = Readonly<M> &
 };
 
 /**
- * What `privileged(Entity)` returns (TXN-16, TXN-17): one function per read action of the entity, named as on the entity,
+ * What `Mesh.privileged(Entity)` returns (TXN-16, TXN-17): one function per read action of the entity, named as on the entity,
  * each `(input, context?)`, resolving with what the read gives with no policy run (a `belongs-to` it loads is never null,
  * POL-17).
  */
@@ -154,7 +154,7 @@ const states = new WeakMap<object, BindingState>();
 const frames = new WeakMap<object, AsyncFrame>();
 /** The binding `connect()` opened, by each entity value it bound: what a call outside `run` and `transaction` uses. */
 const connected = new WeakMap<object, BindingState>();
-/** What `privileged(value)` returns, by entity value: made when a binding first binds it, and tied to no binding. */
+/** What `Mesh.privileged(value)` returns, by entity value: made when a binding first binds it, and tied to no binding. */
 const handles = new WeakMap<object, object>();
 
 /**
@@ -269,24 +269,24 @@ async function dispatch(value: object, fqn: string, action: string, input: unkno
 }
 
 /**
- * The reads of `value` with no policy run (TXN-16, TXN-17): `privileged(Task).read(input, context?)` runs the read action's
- * body. `privileged(Task)` only names the entity: each read finds its binding when it is called, the one in scope, else the
+ * The reads of `value` with no policy run (TXN-16, TXN-17): `Mesh.privileged(Task).read(input, context?)` runs the read
+ * action's body. `Mesh.privileged(Task)` only names the entity: each read finds its binding when it is called, the one in scope, else the
  * connected one, else it rejects as not connected, so a handle kept past `disconnect()` or carried into another binding's
  * `run` reads only through the binding where it is used. Inside an action it joins the action's transaction and reads the
- * action's instant (`now()` in what it loads), and hands back read-only views; it never takes the action's context: what
+ * action's instant (`Mesh.now()` in what it loads), and hands back read-only views; it never takes the action's context: what
  * it loads reads only the context the call passes. While a computed field or a read policy is evaluated it throws (TXN-18):
  * those read only the record and what it loads. A value that is not an entity value is a `FrameworkError`, and so is
  * one no binding has bound: nothing could run its reads.
  */
 export function privileged<E extends EntityValue<object, object>>(entity: E): Privileged<E> {
   if (!isEntityValue(entity))
-    throw new FrameworkError(`privileged() takes an entity value, such as privileged(Task), and was given ${entity === null ? "null" : typeof entity === "object" ? "an object that is not one" : typeof entity}`);
+    throw new FrameworkError(`Mesh.privileged() takes an entity value, such as Mesh.privileged(Task), and was given ${entity === null ? "null" : typeof entity === "object" ? "an object that is not one" : typeof entity}`);
   const fqn = entity[ENTITY];
   const caller = inScope(frames.get(entity));
   const mark = caller?.mark ?? evaluatingNow();
-  if (mark !== undefined) throw marked(`privileged(${fqn})`, mark);
+  if (mark !== undefined) throw marked(`Mesh.privileged(${fqn})`, mark);
   const handle = handles.get(entity);
-  if (!handle) throw notConnected(`privileged(${fqn})`);
+  if (!handle) throw notConnected(`Mesh.privileged(${fqn})`);
   return handle as Privileged<E>;
 }
 
@@ -302,7 +302,7 @@ function privilegedHandle(value: object, fqn: string, names: readonly string[]):
   const reads: Record<string, (input: unknown, context?: unknown) => Promise<unknown>> = Object.create(null);
   for (const name of names)
     reads[name] = async (input: unknown, context?: unknown) => {
-      const label = `privileged(${fqn}).${name}`;
+      const label = `Mesh.privileged(${fqn}).${name}`;
       const caller = inScope(frames.get(value));
       const mark = caller?.mark ?? evaluatingNow();
       if (mark !== undefined) throw marked(label, mark);

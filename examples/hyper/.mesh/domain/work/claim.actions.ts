@@ -83,7 +83,7 @@ import {
 } from "../../$globals";
 
 /**
- * The reads of this entity without their policies: what `privileged(Claim)` runs (TXN-16). The read actions
+ * The reads of this entity without their policies: what `Mesh.privileged(Claim)` runs (TXN-16). The read actions
  * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
 export function bindClaimReads(
@@ -100,7 +100,7 @@ export function bindClaimReads(
       cast?: $CastOutput<typeof readClaimInputSchema>,
     ): $Promise<L extends unknown ? ClaimTxWith<ClaimLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
+      // for its policies and hands it over as `cast`; a `Mesh.privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readClaimInputSchema, input));
       return layer.transaction(async (tx) => {
         const $filter = rejectComputedQuery("work.Claim", ["lapsed"], parsed);
@@ -151,7 +151,8 @@ export function bindClaim(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -164,7 +165,7 @@ export function bindClaim(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -177,7 +178,7 @@ export function bindClaim(
             {
               kind: "authorize-if",
               check:
-                "async ({ input, actor, context }) => isSystem(context) || await assigneeMayClaimOf(input.task, actor.id)",
+                "async ({ input, actor, context }) => Mesh.isSystem(context) || await assigneeMayClaimOf(input.task, actor.id)",
               record: true,
               run: $expressions["policy.claimAssignee.authorize-if.0"],
             },
@@ -259,7 +260,7 @@ export function bindClaim(
               label: "taskReady",
               code: "claim.task-ready",
               message: "the task is not ready to claim",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 27, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 28, column: 9 },
               that: $expressions["acquire.check.taskReady.that"],
               details: $expressions["acquire.check.taskReady.details"],
             });
@@ -267,7 +268,7 @@ export function bindClaim(
               label: "versionMatches",
               code: "expected-version",
               message: "the task is at another version; read it again and retry",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 33, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 34, column: 9 },
               that: $expressions["acquire.check.versionMatches.that"],
               details: $expressions["acquire.check.versionMatches.details"],
             });
@@ -281,7 +282,7 @@ export function bindClaim(
               const $value = await $expressions["acquire.step.1.set.holder"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &holder (src/domain/work/claim.mesh.mx:45:19) produced no value, and the relationship holder is required",
+                  "set &holder (src/domain/work/claim.mesh.mx:46:19) produced no value, and the relationship holder is required",
                 );
               $changes.holderId = $record.holderId = $value;
             }
@@ -290,7 +291,7 @@ export function bindClaim(
               const $value = await $expressions["acquire.step.1.set.fence"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &fence (src/domain/work/claim.mesh.mx:46:18) produced no value, and fence is required",
+                  "set &fence (src/domain/work/claim.mesh.mx:47:18) produced no value, and fence is required",
                 );
               $changes.fence = $record.fence = $value;
             }
@@ -298,7 +299,7 @@ export function bindClaim(
               const $value = await $expressions["acquire.step.1.set.acquiredAt"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &acquiredAt (src/domain/work/claim.mesh.mx:47:23) produced no value, and acquiredAt is required",
+                  "set &acquiredAt (src/domain/work/claim.mesh.mx:48:23) produced no value, and acquiredAt is required",
                 );
               $changes.acquiredAt = $record.acquiredAt = $value;
             }
@@ -306,7 +307,7 @@ export function bindClaim(
               const $value = await $expressions["acquire.step.1.set.expiresAt"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &expiresAt (src/domain/work/claim.mesh.mx:48:22) produced no value, and expiresAt is required",
+                  "set &expiresAt (src/domain/work/claim.mesh.mx:49:22) produced no value, and expiresAt is required",
                 );
               $changes.expiresAt = $record.expiresAt = $value;
             }
@@ -360,7 +361,8 @@ export function bindClaim(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -373,7 +375,7 @@ export function bindClaim(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -386,7 +388,7 @@ export function bindClaim(
             {
               kind: "authorize-if",
               check:
-                "({ self, actor, context }) => isSystem(context) || self.holderId === actor.id",
+                "({ self, actor, context }) => Mesh.isSystem(context) || self.holderId === actor.id",
               record: true,
               run: $expressions["policy.claimHolder.authorize-if.0"],
             },
@@ -446,7 +448,7 @@ export function bindClaim(
               label: "currentFence",
               code: "claim.current-fence",
               message: "the fence is not the current claim's; claim the task again",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 59, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 60, column: 9 },
               that: $expressions["renew.check.currentFence.that"],
               details: $expressions["renew.check.currentFence.details"],
             });
@@ -454,21 +456,21 @@ export function bindClaim(
               label: "claimActive",
               code: "claim.active",
               message: "the claim has ended; claim the task again",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 65, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 66, column: 9 },
               that: $expressions["renew.check.claimActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "claimNotExpired",
               code: "claim.expired",
               message: "the lease has expired; claim the task again",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 70, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 71, column: 9 },
               that: $expressions["renew.check.claimNotExpired.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the task is at another version; read it again and retry",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 75, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 76, column: 9 },
               that: $expressions["renew.check.versionMatches.that"],
               details: $expressions["renew.check.versionMatches.details"],
             });
@@ -478,7 +480,7 @@ export function bindClaim(
               const $value = await $expressions["renew.step.0.set.expiresAt"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &expiresAt (src/domain/work/claim.mesh.mx:83:22) produced no value, and expiresAt is required",
+                  "set &expiresAt (src/domain/work/claim.mesh.mx:84:22) produced no value, and expiresAt is required",
                 );
               $changes.expiresAt = $record.expiresAt = $value;
             }
@@ -535,7 +537,8 @@ export function bindClaim(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -548,7 +551,7 @@ export function bindClaim(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -561,7 +564,7 @@ export function bindClaim(
             {
               kind: "authorize-if",
               check:
-                "({ self, actor, context }) => isSystem(context) || self.holderId === actor.id",
+                "({ self, actor, context }) => Mesh.isSystem(context) || self.holderId === actor.id",
               record: true,
               run: $expressions["policy.claimHolder.authorize-if.0"],
             },
@@ -625,7 +628,7 @@ export function bindClaim(
               label: "currentFence",
               code: "claim.current-fence",
               message: "the fence is not the current claim's; claim the task again",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 93, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 94, column: 9 },
               that: $expressions["release.check.currentFence.that"],
               details: $expressions["release.check.currentFence.details"],
             });
@@ -633,21 +636,21 @@ export function bindClaim(
               label: "claimActive",
               code: "claim.active",
               message: "the claim has ended; claim the task again",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 99, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 100, column: 9 },
               that: $expressions["release.check.claimActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "claimNotExpired",
               code: "claim.expired",
               message: "the lease has expired; claim the task again",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 104, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 105, column: 9 },
               that: $expressions["release.check.claimNotExpired.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the task is at another version; read it again and retry",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 109, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 110, column: 9 },
               that: $expressions["release.check.versionMatches.that"],
               details: $expressions["release.check.versionMatches.details"],
             });
@@ -715,7 +718,8 @@ export function bindClaim(
           checks: [
             {
               kind: "authorize-if",
-              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
+              check:
+                "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -728,7 +732,7 @@ export function bindClaim(
             {
               kind: "authorize-if",
               check:
-                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
+                "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -741,7 +745,7 @@ export function bindClaim(
             {
               kind: "authorize-if",
               check:
-                "async ({ self, actor, context }) => isSystem(context) || await revokesClaimOf(self.taskId, actor.id)",
+                "async ({ self, actor, context }) => Mesh.isSystem(context) || await revokesClaimOf(self.taskId, actor.id)",
               record: true,
               run: $expressions["policy.claimRevoker.authorize-if.0"],
             },
@@ -801,14 +805,14 @@ export function bindClaim(
               label: "claimActive",
               code: "claim.active",
               message: "the claim has ended; claim the task again",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 128, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 129, column: 9 },
               that: $expressions["revoke.check.claimActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the task is at another version; read it again and retry",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 133, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 134, column: 9 },
               that: $expressions["revoke.check.versionMatches.that"],
               details: $expressions["revoke.check.versionMatches.details"],
             });
@@ -876,7 +880,7 @@ export function bindClaim(
           checks: [
             {
               kind: "authorize-if",
-              check: "({ context }) => isSystem(context)",
+              check: "({ context }) => Mesh.isSystem(context)",
               record: false,
               run: $expressions["policy.internal.authorize-if.0"],
             },
@@ -932,7 +936,7 @@ export function bindClaim(
               label: "claimActive",
               code: "claim.active",
               message: "the claim has ended; claim the task again",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 151, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 152, column: 9 },
               that: $expressions["expire.check.claimActive.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -998,7 +1002,7 @@ export function bindClaim(
           checks: [
             {
               kind: "authorize-if",
-              check: "({ context }) => isSystem(context)",
+              check: "({ context }) => Mesh.isSystem(context)",
               record: false,
               run: $expressions["policy.internal.authorize-if.0"],
             },
@@ -1054,7 +1058,7 @@ export function bindClaim(
               label: "claimActive",
               code: "claim.active",
               message: "the claim has ended; claim the task again",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 169, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 170, column: 9 },
               that: $expressions["end.check.claimActive.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -1063,7 +1067,7 @@ export function bindClaim(
               const $value = await $expressions["end.step.0.set.state"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &state (src/domain/work/claim.mesh.mx:176:18) produced no value, and state is required",
+                  "set &state (src/domain/work/claim.mesh.mx:177:18) produced no value, and state is required",
                 );
               $changes.state = $record.state = $value;
             }
@@ -1102,7 +1106,7 @@ export function bindClaim(
       input: $Omit<ReadClaimInput, "load"> & ClaimLoadArg<L>,
       ...[context]: $ContextArgument
     ): $Promise<L extends unknown ? ClaimWith<ClaimLoadNames<L>>[] : never> {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `Mesh.privileged` read skips them
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
@@ -1118,7 +1122,7 @@ export function bindClaim(
               checks: [
                 {
                   kind: "authorize-if",
-                  check: "({ actor, context }) => isSystem(context) || actor.role != null",
+                  check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
                   record: false,
                   run: $expressions["policy.membersRead.authorize-if.0"],
                 },
@@ -1195,7 +1199,7 @@ export { $entityValue as Claim };
 /** The record type, under the entity value's name. */
 export type Claim = $Record;
 
-/** What `privileged(Claim)` returns (TXN-16): one function per read action, run with no policy. */
+/** What `Mesh.privileged(Claim)` returns (TXN-16): one function per read action, run with no policy. */
 export interface $Privileged {
   read<const L extends readonly (keyof ClaimLoadable)[] = readonly []>(
     input: $Omit<ReadClaimInput, "load"> & ClaimLoadArg<L>,
@@ -1217,7 +1221,7 @@ export interface $PrivilegedReadOnly {
 
 /**
  * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
- * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ * and so is what `Mesh.privileged` of it resolves with. The expressions files bind the entity value under this type.
  */
 export type $ReadOnly = $EntityValue<
   {
@@ -1242,7 +1246,7 @@ export type $ReadOnly = $EntityValue<
 /**
  * Load relationships and computed fields onto Claim rows by name. A relationship is loaded by one more query for
  * all the rows; a computed field loads what its body reads first. The rows you pass are not changed: the result is new
- * rows of type ClaimTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so it takes no `policies`
+ * rows of type ClaimTxWith<"name" | ...>. It loads as `Mesh.privileged` does, running no policy, so it takes no `policies`
  * option: every related record the key names is there.
  */
 export async function loadClaimFields<const N extends keyof ClaimLoadable>(

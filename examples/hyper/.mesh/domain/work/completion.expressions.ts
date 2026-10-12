@@ -42,14 +42,14 @@ export type $work$Completion$NewScope<I = unknown> = $Omit<
 };
 
 export const $expressions = {
-  // set &completedBy, translated (src/domain/work/completion.mesh.mx:22:24)
+  // set &completedBy, translated (src/domain/work/completion.mesh.mx:23:24)
   "record.step.0.set.completedBy": (
     $s: $work$Completion$Scope<$work$Completion$RecordCompletionInput>,
   ) => $s.actor?.id,
-  // policy :membersRead authorize-if, translated (src/domain/work/completion.mesh.mx:25:20)
+  // policy :membersRead authorize-if, translated (src/domain/work/completion.mesh.mx:26:20)
   "policy.membersRead.authorize-if.0": ($s: $work$Completion$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
-  // policy :internal authorize-if, translated (src/domain/work/completion.mesh.mx:27:20)
+  // policy :internal authorize-if, translated (src/domain/work/completion.mesh.mx:28:20)
   "policy.internal.authorize-if.0": (
     $s: $work$Completion$NewScope<$work$Completion$RecordCompletionInput>,
   ) => $.isSystem($s.context),

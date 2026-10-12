@@ -34,6 +34,7 @@ entity :Author table="authors"
 `;
 const post = `import { Author } from "./author.mesh.mx"
 import { Comment } from "./comment.mesh.mx"
+import { Mesh } from "meshfw"
 entity :Post table="posts"
   attributes
     uuid :id primary-key
@@ -52,7 +53,7 @@ entity :Post table="posts"
     string :authorName() { return &author.name }
     boolean :authorIsProlific() { return &author.prolific }
     boolean :reviewedBySelf() { return &reviewer?.name === &author.name }
-    boolean :isOld() { return &postedAt < now() }
+    boolean :isOld() { return &postedAt < Mesh.now() }
     boolean :lonely() { return &replyTo === null && &replies.length === 0 }
     string :replyToAnswered() { return JSON.stringify(&replyTo?.answered) }
     string :grandReplyToAnswered() { return JSON.stringify(&replyTo?.replyTo?.answered) }
@@ -498,7 +499,7 @@ describe("computed fields with a body", () => {
     } finally { await db.close(); }
   });
 
-  test("now() reads the clock the caller passes, once", async () => {
+  test("Mesh.now() reads the clock the caller passes, once", async () => {
     const db = await fresh();
     try {
       await run(db, async (tx) => {

@@ -4,7 +4,7 @@
 // Names follow Hyper's method names in camelCase (`membership.revoke` is `membershipRevoke`); a generated action is a
 // method of the entity's value (`Membership.revoke`, from `#mesh/domain/identity`).
 import type { ActionContext } from "@meshfw/runtime";
-import { privileged } from "#mesh";
+import { Mesh } from "meshfw";
 import { Collaborator, Membership, type RetireCollaboratorInput, type RevokeMembershipInput } from "#mesh/domain/identity";
 import { Claim } from "#mesh/domain/work";
 import { nested } from "../../context";
@@ -16,7 +16,7 @@ import { connected, type Binding } from "../binding";
  * actor's permission was decided on the command, as Hyper's `nested_opts` skips the claims' policies.
  */
 async function revokeHeldClaims(holderId: string, reason: string, context: ActionContext): Promise<void> {
-  for (const claim of await privileged(Claim).read({ filter: { holderId: { eq: holderId }, state: { eq: "active" } } }))
+  for (const claim of await Mesh.privileged(Claim).read({ filter: { holderId: { eq: holderId }, state: { eq: "active" } } }))
     await Claim.revoke({ id: claim.id, reason }, nested(context));
 }
 
@@ -37,7 +37,7 @@ export async function membershipRevoke(input: RevokeMembershipInput, context: Ac
 export async function collaboratorRetire(input: RetireCollaboratorInput, context: ActionContext, binding: Binding = connected): Promise<{ readonly collaborator: Collaborator }> {
   return binding.transaction(async () => {
     const collaborator = await Collaborator.retire(input, context);
-    const [membership] = await privileged(Membership).read({ filter: { collaboratorId: { eq: collaborator.id }, state: { eq: "active" } }, limit: 1 });
+    const [membership] = await Mesh.privileged(Membership).read({ filter: { collaboratorId: { eq: collaborator.id }, state: { eq: "active" } }, limit: 1 });
     if (membership) await membershipRevoke({ id: membership.id, reason: "collaborator retired" }, nested(context), binding);
     await revokeHeldClaims(collaborator.id, "collaborator retired", context);
     return { collaborator };

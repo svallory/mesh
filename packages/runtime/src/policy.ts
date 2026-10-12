@@ -186,5 +186,3 @@ export function authorizer(entity: string, action: string, policies: readonly Po
   });
 }
 
-/** `isSystem(context)`, as entity files call it (ADR-0071). */
-export { isSystem } from "./expr.ts";

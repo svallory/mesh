@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createSchema, sqlite, type SQLiteLayer } from "@meshfw/data-sqlite";
 import { ForbiddenError, FrameworkError, InvalidInputError, NotFoundError, type Change, type DataLayer, type DataOperations, type Seams } from "@meshfw/runtime";
-import { bind, connect, disconnect, privileged, tables } from "#mesh";
+import { bind, connect, disconnect, tables } from "#mesh";
+import { Mesh } from "meshfw";
 import { Comment, Post, User, type PostFilter, type PostSort } from "#mesh/domain/blog";
 import config from "../mesh.config";
 import { alice } from "../src/context";
@@ -232,10 +233,10 @@ describe("policies (M8a): every action is covered, and a caller the policies do 
         expect(seen).toMatchObject({ id: post.id, comments: [], author: null, commentCount: 0 });
         const [signedIn] = await Post.read({ load }, context);
         expect(signedIn).toMatchObject({ comments: [{ body: "First" }], author: { name: "Alice" }, commentCount: 1 });
-        // `privileged(Post)` runs no policy (TXN-16): the read sees everything, whoever the caller is.
-        const [inside] = await blog.transaction(() => privileged(Post).read({ load }));
+        // `Mesh.privileged(Post)` runs no policy (TXN-16): the read sees everything, whoever the caller is.
+        const [inside] = await blog.transaction(() => Mesh.privileged(Post).read({ load }));
         expect(inside).toMatchObject({ comments: [{ body: "First" }], author: { name: "Alice" }, commentCount: 1 });
-        // The types say the same: a caller's author may be null, while through `privileged` the key always finds it.
+        // The types say the same: a caller's author may be null, while through `Mesh.privileged` the key always finds it.
         const typed = (caller: NonNullable<typeof seen>, inTx: NonNullable<typeof inside>): string[] => [
           // @ts-expect-error a caller's `author` is `User | null`
           caller.author.name,

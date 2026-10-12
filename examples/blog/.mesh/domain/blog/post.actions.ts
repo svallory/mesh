@@ -77,7 +77,7 @@ import {
 } from "../../$globals";
 
 /**
- * The reads of this entity without their policies: what `privileged(Post)` runs (TXN-16). The read actions
+ * The reads of this entity without their policies: what `Mesh.privileged(Post)` runs (TXN-16). The read actions
  * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
 export function bindPostReads(
@@ -107,7 +107,7 @@ export function bindPostReads(
       cast?: $CastOutput<typeof readPostInputSchema>,
     ): $Promise<L extends unknown ? PostTxWith<PostLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
+      // for its policies and hands it over as `cast`; a `Mesh.privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readPostInputSchema, input));
       return layer.transaction(async (tx) => {
         const $filter = rejectComputedQuery("blog.Post", ["excerpt", "commentCount"], parsed);
@@ -445,7 +445,7 @@ export function bindPost(
     ): $Promise<L extends unknown ? PostWith<PostLoadNames<L>>[] : never> {
       // Not run in this version: on:load published
 
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `Mesh.privileged` read skips them
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
@@ -625,7 +625,7 @@ export { $entityValue as Post };
 /** The record type, under the entity value's name. */
 export type Post = $Record;
 
-/** What `privileged(Post)` returns (TXN-16): one function per read action, run with no policy. */
+/** What `Mesh.privileged(Post)` returns (TXN-16): one function per read action, run with no policy. */
 export interface $Privileged {
   published<const L extends readonly (keyof PostLoadable)[] = readonly []>(
     input: $Omit<PublishedPostInput, "load"> & PostLoadArg<L>,
@@ -659,7 +659,7 @@ export interface $PrivilegedReadOnly {
 
 /**
  * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
- * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ * and so is what `Mesh.privileged` of it resolves with. The expressions files bind the entity value under this type.
  */
 export type $ReadOnly = $EntityValue<
   {
@@ -693,7 +693,7 @@ export type $ReadOnly = $EntityValue<
 /**
  * Load relationships and computed fields onto Post rows by name. A relationship is loaded by one more query for
  * all the rows; a computed field loads what its body reads first. The rows you pass are not changed: the result is new
- * rows of type PostTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so it takes no `policies`
+ * rows of type PostTxWith<"name" | ...>. It loads as `Mesh.privileged` does, running no policy, so it takes no `policies`
  * option: every related record the key names is there.
  */
 export async function loadPostFields<const N extends keyof PostLoadable>(

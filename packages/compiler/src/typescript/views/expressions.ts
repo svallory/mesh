@@ -35,8 +35,11 @@ export interface ExpressionsView {
    * $billing$Invoice$PayInvoiceInput`), so that no generated name at module level is one a helper import could have.
    */
   readonly typeImports: readonly string[];
-  /** True when a function calls `privileged(Entity)` (TXN-16): the file imports it from `@meshfw/runtime` as `$privileged`. */
-  readonly usesPrivileged: boolean;
+  /**
+   * True when a function reads the entity file's `Mesh` import (PRJ-22): the file imports `meshIn` from `@meshfw/runtime`
+   * as `$mesh`, and the function binds `Mesh` (or its alias) to `$mesh($s)`.
+   */
+  readonly usesMesh: boolean;
   /**
    * The entity values the functions name (CMP-16), one import per entity's actions file: the value as
    * `entityLocal(target, "value")` and its read-only type as `entityLocal(target, "ReadOnly")` (`Task as $work$Task$value,
@@ -287,8 +290,8 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
   // The entities the functions can name, each under the name the entity file gives it (CMP-16): its own and the imported
   // ones. Each is imported from its actions file under FQN-derived locals and bound in each function under that name.
   const targets = new Map<string, Entity>();
-  for (const local of new Set([entity.name, ...entity.imports.filter((entry) => !entry.helper).flatMap((entry) => entry.identifiers)])) {
-    const imported = entity.imports.find((entry) => !entry.helper && entry.identifiers.includes(local));
+  for (const local of new Set([entity.name, ...entity.imports.filter((entry) => !entry.helper && !entry.mesh).flatMap((entry) => entry.identifiers)])) {
+    const imported = entity.imports.find((entry) => !entry.helper && !entry.mesh && entry.identifiers.includes(local));
     const file = imported ? posix.normalize(posix.join(dirname(entity.file), imported.from)) : entity.file;
     const target = document.entities.find((candidate) => candidate.file === file);
     if (target) targets.set(local, target); // else the front end reported the import
@@ -309,9 +312,15 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
   const typed = new Set<string>();
   const valued = new Set<string>(found.flatMap(({ expression }) => expression.plain?.entities ?? []));
   const recordTypes = new Set<string>();
-  const candidates = new Set([...unread, ...SCOPE_NAMES, ...targets.keys()]);
+  const meshLocals = new Set(entity.imports.filter((entry) => entry.mesh).flatMap((entry) => entry.identifiers));
+  const candidates = new Set([...unread, ...SCOPE_NAMES, ...targets.keys(), ...meshLocals]);
+  // Whether a printed function binds the file's `Mesh` import (`const Mesh = $mesh($s);`), as the printer decides it: from
+  // the names the front end found it reading and those `typeNames` finds in a type, never from the printed text, where a
+  // string could spell `$mesh(`.
+  let usesMesh = false;
   const entries = found.map((f): ExpressionEntry => {
     let code = print(f);
+    if (f.expression.plain?.mesh?.length) usesMesh = true;
     if (f.expression.plain) {
       const { types, values } = typeNames(code, candidates);
       const roots = SCOPE_NAMES.filter((name) => values.has(name));
@@ -319,6 +328,7 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
         roots,
         values: [...values].filter((name) => targets.has(name) && !SCOPE_NAMES.includes(name) && !helperFrom.has(name)).sort(),
         types: [...types].filter((name) => targets.has(name) && !helperFrom.has(name)).sort(),
+        mesh: [...values].filter((name) => meshLocals.has(name) && !SCOPE_NAMES.includes(name) && !(f.expression.plain!.mesh ?? []).includes(name)).sort(),
       };
       for (const name of [...types, ...[...values].filter((name) => !SCOPE_NAMES.includes(name))]) if (unread.has(name)) typed.add(name);
       if (roots.includes("before") && (f.scope === "check" || f.scope === "new")) {
@@ -327,9 +337,10 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
           `${f.what} reads \`before\` in a type, which ${policy ? "a policy" : "`validate`"} does not have: it sees \`self\` before the input is applied (the stored record, or a create's new instance), and the caller's values as \`input.x\``,
           f.expression.position, "write `typeof self` for the record before the input, and `typeof input` for the caller's values");
       }
-      if (inTypes.roots.length || inTypes.values.length || inTypes.types.length) {
+      if (inTypes.roots.length || inTypes.values.length || inTypes.types.length || inTypes.mesh!.length) {
         inTypes.values.forEach((name) => valued.add(name));
         inTypes.types.forEach((name) => recordTypes.add(name));
+        if (inTypes.mesh!.length) usesMesh = true;
         code = print(f, inTypes);
       }
     }
@@ -392,7 +403,7 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
       ...(loaded ? [`${recordName}Loaded as ${selfType}`] : []),
       ...[...usedInputs].sort().map((name) => `${name} as ${entityLocal(entity, name)}`),
     ],
-    usesPrivileged: found.some(({ expression }) => expression.plain?.privileged === true),
+    usesMesh,
     entityImports: [...entityFrom].map(([from, { names, value }]) => ({
       keyword: value ? "import" as const : "import type" as const,
       names: [...names].map((name) => (value ? name : name.replace(/^type /, ""))).join(", "),

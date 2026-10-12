@@ -11,9 +11,12 @@ import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
 import { callsOf } from "./calls.ts";
 import { openPolicies } from "./open-policy.ts";
-import { InvalidInputError, type Issue } from "@meshfw/runtime";
+import { InvalidInputError, Mesh, type Issue } from "@meshfw/runtime";
 import build from "../src/build.ts";
 import { createSchema, sqlite } from "../src/index.ts";
+
+/** `Mesh.privileged` over an entity value this test takes untyped from the generated barrel: its reads, untyped too. */
+const privilegedOf = (entity: unknown): any => Mesh.privileged(entity as never);
 
 const helpers = `// What a phase saw: the record, and the input (in a check) or \`before\` (in a step).
 const pick = (row: any): any => row == null ? row : { id: row.id, title: row.title, body: row.body, priority: row.priority, state: row.state, ownerId: row.ownerId, createdAt: row.createdAt == null ? row.createdAt : new Date(row.createdAt.getTime()) };
@@ -50,6 +53,7 @@ const person = `entity :Person table="people"
 
 const note = `import { Person } from "./person.mesh.mx"
 import { sawNote } from "./helpers"
+import { Mesh } from "meshfw"
 entity :Note table="notes"
   attributes
     uuid :id primary-key
@@ -85,7 +89,7 @@ entity :Note table="notes"
       validate
         check :watch that=({ self, input, context }) => sawNote(context, "validate", self, input) code="watch" message="watch"
         check :ownerExists [
-          that=async ({ input }) => (await privileged(Person).read({ filter: { id: { eq: input.owner } } })).length === 1
+          that=async ({ input }) => (await Mesh.privileged(Person).read({ filter: { id: { eq: input.owner } } })).length === 1
           code="note.owner"
           message="no such person"
         ]
@@ -206,7 +210,8 @@ entity :Card table="cards"
 `;
 
 // A check against a deadline and a step that stamps the time: both read the action's one instant.
-const offer = `entity :Offer table="offers"
+const offer = `import { Mesh } from "meshfw"
+entity :Offer table="offers"
   attributes
     uuid :id primary-key
     timestamp :closesAt
@@ -217,10 +222,10 @@ const offer = `entity :Offer table="offers"
         &closesAt
     update :accept
       validate
-        check :stillOpen that=() => now() < &closesAt code="offer.closed" message="the offer is closed"
+        check :stillOpen that=() => Mesh.now() < &closesAt code="offer.closed" message="the offer is closed"
       do
         set
-          &acceptedAt=() => now()
+          &acceptedAt=() => Mesh.now()
 `;
 
 const SQLITE: ResolvedConfig["data"] = {
@@ -459,7 +464,7 @@ describe("composition: an action called through its entity value checks the reco
         const made = await domain.Note.write({ title: "a", owner: world.bo.id }, world.ctx);
         world.seen.length = 0;
         await domain.Note.edit({ id: made.id, title: "b" }, world.ctx);
-        return (await app.privileged(domain.Note).read({ filter: { id: { eq: made.id } } }))[0];
+        return (await privilegedOf(domain.Note).read({ filter: { id: { eq: made.id } } }))[0];
       });
       expect(phase(world, "validate")[0]).toMatchObject({ self: { id: result.id, title: "a", ownerId: world.bo.id }, input: { id: result.id, title: "b" } });
       expect(phase(world, "do")[0]!.self.title).toBe("b");
@@ -494,7 +499,7 @@ describe("a relationship a check loads", () => {
 });
 
 describe("one instant per action", () => {
-  test("a check and a step read the same now(), even with a clock that moves on every read", async () => {
+  test("a check and a step read the same Mesh.now(), even with a clock that moves on every read", async () => {
     const db = sqlite({ file: ":memory:" });
     try {
       await createSchema(db, app.tables);

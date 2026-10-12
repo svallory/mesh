@@ -36,6 +36,8 @@ export function renderExpressionPage(): string {
     "",
     "Anything not listed here (string ordering, truthiness, `==`, string concatenation, string methods) is not translated: it stays plain TypeScript with JavaScript's rules, and the build warns.",
     "",
+    "`Mesh.now()`, `Mesh.today()` and `Mesh.isSystem(context)` are Mesh's own functions, members of `Mesh`, which an entity file imports from `meshfw`: `import { Mesh } from \"meshfw\"` (or under an alias, `import { Mesh as M } from \"meshfw\"`, then `M.now()`).",
+    "",
   ];
   for (const spec of FUNCTIONS) {
     out.push(`## \`${spec.spelling}\` (${spec.id})`, "", `Signature: \`${spec.signature}\`. Null behaviour: ${spec.nulls}.`, "");

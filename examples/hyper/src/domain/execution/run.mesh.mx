@@ -4,6 +4,7 @@ import { Attempt } from "./attempt.mesh.mx"
 import { taskOpenOf } from "../work/work.helpers"
 import { cancelsRunOf, responsibleFor, runRunningOf } from "./execution.helpers"
 import { memberOf, roleIn } from "../identity/identity.helpers"
+import { Mesh } from "meshfw"
 
 entity :Run table="runs"
   attributes
@@ -61,7 +62,7 @@ entity :Run table="runs"
       do
         set
           &state=:canceled
-          &endedAt=() => now()
+          &endedAt=() => Mesh.now()
           &cancelReason=({ input }) => input.reason
           &version=() => &version + 1
     update :settle
@@ -71,16 +72,16 @@ entity :Run table="runs"
       do
         set
           &state=({ input }) => input.result
-          &endedAt=() => now()
+          &endedAt=() => Mesh.now()
           &version=() => &version + 1
   policies
     policy :membersRead types=[:read]
-      authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
+      authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null
     policy :isMember actions=[&start, &cancel]
-      authorize-if=async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)
+      authorize-if=async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)
     policy :ownerOrMember actions=[&start, &cancel]
-      authorize-if=async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])
+      authorize-if=async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])
     policy :runCanceler actions=[&cancel]
-      authorize-if=async ({ self, actor, context }) => isSystem(context) || await cancelsRunOf(self, actor.id)
+      authorize-if=async ({ self, actor, context }) => Mesh.isSystem(context) || await cancelsRunOf(self, actor.id)
     policy :internal actions=[&settle]
-      authorize-if=({ context }) => isSystem(context)
+      authorize-if=({ context }) => Mesh.isSystem(context)

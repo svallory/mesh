@@ -11,7 +11,7 @@ import {
   cloneValue,
   FrameworkError,
   isEntityValue,
-  privileged,
+  Mesh,
   releaseBinding,
   settled,
   type Privileged,
@@ -71,15 +71,15 @@ describe("bindDomain", () => {
     expect(placed).toMatchObject({ layer: "db", input: { total: 3 } });
   });
 
-  test("privileged(Task) holds the binding's reads of Task, frozen, each run with the context it is given and no policy", async () => {
+  test("Mesh.privileged(Task) holds the binding's reads of Task, frozen, each run with the context it is given and no policy", async () => {
     const binding = bindDomain(domain, layerNamed("db"), {}, frame);
-    const reads = await binding.run(async () => privileged(Task));
+    const reads = await binding.run(async () => Mesh.privileged(Task));
     expect(Object.isFrozen(reads)).toBe(true);
     expect(Object.keys(reads)).toEqual(["read"]);
-    const read = await binding.transaction(() => privileged(Task).read({ limit: 1 }, { actor: "t" }));
+    const read = await binding.transaction(() => Mesh.privileged(Task).read({ limit: 1 }, { actor: "t" }));
     expect(read).toEqual([{ layer: "db", options: {}, input: { limit: 1 }, context: { actor: "t" } }]);
     // An entity with no read action has no privileged read.
-    expect(Object.keys(await binding.run(async () => privileged(domain.sales.Order)))).toEqual([]);
+    expect(Object.keys(await binding.run(async () => Mesh.privileged(domain.sales.Order)))).toEqual([]);
   });
 
   test("transaction(fn) hands fn nothing (TXN-20)", async () => {
@@ -273,7 +273,7 @@ describe("the call frame (TXN-16, TXN-18, ACT-09)", () => {
       step: async () => {
         const nested = await Account.act({});
         expect(() => { nested.tags.push("b"); }).toThrow(/bank\.Account#act/);
-        const [row] = await privileged(Account).read({});
+        const [row] = await Mesh.privileged(Account).read({});
         expect(() => { row!.id = 2; }).toThrow(FrameworkError);
         return "stepped";
       },
@@ -290,7 +290,7 @@ describe("the call frame (TXN-16, TXN-18, ACT-09)", () => {
     const [acted, row] = await binding.transaction(async () => {
       const acted = await Account.act({});
       acted.tags.push("b");
-      const [row] = await privileged(Account).read({});
+      const [row] = await Mesh.privileged(Account).read({});
       row!.id = 2;
       return [acted, row] as const;
     });
@@ -306,8 +306,8 @@ describe("the call frame (TXN-16, TXN-18, ACT-09)", () => {
       at: 42,
       step: async () => {
         // Read-only views: copied to compare them.
-        seen.push(...cloneValue(await privileged(Account).read({})));
-        seen.push(...cloneValue(await privileged(Account).read({}, { actor: "given" })));
+        seen.push(...cloneValue(await Mesh.privileged(Account).read({})));
+        seen.push(...cloneValue(await Mesh.privileged(Account).read({}, { actor: "given" })));
       },
     }, { actor: "running" }));
     expect(seen.map(({ at, context, policies }) => ({ at, context, policies }))).toEqual([
@@ -315,7 +315,7 @@ describe("the call frame (TXN-16, TXN-18, ACT-09)", () => {
       { at: new Date(42), context: { actor: "given" }, policies: false },
     ]);
     // Outside any action it has no instant to read: the read takes its own.
-    const [outside] = await binding.run(() => privileged(Account).read({}));
+    const [outside] = await binding.run(() => Mesh.privileged(Account).read({}));
     expect(outside!.at).toBeNull();
   });
 
@@ -328,7 +328,7 @@ describe("the call frame (TXN-16, TXN-18, ACT-09)", () => {
     await binding.run(() => Account.act({
       step: () => {
         call = later.then(() => Account.act({})).catch((error: unknown) => error);
-        read = later.then(() => privileged(Account).read({})).catch((error: unknown) => error);
+        read = later.then(() => Mesh.privileged(Account).read({})).catch((error: unknown) => error);
       },
     }));
     fire();
@@ -378,7 +378,7 @@ describe("the call frame (TXN-16, TXN-18, ACT-09)", () => {
     try {
       const running = binding.transaction(async () => {
         await gate;
-        return Account.act({ step: async () => (await privileged(Account).read({}))[0]!.id });
+        return Account.act({ step: async () => (await Mesh.privileged(Account).read({}))[0]!.id });
       });
       releaseBinding(binding);
       const closing = settled(binding);
@@ -395,13 +395,13 @@ describe("the call frame (TXN-16, TXN-18, ACT-09)", () => {
   test("privileged and an entity call throw while a computed field is evaluated, naming the field (TXN-18)", async () => {
     const binding = bindDomain(framed, joiningLayer().layer, {}, frame);
     const message = (what: string) => `${what} was called while computed :balance of bank.Account is evaluated: a computed field and a read policy read the record and what it loads, and call no action and no privileged read. Load what it needs instead, or do it in a step or a check`;
-    await expect(binding.run(() => Account.read({ computed: () => privileged(Account) }))).rejects.toThrow(new FrameworkError(message("privileged(bank.Account)")));
-    const reads = await binding.run(async () => privileged(Account));
-    await expect(binding.run(() => Account.read({ computed: () => reads.read({}) }))).rejects.toThrow(new FrameworkError(message("privileged(bank.Account).read")));
+    await expect(binding.run(() => Account.read({ computed: () => Mesh.privileged(Account) }))).rejects.toThrow(new FrameworkError(message("Mesh.privileged(bank.Account)")));
+    const reads = await binding.run(async () => Mesh.privileged(Account));
+    await expect(binding.run(() => Account.read({ computed: () => reads.read({}) }))).rejects.toThrow(new FrameworkError(message("Mesh.privileged(bank.Account).read")));
     // So is an entity call.
     await expect(binding.run(() => Account.read({ computed: () => Account.act({}) }))).rejects.toThrow(new FrameworkError(message("bank.Account#act")));
     // A privileged read's own computed fields are evaluated under the same rule.
-    await expect(binding.run(() => privileged(Account).read({ computed: () => privileged(Account) }))).rejects.toThrow(FrameworkError);
+    await expect(binding.run(() => Mesh.privileged(Account).read({ computed: () => Mesh.privileged(Account) }))).rejects.toThrow(FrameworkError);
     // Outside the evaluation, it reads.
     expect((await binding.run(() => Account.read({ computed: () => "plain" })))[0]!.computed).toBe("plain");
   });
@@ -409,7 +409,7 @@ describe("the call frame (TXN-16, TXN-18, ACT-09)", () => {
   test("privileged and an entity call throw while a read policy is evaluated, naming the policy (TXN-18)", async () => {
     const binding = bindDomain(framed, joiningLayer().layer, {}, frame);
     const message = (what: string) => `${what} was called while policy :mine of bank.Account is evaluated: a computed field and a read policy read the record and what it loads, and call no action and no privileged read. Load what it needs instead, or do it in a step or a check`;
-    await expect(binding.run(() => Account.read({ policy: () => privileged(Account) }))).rejects.toThrow(new FrameworkError(message("privileged(bank.Account)")));
+    await expect(binding.run(() => Account.read({ policy: () => Mesh.privileged(Account) }))).rejects.toThrow(new FrameworkError(message("Mesh.privileged(bank.Account)")));
     await expect(binding.run(() => Account.read({ policy: () => Account.act({}) }))).rejects.toThrow(new FrameworkError(message("bank.Account#act")));
     // A policy check may await: a call made after the await is still refused.
     await expect(binding.run(() => Account.read({ policy: async () => { await Promise.resolve(); return Account.act({}); } }))).rejects.toThrow(new FrameworkError(message("bank.Account#act")));
@@ -417,14 +417,14 @@ describe("the call frame (TXN-16, TXN-18, ACT-09)", () => {
   });
 
   test("privileged of a value that is not an entity value is a FrameworkError; of one no binding has bound, not connected", async () => {
-    expect(() => privileged({} as never)).toThrow(new FrameworkError("privileged() takes an entity value, such as privileged(Task), and was given an object that is not one"));
-    expect(() => privileged(undefined as never)).toThrow(/was given undefined$/);
+    expect(() => Mesh.privileged({} as never)).toThrow(new FrameworkError("Mesh.privileged() takes an entity value, such as Mesh.privileged(Task), and was given an object that is not one"));
+    expect(() => Mesh.privileged(undefined as never)).toThrow(/was given undefined$/);
     const Unbound = entity("x.Unbound", () => ({}), () => ({ read: async (_input: object) => [] }), () => ({}));
-    expect(() => privileged(Unbound)).toThrow(new FrameworkError("privileged(x.Unbound) was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own"));
+    expect(() => Mesh.privileged(Unbound)).toThrow(new FrameworkError("Mesh.privileged(x.Unbound) was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own"));
     // Bound, it only names the entity: the read is what finds no binding in scope and none connected.
     bindDomain({ Unbound }, layerNamed("db"), {}, frame);
-    const reads = privileged(Unbound);
-    await expect(reads.read({})).rejects.toThrow(new FrameworkError("privileged(x.Unbound).read was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own"));
+    const reads = Mesh.privileged(Unbound);
+    await expect(reads.read({})).rejects.toThrow(new FrameworkError("Mesh.privileged(x.Unbound).read was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own"));
   });
 
   test("a privileged handle kept past disconnect() reads nothing: outside any scope, its read is not connected and opens no transaction", async () => {
@@ -433,12 +433,12 @@ describe("the call frame (TXN-16, TXN-18, ACT-09)", () => {
     const layer = { ...base, transaction: <T>(run: (ops: never) => Promise<T>) => { opened++; return base.transaction(run as never) as Promise<T>; } } as typeof base;
     const binding = bindDomain(domain, layer, {}, frame);
     connectBinding(binding);
-    const reads = privileged(Task);
+    const reads = Mesh.privileged(Task);
     expect(await reads.read({})).toEqual([{ layer: "db", options: {}, input: {}, context: undefined }]);
     releaseBinding(binding);
     await settled(binding);
     const before = opened;
-    await expect(reads.read({})).rejects.toThrow(new FrameworkError("privileged(work.Task).read was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own"));
+    await expect(reads.read({})).rejects.toThrow(new FrameworkError("Mesh.privileged(work.Task).read was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own"));
     expect(opened).toBe(before);
     // Connected again, the same handle reads through the binding connected now.
     const again = bindDomain(domain, layerNamed("again"), {}, frame);
@@ -453,11 +453,11 @@ describe("the call frame (TXN-16, TXN-18, ACT-09)", () => {
   test("a privileged handle taken in one binding and used in another's run or transaction reads through the binding in scope", async () => {
     const a = bindDomain(domain, layerNamed("a"), {}, frame);
     const b = bindDomain(domain, layerNamed("b"), {}, frame);
-    const reads = await a.run(async () => privileged(Task));
+    const reads = await a.run(async () => Mesh.privileged(Task));
     expect((await b.transaction(() => reads.read({})))[0]!.layer).toBe("b");
     expect((await b.run(() => reads.read({})))[0]!.layer).toBe("b");
     // And the one taken in b reads through a inside a's run.
-    const fromB = await b.run(async () => privileged(Task));
+    const fromB = await b.run(async () => Mesh.privileged(Task));
     expect((await a.run(() => fromB.read({})))[0]!.layer).toBe("a");
     // One handle per entity value, whichever binding it was taken in.
     expect(fromB).toBe(reads);
@@ -472,6 +472,6 @@ describe("the call frame (TXN-16, TXN-18, ACT-09)", () => {
     const none: Privileged<{ read(): void }> = undefined as never;
     void none;
     // @ts-expect-error privileged takes an entity value
-    expect(() => privileged({ read() {} })).toThrow(FrameworkError);
+    expect(() => Mesh.privileged({ read() {} })).toThrow(FrameworkError);
   });
 });
