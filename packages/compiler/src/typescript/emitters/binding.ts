@@ -3,9 +3,9 @@ import { bindingView, type BindingView } from "../views/binding.ts";
 import { outputPrefix } from "./order.ts";
 
 /**
- * `<output>/binding.ts`, one per build: `bind`, which binds every entity, the default binding `connect()` opens and
- * `disconnect()` closes, `transaction`, and `$delegate`, the call each module's action functions make on the default
- * binding (ADR-0047, ADR-0068). `#mesh` re-exports the first four.
+ * `<output>/binding.ts`, one per build: `bind`, which binds every entity value the root barrel reaches (PRJ-13), the
+ * default binding `connect()` opens and `disconnect()` closes, `transaction`, and the `Binding` type (ADR-0047,
+ * ADR-0068). `#mesh` re-exports them.
  */
 export const bindingGenerator: Generator<BindingView> = {
   name: "binding",

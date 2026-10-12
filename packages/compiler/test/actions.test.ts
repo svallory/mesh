@@ -114,7 +114,7 @@ describe("actions view", () => {
     ]);
     expect(view.runtimeValues).toEqual([
       "FrameworkError as $FrameworkError", "InvalidInputError as $InvalidInputError", "NotFoundError as $NotFoundError", "authorizer as $authorizer", "castInput as $castInput", "checkScope as $checkScope",
-      "checkUnchanged as $checkUnchanged", "composed as $composed", "failJoined as $failJoined", "guarded as $guarded", "loadRows as $loadRows",
+      "checkUnchanged as $checkUnchanged", "composed as $composed", "entity as $entity", "failJoined as $failJoined", "guarded as $guarded", "loadRows as $loadRows",
       "noteWrite as $noteWrite", "pinClock as $pinClock", "readOnlyRecord as $readOnlyRecord", "recordWrite as $recordWrite", "runAction as $runAction", "runCheck as $runCheck", "scope as $scope", "uuidv7 as $uuidv7", "wantsChanges as $wantsChanges", "writeCount as $writeCount"]);
     expect(view.runtimeTypes).toEqual(["CastOutput as $CastOutput", "Issue as $Issue", "Row as $Row"]);
     expect(view.typesFromLiteral).toBe('"./article.types"');
@@ -241,9 +241,12 @@ describe("actions view", () => {
     expect(destroy.notRun).toBeNull();
   });
 
-  test("an entity without actions binds an empty object and imports nothing else", () => {
+  test("an entity without actions binds an empty object and imports only what defines its entity value", () => {
     const view = viewOf("Lone", inputOf(documentOf({ "lone.mesh.mx": "entity :Lone\n  attributes\n    uuid :id primary-key\n" })));
-    expect(view).toMatchObject({ hasActions: false, methods: [], runtimeValues: [], typeImports: [], validatorImports: [], schemaFromLiteral: '"../schema"' });
+    expect(view).toMatchObject({
+      hasActions: false, methods: [], runtimeValues: ["entity as $entity"], typeImports: [], validatorImports: [], schemaFromLiteral: '"../schema"',
+      entityName: "Lone", fqnLiteral: '"Lone"', readsBindValue: "null",
+    });
   });
 });
 

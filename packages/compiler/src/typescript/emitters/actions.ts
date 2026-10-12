@@ -8,7 +8,8 @@ import { orderedEntities, outputPrefix } from "./order.ts";
 
 /**
  * `<module>/<entity>.actions.ts` per entity: `bind<Entity>(layer)`, one method per
- * action with its steps written out. It imports the entity's types and validators,
+ * action with its steps written out, and the entity value with the record type under the
+ * entity's name (CMP-16). It imports the entity's types and validators,
  * `tables` from the data adapter's `schema.ts`, and `@meshfw/runtime`.
  */
 export const actionsGenerator: Generator<ActionsView> = {
@@ -35,13 +36,13 @@ export const INDEX_NAMES: readonly string[] = Object.freeze(["bind", "connect", 
 const at = ({ file, line, column }: SourcePosition) => `${file}:${line}:${column + 1}`;
 
 /**
- * Every project-wide name the generated tree declares is unique: each action function
- * (`publishPost`), a member of `actions`, of `tx` and of what `bind` returns, whatever
- * module its entity is in; each `bind<Entity>` and `bind<Entity>Reads`, which
- * `.mesh/binding.ts` imports side by side; each load function, which `.mesh/load.ts`
- * declares side by side; and `#mesh`'s own names. Same-named entities in two modules
- * therefore clash on `bind<Entity>`. A clash is `MESH_EMIT_NAME` at the second
- * declaration, naming the first one's position.
+ * Every project-wide name the generated tree declares is unique: each action's name in
+ * `actions` and `tx` (`publishPost`), the flat handles of an entity file, whatever module
+ * its entity is in; each `bind<Entity>` and `bind<Entity>Reads`, whose entity name is also
+ * the suffix of those names; each load function, which `.mesh/load.ts` declares side by
+ * side; and `#mesh`'s own names. Same-named entities in two modules therefore clash on
+ * `bind<Entity>`. A clash is `MESH_EMIT_NAME` at the second declaration, naming the first
+ * one's position.
  */
 function checkNames({ document }: EmitInput, views: readonly ActionsView[]): void {
   const entities = orderedEntities(document);
@@ -51,7 +52,7 @@ function checkNames({ document }: EmitInput, views: readonly ActionsView[]): voi
     const owner = owners.get(name);
     if (owner) throw emitError("MESH_EMIT_NAME",
       `${what} and ${owner.what}${owner.position ? ` (${at(owner.position)})` : ""} both become the top-level name \`${name}\``,
-      position, "Rename one of them: every action function is a member of `actions` and of what `bind` returns, by name");
+      position, "Rename one of them: `actions` and `tx` hold every action of the project by this name");
     owners.set(name, { what, position });
   };
   views.forEach((view, index) => {
