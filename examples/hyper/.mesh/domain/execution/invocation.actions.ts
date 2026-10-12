@@ -34,7 +34,6 @@ import {
   type DataOperations as $DataOperations,
   type Issue as $Issue,
   type LoadOptions as $LoadOptions,
-  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   Invocation as $Record,
@@ -186,7 +185,15 @@ export function bindInvocation(
             // transaction: opens here; what follows commits together or not at all
             const $now = $clock();
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Omit<
+              $Record,
+              "usageSource" | "attemptId" | "taskId" | "recordedById"
+            > & {
+              usageSource: $Record["usageSource"] | null;
+              attemptId: $Record["attemptId"] | null;
+              taskId: $Record["taskId"] | null;
+              recordedById: $Record["recordedById"] | null;
+            } = {
               id: $uuidv7(),
               requestedProvider: null,
               requestedModel: null,
@@ -204,14 +211,20 @@ export function bindInvocation(
               recordedAt: $now,
               sessionId: null,
               correctsId: null,
-            };
-            const $record: $Row = {
-              ...$changes,
               usageSource: null,
               attemptId: null,
               taskId: null,
               recordedById: null,
             };
+            const $record: $Omit<
+              $Record,
+              "usageSource" | "attemptId" | "taskId" | "recordedById"
+            > & {
+              usageSource: $Record["usageSource"] | null;
+              attemptId: $Record["attemptId"] | null;
+              taskId: $Record["taskId"] | null;
+              recordedById: $Record["recordedById"] | null;
+            } = { ...$changes };
             const $load = { actor: $actor, context: $context, clock: $clock, frame };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.Invocation", $record, "action function"),
@@ -388,7 +401,15 @@ export function bindInvocation(
             // transaction: opens here; what follows commits together or not at all
             const $now = $clock();
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Omit<
+              $Record,
+              "usageSource" | "attemptId" | "taskId" | "recordedById"
+            > & {
+              usageSource: $Record["usageSource"] | null;
+              attemptId: $Record["attemptId"] | null;
+              taskId: $Record["taskId"] | null;
+              recordedById: $Record["recordedById"] | null;
+            } = {
               id: $uuidv7(),
               requestedProvider: null,
               requestedModel: null,
@@ -406,14 +427,20 @@ export function bindInvocation(
               recordedAt: $now,
               sessionId: null,
               correctsId: null,
-            };
-            const $record: $Row = {
-              ...$changes,
               usageSource: null,
               attemptId: null,
               taskId: null,
               recordedById: null,
             };
+            const $record: $Omit<
+              $Record,
+              "usageSource" | "attemptId" | "taskId" | "recordedById"
+            > & {
+              usageSource: $Record["usageSource"] | null;
+              attemptId: $Record["attemptId"] | null;
+              taskId: $Record["taskId"] | null;
+              recordedById: $Record["recordedById"] | null;
+            } = { ...$changes };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.Invocation", $record, "action function"),
               "execution.Invocation#correct",

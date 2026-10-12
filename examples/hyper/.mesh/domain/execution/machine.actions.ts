@@ -37,7 +37,6 @@ import {
   type DataOperations as $DataOperations,
   type Issue as $Issue,
   type LoadOptions as $LoadOptions,
-  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   Machine as $Record,
@@ -65,7 +64,14 @@ import {
   type $execution$Machine$StoredScope as $StoredScope,
 } from "./machine.expressions";
 import { loadPlan as $loadPlan } from "../../load";
-import { $Date, $Object, type $Omit, type $Pick, type $Promise } from "../../$globals";
+import {
+  $Date,
+  $Object,
+  type $Omit,
+  type $Partial,
+  type $Pick,
+  type $Promise,
+} from "../../$globals";
 
 /**
  * The reads of this entity without their policies: what `privileged(Machine)` runs (TXN-16). The read actions
@@ -177,15 +183,18 @@ export function bindMachine(
             // transaction: opens here; what follows commits together or not at all
             const $now = $clock();
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Omit<$Record, "name"> & { name: $Record["name"] | null } = {
               id: $uuidv7(),
               platform: null,
               state: "active",
               version: 1,
               registeredAt: $now,
               firstReportedById: null,
+              name: null,
             };
-            const $record: $Row = { ...$changes, name: null };
+            const $record: $Omit<$Record, "name"> & { name: $Record["name"] | null } = {
+              ...$changes,
+            };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.Machine", $record, "action function"),
               "execution.Machine#register",
@@ -286,15 +295,18 @@ export function bindMachine(
             // transaction: opens here; what follows commits together or not at all
             const $now = $clock();
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Omit<$Record, "name"> & { name: $Record["name"] | null } = {
               id: $uuidv7(),
               platform: null,
               state: "active",
               version: 1,
               registeredAt: $now,
               firstReportedById: null,
+              name: null,
             };
-            const $record: $Row = { ...$changes, name: null };
+            const $record: $Omit<$Record, "name"> & { name: $Record["name"] | null } = {
+              ...$changes,
+            };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.Machine", $record, "action function"),
               "execution.Machine#report",
@@ -404,10 +416,12 @@ export function bindMachine(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.machines, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.machines, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("execution.Machine", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.Machine", $record, "action function"),
@@ -545,10 +559,12 @@ export function bindMachine(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.machines, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.machines, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("execution.Machine", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $load = { actor: $actor, context: $context, clock: $clock, frame };
             const $self = $readOnlyRecord(

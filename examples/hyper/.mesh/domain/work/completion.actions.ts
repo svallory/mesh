@@ -28,7 +28,6 @@ import {
   type CastOutput as $CastOutput,
   type DataOperations as $DataOperations,
   type LoadOptions as $LoadOptions,
-  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   Completion as $Record,
@@ -149,12 +148,23 @@ export function bindCompletion(
             // transaction: opens here; what follows commits together or not at all
             const $now = $clock();
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Omit<$Record, "rule" | "taskId" | "completedById"> & {
+              rule: $Record["rule"] | null;
+              taskId: $Record["taskId"] | null;
+              completedById: $Record["completedById"] | null;
+            } = {
               id: $uuidv7(),
               completedAt: $now,
               submissionId: null,
+              rule: null,
+              taskId: null,
+              completedById: null,
             };
-            const $record: $Row = { ...$changes, rule: null, taskId: null, completedById: null };
+            const $record: $Omit<$Record, "rule" | "taskId" | "completedById"> & {
+              rule: $Record["rule"] | null;
+              taskId: $Record["taskId"] | null;
+              completedById: $Record["completedById"] | null;
+            } = { ...$changes };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Completion", $record, "action function"),
               "work.Completion#record",

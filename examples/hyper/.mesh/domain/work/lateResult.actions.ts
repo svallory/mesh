@@ -32,7 +32,6 @@ import {
   type DataOperations as $DataOperations,
   type Issue as $Issue,
   type LoadOptions as $LoadOptions,
-  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   LateResult as $Record,
@@ -166,13 +165,24 @@ export function bindLateResult(
             // transaction: opens here; what follows commits together or not at all
             const $now = $clock();
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Omit<$Record, "fence" | "taskId" | "submitterId"> & {
+              fence: $Record["fence"] | null;
+              taskId: $Record["taskId"] | null;
+              submitterId: $Record["submitterId"] | null;
+            } = {
               id: $uuidv7(),
               summary: null,
               evidence: [],
               recordedAt: $now,
+              fence: null,
+              taskId: null,
+              submitterId: null,
             };
-            const $record: $Row = { ...$changes, fence: null, taskId: null, submitterId: null };
+            const $record: $Omit<$Record, "fence" | "taskId" | "submitterId"> & {
+              fence: $Record["fence"] | null;
+              taskId: $Record["taskId"] | null;
+              submitterId: $Record["submitterId"] | null;
+            } = { ...$changes };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.LateResult", $record, "action function"),
               "work.LateResult#record",

@@ -29,7 +29,6 @@ import {
   type CastOutput as $CastOutput,
   type DataOperations as $DataOperations,
   type LoadOptions as $LoadOptions,
-  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   EvidenceReference as $Record,
@@ -173,13 +172,24 @@ export function bindEvidenceReference(
             // transaction: opens here; what follows commits together or not at all
             const $now = $clock();
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Omit<$Record, "kind" | "locator" | "recordedById"> & {
+              kind: $Record["kind"] | null;
+              locator: $Record["locator"] | null;
+              recordedById: $Record["recordedById"] | null;
+            } = {
               id: $uuidv7(),
               contentHash: null,
               description: null,
               recordedAt: $now,
+              kind: null,
+              locator: null,
+              recordedById: null,
             };
-            const $record: $Row = { ...$changes, kind: null, locator: null, recordedById: null };
+            const $record: $Omit<$Record, "kind" | "locator" | "recordedById"> & {
+              kind: $Record["kind"] | null;
+              locator: $Record["locator"] | null;
+              recordedById: $Record["recordedById"] | null;
+            } = { ...$changes };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.EvidenceReference", $record, "action function"),
               "work.EvidenceReference#record",

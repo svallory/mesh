@@ -178,18 +178,32 @@ export function bindReview(
             // transaction: opens here; what follows commits together or not at all
             const $now = $clock();
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Omit<
+              $Record,
+              "decision" | "ruleApplied" | "submissionId" | "reviewerId"
+            > & {
+              decision: $Record["decision"] | null;
+              ruleApplied: $Record["ruleApplied"] | null;
+              submissionId: $Record["submissionId"] | null;
+              reviewerId: $Record["reviewerId"] | null;
+            } = {
               id: $uuidv7(),
               reasons: null,
               decidedAt: $now,
-            };
-            const $record: $Row = {
-              ...$changes,
               decision: null,
               ruleApplied: null,
               submissionId: null,
               reviewerId: null,
             };
+            const $record: $Omit<
+              $Record,
+              "decision" | "ruleApplied" | "submissionId" | "reviewerId"
+            > & {
+              decision: $Record["decision"] | null;
+              ruleApplied: $Record["ruleApplied"] | null;
+              submissionId: $Record["submissionId"] | null;
+              reviewerId: $Record["reviewerId"] | null;
+            } = { ...$changes };
             const $load = { actor: $actor, context: $context, clock: $clock, frame };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Review", $record, "action function"),
@@ -361,18 +375,32 @@ export function bindReview(
             // transaction: opens here; what follows commits together or not at all
             const $now = $clock();
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Omit<
+              $Record,
+              "decision" | "ruleApplied" | "submissionId" | "reviewerId"
+            > & {
+              decision: $Record["decision"] | null;
+              ruleApplied: $Record["ruleApplied"] | null;
+              submissionId: $Record["submissionId"] | null;
+              reviewerId: $Record["reviewerId"] | null;
+            } = {
               id: $uuidv7(),
               reasons: null,
               decidedAt: $now,
-            };
-            const $record: $Row = {
-              ...$changes,
               decision: null,
               ruleApplied: null,
               submissionId: null,
               reviewerId: null,
             };
+            const $record: $Omit<
+              $Record,
+              "decision" | "ruleApplied" | "submissionId" | "reviewerId"
+            > & {
+              decision: $Record["decision"] | null;
+              ruleApplied: $Record["ruleApplied"] | null;
+              submissionId: $Record["submissionId"] | null;
+              reviewerId: $Record["reviewerId"] | null;
+            } = { ...$changes };
             const $load = { actor: $actor, context: $context, clock: $clock, frame };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Review", $record, "action function"),

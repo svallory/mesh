@@ -31,7 +31,6 @@ import {
   type EntityValue as $EntityValue,
   type CastOutput as $CastOutput,
   type Issue as $Issue,
-  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   Workspace as $Record,
@@ -50,7 +49,7 @@ import {
   type $identity$Workspace$Scope as $Scope,
   type $identity$Workspace$StoredScope as $StoredScope,
 } from "./workspace.expressions";
-import { $Date, $Object, type $Promise } from "../../$globals";
+import { $Date, $Object, type $Partial, type $Promise } from "../../$globals";
 
 /**
  * The reads of this entity without their policies: what `privileged(Workspace)` runs (TXN-16). The read actions
@@ -150,14 +149,14 @@ export function bindWorkspace(
           frame.within(tx, $clock, "identity.Workspace#create", async () => {
             // transaction: opens here; what follows commits together or not at all
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Record = {
               id: $uuidv7(),
               name: parsed.name === undefined ? null : parsed.name,
               location: parsed.location === undefined ? "local" : parsed.location,
               state: "active",
               version: 1,
             };
-            const $record: $Row = { ...$changes };
+            const $record: $Record = { ...$changes };
             const $self = $readOnlyRecord($record, "identity.Workspace#create");
             const $s = $scope(
               {
@@ -247,10 +246,12 @@ export function bindWorkspace(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.workspaces, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.workspaces, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("identity.Workspace", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $self = $readOnlyRecord($record, "identity.Workspace#rename");
             const $s = $scope(

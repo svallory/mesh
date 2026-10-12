@@ -73,7 +73,14 @@ import {
   type $work$Claim$StoredScope as $StoredScope,
 } from "./claim.expressions";
 import { loadPlan as $loadPlan } from "../../load";
-import { $Date, $Object, type $Omit, type $Pick, type $Promise } from "../../$globals";
+import {
+  $Date,
+  $Object,
+  type $Omit,
+  type $Partial,
+  type $Pick,
+  type $Promise,
+} from "../../$globals";
 
 /**
  * The reads of this entity without their policies: what `privileged(Claim)` runs (TXN-16). The read actions
@@ -198,20 +205,36 @@ export function bindClaim(
           frame.within(tx, $clock, "work.Claim#acquire", async () => {
             // transaction: opens here; what follows commits together or not at all
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Omit<
+              $Record,
+              "fence" | "acquiredAt" | "expiresAt" | "taskId" | "holderId"
+            > & {
+              fence: $Record["fence"] | null;
+              acquiredAt: $Record["acquiredAt"] | null;
+              expiresAt: $Record["expiresAt"] | null;
+              taskId: $Record["taskId"] | null;
+              holderId: $Record["holderId"] | null;
+            } = {
               id: $uuidv7(),
               endedAt: null,
               endReason: null,
               state: "active",
-            };
-            const $record: $Row = {
-              ...$changes,
               fence: null,
               acquiredAt: null,
               expiresAt: null,
               taskId: null,
               holderId: null,
             };
+            const $record: $Omit<
+              $Record,
+              "fence" | "acquiredAt" | "expiresAt" | "taskId" | "holderId"
+            > & {
+              fence: $Record["fence"] | null;
+              acquiredAt: $Record["acquiredAt"] | null;
+              expiresAt: $Record["expiresAt"] | null;
+              taskId: $Record["taskId"] | null;
+              holderId: $Record["holderId"] | null;
+            } = { ...$changes };
             const $load = { actor: $actor, context: $context, clock: $clock, frame };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Claim", $record, "action function"),
@@ -387,10 +410,12 @@ export function bindClaim(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.claims, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.claims, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("work.Claim", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $load = { actor: $actor, context: $context, clock: $clock, frame };
             const $self = $readOnlyRecord(
@@ -564,10 +589,12 @@ export function bindClaim(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.claims, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.claims, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("work.Claim", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $load = { actor: $actor, context: $context, clock: $clock, frame };
             const $self = $readOnlyRecord(
@@ -738,10 +765,12 @@ export function bindClaim(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.claims, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.claims, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("work.Claim", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $load = { actor: $actor, context: $context, clock: $clock, frame };
             const $self = $readOnlyRecord(
@@ -871,10 +900,12 @@ export function bindClaim(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.claims, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.claims, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("work.Claim", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Claim", $record, "action function"),
@@ -991,10 +1022,12 @@ export function bindClaim(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.claims, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.claims, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("work.Claim", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Claim", $record, "action function"),

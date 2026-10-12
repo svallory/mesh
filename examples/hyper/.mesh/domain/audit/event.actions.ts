@@ -25,7 +25,6 @@ import {
   type CastOutput as $CastOutput,
   type DataOperations as $DataOperations,
   type LoadOptions as $LoadOptions,
-  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   Event as $Record,
@@ -139,7 +138,7 @@ export function bindEvent(
             // transaction: opens here; what follows commits together or not at all
             const $now = $clock();
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Omit<$Record, "seq"> & { seq: $Record["seq"] | null } = {
               type: parsed.type,
               schemaVersion: parsed.schemaVersion === undefined ? 1 : parsed.schemaVersion,
               workspaceId: parsed.workspaceId,
@@ -154,6 +153,7 @@ export function bindEvent(
               checks: parsed.checks === undefined ? null : parsed.checks,
               payload: parsed.payload === undefined ? null : parsed.payload,
               taskId: parsed.task === undefined ? null : parsed.task,
+              seq: null,
             };
             // data layer
             const $stored = await tx.insert(tables.events, $changes);

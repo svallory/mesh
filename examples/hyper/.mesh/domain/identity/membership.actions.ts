@@ -35,7 +35,6 @@ import {
   type DataOperations as $DataOperations,
   type Issue as $Issue,
   type LoadOptions as $LoadOptions,
-  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   Membership as $Record,
@@ -63,7 +62,14 @@ import {
   type $identity$Membership$StoredScope as $StoredScope,
 } from "./membership.expressions";
 import { loadPlan as $loadPlan } from "../../load";
-import { $Date, $Object, type $Omit, type $Pick, type $Promise } from "../../$globals";
+import {
+  $Date,
+  $Object,
+  type $Omit,
+  type $Partial,
+  type $Pick,
+  type $Promise,
+} from "../../$globals";
 
 /**
  * The reads of this entity without their policies: what `privileged(Membership)` runs (TXN-16). The read actions
@@ -176,20 +182,34 @@ export function bindMembership(
           frame.within(tx, $clock, "identity.Membership#grant", async () => {
             // transaction: opens here; what follows commits together or not at all
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Omit<
+              $Record,
+              "role" | "grantedAt" | "collaboratorId" | "grantedById"
+            > & {
+              role: $Record["role"] | null;
+              grantedAt: $Record["grantedAt"] | null;
+              collaboratorId: $Record["collaboratorId"] | null;
+              grantedById: $Record["grantedById"] | null;
+            } = {
               id: $uuidv7(),
               state: "active",
               revokedAt: null,
               version: 1,
               revokedById: null,
-            };
-            const $record: $Row = {
-              ...$changes,
               role: null,
               grantedAt: null,
               collaboratorId: null,
               grantedById: null,
             };
+            const $record: $Omit<
+              $Record,
+              "role" | "grantedAt" | "collaboratorId" | "grantedById"
+            > & {
+              role: $Record["role"] | null;
+              grantedAt: $Record["grantedAt"] | null;
+              collaboratorId: $Record["collaboratorId"] | null;
+              grantedById: $Record["grantedById"] | null;
+            } = { ...$changes };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "identity.Membership", $record, "action function"),
               "identity.Membership#grant",
@@ -324,10 +344,12 @@ export function bindMembership(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.memberships, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.memberships, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("identity.Membership", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "identity.Membership", $record, "action function"),
@@ -481,10 +503,12 @@ export function bindMembership(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.memberships, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.memberships, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("identity.Membership", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "identity.Membership", $record, "action function"),

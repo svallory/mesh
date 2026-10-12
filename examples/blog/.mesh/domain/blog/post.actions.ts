@@ -39,7 +39,6 @@ import {
   type DataOperations as $DataOperations,
   type Issue as $Issue,
   type LoadOptions as $LoadOptions,
-  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   Post as $Record,
@@ -67,7 +66,15 @@ import {
 import { tables } from "../../schema";
 import { $expressions, type $blog$Post$StoredScope as $StoredScope } from "./post.expressions";
 import { loadPlan as $loadPlan } from "../../load";
-import { $Date, $Object, type $Omit, type $Pick, type $Promise, $Set } from "../../$globals";
+import {
+  $Date,
+  $Object,
+  type $Omit,
+  type $Partial,
+  type $Pick,
+  type $Promise,
+  $Set,
+} from "../../$globals";
 
 /**
  * The reads of this entity without their policies: what `privileged(Post)` runs (TXN-16). The read actions
@@ -178,7 +185,7 @@ export function bindPost(
             // transaction: opens here; what follows commits together or not at all
             const $now = $clock();
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Record = {
               id: $uuidv7(),
               title: parsed.title,
               body: parsed.body === undefined ? null : parsed.body,
@@ -259,10 +266,12 @@ export function bindPost(
             const $now = $clock();
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.posts, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.posts, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("blog.Post", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $load = { actor: $actor, context: $context, clock: $clock, frame };
             const $self = $readOnlyRecord(
@@ -371,9 +380,11 @@ export function bindPost(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.posts, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.posts, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("blog.Post", $key);
-            const $record: $Row = { ...$before };
+            const $record: $Record = { ...$before };
             const $load = { actor: $actor, context: $context, clock: $clock, frame };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "blog.Post", $record, "action function"),
@@ -515,9 +526,11 @@ export function bindPost(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.posts, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.posts, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("blog.Post", $key);
-            const $record: $Row = { ...$before };
+            const $record: $Record = { ...$before };
             const $load = { actor: $actor, context: $context, clock: $clock, frame };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "blog.Post", $record, "action function"),

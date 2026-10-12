@@ -23,7 +23,6 @@ import {
   type EntityReadsBind as $EntityReadsBind,
   type EntityValue as $EntityValue,
   type CastOutput as $CastOutput,
-  type Row as $Row,
 } from "@meshfw/runtime";
 import type { User as $Record, CreateUserInput, ReadUserInput } from "./user.types";
 import { createUserInput, readUserInput } from "./user.validators";
@@ -112,7 +111,7 @@ export function bindUser(
           frame.within(tx, $clock, "blog.User#create", async () => {
             // transaction: opens here; what follows commits together or not at all
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Record = {
               id: $uuidv7(),
               name: parsed.name,
             };

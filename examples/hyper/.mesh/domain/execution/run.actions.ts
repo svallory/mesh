@@ -37,7 +37,6 @@ import {
   type DataOperations as $DataOperations,
   type Issue as $Issue,
   type LoadOptions as $LoadOptions,
-  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   Run as $Record,
@@ -60,7 +59,14 @@ import {
   type $execution$Run$StoredScope as $StoredScope,
 } from "./run.expressions";
 import { loadPlan as $loadPlan } from "../../load";
-import { $Date, $Object, type $Omit, type $Pick, type $Promise } from "../../$globals";
+import {
+  $Date,
+  $Object,
+  type $Omit,
+  type $Partial,
+  type $Pick,
+  type $Promise,
+} from "../../$globals";
 
 /**
  * The reads of this entity without their policies: what `privileged(Run)` runs (TXN-16). The read actions
@@ -172,7 +178,11 @@ export function bindRun(
             // transaction: opens here; what follows commits together or not at all
             const $now = $clock();
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Omit<$Record, "taskId" | "responsibleId" | "startedById"> & {
+              taskId: $Record["taskId"] | null;
+              responsibleId: $Record["responsibleId"] | null;
+              startedById: $Record["startedById"] | null;
+            } = {
               id: $uuidv7(),
               inputs: {},
               outcome: null,
@@ -182,13 +192,15 @@ export function bindRun(
               version: 1,
               startedAt: $now,
               parentRunId: null,
-            };
-            const $record: $Row = {
-              ...$changes,
               taskId: null,
               responsibleId: null,
               startedById: null,
             };
+            const $record: $Omit<$Record, "taskId" | "responsibleId" | "startedById"> & {
+              taskId: $Record["taskId"] | null;
+              responsibleId: $Record["responsibleId"] | null;
+              startedById: $Record["startedById"] | null;
+            } = { ...$changes };
             const $load = { actor: $actor, context: $context, clock: $clock, frame };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.Run", $record, "action function"),
@@ -344,10 +356,12 @@ export function bindRun(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.runs, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.runs, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("execution.Run", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.Run", $record, "action function"),
@@ -471,10 +485,12 @@ export function bindRun(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.runs, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.runs, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("execution.Run", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.Run", $record, "action function"),

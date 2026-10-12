@@ -175,16 +175,22 @@ export function bindDependency(
             // transaction: opens here; what follows commits together or not at all
             const $now = $clock();
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Omit<$Record, "dependentId" | "prerequisiteId" | "createdById"> & {
+              dependentId: $Record["dependentId"] | null;
+              prerequisiteId: $Record["prerequisiteId"] | null;
+              createdById: $Record["createdById"] | null;
+            } = {
               id: $uuidv7(),
               createdAt: $now,
-            };
-            const $record: $Row = {
-              ...$changes,
               dependentId: null,
               prerequisiteId: null,
               createdById: null,
             };
+            const $record: $Omit<$Record, "dependentId" | "prerequisiteId" | "createdById"> & {
+              dependentId: $Record["dependentId"] | null;
+              prerequisiteId: $Record["prerequisiteId"] | null;
+              createdById: $Record["createdById"] | null;
+            } = { ...$changes };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Dependency", $record, "action function"),
               "work.Dependency#add",
@@ -347,9 +353,11 @@ export function bindDependency(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.dependencies, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.dependencies, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("work.Dependency", $key);
-            const $record: $Row = { ...$before };
+            const $record: $Record = { ...$before };
             const $load = { actor: $actor, context: $context, clock: $clock, frame };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Dependency", $record, "action function"),

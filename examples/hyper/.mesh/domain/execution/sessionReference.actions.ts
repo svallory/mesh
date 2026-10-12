@@ -35,7 +35,6 @@ import {
   type DataOperations as $DataOperations,
   type Issue as $Issue,
   type LoadOptions as $LoadOptions,
-  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   SessionReference as $Record,
@@ -63,7 +62,14 @@ import {
   type $execution$SessionReference$StoredScope as $StoredScope,
 } from "./sessionReference.expressions";
 import { loadPlan as $loadPlan } from "../../load";
-import { $Date, $Object, type $Omit, type $Pick, type $Promise } from "../../$globals";
+import {
+  $Date,
+  $Object,
+  type $Omit,
+  type $Partial,
+  type $Pick,
+  type $Promise,
+} from "../../$globals";
 
 /**
  * The reads of this entity without their policies: what `privileged(SessionReference)` runs (TXN-16). The read actions
@@ -184,14 +190,26 @@ export function bindSessionReference(
             // transaction: opens here; what follows commits together or not at all
             const $now = $clock();
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Omit<
+              $Record,
+              | "runtime"
+              | "runtimeSessionId"
+              | "availability"
+              | "machineId"
+              | "agentProfileId"
+              | "recordedById"
+            > & {
+              runtime: $Record["runtime"] | null;
+              runtimeSessionId: $Record["runtimeSessionId"] | null;
+              availability: $Record["availability"] | null;
+              machineId: $Record["machineId"] | null;
+              agentProfileId: $Record["agentProfileId"] | null;
+              recordedById: $Record["recordedById"] | null;
+            } = {
               id: $uuidv7(),
               location: null,
               version: 1,
               recordedAt: $now,
-            };
-            const $record: $Row = {
-              ...$changes,
               runtime: null,
               runtimeSessionId: null,
               availability: null,
@@ -199,6 +217,22 @@ export function bindSessionReference(
               agentProfileId: null,
               recordedById: null,
             };
+            const $record: $Omit<
+              $Record,
+              | "runtime"
+              | "runtimeSessionId"
+              | "availability"
+              | "machineId"
+              | "agentProfileId"
+              | "recordedById"
+            > & {
+              runtime: $Record["runtime"] | null;
+              runtimeSessionId: $Record["runtimeSessionId"] | null;
+              availability: $Record["availability"] | null;
+              machineId: $Record["machineId"] | null;
+              agentProfileId: $Record["agentProfileId"] | null;
+              recordedById: $Record["recordedById"] | null;
+            } = { ...$changes };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.SessionReference", $record, "action function"),
               "execution.SessionReference#record",
@@ -329,10 +363,12 @@ export function bindSessionReference(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.session_references, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.session_references, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("execution.SessionReference", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.SessionReference", $record, "action function"),
@@ -494,10 +530,12 @@ export function bindSessionReference(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.session_references, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.session_references, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("execution.SessionReference", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.SessionReference", $record, "action function"),

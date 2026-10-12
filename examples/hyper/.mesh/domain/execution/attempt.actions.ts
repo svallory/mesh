@@ -68,7 +68,14 @@ import {
   type $execution$Attempt$StoredScope as $StoredScope,
 } from "./attempt.expressions";
 import { loadPlan as $loadPlan } from "../../load";
-import { $Date, $Object, type $Omit, type $Pick, type $Promise } from "../../$globals";
+import {
+  $Date,
+  $Object,
+  type $Omit,
+  type $Partial,
+  type $Pick,
+  type $Promise,
+} from "../../$globals";
 
 /**
  * The reads of this entity without their policies: what `privileged(Attempt)` runs (TXN-16). The read actions
@@ -195,7 +202,16 @@ export function bindAttempt(
             // transaction: opens here; what follows commits together or not at all
             const $now = $clock();
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Omit<
+              $Record,
+              "number" | "runId" | "taskId" | "performerId" | "delegatorId"
+            > & {
+              number: $Record["number"] | null;
+              runId: $Record["runId"] | null;
+              taskId: $Record["taskId"] | null;
+              performerId: $Record["performerId"] | null;
+              delegatorId: $Record["delegatorId"] | null;
+            } = {
               id: $uuidv7(),
               step: "main",
               claimFence: null,
@@ -207,15 +223,22 @@ export function bindAttempt(
               startedAt: $now,
               machineId: null,
               sessionId: null,
-            };
-            const $record: $Row = {
-              ...$changes,
               number: null,
               runId: null,
               taskId: null,
               performerId: null,
               delegatorId: null,
             };
+            const $record: $Omit<
+              $Record,
+              "number" | "runId" | "taskId" | "performerId" | "delegatorId"
+            > & {
+              number: $Record["number"] | null;
+              runId: $Record["runId"] | null;
+              taskId: $Record["taskId"] | null;
+              performerId: $Record["performerId"] | null;
+              delegatorId: $Record["delegatorId"] | null;
+            } = { ...$changes };
             const $load = { actor: $actor, context: $context, clock: $clock, frame };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.Attempt", $record, "action function"),
@@ -407,10 +430,12 @@ export function bindAttempt(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.attempts, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.attempts, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("execution.Attempt", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.Attempt", $record, "action function"),
@@ -582,10 +607,12 @@ export function bindAttempt(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.attempts, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.attempts, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("execution.Attempt", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.Attempt", $record, "action function"),
@@ -717,10 +744,12 @@ export function bindAttempt(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.attempts, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.attempts, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("execution.Attempt", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.Attempt", $record, "action function"),

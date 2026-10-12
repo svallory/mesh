@@ -68,7 +68,14 @@ import {
   type $work$Submission$StoredScope as $StoredScope,
 } from "./submission.expressions";
 import { loadPlan as $loadPlan } from "../../load";
-import { $Date, $Object, type $Omit, type $Pick, type $Promise } from "../../$globals";
+import {
+  $Date,
+  $Object,
+  type $Omit,
+  type $Partial,
+  type $Pick,
+  type $Promise,
+} from "../../$globals";
 
 /**
  * The reads of this entity without their policies: what `privileged(Submission)` runs (TXN-16). The read actions
@@ -198,20 +205,26 @@ export function bindSubmission(
             // transaction: opens here; what follows commits together or not at all
             const $now = $clock();
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Omit<$Record, "taskVersion" | "taskId" | "submitterId"> & {
+              taskVersion: $Record["taskVersion"] | null;
+              taskId: $Record["taskId"] | null;
+              submitterId: $Record["submitterId"] | null;
+            } = {
               id: $uuidv7(),
               summary: null,
               evidence: [],
               fence: null,
               state: "pending",
               submittedAt: $now,
-            };
-            const $record: $Row = {
-              ...$changes,
               taskVersion: null,
               taskId: null,
               submitterId: null,
             };
+            const $record: $Omit<$Record, "taskVersion" | "taskId" | "submitterId"> & {
+              taskVersion: $Record["taskVersion"] | null;
+              taskId: $Record["taskId"] | null;
+              submitterId: $Record["submitterId"] | null;
+            } = { ...$changes };
             const $load = { actor: $actor, context: $context, clock: $clock, frame };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Submission", $record, "action function"),
@@ -409,10 +422,12 @@ export function bindSubmission(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.submissions, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.submissions, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("work.Submission", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $load = { actor: $actor, context: $context, clock: $clock, frame };
             const $self = $readOnlyRecord(
@@ -548,10 +563,12 @@ export function bindSubmission(
             // transaction: opens here; what follows commits together or not at all
             // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
             const $key = { id: parsed.id };
-            const $before = await tx.selectByKeyForUpdate(tables.submissions, $key);
+            const $before = (await tx.selectByKeyForUpdate(tables.submissions, $key)) as
+              | $Record
+              | undefined;
             if ($before === undefined) throw new $NotFoundError("work.Submission", $key);
-            const $changes: $Row = {};
-            const $record: $Row = { ...$before };
+            const $changes: $Partial<$Record> = {};
+            const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Submission", $record, "action function"),
@@ -666,20 +683,26 @@ export function bindSubmission(
             // transaction: opens here; what follows commits together or not at all
             const $now = $clock();
             // plan: a create is one insert; nothing is read first
-            const $changes: $Row = {
+            const $changes: $Omit<$Record, "taskVersion" | "taskId" | "submitterId"> & {
+              taskVersion: $Record["taskVersion"] | null;
+              taskId: $Record["taskId"] | null;
+              submitterId: $Record["submitterId"] | null;
+            } = {
               id: $uuidv7(),
               summary: null,
               evidence: [],
               fence: null,
               state: "pending",
               submittedAt: $now,
-            };
-            const $record: $Row = {
-              ...$changes,
               taskVersion: null,
               taskId: null,
               submitterId: null,
             };
+            const $record: $Omit<$Record, "taskVersion" | "taskId" | "submitterId"> & {
+              taskVersion: $Record["taskVersion"] | null;
+              taskId: $Record["taskId"] | null;
+              submitterId: $Record["submitterId"] | null;
+            } = { ...$changes };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Submission", $record, "action function"),
               "work.Submission#recordAccepted",
