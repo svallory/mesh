@@ -419,7 +419,7 @@
               "path": "/architecture/decisions/0073-plugins-follow-the-specs-single-hook/"
             },
             {
-              "title": "0074. A write policy may read through `tx`",
+              "title": "0074. A write policy may read through `privileged`",
               "path": "/architecture/decisions/0074-write-policies-may-read-through-tx/"
             },
             {
@@ -465,6 +465,10 @@
             {
               "title": "0085. MX discovers a dialect's tags (target design)",
               "path": "/architecture/decisions/0085-tag-discovery-for-dialect-tags/"
+            },
+            {
+              "title": "0086. Entity values, `privileged`, barrels and FQNs",
+              "path": "/architecture/decisions/0086-entity-values-privileged-barrels-and-fqns/"
             }
           ]
         },

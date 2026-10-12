@@ -48,6 +48,10 @@ The operator accepted [roadmap revision 5](../roadmap/roadmap.md), which ends Me
 
 Records 0077 to 0085 hold the rulings of the [domain concepts study](../research/domain-concepts.md): the `surface` file ([0077](./0077-surfaces-and-file-kinds.md)), where effects go and what a service is ([0078](./0078-services-and-where-effects-go.md)), commands, events and the core outbox ([0079](./0079-commands-events-and-the-outbox.md)), aggregates and concepts ([0080](./0080-aggregates-and-concepts.md)), event sourcing and CQRS as extensions ([0081](./0081-event-sourcing-and-cqrs-are-extensions.md)), named checks and mixins ([0082](./0082-named-checks-and-mixins.md)), names ([0083](./0083-names-for-the-new-constructs.md)), architecture rules ([0084](./0084-architecture-rules-are-core.md)) and tag discovery ([0085](./0085-tag-discovery-for-dialect-tags.md)). They supersede 0035 and amend 0023, 0027, 0050, 0051, 0053, 0068, 0072 and 0075.
 
+## What changed on 2026-10-12
+
+[Record 0086](./0086-entity-values-privileged-barrels-and-fqns.md) holds the rulings on how generated code follows modules: an action is called on its entity value, `privileged` replaces the `tx` handle, each folder has a barrel, and every name Mesh writes out is the fully qualified name. It amends 0047, 0058, 0067, 0068, 0071 and 0074 and settles [finding 21](../open-questions.md#dx-findings).
+
 ## Current records
 
 | ADR | Decision | Status | Deciders |
@@ -86,7 +90,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0044](./0044-folding-record-reading-validations.md) | Folding record-reading checks into the atomic statement (after v1) | Proposed | lead and operator |
 | [0045](./0045-has-one-uniqueness.md) | How `has-one` is kept to one row | Proposed | operator |
 | [0046](./0046-denied-atomic-write-outcome.md) | What a denied write reports on an atomic action | Proposed | operator |
-| [0047](./0047-actions-are-bound-to-a-data-layer.md) | Actions are bound to a data layer: `bind` and `connect` | Accepted, amended by 0059 | operator |
+| [0047](./0047-actions-are-bound-to-a-data-layer.md) | Actions are bound to a data layer: `bind` and `connect` | Accepted, amended by 0059, 0086 | operator |
 | [0048](./0048-schema-inside-the-process-for-tests.md) | Schema inside the process for tests; the stable Drizzle pin | Accepted | lead |
 | [0049](./0049-vocabulary-is-meshs-own.md) | The vocabulary is Mesh's own; `resource` becomes `entity` | Accepted | operator |
 | [0050](./0050-entity-file-syntax.md) | Entity file syntax: `kind #name options`, with the reference file | Accepted, amended 2026-10-11: reusable steps and `after-commit` dropped (0082) | operator |
@@ -97,7 +101,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0055](./0055-policies-are-core.md) | Policies are core; every covering policy must pass; no policies means forbidden | Accepted, amended by 0071, 0072, 0074, and 2026-10-11: a policy sees `self` before the input | operator; lead, delegated |
 | [0056](./0056-translated-expressions-are-one-expression-arrows.md) | A function whose body is one expression is translated; Mesh builds its own translator | Accepted | operator; lead, delegated |
 | [0057](./0057-one-domain-modules-as-folders.md) | One domain at `src/domain/`; its folders are modules | Accepted, amended by operator ruling, 2026-10-10 | operator |
-| [0058](./0058-generated-code-in-mesh-imported-as-hash-mesh.md) | Generated code in `.mesh/`, committed, imported as `#mesh` | Accepted, amended 2026-10-11: imports follow folder modules (`#mesh/domain/<module>`) | operator; lead, delegated |
+| [0058](./0058-generated-code-in-mesh-imported-as-hash-mesh.md) | Generated code in `.mesh/`, committed, imported as `#mesh` | Accepted, amended 2026-10-11: imports follow folder modules (`#mesh/domain/<module>`); amended 2026-10-12 by 0086 | operator; lead, delegated |
 | [0059](./0059-action-context.md) | The second argument is the flat `ActionContext`; tenancy is a user key | Accepted, amended by 0071 | operator |
 | [0060](./0060-meshfw-package-scope.md) | Packages are `@meshfw/*`; the command is `mesh` | Accepted | operator |
 | [0061](./0061-generators-are-jig-templates.md) | Generators are Jig templates; export and per-template override | Accepted | operator |
@@ -106,14 +110,14 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0064](./0064-order-of-work-after-approval.md) | After approval: realignment, Jig port, then M2 | Accepted | lead, delegated |
 | [0065](./0065-mx-highlighting-on-the-docs-site.md) | The docs site highlights `mx` code with MX's tree-sitter highlighter | Accepted | lead, delegated, with the MX lead |
 | [0066](./0066-names-and-references-are-atoms.md) | Names and references are atoms: `kind :name options` | Accepted, amended by 0067 | operator (three points by the lead) |
-| [0067](./0067-members-imports-input-static-files.md) | Members are `&name`, entities are imports, one `input` section, static files | Accepted | operator; marked choices by the lead |
-| [0068](./0068-actions-compose-through-actions-and-tx.md) | Steps and checks receive bound `actions` and `tx`; a `run` step may run `after=:write` | Accepted, amended 2026-10-11: `before` leaves `validate`; an effect across aggregates is a service (0078) | operator |
+| [0067](./0067-members-imports-input-static-files.md) | Members are `&name`, entities are imports, one `input` section, static files | Accepted, amended 2026-10-12 by 0086 | operator; marked choices by the lead |
+| [0068](./0068-actions-compose-through-actions-and-tx.md) | Steps and checks receive bound `actions` and `tx`; a `run` step may run `after=:write` | Accepted, amended 2026-10-12 by 0086 (points 1 and 3); amended 2026-10-11: `before` leaves `validate`; an effect across aggregates is a service (0078) | operator |
 | [0069](./0069-json-attribute-type.md) | `json` is an attribute type | Accepted | operator |
 | [0070](./0070-has-many-via.md) | A `has-many` names the inverse it follows with `inverse=` | Accepted | operator |
-| [0071](./0071-system-key-on-the-action-context.md) | `system` is a reserved key of the `ActionContext`; policies decide what it admits | Accepted | operator |
+| [0071](./0071-system-key-on-the-action-context.md) | `system` is a reserved key of the `ActionContext`; policies decide what it admits | Accepted, amended 2026-10-12 by 0086 | operator |
 | [0072](./0072-mesh-1-0-is-the-port-gate.md) | Mesh 1.0 is the Hyper port gate: the spec's v0 on SQLite, the 126-case suite; what leaves the 1.0 line | Accepted, amended 2026-10-11: M6 builds domain events and the outbox; HA keeps `@meshfw/jsonrpc` (0077, 0079) | operator |
 | [0073](./0073-plugins-follow-the-specs-single-hook.md) | Plugins follow the spec: one `task.claim` hook, before the transaction | Accepted | operator |
-| [0074](./0074-write-policies-may-read-through-tx.md) | A write policy may read other entities through `tx` | Accepted | operator |
+| [0074](./0074-write-policies-may-read-through-tx.md) | A write policy may read other entities through `privileged` | Accepted, amended 2026-10-12 by 0086 | operator |
 | [0075](./0075-seams-use-the-extension-hosts-names.md) | Three lifecycle seams, named and shaped as the extension host's run-time points | Accepted, amended 2026-10-11: domain events replace the application's event table (0079) | operator |
 | [0076](./0076-compiler-front-end-and-back-end-are-separate.md) | The compiler's front end and its TypeScript back end are separate folders | Accepted | operator |
 | [0077](./0077-surfaces-and-file-kinds.md) | A `surface` file lists what an audience may reach; the root tag decides a file's kind; fields fail closed | Accepted | operator |
@@ -125,6 +129,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0083](./0083-names-for-the-new-constructs.md) | The name-clash table is accepted for the port | Accepted | operator |
 | [0084](./0084-architecture-rules-are-core.md) | Architecture rules are core, in `architecture.mesh.mx`; when they are built is open | Accepted, one item open | operator |
 | [0085](./0085-tag-discovery-for-dialect-tags.md) | MX discovers a dialect's tags from declared folders (target design) | Accepted | operator with MX |
+| [0086](./0086-entity-values-privileged-barrels-and-fqns.md) | Entity values, `privileged`, barrels and fully qualified names: generated code follows modules | Accepted | operator |
 
 ## Superseded records
 

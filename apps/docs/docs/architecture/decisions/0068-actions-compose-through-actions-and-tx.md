@@ -1,9 +1,11 @@
 ---
 title: "0068. Steps and checks receive bound `actions` and `tx`; a `run` step may run `after=:write`"
-description: "Decision record 0068: how an action calls other actions in its own transaction, what the called action checks, and how a step runs after the row is written. Status: Accepted, amended 2026-10-11 (`before` leaves `validate`). Amended 2026-10-11 (DOM-15)."
+description: "Decision record 0068: how an action calls other actions in its own transaction, what the called action checks, and how a step runs after the row is written. Status: Accepted, amended 2026-10-11 (`before` leaves `validate`). Amended 2026-10-11 (DOM-15). Amended 2026-10-12 (points 1 and 3)."
 ---
 
 # 0068. Steps and checks receive bound `actions` and `tx`; a `run` step may run `after=:write`
+
+> **Amendment, 2026-10-12 (CMP-16, TXN-16 to TXN-20).** Points 1 and 3 are replaced by [ADR-0086](./0086-entity-values-privileged-barrels-and-fqns.md): the `actions` handle becomes a call on the entity value (`Claim.end(input, context)`), the `tx` handle becomes `privileged(Claim).read(...)`, and `transaction(fn)` takes no context and hands `fn` nothing. The record is amended, not superseded: `run [after=:write]` (TXN-09), the join and rollback rules, DOM-15's amendment and the application's `transaction` stay. In point 2, the step is written `run [after=:write] ({ self }) { ... }`.
 
 > **Amendment, 2026-10-11 (DOM-15).** `actions` in an entity file is for the root writing its own parts. An effect across aggregates is a service, or until services exist plain code over `transaction` from `#mesh`; an effect that may happen later is a `publish` and a listener. A core architecture rule warns (it does not forbid) when an entity action calls another aggregate's action, and `architecture.mesh.mx` can switch the warning off. See [ADR-0078](./0078-services-and-where-effects-go.md) and [ADR-0084](./0084-architecture-rules-are-core.md). The mechanism below is unchanged.
 
@@ -12,6 +14,8 @@ description: "Decision record 0068: how an action calls other actions in its own
 Accepted. Amends [ADR-0053](./0053-validate-then-do.md) (what a `run` body and a function-valued check, `when` or `set` value receive).
 
 **Amended 2026-10-11 (operator, ACT-27).** Point 4's "`validate` sees `before`, the stored record, beside `self`, the record with the inputs applied" no longer holds: in `validate`, `self` is the record before the input is applied, the stored record on an update or destroy, and `before` is not available there (reading it is the build error `MESH_VALIDATE_BEFORE`). The `do` steps and `run`, including `run [after=:write]`, keep `before`: the stored record, `null` on a create ([ADR-0053](./0053-validate-then-do.md), amended the same day). The rest of this record is unchanged and kept as history.
+
+**Amended 2026-10-12 (operator, TXN-16 to TXN-20).** Point 1 no longer holds: a `run` step, a check, a `when` or a `set` value does not receive `actions` or `tx`. It calls the entity values the file declares or imports, and `privileged`. A nested call carries only the context it is passed (TXN-19). Point 3 no longer holds: `transaction(fn)` takes no context and hands `fn` nothing (TXN-20). The join rule, the rollback rule, point 2 and the application's `transaction` stay. See [ADR-0086](./0086-entity-values-privileged-barrels-and-fqns.md). The rest of this record is unchanged and kept as history.
 
 ## Date
 

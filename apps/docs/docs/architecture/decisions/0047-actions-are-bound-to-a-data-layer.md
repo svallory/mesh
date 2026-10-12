@@ -1,6 +1,6 @@
 ---
 title: "0047. Actions are bound to a data layer"
-description: "Decision record 0047: Actions are bound to a data layer. Status: Amended by ADR-0059."
+description: "Decision record 0047: Actions are bound to a data layer. Status: Amended by ADR-0059, amended 2026-10-12 (what `bind` returns)."
 ---
 
 # 0047. Actions are bound to a data layer
@@ -10,6 +10,8 @@ description: "Decision record 0047: Actions are bound to a data layer. Status: A
 ## Status
 
 Accepted, amended by [ADR-0059](./0059-action-context.md)
+
+**Amended 2026-10-12 (operator, PRJ-19, CMP-16).** `bind(dataLayer)` no longer returns an object holding every action function. It returns a frozen `{ run, transaction }`: `run(fn)` puts the binding in scope, and every entity call inside it (`Todo.create(input, context)`) goes to this binding's data layer; `transaction(fn)` does the same inside one transaction. The top-level action functions (`createTodo`) are the methods of the entity value, imported from the entity's folder. `connect()` and `disconnect()` are unchanged, and `connect()` backs a call made outside `run` and `transaction`. See [ADR-0086](./0086-entity-values-privileged-barrels-and-fqns.md). The rest of this record is unchanged and kept as history.
 
 ## Date
 

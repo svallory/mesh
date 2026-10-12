@@ -1,6 +1,6 @@
 ---
 title: "0058. Generated code lives in `.mesh/`, is committed, and is imported as `#mesh`"
-description: "Decision record 0058: the generated folder's name, its place in version control, and the import specifier. Status: Accepted, amended 2026-10-11 (generated imports follow folder modules)."
+description: "Decision record 0058: the generated folder's name, its place in version control, and the import specifier. Status: Accepted, amended 2026-10-11 (generated imports follow folder modules), amended 2026-10-12 (entity values and barrels)."
 ---
 
 # 0058. Generated code lives in `.mesh/`, is committed, and is imported as `#mesh`
@@ -9,7 +9,7 @@ description: "Decision record 0058: the generated folder's name, its place in ve
 
 Accepted
 
-**Amended 2026-10-11 (operator, CMP-12/CMP-17).** Generated imports follow folder modules. `#mesh` stays the specifier of `.mesh/index.ts`, but it now exports only the framework's names: `bind`, `connect`, `disconnect`, `transaction`, the `Actions` and `Reads` types and the adapter's `tables`. A module's action functions and its entities' types are imported from `#mesh/domain/<module>` (`#mesh/domain/tasks`, `#mesh/domain/sales/billing`), and those of the domain root from `#mesh/domain`. The project's `package.json` has three entries:
+**Amended 2026-10-11 (operator, CMP-12/CMP-17).** Generated imports follow folder modules. `#mesh` stays the specifier of `.mesh/index.ts`, but it now exports only the framework's names: `bind`, `connect`, `disconnect`, `transaction`, `privileged`, the `Binding` and `Privileged` types and the adapter's `tables`. A folder's entities (each a value with its actions, and its types) are imported from `#mesh/domain/<folder>` (`#mesh/domain/tasks`, `#mesh/domain/sales/billing`), and those of the domain root from `#mesh/domain`. The project's `package.json` has three entries:
 
 ```json
 "imports": {
@@ -19,7 +19,9 @@ Accepted
 }
 ```
 
-Each module's generated files, its `index.ts` among them, live in `.mesh/domain/<module>/`, apart from Mesh's own top-level files, so a module named `schema`, `load` or `index` cannot collide with them. Application code still never imports a folder path. An action function's name stays unique across the project, because `actions`, `tx` and what `bind` returns are flat records ([finding 21](../open-questions.md#dx-findings) stays open). The operator ruled the move (CMP-12) and the folder-module rule (CMP-17) on 2026-10-11, recorded in the project's decision log; that `#mesh` keeps only the framework's names is the lead's reading of CMP-17, for operator review. See [generated code and the guard](../in-depth/generated-code-and-guard.md#what-mesh-generates-and-commits). The rest of this record is unchanged and kept as history.
+Each module's generated files, its `index.ts` among them, live in `.mesh/domain/<module>/`, apart from Mesh's own top-level files, so a module named `schema`, `load` or `index` cannot collide with them. Application code still never imports a folder path. The operator ruled the move (CMP-12) and the folder-module rule (CMP-17) on 2026-10-11, recorded in the project's decision log; that `#mesh` keeps only the framework's names is the lead's reading of CMP-17, for operator review. See [generated code and the guard](../in-depth/generated-code-and-guard.md#what-mesh-generates-and-commits). The rest of this record is unchanged and kept as history.
+
+**Amended 2026-10-12 (operator, CMP-16, CMP-18).** The 2026-10-11 amendment's export list was `bind`, `connect`, `disconnect`, `transaction`, the `Actions` and `Reads` types and `tables`; it is now the list above, and an action function's name no longer has to be unique across the project ([finding 21](../open-questions.md#dx-findings) is settled). Each domain folder has one barrel `index.ts` (its entities, plus one namespace per subfolder), which `.mesh/binding.ts` walks; see [ADR-0086](./0086-entity-values-privileged-barrels-and-fqns.md).
 
 ## Date
 

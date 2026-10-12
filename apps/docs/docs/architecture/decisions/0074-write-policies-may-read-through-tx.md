@@ -1,13 +1,15 @@
 ---
-title: "0074. A write policy may read other entities through `tx`"
+title: "0074. A write policy may read other entities through `privileged`"
 description: "Decision record 0074: how a policy reads the actor's membership inside the transaction, so a revoked role cannot go stale. Status: Accepted."
 ---
 
-# 0074. A write policy may read other entities through `tx`
+# 0074. A write policy may read other entities through `privileged`
 
 ## Status
 
 Accepted. Amends [ADR-0022](./0022-policies-simple-tier-as-extension.md) and [ADR-0055](./0055-policies-are-core.md) (what a policy on a write may read).
+
+**Amended 2026-10-12 (operator, TXN-16, POL-21).** The policy reads through `privileged(Entity).read(...)`, not through a `tx` handle, which no longer exists. A check that calls `privileged`, or any function its entity file imports, counts as reading the record and runs inside the transaction after the locked read, so the race this record closed stays closed (POL-20); the cost is that a check calling a pure imported helper also waits for the lock. See [ADR-0086](./0086-entity-values-privileged-barrels-and-fqns.md). The decision, the rule that a policy on a write may read other entities, is unchanged; "`tx`" in the text below is `privileged`. The rest of this record is unchanged and kept as history.
 
 ## Date
 
@@ -23,9 +25,9 @@ Hyper reads the actor's role inside the write transaction (`checks/role.ex:16-61
 
 ## Decision
 
-A policy on a **write** (create, update or destroy) may read other entities through `tx`, the reads of the running transaction ([ADR-0068](./0068-actions-compose-through-actions-and-tx.md)). Its `authorize-if` and `forbid-if` functions receive `{ self, input, actor, context, tx }`, and a check that uses `tx` is evaluated in memory on the locked row, inside the transaction. The role is then read where Hyper reads it.
+A policy on a **write** (create, update or destroy) may read other entities through `privileged`, the reads of the running transaction ([ADR-0068](./0068-actions-compose-through-actions-and-tx.md)). Its `authorize-if` and `forbid-if` functions receive `{ self, input, actor, context }`, and a check that calls `privileged` is evaluated in memory on the locked row, inside the transaction. The role is then read where Hyper reads it.
 
-**Read policies are unchanged**: they are query filters, a row the caller may not see is not found, and a read policy has no `tx`.
+**Read policies are unchanged**: they are query filters, a row the caller may not see is not found, and a read policy may not call `privileged`.
 
 ## Options considered
 
