@@ -51,6 +51,14 @@ describe("filterCondition", () => {
     expect(filterCondition(tasks, { and: [{}, { and: [] }] })?.getSQL).toBeDefined();
   });
 
+  test("an attribute whose comparison is undefined is left out; the attribute must still exist", () => {
+    expect(filterCondition(tasks, { rank: undefined })).toBeUndefined();
+    expect(sqlOf(filterCondition(tasks, { rank: undefined, parentId: { eq: "p" } }))).toEqual({ sql: '"tasks"."parentId" = ?', params: ["p"] });
+    expect(sqlOf(filterCondition(tasks, { or: [{ rank: undefined, done: { eq: true } }] }))).toEqual({ sql: '"tasks"."done" = ?', params: [1] });
+    expect(() => filterCondition(tasks, { nope: undefined })).toThrow(FrameworkError);
+    expect(() => filterCondition(tasks, { rank: { eq: undefined } } as never)).toThrow(FrameworkError);
+  });
+
   test("an empty or and an empty in match nothing", () => {
     expect(sqlOf(filterCondition(tasks, { or: [] }))?.sql).toBe("1 = 0");
     expect(sqlOf(filterCondition(tasks, { rank: { in: [] } }))?.sql).toBe("1 = 0");

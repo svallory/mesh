@@ -77,7 +77,9 @@ function filterSql(table: Table, filter: unknown, depth: number): SQL {
       const inner = value.map((item) => filterSql(table, item, depth + 1));
       parts.push(inner.length === 0 ? (key === "and" ? ALWAYS : NEVER) : (key === "and" ? and : or)(...inner)!);
     } else {
-      parts.push(comparison(columnOf(table, key), key, value));
+      // The column must exist even when its comparison is `undefined`, which leaves it out (`Filter`).
+      const column = columnOf(table, key);
+      if (value !== undefined) parts.push(comparison(column, key, value));
     }
   }
   return parts.length === 0 ? ALWAYS : parts.length === 1 ? parts[0]! : and(...parts)!;
