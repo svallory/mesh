@@ -116,7 +116,7 @@ describe("actions view", () => {
       "FrameworkError as $FrameworkError", "InvalidInputError as $InvalidInputError", "NO_FRAME as $NO_FRAME", "NotFoundError as $NotFoundError", "authorizer as $authorizer", "castInput as $castInput", "checkScope as $checkScope",
       "checkUnchanged as $checkUnchanged", "entity as $entity", "failJoined as $failJoined", "guarded as $guarded", "loadRows as $loadRows",
       "noteWrite as $noteWrite", "pinClock as $pinClock", "readOnlyRecord as $readOnlyRecord", "recordWrite as $recordWrite", "runAction as $runAction", "runCheck as $runCheck", "scope as $scope", "uuidv7 as $uuidv7", "wantsChanges as $wantsChanges", "writeCount as $writeCount"]);
-    expect(view.runtimeTypes).toEqual(["CastOutput as $CastOutput", "DataOperations as $DataOperations", "Issue as $Issue", "LoadOptions as $LoadOptions", "Row as $Row"]);
+    expect(view.runtimeTypes).toEqual(["CastOutput as $CastOutput", "DataOperations as $DataOperations", "Issue as $Issue", "LoadOptions as $LoadOptions"]);
     expect(view.typesFromLiteral).toBe('"./article.types"');
     expect(view.validatorsFromLiteral).toBe('"./article.validators"');
     expect(view.schemaFromLiteral).toBe('"../../schema"');
@@ -127,7 +127,8 @@ describe("actions view", () => {
     expect(create.statements.slice(1)).toEqual([
       "const $now = $clock();",
       "// plan: a create is one insert; nothing is read first",
-      "const $changes: $Row = {",
+      // ENT-18: typed with the record's own columns, so a column named `toString` is that column, not the inherited method
+      "const $changes: $Omit<$Record, \"title\" | \"authorId\"> & { title: $Record[\"title\"] | null; authorId: $Record[\"authorId\"] | null } = {",
       // ACT-27: the uuid key is filled when the instance is built, not by the data layer at the write
       "id: $uuidv7(),",
       "body: null,",
@@ -137,9 +138,11 @@ describe("actions view", () => {
       "insertedAt: $now,",
       "updatedAt: $now,",
       "editorId: null,",
+      // what the input fills is null on the instance the checks see and in the row until the input is applied
+      "title: null,",
+      "authorId: null,",
       "};",
-      // what the input fills is null on the instance the checks see, and not in the row until the input is applied
-      "const $record: $Row = { ...$changes, title: null, authorId: null };",
+      "const $record: $Omit<$Record, \"title\" | \"authorId\"> & { title: $Record[\"title\"] | null; authorId: $Record[\"authorId\"] | null } = { ...$changes };",
       "// the input: the member inputs the caller sent, applied now that the checks have passed",
       "if (parsed.title !== undefined) $changes.title = $record.title = parsed.title;",
       "if (parsed.body !== undefined) $changes.body = $record.body = parsed.body;",
@@ -169,13 +172,13 @@ describe("actions view", () => {
   test("update reads the row under the lock, runs the checks, then applies the accepted input and writes only what changed", () => {
     const [, rename, publish] = viewOf("Article").methods;
     const text = rename!.statements.join("\n");
-    expect(text).toContain("const $before = await tx.selectByKeyForUpdate(tables.articles, $key);");
+    expect(text).toContain("const $before = (await tx.selectByKeyForUpdate(tables.articles, $key)) as $Record | undefined;");
     expect(text).toContain('if ($before === undefined) throw new $NotFoundError("blog.Article", $key);');
     expect(text).toContain("if (parsed.title !== undefined) $changes.title = $record.title = parsed.title;");
     expect(text).toContain("if (parsed.editor !== undefined) $changes.editorId = $record.editorId = parsed.editor;");
     // ACT-01: the checks see the stored record; the input is applied after them, before the steps and the write
     const at = (line: string) => rename!.statements.findIndex((statement) => statement.startsWith(line));
-    expect(at("await $runCheck")).toBeGreaterThan(at("const $record: $Row = { ...$before };"));
+    expect(at("await $runCheck")).toBeGreaterThan(at("const $record: $Record = { ...$before };"));
     expect(at("if (parsed.title !== undefined)")).toBeGreaterThan(at("if ($issues.length > 0)"));
     expect(at("const $stored = await tx.updateByKey")).toBeGreaterThan(at("if (parsed.editor !== undefined)"));
     expect(text).toContain("$changes.updatedAt = $now;");
@@ -452,7 +455,7 @@ describe("explain", () => {
     const rename = methods.find((m) => m.name === "rename")!.statements;
     const at = (line: string) => rename.findIndex((statement) => statement.startsWith(line));
     // The count is taken after the locked read and before any function runs, and checked just before the write.
-    expect(at("const $writes = $writeCount(tx);")).toBeGreaterThan(at("const $before = await tx.selectByKeyForUpdate"));
+    expect(at("const $writes = $writeCount(tx);")).toBeGreaterThan(at("const $before = (await tx.selectByKeyForUpdate"));
     expect(at("const $writes = $writeCount(tx);")).toBeLessThan(at("const $self = "));
     expect(rename[at("const $stored = await tx.updateByKey(") - 1]).toBe('await $checkUnchanged(tx, $writes, tables.articles, $key, $before, "blog.Article#rename");');
     expect(rename[at("const $stored = ") + 2]).toBe("$noteWrite(tx);");

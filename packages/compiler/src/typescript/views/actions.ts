@@ -7,7 +7,7 @@ import type { EmitInput } from "../emit.ts";
 import { expressionIds, policySpecs } from "./expressions.ts";
 import { globalAlias, globalsImport, type GlobalsImport } from "./globals.ts";
 import { hasLoader, loaderName } from "./load.ts";
-import { camelCase, computedColumns, effectiveActions, entityInputs, entityLocal, entityPath, entitySegment, loadGenerics, propertyName, takesLoad, typeName, valueName } from "./inputs.ts";
+import { computedColumns, effectiveActions, entityInputs, entityLocal, entityPath, entitySegment, loadGenerics, propertyName, takesLoad, typeName } from "./inputs.ts";
 import { entityFileComment, txLoadTypes } from "./types.ts";
 
 /**
@@ -279,6 +279,24 @@ function isPassthrough(action: Action, name: string, value: Expression): boolean
 
 const KEY = "$key";
 
+/**
+ * The head of a create: `$changes`, the row to insert, and `$record`, the new instance the checks and the steps see.
+ * Both are typed with the record's own columns (ENT-18), so a column named like a member of `Object.prototype`
+ * (`toString`, `constructor`) is that column, never the inherited method. `pending` are the columns the instance does not
+ * hold yet: the input or a `set` step fills them, or the data layer an `integer` key. Both hold them as null until then,
+ * and the data layer gives a null key its next value. The row is not left without them: TypeScript gives every object the
+ * members of `Object.prototype`, so an object without a `toString` key cannot be assigned to a type whose `toString` is
+ * an optional string.
+ */
+function createHead(lines: readonly { column: string; value: string }[], pending: readonly string[]): string[] {
+  const entries = [...lines.map(({ column, value }) => `${propertyName(column)}: ${value},`), ...pending.map((column) => `${propertyName(column)}: null,`)];
+  if (pending.length === 0) return ["const $changes: $Record = {", ...entries, "};", "const $record: $Record = { ...$changes };"];
+  const keys = pending.map((column) => JSON.stringify(column)).join(" | ");
+  const nulls = pending.map((column) => `${propertyName(column)}: $Record[${JSON.stringify(column)}] | null`).join("; ");
+  const type = `$Omit<$Record, ${keys}> & { ${nulls} }`;
+  return [`const $changes: ${type} = {`, ...entries, "};", `const $record: ${type} = { ...$changes };`];
+}
+
 /** The actions view of one entity. Pure and synchronous; a model it cannot render is an `EmitError`. */
 export function actionsView({ document }: EmitInput, entity: Entity): ActionsView {
   const recordName = typeName(entity.name, entity.position);
@@ -324,8 +342,9 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
   // ---- end policies ----------------------------------------------------------------------------
   const methods = actions.map((action, index): ActionMethod => {
     const input = inputs[index]!;
-    const name = valueName(action.name, action.position);
-    const validator = input.name[0]!.toLowerCase() + input.name.slice(1);
+    // The method is the action's name as written (`_archive`, `archive_`, `toString`): a declared name is an identifier.
+    const name = action.name;
+    const validator = input.validator;
     const base = {
       name,
       nameLiteral: JSON.stringify(name),
@@ -504,22 +523,22 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         accepted.set(column, value);
         if (seen) applied.push(`if (${value} !== undefined) ${read("$changes", column)} = ${read("$record", column)} = ${value};`);
       }
-      const lines: string[] = [];
-      // What the record type says is set but the instance does not hold yet: null on `$record`, absent from the row to insert.
+      const lines: { column: string; value: string }[] = [];
+      // What the record type says is set but the instance does not hold yet: null on the row and on `$record` (`createHead`).
       const pending: string[] = [];
       const fill = (column: string, position: SourcePosition, rules: {
         key: "filled" | "written" | null; stamped: boolean; fallback: string | undefined; nullable: boolean }) => {
         // A `uuid` or `string` key is filled now, so `self.id` is known to the checks and the steps; the data layer gives
         // an `integer` key (the next one) when it writes the row, so until then it is null.
-        if (rules.key === "filled") { runtime.add("uuidv7"); lines.push(`${propertyName(column)}: $uuidv7(),`); return; }
+        if (rules.key === "filled") { runtime.add("uuidv7"); lines.push({ column, value: "$uuidv7()" }); return; }
         if (rules.key === "written") { pending.push(column); return; }
         let fallback: string | undefined;
         if (rules.stamped) { fallback = "$now"; used.now = true; }
         else if (rules.fallback !== undefined) fallback = rules.fallback;
         else if (rules.nullable) fallback = "null";
         const provided = seen ? undefined : accepted.get(column);
-        if (provided !== undefined) lines.push(`${propertyName(column)}: ${fallback === undefined ? provided : `${provided} === undefined ? ${fallback} : ${provided}`},`);
-        else if (fallback !== undefined) lines.push(`${propertyName(column)}: ${fallback},`);
+        if (provided !== undefined) lines.push({ column, value: fallback === undefined ? provided : `${provided} === undefined ? ${fallback} : ${provided}` });
+        else if (fallback !== undefined) lines.push({ column, value: fallback });
         // The input fills it after the checks, or a `set` step does before the row is inserted.
         else if (accepted.has(column) || setColumns.has(column)) pending.push(column);
         else throw emitError("MESH_EMIT_UNFILLABLE",
@@ -536,9 +555,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       for (const relation of entity.relationships)
         if (relation.keyColumn)
           fill(relation.keyColumn, relation.position, { key: null, stamped: false, fallback: undefined, nullable: relation.nullable });
-      runtimeTypes.add("Row");
-      head.push("const $changes: $Row = {", ...lines, "};",
-        pending.length ? `const $record: $Row = { ...$changes, ${pending.map((column) => `${propertyName(column)}: null`).join(", ")} };` : "const $record: $Row = { ...$changes };");
+      head.push(...createHead(lines, pending));
     } else {
       head.push(reads
         ? "// plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)"
@@ -551,11 +568,11 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         head.push(`if ($wantsChanges(options.seams) && $before === undefined) throw new $NotFoundError(${JSON.stringify(entity.fqn)}, ${KEY});`);
       }
       if (reads) {
-        runtimeTypes.add("Row");
-        head.push(`const $before = await tx.selectByKeyForUpdate(${table}, ${KEY});`);
+        // The data layer returns an untyped row; it is the stored record, typed as one so that every column is itself (ENT-18).
+        head.push(`const $before = (await tx.selectByKeyForUpdate(${table}, ${KEY})) as $Record | undefined;`);
         head.push(`if ($before === undefined) throw new $NotFoundError(${JSON.stringify(entity.fqn)}, ${KEY});`);
         // the stored record, as the checks see it; the accepted input is applied after them
-        head.push(...(writes ? ["const $changes: $Row = {};"] : []), "const $record: $Row = { ...$before };");
+        head.push(...(writes ? ["const $changes: $Partial<$Record> = {};"] : []), "const $record: $Record = { ...$before };");
         for (const field of input.fields.slice(1)) {
           if (field.query || inputArgument(action, field.attribute.name)) continue;
           const column = columnOf(entity, field.attribute.name, field.attribute.position);

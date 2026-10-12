@@ -265,15 +265,27 @@ describe("entity names never break the generated files", () => {
     expect(rows).toHaveLength(names.length);
   }, 30_000);
 
-  test("an action named toString or constructor never reaches an entity value: the build refuses it", () => {
-    // The entity value has no prototype, so such an action would be a plain member (packages/runtime/test/entity.test.ts
-    // shows it); the language refuses every built-in object property name as a member name first.
+  test("an action named toString or constructor builds as a method of the entity value; __proto__ is refused for every member kind (ENT-18)", async () => {
+    // The entity value has no prototype, so such an action is a plain member (packages/runtime/test/entity.test.ts shows
+    // it; packages/cli/test/member-names.test.ts builds, type-checks and runs one for every name).
     const odd = "entity :Odd\n  attributes\n    uuid :id primary-key\n  actions\n    read :toString\n    read :constructor\n";
     const built = buildModel({ root: "/project", files: [{ file: "odd.mesh.mx", source: odd }] });
-    expect(built.diagnostics.map((d) => [d.code, d.message])).toEqual([
-      ["MESH_ATTRIBUTE_NAME", "toString is the name of a built-in object property. Choose another name."],
-      ["MESH_ATTRIBUTE_NAME", "constructor is the name of a built-in object property. Choose another name."],
-    ]);
+    expect(built.diagnostics).toEqual([]);
+    const actions = (await generateFiles({ document: built.document!, config: configOf("/project") }))
+      .find((file) => file.path.endsWith("odd.actions.ts"))!.contents;
+    expect(actions).toContain("async toString(");
+    expect(actions).toContain("async constructor(");
+    const message = ":__proto__ cannot be a member name: __proto__ sets an object's prototype instead of adding a property. Choose another name.";
+    for (const member of [
+      "  attributes\n    uuid :id primary-key\n    string :__proto__\n",
+      "  attributes\n    uuid :id primary-key\n  actions\n    read :__proto__\n",
+      "  attributes\n    uuid :id primary-key\n  policies\n    policy :__proto__\n      authorize-if=() => true\n",
+      "  attributes\n    uuid :id primary-key\n  computed\n    string :__proto__() { return \"x\" }\n",
+      "  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :__proto__ entity=Odd nullable\n",
+    ]) {
+      const refused = buildModel({ root: "/project", files: [{ file: "odd.mesh.mx", source: `entity :Odd\n${member}` }] });
+      expect(refused.diagnostics.map((d) => [d.code, d.message])).toEqual([["MESH_ATTRIBUTE_NAME", message]]);
+    }
   });
 
   // PRJ-20: generated code reaches every global through `$globals.ts` (`$Promise`, `$Date`), so an entity may take the

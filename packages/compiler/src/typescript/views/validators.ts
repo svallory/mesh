@@ -92,7 +92,7 @@ export function validatorsView({ document }: EmitInput, entity: Entity): Validat
     schemas: inputs.map((input) => ({
       typeName: input.name,
       typeArguments: takesLoad(input) ? `<keyof ${typeName(entity.name, entity.position)}Loadable>` : "",
-      constName: input.name[0]!.toLowerCase() + input.name.slice(1),
+      constName: input.validator,
       shapeTypeName: `${input.name}Shape`,
       fields: input.fields.map(({ attribute, optional, query }) => ({
         name: attribute.name,

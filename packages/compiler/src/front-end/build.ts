@@ -68,21 +68,13 @@ import {
   type Tag,
 } from "./tree.ts";
 
-export const BUILTIN_OBJECT_PROPERTY_NAMES = Object.freeze([
-  "__proto__",
-  "constructor",
-  "prototype",
-  "hasOwnProperty",
-  "isPrototypeOf",
-  "propertyIsEnumerable",
-  "toLocaleString",
-  "toString",
-  "valueOf",
-  "__defineGetter__",
-  "__defineSetter__",
-  "__lookupGetter__",
-  "__lookupSetter__",
-] as const);
+/**
+ * The one name no member (attribute, relationship, computed field, action, policy) may take (ENT-18): in an object
+ * literal, `__proto__: value` sets the object's prototype instead of adding a property, so the generated records,
+ * schemas, row mappings and entity values could not hold it. Every other name, `constructor` and `toString` included,
+ * is accepted and generated code works with it.
+ */
+export const PROTOTYPE_SETTING_NAME = "__proto__";
 /** An entity import as MX parsed it (`Import.from`/`names`); never re-parsed. */
 interface ParsedImport {
   names: string[];
@@ -722,12 +714,10 @@ function buildEntity(
         `Duplicate member :${member.name}`,
         member.position,
       );
-    if (
-      (BUILTIN_OBJECT_PROPERTY_NAMES as readonly string[]).includes(member.name)
-    )
+    if (member.name === PROTOTYPE_SETTING_NAME)
       fail(
         "MESH_ATTRIBUTE_NAME",
-        `${member.name} is the name of a built-in object property. Choose another name.`,
+        `:${member.name} cannot be a member name: __proto__ sets an object's prototype instead of adding a property. Choose another name.`,
         member.position,
       );
     names.add(member.name);

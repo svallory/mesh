@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { ATTRIBUTE_TYPES } from "@meshfw/model";
-import { buildModel, BUILTIN_OBJECT_PROPERTY_NAMES } from "../src/front-end/build.ts";
+import { buildModel, PROTOTYPE_SETTING_NAME } from "../src/front-end/build.ts";
 import {
   generateFiles,
   generatedImportDiagnostics,
@@ -228,21 +228,29 @@ test("validator drift tripwires catch keys, requiredness, nullability and scalar
   );
 }, 60_000);
 
-test.each([...BUILTIN_OBJECT_PROPERTY_NAMES])(
-  "built-in property %s is rejected before schema emission",
-  (name) => {
-    const text = `entity :Named\n  attributes\n    uuid :id primary-key\n    string :${name}\n`;
-    const built = buildModel({
-      root: "/project",
-      files: [{ file: "named.mesh.mx", source: text }],
-    });
-    expect(built.document).toBeNull();
-    expect(built.diagnostics[0]).toMatchObject({
-      code: "MESH_ATTRIBUTE_NAME",
-      position: { file: "named.mesh.mx", line: 4, column: 4 },
-    });
-  },
-);
+// ENT-18: any member name but `__proto__`. The names of Object.prototype's members and of a function's build.
+const OBJECT_MEMBER_NAMES = [
+  "constructor", "toString", "valueOf", "hasOwnProperty", "isPrototypeOf", "propertyIsEnumerable", "toLocaleString",
+  "prototype", "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__",
+];
+
+test.each(OBJECT_MEMBER_NAMES)("an attribute named %s builds", (name) => {
+  const text = `entity :Named\n  attributes\n    uuid :id primary-key\n    string :${name}\n`;
+  const built = buildModel({ root: "/project", files: [{ file: "named.mesh.mx", source: text }] });
+  expect(built.diagnostics).toEqual([]);
+  expect(built.document?.entities[0]?.attributes.map((attribute) => attribute.name)).toEqual(["id", name]);
+});
+
+test("an attribute named __proto__ is refused before schema emission", () => {
+  const text = `entity :Named\n  attributes\n    uuid :id primary-key\n    string :${PROTOTYPE_SETTING_NAME}\n`;
+  const built = buildModel({ root: "/project", files: [{ file: "named.mesh.mx", source: text }] });
+  expect(built.document).toBeNull();
+  expect(built.diagnostics).toEqual([expect.objectContaining({
+    code: "MESH_ATTRIBUTE_NAME",
+    message: ":__proto__ cannot be a member name: __proto__ sets an object's prototype instead of adding a property. Choose another name.",
+    position: expect.objectContaining({ file: "named.mesh.mx", line: 4, column: 4 }),
+  })]);
+});
 
 test("strict object validators reject own inherited-method names and all unknown keys", async () => {
   const { schemas } = await emitted();

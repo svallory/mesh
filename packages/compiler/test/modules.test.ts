@@ -362,7 +362,35 @@ describe("names across modules", () => {
     expect(error).toBeInstanceOf(EmitError);
     expect((error as EmitError).diagnostic).toMatchObject({
       code: "MESH_EMIT_NAME",
-      message: "Entity sales.Item would generate the type FooBarItemInput twice",
+      message: "Entity sales.Item would generate the type FooBarItemInput twice: for :fooBar and for :foo_bar",
+    });
+  });
+
+  // ENT-18: an entity value's method is the action's name as written; the input type and validator are its PascalCase,
+  // which drops every underscore but the leading ones, so names that differ only there fail the build naming both.
+  test("an action keeps its name as written; two whose input names merge, or one whose type and validator merge, fail naming the actions (ENT-18)", async () => {
+    const generate = (actions: string) => generateFiles({
+      document: documentOf({ "sales/item.mesh.mx": `entity :Item\n  attributes\n    uuid :id primary-key\n  actions\n${actions}` }),
+      config: configOf("/project", ".mesh"),
+    });
+    const failure = (actions: string) => generate(actions).then(() => undefined, (cause: unknown) => (cause as EmitError).diagnostic);
+    const files = await generate("    create :_archive\n    create :archive_\n    create :__archive__\n");
+    const actions = files.find((file) => file.path.endsWith("item.actions.ts"))!.contents;
+    for (const [method, type, validator] of [
+      ["_archive", "_ArchiveItemInput", "_archiveItemInput"],
+      ["archive_", "ArchiveItemInput", "archiveItemInput"],
+      ["__archive__", "__ArchiveItemInput", "__archiveItemInput"],
+    ]) {
+      expect(actions).toContain(`async ${method}(input: ${type}`);
+      expect(actions).toContain(`$castInput(layer, ${validator}, input)`);
+    }
+    expect(await failure("    create :archive\n    create :archive_\n")).toMatchObject({
+      code: "MESH_EMIT_NAME",
+      message: "Entity sales.Item would generate the type ArchiveItemInput twice: for :archive and for :archive_",
+    });
+    expect(await failure("    create :_1st\n")).toMatchObject({
+      code: "MESH_EMIT_NAME",
+      message: "Action :_1st of sales.Item would generate its input type and its validator under one name, _1stItemInput",
     });
   });
 
