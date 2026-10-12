@@ -3,6 +3,7 @@
 // Mesh's own imports carry a `$` so that no entity name can shadow them.
 
 import {
+  NO_FRAME as $NO_FRAME,
   authorizer as $authorizer,
   castInput as $castInput,
   entity as $entity,
@@ -13,10 +14,14 @@ import {
   runAction as $runAction,
   scope as $scope,
   uuidv7 as $uuidv7,
+  type ActionContext as $ActionContext,
+  type ActionFrame as $ActionFrame,
   type BindOptions as $BindOptions,
-  type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type DeepReadonly as $DeepReadonly,
+  type EntityReadsBind as $EntityReadsBind,
+  type EntityValue as $EntityValue,
   type CastOutput as $CastOutput,
   type Row as $Row,
 } from "@meshfw/runtime";
@@ -26,10 +31,14 @@ import { tables } from "../../schema";
 import { expressions as $expressions } from "./user.expressions";
 
 /**
- * The reads of this entity without their policies: what `tx` holds in a function of an entity file (ADR-0068).
- * The read actions below evaluate the read's policies, then call these.
+ * The reads of this entity without their policies: what `privileged(User)` runs (TXN-16). The read actions
+ * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
-export function bindUserReads(layer: $DataLayer, _options: $BindOptions = {}) {
+export function bindUserReads(
+  layer: $DataLayer,
+  _options: $BindOptions = {},
+  _frame: $ActionFrame = $NO_FRAME,
+) {
   return Object.freeze({
     async read(
       input: ReadUserInput,
@@ -39,7 +48,7 @@ export function bindUserReads(layer: $DataLayer, _options: $BindOptions = {}) {
       cast?: $CastOutput<typeof readUserInput>,
     ): Promise<User[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a read through `tx` casts it here.
+      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readUserInput, input));
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.users, {
@@ -54,11 +63,15 @@ export function bindUserReads(layer: $DataLayer, _options: $BindOptions = {}) {
 }
 
 /**
- * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
- * `actions` and `tx`; the project's `bind` in the index passes it.
+ * Every action of this entity, bound to `layer`. `frame` is the binding's (the project's `bind` passes it): each action's
+ * transaction runs inside it, so what its functions call joins that transaction and reads its instant.
  */
-export function bindUser(layer: $DataLayer, options: $BindOptions = {}, _compose?: $Composer) {
-  const $reads = bindUserReads(layer, options);
+export function bindUser(
+  layer: $DataLayer,
+  options: $BindOptions = {},
+  frame: $ActionFrame = $NO_FRAME,
+) {
+  const $reads = bindUserReads(layer, options, frame);
   return Object.freeze({
     async create(input: CreateUserInput, ...[context]: $ContextArgument): Promise<User> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
@@ -94,52 +107,60 @@ export function bindUser(layer: $DataLayer, options: $BindOptions = {}, _compose
         { entity: "blog.User", action: "create" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          // plan: a create is one insert; nothing is read first
-          const $changes: $Row = {
-            id: $uuidv7(),
-            name: parsed.name,
-          };
-          // data layer
-          const $stored = await tx.insert(tables.users, $changes);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "blog.User", action: "create" },
-            null,
-            $stored,
-            parsed,
-            context,
-          );
-          return $stored as User;
-        },
+        (tx) =>
+          frame.within(tx, $clock, "blog.User#create", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            // plan: a create is one insert; nothing is read first
+            const $changes: $Row = {
+              id: $uuidv7(),
+              name: parsed.name,
+            };
+            // data layer
+            const $stored = await tx.insert(tables.users, $changes);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "blog.User", action: "create" },
+                null,
+                $stored,
+                parsed,
+                context,
+              ),
+            );
+            return $stored as User;
+          }),
       );
     },
 
     async read(input: ReadUserInput, ...[context]: $ContextArgument): Promise<User[]> {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a read through `tx` skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readUserInput, input);
       if (
-        !(await $authorizer("blog.User", "read", [
-          {
-            name: "signedIn",
-            when: null,
-            checks: [
-              {
-                kind: "authorize-if",
-                check: "({ actor }) => actor.id !== null",
-                record: false,
-                run: $expressions["policy.signedIn.authorize-if.0"],
-              },
-            ],
-          },
-        ]).filter(
+        !(await $authorizer(
+          "blog.User",
+          "read",
+          [
+            {
+              name: "signedIn",
+              when: null,
+              checks: [
+                {
+                  kind: "authorize-if",
+                  check: "({ actor }) => actor.id !== null",
+                  record: false,
+                  run: $expressions["policy.signedIn.authorize-if.0"],
+                },
+              ],
+            },
+          ],
+          frame,
+        ).filter(
           layer,
           $scope(
             {
@@ -161,15 +182,42 @@ export function bindUser(layer: $DataLayer, options: $BindOptions = {}, _compose
  * The entity value (CMP-16): `User.<action>(input, context)` runs the action on the binding in scope, the
  * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
  */
-const $entityValue = $entity("blog.User", bindUser, bindUserReads, ($call) => ({
-  create(input: CreateUserInput, ...context: $ContextArgument): Promise<User> {
-    return $call("create", input, context);
-  },
+const $entityValue = $entity(
+  "blog.User",
+  bindUser,
+  bindUserReads as $EntityReadsBind<$Privileged>,
+  ($call) => ({
+    create(input: CreateUserInput, ...context: $ContextArgument): Promise<User> {
+      return $call("create", input, context);
+    },
 
-  read(input: ReadUserInput, ...context: $ContextArgument): Promise<User[]> {
-    return $call("read", input, context);
-  },
-}));
+    read(input: ReadUserInput, ...context: $ContextArgument): Promise<User[]> {
+      return $call("read", input, context);
+    },
+  }),
+);
 export { $entityValue as User };
 /** The record type, under the entity value's name. */
 export type User = $Record;
+
+/** What `privileged(User)` returns (TXN-16): one function per read action, run with no policy. */
+export interface $Privileged {
+  read(input: ReadUserInput, context?: $ActionContext): Promise<User[]>;
+}
+
+/** `$Privileged` as a function of an entity file sees it: every result deeply read-only (ACT-09). */
+export interface $PrivilegedReadOnly {
+  read(input: ReadUserInput, context?: $ActionContext): Promise<$DeepReadonly<User[]>>;
+}
+
+/**
+ * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
+ * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ */
+export type $ReadOnly = $EntityValue<
+  {
+    create(input: CreateUserInput, ...context: $ContextArgument): Promise<$DeepReadonly<User>>;
+    read(input: ReadUserInput, ...context: $ContextArgument): Promise<$DeepReadonly<User[]>>;
+  },
+  $PrivilegedReadOnly
+>;

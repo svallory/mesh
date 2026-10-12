@@ -5,12 +5,12 @@
 import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
+  NO_FRAME as $NO_FRAME,
   NotFoundError as $NotFoundError,
   authorizer as $authorizer,
   castInput as $castInput,
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
-  composed as $composed,
   entity as $entity,
   noteWrite as $noteWrite,
   pinClock as $pinClock,
@@ -21,10 +21,14 @@ import {
   scope as $scope,
   uuidv7 as $uuidv7,
   writeCount as $writeCount,
+  type ActionContext as $ActionContext,
+  type ActionFrame as $ActionFrame,
   type BindOptions as $BindOptions,
-  type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type DeepReadonly as $DeepReadonly,
+  type EntityReadsBind as $EntityReadsBind,
+  type EntityValue as $EntityValue,
   type CastOutput as $CastOutput,
   type Issue as $Issue,
   type Row as $Row,
@@ -48,10 +52,14 @@ import {
 } from "./workspace.expressions";
 
 /**
- * The reads of this entity without their policies: what `tx` holds in a function of an entity file (ADR-0068).
- * The read actions below evaluate the read's policies, then call these.
+ * The reads of this entity without their policies: what `privileged(Workspace)` runs (TXN-16). The read actions
+ * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
-export function bindWorkspaceReads(layer: $DataLayer, _options: $BindOptions = {}) {
+export function bindWorkspaceReads(
+  layer: $DataLayer,
+  _options: $BindOptions = {},
+  _frame: $ActionFrame = $NO_FRAME,
+) {
   return Object.freeze({
     async read(
       input: ReadWorkspaceInput,
@@ -61,7 +69,7 @@ export function bindWorkspaceReads(layer: $DataLayer, _options: $BindOptions = {
       cast?: $CastOutput<typeof readWorkspaceInput>,
     ): Promise<Workspace[]> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a read through `tx` casts it here.
+      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readWorkspaceInput, input));
       return layer.transaction(async (tx) => {
         return (await tx.select(tables.workspaces, {
@@ -76,11 +84,15 @@ export function bindWorkspaceReads(layer: $DataLayer, _options: $BindOptions = {
 }
 
 /**
- * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
- * `actions` and `tx`; the project's `bind` in the index passes it.
+ * Every action of this entity, bound to `layer`. `frame` is the binding's (the project's `bind` passes it): each action's
+ * transaction runs inside it, so what its functions call joins that transaction and reads its instant.
  */
-export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
-  const $reads = bindWorkspaceReads(layer, options);
+export function bindWorkspace(
+  layer: $DataLayer,
+  options: $BindOptions = {},
+  frame: $ActionFrame = $NO_FRAME,
+) {
+  const $reads = bindWorkspaceReads(layer, options, frame);
   return Object.freeze({
     async create(input: CreateWorkspaceInput, ...[context]: $ContextArgument): Promise<Workspace> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
@@ -96,7 +108,7 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
           checks: [
             {
               kind: "authorize-if",
-              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -109,7 +121,7 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
             {
               kind: "authorize-if",
               check:
-                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner])",
+                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner])",
               record: true,
               run: $expressions["policy.ownerOnly.authorize-if.0"],
             },
@@ -133,46 +145,48 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
         { entity: "identity.Workspace", action: "create" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          // plan: a create is one insert; nothing is read first
-          const $changes: $Row = {
-            id: $uuidv7(),
-            name: parsed.name === undefined ? null : parsed.name,
-            location: parsed.location === undefined ? "local" : parsed.location,
-            state: "active",
-            version: 1,
-          };
-          const $record: $Row = { ...$changes };
-          const $self = $readOnlyRecord($record, "identity.Workspace#create");
-          const $s = $scope(
-            {
-              self: $self,
-              input: $readOnlyRecord(parsed, "identity.Workspace#create"),
-              actor: $actor,
-              context: $context,
-              before: null,
-              ...$composed(compose, tx, context, "identity.Workspace#create", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $Scope<CreateWorkspaceInput>;
-          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
-          await $policies.inside($checkScope($s));
-          // data layer
-          const $stored = await tx.insert(tables.workspaces, $changes);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "identity.Workspace", action: "create" },
-            null,
-            $stored,
-            parsed,
-            context,
-          );
-          return $stored as Workspace;
-        },
+        (tx) =>
+          frame.within(tx, $clock, "identity.Workspace#create", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            // plan: a create is one insert; nothing is read first
+            const $changes: $Row = {
+              id: $uuidv7(),
+              name: parsed.name === undefined ? null : parsed.name,
+              location: parsed.location === undefined ? "local" : parsed.location,
+              state: "active",
+              version: 1,
+            };
+            const $record: $Row = { ...$changes };
+            const $self = $readOnlyRecord($record, "identity.Workspace#create");
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "identity.Workspace#create"),
+                actor: $actor,
+                context: $context,
+                before: null,
+              },
+              { clock: $clock },
+            ) as unknown as $Scope<CreateWorkspaceInput>;
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            await $policies.inside($checkScope($s));
+            // data layer
+            const $stored = await tx.insert(tables.workspaces, $changes);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "identity.Workspace", action: "create" },
+                null,
+                $stored,
+                parsed,
+                context,
+              ),
+            );
+            return $stored as Workspace;
+          }),
       );
     },
 
@@ -190,7 +204,7 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
           checks: [
             {
               kind: "authorize-if",
-              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -203,7 +217,7 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
             {
               kind: "authorize-if",
               check:
-                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner])",
+                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner])",
               record: true,
               run: $expressions["policy.ownerOnly.authorize-if.0"],
             },
@@ -227,108 +241,118 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
         { entity: "identity.Workspace", action: "rename" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-          const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.workspaces, $key);
-          if ($before === undefined) throw new $NotFoundError("identity.Workspace", $key);
-          const $changes: $Row = {};
-          const $record: $Row = { ...$before };
-          const $writes = $writeCount(tx);
-          const $self = $readOnlyRecord($record, "identity.Workspace#rename");
-          const $s = $scope(
+        (tx) =>
+          frame.within(tx, $clock, "identity.Workspace#rename", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+            const $key = { id: parsed.id };
+            const $before = await tx.selectByKeyForUpdate(tables.workspaces, $key);
+            if ($before === undefined) throw new $NotFoundError("identity.Workspace", $key);
+            const $changes: $Row = {};
+            const $record: $Row = { ...$before };
+            const $writes = $writeCount(tx);
+            const $self = $readOnlyRecord($record, "identity.Workspace#rename");
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "identity.Workspace#rename"),
+                actor: $actor,
+                context: $context,
+                before: $readOnlyRecord(
+                  $before,
+                  "identity.Workspace#rename",
+                ) as unknown as Workspace,
+              },
+              { clock: $clock },
+            ) as unknown as $StoredScope<RenameWorkspaceInput>;
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            await $policies.inside($checkScope($s));
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $runCheck($issues, $checks, {
+              label: "workspaceActive",
+              code: "workspace.active",
+              message: "the workspace has moved; it can no longer be changed",
+              source: { file: "src/domain/identity/workspace.mesh.mx", line: 20, column: 9 },
+              that: $expressions["rename.check.workspaceActive.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "versionMatches",
+              code: "expected-version",
+              message: "the record is at another version; read it again and retry",
+              source: { file: "src/domain/identity/workspace.mesh.mx", line: 25, column: 9 },
+              that: $expressions["rename.check.versionMatches.that"],
+              details: $expressions["rename.check.versionMatches.details"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // the input: the member inputs the caller sent, applied now that the checks have passed
+            if (parsed.name !== undefined) $changes.name = $record.name = parsed.name;
+            // do: the steps run in written order, each seeing the record as the ones before it left it
             {
-              self: $self,
-              input: $readOnlyRecord(parsed, "identity.Workspace#rename"),
-              actor: $actor,
-              context: $context,
-              before: $readOnlyRecord($before, "identity.Workspace#rename") as unknown as Workspace,
-              ...$composed(compose, tx, context, "identity.Workspace#rename", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $StoredScope<RenameWorkspaceInput>;
-          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
-          await $policies.inside($checkScope($s));
-          // validate: every check runs, and every failed check is reported together
-          const $issues: $Issue[] = [];
-          const $checks = $checkScope($s);
-          await $runCheck($issues, $checks, {
-            label: "workspaceActive",
-            code: "workspace.active",
-            message: "the workspace has moved; it can no longer be changed",
-            source: { file: "src/domain/identity/workspace.mesh.mx", line: 20, column: 9 },
-            that: $expressions["rename.check.workspaceActive.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "versionMatches",
-            code: "expected-version",
-            message: "the record is at another version; read it again and retry",
-            source: { file: "src/domain/identity/workspace.mesh.mx", line: 25, column: 9 },
-            that: $expressions["rename.check.versionMatches.that"],
-            details: $expressions["rename.check.versionMatches.details"],
-          });
-          if ($issues.length > 0) throw new $InvalidInputError($issues);
-          // the input: the member inputs the caller sent, applied now that the checks have passed
-          if (parsed.name !== undefined) $changes.name = $record.name = parsed.name;
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          {
-            const $value = await $expressions["rename.step.0.set.version"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &version (src/domain/identity/workspace.mesh.mx:33:20) produced no value, and version is required",
-              );
-            $changes.version = $record.version = $value;
-          }
-          // data layer
-          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(
-            tx,
-            $writes,
-            tables.workspaces,
-            $key,
-            $before,
-            "identity.Workspace#rename",
-          );
-          const $stored = await tx.updateByKey(tables.workspaces, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("identity.Workspace", $key);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "identity.Workspace", action: "rename" },
-            $before,
-            $stored,
-            parsed,
-            context,
-          );
-          return $stored as Workspace;
-        },
+              const $value = await $expressions["rename.step.0.set.version"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &version (src/domain/identity/workspace.mesh.mx:33:20) produced no value, and version is required",
+                );
+              $changes.version = $record.version = $value;
+            }
+            // data layer
+            // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+            await $checkUnchanged(
+              tx,
+              $writes,
+              tables.workspaces,
+              $key,
+              $before,
+              "identity.Workspace#rename",
+            );
+            const $stored = await tx.updateByKey(tables.workspaces, $key, $changes);
+            if ($stored === undefined) throw new $NotFoundError("identity.Workspace", $key);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "identity.Workspace", action: "rename" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
+            );
+            return $stored as Workspace;
+          }),
       );
     },
 
     async read(input: ReadWorkspaceInput, ...[context]: $ContextArgument): Promise<Workspace[]> {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a read through `tx` skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readWorkspaceInput, input);
       if (
-        !(await $authorizer("identity.Workspace", "read", [
-          {
-            name: "membersRead",
-            when: null,
-            checks: [
-              {
-                kind: "authorize-if",
-                check: "({ actor, context }) => isSystem(context) || actor.role != null",
-                record: false,
-                run: $expressions["policy.membersRead.authorize-if.0"],
-              },
-            ],
-          },
-        ]).filter(
+        !(await $authorizer(
+          "identity.Workspace",
+          "read",
+          [
+            {
+              name: "membersRead",
+              when: null,
+              checks: [
+                {
+                  kind: "authorize-if",
+                  check: "({ actor, context }) => isSystem(context) || actor.role != null",
+                  record: false,
+                  run: $expressions["policy.membersRead.authorize-if.0"],
+                },
+              ],
+            },
+          ],
+          frame,
+        ).filter(
           layer,
           $scope(
             {
@@ -350,19 +374,56 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
  * The entity value (CMP-16): `Workspace.<action>(input, context)` runs the action on the binding in scope, the
  * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
  */
-const $entityValue = $entity("identity.Workspace", bindWorkspace, bindWorkspaceReads, ($call) => ({
-  create(input: CreateWorkspaceInput, ...context: $ContextArgument): Promise<Workspace> {
-    return $call("create", input, context);
-  },
+const $entityValue = $entity(
+  "identity.Workspace",
+  bindWorkspace,
+  bindWorkspaceReads as $EntityReadsBind<$Privileged>,
+  ($call) => ({
+    create(input: CreateWorkspaceInput, ...context: $ContextArgument): Promise<Workspace> {
+      return $call("create", input, context);
+    },
 
-  rename(input: RenameWorkspaceInput, ...context: $ContextArgument): Promise<Workspace> {
-    return $call("rename", input, context);
-  },
+    rename(input: RenameWorkspaceInput, ...context: $ContextArgument): Promise<Workspace> {
+      return $call("rename", input, context);
+    },
 
-  read(input: ReadWorkspaceInput, ...context: $ContextArgument): Promise<Workspace[]> {
-    return $call("read", input, context);
-  },
-}));
+    read(input: ReadWorkspaceInput, ...context: $ContextArgument): Promise<Workspace[]> {
+      return $call("read", input, context);
+    },
+  }),
+);
 export { $entityValue as Workspace };
 /** The record type, under the entity value's name. */
 export type Workspace = $Record;
+
+/** What `privileged(Workspace)` returns (TXN-16): one function per read action, run with no policy. */
+export interface $Privileged {
+  read(input: ReadWorkspaceInput, context?: $ActionContext): Promise<Workspace[]>;
+}
+
+/** `$Privileged` as a function of an entity file sees it: every result deeply read-only (ACT-09). */
+export interface $PrivilegedReadOnly {
+  read(input: ReadWorkspaceInput, context?: $ActionContext): Promise<$DeepReadonly<Workspace[]>>;
+}
+
+/**
+ * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
+ * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ */
+export type $ReadOnly = $EntityValue<
+  {
+    create(
+      input: CreateWorkspaceInput,
+      ...context: $ContextArgument
+    ): Promise<$DeepReadonly<Workspace>>;
+    rename(
+      input: RenameWorkspaceInput,
+      ...context: $ContextArgument
+    ): Promise<$DeepReadonly<Workspace>>;
+    read(
+      input: ReadWorkspaceInput,
+      ...context: $ContextArgument
+    ): Promise<$DeepReadonly<Workspace[]>>;
+  },
+  $PrivilegedReadOnly
+>;

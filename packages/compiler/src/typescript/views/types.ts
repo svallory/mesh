@@ -54,7 +54,7 @@ export interface LoadableDeclaration {
   /** The loaded record's name, e.g. `TaskWith`. */
   readonly withName: string;
   /**
-   * What a load through `tx` attaches, which runs no policy (ADR-0068), so a `belongs-to` that is not nullable is always
+   * What a load through `privileged` attaches, which runs no policy (ADR-0068), so a `belongs-to` that is not nullable is always
    * there: `TaskTxLoadable` and `TaskTxWith`. `null` when that is the caller's map (the entity has no such `belongs-to`).
    */
   readonly tx: { readonly name: string; readonly withName: string; readonly members: readonly TypeMember[] } | null;
@@ -198,10 +198,10 @@ export function relationTarget(document: EmitInput["document"], entity: Entity, 
   return target;
 }
 
-/** Does a caller's load type a relationship differently from a load through `tx`? Where a `belongs-to` is not nullable (POL-17). */
+/** Does a caller's load type a relationship differently from a load through `privileged`? Where a `belongs-to` is not nullable (POL-17). */
 export const hasTxLoadable = (entity: Entity): boolean => entity.relationships.some((relation) => relation.kind === "belongs-to" && !relation.nullable);
 
-/** The `Loadable` and `With` names that type a load through `tx`, which runs no policy: the `Tx` pair, or the caller's when they are the same. */
+/** The `Loadable` and `With` names that type a load through `privileged`, which runs no policy: the `Tx` pair, or the caller's when they are the same. */
 export function txLoadTypes(entity: Entity): { loadable: string; with: string } {
   const record = typeName(entity.name, entity.position);
   return hasTxLoadable(entity) ? { loadable: `${record}TxLoadable`, with: `${record}TxWith` } : { loadable: `${record}Loadable`, with: `${record}With` };

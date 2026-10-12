@@ -1,29 +1,32 @@
 // Helpers for the execution entity files and functions. They take values (rows already loaded, ids), never the
-// model; each names the Hyper change it follows. The ones whose names end in `Of` read through `tx`: a create's check
+// model; each names the Hyper change it follows. The ones whose names end in `Of` read through `privileged`: a create's check
 // sees its `self` before the input is applied (ACT-27), so it reads the run, the machine or the attempt the caller
 // names by the id in `input` (POL-08).
+import { privileged } from "#mesh";
+import { Attempt, Invocation, Machine, Run } from "#mesh/domain/execution";
+import { Assignment } from "#mesh/domain/work";
 import { roleOf } from "../identity/identity.helpers";
-import { claimsOf, currentAssignment, type AssignmentFacts, type Reads } from "../work/work.helpers";
+import { claimsOf, currentAssignment, type AssignmentFacts } from "../work/work.helpers";
 
 /**
  * Policy `attemptClaimer`, Hyper's `attempt.claimer` (`runs/checks/reporter.ex:35-41`, `:84-91`, and the rule
  * `runs/attempt/rules.ex:15-30`, a permission denial through `Role.deny`): the actor holds a live claim on the run's
  * Task. A run that does not exist passes, as in Hyper, and `attempt.run-running` reports it.
  */
-export async function claimerOf(tx: Reads, runId: string, actorId: string, now: Date): Promise<boolean> {
-  const [run] = await tx.readRun({ filter: { id: { eq: runId } }, limit: 1 });
+export async function claimerOf(runId: string, actorId: string, now: Date): Promise<boolean> {
+  const [run] = await privileged(Run).read({ filter: { id: { eq: runId } }, limit: 1 });
   if (!run) return true;
-  return (await claimsOf(tx, run.taskId)).some((claim) => claim.state === "active" && claim.expiresAt.getTime() > now.getTime() && claim.holderId === actorId);
+  return (await claimsOf(run.taskId)).some((claim) => claim.state === "active" && claim.expiresAt.getTime() > now.getTime() && claim.holderId === actorId);
 }
 
 /**
  * Policy `runCanceler`, Hyper's `run.canceler` (`runs/checks/reporter.ex:71-82`): an owner, the run's responsible
  * collaborator, its starter or the Task's current delegator.
  */
-export async function cancelsRunOf(tx: Reads, run: { readonly taskId: string; readonly responsibleId: string; readonly startedById: string }, actorId: string): Promise<boolean> {
-  if ((await roleOf(tx, actorId)) === "owner") return true;
+export async function cancelsRunOf(run: { readonly taskId: string; readonly responsibleId: string; readonly startedById: string }, actorId: string): Promise<boolean> {
+  if ((await roleOf(actorId)) === "owner") return true;
   if (actorId === run.responsibleId || actorId === run.startedById) return true;
-  const assignments = await tx.readAssignment({ filter: { taskId: { eq: run.taskId }, endedAt: { nil: true } } });
+  const assignments = await privileged(Assignment).read({ filter: { taskId: { eq: run.taskId }, endedAt: { nil: true } } });
   return currentAssignment(assignments)?.delegatorId === actorId;
 }
 
@@ -31,8 +34,8 @@ export async function cancelsRunOf(tx: Reads, run: { readonly taskId: string; re
  * Policy `attemptPerformer` on `invocation.record`, Hyper's `attempt.performer` (`runs/checks/reporter.ex:43-50`):
  * the actor performs the attempt. An attempt that does not exist passes, as in Hyper.
  */
-export async function performsAttemptOf(tx: Reads, attemptId: string, actorId: string): Promise<boolean> {
-  const [attempt] = await tx.readAttempt({ filter: { id: { eq: attemptId } }, limit: 1 });
+export async function performsAttemptOf(attemptId: string, actorId: string): Promise<boolean> {
+  const [attempt] = await privileged(Attempt).read({ filter: { id: { eq: attemptId } }, limit: 1 });
   return attempt === undefined || attempt.performerId === actorId;
 }
 
@@ -40,31 +43,31 @@ export async function performsAttemptOf(tx: Reads, attemptId: string, actorId: s
  * Policy `invocationRecorder`, Hyper's `invocation.recorder` (`runs/checks/reporter.ex:52-69`): the corrected
  * invocation's recorder, or an owner. An invocation that does not exist, or none named, passes, as in Hyper.
  */
-export async function correctsInvocationOf(tx: Reads, invocationId: string | null | undefined, actorId: string): Promise<boolean> {
+export async function correctsInvocationOf(invocationId: string | null | undefined, actorId: string): Promise<boolean> {
   if (invocationId == null) return true;
-  const [invocation] = await tx.readInvocation({ filter: { id: { eq: invocationId } }, limit: 1 });
+  const [invocation] = await privileged(Invocation).read({ filter: { id: { eq: invocationId } }, limit: 1 });
   if (invocation === undefined || invocation.recordedById === actorId) return true;
-  return (await roleOf(tx, actorId)) === "owner";
+  return (await roleOf(actorId)) === "owner";
 }
 
 /** `attempt.run-running` and `run.parent-running`: the run exists and is running. */
-export async function runRunningOf(tx: Reads, runId: string): Promise<boolean> {
-  return (await tx.readRun({ filter: { id: { eq: runId } }, limit: 1 }))[0]?.state === "running";
+export async function runRunningOf(runId: string): Promise<boolean> {
+  return (await privileged(Run).read({ filter: { id: { eq: runId } }, limit: 1 }))[0]?.state === "running";
 }
 
 /** `attempt.step-idle`: no attempt of `step` is running on the run. */
-export async function stepIdleOf(tx: Reads, runId: string, step: string): Promise<boolean> {
-  return (await tx.readAttempt({ filter: { runId: { eq: runId }, step: { eq: step }, state: { eq: "running" } }, limit: 1 })).length === 0;
+export async function stepIdleOf(runId: string, step: string): Promise<boolean> {
+  return (await privileged(Attempt).read({ filter: { runId: { eq: runId }, step: { eq: step }, state: { eq: "running" } }, limit: 1 })).length === 0;
 }
 
 /** `machine.retired`: the machine exists and is active. */
-export async function machineActiveOf(tx: Reads, machineId: string): Promise<boolean> {
-  return (await tx.readMachine({ filter: { id: { eq: machineId } }, limit: 1 }))[0]?.state === "active";
+export async function machineActiveOf(machineId: string): Promise<boolean> {
+  return (await privileged(Machine).read({ filter: { id: { eq: machineId } }, limit: 1 }))[0]?.state === "active";
 }
 
 /** `invocation.session`: the session the attempt `attemptId` ran in, or null (also when there is no such attempt). */
-export async function attemptSessionOf(tx: Reads, attemptId: string): Promise<string | null> {
-  return (await tx.readAttempt({ filter: { id: { eq: attemptId } }, limit: 1 }))[0]?.sessionId ?? null;
+export async function attemptSessionOf(attemptId: string): Promise<string | null> {
+  return (await privileged(Attempt).read({ filter: { id: { eq: attemptId } }, limit: 1 }))[0]?.sessionId ?? null;
 }
 
 /** `run.start`'s responsible collaborator (`runs/run/changes/start_run.ex:9-23`): the Task's assignee, else the starter. */

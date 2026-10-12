@@ -25,6 +25,6 @@ entity :EvidenceReference table="evidence_references"
     policy :membersRead types=[:read]
       authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
     policy :isMember actions=[&record]
-      authorize-if=({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)
+      authorize-if=async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)
     policy :ownerOrMember actions=[&record]
-      authorize-if=({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])
+      authorize-if=async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])

@@ -106,7 +106,7 @@ export const loadPlan = {
             kind: "authorize-if",
             check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: eventExpressions["policy.membersRead.authorize-if.0"],
+            run: ($s: never) => eventExpressions["policy.membersRead.authorize-if.0"]($s),
           },
         ],
       },
@@ -153,7 +153,7 @@ export const loadPlan = {
             kind: "authorize-if",
             check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: attemptExpressions["policy.membersRead.authorize-if.0"],
+            run: ($s: never) => attemptExpressions["policy.membersRead.authorize-if.0"]($s),
           },
         ],
       },
@@ -199,7 +199,7 @@ export const loadPlan = {
             kind: "authorize-if",
             check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: invocationExpressions["policy.membersRead.authorize-if.0"],
+            run: ($s: never) => invocationExpressions["policy.membersRead.authorize-if.0"]($s),
           },
         ],
       },
@@ -227,7 +227,7 @@ export const loadPlan = {
             kind: "authorize-if",
             check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: machineExpressions["policy.membersRead.authorize-if.0"],
+            run: ($s: never) => machineExpressions["policy.membersRead.authorize-if.0"]($s),
           },
         ],
       },
@@ -268,7 +268,7 @@ export const loadPlan = {
             kind: "authorize-if",
             check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: runExpressions["policy.membersRead.authorize-if.0"],
+            run: ($s: never) => runExpressions["policy.membersRead.authorize-if.0"]($s),
           },
         ],
       },
@@ -307,7 +307,8 @@ export const loadPlan = {
             kind: "authorize-if",
             check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: sessionReferenceExpressions["policy.membersRead.authorize-if.0"],
+            run: ($s: never) =>
+              sessionReferenceExpressions["policy.membersRead.authorize-if.0"]($s),
           },
         ],
       },
@@ -329,7 +330,7 @@ export const loadPlan = {
             kind: "authorize-if",
             check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: collaboratorExpressions["policy.membersRead.authorize-if.0"],
+            run: ($s: never) => collaboratorExpressions["policy.membersRead.authorize-if.0"]($s),
           },
         ],
       },
@@ -368,7 +369,7 @@ export const loadPlan = {
             kind: "authorize-if",
             check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: membershipExpressions["policy.membersRead.authorize-if.0"],
+            run: ($s: never) => membershipExpressions["policy.membersRead.authorize-if.0"]($s),
           },
         ],
       },
@@ -388,7 +389,7 @@ export const loadPlan = {
             kind: "authorize-if",
             check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: workspaceExpressions["policy.membersRead.authorize-if.0"],
+            run: ($s: never) => workspaceExpressions["policy.membersRead.authorize-if.0"]($s),
           },
         ],
       },
@@ -422,7 +423,7 @@ export const loadPlan = {
             kind: "authorize-if",
             check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: assignmentExpressions["policy.membersRead.authorize-if.0"],
+            run: ($s: never) => assignmentExpressions["policy.membersRead.authorize-if.0"]($s),
           },
         ],
       },
@@ -441,7 +442,11 @@ export const loadPlan = {
       },
     },
     computed: {
-      lapsed: { kind: "body", needs: [], evaluate: claimExpressions["computed.lapsed"] },
+      lapsed: {
+        kind: "body",
+        needs: [],
+        evaluate: ($s: never) => claimExpressions["computed.lapsed"]($s),
+      },
     },
     reads: [
       {
@@ -452,7 +457,7 @@ export const loadPlan = {
             kind: "authorize-if",
             check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: claimExpressions["policy.membersRead.authorize-if.0"],
+            run: ($s: never) => claimExpressions["policy.membersRead.authorize-if.0"]($s),
           },
         ],
       },
@@ -486,7 +491,7 @@ export const loadPlan = {
             kind: "authorize-if",
             check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: completionExpressions["policy.membersRead.authorize-if.0"],
+            run: ($s: never) => completionExpressions["policy.membersRead.authorize-if.0"]($s),
           },
         ],
       },
@@ -525,7 +530,7 @@ export const loadPlan = {
             kind: "authorize-if",
             check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: dependencyExpressions["policy.membersRead.authorize-if.0"],
+            run: ($s: never) => dependencyExpressions["policy.membersRead.authorize-if.0"]($s),
           },
         ],
       },
@@ -552,7 +557,8 @@ export const loadPlan = {
             kind: "authorize-if",
             check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: evidenceReferenceExpressions["policy.membersRead.authorize-if.0"],
+            run: ($s: never) =>
+              evidenceReferenceExpressions["policy.membersRead.authorize-if.0"]($s),
           },
         ],
       },
@@ -580,7 +586,7 @@ export const loadPlan = {
             kind: "authorize-if",
             check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: lateResultExpressions["policy.membersRead.authorize-if.0"],
+            run: ($s: never) => lateResultExpressions["policy.membersRead.authorize-if.0"]($s),
           },
         ],
       },
@@ -613,7 +619,7 @@ export const loadPlan = {
             kind: "authorize-if",
             check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: reviewExpressions["policy.membersRead.authorize-if.0"],
+            run: ($s: never) => reviewExpressions["policy.membersRead.authorize-if.0"]($s),
           },
         ],
       },
@@ -641,7 +647,7 @@ export const loadPlan = {
             kind: "authorize-if",
             check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: submissionExpressions["policy.membersRead.authorize-if.0"],
+            run: ($s: never) => submissionExpressions["policy.membersRead.authorize-if.0"]($s),
           },
         ],
       },
@@ -671,34 +677,38 @@ export const loadPlan = {
       childrenSettled: {
         kind: "body",
         needs: ["children"],
-        evaluate: taskExpressions["computed.childrenSettled"],
+        evaluate: ($s: never) => taskExpressions["computed.childrenSettled"]($s),
       },
-      claimed: { kind: "body", needs: ["claims"], evaluate: taskExpressions["computed.claimed"] },
+      claimed: {
+        kind: "body",
+        needs: ["claims"],
+        evaluate: ($s: never) => taskExpressions["computed.claimed"]($s),
+      },
       lapsedClaim: {
         kind: "body",
         needs: ["claims"],
-        evaluate: taskExpressions["computed.lapsedClaim"],
+        evaluate: ($s: never) => taskExpressions["computed.lapsedClaim"]($s),
       },
       inReview: {
         kind: "body",
         needs: ["submissions"],
-        evaluate: taskExpressions["computed.inReview"],
+        evaluate: ($s: never) => taskExpressions["computed.inReview"]($s),
       },
       assigned: {
         kind: "body",
         needs: ["assignments"],
-        evaluate: taskExpressions["computed.assigned"],
+        evaluate: ($s: never) => taskExpressions["computed.assigned"]($s),
       },
       blocked: {
         kind: "body",
         needs: ["dependencies", "dependencies.prerequisite"],
-        evaluate: taskExpressions["computed.blocked"],
+        evaluate: ($s: never) => taskExpressions["computed.blocked"]($s),
       },
       maxFence: { kind: "rollup", fn: "max", of: ["claims", "fence"] },
       derivedState: {
         kind: "body",
         needs: ["blocked", "claimed", "inReview"],
-        evaluate: taskExpressions["computed.derivedState"],
+        evaluate: ($s: never) => taskExpressions["computed.derivedState"]($s),
       },
     },
     reads: [
@@ -710,7 +720,7 @@ export const loadPlan = {
             kind: "authorize-if",
             check: "({ actor, context }) => isSystem(context) || actor.role != null",
             record: false,
-            run: taskExpressions["policy.membersRead.authorize-if.0"],
+            run: ($s: never) => taskExpressions["policy.membersRead.authorize-if.0"]($s),
           },
         ],
       },
@@ -721,7 +731,7 @@ export const loadPlan = {
 /**
  * Load relationships and computed fields onto Event rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type EventWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * the result is new rows of type EventWith<"name" | ...>. It loads as `privileged` does, running no policy, so
  * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadEventFields<const N extends keyof EventLoadable>(
@@ -739,7 +749,7 @@ export async function loadEventFields<const N extends keyof EventLoadable>(
 /**
  * Load relationships and computed fields onto Attempt rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type AttemptTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * the result is new rows of type AttemptTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so
  * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadAttemptFields<const N extends keyof AttemptLoadable>(
@@ -757,7 +767,7 @@ export async function loadAttemptFields<const N extends keyof AttemptLoadable>(
 /**
  * Load relationships and computed fields onto Invocation rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type InvocationTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * the result is new rows of type InvocationTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so
  * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadInvocationFields<const N extends keyof InvocationLoadable>(
@@ -775,7 +785,7 @@ export async function loadInvocationFields<const N extends keyof InvocationLoada
 /**
  * Load relationships and computed fields onto Machine rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type MachineWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * the result is new rows of type MachineWith<"name" | ...>. It loads as `privileged` does, running no policy, so
  * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadMachineFields<const N extends keyof MachineLoadable>(
@@ -793,7 +803,7 @@ export async function loadMachineFields<const N extends keyof MachineLoadable>(
 /**
  * Load relationships and computed fields onto Run rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type RunTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * the result is new rows of type RunTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so
  * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadRunFields<const N extends keyof RunLoadable>(
@@ -811,7 +821,7 @@ export async function loadRunFields<const N extends keyof RunLoadable>(
 /**
  * Load relationships and computed fields onto SessionReference rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type SessionReferenceTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * the result is new rows of type SessionReferenceTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so
  * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadSessionReferenceFields<const N extends keyof SessionReferenceLoadable>(
@@ -829,7 +839,7 @@ export async function loadSessionReferenceFields<const N extends keyof SessionRe
 /**
  * Load relationships and computed fields onto Collaborator rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type CollaboratorWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * the result is new rows of type CollaboratorWith<"name" | ...>. It loads as `privileged` does, running no policy, so
  * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadCollaboratorFields<const N extends keyof CollaboratorLoadable>(
@@ -847,7 +857,7 @@ export async function loadCollaboratorFields<const N extends keyof CollaboratorL
 /**
  * Load relationships and computed fields onto Membership rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type MembershipTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * the result is new rows of type MembershipTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so
  * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadMembershipFields<const N extends keyof MembershipLoadable>(
@@ -865,7 +875,7 @@ export async function loadMembershipFields<const N extends keyof MembershipLoada
 /**
  * Load relationships and computed fields onto Assignment rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type AssignmentTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * the result is new rows of type AssignmentTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so
  * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadAssignmentFields<const N extends keyof AssignmentLoadable>(
@@ -883,7 +893,7 @@ export async function loadAssignmentFields<const N extends keyof AssignmentLoada
 /**
  * Load relationships and computed fields onto Claim rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type ClaimTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * the result is new rows of type ClaimTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so
  * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadClaimFields<const N extends keyof ClaimLoadable>(
@@ -901,7 +911,7 @@ export async function loadClaimFields<const N extends keyof ClaimLoadable>(
 /**
  * Load relationships and computed fields onto Completion rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type CompletionTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * the result is new rows of type CompletionTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so
  * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadCompletionFields<const N extends keyof CompletionLoadable>(
@@ -919,7 +929,7 @@ export async function loadCompletionFields<const N extends keyof CompletionLoada
 /**
  * Load relationships and computed fields onto Dependency rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type DependencyTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * the result is new rows of type DependencyTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so
  * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadDependencyFields<const N extends keyof DependencyLoadable>(
@@ -937,7 +947,7 @@ export async function loadDependencyFields<const N extends keyof DependencyLoada
 /**
  * Load relationships and computed fields onto EvidenceReference rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type EvidenceReferenceTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * the result is new rows of type EvidenceReferenceTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so
  * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadEvidenceReferenceFields<const N extends keyof EvidenceReferenceLoadable>(
@@ -955,7 +965,7 @@ export async function loadEvidenceReferenceFields<const N extends keyof Evidence
 /**
  * Load relationships and computed fields onto LateResult rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type LateResultTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * the result is new rows of type LateResultTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so
  * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadLateResultFields<const N extends keyof LateResultLoadable>(
@@ -973,7 +983,7 @@ export async function loadLateResultFields<const N extends keyof LateResultLoada
 /**
  * Load relationships and computed fields onto Review rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type ReviewTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * the result is new rows of type ReviewTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so
  * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadReviewFields<const N extends keyof ReviewLoadable>(
@@ -991,7 +1001,7 @@ export async function loadReviewFields<const N extends keyof ReviewLoadable>(
 /**
  * Load relationships and computed fields onto Submission rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type SubmissionTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * the result is new rows of type SubmissionTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so
  * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadSubmissionFields<const N extends keyof SubmissionLoadable>(
@@ -1009,7 +1019,7 @@ export async function loadSubmissionFields<const N extends keyof SubmissionLoada
 /**
  * Load relationships and computed fields onto Task rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type TaskTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * the result is new rows of type TaskTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so
  * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadTaskFields<const N extends keyof TaskLoadable>(

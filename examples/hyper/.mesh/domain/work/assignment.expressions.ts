@@ -8,10 +8,6 @@ import {
   type SharedInput as $SharedInput,
 } from "@meshfw/runtime";
 import type {
-  ReadOnlyActions as $ReadOnlyActions,
-  ReadOnlyReads as $ReadOnlyReads,
-} from "../../composition";
-import type {
   Assignment,
   AssignmentLoaded,
   FinishAssignmentInput,
@@ -25,8 +21,6 @@ export type AssignmentScope<I = unknown> = $Scope<{
   actor: any;
   context: any;
   before: $DeepReadonly<Assignment> | null;
-  actions: $ReadOnlyActions;
-  tx: $ReadOnlyReads;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
 export type AssignmentStoredScope<I = unknown> = AssignmentScope<I> & {

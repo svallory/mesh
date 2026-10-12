@@ -135,12 +135,13 @@ describe("roadmap M8 acceptance tests on Hyper", () => {
   }));
 
   test("(5) a membership revoked inside the same transaction is seen by the next write's policy", () => within(async (w) => {
-    // `as(w.bob)` is built before the revoke and still says `member`: the write policies read the role through `tx`.
+    // `as(w.bob)` is built before the revoke and still says `member`: the write policies read the role through
+    // `privileged`.
     const bob = as(w.bob);
-    const denied = await deniedBy(w.hyper.transaction(async ({ actions }) => {
-      await actions.revokeMembership({ id: w.memberships.bob.id, reason: "left" });
-      await actions.createTask({ title: "After" }, bob);
-    }, as(w.alice)));
+    const denied = await deniedBy(w.hyper.transaction(async () => {
+      await Membership.revoke({ id: w.memberships.bob.id, reason: "left" }, as(w.alice));
+      await Task.create({ title: "After" }, bob);
+    }));
     expect(denied).toEqual(["isMember", "ownerOrMember"]);
     // The denial rolled the transaction back: Bob is still a member.
     expect((await Task.create({ title: "Still" }, bob)).creatorId).toBe(w.bob.id);
@@ -175,19 +176,19 @@ describe("roadmap M8 acceptance tests on Hyper", () => {
       { entity: "Task", action: "complete", expressions: taskExpressions, self: task, input: { id: task.id } },
       { entity: "Task", action: "cancel", expressions: taskExpressions, self: task, input: { id: task.id, reason: "x" } },
     ];
-    const decisions = await w.hyper.transaction(async ({ tx }) => {
+    const decisions = await w.hyper.transaction(async () => {
       const table: Record<string, string[]> = {};
       for (const { entity, action, expressions, self, input } of cases) {
         const policies = specsOf(entity, action, expressions);
         for (const [actor, context] of Object.entries(actors)) {
-          const scope = { self, input, actor: context.actor, context, tx, clock: w.clock };
+          const scope = { self, input, actor: context.actor, context, clock: w.clock };
           const answers = new Set<string>();
           for (const order of orders(policies)) answers.add(await decide(entity, action, order, scope));
           (table[`${entity}.${action}`] ??= []).push(`${actor}: ${[...answers].join(" | ")}`);
         }
       }
       return table;
-    }, asSystem(w.alice));
+    });
     // One answer per actor in every order, and the answers are Hyper's. The forged completion is refused before the
     // transaction by its actor-only check, so the record-reading claimHolder never runs for it (M8a: `before`). The
     // outsider passes claimAssignee, which leaves a collaborator with no membership to isMember and ownerOrMember, so a
@@ -716,7 +717,7 @@ async function denialOf(call: Promise<unknown>) {
 
 // Hyper's policies as the generated actions pass them to `authorizer`, rebuilt from `.mesh/model.json` and the entity's
 // expressions module, for acceptance tests (2) and (7).
-interface ModelCheck { readonly params: readonly string[]; readonly plain?: unknown; readonly source: string }
+interface ModelCheck { readonly params: readonly string[]; readonly plain?: unknown; readonly tree?: unknown; readonly source: string }
 interface ModelPolicy {
   readonly name: string;
   readonly types?: readonly string[];
@@ -740,8 +741,9 @@ function specsOf(entity: string, action: string, expressions: object): PolicySpe
   const checks = (policy: ModelPolicy, kind: PolicyCheckSpec["kind"], list: readonly ModelCheck[] = []) => list.map((check, n): PolicyCheckSpec => ({
     kind,
     check: check.source,
-    // As M8a decides: a check that reads `self` or `tx`, or plain code, runs inside the transaction.
-    record: check.params.includes("self") || check.params.includes("tx") || check.plain !== undefined,
+    // As M8a and POL-21 decide: a check that reads `self`, calls an imported function, or is plain code runs inside the
+    // transaction.
+    record: check.params.includes("self") || check.plain !== undefined || JSON.stringify(check.tree ?? null).includes('"kind":"helper"'),
     run: functions[`policy.${policy.name}.${kind}.${n}`]!,
   }));
   return covering(entity, action).map((policy) => ({

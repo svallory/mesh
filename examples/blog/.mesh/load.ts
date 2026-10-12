@@ -36,7 +36,7 @@ export const loadPlan = {
             kind: "authorize-if",
             check: "({ actor }) => actor.id !== null",
             record: false,
-            run: commentExpressions["policy.signedIn.authorize-if.0"],
+            run: ($s: never) => commentExpressions["policy.signedIn.authorize-if.0"]($s),
           },
         ],
       },
@@ -54,7 +54,7 @@ export const loadPlan = {
         kind: "body",
         needs: [],
         plain: true,
-        evaluate: postExpressions["computed.excerpt"],
+        evaluate: ($s: never) => postExpressions["computed.excerpt"]($s),
       },
       commentCount: { kind: "rollup", fn: "count", of: ["comments"] },
     },
@@ -67,7 +67,7 @@ export const loadPlan = {
             kind: "authorize-if",
             check: "() => true",
             record: false,
-            run: postExpressions["policy.public.authorize-if.0"],
+            run: ($s: never) => postExpressions["policy.public.authorize-if.0"]($s),
           },
         ],
       },
@@ -87,7 +87,7 @@ export const loadPlan = {
             kind: "authorize-if",
             check: "({ actor }) => actor.id !== null",
             record: false,
-            run: userExpressions["policy.signedIn.authorize-if.0"],
+            run: ($s: never) => userExpressions["policy.signedIn.authorize-if.0"]($s),
           },
         ],
       },
@@ -98,7 +98,7 @@ export const loadPlan = {
 /**
  * Load relationships and computed fields onto Comment rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type CommentTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * the result is new rows of type CommentTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so
  * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadCommentFields<const N extends keyof CommentLoadable>(
@@ -116,7 +116,7 @@ export async function loadCommentFields<const N extends keyof CommentLoadable>(
 /**
  * Load relationships and computed fields onto Post rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type PostTxWith<"name" | ...>. It loads as `tx` does, running no policy, so
+ * the result is new rows of type PostTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so
  * it takes no `policies` option: every related record the key names is there.
  */
 export async function loadPostFields<const N extends keyof PostLoadable>(

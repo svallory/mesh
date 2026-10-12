@@ -47,7 +47,7 @@ export const loadPlan = {
 /**
  * Load relationships and computed fields onto {{ entity.loader.record }} rows by name. A relationship is loaded by one more
  * query for all the rows; a computed field loads what its body reads first. The rows you pass are not changed:
- * the result is new rows of type {{ entity.loader.with }}<"name" | ...>. It loads as `tx` does, running no policy, so
+ * the result is new rows of type {{ entity.loader.with }}<"name" | ...>. It loads as `privileged` does, running no policy, so
  * it takes no `policies` option: every related record the key names is there.
  */
 export async function {{ entity.loader.name }}<const N extends keyof {{ entity.loader.loadable }}>(

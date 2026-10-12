@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { isBuiltin } from "node:module";
 import { extname, join, relative, sep } from "node:path";
 import type { IrDiagnostic } from "@mxlang/core";
 import { parseEntitySource } from "../src/front-end/build.ts";
@@ -109,8 +110,8 @@ const GENERATED_IMPORTS = "it imports only @meshfw/runtime, zod, the other files
  * and Drizzle everywhere except the emitted `.mesh/schema.ts`. Only `.mesh/binding.ts`
  * may import the project's `mesh.config` (`connect()` loads it): any other file whose
  * import, export or `require` specifier ends in `mesh.config` (with or without an
- * extension) fails, comments included. A host module (`node:`, `bun:`) fails everywhere
- * but `node:async_hooks` in `.mesh/binding.ts`, which makes the project's async frame
+ * extension) fails, comments included. A host module (`node:`, `bun:`, `bun`, or a bare
+ * built-in such as `fs` or `async_hooks`) fails everywhere but `node:async_hooks` in `.mesh/binding.ts`, which makes the project's async frame
  * (ADR-0025: the run-time library takes it and keeps to web-standard APIs). `model.json`
  * itself is data, not code, and is not scanned. Finding no `.mesh/` folder is an error,
  * so the rule cannot pass vacuously.
@@ -134,7 +135,7 @@ export function checkGeneratedImports(root: string): string[] {
       const outside = `${path}:${line(match.index)}: Generated code must not import ${specifier} outside .mesh/binding.ts (roadmap M2, acceptance 4); ${GENERATED_IMPORTS}`;
       if (!binding && /(?:^|\/)mesh\.config(?:\.[cm]?[jt]s)?$/.test(specifier)) errors.push(outside);
       else if (specifier === "node:async_hooks") { if (!binding) errors.push(outside); }
-      else if (/^(?:node|bun):/.test(specifier))
+      else if (specifier === "bun" || /^(?:node|bun):/.test(specifier) || isBuiltin(specifier))
         errors.push(`${path}:${line(match.index)}: Generated code must not import ${specifier} (roadmap M2, acceptance 4); ${GENERATED_IMPORTS}`);
     }
     return errors;

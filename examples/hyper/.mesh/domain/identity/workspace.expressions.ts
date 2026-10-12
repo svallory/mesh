@@ -8,10 +8,6 @@ import {
   type SharedInput as $SharedInput,
 } from "@meshfw/runtime";
 import { memberOf, roleIn } from "../../../src/domain/identity/identity.helpers";
-import type {
-  ReadOnlyActions as $ReadOnlyActions,
-  ReadOnlyReads as $ReadOnlyReads,
-} from "../../composition";
 import type { Workspace, CreateWorkspaceInput, RenameWorkspaceInput } from "./workspace.types";
 
 /** What every expression of Workspace reads; `I` is the input of the action it runs in. */
@@ -21,8 +17,6 @@ export type WorkspaceScope<I = unknown> = $Scope<{
   actor: any;
   context: any;
   before: $DeepReadonly<Workspace> | null;
-  actions: $ReadOnlyActions;
-  tx: $ReadOnlyReads;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
 export type WorkspaceStoredScope<I = unknown> = WorkspaceScope<I> & {
@@ -52,18 +46,20 @@ export const expressions = {
   // policy :membersRead authorize-if, translated (src/domain/identity/workspace.mesh.mx:36:20)
   "policy.membersRead.authorize-if.0": ($s: WorkspaceCheckScope<unknown>) =>
     $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
-  // policy :isMember authorize-if, plain (uses-tx) (src/domain/identity/workspace.mesh.mx:38:20)
+  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/identity/workspace.mesh.mx:38:20)
   "policy.isMember.authorize-if.0": (
     $s: WorkspaceCheckScope<$SharedInput<CreateWorkspaceInput | RenameWorkspaceInput>>,
   ) => {
     const isSystem = $.isSystem;
-    return (({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id))($s);
+    return (async ({ actor, context }) => isSystem(context) || (await memberOf(actor.id)))($s);
   },
-  // policy :ownerOnly authorize-if, plain (uses-tx) (src/domain/identity/workspace.mesh.mx:40:20)
+  // policy :ownerOnly authorize-if, plain (awaits-helper) (src/domain/identity/workspace.mesh.mx:40:20)
   "policy.ownerOnly.authorize-if.0": (
     $s: WorkspaceCheckScope<$SharedInput<CreateWorkspaceInput | RenameWorkspaceInput>>,
   ) => {
     const isSystem = $.isSystem;
-    return (({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, ["owner"]))($s);
+    return (async ({ actor, context }) => isSystem(context) || (await roleIn(actor.id, ["owner"])))(
+      $s,
+    );
   },
 } as const;

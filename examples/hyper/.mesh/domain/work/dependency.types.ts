@@ -51,14 +51,14 @@ export type DependencyLoadable = {
 export type DependencyWith<N extends keyof DependencyLoadable> = Dependency &
   Pick<DependencyLoadable, N>;
 
-/** What a load through `tx` attaches to a Dependency: it runs no policy, so every related record the key names is there. */
+/** What a load through `privileged` attaches to a Dependency: it runs no policy, so every related record the key names is there. */
 export type DependencyTxLoadable = {
   dependent: Task;
   prerequisite: Task;
   createdBy: Collaborator;
 };
 
-/** A Dependency loaded through `tx`, with the relationships and computed fields named in N. */
+/** A Dependency loaded through `privileged`, with the relationships and computed fields named in N. */
 export type DependencyTxWith<N extends keyof DependencyLoadable> = Dependency &
   Pick<DependencyTxLoadable, N>;
 

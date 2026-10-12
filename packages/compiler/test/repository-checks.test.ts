@@ -254,7 +254,7 @@ test.each([
 ])("M2 test 4: %s of mesh.config in a generated file other than .mesh/binding.ts fails", (_, text, specifier) => {
   workspace((dir, put) => {
     // `.mesh/domain/x/binding.ts` is a module's file, not the binding, so it is not exempt.
-    const paths = ["examples/blog/.mesh/index.ts", "examples/blog/.mesh/composition.ts", "examples/blog/.mesh/domain/blog/index.ts",
+    const paths = ["examples/blog/.mesh/index.ts", "examples/blog/.mesh/load.ts", "examples/blog/.mesh/domain/blog/index.ts",
       "examples/blog/.mesh/domain/blog/post.actions.ts", "examples/blog/.mesh/domain/x/binding.ts", "apps/demo/.mesh/domain/binding.ts"];
     for (const path of paths) put(path, `// Do not edit\n${text}`);
     expect(checkGeneratedImports(dir)).toEqual(paths.sort().map((path) => `${path}:2: Generated code must not import ${specifier} ${CONFIG_TAIL}`));
@@ -282,6 +282,23 @@ test("M2 test 4: .mesh/binding.ts may import node:async_hooks, the project's asy
   });
 });
 
+test("M2 test 4: .mesh/binding.ts may import node:async_hooks only by that name: a bare built-in or bun is refused there too", () => {
+  workspace((dir, put) => {
+    put("examples/blog/.mesh/binding.ts", 'import { AsyncLocalStorage } from "node:async_hooks";\nimport { AsyncLocalStorage as A } from "async_hooks";\nimport { file } from "bun";');
+    expect(checkGeneratedImports(dir)).toEqual([
+      `examples/blog/.mesh/binding.ts:2: Generated code must not import async_hooks ${HOST_TAIL}`,
+      `examples/blog/.mesh/binding.ts:3: Generated code must not import bun ${HOST_TAIL}`,
+    ]);
+  });
+});
+
+test("M2 test 4: a package whose name only looks like a built-in passes", () => {
+  workspace((dir, put) => {
+    put("examples/blog/.mesh/domain/blog/post.actions.ts", 'import { z } from "zod";\nimport "@meshfw/runtime";\nimport "./fs";\nimport "bunyan";');
+    expect(checkGeneratedImports(dir)).toEqual([]);
+  });
+});
+
 test.each([
   ["a static import", 'import { AsyncLocalStorage } from "node:async_hooks";'],
   ["a dynamic import", 'const hooks = await import("node:async_hooks");'],
@@ -296,7 +313,7 @@ test.each([
   });
 });
 
-test.each(["node:fs", "bun:sqlite", "node:path"])("M2 test 4: a planted host module %s in a generated file fails", (specifier) => {
+test.each(["node:fs", "bun:sqlite", "node:path", "bun", "fs", "path", "async_hooks", "worker_threads"])("M2 test 4: a planted host module %s in a generated file fails", (specifier) => {
   workspace((dir, put) => {
     put("examples/blog/.mesh/domain/blog/post.actions.ts", `// Do not edit\nimport x from "${specifier}";`);
     expect(checkGeneratedImports(dir)).toEqual([`examples/blog/.mesh/domain/blog/post.actions.ts:2: Generated code must not import ${specifier} ${HOST_TAIL}`]);

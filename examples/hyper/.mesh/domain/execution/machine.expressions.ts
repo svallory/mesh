@@ -3,15 +3,13 @@
 
 import {
   expr as $,
+  privileged as $privileged,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
   type SharedInput as $SharedInput,
 } from "@meshfw/runtime";
 import { memberOf, roleIn } from "../../../src/domain/identity/identity.helpers";
-import type {
-  ReadOnlyActions as $ReadOnlyActions,
-  ReadOnlyReads as $ReadOnlyReads,
-} from "../../composition";
+import { Machine as $e$Machine, type $ReadOnly as $t$Machine } from "./machine.actions";
 import type {
   Machine,
   MachineLoaded,
@@ -28,8 +26,6 @@ export type MachineScope<I = unknown> = $Scope<{
   actor: any;
   context: any;
   before: $DeepReadonly<Machine> | null;
-  actions: $ReadOnlyActions;
-  tx: $ReadOnlyReads;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
 export type MachineStoredScope<I = unknown> = MachineScope<I> & { before: $DeepReadonly<Machine> };
@@ -41,17 +37,23 @@ export type MachineNewScope<I = unknown> = Omit<MachineCheckScope<I>, "self"> & 
 };
 
 export const expressions = {
-  // check :nameFree that, plain (uses-tx) (src/domain/execution/machine.mesh.mx:23:16)
+  // check :nameFree that, plain (uses-privileged) (src/domain/execution/machine.mesh.mx:23:16)
   "register.check.nameFree.that": ($s: MachineNewScope<RegisterMachineInput>) => {
-    return (async ({ input, tx }) =>
-      (await tx.readMachine({ filter: { name: { eq: input.name } }, limit: 1 })).length === 0)($s);
+    const privileged = $privileged;
+    const Machine: $t$Machine = $e$Machine;
+    return (async ({ input }) =>
+      (await privileged(Machine).read({ filter: { name: { eq: input.name } }, limit: 1 }))
+        .length === 0)($s);
   },
   // set &firstReportedBy, translated (src/domain/execution/machine.mesh.mx:29:28)
   "register.step.0.set.firstReportedBy": ($s: MachineScope<RegisterMachineInput>) => $s.actor?.id,
-  // check :nameFree that, plain (uses-tx) (src/domain/execution/machine.mesh.mx:35:16)
+  // check :nameFree that, plain (uses-privileged) (src/domain/execution/machine.mesh.mx:35:16)
   "report.check.nameFree.that": ($s: MachineNewScope<ReportMachineInput>) => {
-    return (async ({ input, tx }) =>
-      (await tx.readMachine({ filter: { name: { eq: input.name } }, limit: 1 })).length === 0)($s);
+    const privileged = $privileged;
+    const Machine: $t$Machine = $e$Machine;
+    return (async ({ input }) =>
+      (await privileged(Machine).read({ filter: { name: { eq: input.name } }, limit: 1 }))
+        .length === 0)($s);
   },
   // set &firstReportedBy, translated (src/domain/execution/machine.mesh.mx:41:28)
   "report.step.0.set.firstReportedBy": ($s: MachineScope<ReportMachineInput>) => $s.actor?.id,
@@ -95,27 +97,29 @@ export const expressions = {
   // policy :membersRead authorize-if, translated (src/domain/execution/machine.mesh.mx:88:20)
   "policy.membersRead.authorize-if.0": ($s: MachineCheckScope<unknown>) =>
     $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
-  // policy :isMember authorize-if, plain (uses-tx) (src/domain/execution/machine.mesh.mx:90:20)
+  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/execution/machine.mesh.mx:90:20)
   "policy.isMember.authorize-if.0": (
     $s: MachineNewScope<
       $SharedInput<RegisterMachineInput | UpdateMachineInput | RetireMachineInput>
     >,
   ) => {
     const isSystem = $.isSystem;
-    return (({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id))($s);
+    return (async ({ actor, context }) => isSystem(context) || (await memberOf(actor.id)))($s);
   },
-  // policy :ownerOrMember authorize-if, plain (uses-tx) (src/domain/execution/machine.mesh.mx:92:20)
+  // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/execution/machine.mesh.mx:92:20)
   "policy.ownerOrMember.authorize-if.0": ($s: MachineNewScope<RegisterMachineInput>) => {
     const isSystem = $.isSystem;
-    return (({ actor, context, tx }) =>
-      isSystem(context) || roleIn(tx, actor.id, ["owner", "member"]))($s);
+    return (async ({ actor, context }) =>
+      isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
   },
-  // policy :ownerOnly authorize-if, plain (uses-tx) (src/domain/execution/machine.mesh.mx:94:20)
+  // policy :ownerOnly authorize-if, plain (awaits-helper) (src/domain/execution/machine.mesh.mx:94:20)
   "policy.ownerOnly.authorize-if.0": (
     $s: MachineCheckScope<$SharedInput<UpdateMachineInput | RetireMachineInput>>,
   ) => {
     const isSystem = $.isSystem;
-    return (({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, ["owner"]))($s);
+    return (async ({ actor, context }) => isSystem(context) || (await roleIn(actor.id, ["owner"])))(
+      $s,
+    );
   },
   // policy :internal authorize-if, translated (src/domain/execution/machine.mesh.mx:96:20)
   "policy.internal.authorize-if.0": ($s: MachineNewScope<ReportMachineInput>) =>

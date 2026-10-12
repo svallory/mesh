@@ -8,15 +8,20 @@ import {
   entity,
   bindingInScope,
   connectBinding,
+  cloneValue,
   FrameworkError,
   isEntityValue,
+  privileged,
   releaseBinding,
   settled,
+  type Privileged,
   type Seams,
 } from "../src/index.ts";
 import * as clash from "./entity-domain/clash.ts";
 import * as domain from "./entity-domain/fake.ts";
 import { gate, layerNamed, Task } from "./entity-domain/fake.ts";
+import * as framed from "./entity-domain/framed.ts";
+import { Account, joiningLayer } from "./entity-domain/framed.ts";
 import * as other from "./entity-domain/other.ts";
 
 /**
@@ -66,12 +71,20 @@ describe("bindDomain", () => {
     expect(placed).toMatchObject({ layer: "db", input: { total: 3 } });
   });
 
-  test("the composer's handles name each action and read by the action followed by the entity's export name", async () => {
+  test("privileged(Task) holds the binding's reads of Task, frozen, each run with the context it is given and no policy", async () => {
     const binding = bindDomain(domain, layerNamed("db"), {}, frame);
-    const names = await binding.transaction(async ({ actions, tx }) => [Object.keys(actions).sort(), Object.keys(tx)]);
-    expect(names).toEqual([["constructorTask", "openTask", "placeOrder", "toStringTask"], ["readTask"]]);
-    const read = await binding.transaction(async ({ tx }) => (tx as Record<string, (input: unknown) => Promise<unknown>>).readTask!({ limit: 1 }), { actor: "t" } as never);
+    const reads = await binding.run(async () => privileged(Task));
+    expect(Object.isFrozen(reads)).toBe(true);
+    expect(Object.keys(reads)).toEqual(["read"]);
+    const read = await binding.transaction(() => privileged(Task).read({ limit: 1 }, { actor: "t" }));
     expect(read).toEqual([{ layer: "db", options: {}, input: { limit: 1 }, context: { actor: "t" } }]);
+    // An entity with no read action has no privileged read.
+    expect(Object.keys(await binding.run(async () => privileged(domain.sales.Order)))).toEqual([]);
+  });
+
+  test("transaction(fn) hands fn nothing (TXN-20)", async () => {
+    const binding = bindDomain(domain, layerNamed("db"), {}, frame);
+    expect(await binding.transaction(async (...args: unknown[]) => args.length)).toBe(0);
   });
 
   test("two bindings on one data layer keep their own options inside run, concurrently", async () => {
@@ -159,10 +172,11 @@ describe("bindDomain", () => {
     );
   });
 
-  test("two calls the composer's handles would name alike are a FrameworkError naming the key and both calls", () => {
-    expect(() => bindDomain(clash, layerNamed("db"), {}, frame)).toThrow(
-      new FrameworkError("sales.Order#place and billing.Order#place would both be actions.placeOrder: rename one of the two"),
-    );
+  test("two entities with one name in two modules bind side by side", async () => {
+    const binding = bindDomain(clash, layerNamed("db"), {}, frame);
+    const [sales, billing] = await binding.run(async () => [await clash.Order.place({ total: 1 }), await clash.billing.Order.place({ total: 2 })]);
+    expect(sales).toMatchObject({ layer: "db", input: { total: 1 } });
+    expect(billing).toBe("billing");
   });
 
   test("after disconnect() released the connected binding, a call left in its scope is not connected; one in flight goes on", async () => {
@@ -199,6 +213,30 @@ describe("bindDomain", () => {
     }
   });
 
+  test("after disconnect() released the connected binding, a call left in a scope that has settled is not connected, even while another call on it is in flight", async () => {
+    const connected = bindDomain(domain, layerNamed("connected"), {}, frame);
+    connectBinding(connected);
+    let fire!: () => void;
+    const later = new Promise<void>((resolve) => (fire = resolve));
+    let stray!: Promise<unknown>;
+    let open!: () => void;
+    try {
+      await connected.run(async () => {
+        stray = later.then(() => Task.open({ title: "late" }));
+      });
+      gate.wait = new Promise<void>((resolve) => (open = resolve));
+      const running = connected.run(() => Task.open({ title: "slow" }));
+      releaseBinding(connected);
+      fire();
+      await expect(stray).rejects.toThrow(/^work\.Task#open was called while not connected/);
+      open();
+      expect(await running).toMatchObject({ input: { title: "slow" } });
+    } finally {
+      delete gate.wait;
+      releaseBinding(connected);
+    }
+  });
+
   test("settled waits for an entity call in flight, however long it takes", async () => {
     const binding = bindDomain(domain, layerNamed("db"), {}, frame);
     let open!: () => void;
@@ -222,5 +260,218 @@ describe("bindDomain", () => {
   test("a value that is not a binding is refused by connectBinding and settled", async () => {
     expect(() => connectBinding({ run: async () => {}, transaction: async () => {} } as never)).toThrow(FrameworkError);
     await expect(settled({} as never)).rejects.toBeInstanceOf(FrameworkError);
+  });
+});
+
+describe("the call frame (TXN-16, TXN-18, ACT-09)", () => {
+  const ENDED = new FrameworkError("a call was made inside a transaction that has ended: await every entity call and privileged read before the function or the transaction callback returns");
+
+  test("inside an action's function, an entity call and a privileged read join its transaction and resolve with read-only views", async () => {
+    const { layer, opened } = joiningLayer();
+    const binding = bindDomain(framed, layer, {}, frame);
+    const result = await binding.run(() => Account.act({
+      step: async () => {
+        const nested = await Account.act({});
+        expect(() => { nested.tags.push("b"); }).toThrow(/bank\.Account#act/);
+        const [row] = await privileged(Account).read({});
+        expect(() => { row!.id = 2; }).toThrow(FrameworkError);
+        return "stepped";
+      },
+    }));
+    expect(opened).toHaveLength(1);
+    // The caller outside any action gets the plain value.
+    result.tags.push("b");
+    expect(result).toEqual({ id: 1, tags: ["a", "b"], stepped: "stepped" });
+  });
+
+  test("inside the application's transaction, an entity call and a privileged read join it and resolve with plain values", async () => {
+    const { layer, opened } = joiningLayer();
+    const binding = bindDomain(framed, layer, {}, frame);
+    const [acted, row] = await binding.transaction(async () => {
+      const acted = await Account.act({});
+      acted.tags.push("b");
+      const [row] = await privileged(Account).read({});
+      row!.id = 2;
+      return [acted, row] as const;
+    });
+    expect(opened).toHaveLength(1);
+    expect(acted.tags).toEqual(["a", "b"]);
+    expect(row!.id).toBe(2);
+  });
+
+  test("a privileged read inside an action reads the action's instant and only the context it is given, never the action's", async () => {
+    const binding = bindDomain(framed, joiningLayer().layer, {}, frame);
+    const seen: framed.Row[] = [];
+    await binding.run(() => Account.act({
+      at: 42,
+      step: async () => {
+        // Read-only views: copied to compare them.
+        seen.push(...cloneValue(await privileged(Account).read({})));
+        seen.push(...cloneValue(await privileged(Account).read({}, { actor: "given" })));
+      },
+    }, { actor: "running" }));
+    expect(seen.map(({ at, context, policies }) => ({ at, context, policies }))).toEqual([
+      { at: new Date(42), context: null, policies: false },
+      { at: new Date(42), context: { actor: "given" }, policies: false },
+    ]);
+    // Outside any action it has no instant to read: the read takes its own.
+    const [outside] = await binding.run(() => privileged(Account).read({}));
+    expect(outside!.at).toBeNull();
+  });
+
+  test("an entity call or privileged read a function leaves running after its action's transaction ended is refused", async () => {
+    const binding = bindDomain(framed, joiningLayer().layer, {}, frame);
+    let fire!: () => void;
+    const later = new Promise<void>((resolve) => (fire = resolve));
+    let call!: Promise<unknown>;
+    let read!: Promise<unknown>;
+    await binding.run(() => Account.act({
+      step: () => {
+        call = later.then(() => Account.act({})).catch((error: unknown) => error);
+        read = later.then(() => privileged(Account).read({})).catch((error: unknown) => error);
+      },
+    }));
+    fire();
+    expect(await call).toEqual(ENDED);
+    expect(await read).toEqual(ENDED);
+  });
+
+  test("a call the application's transaction callback leaves running after it returned is refused", async () => {
+    const binding = bindDomain(framed, joiningLayer().layer, {}, frame);
+    let fire!: () => void;
+    const later = new Promise<void>((resolve) => (fire = resolve));
+    let call!: Promise<unknown>;
+    await binding.transaction(async () => {
+      call = later.then(() => Account.act({}));
+    });
+    fire();
+    await expect(call).rejects.toThrow(ENDED);
+  });
+
+  test("during disconnect(), an action in flight goes on two levels deep: a step of a nested action calls another action", async () => {
+    const binding = bindDomain(framed, joiningLayer().layer, {}, frame);
+    connectBinding(binding);
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    try {
+      const running = Account.act({
+        step: async () => {
+          await gate;
+          return (await Account.act({ step: async () => (await Account.act({})).id })).stepped;
+        },
+      });
+      releaseBinding(binding);
+      const closing = settled(binding);
+      open();
+      expect(await running).toMatchObject({ stepped: 1 });
+      await closing;
+    } finally {
+      releaseBinding(binding);
+    }
+  });
+
+  test("during disconnect(), the application's transaction in flight goes on: a step of an action it calls reads through privileged", async () => {
+    const binding = bindDomain(framed, joiningLayer().layer, {}, frame);
+    connectBinding(binding);
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    try {
+      const running = binding.transaction(async () => {
+        await gate;
+        return Account.act({ step: async () => (await privileged(Account).read({}))[0]!.id });
+      });
+      releaseBinding(binding);
+      const closing = settled(binding);
+      open();
+      expect(await running).toMatchObject({ stepped: 1 });
+      await closing;
+      // Once it settled, the binding is gone.
+      await expect(binding.run(() => Account.act({}))).rejects.toThrow(/^bank\.Account#act was called while not connected/);
+    } finally {
+      releaseBinding(binding);
+    }
+  });
+
+  test("privileged and an entity call throw while a computed field is evaluated, naming the field (TXN-18)", async () => {
+    const binding = bindDomain(framed, joiningLayer().layer, {}, frame);
+    const message = (what: string) => `${what} was called while computed :balance of bank.Account is evaluated: a computed field and a read policy read the record and what it loads, and call no action and no privileged read. Load what it needs instead, or do it in a step or a check`;
+    await expect(binding.run(() => Account.read({ computed: () => privileged(Account) }))).rejects.toThrow(new FrameworkError(message("privileged(bank.Account)")));
+    const reads = await binding.run(async () => privileged(Account));
+    await expect(binding.run(() => Account.read({ computed: () => reads.read({}) }))).rejects.toThrow(new FrameworkError(message("privileged(bank.Account).read")));
+    // So is an entity call.
+    await expect(binding.run(() => Account.read({ computed: () => Account.act({}) }))).rejects.toThrow(new FrameworkError(message("bank.Account#act")));
+    // A privileged read's own computed fields are evaluated under the same rule.
+    await expect(binding.run(() => privileged(Account).read({ computed: () => privileged(Account) }))).rejects.toThrow(FrameworkError);
+    // Outside the evaluation, it reads.
+    expect((await binding.run(() => Account.read({ computed: () => "plain" })))[0]!.computed).toBe("plain");
+  });
+
+  test("privileged and an entity call throw while a read policy is evaluated, naming the policy (TXN-18)", async () => {
+    const binding = bindDomain(framed, joiningLayer().layer, {}, frame);
+    const message = (what: string) => `${what} was called while policy :mine of bank.Account is evaluated: a computed field and a read policy read the record and what it loads, and call no action and no privileged read. Load what it needs instead, or do it in a step or a check`;
+    await expect(binding.run(() => Account.read({ policy: () => privileged(Account) }))).rejects.toThrow(new FrameworkError(message("privileged(bank.Account)")));
+    await expect(binding.run(() => Account.read({ policy: () => Account.act({}) }))).rejects.toThrow(new FrameworkError(message("bank.Account#act")));
+    // A policy check may await: a call made after the await is still refused.
+    await expect(binding.run(() => Account.read({ policy: async () => { await Promise.resolve(); return Account.act({}); } }))).rejects.toThrow(new FrameworkError(message("bank.Account#act")));
+    expect(await binding.run(() => Account.read({ policy: () => true }))).toHaveLength(1);
+  });
+
+  test("privileged of a value that is not an entity value is a FrameworkError; of one no binding has bound, not connected", async () => {
+    expect(() => privileged({} as never)).toThrow(new FrameworkError("privileged() takes an entity value, such as privileged(Task), and was given an object that is not one"));
+    expect(() => privileged(undefined as never)).toThrow(/was given undefined$/);
+    const Unbound = entity("x.Unbound", () => ({}), () => ({ read: async (_input: object) => [] }), () => ({}));
+    expect(() => privileged(Unbound)).toThrow(new FrameworkError("privileged(x.Unbound) was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own"));
+    // Bound, it only names the entity: the read is what finds no binding in scope and none connected.
+    bindDomain({ Unbound }, layerNamed("db"), {}, frame);
+    const reads = privileged(Unbound);
+    await expect(reads.read({})).rejects.toThrow(new FrameworkError("privileged(x.Unbound).read was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own"));
+  });
+
+  test("a privileged handle kept past disconnect() reads nothing: outside any scope, its read is not connected and opens no transaction", async () => {
+    let opened = 0;
+    const base = layerNamed("db");
+    const layer = { ...base, transaction: <T>(run: (ops: never) => Promise<T>) => { opened++; return base.transaction(run as never) as Promise<T>; } } as typeof base;
+    const binding = bindDomain(domain, layer, {}, frame);
+    connectBinding(binding);
+    const reads = privileged(Task);
+    expect(await reads.read({})).toEqual([{ layer: "db", options: {}, input: {}, context: undefined }]);
+    releaseBinding(binding);
+    await settled(binding);
+    const before = opened;
+    await expect(reads.read({})).rejects.toThrow(new FrameworkError("privileged(work.Task).read was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own"));
+    expect(opened).toBe(before);
+    // Connected again, the same handle reads through the binding connected now.
+    const again = bindDomain(domain, layerNamed("again"), {}, frame);
+    connectBinding(again);
+    try {
+      expect((await reads.read({}))[0]!.layer).toBe("again");
+    } finally {
+      releaseBinding(again);
+    }
+  });
+
+  test("a privileged handle taken in one binding and used in another's run or transaction reads through the binding in scope", async () => {
+    const a = bindDomain(domain, layerNamed("a"), {}, frame);
+    const b = bindDomain(domain, layerNamed("b"), {}, frame);
+    const reads = await a.run(async () => privileged(Task));
+    expect((await b.transaction(() => reads.read({})))[0]!.layer).toBe("b");
+    expect((await b.run(() => reads.read({})))[0]!.layer).toBe("b");
+    // And the one taken in b reads through a inside a's run.
+    const fromB = await b.run(async () => privileged(Task));
+    expect((await a.run(() => fromB.read({})))[0]!.layer).toBe("a");
+    // One handle per entity value, whichever binding it was taken in.
+    expect(fromB).toBe(reads);
+  });
+
+  test("Privileged<E> has one function per read action, and is never for a value that is not an entity", () => {
+    const read: Privileged<typeof Account>["read"] = async () => [];
+    void read;
+    // @ts-expect-error an entity's action that is not a read is not on it
+    const act: Privileged<typeof Account>["act"] = undefined;
+    void act;
+    const none: Privileged<{ read(): void }> = undefined as never;
+    void none;
+    // @ts-expect-error privileged takes an entity value
+    expect(() => privileged({ read() {} })).toThrow(FrameworkError);
   });
 });

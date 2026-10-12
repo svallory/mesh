@@ -56,7 +56,7 @@ function policyLines(entity: Entity, action: Action): string[] {
   for (const policy of covering) {
     lines.push(`:${policy.name}`);
     for (const { kind, expression } of policyExpressions(policy))
-      lines.push(`  ${kind} ${squash(expression.source)}: ${readsRecord(expression) ? record : early}`);
+      lines.push(`  ${kind} ${squash(expression.source)}: ${readsRecord(expression, action.kind === "read" ? "read" : "write") ? record : early}`);
   }
   lines.push("every policy above must pass; in one, any forbid-if that holds or is unknown forbids, and of its authorize-ifs one must hold");
   if (covering.some((policy) => policy.when))
@@ -94,7 +94,7 @@ export function explainAction(entity: Entity, actionName: string): string[] | un
   stepLines(stepsAt(all, false), 0, steps);
   const afterWrite: string[] = [];
   stepLines(stepsAt(all, true), 0, afterWrite, true);
-  const recordPolicy = policiesCovering(entity, action).some((policy) => policyExpressions(policy).some(({ expression }) => readsRecord(expression)));
+  const recordPolicy = policiesCovering(entity, action).some((policy) => policyExpressions(policy).some(({ expression }) => readsRecord(expression, action.kind === "read" ? "read" : "write")));
   const reads = action.kind === "update" || checks.length > 0 || all.length > 0 || recordPolicy;
   const strategy = action.kind === "create" ? "one insert; nothing is read first"
     : action.kind === "update" ? "read-then-write: every update reads the row under the write lock, checks it, changes it, then writes it"
@@ -109,7 +109,7 @@ export function explainAction(entity: Entity, actionName: string): string[] | un
   if (afterWrite.length)
     section(lines, "after write", [action.kind === "destroy" ? "self is the deleted row as it was" : "self is the stored record", ...afterWrite]);
   section(lines, "seams", [
-    "beforeTransaction: before the transaction opens, for a top-level call only (a call through `actions` or inside `transaction` joins one and runs none)",
+    "beforeTransaction: before the transaction opens, for a top-level call only (a call from an action's own code or inside `transaction` joins one and runs none)",
     "afterWrite: inside the transaction, right after the row is written, before the steps after the write",
     "afterCommit: once, after the outermost transaction commits, with every change it made",
   ]);

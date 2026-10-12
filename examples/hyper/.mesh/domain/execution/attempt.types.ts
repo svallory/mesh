@@ -87,7 +87,7 @@ export type AttemptLoadable = {
 /** A Attempt with the relationships and computed fields named in N loaded. */
 export type AttemptWith<N extends keyof AttemptLoadable> = Attempt & Pick<AttemptLoadable, N>;
 
-/** What a load through `tx` attaches to a Attempt: it runs no policy, so every related record the key names is there. */
+/** What a load through `privileged` attaches to a Attempt: it runs no policy, so every related record the key names is there. */
 export type AttemptTxLoadable = {
   run: Run;
   task: Task;
@@ -97,7 +97,7 @@ export type AttemptTxLoadable = {
   session: SessionReference | null;
 };
 
-/** A Attempt loaded through `tx`, with the relationships and computed fields named in N. */
+/** A Attempt loaded through `privileged`, with the relationships and computed fields named in N. */
 export type AttemptTxWith<N extends keyof AttemptLoadable> = Attempt & Pick<AttemptTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */

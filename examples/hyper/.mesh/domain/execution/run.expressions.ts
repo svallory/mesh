@@ -14,10 +14,6 @@ import {
 } from "../../../src/domain/execution/execution.helpers";
 import { memberOf, roleIn } from "../../../src/domain/identity/identity.helpers";
 import { taskOpenOf } from "../../../src/domain/work/work.helpers";
-import type {
-  ReadOnlyActions as $ReadOnlyActions,
-  ReadOnlyReads as $ReadOnlyReads,
-} from "../../composition";
 import type { Run, RunLoaded, CancelRunInput, SettleRunInput, StartRunInput } from "./run.types";
 
 /** What every expression of Run reads; `I` is the input of the action it runs in. */
@@ -27,8 +23,6 @@ export type RunScope<I = unknown> = $Scope<{
   actor: any;
   context: any;
   before: $DeepReadonly<Run> | null;
-  actions: $ReadOnlyActions;
-  tx: $ReadOnlyReads;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
 export type RunStoredScope<I = unknown> = RunScope<I> & { before: $DeepReadonly<Run> };
@@ -49,14 +43,15 @@ export type RunNewScope<I = unknown> = Omit<RunCheckScope<I>, "self"> & {
 };
 
 export const expressions = {
-  // check :taskOpen that, plain (uses-tx) (src/domain/execution/run.mesh.mx:32:16)
+  // check :taskOpen that, plain (awaits-helper) (src/domain/execution/run.mesh.mx:32:16)
   "start.check.taskOpen.that": ($s: RunNewScope<StartRunInput>) => {
-    return (({ input, tx }) => taskOpenOf(tx, input.task))($s);
+    return (async ({ input }) => await taskOpenOf(input.task))($s);
   },
-  // check :parentRunning that, plain (uses-tx) (src/domain/execution/run.mesh.mx:37:16)
+  // check :parentRunning that, plain (awaits-helper) (src/domain/execution/run.mesh.mx:37:16)
   "start.check.parentRunning.that": ($s: RunNewScope<StartRunInput>) => {
-    return (async ({ input, tx }) =>
-      input.parentRun == null || (await runRunningOf(tx, input.parentRun)))($s);
+    return (async ({ input }) => input.parentRun == null || (await runRunningOf(input.parentRun)))(
+      $s,
+    );
   },
   // set &startedBy, translated (src/domain/execution/run.mesh.mx:43:22)
   "start.step.0.set.startedBy": ($s: RunScope<StartRunInput>) => $s.actor?.id,
@@ -94,26 +89,26 @@ export const expressions = {
   // policy :membersRead authorize-if, translated (src/domain/execution/run.mesh.mx:78:20)
   "policy.membersRead.authorize-if.0": ($s: RunCheckScope<unknown>) =>
     $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
-  // policy :isMember authorize-if, plain (uses-tx) (src/domain/execution/run.mesh.mx:80:20)
+  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/execution/run.mesh.mx:80:20)
   "policy.isMember.authorize-if.0": (
     $s: RunNewScope<$SharedInput<StartRunInput | CancelRunInput>>,
   ) => {
     const isSystem = $.isSystem;
-    return (({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id))($s);
+    return (async ({ actor, context }) => isSystem(context) || (await memberOf(actor.id)))($s);
   },
-  // policy :ownerOrMember authorize-if, plain (uses-tx) (src/domain/execution/run.mesh.mx:82:20)
+  // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/execution/run.mesh.mx:82:20)
   "policy.ownerOrMember.authorize-if.0": (
     $s: RunNewScope<$SharedInput<StartRunInput | CancelRunInput>>,
   ) => {
     const isSystem = $.isSystem;
-    return (({ actor, context, tx }) =>
-      isSystem(context) || roleIn(tx, actor.id, ["owner", "member"]))($s);
+    return (async ({ actor, context }) =>
+      isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
   },
-  // policy :runCanceler authorize-if, plain (uses-tx) (src/domain/execution/run.mesh.mx:84:20)
+  // policy :runCanceler authorize-if, plain (awaits-helper) (src/domain/execution/run.mesh.mx:84:20)
   "policy.runCanceler.authorize-if.0": ($s: RunCheckScope<CancelRunInput>) => {
     const isSystem = $.isSystem;
-    return (({ self, actor, context, tx }) =>
-      isSystem(context) || cancelsRunOf(tx, self, actor.id))($s);
+    return (async ({ self, actor, context }) =>
+      isSystem(context) || (await cancelsRunOf(self, actor.id)))($s);
   },
   // policy :internal authorize-if, translated (src/domain/execution/run.mesh.mx:86:20)
   "policy.internal.authorize-if.0": ($s: RunCheckScope<SettleRunInput>) => $.isSystem($s.context),

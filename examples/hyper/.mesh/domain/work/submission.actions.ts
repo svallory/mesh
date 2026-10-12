@@ -5,12 +5,12 @@
 import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
+  NO_FRAME as $NO_FRAME,
   NotFoundError as $NotFoundError,
   authorizer as $authorizer,
   castInput as $castInput,
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
-  composed as $composed,
   entity as $entity,
   guarded as $guarded,
   loadInto as $loadInto,
@@ -26,10 +26,14 @@ import {
   unloadFrom as $unloadFrom,
   uuidv7 as $uuidv7,
   writeCount as $writeCount,
+  type ActionContext as $ActionContext,
+  type ActionFrame as $ActionFrame,
   type BindOptions as $BindOptions,
-  type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type DeepReadonly as $DeepReadonly,
+  type EntityReadsBind as $EntityReadsBind,
+  type EntityValue as $EntityValue,
   type CastOutput as $CastOutput,
   type Issue as $Issue,
   type Row as $Row,
@@ -41,6 +45,7 @@ import type {
   SubmissionLoadNames,
   SubmissionLoadArg,
   SubmissionLoadable,
+  SubmissionTxLoadable,
   SubmitSubmissionInput,
   WithdrawSubmissionInput,
   SettleSubmissionInput,
@@ -63,10 +68,14 @@ import {
 import { loadPlan as $loadPlan } from "../../load";
 
 /**
- * The reads of this entity without their policies: what `tx` holds in a function of an entity file (ADR-0068).
- * The read actions below evaluate the read's policies, then call these.
+ * The reads of this entity without their policies: what `privileged(Submission)` runs (TXN-16). The read actions
+ * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
-export function bindSubmissionReads(layer: $DataLayer, options: $BindOptions = {}) {
+export function bindSubmissionReads(
+  layer: $DataLayer,
+  options: $BindOptions = {},
+  frame: $ActionFrame = $NO_FRAME,
+) {
   return Object.freeze({
     async read<const L extends readonly (keyof SubmissionLoadable)[] = readonly []>(
       input: Omit<ReadSubmissionInput, "load"> & SubmissionLoadArg<L>,
@@ -76,7 +85,7 @@ export function bindSubmissionReads(layer: $DataLayer, options: $BindOptions = {
       cast?: $CastOutput<typeof readSubmissionInput>,
     ): Promise<L extends unknown ? SubmissionTxWith<SubmissionLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a read through `tx` casts it here.
+      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readSubmissionInput, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.submissions, {
@@ -96,6 +105,7 @@ export function bindSubmissionReads(layer: $DataLayer, options: $BindOptions = {
           context: $context,
           clock: $clock,
           policies,
+          frame,
         })) as unknown as L extends unknown ? SubmissionTxWith<SubmissionLoadNames<L>>[] : never;
       });
     },
@@ -103,11 +113,15 @@ export function bindSubmissionReads(layer: $DataLayer, options: $BindOptions = {
 }
 
 /**
- * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
- * `actions` and `tx`; the project's `bind` in the index passes it.
+ * Every action of this entity, bound to `layer`. `frame` is the binding's (the project's `bind` passes it): each action's
+ * transaction runs inside it, so what its functions call joins that transaction and reads its instant.
  */
-export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
-  const $reads = bindSubmissionReads(layer, options);
+export function bindSubmission(
+  layer: $DataLayer,
+  options: $BindOptions = {},
+  frame: $ActionFrame = $NO_FRAME,
+) {
+  const $reads = bindSubmissionReads(layer, options, frame);
   return Object.freeze({
     async submit(
       input: SubmitSubmissionInput,
@@ -126,7 +140,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           checks: [
             {
               kind: "authorize-if",
-              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -139,7 +153,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
             {
               kind: "authorize-if",
               check:
-                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -152,7 +166,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
             {
               kind: "authorize-if",
               check:
-                "({ input, actor, context, tx }) => isSystem(context) || heldAClaimOf(tx, input.task, actor.id)",
+                "async ({ input, actor, context }) => isSystem(context) || await heldAClaimOf(input.task, actor.id)",
               record: true,
               run: $expressions["policy.claimHolder.authorize-if.0"],
             },
@@ -176,139 +190,147 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
         { entity: "work.Submission", action: "submit" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          const $now = $clock();
-          // plan: a create is one insert; nothing is read first
-          const $changes: $Row = {
-            id: $uuidv7(),
-            summary: null,
-            evidence: [],
-            fence: null,
-            state: "pending",
-            submittedAt: $now,
-          };
-          const $record: $Row = { ...$changes, taskVersion: null, taskId: null, submitterId: null };
-          const $load = { actor: $actor, context: $context, clock: $clock };
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "work.Submission", $record, "action function"),
-            "work.Submission#submit",
-          );
-          const $s = $scope(
-            {
-              self: $self,
-              input: $readOnlyRecord(parsed, "work.Submission#submit"),
-              actor: $actor,
-              context: $context,
-              before: null,
-              ...$composed(compose, tx, context, "work.Submission#submit", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $Scope<SubmitSubmissionInput>;
-          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
-          await $policies.inside($checkScope($s));
-          // validate: every check runs, and every failed check is reported together
-          const $issues: $Issue[] = [];
-          const $checks = $checkScope($s);
-          await $runCheck($issues, $checks, {
-            label: "taskOpen",
-            code: "task.open",
-            message: "the task is not open; reopen it first",
-            source: { file: "src/domain/work/submission.mesh.mx", line: 27, column: 9 },
-            that: $expressions["submit.check.taskOpen.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "currentFence",
-            code: "claim.current-fence",
-            message: "the fence is not your current claim; claim the task again",
-            source: { file: "src/domain/work/submission.mesh.mx", line: 32, column: 9 },
-            that: $expressions["submit.check.currentFence.that"],
-            details: $expressions["submit.check.currentFence.details"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "nonePending",
-            code: "submission.none-pending",
-            message: "a submission is already pending; wait for its review or withdraw it",
-            source: { file: "src/domain/work/submission.mesh.mx", line: 38, column: 9 },
-            that: $expressions["submit.check.nonePending.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "evidenceExists",
-            code: "evidence.exists",
-            message: "an evidence reference does not exist",
-            source: { file: "src/domain/work/submission.mesh.mx", line: 43, column: 9 },
-            that: $expressions["submit.check.evidenceExists.that"],
-            details: $expressions["submit.check.evidenceExists.details"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "versionMatches",
-            code: "expected-version",
-            message: "the task is at another version; read it again and retry",
-            source: { file: "src/domain/work/submission.mesh.mx", line: 49, column: 9 },
-            that: $expressions["submit.check.versionMatches.that"],
-            details: $expressions["submit.check.versionMatches.details"],
-          });
-          if ($issues.length > 0) throw new $InvalidInputError($issues);
-          // the input: the member inputs the caller sent, applied now that the checks have passed
-          if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
-          if (parsed.evidence !== undefined) $changes.evidence = $record.evidence = parsed.evidence;
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          {
-            const $value = await $expressions["submit.step.0.set.submitter"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &submitter (src/domain/work/submission.mesh.mx:57:22) produced no value, and the relationship submitter is required",
-              );
-            $changes.submitterId = $record.submitterId = $value;
-          }
-          {
-            const $value = await $expressions["submit.step.0.set.fence"]($s);
-            $changes.fence = $record.fence = $value === undefined ? null : $value;
-          }
-          {
-            const $value = await $expressions["submit.step.0.set.summary"]($s);
-            $changes.summary = $record.summary = $value === undefined ? null : $value;
-          }
-          await $loadInto($loadPlan, "work.Submission", tx, $record, ["task"], $load);
-          {
-            const $value = await $expressions["submit.step.0.set.taskVersion"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &taskVersion (src/domain/work/submission.mesh.mx:60:24) produced no value, and taskVersion is required",
-              );
-            $changes.taskVersion = $record.taskVersion = $value;
-          }
-          $unloadFrom($loadPlan, "work.Submission", $record);
-          // data layer
-          const $stored = await tx.insert(tables.submissions, $changes);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "work.Submission", action: "submit" },
-            null,
-            $stored,
-            parsed,
-            context,
-          );
-          // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
-          const $written: $Row = { ...$stored };
-          const $after = $rescope($s, {
-            self: $readOnlyRecord(
-              $guarded($loadPlan, "work.Submission", $written, "action function"),
+        (tx) =>
+          frame.within(tx, $clock, "work.Submission#submit", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            const $now = $clock();
+            // plan: a create is one insert; nothing is read first
+            const $changes: $Row = {
+              id: $uuidv7(),
+              summary: null,
+              evidence: [],
+              fence: null,
+              state: "pending",
+              submittedAt: $now,
+            };
+            const $record: $Row = {
+              ...$changes,
+              taskVersion: null,
+              taskId: null,
+              submitterId: null,
+            };
+            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "work.Submission", $record, "action function"),
               "work.Submission#submit",
-            ),
-          });
-          await $expressions["submit.step.1.run"]($after);
-          // the result: the row as the steps after the write left it, read again by key
-          const $result = await tx.selectByKey(tables.submissions, { id: $stored.id });
-          if ($result === undefined)
-            throw new $FrameworkError(
-              "work.Submission#submit: a step after the write deleted the row this action returns",
             );
-          return $result as Submission;
-        },
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "work.Submission#submit"),
+                actor: $actor,
+                context: $context,
+                before: null,
+              },
+              { clock: $clock },
+            ) as unknown as $Scope<SubmitSubmissionInput>;
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            await $policies.inside($checkScope($s));
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $runCheck($issues, $checks, {
+              label: "taskOpen",
+              code: "task.open",
+              message: "the task is not open; reopen it first",
+              source: { file: "src/domain/work/submission.mesh.mx", line: 28, column: 9 },
+              that: $expressions["submit.check.taskOpen.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "currentFence",
+              code: "claim.current-fence",
+              message: "the fence is not your current claim; claim the task again",
+              source: { file: "src/domain/work/submission.mesh.mx", line: 33, column: 9 },
+              that: $expressions["submit.check.currentFence.that"],
+              details: $expressions["submit.check.currentFence.details"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "nonePending",
+              code: "submission.none-pending",
+              message: "a submission is already pending; wait for its review or withdraw it",
+              source: { file: "src/domain/work/submission.mesh.mx", line: 39, column: 9 },
+              that: $expressions["submit.check.nonePending.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "evidenceExists",
+              code: "evidence.exists",
+              message: "an evidence reference does not exist",
+              source: { file: "src/domain/work/submission.mesh.mx", line: 44, column: 9 },
+              that: $expressions["submit.check.evidenceExists.that"],
+              details: $expressions["submit.check.evidenceExists.details"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "versionMatches",
+              code: "expected-version",
+              message: "the task is at another version; read it again and retry",
+              source: { file: "src/domain/work/submission.mesh.mx", line: 50, column: 9 },
+              that: $expressions["submit.check.versionMatches.that"],
+              details: $expressions["submit.check.versionMatches.details"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // the input: the member inputs the caller sent, applied now that the checks have passed
+            if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
+            if (parsed.evidence !== undefined)
+              $changes.evidence = $record.evidence = parsed.evidence;
+            // do: the steps run in written order, each seeing the record as the ones before it left it
+            {
+              const $value = await $expressions["submit.step.0.set.submitter"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &submitter (src/domain/work/submission.mesh.mx:58:22) produced no value, and the relationship submitter is required",
+                );
+              $changes.submitterId = $record.submitterId = $value;
+            }
+            {
+              const $value = await $expressions["submit.step.0.set.fence"]($s);
+              $changes.fence = $record.fence = $value === undefined ? null : $value;
+            }
+            {
+              const $value = await $expressions["submit.step.0.set.summary"]($s);
+              $changes.summary = $record.summary = $value === undefined ? null : $value;
+            }
+            await $loadInto($loadPlan, "work.Submission", tx, $record, ["task"], $load);
+            {
+              const $value = await $expressions["submit.step.0.set.taskVersion"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &taskVersion (src/domain/work/submission.mesh.mx:61:24) produced no value, and taskVersion is required",
+                );
+              $changes.taskVersion = $record.taskVersion = $value;
+            }
+            $unloadFrom($loadPlan, "work.Submission", $record);
+            // data layer
+            const $stored = await tx.insert(tables.submissions, $changes);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "work.Submission", action: "submit" },
+                null,
+                $stored,
+                parsed,
+                context,
+              ),
+            );
+            // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
+            const $written: $Row = { ...$stored };
+            const $after = $rescope($s, {
+              self: $readOnlyRecord(
+                $guarded($loadPlan, "work.Submission", $written, "action function"),
+                "work.Submission#submit",
+              ),
+            });
+            await $expressions["submit.step.1.run"]($after);
+            // the result: the row as the steps after the write left it, read again by key
+            const $result = await tx.selectByKey(tables.submissions, { id: $stored.id });
+            if ($result === undefined)
+              throw new $FrameworkError(
+                "work.Submission#submit: a step after the write deleted the row this action returns",
+              );
+            return $result as Submission;
+          }),
       );
     },
 
@@ -329,7 +351,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           checks: [
             {
               kind: "authorize-if",
-              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -342,7 +364,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
             {
               kind: "authorize-if",
               check:
-                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -379,99 +401,101 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
         { entity: "work.Submission", action: "withdraw" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-          const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.submissions, $key);
-          if ($before === undefined) throw new $NotFoundError("work.Submission", $key);
-          const $changes: $Row = {};
-          const $record: $Row = { ...$before };
-          const $writes = $writeCount(tx);
-          const $load = { actor: $actor, context: $context, clock: $clock };
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "work.Submission", $record, "action function"),
-            "work.Submission#withdraw",
-          );
-          const $s = $scope(
-            {
-              self: $self,
-              input: $readOnlyRecord(parsed, "work.Submission#withdraw"),
-              actor: $actor,
-              context: $context,
-              before: $readOnlyRecord(
-                $guarded($loadPlan, "work.Submission", $before, "before"),
-                "work.Submission#withdraw",
-              ) as unknown as Submission,
-              ...$composed(compose, tx, context, "work.Submission#withdraw", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $StoredScope<WithdrawSubmissionInput>;
-          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
-          await $policies.inside($checkScope($s));
-          // validate: every check runs, and every failed check is reported together
-          const $issues: $Issue[] = [];
-          const $checks = $checkScope($s);
-          await $loadInto($loadPlan, "work.Submission", tx, $record, ["task"], $load);
-          await $runCheck($issues, $checks, {
-            label: "pending",
-            code: "submission.pending",
-            message: "the submission is not pending",
-            source: { file: "src/domain/work/submission.mesh.mx", line: 71, column: 9 },
-            that: $expressions["withdraw.check.pending.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "versionMatches",
-            code: "expected-version",
-            message: "the task is at another version; read it again and retry",
-            source: { file: "src/domain/work/submission.mesh.mx", line: 76, column: 9 },
-            that: $expressions["withdraw.check.versionMatches.that"],
-            details: $expressions["withdraw.check.versionMatches.details"],
-          });
-          if ($issues.length > 0) throw new $InvalidInputError($issues);
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          $changes.state = $record.state = "withdrawn";
-          $unloadFrom($loadPlan, "work.Submission", $record);
-          // data layer
-          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(
-            tx,
-            $writes,
-            tables.submissions,
-            $key,
-            $before,
-            "work.Submission#withdraw",
-          );
-          const $stored = await tx.updateByKey(tables.submissions, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("work.Submission", $key);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "work.Submission", action: "withdraw" },
-            $before,
-            $stored,
-            parsed,
-            context,
-          );
-          // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
-          const $written: $Row = { ...$stored };
-          const $after = $rescope($s, {
-            self: $readOnlyRecord(
-              $guarded($loadPlan, "work.Submission", $written, "action function"),
+        (tx) =>
+          frame.within(tx, $clock, "work.Submission#withdraw", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+            const $key = { id: parsed.id };
+            const $before = await tx.selectByKeyForUpdate(tables.submissions, $key);
+            if ($before === undefined) throw new $NotFoundError("work.Submission", $key);
+            const $changes: $Row = {};
+            const $record: $Row = { ...$before };
+            const $writes = $writeCount(tx);
+            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "work.Submission", $record, "action function"),
               "work.Submission#withdraw",
-            ),
-          });
-          await $expressions["withdraw.step.1.run"]($after);
-          // the result: the row as the steps after the write left it, read again by key
-          const $result = await tx.selectByKey(tables.submissions, { id: $stored.id });
-          if ($result === undefined)
-            throw new $FrameworkError(
-              "work.Submission#withdraw: a step after the write deleted the row this action returns",
             );
-          return $result as Submission;
-        },
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "work.Submission#withdraw"),
+                actor: $actor,
+                context: $context,
+                before: $readOnlyRecord(
+                  $guarded($loadPlan, "work.Submission", $before, "before"),
+                  "work.Submission#withdraw",
+                ) as unknown as Submission,
+              },
+              { clock: $clock },
+            ) as unknown as $StoredScope<WithdrawSubmissionInput>;
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            await $policies.inside($checkScope($s));
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $loadInto($loadPlan, "work.Submission", tx, $record, ["task"], $load);
+            await $runCheck($issues, $checks, {
+              label: "pending",
+              code: "submission.pending",
+              message: "the submission is not pending",
+              source: { file: "src/domain/work/submission.mesh.mx", line: 72, column: 9 },
+              that: $expressions["withdraw.check.pending.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "versionMatches",
+              code: "expected-version",
+              message: "the task is at another version; read it again and retry",
+              source: { file: "src/domain/work/submission.mesh.mx", line: 77, column: 9 },
+              that: $expressions["withdraw.check.versionMatches.that"],
+              details: $expressions["withdraw.check.versionMatches.details"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // do: the steps run in written order, each seeing the record as the ones before it left it
+            $changes.state = $record.state = "withdrawn";
+            $unloadFrom($loadPlan, "work.Submission", $record);
+            // data layer
+            // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+            await $checkUnchanged(
+              tx,
+              $writes,
+              tables.submissions,
+              $key,
+              $before,
+              "work.Submission#withdraw",
+            );
+            const $stored = await tx.updateByKey(tables.submissions, $key, $changes);
+            if ($stored === undefined) throw new $NotFoundError("work.Submission", $key);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "work.Submission", action: "withdraw" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
+            );
+            // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
+            const $written: $Row = { ...$stored };
+            const $after = $rescope($s, {
+              self: $readOnlyRecord(
+                $guarded($loadPlan, "work.Submission", $written, "action function"),
+                "work.Submission#withdraw",
+              ),
+            });
+            await $expressions["withdraw.step.1.run"]($after);
+            // the result: the row as the steps after the write left it, read again by key
+            const $result = await tx.selectByKey(tables.submissions, { id: $stored.id });
+            if ($result === undefined)
+              throw new $FrameworkError(
+                "work.Submission#withdraw: a step after the write deleted the row this action returns",
+              );
+            return $result as Submission;
+          }),
       );
     },
 
@@ -516,78 +540,80 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
         { entity: "work.Submission", action: "settle" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-          const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.submissions, $key);
-          if ($before === undefined) throw new $NotFoundError("work.Submission", $key);
-          const $changes: $Row = {};
-          const $record: $Row = { ...$before };
-          const $writes = $writeCount(tx);
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "work.Submission", $record, "action function"),
-            "work.Submission#settle",
-          );
-          const $s = $scope(
+        (tx) =>
+          frame.within(tx, $clock, "work.Submission#settle", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+            const $key = { id: parsed.id };
+            const $before = await tx.selectByKeyForUpdate(tables.submissions, $key);
+            if ($before === undefined) throw new $NotFoundError("work.Submission", $key);
+            const $changes: $Row = {};
+            const $record: $Row = { ...$before };
+            const $writes = $writeCount(tx);
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "work.Submission", $record, "action function"),
+              "work.Submission#settle",
+            );
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "work.Submission#settle"),
+                actor: $actor,
+                context: $context,
+                before: $readOnlyRecord(
+                  $guarded($loadPlan, "work.Submission", $before, "before"),
+                  "work.Submission#settle",
+                ) as unknown as Submission,
+              },
+              { clock: $clock },
+            ) as unknown as $StoredScope<SettleSubmissionInput>;
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $runCheck($issues, $checks, {
+              label: "pending",
+              code: "submission.pending",
+              message: "the submission is not pending",
+              source: { file: "src/domain/work/submission.mesh.mx", line: 93, column: 9 },
+              that: $expressions["settle.check.pending.that"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // do: the steps run in written order, each seeing the record as the ones before it left it
             {
-              self: $self,
-              input: $readOnlyRecord(parsed, "work.Submission#settle"),
-              actor: $actor,
-              context: $context,
-              before: $readOnlyRecord(
-                $guarded($loadPlan, "work.Submission", $before, "before"),
-                "work.Submission#settle",
-              ) as unknown as Submission,
-              ...$composed(compose, tx, context, "work.Submission#settle", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $StoredScope<SettleSubmissionInput>;
-          // validate: every check runs, and every failed check is reported together
-          const $issues: $Issue[] = [];
-          const $checks = $checkScope($s);
-          await $runCheck($issues, $checks, {
-            label: "pending",
-            code: "submission.pending",
-            message: "the submission is not pending",
-            source: { file: "src/domain/work/submission.mesh.mx", line: 92, column: 9 },
-            that: $expressions["settle.check.pending.that"],
-          });
-          if ($issues.length > 0) throw new $InvalidInputError($issues);
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          {
-            const $value = await $expressions["settle.step.0.set.state"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &state (src/domain/work/submission.mesh.mx:99:18) produced no value, and state is required",
-              );
-            $changes.state = $record.state = $value;
-          }
-          // data layer
-          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(
-            tx,
-            $writes,
-            tables.submissions,
-            $key,
-            $before,
-            "work.Submission#settle",
-          );
-          const $stored = await tx.updateByKey(tables.submissions, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("work.Submission", $key);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "work.Submission", action: "settle" },
-            $before,
-            $stored,
-            parsed,
-            context,
-          );
-          return $stored as Submission;
-        },
+              const $value = await $expressions["settle.step.0.set.state"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &state (src/domain/work/submission.mesh.mx:100:18) produced no value, and state is required",
+                );
+              $changes.state = $record.state = $value;
+            }
+            // data layer
+            // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+            await $checkUnchanged(
+              tx,
+              $writes,
+              tables.submissions,
+              $key,
+              $before,
+              "work.Submission#settle",
+            );
+            const $stored = await tx.updateByKey(tables.submissions, $key, $changes);
+            if ($stored === undefined) throw new $NotFoundError("work.Submission", $key);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "work.Submission", action: "settle" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
+            );
+            return $stored as Submission;
+          }),
       );
     },
 
@@ -632,66 +658,74 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
         { entity: "work.Submission", action: "recordAccepted" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          const $now = $clock();
-          // plan: a create is one insert; nothing is read first
-          const $changes: $Row = {
-            id: $uuidv7(),
-            summary: null,
-            evidence: [],
-            fence: null,
-            state: "pending",
-            submittedAt: $now,
-          };
-          const $record: $Row = { ...$changes, taskVersion: null, taskId: null, submitterId: null };
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "work.Submission", $record, "action function"),
-            "work.Submission#recordAccepted",
-          );
-          const $s = $scope(
+        (tx) =>
+          frame.within(tx, $clock, "work.Submission#recordAccepted", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            const $now = $clock();
+            // plan: a create is one insert; nothing is read first
+            const $changes: $Row = {
+              id: $uuidv7(),
+              summary: null,
+              evidence: [],
+              fence: null,
+              state: "pending",
+              submittedAt: $now,
+            };
+            const $record: $Row = {
+              ...$changes,
+              taskVersion: null,
+              taskId: null,
+              submitterId: null,
+            };
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "work.Submission", $record, "action function"),
+              "work.Submission#recordAccepted",
+            );
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "work.Submission#recordAccepted"),
+                actor: $actor,
+                context: $context,
+                before: null,
+              },
+              { clock: $clock },
+            ) as unknown as $Scope<RecordAcceptedSubmissionInput>;
+            // the input: the member inputs the caller sent, applied now that the checks have passed
+            if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
+            if (parsed.summary !== undefined) $changes.summary = $record.summary = parsed.summary;
+            if (parsed.evidence !== undefined)
+              $changes.evidence = $record.evidence = parsed.evidence;
+            if (parsed.fence !== undefined) $changes.fence = $record.fence = parsed.fence;
+            if (parsed.taskVersion !== undefined)
+              $changes.taskVersion = $record.taskVersion = parsed.taskVersion;
+            // do: the steps run in written order, each seeing the record as the ones before it left it
             {
-              self: $self,
-              input: $readOnlyRecord(parsed, "work.Submission#recordAccepted"),
-              actor: $actor,
-              context: $context,
-              before: null,
-              ...$composed(compose, tx, context, "work.Submission#recordAccepted", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $Scope<RecordAcceptedSubmissionInput>;
-          // the input: the member inputs the caller sent, applied now that the checks have passed
-          if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
-          if (parsed.summary !== undefined) $changes.summary = $record.summary = parsed.summary;
-          if (parsed.evidence !== undefined) $changes.evidence = $record.evidence = parsed.evidence;
-          if (parsed.fence !== undefined) $changes.fence = $record.fence = parsed.fence;
-          if (parsed.taskVersion !== undefined)
-            $changes.taskVersion = $record.taskVersion = parsed.taskVersion;
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          {
-            const $value = await $expressions["recordAccepted.step.0.set.submitter"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &submitter (src/domain/work/submission.mesh.mx:109:22) produced no value, and the relationship submitter is required",
-              );
-            $changes.submitterId = $record.submitterId = $value;
-          }
-          $changes.state = $record.state = "accepted";
-          // data layer
-          const $stored = await tx.insert(tables.submissions, $changes);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "work.Submission", action: "recordAccepted" },
-            null,
-            $stored,
-            parsed,
-            context,
-          );
-          return $stored as Submission;
-        },
+              const $value = await $expressions["recordAccepted.step.0.set.submitter"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &submitter (src/domain/work/submission.mesh.mx:110:22) produced no value, and the relationship submitter is required",
+                );
+              $changes.submitterId = $record.submitterId = $value;
+            }
+            $changes.state = $record.state = "accepted";
+            // data layer
+            const $stored = await tx.insert(tables.submissions, $changes);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "work.Submission", action: "recordAccepted" },
+                null,
+                $stored,
+                parsed,
+                context,
+              ),
+            );
+            return $stored as Submission;
+          }),
       );
     },
 
@@ -699,26 +733,31 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
       input: Omit<ReadSubmissionInput, "load"> & SubmissionLoadArg<L>,
       ...[context]: $ContextArgument
     ): Promise<L extends unknown ? SubmissionWith<SubmissionLoadNames<L>>[] : never> {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a read through `tx` skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readSubmissionInput, input);
       if (
-        !(await $authorizer("work.Submission", "read", [
-          {
-            name: "membersRead",
-            when: null,
-            checks: [
-              {
-                kind: "authorize-if",
-                check: "({ actor, context }) => isSystem(context) || actor.role != null",
-                record: false,
-                run: $expressions["policy.membersRead.authorize-if.0"],
-              },
-            ],
-          },
-        ]).filter(
+        !(await $authorizer(
+          "work.Submission",
+          "read",
+          [
+            {
+              name: "membersRead",
+              when: null,
+              checks: [
+                {
+                  kind: "authorize-if",
+                  check: "({ actor, context }) => isSystem(context) || actor.role != null",
+                  record: false,
+                  run: $expressions["policy.membersRead.authorize-if.0"],
+                },
+              ],
+            },
+          ],
+          frame,
+        ).filter(
           layer,
           $scope(
             {
@@ -748,33 +787,94 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
  * The entity value (CMP-16): `Submission.<action>(input, context)` runs the action on the binding in scope, the
  * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
  */
-const $entityValue = $entity("work.Submission", bindSubmission, bindSubmissionReads, ($call) => ({
-  submit(input: SubmitSubmissionInput, ...context: $ContextArgument): Promise<Submission> {
-    return $call("submit", input, context);
-  },
+const $entityValue = $entity(
+  "work.Submission",
+  bindSubmission,
+  bindSubmissionReads as $EntityReadsBind<$Privileged>,
+  ($call) => ({
+    submit(input: SubmitSubmissionInput, ...context: $ContextArgument): Promise<Submission> {
+      return $call("submit", input, context);
+    },
 
-  withdraw(input: WithdrawSubmissionInput, ...context: $ContextArgument): Promise<Submission> {
-    return $call("withdraw", input, context);
-  },
+    withdraw(input: WithdrawSubmissionInput, ...context: $ContextArgument): Promise<Submission> {
+      return $call("withdraw", input, context);
+    },
 
-  settle(input: SettleSubmissionInput, ...context: $ContextArgument): Promise<Submission> {
-    return $call("settle", input, context);
-  },
+    settle(input: SettleSubmissionInput, ...context: $ContextArgument): Promise<Submission> {
+      return $call("settle", input, context);
+    },
 
-  recordAccepted(
-    input: RecordAcceptedSubmissionInput,
-    ...context: $ContextArgument
-  ): Promise<Submission> {
-    return $call("recordAccepted", input, context);
-  },
+    recordAccepted(
+      input: RecordAcceptedSubmissionInput,
+      ...context: $ContextArgument
+    ): Promise<Submission> {
+      return $call("recordAccepted", input, context);
+    },
 
-  read<const L extends readonly (keyof SubmissionLoadable)[] = readonly []>(
-    input: Omit<ReadSubmissionInput, "load"> & SubmissionLoadArg<L>,
-    ...context: $ContextArgument
-  ): Promise<L extends unknown ? SubmissionWith<SubmissionLoadNames<L>>[] : never> {
-    return $call("read", input, context);
-  },
-}));
+    read<const L extends readonly (keyof SubmissionLoadable)[] = readonly []>(
+      input: Omit<ReadSubmissionInput, "load"> & SubmissionLoadArg<L>,
+      ...context: $ContextArgument
+    ): Promise<L extends unknown ? SubmissionWith<SubmissionLoadNames<L>>[] : never> {
+      return $call("read", input, context);
+    },
+  }),
+);
 export { $entityValue as Submission };
 /** The record type, under the entity value's name. */
 export type Submission = $Record;
+
+/** What `privileged(Submission)` returns (TXN-16): one function per read action, run with no policy. */
+export interface $Privileged {
+  read<const L extends readonly (keyof SubmissionLoadable)[] = readonly []>(
+    input: Omit<ReadSubmissionInput, "load"> & SubmissionLoadArg<L>,
+    context?: $ActionContext,
+  ): Promise<L extends unknown ? SubmissionTxWith<SubmissionLoadNames<L>>[] : never>;
+}
+
+/** `$Privileged` as a function of an entity file sees it: every result deeply read-only (ACT-09). */
+export interface $PrivilegedReadOnly {
+  read<const L extends readonly (keyof SubmissionLoadable)[] = readonly []>(
+    input: Omit<ReadSubmissionInput, "load"> & SubmissionLoadArg<L>,
+    context?: $ActionContext,
+  ): Promise<
+    L extends unknown
+      ? readonly ($DeepReadonly<Submission> &
+          Pick<$DeepReadonly<SubmissionTxLoadable>, SubmissionLoadNames<L>>)[]
+      : never
+  >;
+}
+
+/**
+ * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
+ * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ */
+export type $ReadOnly = $EntityValue<
+  {
+    submit(
+      input: SubmitSubmissionInput,
+      ...context: $ContextArgument
+    ): Promise<$DeepReadonly<Submission>>;
+    withdraw(
+      input: WithdrawSubmissionInput,
+      ...context: $ContextArgument
+    ): Promise<$DeepReadonly<Submission>>;
+    settle(
+      input: SettleSubmissionInput,
+      ...context: $ContextArgument
+    ): Promise<$DeepReadonly<Submission>>;
+    recordAccepted(
+      input: RecordAcceptedSubmissionInput,
+      ...context: $ContextArgument
+    ): Promise<$DeepReadonly<Submission>>;
+    read<const L extends readonly (keyof SubmissionLoadable)[] = readonly []>(
+      input: Omit<ReadSubmissionInput, "load"> & SubmissionLoadArg<L>,
+      ...context: $ContextArgument
+    ): Promise<
+      L extends unknown
+        ? readonly ($DeepReadonly<Submission> &
+            Pick<$DeepReadonly<SubmissionLoadable>, SubmissionLoadNames<L>>)[]
+        : never
+    >;
+  },
+  $PrivilegedReadOnly
+>;

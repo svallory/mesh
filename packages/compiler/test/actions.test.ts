@@ -102,19 +102,19 @@ describe("actions view", () => {
   test("one method per effective action: declared in authored order, then auto", () => {
     const view = viewOf("Article");
     expect(view.bindName).toBe("bindArticle");
-    expect(view.methods.map((m) => [m.name, m.functionName, m.inputType, m.validator, m.returnType])).toEqual([
-      ["create", "createArticle", "CreateArticleInput", "createArticleInput", "Article"],
-      ["rename", "renameArticle", "RenameArticleInput", "renameArticleInput", "Article"],
-      ["publish", "publishArticle", "PublishArticleInput", "publishArticleInput", 'ArticleWith<"author">'],
-      ["purge", "purgeArticle", "PurgeArticleInput", "purgeArticleInput", "void"],
-      ["live", "liveArticle", 'Omit<LiveArticleInput, "load"> & ArticleLoadArg<L>', "liveArticleInput", "(L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)"],
-      ["load", "loadArticle", 'Omit<LoadArticleInput, "load"> & ArticleLoadArg<L>', "loadArticleInput", "(L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)"],
-      ["read", "readArticle", 'Omit<ReadArticleInput, "load"> & ArticleLoadArg<L>', "readArticleInput", "(L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)"],
-      ["destroy", "destroyArticle", "DestroyArticleInput", "destroyArticleInput", "void"],
+    expect(view.methods.map((m) => [m.name, m.labelLiteral, m.inputType, m.validator, m.returnType])).toEqual([
+      ["create", '"blog.Article#create"', "CreateArticleInput", "createArticleInput", "Article"],
+      ["rename", '"blog.Article#rename"', "RenameArticleInput", "renameArticleInput", "Article"],
+      ["publish", '"blog.Article#publish"', "PublishArticleInput", "publishArticleInput", 'ArticleWith<"author">'],
+      ["purge", '"blog.Article#purge"', "PurgeArticleInput", "purgeArticleInput", "void"],
+      ["live", '"blog.Article#live"', 'Omit<LiveArticleInput, "load"> & ArticleLoadArg<L>', "liveArticleInput", "(L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)"],
+      ["load", '"blog.Article#load"', 'Omit<LoadArticleInput, "load"> & ArticleLoadArg<L>', "loadArticleInput", "(L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)"],
+      ["read", '"blog.Article#read"', 'Omit<ReadArticleInput, "load"> & ArticleLoadArg<L>', "readArticleInput", "(L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)"],
+      ["destroy", '"blog.Article#destroy"', "DestroyArticleInput", "destroyArticleInput", "void"],
     ]);
     expect(view.runtimeValues).toEqual([
-      "FrameworkError as $FrameworkError", "InvalidInputError as $InvalidInputError", "NotFoundError as $NotFoundError", "authorizer as $authorizer", "castInput as $castInput", "checkScope as $checkScope",
-      "checkUnchanged as $checkUnchanged", "composed as $composed", "entity as $entity", "failJoined as $failJoined", "guarded as $guarded", "loadRows as $loadRows",
+      "FrameworkError as $FrameworkError", "InvalidInputError as $InvalidInputError", "NO_FRAME as $NO_FRAME", "NotFoundError as $NotFoundError", "authorizer as $authorizer", "castInput as $castInput", "checkScope as $checkScope",
+      "checkUnchanged as $checkUnchanged", "entity as $entity", "failJoined as $failJoined", "guarded as $guarded", "loadRows as $loadRows",
       "noteWrite as $noteWrite", "pinClock as $pinClock", "readOnlyRecord as $readOnlyRecord", "recordWrite as $recordWrite", "runAction as $runAction", "runCheck as $runCheck", "scope as $scope", "uuidv7 as $uuidv7", "wantsChanges as $wantsChanges", "writeCount as $writeCount"]);
     expect(view.runtimeTypes).toEqual(["CastOutput as $CastOutput", "Issue as $Issue", "Row as $Row"]);
     expect(view.typesFromLiteral).toBe('"./article.types"');
@@ -150,8 +150,8 @@ describe("actions view", () => {
       "// data layer",
       "const $stored = await tx.insert(tables.articles, $changes);",
       "$noteWrite(tx);",
-      "// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write",
-      'await $recordWrite(tx, options.seams, { entity: "blog.Article", action: "create" }, null, $stored, parsed, context);',
+      "// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values",
+      'await frame.plain(() => $recordWrite(tx, options.seams, { entity: "blog.Article", action: "create" }, null, $stored, parsed, context));',
       "return $stored as Article;",
     ]);
     expect(create.notRun).toBe("Not run in this version: on:load load");
@@ -205,9 +205,9 @@ describe("actions view", () => {
       "if (!parsed.load?.length) return $rows as unknown as (L extends unknown ? ArticleTxWith<ArticleLoadNames<L>>[] : never);",
       "const $context = (context ?? {}) as unknown as Record<string, unknown>;",
       'const $clock = clock ?? $pinClock(options.clock);',
-      'return (await $loadRows($loadPlan, "blog.Article", tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock, policies })) as unknown as (L extends unknown ? ArticleTxWith<ArticleLoadNames<L>>[] : never);'],
+      'return (await $loadRows($loadPlan, "blog.Article", tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock, policies, frame })) as unknown as (L extends unknown ? ArticleTxWith<ArticleLoadNames<L>>[] : never);'],
       generics: "<const L extends readonly (keyof ArticleLoadable)[] = readonly []>",
-      // The read action casts its input once, for its policies, and hands it over as `cast` (R2-N4); a read through `tx` casts it in the body.
+      // The read action casts its input once, for its policies, and hands it over as `cast` (R2-N4); a `privileged` read casts it in the body.
       contextParam: ", context?: unknown, clock?: () => Date, policies?: boolean, cast?: $CastOutput<typeof readArticleInput>" });
     // The read action asks for the load's policies (`true`); a caller's result is typed with `ArticleWith`, where the author may be null.
     expect(view.methods.filter((m) => m.isRead).map((m) => [m.name, m.readsCall, m.statements])).toEqual([
@@ -221,7 +221,7 @@ describe("actions view", () => {
     // The checks see the cast input, as a write's do (N2 of the review); an invalid input is reported as one, denied or not.
     expect(readMethod.preCheck.slice(4)).toEqual([
       "const $parsed = await $castInput(layer, readArticleInput, input);",
-      'if (!(await $authorizer("blog.Article", "read", [{ name: "everyone", when: null, checks: [{ kind: "authorize-if", check: "() => true", record: false, run: $expressions["policy.everyone.authorize-if.0"] }] }]).filter(layer, $scope({ input: $readOnlyRecord($parsed as never, "blog.Article#read"), actor: $actor, context: $context }, { clock: $clock })))) return [] as unknown as (L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never);',
+      'if (!(await $authorizer("blog.Article", "read", [{ name: "everyone", when: null, checks: [{ kind: "authorize-if", check: "() => true", record: false, run: $expressions["policy.everyone.authorize-if.0"] }] }], frame).filter(layer, $scope({ input: $readOnlyRecord($parsed as never, "blog.Article#read"), actor: $actor, context: $context }, { clock: $clock })))) return [] as unknown as (L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never);',
     ]);
   });
 
@@ -235,8 +235,8 @@ describe("actions view", () => {
       "// data layer",
       'if (!(await tx.deleteByKey(tables.articles, $key))) throw new $NotFoundError("blog.Article", $key);',
       "$noteWrite(tx);",
-      "// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write",
-      'await $recordWrite(tx, options.seams, { entity: "blog.Article", action: "destroy" }, $before ?? null, null, parsed, context);',
+      "// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values",
+      'await frame.plain(() => $recordWrite(tx, options.seams, { entity: "blog.Article", action: "destroy" }, $before ?? null, null, parsed, context));',
     ]);
     expect(destroy.notRun).toBeNull();
   });
@@ -292,13 +292,12 @@ describe("build errors", () => {
     expect(error.diagnostic.position.file).toBe("y/ab.mesh.mx");
   });
 
-  test("MESH_EMIT_NAME: an action function colliding with another entity's", () => {
+  test("actions that one flat name would have spelled alike build: an action is called on its entity (CMP-16)", () => {
     const one = "entity :Item\n  attributes\n    uuid :id primary-key\n  actions\n    read :forUser\n";
     const two = "entity :ForUserItem\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n";
     const three = "entity :UserItem\n  attributes\n    uuid :id primary-key\n  actions\n    read :for\n";
-    const error = emitErrorOf(() => actionsGenerator.views(inputOf(documentOf({ "a/item.mesh.mx": one, "b/user-item.mesh.mx": three, "c/x.mesh.mx": two }))));
-    expect(error.diagnostic.message).toBe("the action a.Item#forUser (a/item.mesh.mx:5:5) and the action b.UserItem#for would both be actions.forUserItem");
-    expect(error.diagnostic.position).toMatchObject({ file: "b/user-item.mesh.mx", line: 5 });
+    expect(actionsGenerator.views(inputOf(documentOf({ "a/item.mesh.mx": one, "b/user-item.mesh.mx": three, "c/x.mesh.mx": two }))).map((file) => file.path))
+      .toEqual(["generated/domain/a/item.actions.ts", "generated/domain/b/userItem.actions.ts", "generated/domain/c/forUserItem.actions.ts"]);
   });
 
   test("negative: distinct names across entities build", () => {
@@ -395,7 +394,7 @@ describe("explain", () => {
       "               when () => true",
       "                 run () { }",
       "               load &author",
-      "  seams        beforeTransaction: before the transaction opens, for a top-level call only (a call through `actions` or inside `transaction` joins one and runs none)",
+      "  seams        beforeTransaction: before the transaction opens, for a top-level call only (a call from an action's own code or inside `transaction` joins one and runs none)",
       "               afterWrite: inside the transaction, right after the row is written, before the steps after the write",
       "               afterCommit: once, after the outermost transaction commits, with every change it made",
     ].join("\n"));

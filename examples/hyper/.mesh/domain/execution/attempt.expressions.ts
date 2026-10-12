@@ -3,6 +3,7 @@
 
 import {
   expr as $,
+  privileged as $privileged,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
   type SharedInput as $SharedInput,
@@ -19,10 +20,11 @@ import {
 } from "../../../src/domain/execution/execution.helpers";
 import { heldFence, missingEvidenceOf } from "../../../src/domain/work/work.helpers";
 import { memberOf, roleIn } from "../../../src/domain/identity/identity.helpers";
-import type {
-  ReadOnlyActions as $ReadOnlyActions,
-  ReadOnlyReads as $ReadOnlyReads,
-} from "../../composition";
+import { Run as $e$Run, type $ReadOnly as $t$Run } from "./run.actions";
+import {
+  SessionReference as $e$SessionReference,
+  type $ReadOnly as $t$SessionReference,
+} from "./sessionReference.actions";
 import type {
   Attempt,
   AttemptLoaded,
@@ -39,8 +41,6 @@ export type AttemptScope<I = unknown> = $Scope<{
   actor: any;
   context: any;
   before: $DeepReadonly<Attempt> | null;
-  actions: $ReadOnlyActions;
-  tx: $ReadOnlyReads;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
 export type AttemptStoredScope<I = unknown> = AttemptScope<I> & { before: $DeepReadonly<Attempt> };
@@ -76,31 +76,34 @@ export type AttemptNewScope<I = unknown> = Omit<AttemptCheckScope<I>, "self"> & 
 };
 
 export const expressions = {
-  // check :claimer that, plain (uses-tx) (src/domain/execution/attempt.mesh.mx:42:16)
+  // check :claimer that, plain (awaits-helper) (src/domain/execution/attempt.mesh.mx:42:16)
   "start.check.claimer.that": ($s: AttemptNewScope<StartAttemptInput>) => {
     const now = () => $.now($s);
-    return (({ input, actor, tx }) => claimerOf(tx, input.run, actor.id, now()))($s);
+    return (async ({ input, actor }) => await claimerOf(input.run, actor.id, now()))($s);
   },
-  // check :runRunning that, plain (uses-tx) (src/domain/execution/attempt.mesh.mx:47:16)
+  // check :runRunning that, plain (awaits-helper) (src/domain/execution/attempt.mesh.mx:47:16)
   "start.check.runRunning.that": ($s: AttemptNewScope<StartAttemptInput>) => {
-    return (({ input, tx }) => runRunningOf(tx, input.run))($s);
+    return (async ({ input }) => await runRunningOf(input.run))($s);
   },
-  // check :stepIdle that, plain (uses-tx) (src/domain/execution/attempt.mesh.mx:52:16)
+  // check :stepIdle that, plain (awaits-helper) (src/domain/execution/attempt.mesh.mx:52:16)
   "start.check.stepIdle.that": ($s: AttemptNewScope<StartAttemptInput>) => {
     const { self } = $s;
-    return (({ input, tx }) => stepIdleOf(tx, input.run, input.step ?? self.step))($s);
+    return (async ({ input }) => await stepIdleOf(input.run, input.step ?? self.step))($s);
   },
-  // check :session that, plain (uses-tx) (src/domain/execution/attempt.mesh.mx:57:16)
+  // check :session that, plain (uses-privileged) (src/domain/execution/attempt.mesh.mx:57:16)
   "start.check.session.that": ($s: AttemptNewScope<StartAttemptInput>) => {
-    return (async ({ input, tx }) =>
+    const privileged = $privileged;
+    const SessionReference: $t$SessionReference = $e$SessionReference;
+    return (async ({ input }) =>
       input.session == null ||
-      (await tx.readSessionReference({ filter: { id: { eq: input.session } }, limit: 1 })).length >
-        0)($s);
+      (await privileged(SessionReference).read({ filter: { id: { eq: input.session } }, limit: 1 }))
+        .length > 0)($s);
   },
-  // check :machineRetired that, plain (uses-tx) (src/domain/execution/attempt.mesh.mx:62:16)
+  // check :machineRetired that, plain (awaits-helper) (src/domain/execution/attempt.mesh.mx:62:16)
   "start.check.machineRetired.that": ($s: AttemptNewScope<StartAttemptInput>) => {
-    return (async ({ input, tx }) =>
-      input.machine == null || (await machineActiveOf(tx, input.machine)))($s);
+    return (async ({ input }) => input.machine == null || (await machineActiveOf(input.machine)))(
+      $s,
+    );
   },
   // set &performer, translated (src/domain/execution/attempt.mesh.mx:68:22)
   "start.step.0.set.performer": ($s: AttemptScope<StartAttemptInput>) => $s.actor?.id,
@@ -128,16 +131,13 @@ export const expressions = {
   // check :error that, translated (src/domain/execution/attempt.mesh.mx:87:16)
   "finish.check.error.that": ($s: AttemptCheckScope<FinishAttemptInput>) =>
     $.or($.eq($s.input?.result, "failed"), $.isNull($s.input?.error)),
-  // check :evidence that, plain (uses-tx) (src/domain/execution/attempt.mesh.mx:92:16)
+  // check :evidence that, plain (awaits-helper) (src/domain/execution/attempt.mesh.mx:92:16)
   "finish.check.evidence.that": ($s: AttemptCheckScope<FinishAttemptInput>) => {
-    return (async ({ input, tx }) =>
-      (await missingEvidenceOf(tx, input.evidence ?? [])).length === 0)($s);
+    return (async ({ input }) => (await missingEvidenceOf(input.evidence ?? [])).length === 0)($s);
   },
-  // check :evidence details, plain (uses-tx) (src/domain/execution/attempt.mesh.mx:95:19)
+  // check :evidence details, plain (awaits-helper) (src/domain/execution/attempt.mesh.mx:95:19)
   "finish.check.evidence.details": ($s: AttemptCheckScope<FinishAttemptInput>) => {
-    return (async ({ input, tx }) => ({
-      missing: await missingEvidenceOf(tx, input.evidence ?? []),
-    }))($s);
+    return (async ({ input }) => ({ missing: await missingEvidenceOf(input.evidence ?? []) }))($s);
   },
   // check :versionMatches that, translated (src/domain/execution/attempt.mesh.mx:98:16)
   "finish.check.versionMatches.that": ($s: AttemptCheckScope<FinishAttemptInput>) =>
@@ -164,10 +164,12 @@ export const expressions = {
     $.add($s.self.version, 1),
   // run, plain (run-step) (src/domain/execution/attempt.mesh.mx:109:28)
   "finish.step.1.run": ($s: AttemptStoredScope<FinishAttemptInput>) => {
-    return (async function ({ self, input, context, tx, actions }) {
-      const [run] = await tx.readRun({ filter: { id: { eq: self.runId } } });
+    const privileged = $privileged;
+    const Run: $t$Run = $e$Run;
+    return (async function ({ self, input, context }) {
+      const [run] = await privileged(Run).read({ filter: { id: { eq: self.runId } } });
       if (run && settlesRun(run.state, input.result, input.error))
-        await actions.settleRun(
+        await Run.settle(
           { id: run.id, result: input.result, outcome: self.outcome },
           { ...context, system: true },
         );
@@ -225,23 +227,23 @@ export const expressions = {
   // policy :membersRead authorize-if, translated (src/domain/execution/attempt.mesh.mx:160:20)
   "policy.membersRead.authorize-if.0": ($s: AttemptCheckScope<unknown>) =>
     $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
-  // policy :isMember authorize-if, plain (uses-tx) (src/domain/execution/attempt.mesh.mx:162:20)
+  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/execution/attempt.mesh.mx:162:20)
   "policy.isMember.authorize-if.0": ($s: AttemptNewScope<StartAttemptInput>) => {
     const isSystem = $.isSystem;
-    return (({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id))($s);
+    return (async ({ actor, context }) => isSystem(context) || (await memberOf(actor.id)))($s);
   },
-  // policy :ownerOrMember authorize-if, plain (uses-tx) (src/domain/execution/attempt.mesh.mx:164:20)
+  // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/execution/attempt.mesh.mx:164:20)
   "policy.ownerOrMember.authorize-if.0": ($s: AttemptNewScope<StartAttemptInput>) => {
     const isSystem = $.isSystem;
-    return (({ actor, context, tx }) =>
-      isSystem(context) || roleIn(tx, actor.id, ["owner", "member"]))($s);
+    return (async ({ actor, context }) =>
+      isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
   },
-  // policy :attemptClaimer authorize-if, plain (uses-tx) (src/domain/execution/attempt.mesh.mx:167:20)
+  // policy :attemptClaimer authorize-if, plain (awaits-helper) (src/domain/execution/attempt.mesh.mx:167:20)
   "policy.attemptClaimer.authorize-if.0": ($s: AttemptNewScope<StartAttemptInput>) => {
     const now = () => $.now($s);
     const isSystem = $.isSystem;
-    return (({ input, actor, context, tx }) =>
-      isSystem(context) || claimerOf(tx, input.run, actor.id, now()))($s);
+    return (async ({ input, actor, context }) =>
+      isSystem(context) || (await claimerOf(input.run, actor.id, now())))($s);
   },
   // policy :attemptPerformer authorize-if, translated (src/domain/execution/attempt.mesh.mx:169:20)
   "policy.attemptPerformer.authorize-if.0": (

@@ -5,7 +5,9 @@
 import { describe, expect, test } from "bun:test";
 import type { Diagnostic, Entity } from "@meshfw/model";
 import { buildModel } from "../src/front-end/build.ts";
-import { policiesCovering, policyExpressions, readsRecord } from "../src/model/policies.ts";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { policiesCovering, policyExpressions, readsRecord, recordReason } from "../src/model/policies.ts";
 import { generateFiles } from "../src/typescript/emit.ts";
 import { explainAction } from "../src/typescript/explain.ts";
 import { configOf } from "./generated.ts";
@@ -97,11 +99,16 @@ describe("what a policy may name and read", () => {
     expect(warned("() => &id !== null")).toEqual([]);
   });
 
-  test("a policy that reads `actions` fails the build: a policy decides, it does not act", () => {
-    const built = build(post("  policies\n    policy :p types=[:update]\n      forbid-if=async ({ actions }) => (await actions.readPost({})).length > 1\n"));
-    expect(codes(built.diagnostics)).toContain("error:MESH_POLICY_ACTS");
-    // Reading through `tx` is how a policy reads other rows.
-    expect(build(post("  policies\n    policy :p types=[:update]\n      forbid-if=async ({ tx }) => (await tx.readPost({})).length > 1\n    policy :r types=[:create, :read, :destroy]\n      authorize-if=() => true\n")).diagnostics).toEqual([]);
+  test("a policy that calls an entity's action fails the build: a policy decides, it does not act", () => {
+    const source = post("  policies\n    policy :p types=[:update]\n      forbid-if=async ({ context }) => (await Post.read({}, context)).length > 1\n    policy :r types=[:create, :read, :destroy]\n      authorize-if=() => true\n");
+    const built = build(source);
+    expect(codes(built.diagnostics)).toEqual(["error:MESH_POLICY_ACTS"]);
+    expect(built.diagnostics[0]).toMatchObject({
+      message: "policy :p forbid-if calls an entity's action: a policy decides whether the call may run, and must not run actions itself",
+      fix: "read what the decision needs through `privileged(Entity)`, which runs reads only",
+    });
+    // Reading through `privileged` is how a policy reads other rows.
+    expect(build(post("  policies\n    policy :p types=[:update]\n      forbid-if=async () => (await privileged(Post).read({})).length > 1\n    policy :r types=[:create, :read, :destroy]\n      authorize-if=() => true\n")).diagnostics).toEqual([]);
   });
 });
 
@@ -110,9 +117,45 @@ describe("a read policy that reads the record is refused until M10", () => {
     const built = build(post("  policies\n    policy :mine types=[:read, :update]\n      authorize-if=({ actor }) => &authorId === actor.id\n"));
     expect(codes(built.diagnostics)).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
     expect(built.diagnostics[0]!.message).toBe("policy :mine authorize-if reads the record, and the policy covers read :read of blog.Post: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10");
-    // The same through tx, and through a `when`.
-    expect(codes(build(post("  policies\n    policy :q types=[:read]\n      forbid-if=async ({ tx }) => (await tx.readPost({})).length > 9\n")).diagnostics)).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
+    // The same through a `when`.
     expect(codes(build(post("  policies\n    policy :w types=[:read] when=() => &title !== null\n      authorize-if=() => true\n")).diagnostics)).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
+  });
+
+  test("a read policy that calls `privileged` is MESH_READ_POLICY_PRIVILEGED at each call: a filter reads no other entity", () => {
+    const fix = "Move the condition into a write policy (scope this one to the writes with `types=` or `actions=`) or a check, or into a computed field that the filter compares";
+    const that = "async () => (await privileged(Post).read({})).length > 9";
+    const source = post(`  policies\n    policy :q types=[:read]\n      forbid-if=${that}\n    policy :rest types=[:create, :update, :destroy]\n      authorize-if=() => true\n`);
+    const built = build(source);
+    expect(codes(built.diagnostics)).toEqual(["error:MESH_READ_POLICY_PRIVILEGED"]);
+    expect(built.diagnostics[0]).toMatchObject({
+      message: "policy :q forbid-if calls `privileged`, and the policy covers read :read of blog.Post: a read policy is a filter on the query, and reads no other entity",
+      fix,
+    });
+    expect(built.diagnostics[0]!.position.offset).toBe(source.indexOf("privileged(Post)"));
+    expect(built.document).toBeNull();
+    // A policy with no scope covers the read too; each call is reported, in a `when` as in a check.
+    const twice = post("  policies\n    policy :all when=async () => (await privileged(Post).read({})).length > 0\n      authorize-if=async () => (await privileged(Post).read({})).length + (await privileged(Post).read({})).length > 1\n");
+    const all = build(twice).diagnostics;
+    expect(codes(all)).toEqual(Array(3).fill("error:MESH_READ_POLICY_PRIVILEGED"));
+    expect(all.map((d) => d.position.offset).sort((a, b) => a - b)).toEqual([...twice.matchAll(/privileged\(Post\)/g)].map((m) => m.index));
+    expect(all.map((d) => d.message.split(" calls ")[0])).toEqual(["policy :all when", "policy :all authorize-if", "policy :all authorize-if"]);
+    // A write policy reads through `privileged` (POL-21), and Mesh's name shadowed by a parameter is not Mesh's.
+    expect(build(post(`  policies\n    policy :p types=[:update]\n      forbid-if=${that}\n    policy :rest types=[:create, :read, :destroy]\n      authorize-if=() => true\n`)).diagnostics).toEqual([]);
+    expect(codes(build(post("  policies\n    policy :q types=[:read]\n      authorize-if=({ context: privileged }) => privileged !== null\n")).diagnostics)).toEqual([]);
+    // A read policy that calls an entity's action stays MESH_POLICY_ACTS.
+    expect(codes(build(post("  policies\n    policy :q types=[:read]\n      authorize-if=async ({ context }) => (await Post.draft({ authorId: \"a\" }, context)) !== null\n")).diagnostics)).toEqual(["error:MESH_POLICY_ACTS"]);
+  });
+
+  test("a read policy that calls a helper which calls `privileged` builds: the run time refuses the call (TXN-18)", async () => {
+    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-policy-helper-"));
+    try {
+      await mkdir(resolve(root, "blog"));
+      await writeFile(resolve(root, "blog/helpers.ts"), 'import { privileged } from "#mesh";\nimport { Post } from "#mesh/domain/blog";\nexport const big = () => privileged(Post) !== null;\n');
+      const source = `import { big } from "./helpers"\n${post("  policies\n    policy :q types=[:read]\n      authorize-if=() => big()\n    policy :rest types=[:create, :update, :destroy]\n      authorize-if=() => true\n")}`;
+      expect(buildModel({ root, files: [{ file: "blog/post.mesh.mx", source }] }).diagnostics).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   test("a policy a caller's load runs (POL-17) that reads the record is refused too, with no read action to cover", () => {
@@ -173,8 +216,8 @@ ${covered}` }] });
     const custom = blog("  policies\n    policy :lists actions=[&list]\n      authorize-if=() => true\n");
     expect(codes(custom.diagnostics)).toEqual(["warning:MESH_LOAD_NO_POLICY", "warning:MESH_LOAD_NO_POLICY"]);
     expect(custom.diagnostics.map((d) => [d.message, d.position.line])).toEqual([
-      ["belongs-to :tag of blog.Post reaches blog.Tag, and no policy of blog.Tag covers the read a load runs, so every caller's load of it is null, a count over it 0 and any other rollup null (through `tx` and in a computed field's body it is loaded)", 6],
-      ["has-many :tags of blog.Shelf reaches blog.Tag, and no policy of blog.Tag covers the read a load runs, so every caller's load of it is [], a count over it 0 and any other rollup null (through `tx` and in a computed field's body it is loaded)", 6],
+      ["belongs-to :tag of blog.Post reaches blog.Tag, and no policy of blog.Tag covers the read a load runs, so every caller's load of it is null, a count over it 0 and any other rollup null (through `privileged` and in a computed field's body it is loaded)", 6],
+      ["has-many :tags of blog.Shelf reaches blog.Tag, and no policy of blog.Tag covers the read a load runs, so every caller's load of it is [], a count over it 0 and any other rollup null (through `privileged` and in a computed field's body it is loaded)", 6],
     ]);
     expect(custom.diagnostics[0]!.fix).toBe("If callers may load it, give blog.Tag a policy that covers its read: `types=[:read]`, `actions=[&read]` or no scope");
     // Covered by type, with no scope, or by name: no warning. Neither for an entity with no policy at all, which denies
@@ -200,13 +243,38 @@ describe("which checks read the record (ACT-28, POL-08)", () => {
     expect(checks("() => true")).toBe(false);
     expect(checks("({ actor }) => { return typeof actor === \"object\" }")).toBe(false);
   });
-  test("self, a member, tx, or plain code the build cannot read: inside the transaction", () => {
+  test("self, a member, privileged, an entity, or plain code the build cannot read: inside the transaction (POL-11, POL-21)", () => {
     expect(checks("() => &title !== null")).toBe(true);
     expect(checks("({ self }) => self.title !== null")).toBe(true);
-    expect(checks("async ({ tx }) => (await tx.readPost({})).length > 0")).toBe(true);
+    expect(checks("async () => (await privileged(Post).read({})).length > 0")).toBe(true);
+    expect(checks("() => Post !== undefined")).toBe(true);
     expect(checks("({ actor }) => { return actor.id === &authorId }")).toBe(true);
     expect(checks("(scope) => scope.actor !== null")).toBe(true);
     expect(checks("({ ...scope }) => scope.actor !== null")).toBe(true);
+  });
+  test("a write's check that calls an imported function runs inside the transaction, even when the build translates it (POL-21); a read policy's builds", async () => {
+    // The function may read anything through `privileged`, which reads in the running transaction.
+    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-policy-helper-"));
+    try {
+      await mkdir(resolve(root, "blog"));
+      await writeFile(resolve(root, "blog/helpers.ts"), "export const isStaff = (actor: { staff?: boolean }) => actor.staff === true;\n");
+      const source = `import { isStaff } from "./helpers"\n${post("  policies\n    policy :p types=[:update]\n      authorize-if=({ actor }) => isStaff(actor)\n    policy :rest types=[:create, :read, :destroy]\n      authorize-if=() => true\n")}`;
+      const built = buildModel({ root, files: [{ file: "blog/post.mesh.mx", source }] });
+      expect(built.diagnostics).toEqual([]);
+      const expression = policyExpressions(built.document!.entities[0]!.policies[0]!)[0]!.expression;
+      expect(expression.tree).toBeDefined();
+      expect(readsRecord(expression)).toBe(true);
+      expect(recordReason(expression)).toBe("calls an imported function");
+      // In a read policy it is a pure call (EXP-03), not a read of the record: the policy builds, and runs before the query.
+      const reader = `import { isStaff } from "./helpers"\n${post("  policies\n    policy :staff types=[:read]\n      authorize-if=({ actor }) => isStaff(actor)\n    policy :rest types=[:create, :update, :destroy]\n      authorize-if=() => true\n")}`;
+      const read = buildModel({ root, files: [{ file: "blog/post.mesh.mx", source: reader }] });
+      expect(read.diagnostics).toEqual([]);
+      const readCheck = policyExpressions(read.document!.entities[0]!.policies[0]!)[0]!.expression;
+      expect(recordReason(readCheck, "read")).toBeUndefined();
+      expect(recordReason(readCheck, "write")).toBe("calls an imported function");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
   test("types= and actions= cover by kind and by name; a policy with neither covers every action", () => {
     const entity = entityOf(post("  policies\n    policy :all\n      authorize-if=() => true\n    policy :writes types=[:create, :update]\n      authorize-if=() => true\n    policy :one actions=[&remove]\n      authorize-if=() => true\n"));

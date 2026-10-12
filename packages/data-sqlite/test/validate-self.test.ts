@@ -85,7 +85,7 @@ entity :Note table="notes"
       validate
         check :watch that=({ self, input, context }) => sawNote(context, "validate", self, input) code="watch" message="watch"
         check :ownerExists [
-          that=async ({ input, tx }) => (await tx.readPerson({ filter: { id: { eq: input.owner } } })).length === 1
+          that=async ({ input }) => (await privileged(Person).read({ filter: { id: { eq: input.owner } } })).length === 1
           code="note.owner"
           message="no such person"
         ]
@@ -94,8 +94,8 @@ entity :Note table="notes"
         &title
         &owner
       do
-        run [after=:write] async ({ self, actions }) {
-          await actions.publishNote({ id: self.id });
+        run [after=:write] async ({ self, context }) {
+          await Note.publish({ id: self.id }, context);
         }
     update :edit
       input
@@ -230,7 +230,7 @@ const SQLITE: ResolvedConfig["data"] = {
 
 let dir: string;
 let app: any;
-let domain: object;
+let domain: any;
 beforeAll(async () => {
   dir = await mkdtemp(join(import.meta.dir, ".validate-self-"));
   const config: ResolvedConfig = { root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"), data: SQLITE };
@@ -330,7 +330,7 @@ describe("create: validate sees the new instance, do sees the input applied", ()
     } finally { await world.db.close(); }
   });
 
-  test("a check that reads a related record goes through tx with input.owner, since &owner is not there yet (POL-08)", async () => {
+  test("a check that reads a related record goes through privileged with input.owner, since &owner is not there yet (POL-08)", async () => {
     const world = await fresh();
     try {
       const error = await invalid(world.mesh.writeNote({ title: "t", owner: "00000000-0000-7000-8000-000000000000" }, world.ctx));
@@ -440,7 +440,7 @@ describe("destroy", () => {
   }, 30_000);
 });
 
-describe("composition: an action called through actions or tx checks the record it finds", () => {
+describe("composition: an action called through its entity value checks the record it finds", () => {
   test("a run after the write calls publish, whose check sees the stored new row; a second publish is refused", async () => {
     const world = await fresh();
     try {
@@ -455,12 +455,12 @@ describe("composition: an action called through actions or tx checks the record 
   test("in one transaction, an edit after a create sees the row the create wrote, not the edit's input", async () => {
     const world = await fresh();
     try {
-      const result = await world.mesh.transaction(async ({ actions, tx }: any) => {
-        const made = await actions.writeNote({ title: "a", owner: world.bo.id });
+      const result = await world.mesh.transaction(async () => {
+        const made = await domain.Note.write({ title: "a", owner: world.bo.id }, world.ctx);
         world.seen.length = 0;
-        await actions.editNote({ id: made.id, title: "b" });
-        return (await tx.readNote({ filter: { id: { eq: made.id } } }))[0];
-      }, world.ctx);
+        await domain.Note.edit({ id: made.id, title: "b" }, world.ctx);
+        return (await app.privileged(domain.Note).read({ filter: { id: { eq: made.id } } }))[0];
+      });
       expect(phase(world, "validate")[0]).toMatchObject({ self: { id: result.id, title: "a", ownerId: world.bo.id }, input: { id: result.id, title: "b" } });
       expect(phase(world, "do")[0]!.self.title).toBe("b");
       expect(result.title).toBe("b");

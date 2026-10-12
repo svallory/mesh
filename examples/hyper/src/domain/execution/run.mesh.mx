@@ -29,12 +29,12 @@ entity :Run table="runs"
         &parentRun
       validate
         check :taskOpen [
-          that=({ input, tx }) => taskOpenOf(tx, input.task)
+          that=async ({ input }) => await taskOpenOf(input.task)
           code="run.task-open"
           message="runs serve open tasks"
         ]
         check :parentRunning [
-          that=async ({ input, tx }) => input.parentRun == null || await runRunningOf(tx, input.parentRun)
+          that=async ({ input }) => input.parentRun == null || await runRunningOf(input.parentRun)
           code="run.parent-running"
           message="the parent run is not running"
         ]
@@ -77,10 +77,10 @@ entity :Run table="runs"
     policy :membersRead types=[:read]
       authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
     policy :isMember actions=[&start, &cancel]
-      authorize-if=({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)
+      authorize-if=async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)
     policy :ownerOrMember actions=[&start, &cancel]
-      authorize-if=({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])
+      authorize-if=async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])
     policy :runCanceler actions=[&cancel]
-      authorize-if=({ self, actor, context, tx }) => isSystem(context) || cancelsRunOf(tx, self, actor.id)
+      authorize-if=async ({ self, actor, context }) => isSystem(context) || await cancelsRunOf(self, actor.id)
     policy :internal actions=[&settle]
       authorize-if=({ context }) => isSystem(context)

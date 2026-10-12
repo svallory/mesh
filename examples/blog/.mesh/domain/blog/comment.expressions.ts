@@ -6,10 +6,6 @@ import {
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
 } from "@meshfw/runtime";
-import type {
-  ReadOnlyActions as $ReadOnlyActions,
-  ReadOnlyReads as $ReadOnlyReads,
-} from "../../composition";
 import type { Comment, CommentLoaded } from "./comment.types";
 
 /** What every expression of Comment reads; `I` is the input of the action it runs in. */
@@ -19,8 +15,6 @@ export type CommentScope<I = unknown> = $Scope<{
   actor: any;
   context: any;
   before: $DeepReadonly<Comment> | null;
-  actions: $ReadOnlyActions;
-  tx: $ReadOnlyReads;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
 export type CommentStoredScope<I = unknown> = CommentScope<I> & { before: $DeepReadonly<Comment> };

@@ -70,8 +70,8 @@ entity :Task table="tasks"
         &reviewer
       validate
         check :underQuota [
-          that=async ({ input, tx }) => (await tx.readTask({ filter: { ownerId: { eq: input.owner } } })).length < 2
-          when=async ({ input, tx }) => (await tx.readMember({ filter: { id: { eq: input.owner } } }))[0]?.plan === "free"
+          that=async ({ input }) => (await privileged(Task).read({ filter: { ownerId: { eq: input.owner } } })).length < 2
+          when=async ({ input }) => (await privileged(Member).read({ filter: { id: { eq: input.owner } } }))[0]?.plan === "free"
           code="task.quota"
           message="free members have 2 tasks"
           details=() => ({ limit: 2 })
@@ -445,7 +445,7 @@ describe("create", () => {
     } finally { await world.db.close(); }
   });
 
-  test("a check reads a related record through the transaction: on a create `&owner` is not there yet, so the quota reads the caller's `input.owner` through `tx`, and `when` limits it to the free plan (ACT-27, POL-08)", async () => {
+  test("a check reads a related record through the transaction: on a create `&owner` is not there yet, so the quota reads the caller's `input.owner` through `privileged`, and `when` limits it to the free plan (ACT-27, POL-08)", async () => {
     const world = await fresh();
     try {
       await world.mesh.openTask({ title: "1", owner: world.owner.id, reviewer: world.owner.id }, world.ctx);

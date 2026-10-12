@@ -5,12 +5,12 @@
 import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
+  NO_FRAME as $NO_FRAME,
   NotFoundError as $NotFoundError,
   authorizer as $authorizer,
   castInput as $castInput,
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
-  composed as $composed,
   entity as $entity,
   guarded as $guarded,
   loadInto as $loadInto,
@@ -26,10 +26,14 @@ import {
   unloadFrom as $unloadFrom,
   uuidv7 as $uuidv7,
   writeCount as $writeCount,
+  type ActionContext as $ActionContext,
+  type ActionFrame as $ActionFrame,
   type BindOptions as $BindOptions,
-  type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type DeepReadonly as $DeepReadonly,
+  type EntityReadsBind as $EntityReadsBind,
+  type EntityValue as $EntityValue,
   type CastOutput as $CastOutput,
   type Issue as $Issue,
   type Row as $Row,
@@ -41,6 +45,7 @@ import type {
   AttemptLoadNames,
   AttemptLoadArg,
   AttemptLoadable,
+  AttemptTxLoadable,
   StartAttemptInput,
   FinishAttemptInput,
   ReportStoppedAttemptInput,
@@ -63,10 +68,14 @@ import {
 import { loadPlan as $loadPlan } from "../../load";
 
 /**
- * The reads of this entity without their policies: what `tx` holds in a function of an entity file (ADR-0068).
- * The read actions below evaluate the read's policies, then call these.
+ * The reads of this entity without their policies: what `privileged(Attempt)` runs (TXN-16). The read actions
+ * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
-export function bindAttemptReads(layer: $DataLayer, options: $BindOptions = {}) {
+export function bindAttemptReads(
+  layer: $DataLayer,
+  options: $BindOptions = {},
+  frame: $ActionFrame = $NO_FRAME,
+) {
   return Object.freeze({
     async read<const L extends readonly (keyof AttemptLoadable)[] = readonly []>(
       input: Omit<ReadAttemptInput, "load"> & AttemptLoadArg<L>,
@@ -76,7 +85,7 @@ export function bindAttemptReads(layer: $DataLayer, options: $BindOptions = {}) 
       cast?: $CastOutput<typeof readAttemptInput>,
     ): Promise<L extends unknown ? AttemptTxWith<AttemptLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a read through `tx` casts it here.
+      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readAttemptInput, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.attempts, {
@@ -96,6 +105,7 @@ export function bindAttemptReads(layer: $DataLayer, options: $BindOptions = {}) 
           context: $context,
           clock: $clock,
           policies,
+          frame,
         })) as unknown as L extends unknown ? AttemptTxWith<AttemptLoadNames<L>>[] : never;
       });
     },
@@ -103,11 +113,15 @@ export function bindAttemptReads(layer: $DataLayer, options: $BindOptions = {}) 
 }
 
 /**
- * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
- * `actions` and `tx`; the project's `bind` in the index passes it.
+ * Every action of this entity, bound to `layer`. `frame` is the binding's (the project's `bind` passes it): each action's
+ * transaction runs inside it, so what its functions call joins that transaction and reads its instant.
  */
-export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
-  const $reads = bindAttemptReads(layer, options);
+export function bindAttempt(
+  layer: $DataLayer,
+  options: $BindOptions = {},
+  frame: $ActionFrame = $NO_FRAME,
+) {
+  const $reads = bindAttemptReads(layer, options, frame);
   return Object.freeze({
     async start(input: StartAttemptInput, ...[context]: $ContextArgument): Promise<Attempt> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
@@ -123,7 +137,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
           checks: [
             {
               kind: "authorize-if",
-              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -136,7 +150,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
             {
               kind: "authorize-if",
               check:
-                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -149,7 +163,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
             {
               kind: "authorize-if",
               check:
-                "({ input, actor, context, tx }) => isSystem(context) || claimerOf(tx, input.run, actor.id, now())",
+                "async ({ input, actor, context }) => isSystem(context) || await claimerOf(input.run, actor.id, now())",
               record: true,
               run: $expressions["policy.attemptClaimer.authorize-if.0"],
             },
@@ -173,172 +187,176 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
         { entity: "execution.Attempt", action: "start" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          const $now = $clock();
-          // plan: a create is one insert; nothing is read first
-          const $changes: $Row = {
-            id: $uuidv7(),
-            step: "main",
-            claimFence: null,
-            runtime: null,
-            outcome: null,
-            state: "running",
-            endedAt: null,
-            version: 1,
-            startedAt: $now,
-            machineId: null,
-            sessionId: null,
-          };
-          const $record: $Row = {
-            ...$changes,
-            number: null,
-            runId: null,
-            taskId: null,
-            performerId: null,
-            delegatorId: null,
-          };
-          const $load = { actor: $actor, context: $context, clock: $clock };
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "execution.Attempt", $record, "action function"),
-            "execution.Attempt#start",
-          );
-          const $s = $scope(
+        (tx) =>
+          frame.within(tx, $clock, "execution.Attempt#start", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            const $now = $clock();
+            // plan: a create is one insert; nothing is read first
+            const $changes: $Row = {
+              id: $uuidv7(),
+              step: "main",
+              claimFence: null,
+              runtime: null,
+              outcome: null,
+              state: "running",
+              endedAt: null,
+              version: 1,
+              startedAt: $now,
+              machineId: null,
+              sessionId: null,
+            };
+            const $record: $Row = {
+              ...$changes,
+              number: null,
+              runId: null,
+              taskId: null,
+              performerId: null,
+              delegatorId: null,
+            };
+            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "execution.Attempt", $record, "action function"),
+              "execution.Attempt#start",
+            );
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "execution.Attempt#start"),
+                actor: $actor,
+                context: $context,
+                before: null,
+              },
+              { clock: $clock },
+            ) as unknown as $Scope<StartAttemptInput>;
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            await $policies.inside($checkScope($s));
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $runCheck($issues, $checks, {
+              label: "claimer",
+              code: "attempt.claimer",
+              message: "the claim on the task is no longer the actor's; claim it again to report",
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 41, column: 9 },
+              that: $expressions["start.check.claimer.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "runRunning",
+              code: "attempt.run-running",
+              message: "the run is not running",
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 46, column: 9 },
+              that: $expressions["start.check.runRunning.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "stepIdle",
+              code: "attempt.step-idle",
+              message: "an attempt of this step is already running",
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 51, column: 9 },
+              that: $expressions["start.check.stepIdle.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "session",
+              code: "attempt.session",
+              message: "the session reference does not exist",
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 56, column: 9 },
+              that: $expressions["start.check.session.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "machineRetired",
+              code: "machine.retired",
+              message: "the machine is retired; report the host by a new name",
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 61, column: 9 },
+              that: $expressions["start.check.machineRetired.that"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // the input: the member inputs the caller sent, applied now that the checks have passed
+            if (parsed.run !== undefined) $changes.runId = $record.runId = parsed.run;
+            if (parsed.step !== undefined) $changes.step = $record.step = parsed.step;
+            if (parsed.runtime !== undefined) $changes.runtime = $record.runtime = parsed.runtime;
+            if (parsed.machine !== undefined)
+              $changes.machineId = $record.machineId = parsed.machine;
+            if (parsed.session !== undefined)
+              $changes.sessionId = $record.sessionId = parsed.session;
+            // do: the steps run in written order, each seeing the record as the ones before it left it
             {
-              self: $self,
-              input: $readOnlyRecord(parsed, "execution.Attempt#start"),
-              actor: $actor,
-              context: $context,
-              before: null,
-              ...$composed(compose, tx, context, "execution.Attempt#start", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $Scope<StartAttemptInput>;
-          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
-          await $policies.inside($checkScope($s));
-          // validate: every check runs, and every failed check is reported together
-          const $issues: $Issue[] = [];
-          const $checks = $checkScope($s);
-          await $runCheck($issues, $checks, {
-            label: "claimer",
-            code: "attempt.claimer",
-            message: "the claim on the task is no longer the actor's; claim it again to report",
-            source: { file: "src/domain/execution/attempt.mesh.mx", line: 41, column: 9 },
-            that: $expressions["start.check.claimer.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "runRunning",
-            code: "attempt.run-running",
-            message: "the run is not running",
-            source: { file: "src/domain/execution/attempt.mesh.mx", line: 46, column: 9 },
-            that: $expressions["start.check.runRunning.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "stepIdle",
-            code: "attempt.step-idle",
-            message: "an attempt of this step is already running",
-            source: { file: "src/domain/execution/attempt.mesh.mx", line: 51, column: 9 },
-            that: $expressions["start.check.stepIdle.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "session",
-            code: "attempt.session",
-            message: "the session reference does not exist",
-            source: { file: "src/domain/execution/attempt.mesh.mx", line: 56, column: 9 },
-            that: $expressions["start.check.session.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "machineRetired",
-            code: "machine.retired",
-            message: "the machine is retired; report the host by a new name",
-            source: { file: "src/domain/execution/attempt.mesh.mx", line: 61, column: 9 },
-            that: $expressions["start.check.machineRetired.that"],
-          });
-          if ($issues.length > 0) throw new $InvalidInputError($issues);
-          // the input: the member inputs the caller sent, applied now that the checks have passed
-          if (parsed.run !== undefined) $changes.runId = $record.runId = parsed.run;
-          if (parsed.step !== undefined) $changes.step = $record.step = parsed.step;
-          if (parsed.runtime !== undefined) $changes.runtime = $record.runtime = parsed.runtime;
-          if (parsed.machine !== undefined) $changes.machineId = $record.machineId = parsed.machine;
-          if (parsed.session !== undefined) $changes.sessionId = $record.sessionId = parsed.session;
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          {
-            const $value = await $expressions["start.step.0.set.performer"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &performer (src/domain/execution/attempt.mesh.mx:68:22) produced no value, and the relationship performer is required",
-              );
-            $changes.performerId = $record.performerId = $value;
-          }
-          await $loadInto($loadPlan, "execution.Attempt", tx, $record, ["run"], $load);
-          {
-            const $value = await $expressions["start.step.0.set.task"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &task (src/domain/execution/attempt.mesh.mx:69:17) produced no value, and the relationship task is required",
-              );
-            $changes.taskId = $record.taskId = $value;
-          }
-          await $loadInto(
-            $loadPlan,
-            "execution.Attempt",
-            tx,
-            $record,
-            ["run", "run.attempts"],
-            $load,
-          );
-          {
-            const $value = await $expressions["start.step.0.set.number"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &number (src/domain/execution/attempt.mesh.mx:70:19) produced no value, and number is required",
-              );
-            $changes.number = $record.number = $value;
-          }
-          await $loadInto(
-            $loadPlan,
-            "execution.Attempt",
-            tx,
-            $record,
-            ["run", "run.task", "run.task.assignments"],
-            $load,
-          );
-          {
-            const $value = await $expressions["start.step.0.set.delegator"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &delegator (src/domain/execution/attempt.mesh.mx:71:22) produced no value, and the relationship delegator is required",
-              );
-            $changes.delegatorId = $record.delegatorId = $value;
-          }
-          await $loadInto(
-            $loadPlan,
-            "execution.Attempt",
-            tx,
-            $record,
-            ["run", "run.task", "run.task.claims"],
-            $load,
-          );
-          {
-            const $value = await $expressions["start.step.0.set.claimFence"]($s);
-            $changes.claimFence = $record.claimFence = $value === undefined ? null : $value;
-          }
-          $unloadFrom($loadPlan, "execution.Attempt", $record);
-          // data layer
-          const $stored = await tx.insert(tables.attempts, $changes);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "execution.Attempt", action: "start" },
-            null,
-            $stored,
-            parsed,
-            context,
-          );
-          return $stored as Attempt;
-        },
+              const $value = await $expressions["start.step.0.set.performer"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &performer (src/domain/execution/attempt.mesh.mx:68:22) produced no value, and the relationship performer is required",
+                );
+              $changes.performerId = $record.performerId = $value;
+            }
+            await $loadInto($loadPlan, "execution.Attempt", tx, $record, ["run"], $load);
+            {
+              const $value = await $expressions["start.step.0.set.task"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &task (src/domain/execution/attempt.mesh.mx:69:17) produced no value, and the relationship task is required",
+                );
+              $changes.taskId = $record.taskId = $value;
+            }
+            await $loadInto(
+              $loadPlan,
+              "execution.Attempt",
+              tx,
+              $record,
+              ["run", "run.attempts"],
+              $load,
+            );
+            {
+              const $value = await $expressions["start.step.0.set.number"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &number (src/domain/execution/attempt.mesh.mx:70:19) produced no value, and number is required",
+                );
+              $changes.number = $record.number = $value;
+            }
+            await $loadInto(
+              $loadPlan,
+              "execution.Attempt",
+              tx,
+              $record,
+              ["run", "run.task", "run.task.assignments"],
+              $load,
+            );
+            {
+              const $value = await $expressions["start.step.0.set.delegator"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &delegator (src/domain/execution/attempt.mesh.mx:71:22) produced no value, and the relationship delegator is required",
+                );
+              $changes.delegatorId = $record.delegatorId = $value;
+            }
+            await $loadInto(
+              $loadPlan,
+              "execution.Attempt",
+              tx,
+              $record,
+              ["run", "run.task", "run.task.claims"],
+              $load,
+            );
+            {
+              const $value = await $expressions["start.step.0.set.claimFence"]($s);
+              $changes.claimFence = $record.claimFence = $value === undefined ? null : $value;
+            }
+            $unloadFrom($loadPlan, "execution.Attempt", $record);
+            // data layer
+            const $stored = await tx.insert(tables.attempts, $changes);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "execution.Attempt", action: "start" },
+                null,
+                $stored,
+                parsed,
+                context,
+              ),
+            );
+            return $stored as Attempt;
+          }),
       );
     },
 
@@ -381,134 +399,136 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
         { entity: "execution.Attempt", action: "finish" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-          const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.attempts, $key);
-          if ($before === undefined) throw new $NotFoundError("execution.Attempt", $key);
-          const $changes: $Row = {};
-          const $record: $Row = { ...$before };
-          const $writes = $writeCount(tx);
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "execution.Attempt", $record, "action function"),
-            "execution.Attempt#finish",
-          );
-          const $s = $scope(
-            {
-              self: $self,
-              input: $readOnlyRecord(parsed, "execution.Attempt#finish"),
-              actor: $actor,
-              context: $context,
-              before: $readOnlyRecord(
-                $guarded($loadPlan, "execution.Attempt", $before, "before"),
-                "execution.Attempt#finish",
-              ) as unknown as Attempt,
-              ...$composed(compose, tx, context, "execution.Attempt#finish", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $StoredScope<FinishAttemptInput>;
-          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
-          await $policies.inside($checkScope($s));
-          // validate: every check runs, and every failed check is reported together
-          const $issues: $Issue[] = [];
-          const $checks = $checkScope($s);
-          await $runCheck($issues, $checks, {
-            label: "running",
-            code: "attempt.running",
-            message: "the attempt has ended",
-            source: { file: "src/domain/execution/attempt.mesh.mx", line: 81, column: 9 },
-            that: $expressions["finish.check.running.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "error",
-            code: "attempt.error",
-            message: "only a failed attempt reports an error",
-            source: { file: "src/domain/execution/attempt.mesh.mx", line: 86, column: 9 },
-            that: $expressions["finish.check.error.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "evidence",
-            code: "attempt.evidence",
-            message: "an evidence reference does not exist",
-            source: { file: "src/domain/execution/attempt.mesh.mx", line: 91, column: 9 },
-            that: $expressions["finish.check.evidence.that"],
-            details: $expressions["finish.check.evidence.details"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "versionMatches",
-            code: "expected-version",
-            message: "the record is at another version; read it again and retry",
-            source: { file: "src/domain/execution/attempt.mesh.mx", line: 97, column: 9 },
-            that: $expressions["finish.check.versionMatches.that"],
-            details: $expressions["finish.check.versionMatches.details"],
-          });
-          if ($issues.length > 0) throw new $InvalidInputError($issues);
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          {
-            const $value = await $expressions["finish.step.0.set.state"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &state (src/domain/execution/attempt.mesh.mx:105:18) produced no value, and state is required",
-              );
-            $changes.state = $record.state = $value;
-          }
-          {
-            const $value = await $expressions["finish.step.0.set.endedAt"]($s);
-            $changes.endedAt = $record.endedAt = $value === undefined ? null : $value;
-          }
-          {
-            const $value = await $expressions["finish.step.0.set.outcome"]($s);
-            $changes.outcome = $record.outcome = $value === undefined ? null : $value;
-          }
-          {
-            const $value = await $expressions["finish.step.0.set.version"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &version (src/domain/execution/attempt.mesh.mx:108:20) produced no value, and version is required",
-              );
-            $changes.version = $record.version = $value;
-          }
-          // data layer
-          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(
-            tx,
-            $writes,
-            tables.attempts,
-            $key,
-            $before,
-            "execution.Attempt#finish",
-          );
-          const $stored = await tx.updateByKey(tables.attempts, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("execution.Attempt", $key);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "execution.Attempt", action: "finish" },
-            $before,
-            $stored,
-            parsed,
-            context,
-          );
-          // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
-          const $written: $Row = { ...$stored };
-          const $after = $rescope($s, {
-            self: $readOnlyRecord(
-              $guarded($loadPlan, "execution.Attempt", $written, "action function"),
+        (tx) =>
+          frame.within(tx, $clock, "execution.Attempt#finish", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+            const $key = { id: parsed.id };
+            const $before = await tx.selectByKeyForUpdate(tables.attempts, $key);
+            if ($before === undefined) throw new $NotFoundError("execution.Attempt", $key);
+            const $changes: $Row = {};
+            const $record: $Row = { ...$before };
+            const $writes = $writeCount(tx);
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "execution.Attempt", $record, "action function"),
               "execution.Attempt#finish",
-            ),
-          });
-          await $expressions["finish.step.1.run"]($after);
-          // the result: the row as the steps after the write left it, read again by key
-          const $result = await tx.selectByKey(tables.attempts, { id: $stored.id });
-          if ($result === undefined)
-            throw new $FrameworkError(
-              "execution.Attempt#finish: a step after the write deleted the row this action returns",
             );
-          return $result as Attempt;
-        },
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "execution.Attempt#finish"),
+                actor: $actor,
+                context: $context,
+                before: $readOnlyRecord(
+                  $guarded($loadPlan, "execution.Attempt", $before, "before"),
+                  "execution.Attempt#finish",
+                ) as unknown as Attempt,
+              },
+              { clock: $clock },
+            ) as unknown as $StoredScope<FinishAttemptInput>;
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            await $policies.inside($checkScope($s));
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $runCheck($issues, $checks, {
+              label: "running",
+              code: "attempt.running",
+              message: "the attempt has ended",
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 81, column: 9 },
+              that: $expressions["finish.check.running.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "error",
+              code: "attempt.error",
+              message: "only a failed attempt reports an error",
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 86, column: 9 },
+              that: $expressions["finish.check.error.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "evidence",
+              code: "attempt.evidence",
+              message: "an evidence reference does not exist",
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 91, column: 9 },
+              that: $expressions["finish.check.evidence.that"],
+              details: $expressions["finish.check.evidence.details"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "versionMatches",
+              code: "expected-version",
+              message: "the record is at another version; read it again and retry",
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 97, column: 9 },
+              that: $expressions["finish.check.versionMatches.that"],
+              details: $expressions["finish.check.versionMatches.details"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // do: the steps run in written order, each seeing the record as the ones before it left it
+            {
+              const $value = await $expressions["finish.step.0.set.state"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &state (src/domain/execution/attempt.mesh.mx:105:18) produced no value, and state is required",
+                );
+              $changes.state = $record.state = $value;
+            }
+            {
+              const $value = await $expressions["finish.step.0.set.endedAt"]($s);
+              $changes.endedAt = $record.endedAt = $value === undefined ? null : $value;
+            }
+            {
+              const $value = await $expressions["finish.step.0.set.outcome"]($s);
+              $changes.outcome = $record.outcome = $value === undefined ? null : $value;
+            }
+            {
+              const $value = await $expressions["finish.step.0.set.version"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &version (src/domain/execution/attempt.mesh.mx:108:20) produced no value, and version is required",
+                );
+              $changes.version = $record.version = $value;
+            }
+            // data layer
+            // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+            await $checkUnchanged(
+              tx,
+              $writes,
+              tables.attempts,
+              $key,
+              $before,
+              "execution.Attempt#finish",
+            );
+            const $stored = await tx.updateByKey(tables.attempts, $key, $changes);
+            if ($stored === undefined) throw new $NotFoundError("execution.Attempt", $key);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "execution.Attempt", action: "finish" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
+            );
+            // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
+            const $written: $Row = { ...$stored };
+            const $after = $rescope($s, {
+              self: $readOnlyRecord(
+                $guarded($loadPlan, "execution.Attempt", $written, "action function"),
+                "execution.Attempt#finish",
+              ),
+            });
+            await $expressions["finish.step.1.run"]($after);
+            // the result: the row as the steps after the write left it, read again by key
+            const $result = await tx.selectByKey(tables.attempts, { id: $stored.id });
+            if ($result === undefined)
+              throw new $FrameworkError(
+                "execution.Attempt#finish: a step after the write deleted the row this action returns",
+              );
+            return $result as Attempt;
+          }),
       );
     },
 
@@ -554,97 +574,99 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
         { entity: "execution.Attempt", action: "reportStopped" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-          const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.attempts, $key);
-          if ($before === undefined) throw new $NotFoundError("execution.Attempt", $key);
-          const $changes: $Row = {};
-          const $record: $Row = { ...$before };
-          const $writes = $writeCount(tx);
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "execution.Attempt", $record, "action function"),
-            "execution.Attempt#reportStopped",
-          );
-          const $s = $scope(
+        (tx) =>
+          frame.within(tx, $clock, "execution.Attempt#reportStopped", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+            const $key = { id: parsed.id };
+            const $before = await tx.selectByKeyForUpdate(tables.attempts, $key);
+            if ($before === undefined) throw new $NotFoundError("execution.Attempt", $key);
+            const $changes: $Row = {};
+            const $record: $Row = { ...$before };
+            const $writes = $writeCount(tx);
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "execution.Attempt", $record, "action function"),
+              "execution.Attempt#reportStopped",
+            );
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "execution.Attempt#reportStopped"),
+                actor: $actor,
+                context: $context,
+                before: $readOnlyRecord(
+                  $guarded($loadPlan, "execution.Attempt", $before, "before"),
+                  "execution.Attempt#reportStopped",
+                ) as unknown as Attempt,
+              },
+              { clock: $clock },
+            ) as unknown as $StoredScope<ReportStoppedAttemptInput>;
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            await $policies.inside($checkScope($s));
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $runCheck($issues, $checks, {
+              label: "running",
+              code: "attempt.running",
+              message: "the attempt has ended",
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 119, column: 9 },
+              that: $expressions["reportStopped.check.running.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "versionMatches",
+              code: "expected-version",
+              message: "the record is at another version; read it again and retry",
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 124, column: 9 },
+              that: $expressions["reportStopped.check.versionMatches.that"],
+              details: $expressions["reportStopped.check.versionMatches.details"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // do: the steps run in written order, each seeing the record as the ones before it left it
+            $changes.state = $record.state = "stopped";
             {
-              self: $self,
-              input: $readOnlyRecord(parsed, "execution.Attempt#reportStopped"),
-              actor: $actor,
-              context: $context,
-              before: $readOnlyRecord(
-                $guarded($loadPlan, "execution.Attempt", $before, "before"),
-                "execution.Attempt#reportStopped",
-              ) as unknown as Attempt,
-              ...$composed(compose, tx, context, "execution.Attempt#reportStopped", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $StoredScope<ReportStoppedAttemptInput>;
-          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
-          await $policies.inside($checkScope($s));
-          // validate: every check runs, and every failed check is reported together
-          const $issues: $Issue[] = [];
-          const $checks = $checkScope($s);
-          await $runCheck($issues, $checks, {
-            label: "running",
-            code: "attempt.running",
-            message: "the attempt has ended",
-            source: { file: "src/domain/execution/attempt.mesh.mx", line: 119, column: 9 },
-            that: $expressions["reportStopped.check.running.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "versionMatches",
-            code: "expected-version",
-            message: "the record is at another version; read it again and retry",
-            source: { file: "src/domain/execution/attempt.mesh.mx", line: 124, column: 9 },
-            that: $expressions["reportStopped.check.versionMatches.that"],
-            details: $expressions["reportStopped.check.versionMatches.details"],
-          });
-          if ($issues.length > 0) throw new $InvalidInputError($issues);
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          $changes.state = $record.state = "stopped";
-          {
-            const $value = await $expressions["reportStopped.step.0.set.endedAt"]($s);
-            $changes.endedAt = $record.endedAt = $value === undefined ? null : $value;
-          }
-          {
-            const $value = await $expressions["reportStopped.step.0.set.outcome"]($s);
-            $changes.outcome = $record.outcome = $value === undefined ? null : $value;
-          }
-          {
-            const $value = await $expressions["reportStopped.step.0.set.version"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &version (src/domain/execution/attempt.mesh.mx:135:20) produced no value, and version is required",
-              );
-            $changes.version = $record.version = $value;
-          }
-          // data layer
-          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(
-            tx,
-            $writes,
-            tables.attempts,
-            $key,
-            $before,
-            "execution.Attempt#reportStopped",
-          );
-          const $stored = await tx.updateByKey(tables.attempts, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("execution.Attempt", $key);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "execution.Attempt", action: "reportStopped" },
-            $before,
-            $stored,
-            parsed,
-            context,
-          );
-          return $stored as Attempt;
-        },
+              const $value = await $expressions["reportStopped.step.0.set.endedAt"]($s);
+              $changes.endedAt = $record.endedAt = $value === undefined ? null : $value;
+            }
+            {
+              const $value = await $expressions["reportStopped.step.0.set.outcome"]($s);
+              $changes.outcome = $record.outcome = $value === undefined ? null : $value;
+            }
+            {
+              const $value = await $expressions["reportStopped.step.0.set.version"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &version (src/domain/execution/attempt.mesh.mx:135:20) produced no value, and version is required",
+                );
+              $changes.version = $record.version = $value;
+            }
+            // data layer
+            // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+            await $checkUnchanged(
+              tx,
+              $writes,
+              tables.attempts,
+              $key,
+              $before,
+              "execution.Attempt#reportStopped",
+            );
+            const $stored = await tx.updateByKey(tables.attempts, $key, $changes);
+            if ($stored === undefined) throw new $NotFoundError("execution.Attempt", $key);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "execution.Attempt", action: "reportStopped" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
+            );
+            return $stored as Attempt;
+          }),
       );
     },
 
@@ -687,97 +709,99 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
         { entity: "execution.Attempt", action: "abandon" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-          const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.attempts, $key);
-          if ($before === undefined) throw new $NotFoundError("execution.Attempt", $key);
-          const $changes: $Row = {};
-          const $record: $Row = { ...$before };
-          const $writes = $writeCount(tx);
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "execution.Attempt", $record, "action function"),
-            "execution.Attempt#abandon",
-          );
-          const $s = $scope(
+        (tx) =>
+          frame.within(tx, $clock, "execution.Attempt#abandon", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+            const $key = { id: parsed.id };
+            const $before = await tx.selectByKeyForUpdate(tables.attempts, $key);
+            if ($before === undefined) throw new $NotFoundError("execution.Attempt", $key);
+            const $changes: $Row = {};
+            const $record: $Row = { ...$before };
+            const $writes = $writeCount(tx);
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "execution.Attempt", $record, "action function"),
+              "execution.Attempt#abandon",
+            );
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "execution.Attempt#abandon"),
+                actor: $actor,
+                context: $context,
+                before: $readOnlyRecord(
+                  $guarded($loadPlan, "execution.Attempt", $before, "before"),
+                  "execution.Attempt#abandon",
+                ) as unknown as Attempt,
+              },
+              { clock: $clock },
+            ) as unknown as $StoredScope<AbandonAttemptInput>;
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            await $policies.inside($checkScope($s));
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $runCheck($issues, $checks, {
+              label: "running",
+              code: "attempt.running",
+              message: "the attempt has ended",
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 141, column: 9 },
+              that: $expressions["abandon.check.running.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "versionMatches",
+              code: "expected-version",
+              message: "the record is at another version; read it again and retry",
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 146, column: 9 },
+              that: $expressions["abandon.check.versionMatches.that"],
+              details: $expressions["abandon.check.versionMatches.details"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // do: the steps run in written order, each seeing the record as the ones before it left it
+            $changes.state = $record.state = "abandoned";
             {
-              self: $self,
-              input: $readOnlyRecord(parsed, "execution.Attempt#abandon"),
-              actor: $actor,
-              context: $context,
-              before: $readOnlyRecord(
-                $guarded($loadPlan, "execution.Attempt", $before, "before"),
-                "execution.Attempt#abandon",
-              ) as unknown as Attempt,
-              ...$composed(compose, tx, context, "execution.Attempt#abandon", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $StoredScope<AbandonAttemptInput>;
-          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
-          await $policies.inside($checkScope($s));
-          // validate: every check runs, and every failed check is reported together
-          const $issues: $Issue[] = [];
-          const $checks = $checkScope($s);
-          await $runCheck($issues, $checks, {
-            label: "running",
-            code: "attempt.running",
-            message: "the attempt has ended",
-            source: { file: "src/domain/execution/attempt.mesh.mx", line: 141, column: 9 },
-            that: $expressions["abandon.check.running.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "versionMatches",
-            code: "expected-version",
-            message: "the record is at another version; read it again and retry",
-            source: { file: "src/domain/execution/attempt.mesh.mx", line: 146, column: 9 },
-            that: $expressions["abandon.check.versionMatches.that"],
-            details: $expressions["abandon.check.versionMatches.details"],
-          });
-          if ($issues.length > 0) throw new $InvalidInputError($issues);
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          $changes.state = $record.state = "abandoned";
-          {
-            const $value = await $expressions["abandon.step.0.set.endedAt"]($s);
-            $changes.endedAt = $record.endedAt = $value === undefined ? null : $value;
-          }
-          {
-            const $value = await $expressions["abandon.step.0.set.outcome"]($s);
-            $changes.outcome = $record.outcome = $value === undefined ? null : $value;
-          }
-          {
-            const $value = await $expressions["abandon.step.0.set.version"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &version (src/domain/execution/attempt.mesh.mx:157:20) produced no value, and version is required",
-              );
-            $changes.version = $record.version = $value;
-          }
-          // data layer
-          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(
-            tx,
-            $writes,
-            tables.attempts,
-            $key,
-            $before,
-            "execution.Attempt#abandon",
-          );
-          const $stored = await tx.updateByKey(tables.attempts, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("execution.Attempt", $key);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "execution.Attempt", action: "abandon" },
-            $before,
-            $stored,
-            parsed,
-            context,
-          );
-          return $stored as Attempt;
-        },
+              const $value = await $expressions["abandon.step.0.set.endedAt"]($s);
+              $changes.endedAt = $record.endedAt = $value === undefined ? null : $value;
+            }
+            {
+              const $value = await $expressions["abandon.step.0.set.outcome"]($s);
+              $changes.outcome = $record.outcome = $value === undefined ? null : $value;
+            }
+            {
+              const $value = await $expressions["abandon.step.0.set.version"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &version (src/domain/execution/attempt.mesh.mx:157:20) produced no value, and version is required",
+                );
+              $changes.version = $record.version = $value;
+            }
+            // data layer
+            // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+            await $checkUnchanged(
+              tx,
+              $writes,
+              tables.attempts,
+              $key,
+              $before,
+              "execution.Attempt#abandon",
+            );
+            const $stored = await tx.updateByKey(tables.attempts, $key, $changes);
+            if ($stored === undefined) throw new $NotFoundError("execution.Attempt", $key);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "execution.Attempt", action: "abandon" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
+            );
+            return $stored as Attempt;
+          }),
       );
     },
 
@@ -785,26 +809,31 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
       input: Omit<ReadAttemptInput, "load"> & AttemptLoadArg<L>,
       ...[context]: $ContextArgument
     ): Promise<L extends unknown ? AttemptWith<AttemptLoadNames<L>>[] : never> {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a read through `tx` skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readAttemptInput, input);
       if (
-        !(await $authorizer("execution.Attempt", "read", [
-          {
-            name: "membersRead",
-            when: null,
-            checks: [
-              {
-                kind: "authorize-if",
-                check: "({ actor, context }) => isSystem(context) || actor.role != null",
-                record: false,
-                run: $expressions["policy.membersRead.authorize-if.0"],
-              },
-            ],
-          },
-        ]).filter(
+        !(await $authorizer(
+          "execution.Attempt",
+          "read",
+          [
+            {
+              name: "membersRead",
+              when: null,
+              checks: [
+                {
+                  kind: "authorize-if",
+                  check: "({ actor, context }) => isSystem(context) || actor.role != null",
+                  record: false,
+                  run: $expressions["policy.membersRead.authorize-if.0"],
+                },
+              ],
+            },
+          ],
+          frame,
+        ).filter(
           layer,
           $scope(
             {
@@ -832,30 +861,91 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
  * The entity value (CMP-16): `Attempt.<action>(input, context)` runs the action on the binding in scope, the
  * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
  */
-const $entityValue = $entity("execution.Attempt", bindAttempt, bindAttemptReads, ($call) => ({
-  start(input: StartAttemptInput, ...context: $ContextArgument): Promise<Attempt> {
-    return $call("start", input, context);
-  },
+const $entityValue = $entity(
+  "execution.Attempt",
+  bindAttempt,
+  bindAttemptReads as $EntityReadsBind<$Privileged>,
+  ($call) => ({
+    start(input: StartAttemptInput, ...context: $ContextArgument): Promise<Attempt> {
+      return $call("start", input, context);
+    },
 
-  finish(input: FinishAttemptInput, ...context: $ContextArgument): Promise<Attempt> {
-    return $call("finish", input, context);
-  },
+    finish(input: FinishAttemptInput, ...context: $ContextArgument): Promise<Attempt> {
+      return $call("finish", input, context);
+    },
 
-  reportStopped(input: ReportStoppedAttemptInput, ...context: $ContextArgument): Promise<Attempt> {
-    return $call("reportStopped", input, context);
-  },
+    reportStopped(
+      input: ReportStoppedAttemptInput,
+      ...context: $ContextArgument
+    ): Promise<Attempt> {
+      return $call("reportStopped", input, context);
+    },
 
-  abandon(input: AbandonAttemptInput, ...context: $ContextArgument): Promise<Attempt> {
-    return $call("abandon", input, context);
-  },
+    abandon(input: AbandonAttemptInput, ...context: $ContextArgument): Promise<Attempt> {
+      return $call("abandon", input, context);
+    },
 
-  read<const L extends readonly (keyof AttemptLoadable)[] = readonly []>(
-    input: Omit<ReadAttemptInput, "load"> & AttemptLoadArg<L>,
-    ...context: $ContextArgument
-  ): Promise<L extends unknown ? AttemptWith<AttemptLoadNames<L>>[] : never> {
-    return $call("read", input, context);
-  },
-}));
+    read<const L extends readonly (keyof AttemptLoadable)[] = readonly []>(
+      input: Omit<ReadAttemptInput, "load"> & AttemptLoadArg<L>,
+      ...context: $ContextArgument
+    ): Promise<L extends unknown ? AttemptWith<AttemptLoadNames<L>>[] : never> {
+      return $call("read", input, context);
+    },
+  }),
+);
 export { $entityValue as Attempt };
 /** The record type, under the entity value's name. */
 export type Attempt = $Record;
+
+/** What `privileged(Attempt)` returns (TXN-16): one function per read action, run with no policy. */
+export interface $Privileged {
+  read<const L extends readonly (keyof AttemptLoadable)[] = readonly []>(
+    input: Omit<ReadAttemptInput, "load"> & AttemptLoadArg<L>,
+    context?: $ActionContext,
+  ): Promise<L extends unknown ? AttemptTxWith<AttemptLoadNames<L>>[] : never>;
+}
+
+/** `$Privileged` as a function of an entity file sees it: every result deeply read-only (ACT-09). */
+export interface $PrivilegedReadOnly {
+  read<const L extends readonly (keyof AttemptLoadable)[] = readonly []>(
+    input: Omit<ReadAttemptInput, "load"> & AttemptLoadArg<L>,
+    context?: $ActionContext,
+  ): Promise<
+    L extends unknown
+      ? readonly ($DeepReadonly<Attempt> &
+          Pick<$DeepReadonly<AttemptTxLoadable>, AttemptLoadNames<L>>)[]
+      : never
+  >;
+}
+
+/**
+ * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
+ * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ */
+export type $ReadOnly = $EntityValue<
+  {
+    start(input: StartAttemptInput, ...context: $ContextArgument): Promise<$DeepReadonly<Attempt>>;
+    finish(
+      input: FinishAttemptInput,
+      ...context: $ContextArgument
+    ): Promise<$DeepReadonly<Attempt>>;
+    reportStopped(
+      input: ReportStoppedAttemptInput,
+      ...context: $ContextArgument
+    ): Promise<$DeepReadonly<Attempt>>;
+    abandon(
+      input: AbandonAttemptInput,
+      ...context: $ContextArgument
+    ): Promise<$DeepReadonly<Attempt>>;
+    read<const L extends readonly (keyof AttemptLoadable)[] = readonly []>(
+      input: Omit<ReadAttemptInput, "load"> & AttemptLoadArg<L>,
+      ...context: $ContextArgument
+    ): Promise<
+      L extends unknown
+        ? readonly ($DeepReadonly<Attempt> &
+            Pick<$DeepReadonly<AttemptLoadable>, AttemptLoadNames<L>>)[]
+        : never
+    >;
+  },
+  $PrivilegedReadOnly
+>;

@@ -8,10 +8,6 @@ import {
   type SharedInput as $SharedInput,
 } from "@meshfw/runtime";
 import type {
-  ReadOnlyActions as $ReadOnlyActions,
-  ReadOnlyReads as $ReadOnlyReads,
-} from "../../composition";
-import type {
   Post,
   PostLoaded,
   ArchivePostInput,
@@ -28,8 +24,6 @@ export type PostScope<I = unknown> = $Scope<{
   actor: any;
   context: any;
   before: $DeepReadonly<Post> | null;
-  actions: $ReadOnlyActions;
-  tx: $ReadOnlyReads;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
 export type PostStoredScope<I = unknown> = PostScope<I> & { before: $DeepReadonly<Post> };

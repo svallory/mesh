@@ -48,14 +48,14 @@ export type CompletionLoadable = {
 export type CompletionWith<N extends keyof CompletionLoadable> = Completion &
   Pick<CompletionLoadable, N>;
 
-/** What a load through `tx` attaches to a Completion: it runs no policy, so every related record the key names is there. */
+/** What a load through `privileged` attaches to a Completion: it runs no policy, so every related record the key names is there. */
 export type CompletionTxLoadable = {
   task: Task;
   submission: Submission | null;
   completedBy: Collaborator;
 };
 
-/** A Completion loaded through `tx`, with the relationships and computed fields named in N. */
+/** A Completion loaded through `privileged`, with the relationships and computed fields named in N. */
 export type CompletionTxWith<N extends keyof CompletionLoadable> = Completion &
   Pick<CompletionTxLoadable, N>;
 

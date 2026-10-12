@@ -68,3 +68,31 @@ describe("backstop and holds", () => {
       expect(expr.and(expr.isNotNull(x), expr.gt(x, 1))).toBe(want);
   });
 });
+
+describe("pure: an imported helper a translated expression calls must return a value, not a promise (EXP-03)", () => {
+  test("a value passes through unchanged, null and functions included", () => {
+    const f = () => 1;
+    for (const v of [true, 0, "", null, undefined, { then: 1 }, f]) expect(expr.pure(v, "h")).toBe(v);
+  });
+  test("a promise or a thenable throws a FrameworkError naming the helper and saying to await it in an async arrow", async () => {
+    let rejected = false;
+    const failing = Promise.reject(new Error("the helper's own failure"));
+    const thenable = { then: (_: unknown, onRejected: () => void) => { rejected = true; onRejected(); } };
+    for (const [value, name] of [[Promise.resolve(true), "isOwner"], [failing, "vaguely"], [thenable, "custom"]] as const) {
+      let thrown: unknown;
+      try { expr.pure(value as unknown, name); } catch (error) { thrown = error; }
+      expect(thrown).toBeInstanceOf(FrameworkError);
+      expect((thrown as Error).message).toBe(`expression helper ${name}() returned a promise: a translated expression calls an imported function synchronously. Await it inside an async arrow (\`async (...) => ... await ${name}(...)\`), which makes the function plain code`);
+    }
+    // The promise's own rejection is handled, so it is not reported as unhandled on top of the FrameworkError.
+    expect(rejected).toBe(true);
+    await Promise.resolve();
+  });
+  test("the type checker refuses a promise where the helper's type says it returns one", () => {
+    const typed = async (): Promise<boolean> => true;
+    // @ts-expect-error a helper typed to return a promise is refused at build time
+    expect(() => expr.pure(typed(), "typed")).toThrow(FrameworkError);
+    const loose = typed() as unknown;
+    expect(() => expr.pure(loose, "loose")).toThrow(FrameworkError);
+  });
+});

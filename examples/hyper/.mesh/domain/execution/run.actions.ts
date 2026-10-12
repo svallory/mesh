@@ -5,12 +5,12 @@
 import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
+  NO_FRAME as $NO_FRAME,
   NotFoundError as $NotFoundError,
   authorizer as $authorizer,
   castInput as $castInput,
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
-  composed as $composed,
   entity as $entity,
   guarded as $guarded,
   loadInto as $loadInto,
@@ -25,10 +25,14 @@ import {
   unloadFrom as $unloadFrom,
   uuidv7 as $uuidv7,
   writeCount as $writeCount,
+  type ActionContext as $ActionContext,
+  type ActionFrame as $ActionFrame,
   type BindOptions as $BindOptions,
-  type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type DeepReadonly as $DeepReadonly,
+  type EntityReadsBind as $EntityReadsBind,
+  type EntityValue as $EntityValue,
   type CastOutput as $CastOutput,
   type Issue as $Issue,
   type Row as $Row,
@@ -40,6 +44,7 @@ import type {
   RunLoadNames,
   RunLoadArg,
   RunLoadable,
+  RunTxLoadable,
   StartRunInput,
   CancelRunInput,
   SettleRunInput,
@@ -55,10 +60,14 @@ import {
 import { loadPlan as $loadPlan } from "../../load";
 
 /**
- * The reads of this entity without their policies: what `tx` holds in a function of an entity file (ADR-0068).
- * The read actions below evaluate the read's policies, then call these.
+ * The reads of this entity without their policies: what `privileged(Run)` runs (TXN-16). The read actions
+ * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
-export function bindRunReads(layer: $DataLayer, options: $BindOptions = {}) {
+export function bindRunReads(
+  layer: $DataLayer,
+  options: $BindOptions = {},
+  frame: $ActionFrame = $NO_FRAME,
+) {
   return Object.freeze({
     async read<const L extends readonly (keyof RunLoadable)[] = readonly []>(
       input: Omit<ReadRunInput, "load"> & RunLoadArg<L>,
@@ -68,7 +77,7 @@ export function bindRunReads(layer: $DataLayer, options: $BindOptions = {}) {
       cast?: $CastOutput<typeof readRunInput>,
     ): Promise<L extends unknown ? RunTxWith<RunLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a read through `tx` casts it here.
+      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readRunInput, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.runs, {
@@ -86,6 +95,7 @@ export function bindRunReads(layer: $DataLayer, options: $BindOptions = {}) {
           context: $context,
           clock: $clock,
           policies,
+          frame,
         })) as unknown as L extends unknown ? RunTxWith<RunLoadNames<L>>[] : never;
       });
     },
@@ -93,11 +103,15 @@ export function bindRunReads(layer: $DataLayer, options: $BindOptions = {}) {
 }
 
 /**
- * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
- * `actions` and `tx`; the project's `bind` in the index passes it.
+ * Every action of this entity, bound to `layer`. `frame` is the binding's (the project's `bind` passes it): each action's
+ * transaction runs inside it, so what its functions call joins that transaction and reads its instant.
  */
-export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
-  const $reads = bindRunReads(layer, options);
+export function bindRun(
+  layer: $DataLayer,
+  options: $BindOptions = {},
+  frame: $ActionFrame = $NO_FRAME,
+) {
+  const $reads = bindRunReads(layer, options, frame);
   return Object.freeze({
     async start(input: StartRunInput, ...[context]: $ContextArgument): Promise<Run> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
@@ -113,7 +127,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
           checks: [
             {
               kind: "authorize-if",
-              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -126,7 +140,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
             {
               kind: "authorize-if",
               check:
-                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -150,109 +164,111 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
         { entity: "execution.Run", action: "start" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          const $now = $clock();
-          // plan: a create is one insert; nothing is read first
-          const $changes: $Row = {
-            id: $uuidv7(),
-            inputs: {},
-            outcome: null,
-            state: "running",
-            cancelReason: null,
-            endedAt: null,
-            version: 1,
-            startedAt: $now,
-            parentRunId: null,
-          };
-          const $record: $Row = {
-            ...$changes,
-            taskId: null,
-            responsibleId: null,
-            startedById: null,
-          };
-          const $load = { actor: $actor, context: $context, clock: $clock };
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "execution.Run", $record, "action function"),
-            "execution.Run#start",
-          );
-          const $s = $scope(
+        (tx) =>
+          frame.within(tx, $clock, "execution.Run#start", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            const $now = $clock();
+            // plan: a create is one insert; nothing is read first
+            const $changes: $Row = {
+              id: $uuidv7(),
+              inputs: {},
+              outcome: null,
+              state: "running",
+              cancelReason: null,
+              endedAt: null,
+              version: 1,
+              startedAt: $now,
+              parentRunId: null,
+            };
+            const $record: $Row = {
+              ...$changes,
+              taskId: null,
+              responsibleId: null,
+              startedById: null,
+            };
+            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "execution.Run", $record, "action function"),
+              "execution.Run#start",
+            );
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "execution.Run#start"),
+                actor: $actor,
+                context: $context,
+                before: null,
+              },
+              { clock: $clock },
+            ) as unknown as $Scope<StartRunInput>;
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            await $policies.inside($checkScope($s));
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $runCheck($issues, $checks, {
+              label: "taskOpen",
+              code: "run.task-open",
+              message: "runs serve open tasks",
+              source: { file: "src/domain/execution/run.mesh.mx", line: 31, column: 9 },
+              that: $expressions["start.check.taskOpen.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "parentRunning",
+              code: "run.parent-running",
+              message: "the parent run is not running",
+              source: { file: "src/domain/execution/run.mesh.mx", line: 36, column: 9 },
+              that: $expressions["start.check.parentRunning.that"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // the input: the member inputs the caller sent, applied now that the checks have passed
+            if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
+            if (parsed.inputs !== undefined) $changes.inputs = $record.inputs = parsed.inputs;
+            if (parsed.parentRun !== undefined)
+              $changes.parentRunId = $record.parentRunId = parsed.parentRun;
+            // do: the steps run in written order, each seeing the record as the ones before it left it
             {
-              self: $self,
-              input: $readOnlyRecord(parsed, "execution.Run#start"),
-              actor: $actor,
-              context: $context,
-              before: null,
-              ...$composed(compose, tx, context, "execution.Run#start", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $Scope<StartRunInput>;
-          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
-          await $policies.inside($checkScope($s));
-          // validate: every check runs, and every failed check is reported together
-          const $issues: $Issue[] = [];
-          const $checks = $checkScope($s);
-          await $runCheck($issues, $checks, {
-            label: "taskOpen",
-            code: "run.task-open",
-            message: "runs serve open tasks",
-            source: { file: "src/domain/execution/run.mesh.mx", line: 31, column: 9 },
-            that: $expressions["start.check.taskOpen.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "parentRunning",
-            code: "run.parent-running",
-            message: "the parent run is not running",
-            source: { file: "src/domain/execution/run.mesh.mx", line: 36, column: 9 },
-            that: $expressions["start.check.parentRunning.that"],
-          });
-          if ($issues.length > 0) throw new $InvalidInputError($issues);
-          // the input: the member inputs the caller sent, applied now that the checks have passed
-          if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
-          if (parsed.inputs !== undefined) $changes.inputs = $record.inputs = parsed.inputs;
-          if (parsed.parentRun !== undefined)
-            $changes.parentRunId = $record.parentRunId = parsed.parentRun;
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          {
-            const $value = await $expressions["start.step.0.set.startedBy"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &startedBy (src/domain/execution/run.mesh.mx:43:22) produced no value, and the relationship startedBy is required",
-              );
-            $changes.startedById = $record.startedById = $value;
-          }
-          await $loadInto(
-            $loadPlan,
-            "execution.Run",
-            tx,
-            $record,
-            ["task", "task.assignments"],
-            $load,
-          );
-          {
-            const $value = await $expressions["start.step.0.set.responsible"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &responsible (src/domain/execution/run.mesh.mx:44:24) produced no value, and the relationship responsible is required",
-              );
-            $changes.responsibleId = $record.responsibleId = $value;
-          }
-          $unloadFrom($loadPlan, "execution.Run", $record);
-          // data layer
-          const $stored = await tx.insert(tables.runs, $changes);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "execution.Run", action: "start" },
-            null,
-            $stored,
-            parsed,
-            context,
-          );
-          return $stored as Run;
-        },
+              const $value = await $expressions["start.step.0.set.startedBy"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &startedBy (src/domain/execution/run.mesh.mx:43:22) produced no value, and the relationship startedBy is required",
+                );
+              $changes.startedById = $record.startedById = $value;
+            }
+            await $loadInto(
+              $loadPlan,
+              "execution.Run",
+              tx,
+              $record,
+              ["task", "task.assignments"],
+              $load,
+            );
+            {
+              const $value = await $expressions["start.step.0.set.responsible"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &responsible (src/domain/execution/run.mesh.mx:44:24) produced no value, and the relationship responsible is required",
+                );
+              $changes.responsibleId = $record.responsibleId = $value;
+            }
+            $unloadFrom($loadPlan, "execution.Run", $record);
+            // data layer
+            const $stored = await tx.insert(tables.runs, $changes);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "execution.Run", action: "start" },
+                null,
+                $stored,
+                parsed,
+                context,
+              ),
+            );
+            return $stored as Run;
+          }),
       );
     },
 
@@ -270,7 +286,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
           checks: [
             {
               kind: "authorize-if",
-              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -283,7 +299,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
             {
               kind: "authorize-if",
               check:
-                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -296,7 +312,7 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
             {
               kind: "authorize-if",
               check:
-                "({ self, actor, context, tx }) => isSystem(context) || cancelsRunOf(tx, self, actor.id)",
+                "async ({ self, actor, context }) => isSystem(context) || await cancelsRunOf(self, actor.id)",
               record: true,
               run: $expressions["policy.runCanceler.authorize-if.0"],
             },
@@ -320,90 +336,92 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
         { entity: "execution.Run", action: "cancel" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-          const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.runs, $key);
-          if ($before === undefined) throw new $NotFoundError("execution.Run", $key);
-          const $changes: $Row = {};
-          const $record: $Row = { ...$before };
-          const $writes = $writeCount(tx);
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "execution.Run", $record, "action function"),
-            "execution.Run#cancel",
-          );
-          const $s = $scope(
+        (tx) =>
+          frame.within(tx, $clock, "execution.Run#cancel", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+            const $key = { id: parsed.id };
+            const $before = await tx.selectByKeyForUpdate(tables.runs, $key);
+            if ($before === undefined) throw new $NotFoundError("execution.Run", $key);
+            const $changes: $Row = {};
+            const $record: $Row = { ...$before };
+            const $writes = $writeCount(tx);
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "execution.Run", $record, "action function"),
+              "execution.Run#cancel",
+            );
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "execution.Run#cancel"),
+                actor: $actor,
+                context: $context,
+                before: $readOnlyRecord(
+                  $guarded($loadPlan, "execution.Run", $before, "before"),
+                  "execution.Run#cancel",
+                ) as unknown as Run,
+              },
+              { clock: $clock },
+            ) as unknown as $StoredScope<CancelRunInput>;
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            await $policies.inside($checkScope($s));
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $runCheck($issues, $checks, {
+              label: "cancelable",
+              code: "run.cancelable",
+              message: "the run is not running",
+              source: { file: "src/domain/execution/run.mesh.mx", line: 50, column: 9 },
+              that: $expressions["cancel.check.cancelable.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "versionMatches",
+              code: "expected-version",
+              message: "the record is at another version; read it again and retry",
+              source: { file: "src/domain/execution/run.mesh.mx", line: 55, column: 9 },
+              that: $expressions["cancel.check.versionMatches.that"],
+              details: $expressions["cancel.check.versionMatches.details"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // do: the steps run in written order, each seeing the record as the ones before it left it
+            $changes.state = $record.state = "canceled";
             {
-              self: $self,
-              input: $readOnlyRecord(parsed, "execution.Run#cancel"),
-              actor: $actor,
-              context: $context,
-              before: $readOnlyRecord(
-                $guarded($loadPlan, "execution.Run", $before, "before"),
-                "execution.Run#cancel",
-              ) as unknown as Run,
-              ...$composed(compose, tx, context, "execution.Run#cancel", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $StoredScope<CancelRunInput>;
-          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
-          await $policies.inside($checkScope($s));
-          // validate: every check runs, and every failed check is reported together
-          const $issues: $Issue[] = [];
-          const $checks = $checkScope($s);
-          await $runCheck($issues, $checks, {
-            label: "cancelable",
-            code: "run.cancelable",
-            message: "the run is not running",
-            source: { file: "src/domain/execution/run.mesh.mx", line: 50, column: 9 },
-            that: $expressions["cancel.check.cancelable.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "versionMatches",
-            code: "expected-version",
-            message: "the record is at another version; read it again and retry",
-            source: { file: "src/domain/execution/run.mesh.mx", line: 55, column: 9 },
-            that: $expressions["cancel.check.versionMatches.that"],
-            details: $expressions["cancel.check.versionMatches.details"],
-          });
-          if ($issues.length > 0) throw new $InvalidInputError($issues);
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          $changes.state = $record.state = "canceled";
-          {
-            const $value = await $expressions["cancel.step.0.set.endedAt"]($s);
-            $changes.endedAt = $record.endedAt = $value === undefined ? null : $value;
-          }
-          {
-            const $value = await $expressions["cancel.step.0.set.cancelReason"]($s);
-            $changes.cancelReason = $record.cancelReason = $value === undefined ? null : $value;
-          }
-          {
-            const $value = await $expressions["cancel.step.0.set.version"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &version (src/domain/execution/run.mesh.mx:66:20) produced no value, and version is required",
-              );
-            $changes.version = $record.version = $value;
-          }
-          // data layer
-          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.runs, $key, $before, "execution.Run#cancel");
-          const $stored = await tx.updateByKey(tables.runs, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("execution.Run", $key);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "execution.Run", action: "cancel" },
-            $before,
-            $stored,
-            parsed,
-            context,
-          );
-          return $stored as Run;
-        },
+              const $value = await $expressions["cancel.step.0.set.endedAt"]($s);
+              $changes.endedAt = $record.endedAt = $value === undefined ? null : $value;
+            }
+            {
+              const $value = await $expressions["cancel.step.0.set.cancelReason"]($s);
+              $changes.cancelReason = $record.cancelReason = $value === undefined ? null : $value;
+            }
+            {
+              const $value = await $expressions["cancel.step.0.set.version"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &version (src/domain/execution/run.mesh.mx:66:20) produced no value, and version is required",
+                );
+              $changes.version = $record.version = $value;
+            }
+            // data layer
+            // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+            await $checkUnchanged(tx, $writes, tables.runs, $key, $before, "execution.Run#cancel");
+            const $stored = await tx.updateByKey(tables.runs, $key, $changes);
+            if ($stored === undefined) throw new $NotFoundError("execution.Run", $key);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "execution.Run", action: "cancel" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
+            );
+            return $stored as Run;
+          }),
       );
     },
 
@@ -445,74 +463,76 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
         { entity: "execution.Run", action: "settle" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-          const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.runs, $key);
-          if ($before === undefined) throw new $NotFoundError("execution.Run", $key);
-          const $changes: $Row = {};
-          const $record: $Row = { ...$before };
-          const $writes = $writeCount(tx);
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "execution.Run", $record, "action function"),
-            "execution.Run#settle",
-          );
-          const $s = $scope(
+        (tx) =>
+          frame.within(tx, $clock, "execution.Run#settle", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+            const $key = { id: parsed.id };
+            const $before = await tx.selectByKeyForUpdate(tables.runs, $key);
+            if ($before === undefined) throw new $NotFoundError("execution.Run", $key);
+            const $changes: $Row = {};
+            const $record: $Row = { ...$before };
+            const $writes = $writeCount(tx);
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "execution.Run", $record, "action function"),
+              "execution.Run#settle",
+            );
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "execution.Run#settle"),
+                actor: $actor,
+                context: $context,
+                before: $readOnlyRecord(
+                  $guarded($loadPlan, "execution.Run", $before, "before"),
+                  "execution.Run#settle",
+                ) as unknown as Run,
+              },
+              { clock: $clock },
+            ) as unknown as $StoredScope<SettleRunInput>;
+            // the input: the member inputs the caller sent, applied now that the checks have passed
+            if (parsed.outcome !== undefined) $changes.outcome = $record.outcome = parsed.outcome;
+            // do: the steps run in written order, each seeing the record as the ones before it left it
             {
-              self: $self,
-              input: $readOnlyRecord(parsed, "execution.Run#settle"),
-              actor: $actor,
-              context: $context,
-              before: $readOnlyRecord(
-                $guarded($loadPlan, "execution.Run", $before, "before"),
-                "execution.Run#settle",
-              ) as unknown as Run,
-              ...$composed(compose, tx, context, "execution.Run#settle", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $StoredScope<SettleRunInput>;
-          // the input: the member inputs the caller sent, applied now that the checks have passed
-          if (parsed.outcome !== undefined) $changes.outcome = $record.outcome = parsed.outcome;
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          {
-            const $value = await $expressions["settle.step.0.set.state"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &state (src/domain/execution/run.mesh.mx:73:18) produced no value, and state is required",
-              );
-            $changes.state = $record.state = $value;
-          }
-          {
-            const $value = await $expressions["settle.step.0.set.endedAt"]($s);
-            $changes.endedAt = $record.endedAt = $value === undefined ? null : $value;
-          }
-          {
-            const $value = await $expressions["settle.step.0.set.version"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &version (src/domain/execution/run.mesh.mx:75:20) produced no value, and version is required",
-              );
-            $changes.version = $record.version = $value;
-          }
-          // data layer
-          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.runs, $key, $before, "execution.Run#settle");
-          const $stored = await tx.updateByKey(tables.runs, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("execution.Run", $key);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "execution.Run", action: "settle" },
-            $before,
-            $stored,
-            parsed,
-            context,
-          );
-          return $stored as Run;
-        },
+              const $value = await $expressions["settle.step.0.set.state"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &state (src/domain/execution/run.mesh.mx:73:18) produced no value, and state is required",
+                );
+              $changes.state = $record.state = $value;
+            }
+            {
+              const $value = await $expressions["settle.step.0.set.endedAt"]($s);
+              $changes.endedAt = $record.endedAt = $value === undefined ? null : $value;
+            }
+            {
+              const $value = await $expressions["settle.step.0.set.version"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &version (src/domain/execution/run.mesh.mx:75:20) produced no value, and version is required",
+                );
+              $changes.version = $record.version = $value;
+            }
+            // data layer
+            // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+            await $checkUnchanged(tx, $writes, tables.runs, $key, $before, "execution.Run#settle");
+            const $stored = await tx.updateByKey(tables.runs, $key, $changes);
+            if ($stored === undefined) throw new $NotFoundError("execution.Run", $key);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "execution.Run", action: "settle" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
+            );
+            return $stored as Run;
+          }),
       );
     },
 
@@ -520,26 +540,31 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
       input: Omit<ReadRunInput, "load"> & RunLoadArg<L>,
       ...[context]: $ContextArgument
     ): Promise<L extends unknown ? RunWith<RunLoadNames<L>>[] : never> {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a read through `tx` skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readRunInput, input);
       if (
-        !(await $authorizer("execution.Run", "read", [
-          {
-            name: "membersRead",
-            when: null,
-            checks: [
-              {
-                kind: "authorize-if",
-                check: "({ actor, context }) => isSystem(context) || actor.role != null",
-                record: false,
-                run: $expressions["policy.membersRead.authorize-if.0"],
-              },
-            ],
-          },
-        ]).filter(
+        !(await $authorizer(
+          "execution.Run",
+          "read",
+          [
+            {
+              name: "membersRead",
+              when: null,
+              checks: [
+                {
+                  kind: "authorize-if",
+                  check: "({ actor, context }) => isSystem(context) || actor.role != null",
+                  record: false,
+                  run: $expressions["policy.membersRead.authorize-if.0"],
+                },
+              ],
+            },
+          ],
+          frame,
+        ).filter(
           layer,
           $scope(
             {
@@ -567,26 +592,72 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
  * The entity value (CMP-16): `Run.<action>(input, context)` runs the action on the binding in scope, the
  * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
  */
-const $entityValue = $entity("execution.Run", bindRun, bindRunReads, ($call) => ({
-  start(input: StartRunInput, ...context: $ContextArgument): Promise<Run> {
-    return $call("start", input, context);
-  },
+const $entityValue = $entity(
+  "execution.Run",
+  bindRun,
+  bindRunReads as $EntityReadsBind<$Privileged>,
+  ($call) => ({
+    start(input: StartRunInput, ...context: $ContextArgument): Promise<Run> {
+      return $call("start", input, context);
+    },
 
-  cancel(input: CancelRunInput, ...context: $ContextArgument): Promise<Run> {
-    return $call("cancel", input, context);
-  },
+    cancel(input: CancelRunInput, ...context: $ContextArgument): Promise<Run> {
+      return $call("cancel", input, context);
+    },
 
-  settle(input: SettleRunInput, ...context: $ContextArgument): Promise<Run> {
-    return $call("settle", input, context);
-  },
+    settle(input: SettleRunInput, ...context: $ContextArgument): Promise<Run> {
+      return $call("settle", input, context);
+    },
 
-  read<const L extends readonly (keyof RunLoadable)[] = readonly []>(
-    input: Omit<ReadRunInput, "load"> & RunLoadArg<L>,
-    ...context: $ContextArgument
-  ): Promise<L extends unknown ? RunWith<RunLoadNames<L>>[] : never> {
-    return $call("read", input, context);
-  },
-}));
+    read<const L extends readonly (keyof RunLoadable)[] = readonly []>(
+      input: Omit<ReadRunInput, "load"> & RunLoadArg<L>,
+      ...context: $ContextArgument
+    ): Promise<L extends unknown ? RunWith<RunLoadNames<L>>[] : never> {
+      return $call("read", input, context);
+    },
+  }),
+);
 export { $entityValue as Run };
 /** The record type, under the entity value's name. */
 export type Run = $Record;
+
+/** What `privileged(Run)` returns (TXN-16): one function per read action, run with no policy. */
+export interface $Privileged {
+  read<const L extends readonly (keyof RunLoadable)[] = readonly []>(
+    input: Omit<ReadRunInput, "load"> & RunLoadArg<L>,
+    context?: $ActionContext,
+  ): Promise<L extends unknown ? RunTxWith<RunLoadNames<L>>[] : never>;
+}
+
+/** `$Privileged` as a function of an entity file sees it: every result deeply read-only (ACT-09). */
+export interface $PrivilegedReadOnly {
+  read<const L extends readonly (keyof RunLoadable)[] = readonly []>(
+    input: Omit<ReadRunInput, "load"> & RunLoadArg<L>,
+    context?: $ActionContext,
+  ): Promise<
+    L extends unknown
+      ? readonly ($DeepReadonly<Run> & Pick<$DeepReadonly<RunTxLoadable>, RunLoadNames<L>>)[]
+      : never
+  >;
+}
+
+/**
+ * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
+ * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ */
+export type $ReadOnly = $EntityValue<
+  {
+    start(input: StartRunInput, ...context: $ContextArgument): Promise<$DeepReadonly<Run>>;
+    cancel(input: CancelRunInput, ...context: $ContextArgument): Promise<$DeepReadonly<Run>>;
+    settle(input: SettleRunInput, ...context: $ContextArgument): Promise<$DeepReadonly<Run>>;
+    read<const L extends readonly (keyof RunLoadable)[] = readonly []>(
+      input: Omit<ReadRunInput, "load"> & RunLoadArg<L>,
+      ...context: $ContextArgument
+    ): Promise<
+      L extends unknown
+        ? readonly ($DeepReadonly<Run> & Pick<$DeepReadonly<RunLoadable>, RunLoadNames<L>>)[]
+        : never
+    >;
+  },
+  $PrivilegedReadOnly
+>;

@@ -283,26 +283,96 @@ describe("type rules", () => {
     expect(codes(withAlways("go"))).toEqual([]);
     expect(codes(withAlways("make"))).toContain("error:MESH_BEFORE_IN_CREATE");
   });
-  test("a function that reads actions or tx builds as plain code, and records the scope names it reads", () => {
-    expect(codes(entity(check("({ tx }) => tx.ok(&n)")))).toEqual([]);
-    expect(exprOf(entity(check("({ tx }) => tx.ok(&n)"))).plain).toMatchObject({ why: "uses-tx", roots: ["self"] });
-    // Read without destructuring: the scope supplies them. A string or an object key that spells a scope name is not a read.
-    const read = exprOf(entity(check('() => actions.check({ actor: "before the write" }) && tx.ok(input)')));
-    expect(read.plain!.roots).toEqual(["input", "tx", "actions"]);
-    // A parameter that binds a scope name under another name does not stop `&n` from reading `self`.
-    expect(exprOf(entity(check("({ self: s, tx }) => tx.ok(s.n, &n)"))).plain!.roots).toEqual(["self"]);
+  test("a function that calls privileged or an entity's action builds as plain code, and records what it names", () => {
+    expect(codes(entity(check("() => privileged(Task) !== null && &n > 0")))).toEqual([]);
+    expect(exprOf(entity(check("() => privileged(Task) !== null && &n > 0"))).plain).toMatchObject({ why: "uses-privileged", roots: ["self"], privileged: true, entities: ["Task"] });
+    const acting = exprOf(entity(check("({ context }) => Task.go({ id: input.id }, context) !== null")));
+    expect(acting.plain).toMatchObject({ why: "calls-entity", roots: ["input"], entities: ["Task"], acts: true });
+    expect(acting.plain!.privileged).toBeUndefined();
+    // Naming the entity without calling an action is not acting.
+    expect(exprOf(entity(check("() => Task !== null"))).plain).toMatchObject({ why: "calls-entity", entities: ["Task"] });
+    expect(exprOf(entity(check("() => Task !== null"))).plain!.acts).toBeUndefined();
+    // A parameter called like the entity shadows it, and a string or an object key that spells it is not a read.
+    expect(exprOf(entity(check("({ self: Task }) => Task.n > 1"))).tree).toBeDefined();
+    const spelled = exprOf(entity(check('() => ({ Task: "privileged" }).Task === "x"')));
+    expect(spelled.plain?.entities).toBeUndefined();
+    expect(spelled.plain?.privileged).toBeUndefined();
   });
-  test("a computed field that reads actions or tx is a build error: it is worked out outside any action", () => {
+  test("privileged takes the file's own entity or an imported one, named, else MESH_PRIVILEGED_ENTITY at the argument", () => {
+    for (const that of ["() => privileged(input) !== null", '() => privileged("Task") !== null', "({ self: Task }) => privileged(Task) !== null", "() => privileged(Other) !== null"]) {
+      const source = entity(check(that));
+      const found = build(source).diagnostics.filter((d) => d.code === "MESH_PRIVILEGED_ENTITY");
+      expect(found, that).toHaveLength(1);
+      const argument = that.slice(that.indexOf("privileged(") + "privileged(".length);
+      expect(found[0]!.position.offset, that).toBe(source.indexOf(that) + that.indexOf(argument));
+    }
+    expect(build(entity(check("() => privileged(input) !== null"))).diagnostics.find((d) => d.code === "MESH_PRIVILEGED_ENTITY")!.message)
+      .toBe("`privileged()` takes an entity this file names, its own or an imported one, and `input` is not one");
+    expect(codes(entity(check("() => privileged() !== null")))).toContain("error:MESH_EXPR_ARITY");
+    expect(build(entity(check("() => privileged() !== null"))).diagnostics.find((d) => d.code === "MESH_EXPR_ARITY")!.fix).toBe("write `privileged(Task)`");
+    // A function that takes `privileged` as its own parameter calls that, not Mesh's.
+    expect(codes(entity(check("({ context: privileged }) => privileged(1) !== null")))).not.toContain("error:MESH_PRIVILEGED_ENTITY");
+  });
+  test("a function that destructures `tx` or `actions` from its scope is MESH_REMOVED_SCOPE_NAME at the name, saying what replaces it (TXN-16)", () => {
+    const tx = { message: "`tx` is gone: a function in an entity file is no longer handed a transaction handle, and reads with no policy through `privileged`", fix: "write `privileged(<Entity>).<read>(input)`, naming the entity (import it when it is another file's); it joins the running transaction" };
+    const actions = { message: "`actions` is gone: a function in an entity file calls another action as a method of the entity value", fix: "write `<Entity>.<action>(input, context)`, naming the entity (import it when it is another file's), and pass the context explicitly" };
+    const step = (fn: string) => check("() => true", `      do\n        ${fn}\n`);
+    const computed = (fn: string) => entity(check("() => true"), `  computed\n    integer :c${fn}\n`);
+    const cases: [source: string, at: string, expected: typeof tx][] = [
+      [entity(check("({ self, tx }) => self.n > 0 && tx !== null")), "tx }", tx], // a check, translated otherwise
+      [entity(check('({ "tx": t }) => t !== null')), '"tx"', tx], // a quoted key, renamed
+      [entity(check("({ actions: run }) => run !== null")), "actions:", actions],
+      [entity(step("run({ self, actions }) { void self; void actions }")), "actions }", actions], // a run step, plain by form
+      [entity(step("run({ input, tx }) { void input; void tx }")), "tx }", tx],
+      [computed("({ self, tx }) { return self.n + (tx ? 1 : 0) }"), "tx }", tx],
+    ];
+    for (const [source, at, expected] of cases) {
+      const found = build(source).diagnostics.filter((d) => d.code === "MESH_REMOVED_SCOPE_NAME");
+      expect(found, at).toHaveLength(1);
+      expect(found[0], at).toMatchObject({ severity: "error", ...expected });
+      expect(found[0]!.position.offset, at).toBe(source.indexOf(at, source.indexOf("({")));
+      expect(build(source).document, at).toBeNull();
+    }
+    // Both in one function: one error at each.
+    expect(codes(entity(step("run({ tx, actions }) { void tx; void actions }"))).filter((c) => c === "error:MESH_REMOVED_SCOPE_NAME")).toHaveLength(2);
+    // A nested function's own parameter, a property and a local of that name are the function's own business.
+    for (const that of ["() => [1].some(({ tx }) => tx > 0)", "({ context }) => context.tx !== null", "() => { const actions = 1; return actions > 0 }"])
+      expect(codes(entity(check(that))), that).not.toContain("error:MESH_REMOVED_SCOPE_NAME");
+  });
+  test("a computed field that calls privileged or an entity's action is a build error: it is worked out outside any action", () => {
     const computed = (body: string) => entity(check("() => true")).replace("  actions auto", `  computed\n    boolean :c${body}\n  actions auto`);
-    for (const body of ["({ tx }) { return tx.ok() }", "() { return actions.ok() }", "({ actions: a }) { return a.ok() }"]) {
+    for (const [body, reaches] of [["() { return privileged(Task) !== null }", "calls `privileged`"], ["() { return Task.go({}) !== null }", "calls an entity's action"], ["({ self }) { return privileged(Task).read({ filter: { id: self.id } }) }", "calls `privileged`"]] as const) {
       const source = computed(body);
       const d = build(source).diagnostics.filter((x) => x.code === "MESH_COMPUTED_COMPOSES");
       expect(d, body).toHaveLength(1);
-      expect(d[0]!.message).toContain("computed :c of Task reads `");
+      expect(d[0]!.message).toBe(`computed :c of Task ${reaches}, which only a function that runs inside an action may: a computed field is worked out whenever a record is loaded, outside any action`);
       expect(d[0]!.position.offset, body).toBe(source.indexOf(body));
     }
-    // A string or a property that spells the name is not a read.
-    expect(codes(computed('() { return { tx: "actions" }.tx === "x" }'))).not.toContain("error:MESH_COMPUTED_COMPOSES");
+    // A string or a property that spells the name is not a call.
+    expect(codes(computed('() { return { privileged: "Task" }.privileged === "x" }'))).not.toContain("error:MESH_COMPUTED_COMPOSES");
+  });
+  test("an async computed body, or one that awaits, is a build error at the body: a computed field is synchronous", () => {
+    const computed = (body: string) => entity(check("() => true")).replace("  actions auto", `  computed\n    boolean :c${body}\n  actions auto`);
+    const message = (how: string) => `computed :c of Task ${how}: a computed field is synchronous, and reads only its record and what it loads`;
+    const cases: [body: string, at: string, how: string][] = [
+      [" async () { return &n > 0 }", "async ()", "is `async`"], // translated otherwise
+      ["=async () => &n > 0", "async ()", "is `async`"],
+      ["=async function () { return &n > 0 }", "async function", "is `async`"],
+      ["() { return await Promise.resolve(&n > 0) }", "() {", "uses `await`"],
+      ["() { for await (const x of []) void x; return true }", "() {", "uses `await`"],
+    ];
+    for (const [body, at, how] of cases) {
+      const source = computed(body);
+      const d = build(source).diagnostics.filter((x) => x.code === "MESH_COMPUTED_ASYNC");
+      expect(d, body).toHaveLength(1);
+      expect(d[0], body).toMatchObject({ severity: "error", message: message(how) });
+      expect(d[0]!.fix, body).toBe("Compute it from the record, its relationships and other computed fields; a read through `privileged` or anything else that awaits belongs in a step or a check");
+      expect(d[0]!.position.offset, body).toBe(source.indexOf(at, source.indexOf("boolean :c")));
+      expect(build(source).document, body).toBeNull();
+    }
+    // An async function nested in the body is the body's own business, and a synchronous body is fine.
+    for (const body of ["() { const f = async () => await 1; void f; return true }", "() { return &n > 0 }", "() { return [1].some((x) => x > 0) }"])
+      expect(codes(computed(body)), body).not.toContain("error:MESH_COMPUTED_ASYNC");
   });
   test("a helper that does not read the record is translated and imported; one given the record is plain", async () => {
     const root = await mkdtemp(resolve(import.meta.dir, "../mesh-helper-"));
@@ -315,9 +385,18 @@ describe("type rules", () => {
     const tree = ok.document!.entities[0]!.actions[0]!.validate[0]!.that.tree!;
     expect(tree).toMatchObject({ fn: "and", args: [{ kind: "helper", name: "isStaff", from: "./helpers" }, {}] });
     expect(ok.document!.entities[0]!.imports[0]).toMatchObject({ helper: true, identifiers: ["isStaff", "big"] });
-    expect(printTree(tree, true)).toContain("$.asBool(isStaff($s.actor))");
+    // Through `$.pure`, which refuses a promise (EXP-03): by type where the helper's type says so, at run time otherwise.
+    expect(printTree(tree, true)).toContain('$.asBool($.pure(isStaff($s.actor), "isStaff"))');
+    if (tree.kind !== "call") throw new Error("expected a call");
+    expect(printTree(tree.args[0]!, false)).toBe('$.pure(isStaff($s.actor), "isStaff")');
     const plain = build("() => big(&n)");
     expect(plain.document!.entities[0]!.actions[0]!.validate[0]!.that.plain).toMatchObject({ why: "reads-record-in-helper" });
+    // An awaited helper (one that reads through `privileged`, say) makes the function plain, with no warning for the await.
+    const awaited = build("async ({ input }) => (await big(input.n)) === true");
+    expect(awaited.document!.entities[0]!.actions[0]!.validate[0]!.that.plain).toMatchObject({ why: "awaits-helper", helpers: true });
+    expect(awaited.diagnostics).toEqual([]);
+    // An await of anything else still warns.
+    expect(build("async ({ input }) => (await Promise.resolve(input.n)) === 1").diagnostics.map((d) => d.code)).toContain("MESH_EXPR_PLAIN");
     const config = configOf(root);
     const files = await generateFiles({ document: ok.document!, config });
     expect(files.find((f) => f.path.endsWith("task.expressions.ts"))!.contents).toContain('import { isStaff } from "../../helpers"');
@@ -787,6 +866,7 @@ ${actions}`;
       expect(found).toHaveLength(1);
       expect(found[0]!.message).toContain("`&owner`, which is null on a create here");
       expect(found[0]!.fix).toContain("`input.owner`");
+      expect(found[0]!.fix).toMatch(/a related record through `privileged\(\w+\)\.read`/);
       expect(found[0]!.position.offset).toBe(source.indexOf("&owner.n > 0"));
       expect(codesOf(item(setsOwner(checkOf("() => &owner?.n === null"))))).toEqual([]);
       expect(codesOf(item(setsOwner("") + "      do\n        when=() => &owner.n > 0\n          set\n            &m=1\n").replace("      do\n        when", "        when"))).toEqual([]);

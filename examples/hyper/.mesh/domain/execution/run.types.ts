@@ -67,7 +67,7 @@ export type RunLoadable = {
 /** A Run with the relationships and computed fields named in N loaded. */
 export type RunWith<N extends keyof RunLoadable> = Run & Pick<RunLoadable, N>;
 
-/** What a load through `tx` attaches to a Run: it runs no policy, so every related record the key names is there. */
+/** What a load through `privileged` attaches to a Run: it runs no policy, so every related record the key names is there. */
 export type RunTxLoadable = {
   task: Task;
   responsible: Collaborator;
@@ -76,7 +76,7 @@ export type RunTxLoadable = {
   attempts: Attempt[];
 };
 
-/** A Run loaded through `tx`, with the relationships and computed fields named in N. */
+/** A Run loaded through `privileged`, with the relationships and computed fields named in N. */
 export type RunTxWith<N extends keyof RunLoadable> = Run & Pick<RunTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */

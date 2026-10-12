@@ -5,12 +5,12 @@
 import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
+  NO_FRAME as $NO_FRAME,
   NotFoundError as $NotFoundError,
   authorizer as $authorizer,
   castInput as $castInput,
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
-  composed as $composed,
   entity as $entity,
   guarded as $guarded,
   loadInto as $loadInto,
@@ -25,10 +25,14 @@ import {
   unloadFrom as $unloadFrom,
   uuidv7 as $uuidv7,
   writeCount as $writeCount,
+  type ActionContext as $ActionContext,
+  type ActionFrame as $ActionFrame,
   type BindOptions as $BindOptions,
-  type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type DeepReadonly as $DeepReadonly,
+  type EntityReadsBind as $EntityReadsBind,
+  type EntityValue as $EntityValue,
   type CastOutput as $CastOutput,
   type Issue as $Issue,
   type Row as $Row,
@@ -61,10 +65,14 @@ import {
 import { loadPlan as $loadPlan } from "../../load";
 
 /**
- * The reads of this entity without their policies: what `tx` holds in a function of an entity file (ADR-0068).
- * The read actions below evaluate the read's policies, then call these.
+ * The reads of this entity without their policies: what `privileged(Machine)` runs (TXN-16). The read actions
+ * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
-export function bindMachineReads(layer: $DataLayer, options: $BindOptions = {}) {
+export function bindMachineReads(
+  layer: $DataLayer,
+  options: $BindOptions = {},
+  frame: $ActionFrame = $NO_FRAME,
+) {
   return Object.freeze({
     async read<const L extends readonly (keyof MachineLoadable)[] = readonly []>(
       input: Omit<ReadMachineInput, "load"> & MachineLoadArg<L>,
@@ -74,7 +82,7 @@ export function bindMachineReads(layer: $DataLayer, options: $BindOptions = {}) 
       cast?: $CastOutput<typeof readMachineInput>,
     ): Promise<L extends unknown ? MachineWith<MachineLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a read through `tx` casts it here.
+      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readMachineInput, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.machines, {
@@ -92,6 +100,7 @@ export function bindMachineReads(layer: $DataLayer, options: $BindOptions = {}) 
           context: $context,
           clock: $clock,
           policies,
+          frame,
         })) as unknown as L extends unknown ? MachineWith<MachineLoadNames<L>>[] : never;
       });
     },
@@ -99,11 +108,15 @@ export function bindMachineReads(layer: $DataLayer, options: $BindOptions = {}) 
 }
 
 /**
- * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
- * `actions` and `tx`; the project's `bind` in the index passes it.
+ * Every action of this entity, bound to `layer`. `frame` is the binding's (the project's `bind` passes it): each action's
+ * transaction runs inside it, so what its functions call joins that transaction and reads its instant.
  */
-export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
-  const $reads = bindMachineReads(layer, options);
+export function bindMachine(
+  layer: $DataLayer,
+  options: $BindOptions = {},
+  frame: $ActionFrame = $NO_FRAME,
+) {
+  const $reads = bindMachineReads(layer, options, frame);
   return Object.freeze({
     async register(input: RegisterMachineInput, ...[context]: $ContextArgument): Promise<Machine> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
@@ -119,7 +132,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           checks: [
             {
               kind: "authorize-if",
-              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -132,7 +145,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
             {
               kind: "authorize-if",
               check:
-                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -156,71 +169,74 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
         { entity: "execution.Machine", action: "register" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          const $now = $clock();
-          // plan: a create is one insert; nothing is read first
-          const $changes: $Row = {
-            id: $uuidv7(),
-            platform: null,
-            state: "active",
-            version: 1,
-            registeredAt: $now,
-            firstReportedById: null,
-          };
-          const $record: $Row = { ...$changes, name: null };
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "execution.Machine", $record, "action function"),
-            "execution.Machine#register",
-          );
-          const $s = $scope(
+        (tx) =>
+          frame.within(tx, $clock, "execution.Machine#register", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            const $now = $clock();
+            // plan: a create is one insert; nothing is read first
+            const $changes: $Row = {
+              id: $uuidv7(),
+              platform: null,
+              state: "active",
+              version: 1,
+              registeredAt: $now,
+              firstReportedById: null,
+            };
+            const $record: $Row = { ...$changes, name: null };
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "execution.Machine", $record, "action function"),
+              "execution.Machine#register",
+            );
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "execution.Machine#register"),
+                actor: $actor,
+                context: $context,
+                before: null,
+              },
+              { clock: $clock },
+            ) as unknown as $Scope<RegisterMachineInput>;
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            await $policies.inside($checkScope($s));
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $runCheck($issues, $checks, {
+              label: "nameFree",
+              code: "machine.name-free",
+              message: "a machine already has that name",
+              source: { file: "src/domain/execution/machine.mesh.mx", line: 22, column: 9 },
+              that: $expressions["register.check.nameFree.that"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // the input: the member inputs the caller sent, applied now that the checks have passed
+            if (parsed.name !== undefined) $changes.name = $record.name = parsed.name;
+            if (parsed.platform !== undefined)
+              $changes.platform = $record.platform = parsed.platform;
+            // do: the steps run in written order, each seeing the record as the ones before it left it
             {
-              self: $self,
-              input: $readOnlyRecord(parsed, "execution.Machine#register"),
-              actor: $actor,
-              context: $context,
-              before: null,
-              ...$composed(compose, tx, context, "execution.Machine#register", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $Scope<RegisterMachineInput>;
-          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
-          await $policies.inside($checkScope($s));
-          // validate: every check runs, and every failed check is reported together
-          const $issues: $Issue[] = [];
-          const $checks = $checkScope($s);
-          await $runCheck($issues, $checks, {
-            label: "nameFree",
-            code: "machine.name-free",
-            message: "a machine already has that name",
-            source: { file: "src/domain/execution/machine.mesh.mx", line: 22, column: 9 },
-            that: $expressions["register.check.nameFree.that"],
-          });
-          if ($issues.length > 0) throw new $InvalidInputError($issues);
-          // the input: the member inputs the caller sent, applied now that the checks have passed
-          if (parsed.name !== undefined) $changes.name = $record.name = parsed.name;
-          if (parsed.platform !== undefined) $changes.platform = $record.platform = parsed.platform;
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          {
-            const $value = await $expressions["register.step.0.set.firstReportedBy"]($s);
-            $changes.firstReportedById = $record.firstReportedById =
-              $value === undefined ? null : $value;
-          }
-          // data layer
-          const $stored = await tx.insert(tables.machines, $changes);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "execution.Machine", action: "register" },
-            null,
-            $stored,
-            parsed,
-            context,
-          );
-          return $stored as Machine;
-        },
+              const $value = await $expressions["register.step.0.set.firstReportedBy"]($s);
+              $changes.firstReportedById = $record.firstReportedById =
+                $value === undefined ? null : $value;
+            }
+            // data layer
+            const $stored = await tx.insert(tables.machines, $changes);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "execution.Machine", action: "register" },
+                null,
+                $stored,
+                parsed,
+                context,
+              ),
+            );
+            return $stored as Machine;
+          }),
       );
     },
 
@@ -262,68 +278,70 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
         { entity: "execution.Machine", action: "report" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          const $now = $clock();
-          // plan: a create is one insert; nothing is read first
-          const $changes: $Row = {
-            id: $uuidv7(),
-            platform: null,
-            state: "active",
-            version: 1,
-            registeredAt: $now,
-            firstReportedById: null,
-          };
-          const $record: $Row = { ...$changes, name: null };
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "execution.Machine", $record, "action function"),
-            "execution.Machine#report",
-          );
-          const $s = $scope(
+        (tx) =>
+          frame.within(tx, $clock, "execution.Machine#report", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            const $now = $clock();
+            // plan: a create is one insert; nothing is read first
+            const $changes: $Row = {
+              id: $uuidv7(),
+              platform: null,
+              state: "active",
+              version: 1,
+              registeredAt: $now,
+              firstReportedById: null,
+            };
+            const $record: $Row = { ...$changes, name: null };
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "execution.Machine", $record, "action function"),
+              "execution.Machine#report",
+            );
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "execution.Machine#report"),
+                actor: $actor,
+                context: $context,
+                before: null,
+              },
+              { clock: $clock },
+            ) as unknown as $Scope<ReportMachineInput>;
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $runCheck($issues, $checks, {
+              label: "nameFree",
+              code: "machine.name-free",
+              message: "a machine already has that name",
+              source: { file: "src/domain/execution/machine.mesh.mx", line: 34, column: 9 },
+              that: $expressions["report.check.nameFree.that"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // the input: the member inputs the caller sent, applied now that the checks have passed
+            if (parsed.name !== undefined) $changes.name = $record.name = parsed.name;
+            // do: the steps run in written order, each seeing the record as the ones before it left it
             {
-              self: $self,
-              input: $readOnlyRecord(parsed, "execution.Machine#report"),
-              actor: $actor,
-              context: $context,
-              before: null,
-              ...$composed(compose, tx, context, "execution.Machine#report", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $Scope<ReportMachineInput>;
-          // validate: every check runs, and every failed check is reported together
-          const $issues: $Issue[] = [];
-          const $checks = $checkScope($s);
-          await $runCheck($issues, $checks, {
-            label: "nameFree",
-            code: "machine.name-free",
-            message: "a machine already has that name",
-            source: { file: "src/domain/execution/machine.mesh.mx", line: 34, column: 9 },
-            that: $expressions["report.check.nameFree.that"],
-          });
-          if ($issues.length > 0) throw new $InvalidInputError($issues);
-          // the input: the member inputs the caller sent, applied now that the checks have passed
-          if (parsed.name !== undefined) $changes.name = $record.name = parsed.name;
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          {
-            const $value = await $expressions["report.step.0.set.firstReportedBy"]($s);
-            $changes.firstReportedById = $record.firstReportedById =
-              $value === undefined ? null : $value;
-          }
-          // data layer
-          const $stored = await tx.insert(tables.machines, $changes);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "execution.Machine", action: "report" },
-            null,
-            $stored,
-            parsed,
-            context,
-          );
-          return $stored as Machine;
-        },
+              const $value = await $expressions["report.step.0.set.firstReportedBy"]($s);
+              $changes.firstReportedById = $record.firstReportedById =
+                $value === undefined ? null : $value;
+            }
+            // data layer
+            const $stored = await tx.insert(tables.machines, $changes);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "execution.Machine", action: "report" },
+                null,
+                $stored,
+                parsed,
+                context,
+              ),
+            );
+            return $stored as Machine;
+          }),
       );
     },
 
@@ -341,7 +359,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           checks: [
             {
               kind: "authorize-if",
-              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -354,7 +372,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
             {
               kind: "authorize-if",
               check:
-                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner])",
+                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner])",
               record: true,
               run: $expressions["policy.ownerOnly.authorize-if.0"],
             },
@@ -378,90 +396,93 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
         { entity: "execution.Machine", action: "update" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-          const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.machines, $key);
-          if ($before === undefined) throw new $NotFoundError("execution.Machine", $key);
-          const $changes: $Row = {};
-          const $record: $Row = { ...$before };
-          const $writes = $writeCount(tx);
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "execution.Machine", $record, "action function"),
-            "execution.Machine#update",
-          );
-          const $s = $scope(
+        (tx) =>
+          frame.within(tx, $clock, "execution.Machine#update", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+            const $key = { id: parsed.id };
+            const $before = await tx.selectByKeyForUpdate(tables.machines, $key);
+            if ($before === undefined) throw new $NotFoundError("execution.Machine", $key);
+            const $changes: $Row = {};
+            const $record: $Row = { ...$before };
+            const $writes = $writeCount(tx);
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "execution.Machine", $record, "action function"),
+              "execution.Machine#update",
+            );
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "execution.Machine#update"),
+                actor: $actor,
+                context: $context,
+                before: $readOnlyRecord(
+                  $guarded($loadPlan, "execution.Machine", $before, "before"),
+                  "execution.Machine#update",
+                ) as unknown as Machine,
+              },
+              { clock: $clock },
+            ) as unknown as $StoredScope<UpdateMachineInput>;
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            await $policies.inside($checkScope($s));
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $runCheck($issues, $checks, {
+              label: "machineActive",
+              code: "machine.active",
+              message: "the machine is retired",
+              source: { file: "src/domain/execution/machine.mesh.mx", line: 47, column: 9 },
+              that: $expressions["update.check.machineActive.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "versionMatches",
+              code: "expected-version",
+              message: "the record is at another version; read it again and retry",
+              source: { file: "src/domain/execution/machine.mesh.mx", line: 52, column: 9 },
+              that: $expressions["update.check.versionMatches.that"],
+              details: $expressions["update.check.versionMatches.details"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // the input: the member inputs the caller sent, applied now that the checks have passed
+            if (parsed.platform !== undefined)
+              $changes.platform = $record.platform = parsed.platform;
+            // do: the steps run in written order, each seeing the record as the ones before it left it
             {
-              self: $self,
-              input: $readOnlyRecord(parsed, "execution.Machine#update"),
-              actor: $actor,
-              context: $context,
-              before: $readOnlyRecord(
-                $guarded($loadPlan, "execution.Machine", $before, "before"),
-                "execution.Machine#update",
-              ) as unknown as Machine,
-              ...$composed(compose, tx, context, "execution.Machine#update", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $StoredScope<UpdateMachineInput>;
-          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
-          await $policies.inside($checkScope($s));
-          // validate: every check runs, and every failed check is reported together
-          const $issues: $Issue[] = [];
-          const $checks = $checkScope($s);
-          await $runCheck($issues, $checks, {
-            label: "machineActive",
-            code: "machine.active",
-            message: "the machine is retired",
-            source: { file: "src/domain/execution/machine.mesh.mx", line: 47, column: 9 },
-            that: $expressions["update.check.machineActive.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "versionMatches",
-            code: "expected-version",
-            message: "the record is at another version; read it again and retry",
-            source: { file: "src/domain/execution/machine.mesh.mx", line: 52, column: 9 },
-            that: $expressions["update.check.versionMatches.that"],
-            details: $expressions["update.check.versionMatches.details"],
-          });
-          if ($issues.length > 0) throw new $InvalidInputError($issues);
-          // the input: the member inputs the caller sent, applied now that the checks have passed
-          if (parsed.platform !== undefined) $changes.platform = $record.platform = parsed.platform;
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          {
-            const $value = await $expressions["update.step.0.set.version"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &version (src/domain/execution/machine.mesh.mx:60:20) produced no value, and version is required",
-              );
-            $changes.version = $record.version = $value;
-          }
-          // data layer
-          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(
-            tx,
-            $writes,
-            tables.machines,
-            $key,
-            $before,
-            "execution.Machine#update",
-          );
-          const $stored = await tx.updateByKey(tables.machines, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("execution.Machine", $key);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "execution.Machine", action: "update" },
-            $before,
-            $stored,
-            parsed,
-            context,
-          );
-          return $stored as Machine;
-        },
+              const $value = await $expressions["update.step.0.set.version"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &version (src/domain/execution/machine.mesh.mx:60:20) produced no value, and version is required",
+                );
+              $changes.version = $record.version = $value;
+            }
+            // data layer
+            // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+            await $checkUnchanged(
+              tx,
+              $writes,
+              tables.machines,
+              $key,
+              $before,
+              "execution.Machine#update",
+            );
+            const $stored = await tx.updateByKey(tables.machines, $key, $changes);
+            if ($stored === undefined) throw new $NotFoundError("execution.Machine", $key);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "execution.Machine", action: "update" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
+            );
+            return $stored as Machine;
+          }),
       );
     },
 
@@ -479,7 +500,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           checks: [
             {
               kind: "authorize-if",
-              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -492,7 +513,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
             {
               kind: "authorize-if",
               check:
-                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner])",
+                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner])",
               record: true,
               run: $expressions["policy.ownerOnly.authorize-if.0"],
             },
@@ -516,99 +537,101 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
         { entity: "execution.Machine", action: "retire" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-          const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.machines, $key);
-          if ($before === undefined) throw new $NotFoundError("execution.Machine", $key);
-          const $changes: $Row = {};
-          const $record: $Row = { ...$before };
-          const $writes = $writeCount(tx);
-          const $load = { actor: $actor, context: $context, clock: $clock };
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "execution.Machine", $record, "action function"),
-            "execution.Machine#retire",
-          );
-          const $s = $scope(
+        (tx) =>
+          frame.within(tx, $clock, "execution.Machine#retire", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+            const $key = { id: parsed.id };
+            const $before = await tx.selectByKeyForUpdate(tables.machines, $key);
+            if ($before === undefined) throw new $NotFoundError("execution.Machine", $key);
+            const $changes: $Row = {};
+            const $record: $Row = { ...$before };
+            const $writes = $writeCount(tx);
+            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "execution.Machine", $record, "action function"),
+              "execution.Machine#retire",
+            );
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "execution.Machine#retire"),
+                actor: $actor,
+                context: $context,
+                before: $readOnlyRecord(
+                  $guarded($loadPlan, "execution.Machine", $before, "before"),
+                  "execution.Machine#retire",
+                ) as unknown as Machine,
+              },
+              { clock: $clock },
+            ) as unknown as $StoredScope<RetireMachineInput>;
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            await $policies.inside($checkScope($s));
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $loadInto($loadPlan, "execution.Machine", tx, $record, ["attempts"], $load);
+            await $runCheck($issues, $checks, {
+              label: "machineActive",
+              code: "machine.active",
+              message: "the machine is retired",
+              source: { file: "src/domain/execution/machine.mesh.mx", line: 66, column: 9 },
+              that: $expressions["retire.check.machineActive.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "machineIdle",
+              code: "machine.idle",
+              message: "an attempt on this machine is reported running",
+              source: { file: "src/domain/execution/machine.mesh.mx", line: 71, column: 9 },
+              that: $expressions["retire.check.machineIdle.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "versionMatches",
+              code: "expected-version",
+              message: "the record is at another version; read it again and retry",
+              source: { file: "src/domain/execution/machine.mesh.mx", line: 76, column: 9 },
+              that: $expressions["retire.check.versionMatches.that"],
+              details: $expressions["retire.check.versionMatches.details"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // do: the steps run in written order, each seeing the record as the ones before it left it
+            $changes.state = $record.state = "retired";
             {
-              self: $self,
-              input: $readOnlyRecord(parsed, "execution.Machine#retire"),
-              actor: $actor,
-              context: $context,
-              before: $readOnlyRecord(
-                $guarded($loadPlan, "execution.Machine", $before, "before"),
-                "execution.Machine#retire",
-              ) as unknown as Machine,
-              ...$composed(compose, tx, context, "execution.Machine#retire", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $StoredScope<RetireMachineInput>;
-          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
-          await $policies.inside($checkScope($s));
-          // validate: every check runs, and every failed check is reported together
-          const $issues: $Issue[] = [];
-          const $checks = $checkScope($s);
-          await $loadInto($loadPlan, "execution.Machine", tx, $record, ["attempts"], $load);
-          await $runCheck($issues, $checks, {
-            label: "machineActive",
-            code: "machine.active",
-            message: "the machine is retired",
-            source: { file: "src/domain/execution/machine.mesh.mx", line: 66, column: 9 },
-            that: $expressions["retire.check.machineActive.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "machineIdle",
-            code: "machine.idle",
-            message: "an attempt on this machine is reported running",
-            source: { file: "src/domain/execution/machine.mesh.mx", line: 71, column: 9 },
-            that: $expressions["retire.check.machineIdle.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "versionMatches",
-            code: "expected-version",
-            message: "the record is at another version; read it again and retry",
-            source: { file: "src/domain/execution/machine.mesh.mx", line: 76, column: 9 },
-            that: $expressions["retire.check.versionMatches.that"],
-            details: $expressions["retire.check.versionMatches.details"],
-          });
-          if ($issues.length > 0) throw new $InvalidInputError($issues);
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          $changes.state = $record.state = "retired";
-          {
-            const $value = await $expressions["retire.step.0.set.version"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &version (src/domain/execution/machine.mesh.mx:85:20) produced no value, and version is required",
-              );
-            $changes.version = $record.version = $value;
-          }
-          $unloadFrom($loadPlan, "execution.Machine", $record);
-          // data layer
-          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(
-            tx,
-            $writes,
-            tables.machines,
-            $key,
-            $before,
-            "execution.Machine#retire",
-          );
-          const $stored = await tx.updateByKey(tables.machines, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("execution.Machine", $key);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "execution.Machine", action: "retire" },
-            $before,
-            $stored,
-            parsed,
-            context,
-          );
-          return $stored as Machine;
-        },
+              const $value = await $expressions["retire.step.0.set.version"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &version (src/domain/execution/machine.mesh.mx:85:20) produced no value, and version is required",
+                );
+              $changes.version = $record.version = $value;
+            }
+            $unloadFrom($loadPlan, "execution.Machine", $record);
+            // data layer
+            // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+            await $checkUnchanged(
+              tx,
+              $writes,
+              tables.machines,
+              $key,
+              $before,
+              "execution.Machine#retire",
+            );
+            const $stored = await tx.updateByKey(tables.machines, $key, $changes);
+            if ($stored === undefined) throw new $NotFoundError("execution.Machine", $key);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "execution.Machine", action: "retire" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
+            );
+            return $stored as Machine;
+          }),
       );
     },
 
@@ -616,26 +639,31 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
       input: Omit<ReadMachineInput, "load"> & MachineLoadArg<L>,
       ...[context]: $ContextArgument
     ): Promise<L extends unknown ? MachineWith<MachineLoadNames<L>>[] : never> {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a read through `tx` skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readMachineInput, input);
       if (
-        !(await $authorizer("execution.Machine", "read", [
-          {
-            name: "membersRead",
-            when: null,
-            checks: [
-              {
-                kind: "authorize-if",
-                check: "({ actor, context }) => isSystem(context) || actor.role != null",
-                record: false,
-                run: $expressions["policy.membersRead.authorize-if.0"],
-              },
-            ],
-          },
-        ]).filter(
+        !(await $authorizer(
+          "execution.Machine",
+          "read",
+          [
+            {
+              name: "membersRead",
+              when: null,
+              checks: [
+                {
+                  kind: "authorize-if",
+                  check: "({ actor, context }) => isSystem(context) || actor.role != null",
+                  record: false,
+                  run: $expressions["policy.membersRead.authorize-if.0"],
+                },
+              ],
+            },
+          ],
+          frame,
+        ).filter(
           layer,
           $scope(
             {
@@ -657,30 +685,91 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
  * The entity value (CMP-16): `Machine.<action>(input, context)` runs the action on the binding in scope, the
  * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
  */
-const $entityValue = $entity("execution.Machine", bindMachine, bindMachineReads, ($call) => ({
-  register(input: RegisterMachineInput, ...context: $ContextArgument): Promise<Machine> {
-    return $call("register", input, context);
-  },
+const $entityValue = $entity(
+  "execution.Machine",
+  bindMachine,
+  bindMachineReads as $EntityReadsBind<$Privileged>,
+  ($call) => ({
+    register(input: RegisterMachineInput, ...context: $ContextArgument): Promise<Machine> {
+      return $call("register", input, context);
+    },
 
-  report(input: ReportMachineInput, ...context: $ContextArgument): Promise<Machine> {
-    return $call("report", input, context);
-  },
+    report(input: ReportMachineInput, ...context: $ContextArgument): Promise<Machine> {
+      return $call("report", input, context);
+    },
 
-  update(input: UpdateMachineInput, ...context: $ContextArgument): Promise<Machine> {
-    return $call("update", input, context);
-  },
+    update(input: UpdateMachineInput, ...context: $ContextArgument): Promise<Machine> {
+      return $call("update", input, context);
+    },
 
-  retire(input: RetireMachineInput, ...context: $ContextArgument): Promise<Machine> {
-    return $call("retire", input, context);
-  },
+    retire(input: RetireMachineInput, ...context: $ContextArgument): Promise<Machine> {
+      return $call("retire", input, context);
+    },
 
-  read<const L extends readonly (keyof MachineLoadable)[] = readonly []>(
-    input: Omit<ReadMachineInput, "load"> & MachineLoadArg<L>,
-    ...context: $ContextArgument
-  ): Promise<L extends unknown ? MachineWith<MachineLoadNames<L>>[] : never> {
-    return $call("read", input, context);
-  },
-}));
+    read<const L extends readonly (keyof MachineLoadable)[] = readonly []>(
+      input: Omit<ReadMachineInput, "load"> & MachineLoadArg<L>,
+      ...context: $ContextArgument
+    ): Promise<L extends unknown ? MachineWith<MachineLoadNames<L>>[] : never> {
+      return $call("read", input, context);
+    },
+  }),
+);
 export { $entityValue as Machine };
 /** The record type, under the entity value's name. */
 export type Machine = $Record;
+
+/** What `privileged(Machine)` returns (TXN-16): one function per read action, run with no policy. */
+export interface $Privileged {
+  read<const L extends readonly (keyof MachineLoadable)[] = readonly []>(
+    input: Omit<ReadMachineInput, "load"> & MachineLoadArg<L>,
+    context?: $ActionContext,
+  ): Promise<L extends unknown ? MachineWith<MachineLoadNames<L>>[] : never>;
+}
+
+/** `$Privileged` as a function of an entity file sees it: every result deeply read-only (ACT-09). */
+export interface $PrivilegedReadOnly {
+  read<const L extends readonly (keyof MachineLoadable)[] = readonly []>(
+    input: Omit<ReadMachineInput, "load"> & MachineLoadArg<L>,
+    context?: $ActionContext,
+  ): Promise<
+    L extends unknown
+      ? readonly ($DeepReadonly<Machine> &
+          Pick<$DeepReadonly<MachineLoadable>, MachineLoadNames<L>>)[]
+      : never
+  >;
+}
+
+/**
+ * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
+ * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ */
+export type $ReadOnly = $EntityValue<
+  {
+    register(
+      input: RegisterMachineInput,
+      ...context: $ContextArgument
+    ): Promise<$DeepReadonly<Machine>>;
+    report(
+      input: ReportMachineInput,
+      ...context: $ContextArgument
+    ): Promise<$DeepReadonly<Machine>>;
+    update(
+      input: UpdateMachineInput,
+      ...context: $ContextArgument
+    ): Promise<$DeepReadonly<Machine>>;
+    retire(
+      input: RetireMachineInput,
+      ...context: $ContextArgument
+    ): Promise<$DeepReadonly<Machine>>;
+    read<const L extends readonly (keyof MachineLoadable)[] = readonly []>(
+      input: Omit<ReadMachineInput, "load"> & MachineLoadArg<L>,
+      ...context: $ContextArgument
+    ): Promise<
+      L extends unknown
+        ? readonly ($DeepReadonly<Machine> &
+            Pick<$DeepReadonly<MachineLoadable>, MachineLoadNames<L>>)[]
+        : never
+    >;
+  },
+  $PrivilegedReadOnly
+>;

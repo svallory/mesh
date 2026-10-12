@@ -1,5 +1,5 @@
 // M8a: policies run, and an action no policy covers is denied. A domain with policies of every shape (actor-only,
-// record-reading, through `tx`, `isSystem(context)`, unknown results), built, generated, pushed to SQLite and called
+// record-reading, through `privileged`, `isSystem(context)`, unknown results), built, generated, pushed to SQLite and called
 // through the generated functions. Lead rulings of M8a: where each check runs (ACT-28, POL-08), reads filtered, TXN-06
 // as built, `system` as a reserved boolean, the error, deny by default.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -7,12 +7,14 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
-import { ForbiddenError, InvalidInputError, NotFoundError, type DataLayer, type Seams } from "@meshfw/runtime";
+import { ForbiddenError, FrameworkError, InvalidInputError, NotFoundError, type DataLayer, type Seams } from "@meshfw/runtime";
 import build from "../src/build.ts";
 import { callsOf } from "./calls.ts";
 import { createSchema, sqlite } from "../src/index.ts";
 
-const board = `entity :Board table="boards"
+const board = `import { Audit } from "./audit.mesh.mx"
+
+entity :Board table="boards"
   attributes
     uuid :id primary-key
     string :ownerId
@@ -29,15 +31,15 @@ const board = `entity :Board table="boards"
       validate
         check :named that=({ input }) => input.name.length > 0 code="named" message="a name is required"
       do
-        run({ actions, context }) {
-          await actions.logAudit({ what: "rename" }, { ...context, system: true });
+        run({ context }) {
+          await Audit.log({ what: "rename" }, { ...context, system: true });
         }
     update :lock
       do
         set
           &locked=true
-        run({ actions }) {
-          await actions.logAudit({ what: "lock" });
+        run({ context }) {
+          await Audit.log({ what: "lock" }, context);
         }
     update :freeze
       do
@@ -50,7 +52,7 @@ const board = `entity :Board table="boards"
     policy :signedIn types=[:create, :read]
       authorize-if=({ actor }) => actor.id !== null
     policy :quota actions=[&open]
-      forbid-if=async ({ actor, tx }) => (await tx.readBoard({ filter: { ownerId: { eq: actor.id } } })).length >= 2
+      forbid-if=async ({ actor }) => (await privileged(Board).read({ filter: { ownerId: { eq: actor.id } } })).length >= 2
     policy :owner types=[:update, :destroy]
       authorize-if=({ actor }) => &ownerId === actor.id
     policy :frozen actions=[&rename, &give]
@@ -136,9 +138,10 @@ const SQLITE: ResolvedConfig["data"] = {
   capabilities: { adapter: "sqlite", capabilities: ["aggregates", "integer-key-fill"] }, options: { file: ":memory:" },
 };
 
-/** Build the domain into a temporary project folder and write its generated files. */
-async function generate(prefix: string, sources: Record<string, string>): Promise<string> {
+/** Build the domain into a temporary project folder and write its generated files; `modules` are the project's own TypeScript files under `src/domain`. */
+async function generate(prefix: string, sources: Record<string, string>, modules: Record<string, string> = {}): Promise<string> {
   const dir = await mkdtemp(join(import.meta.dir, prefix));
+  for (const [name, text] of Object.entries(modules)) await Bun.write(join(dir, "src/domain", name), text);
   const config: ResolvedConfig = { root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"), data: SQLITE };
   const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: Object.entries(sources).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source })) });
   expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
@@ -455,20 +458,20 @@ describe("where each check runs (ACT-28, POL-08)", () => {
     } finally { await db.close(); }
   });
 
-  test("a write policy that reads through tx sees an earlier write of the same transaction", async () => {
+  test("a write policy that reads through privileged sees an earlier write of the same transaction", async () => {
     const { db, mesh } = await fresh();
     try {
       await mesh.openBoard({ ownerId: "alice", name: "One" }, alice);
       await mesh.openBoard({ ownerId: "alice", name: "Two" }, alice);
       const quota = await denial(mesh.openBoard({ ownerId: "alice", name: "Three" }, alice));
       expect(quota.policies).toEqual(["quota"]);
-      // In one transaction, bob's first two boards are not committed yet; :quota reads them through tx and refuses the third,
-      // and the denial fails the whole transaction.
-      const call = mesh.transaction(async ({ actions }: any) => {
-        await actions.openBoard({ ownerId: "bob", name: "One" });
-        await actions.openBoard({ ownerId: "bob", name: "Two" });
-        await actions.openBoard({ ownerId: "bob", name: "Three" });
-      }, bob);
+      // In one transaction, bob's first two boards are not committed yet; :quota reads them through `privileged` and refuses
+      // the third, and the denial fails the whole transaction.
+      const call = mesh.transaction(async () => {
+        await app.domain.Board.open({ ownerId: "bob", name: "One" }, bob);
+        await app.domain.Board.open({ ownerId: "bob", name: "Two" }, bob);
+        await app.domain.Board.open({ ownerId: "bob", name: "Three" }, bob);
+      });
       await denial(call);
       expect((await mesh.readBoard({}, alice)).map((row: { ownerId: string }) => row.ownerId)).toEqual(["alice", "alice"]);
     } finally { await db.close(); }
@@ -488,14 +491,14 @@ describe("a nested call is checked against the nested action's policies (TXN-06)
     } finally { await db.close(); }
   });
 
-  test("a step that calls with system: true is admitted; one that carries the caller's context is checked as the caller", async () => {
+  test("a step that calls with system: true is admitted; one that passes the caller's context is checked as the caller", async () => {
     const { db, mesh } = await fresh();
     try {
       const board = await mesh.openBoard({ ownerId: "alice", name: "Plans" }, alice);
       // rename's step passes { ...context, system: true }: the nested log is admitted.
       await mesh.renameBoard({ id: board.id, name: "Roadmap" }, alice);
       expect((await mesh.readAudit({}, alice)).map((row: { what: string }) => row.what)).toEqual(["rename"]);
-      // lock's step carries alice's context, which is not system: the nested log is forbidden, and the lock is rolled back.
+      // lock's step passes alice's context, which is not system: the nested log is forbidden, and the lock is rolled back.
       const error = await denial(mesh.lockBoard({ id: board.id }, alice));
       expect(error).toMatchObject({ entity: "Audit", action: "log", policies: ["internal"] });
       expect((await mesh.readBoard({}, alice))[0]).toMatchObject({ locked: false, name: "Roadmap" });
@@ -503,13 +506,13 @@ describe("a nested call is checked against the nested action's policies (TXN-06)
     } finally { await db.close(); }
   });
 
-  test("a read through tx skips the read's policies", async () => {
+  test("a read through privileged skips the read's policies", async () => {
     const { db, mesh } = await fresh();
     try {
       await mesh.openBoard({ ownerId: "alice", name: "Plans" }, alice);
-      // The anonymous caller's own read gives no rows; the same read through tx, in a transaction, reads the row.
+      // The anonymous caller's own read gives no rows; the same read through `privileged`, given the same context, reads the row.
       expect(await mesh.readBoard({}, anonymous)).toEqual([]);
-      const seen = await mesh.transaction(async ({ tx }: any) => (await tx.readBoard({})).length, anonymous);
+      const seen = await mesh.transaction(async () => (await app.privileged(app.domain.Board).read({}, anonymous)).length);
       expect(seen).toBe(1);
     } finally { await db.close(); }
   });
@@ -517,7 +520,7 @@ describe("a nested call is checked against the nested action's policies (TXN-06)
 
 // POL-17: a relationship the caller loads, and a rollup the caller reads, run the target entity's read policies, actor
 // only, with the caller's context. Not admitted: a has-many is [], a belongs-to null, a count 0, a max null. Through
-// `tx` no policy runs (ADR-0068).
+// `privileged` no policy runs (TXN-16).
 describe("what a caller loads runs the read policies of the entity it reaches (POL-17)", () => {
   const shelf = `import { Keeper } from "./keeper.mesh.mx"
 import { Item } from "./item.mesh.mx"
@@ -548,8 +551,8 @@ entity :Shelf table="shelves"
           load=[&items]
     update :peek
       do
-        run({ actions, context }) {
-          context.seen.push(await actions.readShelf({ load: ["items", "keeper", "itemCount", "topRank"] }));
+        run({ context }) {
+          context.seen.push(await Shelf.read({ load: ["items", "keeper", "itemCount", "topRank"] }, context));
         }
   policies
     policy :anyone
@@ -625,31 +628,31 @@ entity :Item table="items"
     } finally { await db.close(); }
   });
 
-  test("through tx nothing is filtered: the same caller's read inside a transaction sees every row", async () => {
+  test("through privileged nothing is filtered: the same caller's read inside a transaction sees every row", async () => {
     const { db, mesh } = await stocked();
     try {
-      const [inside] = await mesh.transaction(({ tx }: any) => tx.readShelf({ load }), alice);
+      const [inside] = await mesh.transaction(() => loads.privileged(loads.domain.Shelf).read({ load }, alice));
       expect(inside).toMatchObject({ keeper: { name: "Kay" }, itemCount: 2, topRank: 7 });
       expect(inside.items).toHaveLength(2);
       // And the loader a `run` or a test calls directly runs none either.
       const { loadShelfFields } = (await import(join(loadsDir, ".mesh/load.ts"))) as { loadShelfFields: (tx: unknown, rows: object[], names: string[]) => Promise<{ keeper: unknown }[]> };
       const rows = await db.transaction((tx) => loadShelfFields(tx, [{ ...inside }], ["items", "keeper"]));
       expect(rows[0]).toMatchObject({ keeper: { name: "Kay" } });
-      // Its type takes no `policies` (R2-N1); one forced past it is ignored: the loader always loads as `tx` does.
+      // Its type takes no `policies` (R2-N1); one forced past it is ignored: the loader always loads as `privileged` does.
       const forced = await db.transaction((tx) => (loadShelfFields as (tx: unknown, rows: object[], names: string[], options: object) => Promise<{ keeper: unknown }[]>)(
         tx, [{ ...inside }], ["keeper"], { actor: alice.actor, context: alice, policies: true }));
       expect(forced[0]).toMatchObject({ keeper: { name: "Kay" } });
     } finally { await db.close(); }
   });
 
-  test("a write's load step, one inside a `when`, and a read nested through `actions` apply the same rule at each level", async () => {
+  test("a write's load step, one inside a `when`, and a nested read apply the same rule at each level", async () => {
     const { db, mesh, made } = await stocked();
     try {
       expect(await mesh.showShelf({ id: made.id }, alice)).toMatchObject({ items: [], keeper: null, itemCount: 0 });
       expect((await mesh.showShelf({ id: made.id }, member)).items).toHaveLength(2);
       expect(await mesh.maybeShelf({ id: made.id, want: true }, alice)).toMatchObject({ items: [] });
       expect((await mesh.maybeShelf({ id: made.id, want: true }, member)).items).toHaveLength(2);
-      // The nested read carries the caller's context, so its loads run the policies for that caller.
+      // The step passes the caller's context to the nested read, so its loads run the policies for that caller.
       // What the run step pushes comes back through the run's context, a proxy; a JSON copy compares as plain data.
       const plain = (seen: unknown[][]) => JSON.parse(JSON.stringify(seen[0]![0]));
       const guestSeen: unknown[][] = [];
@@ -661,9 +664,9 @@ entity :Item table="items"
     } finally { await db.close(); }
   });
 
-  test("the types say so: a caller's belongs-to is `| null`, through tx it is not, and the generated tree type-checks", async () => {
+  test("the types say so: a caller's belongs-to is `| null`, through privileged it is not, and the generated tree type-checks", async () => {
     await Bun.write(join(loadsDir, "use.ts"), `import type { DataOperations, LoadOptions } from "@meshfw/runtime";
-import { transaction } from "./.mesh/index.ts";
+import { privileged, transaction } from "./.mesh/index.ts";
 import { Shelf } from "./.mesh/domain/index.ts";
 import { loadShelfFields } from "./.mesh/load.ts";
 export async function use(): Promise<string[]> {
@@ -674,7 +677,7 @@ export async function use(): Promise<string[]> {
   const shown = await Shelf.show({ id: "x" }, { actor: { id: "a" } });
   // @ts-expect-error the same for a write's load step
   shown.keeper.name;
-  const inside = await transaction(async ({ tx }) => (await tx.readShelf({ load: ["keeper"] }))[0]!.keeper.name, { actor: { id: "a" } });
+  const inside = await transaction(async () => (await privileged(Shelf).read({ load: ["keeper"] }, { actor: { id: "a" } }))[0]!.keeper.name);
   return [name, maybe ?? "", inside, String(shelf!.items.length)];
 }
 // The loader a \`run\` or a test calls runs no policy, so its options have no \`policies\` (R2-N1).
@@ -690,4 +693,83 @@ export async function direct(ops: DataOperations, given: LoadOptions): Promise<s
     const files = (await readdir(join(loadsDir, ".mesh"), { recursive: true })).filter((name) => name.endsWith(".ts")).map((name) => join(".mesh", name));
     expect(typeCheck(loadsDir, [...files, "use.ts"])).toBe("");
   }, 30_000);
+});
+
+/**
+ * Imported functions in policies (EXP-03; POL-21 holds for a write's checks only, lead ruling on PR #91): a read policy
+ * may call a pure one, which it calls with no record, and filters with it. A translated check calls an imported function
+ * synchronously, so one that returns a promise is refused: by the type checker where its type says so, and at run time,
+ * naming it, where its type does not.
+ */
+const shelfHelpers = `export const isReader = (id: string | undefined): boolean => id === "alice";
+export async function isOwner(id: string | undefined): Promise<boolean> {
+  return id === "alice";
+}
+/** Typed so that the type checker cannot tell it returns a promise. */
+export function vaguely(id: string | undefined): any {
+  return Promise.resolve(id === "alice");
+}
+`;
+const shelf = `import { isOwner, isReader, vaguely } from "./shelf-helpers"
+
+entity :Shelf table="shelves"
+  attributes
+    uuid :id primary-key
+    string :name
+  actions auto=[:read]
+    create :put
+      input
+        &name
+    create :typed
+      input
+        &name
+    create :vague
+      input
+        &name
+  policies
+    policy :readers types=[:read]
+      authorize-if=({ actor }) => isReader(actor.id)
+    policy :putters actions=[&put]
+      authorize-if=() => true
+    policy :owner actions=[&typed]
+      authorize-if=({ actor }) => isOwner(actor.id)
+    policy :looseOwner actions=[&vague]
+      authorize-if=({ actor }) => vaguely(actor.id)
+`;
+
+describe("imported functions in policies (EXP-03, POL-21)", () => {
+  let shelfDir: string;
+  let shelfApp: any;
+  beforeAll(async () => {
+    shelfDir = await generate(".policies-shelf-", { shelf }, { "shelf-helpers.ts": shelfHelpers });
+    shelfApp = await project(shelfDir);
+  });
+  afterAll(async () => { if (shelfDir) await rm(shelfDir, { recursive: true, force: true }); });
+
+  test("a read policy that calls a pure imported function builds, and filters by it before the query", async () => {
+    const { db, mesh } = await fresh(shelfApp);
+    try {
+      await mesh.putShelf({ name: "top" }, alice);
+      expect((await mesh.readShelf({}, alice)).map((row: { name: string }) => row.name)).toEqual(["top"]);
+      // A read policy is a filter: a caller it does not admit gets no rows.
+      expect(await mesh.readShelf({}, bob)).toEqual([]);
+    } finally { await db.close(); }
+  });
+
+  test("an imported function that returns a promise fails the type check where its type says so (TS2345), and fails at run time naming it", async () => {
+    const files = (await readdir(join(shelfDir, ".mesh"), { recursive: true })).filter((name) => name.endsWith(".ts")).map((name) => join(".mesh", name));
+    const errors = typeCheck(shelfDir, files).split("\n").filter((line) => line.includes("error TS"));
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("shelf.expressions.ts");
+    expect(errors[0]).toContain("error TS2345");
+    const { db, mesh } = await fresh(shelfApp);
+    try {
+      for (const [call, helper] of [[() => mesh.typedShelf({ name: "a" }, alice), "isOwner"], [() => mesh.vagueShelf({ name: "b" }, alice), "vaguely"]] as const) {
+        const error = await call().then(() => undefined, (cause: unknown) => cause);
+        expect(error).toBeInstanceOf(FrameworkError);
+        expect((error as Error).message).toStartWith(`expression helper ${helper}() returned a promise: a translated expression calls an imported function synchronously. Await it inside an async arrow`);
+      }
+      expect(await mesh.readShelf({}, alice)).toEqual([]);
+    } finally { await db.close(); }
+  });
 });

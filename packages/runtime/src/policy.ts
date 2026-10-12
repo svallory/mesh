@@ -1,5 +1,6 @@
 import { failJoined } from "./compose.ts";
 import type { DataLayer } from "./data-layer.ts";
+import type { ActionFrame } from "./entity.ts";
 import { ForbiddenError, FrameworkError, type PolicyCheck } from "./errors.ts";
 
 /**
@@ -9,7 +10,7 @@ import { ForbiddenError, FrameworkError, type PolicyCheck } from "./errors.ts";
  * `authorize-if` does not authorize, and an unknown `when` fails its policy: every unknown fails closed.
  *
  * A check that reads only `actor`, `context` and `input` runs once, before the transaction opens (`before`); one that reads
- * the record (`self`, a related record, `tx`) runs inside it, on the locked row or a create's new instance (`inside`). The
+ * the record (`self`, a related record), calls `privileged` or calls an imported function (POL-21) runs inside it, on the locked row or a create's new instance (`inside`). The
  * build decides which is which and says so in each spec (`record`).
  *
  * The build refuses a policy with no check (POL-16); one that reaches the evaluator anyway fails, so that a policy object
@@ -69,18 +70,24 @@ type Result = boolean | null;
 /** `true` and `false` are themselves; anything else (null, undefined, a non-boolean from plain code) is unknown. */
 const outcome = (value: unknown): Result => (value === true ? true : value === false ? false : null);
 
-/** `entity` is the entity's FQN (e.g. `blog.Post`); a denial carries it. */
-export function authorizer(entity: string, action: string, policies: readonly PolicySpec[]): Authorizer {
+/**
+ * `entity` is the entity's FQN (e.g. `blog.Post`); a denial carries it. `frame` is the binding's: a read policy (`filter`,
+ * `admits`) runs marked with it, so a `privileged` read made while it is evaluated throws (TXN-18).
+ */
+export function authorizer(entity: string, action: string, policies: readonly PolicySpec[], frame?: Pick<ActionFrame, "marked">): Authorizer {
   const results = new Map<Spec | PolicyCheckSpec, Result>();
-  const run = async (spec: Spec | PolicyCheckSpec, scope: object) => {
-    if (!results.has(spec)) results.set(spec, outcome(await spec.run(scope as never)));
+  let reading = false;
+  const run = async (policy: PolicySpec, spec: Spec | PolicyCheckSpec, scope: object) => {
+    if (results.has(spec)) return;
+    const value = reading && frame ? frame.marked(`policy :${policy.name} of ${entity}`, () => spec.run(scope as never)) : spec.run(scope as never);
+    results.set(spec, outcome(await value));
   };
   /** Runs the checks `wanted` selects, in the order written; a policy whose `when` is false covers nothing, so its checks are skipped. */
   const evaluate = async (scope: object, wanted: (record: boolean) => boolean) => {
     for (const policy of policies) {
-      if (policy.when && wanted(policy.when.record)) await run(policy.when, scope);
+      if (policy.when && wanted(policy.when.record)) await run(policy, policy.when, scope);
       if (policy.when && results.get(policy.when) === false) continue;
-      for (const check of policy.checks) if (wanted(check.record)) await run(check, scope);
+      for (const check of policy.checks) if (wanted(check.record)) await run(policy, check, scope);
     }
   };
   const covers = (policy: PolicySpec): "yes" | "no" | "not-yet" =>
@@ -164,6 +171,7 @@ export function authorizer(entity: string, action: string, policies: readonly Po
       if (policies.length === 0) return reject(layer, decide()!);
       const reads = readsTheRecord();
       if (reads) return reject(layer, reads);
+      reading = true;
       await guarded(layer, scope, () => true);
       return decide() === undefined;
     },
@@ -171,6 +179,7 @@ export function authorizer(entity: string, action: string, policies: readonly Po
       if (policies.length === 0) return false;
       const reads = readsTheRecord();
       if (reads) throw reads;
+      reading = true;
       await evaluate(scope, () => true);
       return decide() === undefined;
     },

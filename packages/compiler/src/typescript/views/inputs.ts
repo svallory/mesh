@@ -257,7 +257,7 @@ export function entitySegment(entity: Entity): string {
 /**
  * The folder under the output directory that holds everything generated from the domain: one folder per module,
  * mirroring the domain folder, each with the module's `index.ts` and its entities' files. Mesh's own files
- * (`index.ts`, `binding.ts`, `composition.ts`, `load.ts`, the adapter's `schema.ts`, `model.json`) sit beside it, so
+ * (`index.ts`, `binding.ts`, `load.ts`, the adapter's `schema.ts`, `model.json`) sit beside it, so
  * no module name can reach one of them.
  */
 export const DOMAIN_FOLDER = "domain";

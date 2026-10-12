@@ -8,10 +8,6 @@ import {
 } from "@meshfw/runtime";
 import { memberOf, roleIn } from "../../../src/domain/identity/identity.helpers";
 import type {
-  ReadOnlyActions as $ReadOnlyActions,
-  ReadOnlyReads as $ReadOnlyReads,
-} from "../../composition";
-import type {
   EvidenceReference,
   EvidenceReferenceLoaded,
   RecordEvidenceReferenceInput,
@@ -24,8 +20,6 @@ export type EvidenceReferenceScope<I = unknown> = $Scope<{
   actor: any;
   context: any;
   before: $DeepReadonly<EvidenceReference> | null;
-  actions: $ReadOnlyActions;
-  tx: $ReadOnlyReads;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
 export type EvidenceReferenceStoredScope<I = unknown> = EvidenceReferenceScope<I> & {
@@ -52,19 +46,19 @@ export const expressions = {
   // policy :membersRead authorize-if, translated (src/domain/work/evidence-reference.mesh.mx:26:20)
   "policy.membersRead.authorize-if.0": ($s: EvidenceReferenceCheckScope<unknown>) =>
     $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
-  // policy :isMember authorize-if, plain (uses-tx) (src/domain/work/evidence-reference.mesh.mx:28:20)
+  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/work/evidence-reference.mesh.mx:28:20)
   "policy.isMember.authorize-if.0": (
     $s: EvidenceReferenceNewScope<RecordEvidenceReferenceInput>,
   ) => {
     const isSystem = $.isSystem;
-    return (({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id))($s);
+    return (async ({ actor, context }) => isSystem(context) || (await memberOf(actor.id)))($s);
   },
-  // policy :ownerOrMember authorize-if, plain (uses-tx) (src/domain/work/evidence-reference.mesh.mx:30:20)
+  // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/work/evidence-reference.mesh.mx:30:20)
   "policy.ownerOrMember.authorize-if.0": (
     $s: EvidenceReferenceNewScope<RecordEvidenceReferenceInput>,
   ) => {
     const isSystem = $.isSystem;
-    return (({ actor, context, tx }) =>
-      isSystem(context) || roleIn(tx, actor.id, ["owner", "member"]))($s);
+    return (async ({ actor, context }) =>
+      isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
   },
 } as const;
