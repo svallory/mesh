@@ -62,7 +62,7 @@ export function bindLateResultReads(layer: $DataLayer, options: $BindOptions = {
       // for its policies and hands it over as `cast`; a read through `tx` casts it here.
       const parsed = cast ?? (await $castInput(layer, readLateResultInput, input));
       return layer.transaction(async (tx) => {
-        const $rows = (await tx.select(tables.lateResult, {
+        const $rows = (await tx.select(tables.late_results, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
@@ -208,7 +208,7 @@ export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, co
             $changes.submitterId = $record.submitterId = $value;
           }
           // data layer
-          const $stored = await tx.insert(tables.lateResult, $changes);
+          const $stored = await tx.insert(tables.late_results, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(

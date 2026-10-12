@@ -83,7 +83,7 @@ describe("a computed field on a create's new instance", () => {
     const mesh = app.bind(db, {});
     // A create whose checks pass cannot be built from this entity (its checks always fail); insert the row directly.
     const id = "018f0000-0000-7000-8000-000000000001";
-    await db.transaction(async (tx: any) => { await tx.insert(app.tables.box, { id, qty: 4, state: "open" }); });
+    await db.transaction(async (tx: any) => { await tx.insert(app.tables.boxes, { id, qty: 4, state: "open" }); });
     const found = issues(await mesh.bumpBox({ id, qty: 9 }, {}).catch((e: unknown) => e));
     expect(found.double).toEqual({ v: 8 });
     expect(found.isOpen).toEqual({ v: true });

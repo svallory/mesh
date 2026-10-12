@@ -84,7 +84,7 @@ export function bindClaimReads(layer: $DataLayer, options: $BindOptions = {}) {
       const parsed = cast ?? (await $castInput(layer, readClaimInput, input));
       return layer.transaction(async (tx) => {
         rejectComputedQuery("work.Claim", ["lapsed"], parsed);
-        const $rows = (await tx.select(tables.claim, {
+        const $rows = (await tx.select(tables.claims, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
@@ -270,7 +270,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           }
           $unloadFrom($loadPlan, "work.Claim", $record);
           // data layer
-          const $stored = await tx.insert(tables.claim, $changes);
+          const $stored = await tx.insert(tables.claims, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
@@ -292,7 +292,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           });
           await $expressions["acquire.step.2.run"]($after);
           // the result: the row as the steps after the write left it, read again by key
-          const $result = await tx.selectByKey(tables.claim, { id: $stored.id });
+          const $result = await tx.selectByKey(tables.claims, { id: $stored.id });
           if ($result === undefined)
             throw new $FrameworkError(
               "work.Claim#acquire: a step after the write deleted the row this action returns",
@@ -366,7 +366,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.claim, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.claims, $key);
           if ($before === undefined) throw new $NotFoundError("work.Claim", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -439,8 +439,8 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           $unloadFrom($loadPlan, "work.Claim", $record);
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.claim, $key, $before, "work.Claim#renew");
-          const $stored = await tx.updateByKey(tables.claim, $key, $changes);
+          await $checkUnchanged(tx, $writes, tables.claims, $key, $before, "work.Claim#renew");
+          const $stored = await tx.updateByKey(tables.claims, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("work.Claim", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
@@ -463,7 +463,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           });
           await $expressions["renew.step.1.run"]($after);
           // the result: the row as the steps after the write left it, read again by key
-          const $result = await tx.selectByKey(tables.claim, { id: $stored.id });
+          const $result = await tx.selectByKey(tables.claims, { id: $stored.id });
           if ($result === undefined)
             throw new $FrameworkError(
               "work.Claim#renew: a step after the write deleted the row this action returns",
@@ -541,7 +541,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.claim, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.claims, $key);
           if ($before === undefined) throw new $NotFoundError("work.Claim", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -615,8 +615,8 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           $unloadFrom($loadPlan, "work.Claim", $record);
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.claim, $key, $before, "work.Claim#release");
-          const $stored = await tx.updateByKey(tables.claim, $key, $changes);
+          await $checkUnchanged(tx, $writes, tables.claims, $key, $before, "work.Claim#release");
+          const $stored = await tx.updateByKey(tables.claims, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("work.Claim", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
@@ -639,7 +639,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           });
           await $expressions["release.step.1.run"]($after);
           // the result: the row as the steps after the write left it, read again by key
-          const $result = await tx.selectByKey(tables.claim, { id: $stored.id });
+          const $result = await tx.selectByKey(tables.claims, { id: $stored.id });
           if ($result === undefined)
             throw new $FrameworkError(
               "work.Claim#release: a step after the write deleted the row this action returns",
@@ -713,7 +713,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.claim, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.claims, $key);
           if ($before === undefined) throw new $NotFoundError("work.Claim", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -772,8 +772,8 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           $unloadFrom($loadPlan, "work.Claim", $record);
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.claim, $key, $before, "work.Claim#revoke");
-          const $stored = await tx.updateByKey(tables.claim, $key, $changes);
+          await $checkUnchanged(tx, $writes, tables.claims, $key, $before, "work.Claim#revoke");
+          const $stored = await tx.updateByKey(tables.claims, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("work.Claim", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
@@ -796,7 +796,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           });
           await $expressions["revoke.step.1.run"]($after);
           // the result: the row as the steps after the write left it, read again by key
-          const $result = await tx.selectByKey(tables.claim, { id: $stored.id });
+          const $result = await tx.selectByKey(tables.claims, { id: $stored.id });
           if ($result === undefined)
             throw new $FrameworkError(
               "work.Claim#revoke: a step after the write deleted the row this action returns",
@@ -844,7 +844,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.claim, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.claims, $key);
           if ($before === undefined) throw new $NotFoundError("work.Claim", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -890,8 +890,8 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           }
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.claim, $key, $before, "work.Claim#expire");
-          const $stored = await tx.updateByKey(tables.claim, $key, $changes);
+          await $checkUnchanged(tx, $writes, tables.claims, $key, $before, "work.Claim#expire");
+          const $stored = await tx.updateByKey(tables.claims, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("work.Claim", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
@@ -914,7 +914,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           });
           await $expressions["expire.step.1.run"]($after);
           // the result: the row as the steps after the write left it, read again by key
-          const $result = await tx.selectByKey(tables.claim, { id: $stored.id });
+          const $result = await tx.selectByKey(tables.claims, { id: $stored.id });
           if ($result === undefined)
             throw new $FrameworkError(
               "work.Claim#expire: a step after the write deleted the row this action returns",
@@ -962,7 +962,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.claim, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.claims, $key);
           if ($before === undefined) throw new $NotFoundError("work.Claim", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -1015,8 +1015,8 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           }
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.claim, $key, $before, "work.Claim#end");
-          const $stored = await tx.updateByKey(tables.claim, $key, $changes);
+          await $checkUnchanged(tx, $writes, tables.claims, $key, $before, "work.Claim#end");
+          const $stored = await tx.updateByKey(tables.claims, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("work.Claim", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write

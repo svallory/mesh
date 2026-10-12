@@ -102,11 +102,11 @@ async function fresh() {
 
 /** Two projects. Ada's holds t1 (priority 5), t2 (9), t3 (2), inserted out of key order; Bo's holds nothing. */
 async function seed(tx: DataOperations) {
-  await tx.insert(app.tables.project, { id: id(1), name: "ada", rank: 2 });
-  await tx.insert(app.tables.project, { id: id(2), name: "bo", rank: 1 });
-  await tx.insert(app.tables.task, { id: id(32), title: "t3", priority: 2, projectId: id(1) });
-  await tx.insert(app.tables.task, { id: id(31), title: "t2", priority: 9, projectId: id(1) });
-  await tx.insert(app.tables.task, { id: id(30), title: "t1", priority: 5, projectId: id(1) });
+  await tx.insert(app.tables.projects, { id: id(1), name: "ada", rank: 2 });
+  await tx.insert(app.tables.projects, { id: id(2), name: "bo", rank: 1 });
+  await tx.insert(app.tables.tasks, { id: id(32), title: "t3", priority: 2, projectId: id(1) });
+  await tx.insert(app.tables.tasks, { id: id(31), title: "t2", priority: 9, projectId: id(1) });
+  await tx.insert(app.tables.tasks, { id: id(30), title: "t1", priority: 5, projectId: id(1) });
 }
 async function seeded() {
   const world = await fresh();
@@ -347,8 +347,8 @@ describe("a caller's read with load", () => {
     const { db, mesh } = await seeded();
     try {
       await db.transaction(async (tx) => {
-        for (let n = 3; n <= 6; n++) await tx.insert(app.tables.project, { id: id(n), name: `p${n}`, rank: n * 10 });
-        await tx.insert(app.tables.task, { id: id(40), title: "u1", priority: 1, projectId: id(5) });
+        for (let n = 3; n <= 6; n++) await tx.insert(app.tables.projects, { id: id(n), name: `p${n}`, rank: n * 10 });
+        await tx.insert(app.tables.tasks, { id: id(40), title: "u1", priority: 1, projectId: id(5) });
       });
       const page = await mesh.readProject({ filter: { rank: { gte: 10 } }, sort: ["-rank"], limit: 2, offset: 1, load: ["taskCount", "tasks", "label"] }, { actor: alice });
       // ranks 60, 50, 40, 30 after the filter, newest first: the offset skips p6 and the limit keeps p5 and p4.
@@ -392,7 +392,7 @@ describe("a caller's read with load", () => {
     const { db, mesh } = await seeded();
     try {
       // A row whose key points at a project that does not exist: the belongs-to cannot be served.
-      await db.transaction(async (tx) => { await tx.insert(app.tables.task, { id: id(50), title: "lost", priority: 0, projectId: id(99) }); });
+      await db.transaction(async (tx) => { await tx.insert(app.tables.tasks, { id: id(50), title: "lost", priority: 0, projectId: id(99) }); });
       await expect(mesh.readTask({ load: ["project"] }, { actor: alice })).rejects.toBeInstanceOf(FrameworkError);
     } finally { await db.close(); }
   });
@@ -463,7 +463,7 @@ describe("the clock", () => {
       const clock = await import(join(clockDir, ".mesh/index.ts"));
       const db = sqlite({ file: ":memory:" });
       await createSchema(db, clock.tables);
-      await db.transaction(async (tx) => { await tx.insert(clock.tables.stamp, { id: id(1), at: new Date(5_000) }); });
+      await db.transaction(async (tx) => { await tx.insert(clock.tables.stamps, { id: id(1), at: new Date(5_000) }); });
       const early = clock.bind(db, { clock: () => new Date(1_000) });
       const late = clock.bind(db, { clock: () => new Date(9_000) });
       const ctx = { actor: alice };
@@ -485,7 +485,7 @@ describe("the clock", () => {
       const db = sqlite({ file: ":memory:" });
       await createSchema(db, clock.tables);
       await db.transaction(async (tx) => {
-        for (let n = 1; n <= 3; n++) await tx.insert(clock.tables.stamp, { id: id(n), at: new Date(n * 1_000 + 500) });
+        for (let n = 1; n <= 3; n++) await tx.insert(clock.tables.stamps, { id: id(n), at: new Date(n * 1_000 + 500) });
       });
       // An advancing clock: every read of it is one second later than the last.
       let ticks = 0;

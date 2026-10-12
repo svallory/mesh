@@ -78,7 +78,7 @@ export function bindAttemptReads(layer: $DataLayer, options: $BindOptions = {}) 
       // for its policies and hands it over as `cast`; a read through `tx` casts it here.
       const parsed = cast ?? (await $castInput(layer, readAttemptInput, input));
       return layer.transaction(async (tx) => {
-        const $rows = (await tx.select(tables.attempt, {
+        const $rows = (await tx.select(tables.attempts, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
@@ -324,7 +324,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
           }
           $unloadFrom($loadPlan, "execution.Attempt", $record);
           // data layer
-          const $stored = await tx.insert(tables.attempt, $changes);
+          const $stored = await tx.insert(tables.attempts, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
@@ -384,7 +384,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.attempt, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.attempts, $key);
           if ($before === undefined) throw new $NotFoundError("execution.Attempt", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -473,12 +473,12 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
           await $checkUnchanged(
             tx,
             $writes,
-            tables.attempt,
+            tables.attempts,
             $key,
             $before,
             "execution.Attempt#finish",
           );
-          const $stored = await tx.updateByKey(tables.attempt, $key, $changes);
+          const $stored = await tx.updateByKey(tables.attempts, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("execution.Attempt", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
@@ -501,7 +501,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
           });
           await $expressions["finish.step.1.run"]($after);
           // the result: the row as the steps after the write left it, read again by key
-          const $result = await tx.selectByKey(tables.attempt, { id: $stored.id });
+          const $result = await tx.selectByKey(tables.attempts, { id: $stored.id });
           if ($result === undefined)
             throw new $FrameworkError(
               "execution.Attempt#finish: a step after the write deleted the row this action returns",
@@ -557,7 +557,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.attempt, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.attempts, $key);
           if ($before === undefined) throw new $NotFoundError("execution.Attempt", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -624,12 +624,12 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
           await $checkUnchanged(
             tx,
             $writes,
-            tables.attempt,
+            tables.attempts,
             $key,
             $before,
             "execution.Attempt#reportStopped",
           );
-          const $stored = await tx.updateByKey(tables.attempt, $key, $changes);
+          const $stored = await tx.updateByKey(tables.attempts, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("execution.Attempt", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
@@ -690,7 +690,7 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.attempt, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.attempts, $key);
           if ($before === undefined) throw new $NotFoundError("execution.Attempt", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -757,12 +757,12 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
           await $checkUnchanged(
             tx,
             $writes,
-            tables.attempt,
+            tables.attempts,
             $key,
             $before,
             "execution.Attempt#abandon",
           );
-          const $stored = await tx.updateByKey(tables.attempt, $key, $changes);
+          const $stored = await tx.updateByKey(tables.attempts, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("execution.Attempt", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write

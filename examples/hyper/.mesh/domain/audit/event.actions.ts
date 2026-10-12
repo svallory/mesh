@@ -50,7 +50,7 @@ export function bindEventReads(layer: $DataLayer, options: $BindOptions = {}) {
       // for its policies and hands it over as `cast`; a read through `tx` casts it here.
       const parsed = cast ?? (await $castInput(layer, readEventInput, input));
       return layer.transaction(async (tx) => {
-        const $rows = (await tx.select(tables.event, {
+        const $rows = (await tx.select(tables.events, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
@@ -137,7 +137,7 @@ export function bindEvent(layer: $DataLayer, options: $BindOptions = {}, _compos
             taskId: parsed.task === undefined ? null : parsed.task,
           };
           // data layer
-          const $stored = await tx.insert(tables.event, $changes);
+          const $stored = await tx.insert(tables.events, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(

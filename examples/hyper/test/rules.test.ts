@@ -72,7 +72,7 @@ const RULES: Record<string, Case> = {
     fail: async (w) => {
       const workspace = await w.hyper.createWorkspace({ name: "Home" }, as(w.alice));
       // No action moves a workspace (export and import are after 1.0), so the state is written as it is.
-      await w.force("workspace", workspace.id, { state: "moved" });
+      await w.force("workspaces", workspace.id, { state: "moved" });
       await refused(w.hyper.renameWorkspace({ id: workspace.id, name: "Again" }, as(w.alice)), "workspace.active");
     },
   },
@@ -575,7 +575,7 @@ const RULES: Record<string, Case> = {
       await refused(submissionSubmit({ task: w.task.id, fence: held.fence, summary: "again" }, as(w.bot), w.binding), "submission.none-pending");
       // No action reaches a live claim beside a pending submission (Hyper's rule is defensive, `submission/rules.ex:9`),
       // so the claim is inserted as it is; the rule then fails alone.
-      await w.insert("claim", { taskId: w.task.id, holderId: w.bot.id, fence: held.fence + 1, acquiredAt: NOW, expiresAt: minutes(10), state: "active" });
+      await w.insert("claims", { taskId: w.task.id, holderId: w.bot.id, fence: held.fence + 1, acquiredAt: NOW, expiresAt: minutes(10), state: "active" });
       const issues = await issuesOf(submissionSubmit({ task: w.task.id, fence: held.fence + 1, summary: "again" }, as(w.bot), w.binding));
       expect(codes(issues)).toEqual(["submission.none-pending"]);
     },

@@ -73,7 +73,7 @@ export function bindMembershipReads(layer: $DataLayer, options: $BindOptions = {
       // for its policies and hands it over as `cast`; a read through `tx` casts it here.
       const parsed = cast ?? (await $castInput(layer, readMembershipInput, input));
       return layer.transaction(async (tx) => {
-        const $rows = (await tx.select(tables.membership, {
+        const $rows = (await tx.select(tables.memberships, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
@@ -228,7 +228,7 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
             $changes.grantedById = $record.grantedById = $value;
           }
           // data layer
-          const $stored = await tx.insert(tables.membership, $changes);
+          const $stored = await tx.insert(tables.memberships, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
@@ -303,7 +303,7 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.membership, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.memberships, $key);
           if ($before === undefined) throw new $NotFoundError("identity.Membership", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -377,12 +377,12 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
           await $checkUnchanged(
             tx,
             $writes,
-            tables.membership,
+            tables.memberships,
             $key,
             $before,
             "identity.Membership#changeRole",
           );
-          const $stored = await tx.updateByKey(tables.membership, $key, $changes);
+          const $stored = await tx.updateByKey(tables.memberships, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("identity.Membership", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
@@ -458,7 +458,7 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.membership, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.memberships, $key);
           if ($before === undefined) throw new $NotFoundError("identity.Membership", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -532,12 +532,12 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
           await $checkUnchanged(
             tx,
             $writes,
-            tables.membership,
+            tables.memberships,
             $key,
             $before,
             "identity.Membership#revoke",
           );
-          const $stored = await tx.updateByKey(tables.membership, $key, $changes);
+          const $stored = await tx.updateByKey(tables.memberships, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("identity.Membership", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write

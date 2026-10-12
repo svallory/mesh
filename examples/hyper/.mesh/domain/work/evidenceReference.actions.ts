@@ -64,7 +64,7 @@ export function bindEvidenceReferenceReads(layer: $DataLayer, options: $BindOpti
       // for its policies and hands it over as `cast`; a read through `tx` casts it here.
       const parsed = cast ?? (await $castInput(layer, readEvidenceReferenceInput, input));
       return layer.transaction(async (tx) => {
-        const $rows = (await tx.select(tables.evidenceReference, {
+        const $rows = (await tx.select(tables.evidence_references, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
@@ -199,7 +199,7 @@ export function bindEvidenceReference(
             $changes.recordedById = $record.recordedById = $value;
           }
           // data layer
-          const $stored = await tx.insert(tables.evidenceReference, $changes);
+          const $stored = await tx.insert(tables.evidence_references, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(

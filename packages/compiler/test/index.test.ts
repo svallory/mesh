@@ -141,7 +141,7 @@ async function generated(config = memoryConfig) {
   const files = await generateFiles({ document: documentOf(), config: configOf(root, ".mesh") });
   await writeGeneratedFiles(files, configOf(root, ".mesh"));
   await writeFile(resolve(root, ".mesh/schema.ts"),
-    "export const noteTable = {};\nexport const tagTable = {};\nexport const tables = { note: noteTable, tag: tagTable };\n");
+    "export const tables = { notes: {}, tag: {} };\n");
   await writeFile(resolve(root, "mesh.config.ts"), config);
   return { root, files };
 }
@@ -217,7 +217,7 @@ describe("the generated index", () => {
     const config = configOf(root, ".mesh");
     const files = await generateFiles({ document: documentOf({ "tag.mesh.mx": tag }), config });
     await writeGeneratedFiles(files, config);
-    await writeFile(resolve(root, ".mesh/schema.ts"), "export const tagTable = {};\nexport const tables = { tag: tagTable };\n");
+    await writeFile(resolve(root, ".mesh/schema.ts"), "export const tables = { tag: {} };\n");
     await writeFile(resolve(root, "mesh.config.ts"), descriptorConfig);
     expect(checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts")).map((f) => f.path), ".mesh/schema.ts", "mesh.config.ts"]))
       .toEqual({ code: 0, output: "" });
@@ -266,7 +266,8 @@ describe("entity names never break the generated files", () => {
   const extra: Record<string, string> = { Flight: "    read :in\n", Binding: "    read :default\n" };
   const files = Object.fromEntries(names.map((name) => [`${name.toLowerCase()}.mesh.mx`,
     `entity :${name}\n  attributes\n    uuid :id primary-key\n    string :label\n  actions auto=[:read, :destroy]\n    create :create\n      input\n        &label\n    update :edit\n      input\n        &label\n${extra[name] ?? ""}  policies\n    policy :open\n      authorize-if=() => true\n`]));
-  const key = (name: string) => name[0]!.toLowerCase() + name.slice(1);
+  // The default table name: the entity name in snake_case.
+  const table = (name: string) => name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
 
   test("they build, type-check strictly and run", async () => {
     const root = await mkdtemp(resolve(import.meta.dir, "../mesh-index-names-"));
@@ -275,8 +276,7 @@ describe("entity names never break the generated files", () => {
     const generatedFiles = await generateFiles({ document: documentOf(files), config });
     await writeGeneratedFiles(generatedFiles, config);
     await writeFile(resolve(root, ".mesh/schema.ts"), [
-      ...names.map((name) => `export const ${key(name)}Table = {};`),
-      `export const tables = { ${names.map((name) => `${key(name)}: ${key(name)}Table`).join(", ")} };`, ""].join("\n"));
+      `export const tables = { ${names.map((name) => `${table(name)}: {}`).join(", ")} };`, ""].join("\n"));
     await writeFile(resolve(root, "mesh.config.ts"), descriptorConfig);
     expect(checkTypes(root, [...generatedFiles.filter((f) => f.path.endsWith(".ts")).map((f) => f.path), ".mesh/schema.ts", "mesh.config.ts"]))
       .toEqual({ code: 0, output: "" });

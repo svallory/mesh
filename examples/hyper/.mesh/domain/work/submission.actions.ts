@@ -78,7 +78,7 @@ export function bindSubmissionReads(layer: $DataLayer, options: $BindOptions = {
       // for its policies and hands it over as `cast`; a read through `tx` casts it here.
       const parsed = cast ?? (await $castInput(layer, readSubmissionInput, input));
       return layer.transaction(async (tx) => {
-        const $rows = (await tx.select(tables.submission, {
+        const $rows = (await tx.select(tables.submissions, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
@@ -279,7 +279,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           }
           $unloadFrom($loadPlan, "work.Submission", $record);
           // data layer
-          const $stored = await tx.insert(tables.submission, $changes);
+          const $stored = await tx.insert(tables.submissions, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
@@ -301,7 +301,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           });
           await $expressions["submit.step.1.run"]($after);
           // the result: the row as the steps after the write left it, read again by key
-          const $result = await tx.selectByKey(tables.submission, { id: $stored.id });
+          const $result = await tx.selectByKey(tables.submissions, { id: $stored.id });
           if ($result === undefined)
             throw new $FrameworkError(
               "work.Submission#submit: a step after the write deleted the row this action returns",
@@ -382,7 +382,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.submission, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.submissions, $key);
           if ($before === undefined) throw new $NotFoundError("work.Submission", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -436,12 +436,12 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           await $checkUnchanged(
             tx,
             $writes,
-            tables.submission,
+            tables.submissions,
             $key,
             $before,
             "work.Submission#withdraw",
           );
-          const $stored = await tx.updateByKey(tables.submission, $key, $changes);
+          const $stored = await tx.updateByKey(tables.submissions, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("work.Submission", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
@@ -464,7 +464,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           });
           await $expressions["withdraw.step.1.run"]($after);
           // the result: the row as the steps after the write left it, read again by key
-          const $result = await tx.selectByKey(tables.submission, { id: $stored.id });
+          const $result = await tx.selectByKey(tables.submissions, { id: $stored.id });
           if ($result === undefined)
             throw new $FrameworkError(
               "work.Submission#withdraw: a step after the write deleted the row this action returns",
@@ -519,7 +519,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.submission, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.submissions, $key);
           if ($before === undefined) throw new $NotFoundError("work.Submission", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -567,12 +567,12 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           await $checkUnchanged(
             tx,
             $writes,
-            tables.submission,
+            tables.submissions,
             $key,
             $before,
             "work.Submission#settle",
           );
-          const $stored = await tx.updateByKey(tables.submission, $key, $changes);
+          const $stored = await tx.updateByKey(tables.submissions, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("work.Submission", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
@@ -677,7 +677,7 @@ export function bindSubmission(layer: $DataLayer, options: $BindOptions = {}, co
           }
           $changes.state = $record.state = "accepted";
           // data layer
-          const $stored = await tx.insert(tables.submission, $changes);
+          const $stored = await tx.insert(tables.submissions, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(

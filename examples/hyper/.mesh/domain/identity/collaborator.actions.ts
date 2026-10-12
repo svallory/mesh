@@ -72,7 +72,7 @@ export function bindCollaboratorReads(layer: $DataLayer, options: $BindOptions =
       // for its policies and hands it over as `cast`; a read through `tx` casts it here.
       const parsed = cast ?? (await $castInput(layer, readCollaboratorInput, input));
       return layer.transaction(async (tx) => {
-        const $rows = (await tx.select(tables.collaborator, {
+        const $rows = (await tx.select(tables.collaborators, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
@@ -201,7 +201,7 @@ export function bindCollaborator(
           if (parsed.kind !== undefined) $changes.kind = $record.kind = parsed.kind;
           if (parsed.name !== undefined) $changes.name = $record.name = parsed.name;
           // data layer
-          const $stored = await tx.insert(tables.collaborator, $changes);
+          const $stored = await tx.insert(tables.collaborators, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
@@ -276,7 +276,7 @@ export function bindCollaborator(
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.collaborator, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.collaborators, $key);
           if ($before === undefined) throw new $NotFoundError("identity.Collaborator", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -350,12 +350,12 @@ export function bindCollaborator(
           await $checkUnchanged(
             tx,
             $writes,
-            tables.collaborator,
+            tables.collaborators,
             $key,
             $before,
             "identity.Collaborator#update",
           );
-          const $stored = await tx.updateByKey(tables.collaborator, $key, $changes);
+          const $stored = await tx.updateByKey(tables.collaborators, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("identity.Collaborator", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
@@ -431,7 +431,7 @@ export function bindCollaborator(
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.collaborator, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.collaborators, $key);
           if ($before === undefined) throw new $NotFoundError("identity.Collaborator", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -497,12 +497,12 @@ export function bindCollaborator(
           await $checkUnchanged(
             tx,
             $writes,
-            tables.collaborator,
+            tables.collaborators,
             $key,
             $before,
             "identity.Collaborator#retire",
           );
-          const $stored = await tx.updateByKey(tables.collaborator, $key, $changes);
+          const $stored = await tx.updateByKey(tables.collaborators, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("identity.Collaborator", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write

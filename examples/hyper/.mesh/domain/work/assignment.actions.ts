@@ -71,7 +71,7 @@ export function bindAssignmentReads(layer: $DataLayer, options: $BindOptions = {
       // for its policies and hands it over as `cast`; a read through `tx` casts it here.
       const parsed = cast ?? (await $castInput(layer, readAssignmentInput, input));
       return layer.transaction(async (tx) => {
-        const $rows = (await tx.select(tables.assignment, {
+        const $rows = (await tx.select(tables.assignments, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
@@ -194,7 +194,7 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
             $changes.startedAt = $record.startedAt = $value;
           }
           // data layer
-          const $stored = await tx.insert(tables.assignment, $changes);
+          const $stored = await tx.insert(tables.assignments, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
@@ -256,7 +256,7 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.assignment, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.assignments, $key);
           if ($before === undefined) throw new $NotFoundError("work.Assignment", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -304,12 +304,12 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
           await $checkUnchanged(
             tx,
             $writes,
-            tables.assignment,
+            tables.assignments,
             $key,
             $before,
             "work.Assignment#finish",
           );
-          const $stored = await tx.updateByKey(tables.assignment, $key, $changes);
+          const $stored = await tx.updateByKey(tables.assignments, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("work.Assignment", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write

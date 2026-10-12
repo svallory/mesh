@@ -18,7 +18,13 @@ const ENTITIES = [
 const bareOf = (fqn: string) => fqn.slice(fqn.lastIndexOf(".") + 1);
 
 /** An entity's table and the key of one of its rows: every entity keys on `id` but Event, which keys on `seq`. */
-const tableOf = (entity: string) => (tables as unknown as Record<string, never>)[bareOf(entity)[0]!.toLowerCase() + bareOf(entity).slice(1)]!;
+const TABLE_OF: Readonly<Record<string, keyof typeof tables>> = {
+  Assignment: "assignments", Attempt: "attempts", Claim: "claims", Collaborator: "collaborators", Completion: "completions",
+  Dependency: "dependencies", Event: "events", EvidenceReference: "evidence_references", Invocation: "invocations",
+  LateResult: "late_results", Machine: "machines", Membership: "memberships", Review: "reviews", Run: "runs",
+  SessionReference: "session_references", Submission: "submissions", Task: "tasks", Workspace: "workspaces",
+};
+const tableOf = (entity: string) => tables[TABLE_OF[bareOf(entity)]!] as never;
 const keyOf = (entity: string, row: Record<string, unknown>) => (entity === "audit.Event" ? { seq: row.seq } : { id: row.id }) as never;
 
 /** Every seam call, in order, as plain data; `after` and `commit` hold what the seams received. */
@@ -141,7 +147,7 @@ describe("acceptance 3: a throw in afterWrite rolls back the whole outermost tra
         seams: {
           async afterWrite(db, { entity, action }) {
             // Written through `db` by the first seam call, before the nested ones: it must go too.
-            if (entity === "work.Review") await db.insert(tables.workspace, { id: "00000000-0000-4000-8000-0000000000f1", name: "seam", location: "local", state: "active", version: 1 });
+            if (entity === "work.Review") await db.insert(tables.workspaces, { id: "00000000-0000-4000-8000-0000000000f1", name: "seam", location: "local", state: "active", version: 1 });
             if (entity === "work.Completion" && action === "record") throw boom;
           },
         },
@@ -402,12 +408,12 @@ describe("db", () => {
         seen = db;
         if (entity !== "identity.Workspace") return;
         const key = { id: "00000000-0000-4000-8000-0000000000f2" };
-        const row = await db.insert(tables.workspace, { ...key, name: "log", location: "local", state: "active", version: 1 });
-        expect(await db.selectByKey(tables.workspace, key)).toEqual(row);
-        expect(await db.updateByKey(tables.workspace, key, { name: "log 2" })).toMatchObject({ name: "log 2" });
+        const row = await db.insert(tables.workspaces, { ...key, name: "log", location: "local", state: "active", version: 1 });
+        expect(await db.selectByKey(tables.workspaces, key)).toEqual(row);
+        expect(await db.updateByKey(tables.workspaces, key, { name: "log 2" })).toMatchObject({ name: "log 2" });
         const second = { id: "00000000-0000-4000-8000-0000000000f3" };
-        await db.insert(tables.workspace, { ...second, name: "gone", location: "local", state: "active", version: 1 });
-        expect(await db.deleteByKey(tables.workspace, second)).toBe(true);
+        await db.insert(tables.workspaces, { ...second, name: "gone", location: "local", state: "active", version: 1 });
+        expect(await db.deleteByKey(tables.workspaces, second)).toBe(true);
       },
     });
     const fresh = await empty({ seams: rec.seams });

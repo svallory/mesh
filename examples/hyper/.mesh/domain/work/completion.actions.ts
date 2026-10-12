@@ -58,7 +58,7 @@ export function bindCompletionReads(layer: $DataLayer, options: $BindOptions = {
       // for its policies and hands it over as `cast`; a read through `tx` casts it here.
       const parsed = cast ?? (await $castInput(layer, readCompletionInput, input));
       return layer.transaction(async (tx) => {
-        const $rows = (await tx.select(tables.completion, {
+        const $rows = (await tx.select(tables.completions, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
@@ -169,7 +169,7 @@ export function bindCompletion(layer: $DataLayer, options: $BindOptions = {}, co
             $changes.completedById = $record.completedById = $value;
           }
           // data layer
-          const $stored = await tx.insert(tables.completion, $changes);
+          const $stored = await tx.insert(tables.completions, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(

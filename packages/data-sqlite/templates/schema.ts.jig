@@ -8,30 +8,26 @@ import {
   @end
 } from "drizzle-orm/sqlite-core";
 
-@each(table in tables)
-export const {{ table.exportName }} = _meshSqlite({{ table.nameLiteral }}, {
-  @each(column in table.columns)
-  @if(column.options)~
-  {{ column.key }}: {{ column.builder }}({{ column.nameLiteral }}, {{ column.options }})
-  @else~
-  {{ column.key }}: {{ column.builder }}({{ column.nameLiteral }})
-  @end~
-  @if(column.notNull)~
-    .notNull()
-  @end~
-  @if(column.primaryKey)~
-    .primaryKey()
-  @end~
-  @if(column.unique)~
-    .unique()
-  @end~
-  ,
-  @end
-});
-
-@end
 export const tables = {
   @each(table in tables)
-  {{ table.key }}: {{ table.exportName }},
+  {{ table.key }}: _meshSqlite({{ table.nameLiteral }}, {
+  @each(column in table.columns)
+  @if(column.options)~
+    {{ column.key }}: {{ column.builder }}({{ column.nameLiteral }}, {{ column.options }})
+  @else~
+    {{ column.key }}: {{ column.builder }}({{ column.nameLiteral }})
+  @end~
+  @if(column.notNull)~
+      .notNull()
+  @end~
+  @if(column.primaryKey)~
+      .primaryKey()
+  @end~
+  @if(column.unique)~
+      .unique()
+  @end~
+    ,
+  @end
+  }),
   @end
 };

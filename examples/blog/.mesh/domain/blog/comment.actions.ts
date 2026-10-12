@@ -46,7 +46,7 @@ export function bindCommentReads(layer: $DataLayer, options: $BindOptions = {}) 
       // for its policies and hands it over as `cast`; a read through `tx` casts it here.
       const parsed = cast ?? (await $castInput(layer, readCommentInput, input));
       return layer.transaction(async (tx) => {
-        const $rows = (await tx.select(tables.comment, {
+        const $rows = (await tx.select(tables.comments, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,

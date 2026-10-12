@@ -178,7 +178,7 @@ test("nullable, omitted and explicit undefined inputs preserve v4 requiredness",
 test("generated validators and all ten scalar mappings typecheck with exact optional flags", async () => {
   const out = await emitted();
   // The data adapter writes schema.ts; a stub stands in for it with the same `tables` key.
-  await writeFile(resolve(out.root, "generated/schema.ts"), "export const postTable = {};\nexport const tables = { post: postTable };\n");
+  await writeFile(resolve(out.root, "generated/schema.ts"), "export const tables = { post: {} };\n");
   await writeFile(resolve(out.root, "mesh.config.ts"), "export default { data: { kind: \"data-adapter\", name: \"memory\", build: \"./none\", options: {} } };\n");
   expect(
     check(

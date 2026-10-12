@@ -3,36 +3,30 @@
 
 import { sqliteTable as _meshSqlite, integer, real, text } from "drizzle-orm/sqlite-core";
 
-export const commentTable = _meshSqlite("comments", {
-  id: text("id").notNull().primaryKey(),
-  body: text("body").notNull(),
-  postId: text("postId").notNull(),
-});
-
-export const postTable = _meshSqlite("posts", {
-  id: text("id").notNull().primaryKey(),
-  title: text("title").notNull(),
-  body: text("body"),
-  views: integer("views").notNull(),
-  rating: real("rating"),
-  price: real("price").notNull(),
-  featured: integer("featured", { mode: "boolean" }).notNull(),
-  publicationDate: integer("publicationDate", { mode: "timestamp_ms" }),
-  publishedAt: integer("publishedAt", { mode: "timestamp_ms" }),
-  state: text("state", { enum: ["draft", "published"] }).notNull(),
-  metadata: text("metadata", { mode: "json" }),
-  insertedAt: integer("insertedAt", { mode: "timestamp_ms" }).notNull(),
-  updatedAt: integer("updatedAt", { mode: "timestamp_ms" }).notNull(),
-  authorId: text("authorId").notNull(),
-});
-
-export const userTable = _meshSqlite("users", {
-  id: text("id").notNull().primaryKey(),
-  name: text("name").notNull(),
-});
-
 export const tables = {
-  comment: commentTable,
-  post: postTable,
-  user: userTable,
+  comments: _meshSqlite("comments", {
+    id: text("id").notNull().primaryKey(),
+    body: text("body").notNull(),
+    postId: text("postId").notNull(),
+  }),
+  posts: _meshSqlite("posts", {
+    id: text("id").notNull().primaryKey(),
+    title: text("title").notNull(),
+    body: text("body"),
+    views: integer("views").notNull(),
+    rating: real("rating"),
+    price: real("price").notNull(),
+    featured: integer("featured", { mode: "boolean" }).notNull(),
+    publicationDate: integer("publicationDate", { mode: "timestamp_ms" }),
+    publishedAt: integer("publishedAt", { mode: "timestamp_ms" }),
+    state: text("state", { enum: ["draft", "published"] }).notNull(),
+    metadata: text("metadata", { mode: "json" }),
+    insertedAt: integer("insertedAt", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updatedAt", { mode: "timestamp_ms" }).notNull(),
+    authorId: text("authorId").notNull(),
+  }),
+  users: _meshSqlite("users", {
+    id: text("id").notNull().primaryKey(),
+    name: text("name").notNull(),
+  }),
 };

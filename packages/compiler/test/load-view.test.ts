@@ -54,9 +54,17 @@ describe("the load view", () => {
     const view = loadView(input(documentOf()), "generated/load.ts");
     expect(view.entities.map((entity) => entity.nameLiteral)).toEqual(['"app.Author"', '"app.Lonely"', '"app.Post"']);
     expect(view.entities.map((entity) => entity.loader?.name ?? null)).toEqual(["loadAuthorFields", null, "loadPostFields"]);
-    expect(view.entities[0]!.table).toBe("tables.author");
+    expect(view.entities[0]!.table).toBe("tables.authors");
     expect(view.entities[0]!.keyLiteral).toBe('"id"');
     expect(view.entities[1]).toMatchObject({ relations: [], computed: [] });
+  });
+
+  test("the table handle is read by the stored table name, quoted when it is not an identifier (DAT-16)", () => {
+    const view = loadView(input(documentOf({
+      "late.mesh.mx": 'entity :LateResult table="late-result"\n  attributes\n    uuid :id primary-key\n',
+      "claim.mesh.mx": 'entity :Claim table="claim"\n  attributes\n    uuid :id primary-key\n',
+    })), "generated/load.ts");
+    expect(view.entities.map((entity) => entity.table)).toEqual(["tables.claim", 'tables["late-result"]']);
   });
 
   test("a relationship plan names its kind, target and key column; a has-many follows the belongs-to of the target", () => {
@@ -141,7 +149,7 @@ describe("the load generator", () => {
       const { writeGeneratedFiles } = await import("../src/typescript/emit.ts");
       await writeGeneratedFiles(files, emitted);
       // The load file imports `./schema`, which the adapter writes; a stand-in with the same table names is enough here.
-      await Bun.write(resolve(root, "generated/schema.ts"), "export const tables = { author: {}, lonely: {}, post: {} };\n");
+      await Bun.write(resolve(root, "generated/schema.ts"), "export const tables = { authors: {}, lonelies: {}, posts: {} };\n");
       const result = checkTypes(root, ["generated/load.ts", "generated/domain/app/author.expressions.ts", "generated/domain/app/post.types.ts"]);
       expect(result.output).toBe("");
       expect(result.code).toBe(0);

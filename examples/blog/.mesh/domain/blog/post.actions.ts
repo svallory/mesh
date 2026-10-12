@@ -94,7 +94,7 @@ export function bindPostReads(layer: $DataLayer, options: $BindOptions = {}) {
       const parsed = cast ?? (await $castInput(layer, readPostInput, input));
       return layer.transaction(async (tx) => {
         rejectComputedQuery("blog.Post", ["excerpt", "commentCount"], parsed);
-        const $rows = (await tx.select(tables.post, {
+        const $rows = (await tx.select(tables.posts, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
@@ -179,7 +179,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
             authorId: parsed.author,
           };
           // data layer
-          const $stored = await tx.insert(tables.post, $changes);
+          const $stored = await tx.insert(tables.posts, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
@@ -240,7 +240,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
           const $now = $clock();
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.post, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.posts, $key);
           if ($before === undefined) throw new $NotFoundError("blog.Post", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -287,8 +287,8 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
           // data layer
           $changes.updatedAt = $now;
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.post, $key, $before, "blog.Post#publish");
-          const $stored = await tx.updateByKey(tables.post, $key, $changes);
+          await $checkUnchanged(tx, $writes, tables.posts, $key, $before, "blog.Post#publish");
+          const $stored = await tx.updateByKey(tables.posts, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("blog.Post", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
@@ -350,7 +350,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.post, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.posts, $key);
           if ($before === undefined) throw new $NotFoundError("blog.Post", $key);
           const $record: $Row = { ...$before };
           const $load = { actor: $actor, context: $context, clock: $clock };
@@ -376,7 +376,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
           await $loadInto($loadPlan, "blog.Post", tx, $record, ["author"], $load);
           await $policies.inside($checkScope($s));
           // data layer
-          if (!(await tx.deleteByKey(tables.post, $key)))
+          if (!(await tx.deleteByKey(tables.posts, $key)))
             throw new $NotFoundError("blog.Post", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
@@ -487,7 +487,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.post, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.posts, $key);
           if ($before === undefined) throw new $NotFoundError("blog.Post", $key);
           const $record: $Row = { ...$before };
           const $load = { actor: $actor, context: $context, clock: $clock };
@@ -513,7 +513,7 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
           await $loadInto($loadPlan, "blog.Post", tx, $record, ["author"], $load);
           await $policies.inside($checkScope($s));
           // data layer
-          if (!(await tx.deleteByKey(tables.post, $key)))
+          if (!(await tx.deleteByKey(tables.posts, $key)))
             throw new $NotFoundError("blog.Post", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write

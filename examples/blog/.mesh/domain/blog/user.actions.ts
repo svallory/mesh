@@ -41,7 +41,7 @@ export function bindUserReads(layer: $DataLayer, _options: $BindOptions = {}) {
       // for its policies and hands it over as `cast`; a read through `tx` casts it here.
       const parsed = cast ?? (await $castInput(layer, readUserInput, input));
       return layer.transaction(async (tx) => {
-        return (await tx.select(tables.user, {
+        return (await tx.select(tables.users, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
@@ -101,7 +101,7 @@ export function bindUser(layer: $DataLayer, options: $BindOptions = {}, _compose
             name: parsed.name,
           };
           // data layer
-          const $stored = await tx.insert(tables.user, $changes);
+          const $stored = await tx.insert(tables.users, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(

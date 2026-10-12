@@ -76,7 +76,7 @@ export function bindMachineReads(layer: $DataLayer, options: $BindOptions = {}) 
       // for its policies and hands it over as `cast`; a read through `tx` casts it here.
       const parsed = cast ?? (await $castInput(layer, readMachineInput, input));
       return layer.transaction(async (tx) => {
-        const $rows = (await tx.select(tables.machine, {
+        const $rows = (await tx.select(tables.machines, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
@@ -206,7 +206,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
               $value === undefined ? null : $value;
           }
           // data layer
-          const $stored = await tx.insert(tables.machine, $changes);
+          const $stored = await tx.insert(tables.machines, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
@@ -309,7 +309,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
               $value === undefined ? null : $value;
           }
           // data layer
-          const $stored = await tx.insert(tables.machine, $changes);
+          const $stored = await tx.insert(tables.machines, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
@@ -381,7 +381,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.machine, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.machines, $key);
           if ($before === undefined) throw new $NotFoundError("execution.Machine", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -441,12 +441,12 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           await $checkUnchanged(
             tx,
             $writes,
-            tables.machine,
+            tables.machines,
             $key,
             $before,
             "execution.Machine#update",
           );
-          const $stored = await tx.updateByKey(tables.machine, $key, $changes);
+          const $stored = await tx.updateByKey(tables.machines, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("execution.Machine", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
@@ -519,7 +519,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.machine, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.machines, $key);
           if ($before === undefined) throw new $NotFoundError("execution.Machine", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -588,12 +588,12 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           await $checkUnchanged(
             tx,
             $writes,
-            tables.machine,
+            tables.machines,
             $key,
             $before,
             "execution.Machine#retire",
           );
-          const $stored = await tx.updateByKey(tables.machine, $key, $changes);
+          const $stored = await tx.updateByKey(tables.machines, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("execution.Machine", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write

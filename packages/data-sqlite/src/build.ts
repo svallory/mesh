@@ -7,7 +7,7 @@ import type { AdapterBuild, Generator } from "@meshfw/compiler";
 import { pushCommand } from "./push-command.ts";
 import { schemaPath, schemaView, type SchemaView } from "./schema-view.ts";
 
-export { SQLITE_COLUMNS, camelCase, schemaView, type ColumnView, type SchemaView, type TableView } from "./schema-view.ts";
+export { SQLITE_COLUMNS, schemaView, type ColumnView, type SchemaView, type TableView } from "./schema-view.ts";
 
 /** `<output>/schema.ts`: one Drizzle table per entity and the `tables` map. */
 export const schemaGenerator: Generator<SchemaView> = {
