@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { AsyncLocalStorage } from "node:async_hooks";
 import {
   BIND,
   BIND_READS,
   ENTITY,
   bindDomain,
+  entity,
   bindingInScope,
   connectBinding,
   FrameworkError,
@@ -12,6 +14,7 @@ import {
   settled,
   type Seams,
 } from "../src/index.ts";
+import * as clash from "./entity-domain/clash.ts";
 import * as domain from "./entity-domain/fake.ts";
 import { gate, layerNamed, Task } from "./entity-domain/fake.ts";
 import * as other from "./entity-domain/other.ts";
@@ -19,8 +22,9 @@ import * as other from "./entity-domain/other.ts";
 /**
  * Entity values and bindings (CMP-16, PRJ-13, PRJ-19) over a fake domain whose actions report what they ran on. The
  * generated code calls the same functions: an actions file defines its entity value with `entity`, and `binding.ts`'s
- * `bind` is `bindDomain` over the root barrel.
+ * `bind` is `bindDomain` over the root barrel, with the project's one `AsyncLocalStorage` as its frame.
  */
+const frame = new AsyncLocalStorage<unknown>();
 const seams = (label: string): Seams => ({ afterCommit: () => void label });
 
 describe("entity values", () => {
@@ -38,7 +42,7 @@ describe("entity values", () => {
   });
 
   test("an action named toString or constructor is a plain member, called like any other", async () => {
-    const binding = bindDomain(domain, layerNamed("db"));
+    const binding = bindDomain(domain, layerNamed("db"), {}, frame);
     const [named, built] = await binding.run(async () => [await Task.toString({ n: 1 }), await Task.constructor({ n: 2 })]);
     expect(named.input).toEqual({ n: 1 });
     expect(built.input).toEqual({ n: 2 });
@@ -47,7 +51,7 @@ describe("entity values", () => {
   });
 
   test("the context arguments reach the bound action as they were passed", async () => {
-    const binding = bindDomain(domain, layerNamed("db"));
+    const binding = bindDomain(domain, layerNamed("db"), {}, frame);
     expect((await binding.run(() => Task.open({ title: "a" }, { actor: "x" }))).context).toEqual({ actor: "x" });
     expect((await binding.run(() => Task.open({ title: "a" }))).context).toBeUndefined();
   });
@@ -55,7 +59,7 @@ describe("entity values", () => {
 
 describe("bindDomain", () => {
   test("binds the entity values of every namespace it reaches and skips every other export", async () => {
-    const binding = bindDomain(domain, layerNamed("db"));
+    const binding = bindDomain(domain, layerNamed("db"), {}, frame);
     expect(Object.isFrozen(binding)).toBe(true);
     expect(Object.keys(binding).sort()).toEqual(["run", "transaction"]);
     const placed = await binding.run(() => domain.sales.Order.place({ total: 3 }));
@@ -63,7 +67,7 @@ describe("bindDomain", () => {
   });
 
   test("the composer's handles name each action and read by the action followed by the entity's export name", async () => {
-    const binding = bindDomain(domain, layerNamed("db"));
+    const binding = bindDomain(domain, layerNamed("db"), {}, frame);
     const names = await binding.transaction(async ({ actions, tx }) => [Object.keys(actions).sort(), Object.keys(tx)]);
     expect(names).toEqual([["constructorTask", "openTask", "placeOrder", "toStringTask"], ["readTask"]]);
     const read = await binding.transaction(async ({ tx }) => (tx as Record<string, (input: unknown) => Promise<unknown>>).readTask!({ limit: 1 }), { actor: "t" } as never);
@@ -74,8 +78,8 @@ describe("bindDomain", () => {
     const layer = layerNamed("shared");
     const first = { seams: seams("first") };
     const second = { seams: seams("second") };
-    const a = bindDomain(domain, layer, first);
-    const b = bindDomain(domain, layer, second);
+    const a = bindDomain(domain, layer, first, frame);
+    const b = bindDomain(domain, layer, second, frame);
     const [fromA, fromB] = await Promise.all([
       a.run(async () => {
         await Promise.resolve();
@@ -89,26 +93,26 @@ describe("bindDomain", () => {
   });
 
   test("a nested run uses the innermost binding, and the outer one again after it", async () => {
-    const outer = bindDomain(domain, layerNamed("outer"));
-    const inner = bindDomain(domain, layerNamed("inner"));
+    const outer = bindDomain(domain, layerNamed("outer"), {}, frame);
+    const inner = bindDomain(domain, layerNamed("inner"), {}, frame);
     const seen = await outer.run(async () => {
       const before = (await Task.open({ title: "1" })).layer;
       const nested = await inner.run(async () => {
-        expect(bindingInScope()).toBe(inner);
+        expect(bindingInScope(frame)).toBe(inner);
         return (await Task.open({ title: "2" })).layer;
       });
-      expect(bindingInScope()).toBe(outer);
+      expect(bindingInScope(frame)).toBe(outer);
       const after = (await Task.open({ title: "3" })).layer;
       return [before, nested, after];
     });
     expect(seen).toEqual(["outer", "inner", "outer"]);
-    expect(bindingInScope()).toBeUndefined();
+    expect(bindingInScope(frame)).toBeUndefined();
   });
 
   test("a binding's transaction puts it in scope for the entity calls its callback makes", async () => {
-    const binding = bindDomain(domain, layerNamed("tx"));
+    const binding = bindDomain(domain, layerNamed("tx"), {}, frame);
     const ran = await binding.transaction(async () => {
-      expect(bindingInScope()).toBe(binding);
+      expect(bindingInScope(frame)).toBe(binding);
       return Task.open({ title: "t" });
     });
     expect(ran.layer).toBe("tx");
@@ -116,10 +120,10 @@ describe("bindDomain", () => {
 
   test("a call outside any run uses the connected binding; with neither, it rejects as not connected", async () => {
     await expect(Task.open({ title: "x" })).rejects.toThrow(
-      new FrameworkError("work.Task.open was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own"),
+      new FrameworkError("work.Task#open was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own"),
     );
-    const connected = bindDomain(domain, layerNamed("connected"));
-    const scoped = bindDomain(domain, layerNamed("scoped"));
+    const connected = bindDomain(domain, layerNamed("connected"), {}, frame);
+    const scoped = bindDomain(domain, layerNamed("scoped"), {}, frame);
     connectBinding(connected);
     try {
       expect((await Task.open({ title: "x" })).layer).toBe("connected");
@@ -131,13 +135,72 @@ describe("bindDomain", () => {
     await expect(Task.open({ title: "x" })).rejects.toBeInstanceOf(FrameworkError);
   });
 
+  test("an entity value no binding knows is not connected, even inside run() of a binding", async () => {
+    const stray = entity("work.Task", () => Object.freeze({ async open() { return "stray"; } }), null, (call) => ({
+      open(input: { readonly title: string }): Promise<string> {
+        return call("open", input, []);
+      },
+    }));
+    const binding = bindDomain(domain, layerNamed("db"), {}, frame);
+    await expect(binding.run(() => stray.open({ title: "x" }))).rejects.toThrow(/^work\.Task#open was called while not connected/);
+  });
+
   test("an entity value the binding in scope did not bind is refused, even with the same FQN", async () => {
-    const binding = bindDomain(domain, layerNamed("db"));
-    await expect(binding.run(() => other.Task.open({ title: "x" }))).rejects.toThrow(/work\.Task\.open was called inside run\(\) or transaction\(\) of a binding that does not bind it/);
+    // Bound by another binding of the same frame: a second copy of the project's barrels, which never happens in one build.
+    bindDomain(other, layerNamed("other"), {}, frame);
+    const binding = bindDomain(domain, layerNamed("db"), {}, frame);
+    await expect(binding.run(() => other.Task.open({ title: "x" }))).rejects.toThrow(/work\.Task#open was called inside run\(\) or transaction\(\) of a binding that does not bind it/);
+  });
+
+  test("an entity value bound with one async frame is refused by a binding with another", () => {
+    bindDomain(domain, layerNamed("db"), {}, frame);
+    expect(() => bindDomain(domain, layerNamed("db"), {}, new AsyncLocalStorage<unknown>())).toThrow(
+      new FrameworkError("work.Task was bound before with another async frame: a project's entity values are bound only through its own bind()"),
+    );
+  });
+
+  test("two calls the composer's handles would name alike are a FrameworkError naming the key and both calls", () => {
+    expect(() => bindDomain(clash, layerNamed("db"), {}, frame)).toThrow(
+      new FrameworkError("sales.Order#place and billing.Order#place would both be actions.placeOrder: rename one of the two"),
+    );
+  });
+
+  test("after disconnect() released the connected binding, a call left in its scope is not connected; one in flight goes on", async () => {
+    const connected = bindDomain(domain, layerNamed("connected"), {}, frame);
+    connectBinding(connected);
+    let fire!: () => void;
+    const later = new Promise<void>((resolve) => (fire = resolve));
+    let stray!: Promise<unknown>;
+    let open!: () => void;
+    gate.wait = new Promise<void>((resolve) => (open = resolve));
+    let nested!: Promise<unknown>;
+    try {
+      // A continuation chained inside the binding's transaction keeps the binding in scope after the transaction ends.
+      await connected.transaction(async () => {
+        stray = later.then(() => Task.open({ title: "late" }));
+      });
+      // A transaction still running when disconnect() releases the binding: the calls it makes go on.
+      const running = connected.transaction(async () => {
+        await gate.wait;
+        nested = Task.open({ title: "inside" });
+        return nested;
+      });
+      releaseBinding(connected);
+      expect(bindingInScope(frame)).toBeUndefined();
+      open();
+      expect(await running).toMatchObject({ layer: "connected", input: { title: "inside" } });
+      await settled(connected);
+      fire();
+      await expect(stray).rejects.toThrow(/^work\.Task#open was called while not connected/);
+      await expect(connected.run(async () => bindingInScope(frame))).resolves.toBeUndefined();
+    } finally {
+      delete gate.wait;
+      releaseBinding(connected);
+    }
   });
 
   test("settled waits for an entity call in flight, however long it takes", async () => {
-    const binding = bindDomain(domain, layerNamed("db"));
+    const binding = bindDomain(domain, layerNamed("db"), {}, frame);
     let open!: () => void;
     gate.wait = new Promise<void>((resolve) => (open = resolve));
     try {

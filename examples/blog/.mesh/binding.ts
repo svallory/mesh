@@ -3,7 +3,11 @@
 // Mesh's own file: `bind`, the default binding and `transaction`. Import `#mesh` for them, and `#mesh/domain/<path>`
 // for the entity values, which run each call on the binding in scope, else on the one `connect()` opens.
 // Mesh's own imports and internal names carry a `$` so that no entity or action name can collide with them.
+// The one generated file that imports from the host (`node:async_hooks`): the run-time library keeps to web-standard
+// APIs and takes the async frame from here. The reference gives that import its types.
+/// <reference types="bun" />
 
+import { AsyncLocalStorage as $AsyncLocalStorage } from "node:async_hooks";
 import {
   bindDomain as $bindDomain,
   bindingInScope as $bindingInScope,
@@ -11,6 +15,7 @@ import {
   FrameworkError as $FrameworkError,
   releaseBinding as $releaseBinding,
   settled as $settled,
+  type AsyncFrame as $AsyncFrame,
   type BindOptions as $BindOptions,
   type Binding as $Binding,
   type ContextArgument as $ContextArgument,
@@ -27,12 +32,18 @@ import type { Actions, Reads } from "./composition";
 export type Binding = $Binding<Actions, Reads>;
 
 /**
+ * The async context every binding of this project keeps itself in scope with: one for the project, so a `run` nested in
+ * another binding's is the innermost.
+ */
+const $frame: $AsyncFrame = new $AsyncLocalStorage<unknown>();
+
+/**
  * Bind every entity of the domain to `layer`, with the clock and seams of `options`. Opens nothing and creates no
  * table: the caller owns the layer and closes it.
  */
 export function bind(layer: $DataLayer, options: $BindOptions = {}): Binding {
   // The walk runs here, not when this file loads, so every barrel has finished loading.
-  return $bindDomain<Actions, Reads>($domain, layer, options);
+  return $bindDomain<Actions, Reads>($domain, layer, options, $frame);
 }
 
 let $defaultBinding: Binding | undefined;
@@ -114,7 +125,7 @@ export async function transaction<T>(
   fn: (composition: { readonly actions: Actions; readonly tx: Reads }) => Promise<T>,
   ...context: $ContextArgument
 ): Promise<T> {
-  const binding = ($bindingInScope() as Binding | undefined) ?? $defaultBinding;
+  const binding = ($bindingInScope($frame) as Binding | undefined) ?? $defaultBinding;
   if (!binding)
     throw new $FrameworkError(
       "transaction was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own",

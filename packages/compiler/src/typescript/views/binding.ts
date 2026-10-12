@@ -5,8 +5,9 @@ import { DOMAIN_FOLDER } from "./inputs.ts";
 /**
  * What `binding.ts.jig` renders: `.mesh/binding.ts`, Mesh's own file that binds the domain. It holds `bind`, which
  * hands the root barrel to `@meshfw/runtime`'s `bindDomain` (which walks it and binds every entity value it reaches,
- * PRJ-13), the default binding `connect()` opens and `disconnect()` closes, the top-level `transaction`, and the
- * `Binding` type. `#mesh` (`.mesh/index.ts`) re-exports them. Every string is final; the template prints, loops and
+ * PRJ-13) with the project's async frame, the one `AsyncLocalStorage` that keeps a binding in scope (the only host
+ * import in generated code), the default binding `connect()` opens and `disconnect()` closes, the top-level
+ * `transaction`, and the `Binding` type. `#mesh` (`.mesh/index.ts`) re-exports them. Every string is final; the template prints, loops and
  * branches on these fields and computes nothing. A project's own `binding.ts.jig` depends on this shape.
  */
 export interface BindingView {

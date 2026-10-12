@@ -1,8 +1,3 @@
-// Async context is the one API this library takes from outside the web platform (ARC-10: web-standard APIs "where it
-// can"): it keeps the binding in scope across awaits, and the web has none yet (TC39's AsyncContext is a proposal).
-// The reference gives the import its type in a program that does not load the host's types itself.
-/// <reference types="bun" />
-import { AsyncLocalStorage } from "node:async_hooks";
 import { composer as makeComposer, type Composer, type Composition } from "./compose.ts";
 import type { DataLayer } from "./data-layer.ts";
 import { FrameworkError } from "./errors.ts";
@@ -17,6 +12,19 @@ import type { BindOptions } from "./lifecycle.ts";
  * `transaction` of a binding the call is made inside, kept in async context), else on the binding `connect()` opened,
  * else it rejects with a `FrameworkError`.
  */
+
+/**
+ * The async context a project's bindings keep themselves in scope with, across awaits: an `AsyncLocalStorage`, which the
+ * generated `binding.ts` makes, one per project, and hands to `bindDomain`. The library takes it rather than importing
+ * it, so it keeps to web-standard APIs (ADR-0025) while the web has no async context of its own (TC39's AsyncContext is
+ * a proposal).
+ */
+export interface AsyncFrame {
+  /** Call `fn` with `store` in scope, and in everything `fn` awaits. */
+  run<R>(store: unknown, fn: () => R): R;
+  /** What the innermost `run` this call is made inside put in scope, or undefined outside any. */
+  getStore(): unknown;
+}
 
 /** On an entity value, its FQN (`work.Task`): the mark by which `bindDomain` tells an entity value from any other export. */
 export const ENTITY: unique symbol = Symbol("mesh.entity");
@@ -74,12 +82,14 @@ interface BindingState {
   /** Calls on this binding that have not settled; `settled` waits for them. */
   inFlight: number;
   readonly idle: (() => void)[];
+  /** True once `releaseBinding` let go of it (`disconnect()`), until `connectBinding` takes it again. */
+  released: boolean;
 }
 
-/** The binding in scope: set by `run` and `transaction`, read by every entity call. */
-const frame = new AsyncLocalStorage<BindingState>();
 /** Each binding's state, by the binding object. */
 const states = new WeakMap<object, BindingState>();
+/** The async frame each entity value's bindings keep themselves in scope with: the project's, set by `bindDomain`. */
+const frames = new WeakMap<object, AsyncFrame>();
 /** The binding `connect()` opened, by each entity value it bound: what a call outside `run` and `transaction` uses. */
 const connected = new WeakMap<object, BindingState>();
 
@@ -120,10 +130,20 @@ async function counted<T>(state: BindingState, call: () => Promise<T>): Promise<
   }
 }
 
+/**
+ * The binding a frame holds in scope, unless `disconnect()` released it and nothing runs on it any more: an async
+ * continuation that outlives its calls (a timer, a promise chained inside a `transaction`) must not reach a closed layer.
+ * A call made while another is still in flight on it (a call inside a `transaction` that `disconnect()` waits for) runs.
+ */
+function inScope(frame: AsyncFrame | undefined): BindingState | undefined {
+  const state = frame?.getStore() as BindingState | undefined;
+  return state && !(state.released && state.inFlight === 0) ? state : undefined;
+}
+
 /** One call of an entity value's method: on the binding in scope, else the connected one, counted in flight. */
 async function dispatch(value: object, fqn: string, action: string, input: unknown, context: readonly unknown[]): Promise<unknown> {
-  const state = frame.getStore() ?? connected.get(value);
-  const label = `${fqn}.${action}`;
+  const state = inScope(frames.get(value)) ?? connected.get(value);
+  const label = `${fqn}#${action}`;
   if (!state)
     throw new FrameworkError(`${label} was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own`);
   const entry = state.entities.get(fqn);
@@ -136,14 +156,23 @@ async function dispatch(value: object, fqn: string, action: string, input: unkno
  * Bind every entity value reachable from `domain`, the root barrel (`import * as domain from "./domain/index"`): an export
  * that carries `ENTITY` is bound, a module namespace (a subfolder's barrel) is walked, anything else (types, load
  * functions) is skipped. Called inside the generated `bind`, never at module top level, so every barrel has finished
- * evaluating. The binding's composer gets every action and read body under the names the `actions` and `tx` handles
- * use, the action followed by the entity's export name (`completeTask`), until those handles go.
+ * evaluating. `frame` is the project's async frame: every binding of one project shares it, so a nested `run` of another
+ * binding is the innermost. The binding's composer gets every action and read body under the names the `actions` and
+ * `tx` handles use, the action followed by the entity's export name (`completeTask`), until those handles go; two calls
+ * with one such name are a `FrameworkError`.
  */
-export function bindDomain<A extends object = object, R extends object = object>(domain: object, layer: DataLayer, options: BindOptions = {}): Binding<A, R> {
+export function bindDomain<A extends object = object, R extends object = object>(domain: object, layer: DataLayer, options: BindOptions, frame: AsyncFrame): Binding<A, R> {
   const composer = makeComposer(layer, options.seams);
   const entities = new Map<string, { readonly value: object; readonly bound: BoundActions }>();
-  const actions: Record<string, BoundAction> = {};
-  const reads: Record<string, BoundAction> = {};
+  const handles = { actions: {} as Record<string, BoundAction>, tx: {} as Record<string, BoundAction> };
+  const origins = new Map<string, string>();
+  const add = (handle: keyof typeof handles, key: string, fn: BoundAction, origin: string) => {
+    const other = origins.get(`${handle}.${key}`);
+    if (other !== undefined)
+      throw new FrameworkError(`${other} and ${origin} would both be ${handle}.${key}: rename one of the two`);
+    origins.set(`${handle}.${key}`, origin);
+    handles[handle][key] = fn;
+  };
   const walk = (namespace: object) => {
     for (const [name, value] of Object.entries(namespace)) {
       if (isEntityValue(value)) {
@@ -151,15 +180,20 @@ export function bindDomain<A extends object = object, R extends object = object>
         const seen = entities.get(fqn);
         if (seen?.value === value) continue;
         if (seen) throw new FrameworkError(`Two entity values in the domain have the FQN ${fqn}`);
+        const before = frames.get(value);
+        if (before !== undefined && before !== frame)
+          throw new FrameworkError(`${fqn} was bound before with another async frame: a project's entity values are bound only through its own bind()`);
         const bound = value[BIND](layer, options, composer) as BoundActions;
         entities.set(fqn, { value, bound });
-        for (const [method, fn] of Object.entries(bound)) actions[`${method}${name}`] = fn;
+        for (const [method, fn] of Object.entries(bound)) add("actions", `${method}${name}`, fn, `${fqn}#${method}`);
         const bodies = value[BIND_READS]?.(layer, options) as BoundActions | undefined;
-        if (bodies) for (const [method, fn] of Object.entries(bodies)) reads[`${method}${name}`] = fn;
+        if (bodies) for (const [method, fn] of Object.entries(bodies)) add("tx", `${method}${name}`, fn, `${fqn}#${method}`);
       } else if (isNamespace(value)) walk(value);
     }
   };
   walk(domain);
+  for (const { value } of entities.values()) frames.set(value, frame);
+  const { actions, tx: reads } = handles;
   composer.provide(Object.freeze(actions), Object.freeze(reads) as Parameters<Composer["provide"]>[1]);
   const binding: Binding<A, R> = Object.freeze({
     async run<T>(fn: () => Promise<T>): Promise<T> {
@@ -169,7 +203,7 @@ export function bindDomain<A extends object = object, R extends object = object>
       return counted(state, () => frame.run(state, () => composer.transaction((composition) => fn(composition as Composition<A, R>), context)));
     },
   });
-  const state: BindingState = { binding, entities, inFlight: 0, idle: [] };
+  const state: BindingState = { binding, entities, inFlight: 0, idle: [], released: false };
   states.set(binding, state);
   return binding;
 }
@@ -180,20 +214,28 @@ function stateOf(binding: Binding): BindingState {
   return state;
 }
 
-/** The binding in scope: the innermost `run` or `transaction` of a binding this call is made inside, if any. */
-export function bindingInScope(): Binding | undefined {
-  return frame.getStore()?.binding;
+/**
+ * The binding in scope in `frame`, the project's async frame: the innermost `run` or `transaction` of a binding this call
+ * is made inside, if any, and not one `disconnect()` released once nothing runs on it.
+ */
+export function bindingInScope(frame: AsyncFrame): Binding | undefined {
+  return inScope(frame)?.binding;
 }
 
 /** Make `binding` the one its entity values run on outside `run` and `transaction`: what `connect()` does with its binding. */
 export function connectBinding(binding: Binding): void {
   const state = stateOf(binding);
+  state.released = false;
   for (const { value } of state.entities.values()) connected.set(value, state);
 }
 
-/** Undo `connectBinding`: a call made outside `run` and `transaction` from now on is not connected. Calls in flight go on. */
+/**
+ * Undo `connectBinding`: a call made outside `run` and `transaction` from now on is not connected, and so is one made in
+ * a scope of this binding once nothing runs on it. Calls in flight go on, and so do the calls they make.
+ */
 export function releaseBinding(binding: Binding): void {
   const state = stateOf(binding);
+  state.released = true;
   for (const { value } of state.entities.values()) if (connected.get(value) === state) connected.delete(value);
 }
 

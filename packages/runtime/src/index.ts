@@ -37,4 +37,4 @@ export type { LoadPlan, EntityPlan, RelationPlan, BelongsToPlan, HasPlan, Comput
 export { recordWrite, runAction, wantsChanges } from "./seams.ts";
 export type { AfterCommitEvent, AfterWriteEvent, BeforeTransactionEvent, Change, SeamContext, SeamDb, SeamTarget, Seams } from "./seams.ts";
 export { BIND, BIND_READS, ENTITY, bindDomain, bindingInScope, connectBinding, entity, isEntityValue, releaseBinding, settled } from "./entity.ts";
-export type { Binding, EntityBind, EntityCall, EntityReadsBind, EntityValue } from "./entity.ts";
+export type { AsyncFrame, Binding, EntityBind, EntityCall, EntityReadsBind, EntityValue } from "./entity.ts";

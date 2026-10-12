@@ -99,7 +99,7 @@ export function checkDrizzleImports(root: string): string[] {
   });
 }
 
-const GENERATED_IMPORTS = "it imports only @meshfw/runtime, zod, the other files of its .mesh/ tree, the adapter's schema.ts and (binding.ts only) the project's mesh.config";
+const GENERATED_IMPORTS = "it imports only @meshfw/runtime, zod, the other files of its .mesh/ tree, the adapter's schema.ts and (binding.ts only) the project's mesh.config and node:async_hooks";
 
 /**
  * Acceptance test 4 for generated code: nothing under a project's output folder
@@ -109,8 +109,11 @@ const GENERATED_IMPORTS = "it imports only @meshfw/runtime, zod, the other files
  * and Drizzle everywhere except the emitted `.mesh/schema.ts`. Only `.mesh/binding.ts`
  * may import the project's `mesh.config` (`connect()` loads it): any other file whose
  * import, export or `require` specifier ends in `mesh.config` (with or without an
- * extension) fails, comments included. `model.json` itself is data, not code, and is
- * not scanned. Finding no `.mesh/` folder is an error, so the rule cannot pass vacuously.
+ * extension) fails, comments included. A host module (`node:`, `bun:`) fails everywhere
+ * but `node:async_hooks` in `.mesh/binding.ts`, which makes the project's async frame
+ * (ADR-0025: the run-time library takes it and keeps to web-standard APIs). `model.json`
+ * itself is data, not code, and is not scanned. Finding no `.mesh/` folder is an error,
+ * so the rule cannot pass vacuously.
  */
 export function checkGeneratedImports(root: string): string[] {
   const files = ["examples", "apps"].filter((group) => existsSync(join(root, group)))
@@ -125,11 +128,14 @@ export function checkGeneratedImports(root: string): string[] {
     const line = (index: number) => source.slice(0, index).split(/\r\n|\r|\n/).length;
     const errors = [...source.matchAll(forbidden)].map((match) =>
       `${path}:${line(match.index)}: Generated code must not import ${match[0]} (roadmap M2, acceptance 4); ${GENERATED_IMPORTS}`);
-    if (!/(?:^|\/)\.mesh\/binding\.ts$/.test(path)) {
-      for (const match of source.matchAll(/(?:\bfrom|\bimport|\brequire)\s*\(?\s*(["'`])([^"'`\r\n]*)\1/g)) {
-        if (/(?:^|\/)mesh\.config(?:\.[cm]?[jt]s)?$/.test(match[2]!))
-          errors.push(`${path}:${line(match.index)}: Generated code must not import ${match[2]} outside .mesh/binding.ts (roadmap M2, acceptance 4); ${GENERATED_IMPORTS}`);
-      }
+    const binding = /(?:^|\/)\.mesh\/binding\.ts$/.test(path);
+    for (const match of source.matchAll(/(?:\bfrom|\bimport|\brequire)\s*\(?\s*(["'`])([^"'`\r\n]*)\1/g)) {
+      const specifier = match[2]!;
+      const outside = `${path}:${line(match.index)}: Generated code must not import ${specifier} outside .mesh/binding.ts (roadmap M2, acceptance 4); ${GENERATED_IMPORTS}`;
+      if (!binding && /(?:^|\/)mesh\.config(?:\.[cm]?[jt]s)?$/.test(specifier)) errors.push(outside);
+      else if (specifier === "node:async_hooks") { if (!binding) errors.push(outside); }
+      else if (/^(?:node|bun):/.test(specifier))
+        errors.push(`${path}:${line(match.index)}: Generated code must not import ${specifier} (roadmap M2, acceptance 4); ${GENERATED_IMPORTS}`);
     }
     return errors;
   });
@@ -138,13 +144,11 @@ export function checkGeneratedImports(root: string): string[] {
 const runtimeForbidden = ["@meshfw/model", "@meshfw/compiler", "drizzle-orm", "drizzle-kit"];
 
 /**
- * The lines of the run-time library allowed past the web rule, each whole and in one file. Async context has no web
- * standard yet, and the binding in scope (CMP-16, PRJ-19) needs it: `entity.ts` imports `AsyncLocalStorage`, as the
- * SQLite adapter does. Any other mention in that file, a comment included, still fails.
+ * The lines of the run-time library allowed past the web rule, each whole and in one file. None: the binding in scope
+ * (PRJ-19) takes its async frame from the generated `binding.ts` (ADR-0025). Kept so an exception, if one is ever
+ * ruled, is one line in one file and nothing more.
  */
-const WEB_EXCEPTIONS: readonly { readonly file: string; readonly line: string }[] = [
-  { file: "packages/runtime/src/entity.ts", line: 'import { AsyncLocalStorage } from "node:async_hooks";\n' },
-];
+const WEB_EXCEPTIONS: readonly { readonly file: string; readonly line: string }[] = [];
 
 /** M2's text rules reuse M1's directory walker, scanning every runtime source file. */
 export function checkRuntime(root: string, rule: "imports" | "web"): string[] {
@@ -167,7 +171,9 @@ export function checkRuntime(root: string, rule: "imports" | "web"): string[] {
       // Plain text on purpose, like M1: even comments and strings fail.
       // No parsing or token adjacency assumptions: inter-token comments cannot hide a mention.
       const path = relative(root, file).split(sep).join("/");
-      for (const match of source.matchAll(/bun:|node:|\bBun\b/g)) {
+      // A `types=` reference to the host's declarations (`/// <reference types="bun" />`) fails too: it is how a host API
+      // would type-check in a file that names it nowhere else.
+      for (const match of source.matchAll(/bun:|node:|\bBun\b|\btypes\s*=\s*["'`](?:bun|node|@types\/(?:bun|node))\b/g)) {
         if (WEB_EXCEPTIONS.some((allowed) => allowed.file === path && source.startsWith(allowed.line, source.lastIndexOf("\n", match.index) + 1))) continue;
         report(file, source, match.index, `Runtime must use web-standard APIs; forbidden text ${match[0]} (including comments and strings)`);
       }

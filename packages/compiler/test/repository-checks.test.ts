@@ -236,12 +236,12 @@ test.each(["@meshfw/model", "@meshfw/compiler", "model.json", "drizzle-orm", "dr
       const paths = ["examples/blog/.mesh/index.ts", "examples/blog/.mesh/binding.ts", "examples/blog/.mesh/domain/blog/index.ts", "examples/blog/.mesh/domain/blog/post.actions.ts", "apps/demo/.mesh/domain/x/y.validators.js"];
       for (const path of paths) put(path, `// Do not edit\n// ${name}`);
       expect(checkGeneratedImports(dir)).toEqual(paths.sort().map((path) =>
-        `${path}:2: Generated code must not import ${name} (roadmap M2, acceptance 4); it imports only @meshfw/runtime, zod, the other files of its .mesh/ tree, the adapter's schema.ts and (binding.ts only) the project's mesh.config`));
+        `${path}:2: Generated code must not import ${name} (roadmap M2, acceptance 4); it imports only @meshfw/runtime, zod, the other files of its .mesh/ tree, the adapter's schema.ts and (binding.ts only) the project's mesh.config and node:async_hooks`));
     });
   },
 );
 
-const CONFIG_TAIL = "outside .mesh/binding.ts (roadmap M2, acceptance 4); it imports only @meshfw/runtime, zod, the other files of its .mesh/ tree, the adapter's schema.ts and (binding.ts only) the project's mesh.config";
+const CONFIG_TAIL = "outside .mesh/binding.ts (roadmap M2, acceptance 4); it imports only @meshfw/runtime, zod, the other files of its .mesh/ tree, the adapter's schema.ts and (binding.ts only) the project's mesh.config and node:async_hooks";
 
 test.each([
   ["a static import", 'import config from "../mesh.config";', "../mesh.config"],
@@ -270,6 +270,39 @@ test("M2 test 4: .mesh/binding.ts may import mesh.config; a name that only conta
   });
 });
 
+const HOST_TAIL = "(roadmap M2, acceptance 4); it imports only @meshfw/runtime, zod, the other files of its .mesh/ tree, the adapter's schema.ts and (binding.ts only) the project's mesh.config and node:async_hooks";
+
+test("M2 test 4: .mesh/binding.ts may import node:async_hooks, the project's async frame, and no other host module", () => {
+  workspace((dir, put) => {
+    put("examples/blog/.mesh/binding.ts", '/// <reference types="bun" />\nimport { AsyncLocalStorage as $AsyncLocalStorage } from "node:async_hooks";\nimport { readFileSync } from "node:fs";\nconst db = await import("bun:sqlite");');
+    expect(checkGeneratedImports(dir)).toEqual([
+      `examples/blog/.mesh/binding.ts:3: Generated code must not import node:fs ${HOST_TAIL}`,
+      `examples/blog/.mesh/binding.ts:4: Generated code must not import bun:sqlite ${HOST_TAIL}`,
+    ]);
+  });
+});
+
+test.each([
+  ["a static import", 'import { AsyncLocalStorage } from "node:async_hooks";'],
+  ["a dynamic import", 'const hooks = await import("node:async_hooks");'],
+  ["a re-export", "export { AsyncLocalStorage } from 'node:async_hooks';"],
+  ["a commented-out import", '// import "node:async_hooks";'],
+])("M2 test 4: %s of node:async_hooks in a generated file other than .mesh/binding.ts fails", (_, text) => {
+  workspace((dir, put) => {
+    const paths = ["examples/blog/.mesh/index.ts", "examples/blog/.mesh/domain/blog/index.ts", "examples/blog/.mesh/domain/blog/post.actions.ts",
+      "examples/blog/.mesh/domain/x/binding.ts", "examples/blog/.mesh/schema.ts"];
+    for (const path of paths) put(path, `// Do not edit\n${text}`);
+    expect(checkGeneratedImports(dir)).toEqual(paths.sort().map((path) => `${path}:2: Generated code must not import node:async_hooks outside .mesh/binding.ts ${HOST_TAIL}`));
+  });
+});
+
+test.each(["node:fs", "bun:sqlite", "node:path"])("M2 test 4: a planted host module %s in a generated file fails", (specifier) => {
+  workspace((dir, put) => {
+    put("examples/blog/.mesh/domain/blog/post.actions.ts", `// Do not edit\nimport x from "${specifier}";`);
+    expect(checkGeneratedImports(dir)).toEqual([`examples/blog/.mesh/domain/blog/post.actions.ts:2: Generated code must not import ${specifier} ${HOST_TAIL}`]);
+  });
+});
+
 test("M2 test 4: the emitted schema may import Drizzle but not the build half; model.json is not scanned; elsewhere is not generated", () => {
   workspace((dir, put) => {
     put("examples/blog/.mesh/schema.ts", 'import { sqliteTable } from "drizzle-orm/sqlite-core";\nimport "@meshfw/compiler";');
@@ -277,7 +310,7 @@ test("M2 test 4: the emitted schema may import Drizzle but not the build half; m
     put("examples/blog/src/main.ts", 'import "@meshfw/model";');
     put("examples/blog/node_modules/x/.mesh/index.ts", 'import "@meshfw/model";');
     expect(checkGeneratedImports(dir)).toEqual([
-      "examples/blog/.mesh/schema.ts:2: Generated code must not import @meshfw/compiler (roadmap M2, acceptance 4); it imports only @meshfw/runtime, zod, the other files of its .mesh/ tree, the adapter's schema.ts and (binding.ts only) the project's mesh.config",
+      "examples/blog/.mesh/schema.ts:2: Generated code must not import @meshfw/compiler (roadmap M2, acceptance 4); it imports only @meshfw/runtime, zod, the other files of its .mesh/ tree, the adapter's schema.ts and (binding.ts only) the project's mesh.config and node:async_hooks",
     ]);
   });
 });
@@ -387,6 +420,20 @@ test.each([...hostBypasses, ...globalBypasses])(
     });
   },
 );
+
+test.each([
+  ['/// <reference types="bun" />', 'types="bun'],
+  ["/// <reference types='node' />", "types='node"],
+  ['///<reference types = "@types/bun"/>', 'types = "@types/bun'],
+  ['/// <reference types="bun-types" />', 'types="bun'],
+])("M2 test 7: a reference to the host's types fails: %s", (source, forbidden) => {
+  workspace((dir, put) => {
+    put("packages/runtime/src/entity.ts", `// Binding in scope.\n${source}\nexport {};`);
+    expect(checkRuntime(dir, "web")).toEqual([
+      `packages/runtime/src/entity.ts:2: Runtime must use web-standard APIs; forbidden text ${forbidden} (including comments and strings)`,
+    ]);
+  });
+});
 
 test.each(["imports", "web"] as const)("M2 runtime %s scan fails closed with no source files", (rule) => {
   workspace((dir, put) => {
