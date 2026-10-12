@@ -63,7 +63,7 @@ test("fix10: import diagnostics distinguish duplicates, forms and relative paths
   }
   expect(buildModel(project('import List, { List as L } from "./list.mesh.mx"\n' + keyed)).diagnostics).toEqual([expect.objectContaining({ code: "MESH_IMPORT_FORM", position: expect.objectContaining({ line: 1, column: 0 }) })]);
   // MX itself refuses an import that is not one ES import declaration (decision 193).
-  expect(buildModel(project('import x = require("./list.mesh.mx")\n' + keyed)).diagnostics).toEqual([expect.objectContaining({ code: "MESH_SYNTAX", position: expect.objectContaining({ line: 1, column: 0 }) })]);
+  expect(buildModel(project('import x = require("./list.mesh.mx")\n' + keyed)).diagnostics).toEqual([expect.objectContaining({ code: "MX_INVALID_STATEMENT", position: expect.objectContaining({ line: 1, column: 0 }) })]);
   const nonrelative = build('import { List } from "lists"\n' + keyed);
   expect(nonrelative.diagnostics).toEqual([expect.objectContaining({ code: "MESH_UNKNOWN_IMPORT", message: "The import path must be relative (start with ./ or ../)" })]);
 });

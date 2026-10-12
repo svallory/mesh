@@ -117,6 +117,7 @@ describe("an entity file through the dialect", () => {
     const tags = { other: {}, box: { attributes: { a: { type: "string", values: ["a"] } } } } as unknown as Record<string, CustomTag>;
     const expected = {
       severity: "error" as const,
+      code: "MX_DIALECT_ERROR",
       message: 'Invalid "a" attribute declaration of tag "box": `values` requires `type: "atom"`',
       line: 1,
       column: 0,

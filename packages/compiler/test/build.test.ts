@@ -137,11 +137,11 @@ test.each([
   [
     keyed +
       "  actions\n    create :create\n      input\n        &id nullable\n",
-    "MESH_SYNTAX",
+    "MX_PARSE_INVALID_CHARACTER",
   ],
   [
     keyed + "  actions\n    create :create\n      input\n        &id=true\n",
-    "MESH_SYNTAX",
+    "MX_UNKNOWN_ATTRIBUTE",
   ],
   [
     keyed + "  actions\n    read :read\n      input\n        &id\n",
@@ -152,8 +152,8 @@ test.each([
     "MESH_UNKNOWN_ENTITY",
   ],
   [keyed + "    integer :n default=1.5\n", "MESH_DEFAULT"],
-  [keyed + "    boolean :ok min=0\n", "MESH_SYNTAX"],
-  [keyed + "    string :title on=:create\n", "MESH_SYNTAX"],
+  [keyed + "    boolean :ok min=0\n", "MX_UNKNOWN_ATTRIBUTE"],
+  [keyed + "    string :title on=:create\n", "MX_UNKNOWN_ATTRIBUTE"],
   [keyed + "  actions auto=[:read]\n    read :read\n", "MESH_DUPLICATE_MEMBER"],
 ])("rejects invalid model %s", (source, code) => {
   const result = build(source);
