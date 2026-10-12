@@ -124,8 +124,8 @@ export interface Binding {
 interface BindingState {
   binding: Binding;
   readonly layer: DataLayer;
-  /** Each entity's value, bound actions and `privileged` reads, by FQN. */
-  readonly entities: Map<string, { readonly value: object; readonly bound: BoundActions; readonly reads: object }>;
+  /** Each entity's value, bound actions and read bodies (what its `privileged` reads run on this binding), by FQN. */
+  readonly entities: Map<string, { readonly value: object; readonly bound: BoundActions; readonly reads: Readonly<Record<string, ReadBody>> }>;
   /** Calls on this binding that have not settled; `settled` waits for them. */
   inFlight: number;
   readonly idle: (() => void)[];
@@ -154,6 +154,8 @@ const states = new WeakMap<object, BindingState>();
 const frames = new WeakMap<object, AsyncFrame>();
 /** The binding `connect()` opened, by each entity value it bound: what a call outside `run` and `transaction` uses. */
 const connected = new WeakMap<object, BindingState>();
+/** What `privileged(value)` returns, by entity value: made when a binding first binds it, and tied to no binding. */
+const handles = new WeakMap<object, object>();
 
 /**
  * Define an entity value. `members` receives the call each method makes and returns the methods, one per action, each
@@ -237,11 +239,13 @@ async function forCaller(state: BindingState, caller: FrameStore | undefined, ca
   return own?.label === undefined || result === null || typeof result !== "object" ? result : readOnlyRecord(result as Row, own.label);
 }
 
+const notConnected = (label: string) =>
+  new FrameworkError(`${label} was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own`);
+
 /** The binding a call runs on: the one in scope, else the connected one; a `FrameworkError` when there is none, or when it does not bind `value`. */
 function bindingFor(value: object, label: string, caller: FrameStore | undefined) {
   const state = caller?.state ?? connected.get(value);
-  if (!state)
-    throw new FrameworkError(`${label} was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own`);
+  if (!state) throw notConnected(label);
   const entry = state.entities.get((value as EntityValue<object>)[ENTITY]);
   if (entry?.value !== value)
     throw new FrameworkError(`${label} was called inside run() or transaction() of a binding that does not bind it: that binding was made by another project's bind()`);
@@ -266,10 +270,13 @@ async function dispatch(value: object, fqn: string, action: string, input: unkno
 
 /**
  * The reads of `value` with no policy run (TXN-16, TXN-17): `privileged(Task).read(input, context?)` runs the read action's
- * body, on the binding in scope, else the connected one. Inside an action it joins the action's transaction and reads the
+ * body. `privileged(Task)` only names the entity: each read finds its binding when it is called, the one in scope, else the
+ * connected one, else it rejects as not connected, so a handle kept past `disconnect()` or carried into another binding's
+ * `run` reads only through the binding where it is used. Inside an action it joins the action's transaction and reads the
  * action's instant (`now()` in what it loads), and hands back read-only views; it never takes the action's context: what
  * it loads reads only the context the call passes. While a computed field or a read policy is evaluated it throws (TXN-18):
- * those read only the record and what it loads. A value that is not an entity value is a `FrameworkError`.
+ * those read only the record and what it loads. A value that is not an entity value is a `FrameworkError`, and so is
+ * one no binding has bound: nothing could run its reads.
  */
 export function privileged<E extends EntityValue<object, object>>(entity: E): Privileged<E> {
   if (!isEntityValue(entity))
@@ -278,21 +285,30 @@ export function privileged<E extends EntityValue<object, object>>(entity: E): Pr
   const caller = inScope(frames.get(entity));
   const mark = caller?.mark ?? evaluatingNow();
   if (mark !== undefined) throw marked(`privileged(${fqn})`, mark);
-  return bindingFor(entity, `privileged(${fqn})`, caller).entry.reads as Privileged<E>;
+  const handle = handles.get(entity);
+  if (!handle) throw notConnected(`privileged(${fqn})`);
+  return handle as Privileged<E>;
 }
 
 function marked(what: string, mark: string): FrameworkError {
   return new FrameworkError(`${what} was called while ${mark} is evaluated: a computed field and a read policy read the record and what it loads, and call no action and no privileged read. Load what it needs instead, or do it in a step or a check`);
 }
 
-/** The `privileged` reads of one entity on one binding, made once by `bindDomain`. */
-function privilegedReads(state: BindingState, frame: AsyncFrame, fqn: string, bodies: Readonly<Record<string, ReadBody>> | undefined): object {
+/**
+ * The `privileged` reads of one entity value, one per read action (`names`), made once, by the first binding that binds
+ * it. Each call looks up the caller's frame and the binding as an entity call does, and runs that binding's read body.
+ */
+function privilegedHandle(value: object, fqn: string, names: readonly string[]): object {
   const reads: Record<string, (input: unknown, context?: unknown) => Promise<unknown>> = Object.create(null);
-  for (const [name, body] of Object.entries(bodies ?? {}))
+  for (const name of names)
     reads[name] = async (input: unknown, context?: unknown) => {
-      const caller = inScope(frame);
+      const label = `privileged(${fqn}).${name}`;
+      const caller = inScope(frames.get(value));
       const mark = caller?.mark ?? evaluatingNow();
-      if (mark !== undefined) throw marked(`privileged(${fqn}).${name}`, mark);
+      if (mark !== undefined) throw marked(label, mark);
+      const { state, entry } = bindingFor(value, label, caller);
+      const body = entry.reads[name];
+      if (!body) throw new FrameworkError(`${label} is not a read of ${fqn} on the binding in scope`);
       // The action's instant, never its context (TXN-16): what the read loads reads the context this call passes.
       const clock = caller?.state === state ? caller.clock : undefined;
       return counted(state, () => forCaller(state, caller, () => body(input, context, clock, false)));
@@ -341,8 +357,9 @@ export function bindDomain(domain: object, layer: DataLayer, options: BindOption
         if (before !== undefined && before !== frame)
           throw new FrameworkError(`${fqn} was bound before with another async frame: a project's entity values are bound only through its own bind()`);
         const bound = value[BIND](layer, options, handle) as BoundActions;
-        const bodies = value[BIND_READS]?.(layer, options, handle) as Readonly<Record<string, ReadBody>> | undefined;
-        entities.set(fqn, { value, bound, reads: privilegedReads(state, frame, fqn, bodies) });
+        const reads = (value[BIND_READS]?.(layer, options, handle) ?? {}) as Readonly<Record<string, ReadBody>>;
+        entities.set(fqn, { value, bound, reads });
+        if (!handles.has(value)) handles.set(value, privilegedHandle(value, fqn, Object.keys(reads)));
       } else if (isNamespace(value)) walk(value);
     }
   };

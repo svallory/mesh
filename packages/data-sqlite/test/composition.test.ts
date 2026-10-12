@@ -233,7 +233,7 @@ entity :Entry table="entries"
         }
 `;
 
-const audit = `import { peek } from "./peek"
+const audit = `import { peek, peekLater } from "./peek"
 
 entity :Audit table="audits"
   attributes
@@ -242,6 +242,7 @@ entity :Audit table="audits"
     string :by nullable
   computed
     boolean :peeked() { return peek() }
+    boolean :peekedLater() { return peekLater(&id) }
   actions auto=[:read]
     create :log
       input
@@ -359,6 +360,16 @@ export function peek(): boolean {
   void privileged(Audit);
   return true;
 }
+/**
+ * An async helper typed as synchronous, which the build cannot see through: it awaits, then calls \`privileged\`, so the
+ * field that returns its result would hold a promise. Given the record, the field's body is plain code, which \`expr.pure\`
+ * does not guard. Called while the field is evaluated in a frame, its late call still
+ * throws; the load refuses the promise and drops that rejection.
+ */
+export const peekLater = (async (id: number) => {
+  await Promise.resolve();
+  return privileged(Audit) !== undefined && id > 0;
+}) as unknown as (id: number) => boolean;
 `;
 
 const SQLITE: ResolvedConfig["data"] = {
@@ -723,6 +734,36 @@ describe("a computed field (TXN-18)", () => {
       const error = await failure(loading);
       expect(error).toBeInstanceOf(FrameworkError);
       expect((error as Error).message).toStartWith("privileged(Audit) was called while computed :peeked of Audit is evaluated");
+    } finally { await world.db.close(); }
+  });
+
+  const returnedAPromise = "computed :peekedLater of Audit returned a promise: a computed field is synchronous, and reads only its record and what it loads.";
+  test("one whose body returns a promise is refused, naming the field, and the promise's own failure is dropped", async () => {
+    const world = await fresh();
+    try {
+      await world.mesh.logAudit({ what: "x" }, world.ctx);
+      const error = await failure(world.mesh.readAudit({ load: ["peekedLater"] }, world.ctx));
+      expect(error).toBeInstanceOf(FrameworkError);
+      expect((error as Error).message).toStartWith(returnedAPromise);
+      // The late `privileged` call made by the helper, still in the field's frame, rejects its promise: let it settle.
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(await world.mesh.readAudit({}, world.ctx)).toHaveLength(1);
+    } finally { await world.db.close(); }
+  });
+
+  test("so is one the load function evaluates with no binding's frame", async () => {
+    const world = await fresh();
+    try {
+      await world.mesh.logAudit({ what: "x" }, world.ctx);
+      const rows = await world.mesh.readAudit({}, world.ctx);
+      const binding = app.bind(world.db);
+      const loading = binding.run(() => world.db.transaction((tx: DataOperations) => (domain as any).loadAuditFields(tx, rows, ["peekedLater"])));
+      const error = await failure(loading);
+      expect(error).toBeInstanceOf(FrameworkError);
+      expect((error as Error).message).toStartWith(returnedAPromise);
+      // Nothing was attached to the rows the caller passed.
+      expect(rows.every((row: object) => !("peekedLater" in row))).toBe(true);
+      await new Promise((resolve) => setTimeout(resolve, 10));
     } finally { await world.db.close(); }
   });
 });

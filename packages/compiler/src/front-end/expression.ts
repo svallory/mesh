@@ -465,6 +465,25 @@ export const rememberDemotion = (expression: object, demotion: Demotion): void =
 const privilegedCalls = new WeakMap<object, readonly SourcePosition[]>();
 export const privilegedCallsOf = (expression: object): readonly SourcePosition[] => privilegedCalls.get(expression) ?? [];
 export const rememberPrivilegedCalls = (expression: object, calls: readonly SourcePosition[]): void => { privilegedCalls.set(expression, calls); };
+/** How a function is asynchronous, if it is: written `async`, or using `await` in its own body: a computed field must not be (MESH_COMPUTED_ASYNC). */
+export type Asynchrony = "async" | "await";
+const asynchronous = new WeakMap<object, Asynchrony>();
+export const asynchronyOf = (expression: object): Asynchrony | undefined => asynchronous.get(expression);
+export const rememberAsynchrony = (expression: object, how: Asynchrony): void => { asynchronous.set(expression, how); };
+const FUNCTION_NODES = new Set(["ArrowFunctionExpression", "FunctionExpression", "FunctionDeclaration", "ObjectMethod", "ClassMethod", "ClassPrivateMethod"]);
+/** Whether `fn` is `async`, or awaits in its own body (`await x`, `for await`); a function nested in it is its own business. */
+export function asynchronyOfFunction(fn: SyntaxNode): Asynchrony | undefined {
+  if ((fn as N).async) return "async";
+  const own = (node: unknown): boolean => {
+    if (!node || typeof node !== "object") return false;
+    if (Array.isArray(node)) return node.some(own);
+    const n = node as N;
+    if (n.type === "AwaitExpression" || (n.type === "ForOfStatement" && n.await)) return true;
+    if (FUNCTION_NODES.has(n.type)) return false;
+    return Object.entries(n).some(([key, value]) => key !== "loc" && key !== "extra" && typeof value === "object" && own(value));
+  };
+  return own((fn as N).body) ? "await" : undefined;
+}
 
 export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd: number }, ctx: ConvertContext): { tree?: ExprNode; plain?: PlainReason; demotion?: Demotion; privilegedCalls?: SourcePosition[] } {
   const f = fn as N;

@@ -1,5 +1,5 @@
 import type { SpannedIr } from "@mxlang/core";
-import { rememberDemotion, rememberPrivilegedCalls, translate, type ConvertContext, type Demotion } from "./expression.ts";
+import { asynchronyOfFunction, rememberAsynchrony, rememberDemotion, rememberPrivilegedCalls, translate, type ConvertContext, type Demotion } from "./expression.ts";
 import type {
   Atom,
   Diagnostic,
@@ -246,6 +246,8 @@ export function expression(
   };
   if (demotion) rememberDemotion(result, demotion);
   if (privilegedCalls) rememberPrivilegedCalls(result, privilegedCalls);
+  const asynchrony = asynchronyOfFunction(n);
+  if (asynchrony) rememberAsynchrony(result, asynchrony);
   return result;
 }
 /** The members an assignment or update writes to or through (`&a`, `&a.b`,

@@ -17,12 +17,16 @@ function createOnly(entity: Entity, owner: ActionExpression["owner"]): boolean {
  * What the action lifecycle (M5) cannot run is a build error, never a silent skip (ADR-0018): `before` in a check or a create,
  * a `validate` or `do` on a read, which has no record to check or change, a `set` or `load` in a destroy, and in a policy
  * (M8) `before`, a call to an entity's action and, on a read or a load, a call to `privileged` or reading the record, and a
- * policy with no check. `privilegedCallsOf` gives where a function calls `privileged`, kept by the front end.
+ * policy with no check, and an `async` computed body or one that awaits. `privilegedCallsOf` gives where a function calls
+ * `privileged`, and `asynchronyOf` whether it is `async` or awaits, both kept by the front end.
  */
 export function checkLifecycleLimits(
   document: ModelDocument,
   diagnostics: Diagnostic[],
-  options: { privilegedCallsOf?: (expression: Expression) => readonly SourcePosition[] } = {},
+  options: {
+    privilegedCallsOf?: (expression: Expression) => readonly SourcePosition[];
+    asynchronyOf?: (expression: Expression) => "async" | "await" | undefined;
+  } = {},
 ): void {
   // The entities a relationship (and so a rollup) reaches: a caller's load of one runs its read policies (POL-17).
   const loaded = new Set(document.entities.flatMap((from) => from.relationships.map((relation) => resolve(dirname(from.file), relation.entity.from))));
@@ -53,6 +57,13 @@ export function checkLifecycleLimits(
         diagnostics.push(error("MESH_COMPUTED_COMPOSES",
           `computed :${field.name} of ${entity.fqn} ${reaches}, which only a function that runs inside an action may: a computed field is worked out whenever a record is loaded, outside any action`,
           body.position, "Compute it from the record, its relationships and other computed fields; a read through `privileged` or a call to another action belongs in a step or a check"));
+      // A load evaluates a computed body synchronously: a promise it returned would be the field's value, and what it awaits
+      // would run after the load, outside any frame. The runtime refuses a promise result too (`ensureField` in `load.ts`).
+      const asynchrony = options.asynchronyOf?.(body);
+      if (asynchrony)
+        diagnostics.push(error("MESH_COMPUTED_ASYNC",
+          `computed :${field.name} of ${entity.fqn} ${asynchrony === "async" ? "is `async`" : "uses `await`"}: a computed field is synchronous, and reads only its record and what it loads`,
+          body.position, "Compute it from the record, its relationships and other computed fields; a read through `privileged` or anything else that awaits belongs in a step or a check"));
     }
     // A plain function (a `run`, or a body that is not one expression) is not type-checked by the expression pass, so a create's
     // `before` parameter is caught here: a create has no stored record.

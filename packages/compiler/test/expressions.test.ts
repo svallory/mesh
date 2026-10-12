@@ -351,6 +351,29 @@ describe("type rules", () => {
     // A string or a property that spells the name is not a call.
     expect(codes(computed('() { return { privileged: "Task" }.privileged === "x" }'))).not.toContain("error:MESH_COMPUTED_COMPOSES");
   });
+  test("an async computed body, or one that awaits, is a build error at the body: a computed field is synchronous", () => {
+    const computed = (body: string) => entity(check("() => true")).replace("  actions auto", `  computed\n    boolean :c${body}\n  actions auto`);
+    const message = (how: string) => `computed :c of Task ${how}: a computed field is synchronous, and reads only its record and what it loads`;
+    const cases: [body: string, at: string, how: string][] = [
+      [" async () { return &n > 0 }", "async ()", "is `async`"], // translated otherwise
+      ["=async () => &n > 0", "async ()", "is `async`"],
+      ["=async function () { return &n > 0 }", "async function", "is `async`"],
+      ["() { return await Promise.resolve(&n > 0) }", "() {", "uses `await`"],
+      ["() { for await (const x of []) void x; return true }", "() {", "uses `await`"],
+    ];
+    for (const [body, at, how] of cases) {
+      const source = computed(body);
+      const d = build(source).diagnostics.filter((x) => x.code === "MESH_COMPUTED_ASYNC");
+      expect(d, body).toHaveLength(1);
+      expect(d[0], body).toMatchObject({ severity: "error", message: message(how) });
+      expect(d[0]!.fix, body).toBe("Compute it from the record, its relationships and other computed fields; a read through `privileged` or anything else that awaits belongs in a step or a check");
+      expect(d[0]!.position.offset, body).toBe(source.indexOf(at, source.indexOf("boolean :c")));
+      expect(build(source).document, body).toBeNull();
+    }
+    // An async function nested in the body is the body's own business, and a synchronous body is fine.
+    for (const body of ["() { const f = async () => await 1; void f; return true }", "() { return &n > 0 }", "() { return [1].some((x) => x > 0) }"])
+      expect(codes(computed(body)), body).not.toContain("error:MESH_COMPUTED_ASYNC");
+  });
   test("a helper that does not read the record is translated and imported; one given the record is plain", async () => {
     const root = await mkdtemp(resolve(import.meta.dir, "../mesh-helper-"));
     roots.push(root);

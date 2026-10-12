@@ -260,6 +260,12 @@ async function ensureField(
     const fieldScope = scope({ self, input: undefined, actor: options.actor, context: options.context ?? {}, before: null }, options.clock ? { clock: options.clock } : {}) as never;
     const what = `computed :${name} of ${entity}`;
     const value = evaluating(what, () => options.frame ? options.frame.marked(what, () => computed.evaluate(fieldScope)) : computed.evaluate(fieldScope));
+    // A body that returns a promise (one that calls an async helper) is refused, so no row holds one; its own outcome
+    // is dropped, as `expr.pure` drops it, since the field has already failed.
+    if (value !== null && (typeof value === "object" || typeof value === "function") && typeof (value as { then?: unknown }).then === "function") {
+      (value as PromiseLike<unknown>).then(undefined, () => {});
+      throw new FrameworkError(`${what} returned a promise: a computed field is synchronous, and reads only its record and what it loads. Compute it from them; a read through \`privileged\` or anything else that awaits belongs in a step or a check`);
+    }
     // A translated body gives unknown as null; a plain body's result is what it returned.
     row[name] = value === undefined && !computed.plain ? null : value;
   }
