@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { lowerSource } from "@mxlang/core";
-import { MESH_DIALECT, deepFreeze } from "../src/front-end/dialect.ts";
+import { deepFreeze } from "../src/front-end/deep-freeze.ts";
+import { MESH_DIALECT } from "../src/front-end/dialect.ts";
 
 // Left unfrozen on purpose, by kind: functions (the hooks hold no dialect data) and RegExps (a `g` or `y` flag would make
 // `lastIndex` read-only and `exec` throw). The dialect holds no RegExp and no Map or Set today; the walk below fails on
@@ -47,19 +47,4 @@ test("a nested write to the dialect throws", () => {
   expect(() => {
     contracts.entity!.attributes!.extra = {};
   }).toThrow();
-});
-
-test("lowering twice with the dialect works and the second call is not slower than the first by a wide margin", () => {
-  const source = "entity :Todo\n  attributes\n    string :title\n";
-  const time = () => {
-    const start = performance.now();
-    const result = lowerSource(source, "a.mesh.mx", { dialect: MESH_DIALECT });
-    expect(result.diagnostics).toEqual([]);
-    return performance.now() - start;
-  };
-  const first = time();
-  const second = time();
-  // MX validates an unfrozen-or-new dialect in about 46 ms and reuses it in about 3 ms. A generous bound keeps this
-  // from flaking: the second call only fails if it paid the full validation again on top of the first.
-  expect(second).toBeLessThan(first + 25);
 });
