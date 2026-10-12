@@ -2,3 +2,7 @@
 export function input(): string {
   return "the helper";
 }
+/** A helper Boolean imports under an alias (`shout as loudly`): the expressions file imports it under the same one. */
+export function shout(text: string): string {
+  return text.toUpperCase();
+}

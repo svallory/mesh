@@ -21,7 +21,7 @@ import {
 {{ helper.keyword }} { {{ helper.names }} } from {{ helper.fromLiteral }};
 @end
 @each(imported in entityImports)
-import { {{ imported.names }} } from {{ imported.fromLiteral }};
+{{ imported.keyword }} { {{ imported.names }} } from {{ imported.fromLiteral }};
 @end
 import type {
   @each(name in typeImports)

@@ -1,10 +1,10 @@
 /**
  * The names a printed plain function reads in its TypeScript types. MX strips the types from the Babel node the front
- * end reads (`const x: Money = 1 as Money` reaches it as `const x = 1`), so a helper an entity file imports and a
- * function names only in a type (`Money`, or `typeof fmt`) is not in `PlainReason.helpers`; the expressions file still
- * has to import it, since the function is printed as written. This module parses the printed function with the
- * TypeScript parser of Prettier, which the back end already formats with, and resolves each type position as
- * TypeScript does.
+ * end reads (`const x: Money = 1 as Money` reaches it as `const x = 1`), so what a function names only in a type (a
+ * helper, `Money` or `typeof fmt`; a scope root, `typeof input.id`; an entity, `List | null`) is not in its
+ * `PlainReason`; the expressions file still has to import or bind it, since the function is printed as written. This
+ * module parses the printed function with the TypeScript parser of Prettier, which the back end already formats with,
+ * and resolves each type position as TypeScript does.
  */
 import { parsers } from "prettier/plugins/typescript";
 
@@ -18,6 +18,10 @@ const FUNCTIONS = new Set(["FunctionDeclaration", "FunctionExpression", "ArrowFu
 const GENERIC = new Set([
   "TSTypeAliasDeclaration", "TSInterfaceDeclaration", "ClassDeclaration", "ClassExpression", "TSFunctionType",
   "TSConstructorType", "TSMethodSignature", "TSCallSignatureDeclaration", "TSConstructSignatureDeclaration",
+]);
+/** Signature types, whose parameters a `typeof` in the signature reads: `(fmt: string) => typeof fmt`. */
+const SIGNATURES = new Set([
+  "TSFunctionType", "TSConstructorType", "TSMethodSignature", "TSCallSignatureDeclaration", "TSConstructSignatureDeclaration",
 ]);
 
 interface Scope { values: ReadonlySet<string>; types: ReadonlySet<string> }
@@ -88,21 +92,30 @@ const extend = (scope: Scope, values: Iterable<string>, types: Iterable<string>)
   return v.length === 0 && t.length === 0 ? scope : { values: new Set([...scope.values, ...v]), types: new Set([...scope.types, ...t]) };
 };
 
+/** What a printed function reads in its types, by the meaning TypeScript gives each name there. */
+export interface TypeNames {
+  /** Names read as types: a type reference (`Money`, the `Money` of `Money.Amount`) or an `extends`/`implements` clause. */
+  readonly types: Set<string>;
+  /** Names read as values in a type: a `typeof` query (`typeof fmt`, the `input` of `typeof input.id`). */
+  readonly values: Set<string>;
+}
+
 /**
  * The names among `candidates` that `code`, one printed function, reads in a type position no scope of its own
  * declares: a type reference (`Money`, the `Money` of `Money.Amount`, an `extends`/`implements` clause) that no type
  * parameter, `infer`, local type, interface, class or enum of that name hides, or a `typeof` query (`typeof fmt`) that
- * no local variable of that name hides. A local variable does not hide a type of its name, as in TypeScript. Code the
- * parser refuses gives nothing: the formatter then reports it, positioned, when the file is formatted.
+ * no local variable or parameter of that name hides, a signature type's included (`(fmt: string) => typeof fmt`). A
+ * local variable does not hide a type of its name, as in TypeScript. Code the parser refuses gives nothing: the
+ * formatter then reports it, positioned, when the file is formatted.
  */
-export function typeNames(code: string, candidates: ReadonlySet<string>): Set<string> {
-  const found = new Set<string>();
+export function typeNames(code: string, candidates: ReadonlySet<string>): TypeNames {
+  const found: TypeNames = { types: new Set(), values: new Set() };
   if (![...candidates].some((name) => code.includes(name))) return found;
   let program: Node;
   try { program = parsers.typescript.parse(code, {} as never) as Node; }
   catch { return found; }
-  const read = (name: string | undefined, bound: ReadonlySet<string>) => {
-    if (name !== undefined && candidates.has(name) && !bound.has(name)) found.add(name);
+  const read = (name: string | undefined, bound: ReadonlySet<string>, into: Set<string>) => {
+    if (name !== undefined && candidates.has(name) && !bound.has(name)) into.add(name);
   };
   const walk = (value: unknown, scope: Scope): void => {
     if (!value || typeof value !== "object") return;
@@ -110,9 +123,9 @@ export function typeNames(code: string, candidates: ReadonlySet<string>): Set<st
     const n = value as Node;
     if (typeof n.type !== "string") return;
     switch (n.type) {
-      case "TSTypeReference": read(leftmost(n.typeName), scope.types); walk(n.typeArguments, scope); return;
-      case "TSTypeQuery": read(leftmost(n.exprName), scope.values); walk(n.typeArguments, scope); return;
-      case "TSInterfaceHeritage": case "TSClassImplements": read(leftmost(n.expression), scope.types); walk(n.typeArguments, scope); return;
+      case "TSTypeReference": read(leftmost(n.typeName), scope.types, found.types); walk(n.typeArguments, scope); return;
+      case "TSTypeQuery": read(leftmost(n.exprName), scope.values, found.values); walk(n.typeArguments, scope); return;
+      case "TSInterfaceHeritage": case "TSClassImplements": read(leftmost(n.expression), scope.types, found.types); walk(n.typeArguments, scope); return;
       case "TSMappedType": {
         const key = n.key ? leftmost(n.key) : n.typeParameter ? parameterName(n.typeParameter) : undefined;
         const inner = extend(scope, [], key ? [key] : []);
@@ -137,8 +150,10 @@ export function typeNames(code: string, candidates: ReadonlySet<string>): Set<st
       hoistedVars(n.body, values);
       inner = extend(scope, values, typeParameterNames(n.typeParameters));
     } else if (GENERIC.has(n.type)) {
-      const values = n.type === "ClassExpression" && n.id ? [n.id.name] : [];
-      inner = extend(scope, values, [...typeParameterNames(n.typeParameters), ...values]);
+      const values = new Set<string>(n.type === "ClassExpression" && n.id ? [n.id.name] : []);
+      const types = [...typeParameterNames(n.typeParameters), ...values];
+      if (SIGNATURES.has(n.type)) for (const p of n.params ?? []) patternNames(p, values);
+      inner = extend(scope, values, types);
     } else {
       const own = { values: new Set<string>(), types: new Set<string>() };
       switch (n.type) {
