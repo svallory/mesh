@@ -1,0 +1,23 @@
+import { List as BList } from "../b/list.mesh.mx"
+
+entity :List
+  attributes
+    uuid :id primary-key
+    string :title
+    boolean :archived default=false
+  relationships
+    belongs-to :mirror entity=BList
+  actions auto=[:read]
+    create :create
+      input
+        &title
+        &mirror
+    update :archive
+      do
+        set
+          &archived=true
+  policies
+    policy :anyone types=[:create, :read]
+      authorize-if=() => true
+    policy :aKeeper actions=[&archive]
+      authorize-if=({ actor }) => actor.id === "a-keeper"

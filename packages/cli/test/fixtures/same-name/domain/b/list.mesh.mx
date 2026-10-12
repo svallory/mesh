@@ -1,0 +1,18 @@
+entity :List table="b_list"
+  attributes
+    uuid :id primary-key
+    string :title
+    boolean :archived default=false
+  actions auto=[:read]
+    create :create
+      input
+        &title
+    update :archive
+      do
+        set
+          &archived=true
+  policies
+    policy :anyone types=[:create, :read]
+      authorize-if=() => true
+    policy :bKeeper actions=[&archive]
+      authorize-if=({ actor }) => actor.id === "b-keeper"
