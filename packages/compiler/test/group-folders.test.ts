@@ -197,3 +197,12 @@ test("an entity's fqn is its module's folders joined by dots, then its name; a r
     [`${D}/top.mesh.mx`]: entity("Top"),
   })).toEqual({ Task: "work.project.Task", Review: "work.Review", Root: "Root", Top: "Top" });
 });
+
+test("fqn segments are the folders as written (PRJ-21): hyphens, a leading digit and capitals are kept", () => {
+  const fqns = Object.fromEntries((build({
+    [`${D}/order-management/invoice.mesh.mx`]: entity("Invoice"),
+    [`${D}/2024-reports/report.mesh.mx`]: entity("Report"),
+    [`${D}/Sales/x/order.mesh.mx`]: entity("Order"),
+  }).document?.entities ?? []).map((e) => [e.name, e.fqn]));
+  expect(fqns).toEqual({ Invoice: "order-management.Invoice", Report: "2024-reports.Report", Order: "Sales.x.Order" });
+});

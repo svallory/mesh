@@ -172,7 +172,7 @@ entity :Membership
     const result = build({ "collaborator.mesh.mx": collaborator(" inverse=:workspace"), "membership.mesh.mx": source, "workspace.mesh.mx": workspace });
     expect(result.diagnostics).toEqual([expect.objectContaining({
       code: "MESH_INVERSE_ENTITY",
-      message: "inverse=:workspace is a belongs-to of app.Membership that points at :Workspace, not at app.Collaborator. The belongs-to from app.Membership to app.Collaborator: :collaborator.",
+      message: "inverse=:workspace is a belongs-to of app.Membership that points at app.Workspace, not at app.Collaborator. The belongs-to from app.Membership to app.Collaborator: :collaborator.",
     })]);
   });
 

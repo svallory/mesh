@@ -123,7 +123,7 @@ describe("MESH_SCHEMA_* build errors", () => {
       severity: "error", code: "MESH_SCHEMA_DUPLICATE_TABLE",
       message: 'Entities b.Note (src/domain/b/note.mesh.mx) and a.Post (src/domain/a/post.mesh.mx) both use the SQLite table "posts"',
       position: { file: "src/domain/a/post.mesh.mx", line: 1, column: 0, offset: 0 },
-      fix: 'Give each entity its own table="..."',
+      fix: 'Set table="..." on one of the two entities',
     });
   });
 

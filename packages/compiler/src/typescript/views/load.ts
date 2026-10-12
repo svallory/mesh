@@ -27,7 +27,7 @@ export interface LoadView {
 }
 
 export interface LoadEntity {
-  /** The entity's name as a quoted string literal: the key of its plan entry and the target other entries name. */
+  /** The entity's FQN (e.g. `blog.Post`) as a quoted string literal: the key of its plan entry and the target other entries name. */
   readonly nameLiteral: string;
   /** The entity's table handle in the schema file, e.g. `tables.task`. */
   readonly table: string;
@@ -52,7 +52,7 @@ export interface LoadFunction {
   readonly record: string;
   readonly loadable: string;
   readonly with: string;
-  /** The entity's name as a quoted string literal. */
+  /** The entity's FQN (e.g. `blog.Post`) as a quoted string literal. */
   readonly entityLiteral: string;
 }
 

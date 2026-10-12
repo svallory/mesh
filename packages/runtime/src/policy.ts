@@ -69,6 +69,7 @@ type Result = boolean | null;
 /** `true` and `false` are themselves; anything else (null, undefined, a non-boolean from plain code) is unknown. */
 const outcome = (value: unknown): Result => (value === true ? true : value === false ? false : null);
 
+/** `entity` is the entity's FQN (e.g. `blog.Post`); a denial carries it. */
 export function authorizer(entity: string, action: string, policies: readonly PolicySpec[]): Authorizer {
   const results = new Map<Spec | PolicyCheckSpec, Result>();
   const run = async (spec: Spec | PolicyCheckSpec, scope: object) => {

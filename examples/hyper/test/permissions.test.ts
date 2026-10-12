@@ -88,6 +88,7 @@ describe("roadmap M8 acceptance tests on Hyper", () => {
     expect((await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot))).holderId).toBe(w.bot.id);
     // A Task that does not exist is not found, in the permission phase (PROTOCOL.md:110; PR #70 N4).
     await expect(w.hyper.acquireClaim({ task: GHOST }, as(w.bot))).rejects.toBeInstanceOf(NotFoundError);
+    await expect(w.hyper.acquireClaim({ task: GHOST }, as(w.bot))).rejects.toMatchObject({ entity: "work.Task", message: expect.stringContaining("Entity work.Task not found for ") });
   }));
 
   test("(4) a non-member's readTask returns no rows and no error; a guest's and a member's return the rows", () => within(async (w) => {

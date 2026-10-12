@@ -52,7 +52,7 @@ export function resolveRelationships(
         } else if (targetOf(target, named) !== entity) {
           fail(
             "MESH_INVERSE_ENTITY",
-            `inverse=:${authored} is a belongs-to of ${target.fqn} that points at :${named.entity.identifier}, not at ${entity.fqn}.${names.length ? ` The belongs-to from ${target.fqn} to ${entity.fqn}: ${list}.` : ""}`,
+            `inverse=:${authored} is a belongs-to of ${target.fqn} that points at ${targetOf(target, named)?.fqn ?? named.entity.identifier}, not at ${entity.fqn}.${names.length ? ` The belongs-to from ${target.fqn} to ${entity.fqn}: ${list}.` : ""}`,
             position,
           );
           delete relation.inverse;

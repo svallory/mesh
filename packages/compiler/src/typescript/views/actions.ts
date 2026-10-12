@@ -121,7 +121,7 @@ export interface ActionMethod {
   readonly statements: readonly string[];
   /** True for a read action. */
   readonly isRead: boolean;
-  /** For a create, update or destroy, the seam target as an object literal, e.g. `{ entity: "Post", action: "publish" }`, which `$runAction` takes; `null` for a read (a read runs no seam). */
+  /** For a create, update or destroy, the seam target as an object literal, e.g. `{ entity: "blog.Post", action: "publish" }`, which `$runAction` takes; `null` for a read (a read runs no seam). */
   readonly seamTarget: string | null;
   /** For a read, the call of its body in `bind<Entity>Reads` that the method returns after the read's policies, e.g. `$reads.read(input)`; `null` otherwise, when `statements` hold the body. */
   readonly readsCall: string | null;
@@ -266,7 +266,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     return `$expressions[${JSON.stringify(id)}]`;
   };
   // ---- policies (M8): what the pre-check and the in-transaction phase print ---------------------
-  /** `$authorizer("Post", "publish", [...])`: the policies that cover the action, each function with where it runs (`record`). */
+  /** `$authorizer("blog.Post", "publish", [...])`: the policies that cover the action, each function with where it runs (`record`). */
   const authorizerCall = (action: Action, covering: readonly Policy[]): string => {
     runtime.add("authorizer");
     const specs = policySpecs(covering, (expression) => {

@@ -33,6 +33,12 @@ describe("resolveName (PRJ-16)", () => {
     for (const input of ["work.project", "work.Task", "proj.Task", "ask", "roject.Task", "work..Task", ".Task", "Task.", ""])
       expect(resolveName(unique, input).kind, input).toBe("unknown");
   });
+  test("a hyphenated module is matched as written: a prefix of its segment picks nothing", () => {
+    const m = model("order-management.Invoice");
+    expect(found(resolveName(m, "order-management.Invoice"))).toBe("order-management.Invoice");
+    expect(resolveName(m, "management.Invoice").kind).toBe("unknown");
+    expect(resolveName(m, "order.Invoice").kind).toBe("unknown");
+  });
   test("it is case-sensitive", () => {
     for (const input of ["task", "TASK", "Project.Task", "Work.project.Task"]) expect(resolveName(unique, input).kind, input).toBe("unknown");
   });

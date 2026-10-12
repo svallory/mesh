@@ -144,7 +144,7 @@ export function schemaView({ document }: EmitInput): SchemaView {
     if (sameTable) {
       fail("MESH_SCHEMA_DUPLICATE_TABLE",
         `Entities ${describe(sameTable)} and ${describe(entity)} both use the SQLite table "${entity.table}"`,
-        entity.position, 'Give each entity its own table="..."');
+        entity.position, 'Set table="..." on one of the two entities');
     }
     const sameExport = exportOwners.get(view.exportName);
     if (sameExport) {

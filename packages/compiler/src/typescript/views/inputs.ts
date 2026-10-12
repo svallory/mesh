@@ -198,7 +198,7 @@ export function entityInputs(
           if (!relatedKey)
             throw emitError(
               "MESH_EMIT_KEY",
-              `Entity :${reference.name} has no primary key`,
+              `Entity ${reference.fqn} has no primary key`,
               reference.position,
             );
           field = {

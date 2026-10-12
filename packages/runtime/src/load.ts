@@ -67,6 +67,7 @@ export interface EntityPlan {
   relations: Readonly<Record<string, RelationPlan>>;
   computed: Readonly<Record<string, ComputedPlan>>;
 }
+/** The plan of every entity, keyed by the entity's FQN (e.g. `blog.Post`); `entity` and `target` arguments of the functions below are FQNs too. */
 export type LoadPlan = Readonly<Record<string, EntityPlan>>;
 
 export interface LoadOptions {
