@@ -44,25 +44,25 @@ const comparison = <T extends z.ZodType>(value: T) =>
       message: "a comparison needs an operator",
     });
 
-export const submissionFilter: z.ZodType<SubmissionFilter> = z.lazy(
+export const submissionFilterSchema: z.ZodType<SubmissionFilter> = z.lazy(
   () =>
     z.union([
-      z.strictObject({ and: z.array(submissionFilter).readonly() }),
-      z.strictObject({ or: z.array(submissionFilter).readonly() }),
+      z.strictObject({ and: z.array(submissionFilterSchema).readonly() }),
+      z.strictObject({ or: z.array(submissionFilterSchema).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).exactOptional(),
-        summary: comparison(z.string()).exactOptional(),
-        fence: comparison(z.int()).exactOptional(),
-        taskVersion: comparison(z.int()).exactOptional(),
-        state: comparison(z.enum(["pending", "accepted", "returned", "withdrawn"])).exactOptional(),
-        submittedAt: comparison(z.date()).exactOptional(),
-        taskId: comparison(z.uuid()).exactOptional(),
-        submitterId: comparison(z.uuid()).exactOptional(),
+        id: comparison(z.uuid()).optional(),
+        summary: comparison(z.string()).optional(),
+        fence: comparison(z.int()).optional(),
+        taskVersion: comparison(z.int()).optional(),
+        state: comparison(z.enum(["pending", "accepted", "returned", "withdrawn"])).optional(),
+        submittedAt: comparison(z.date()).optional(),
+        taskId: comparison(z.uuid()).optional(),
+        submitterId: comparison(z.uuid()).optional(),
       }),
     ]) as unknown as z.ZodType<SubmissionFilter>,
 );
 
-export const submissionSort = z
+export const submissionSortSchema = z
   .array(
     z.enum([
       "id",
@@ -85,7 +85,7 @@ export const submissionSort = z
   )
   .readonly();
 
-export const submitSubmissionInput = z.strictObject({
+export const submitSubmissionInputSchema = z.strictObject({
   task: z.uuid(),
   fence: z.int().min(1),
   summary: z.string().min(1),
@@ -94,29 +94,29 @@ export const submitSubmissionInput = z.strictObject({
 }) satisfies z.ZodType<SubmitSubmissionInput>;
 
 export type SubmitSubmissionInputShape = Assert<
-  SameShape<z.output<typeof submitSubmissionInput>, SubmitSubmissionInput>
+  SameShape<z.output<typeof submitSubmissionInputSchema>, SubmitSubmissionInput>
 >;
 
-export const withdrawSubmissionInput = z.strictObject({
+export const withdrawSubmissionInputSchema = z.strictObject({
   id: z.uuid(),
   reason: z.string().nullable().optional(),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<WithdrawSubmissionInput>;
 
 export type WithdrawSubmissionInputShape = Assert<
-  SameShape<z.output<typeof withdrawSubmissionInput>, WithdrawSubmissionInput>
+  SameShape<z.output<typeof withdrawSubmissionInputSchema>, WithdrawSubmissionInput>
 >;
 
-export const settleSubmissionInput = z.strictObject({
+export const settleSubmissionInputSchema = z.strictObject({
   id: z.uuid(),
   outcome: z.enum(["accepted", "returned", "withdrawn"]),
 }) satisfies z.ZodType<SettleSubmissionInput>;
 
 export type SettleSubmissionInputShape = Assert<
-  SameShape<z.output<typeof settleSubmissionInput>, SettleSubmissionInput>
+  SameShape<z.output<typeof settleSubmissionInputSchema>, SettleSubmissionInput>
 >;
 
-export const recordAcceptedSubmissionInput = z.strictObject({
+export const recordAcceptedSubmissionInputSchema = z.strictObject({
   task: z.uuid(),
   summary: z.string().min(1).nullable().optional(),
   evidence: (z.json() as z.ZodType<unknown>).nullable().optional(),
@@ -125,12 +125,12 @@ export const recordAcceptedSubmissionInput = z.strictObject({
 }) satisfies z.ZodType<RecordAcceptedSubmissionInput>;
 
 export type RecordAcceptedSubmissionInputShape = Assert<
-  SameShape<z.output<typeof recordAcceptedSubmissionInput>, RecordAcceptedSubmissionInput>
+  SameShape<z.output<typeof recordAcceptedSubmissionInputSchema>, RecordAcceptedSubmissionInput>
 >;
 
-export const readSubmissionInput = z.strictObject({
-  filter: submissionFilter.optional(),
-  sort: submissionSort.optional(),
+export const readSubmissionInputSchema = z.strictObject({
+  filter: submissionFilterSchema.optional(),
+  sort: submissionSortSchema.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
   load: z
@@ -140,5 +140,8 @@ export const readSubmissionInput = z.strictObject({
 }) satisfies z.ZodType<ReadSubmissionInput<keyof SubmissionLoadable>>;
 
 export type ReadSubmissionInputShape = Assert<
-  SameShape<z.output<typeof readSubmissionInput>, ReadSubmissionInput<keyof SubmissionLoadable>>
+  SameShape<
+    z.output<typeof readSubmissionInputSchema>,
+    ReadSubmissionInput<keyof SubmissionLoadable>
+  >
 >;

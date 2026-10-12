@@ -42,26 +42,26 @@ const comparison = <T extends z.ZodType>(value: T) =>
       message: "a comparison needs an operator",
     });
 
-export const reviewFilter: z.ZodType<ReviewFilter> = z.lazy(
+export const reviewFilterSchema: z.ZodType<ReviewFilter> = z.lazy(
   () =>
     z.union([
-      z.strictObject({ and: z.array(reviewFilter).readonly() }),
-      z.strictObject({ or: z.array(reviewFilter).readonly() }),
+      z.strictObject({ and: z.array(reviewFilterSchema).readonly() }),
+      z.strictObject({ or: z.array(reviewFilterSchema).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).exactOptional(),
-        decision: comparison(z.enum(["accept", "return"])).exactOptional(),
-        reasons: comparison(z.string()).exactOptional(),
+        id: comparison(z.uuid()).optional(),
+        decision: comparison(z.enum(["accept", "return"])).optional(),
+        reasons: comparison(z.string()).optional(),
         ruleApplied: comparison(
           z.enum(["parent-assignee", "parent-creator", "task-creator"]),
-        ).exactOptional(),
-        decidedAt: comparison(z.date()).exactOptional(),
-        submissionId: comparison(z.uuid()).exactOptional(),
-        reviewerId: comparison(z.uuid()).exactOptional(),
+        ).optional(),
+        decidedAt: comparison(z.date()).optional(),
+        submissionId: comparison(z.uuid()).optional(),
+        reviewerId: comparison(z.uuid()).optional(),
       }),
     ]) as unknown as z.ZodType<ReviewFilter>,
 );
 
-export const reviewSort = z
+export const reviewSortSchema = z
   .array(
     z.enum([
       "id",
@@ -82,28 +82,28 @@ export const reviewSort = z
   )
   .readonly();
 
-export const acceptReviewInput = z.strictObject({
+export const acceptReviewInputSchema = z.strictObject({
   submission: z.uuid(),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<AcceptReviewInput>;
 
 export type AcceptReviewInputShape = Assert<
-  SameShape<z.output<typeof acceptReviewInput>, AcceptReviewInput>
+  SameShape<z.output<typeof acceptReviewInputSchema>, AcceptReviewInput>
 >;
 
-export const returnReviewInput = z.strictObject({
+export const returnReviewInputSchema = z.strictObject({
   reasons: z.string().min(1),
   submission: z.uuid(),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<ReturnReviewInput>;
 
 export type ReturnReviewInputShape = Assert<
-  SameShape<z.output<typeof returnReviewInput>, ReturnReviewInput>
+  SameShape<z.output<typeof returnReviewInputSchema>, ReturnReviewInput>
 >;
 
-export const readReviewInput = z.strictObject({
-  filter: reviewFilter.optional(),
-  sort: reviewSort.optional(),
+export const readReviewInputSchema = z.strictObject({
+  filter: reviewFilterSchema.optional(),
+  sort: reviewSortSchema.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
   load: z
@@ -113,5 +113,5 @@ export const readReviewInput = z.strictObject({
 }) satisfies z.ZodType<ReadReviewInput<keyof ReviewLoadable>>;
 
 export type ReadReviewInputShape = Assert<
-  SameShape<z.output<typeof readReviewInput>, ReadReviewInput<keyof ReviewLoadable>>
+  SameShape<z.output<typeof readReviewInputSchema>, ReadReviewInput<keyof ReviewLoadable>>
 >;

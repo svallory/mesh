@@ -214,26 +214,26 @@ export type TaskFilter =
   | { and: readonly TaskFilter[] }
   | { or: readonly TaskFilter[] }
   | {
-      id?: $Comparison<string>;
-      title?: $Comparison<string>;
-      intent?: $Comparison<string>;
-      priority?: $Comparison<number>;
-      state?: $Comparison<"open" | "done" | "canceled">;
-      version?: $Comparison<number>;
-      createdAt?: $Comparison<$Date>;
-      reopenedAt?: $Comparison<$Date>;
-      parentId?: $Comparison<string>;
-      creatorId?: $Comparison<string>;
-      childrenSettled?: $Comparison<boolean>;
-      claimed?: $Comparison<boolean>;
-      lapsedClaim?: $Comparison<boolean>;
-      inReview?: $Comparison<boolean>;
-      assigned?: $Comparison<boolean>;
-      blocked?: $Comparison<boolean>;
-      maxFence?: $Comparison<number>;
-      derivedState?: $Comparison<
-        "ready" | "blocked" | "claimed" | "in-review" | "done" | "canceled"
-      >;
+      id?: $Comparison<string> | undefined;
+      title?: $Comparison<string> | undefined;
+      intent?: $Comparison<string> | undefined;
+      priority?: $Comparison<number> | undefined;
+      state?: $Comparison<"open" | "done" | "canceled"> | undefined;
+      version?: $Comparison<number> | undefined;
+      createdAt?: $Comparison<$Date> | undefined;
+      reopenedAt?: $Comparison<$Date> | undefined;
+      parentId?: $Comparison<string> | undefined;
+      creatorId?: $Comparison<string> | undefined;
+      childrenSettled?: $Comparison<boolean> | undefined;
+      claimed?: $Comparison<boolean> | undefined;
+      lapsedClaim?: $Comparison<boolean> | undefined;
+      inReview?: $Comparison<boolean> | undefined;
+      assigned?: $Comparison<boolean> | undefined;
+      blocked?: $Comparison<boolean> | undefined;
+      maxFence?: $Comparison<number> | undefined;
+      derivedState?:
+        | $Comparison<"ready" | "blocked" | "claimed" | "in-review" | "done" | "canceled">
+        | undefined;
     };
 
 export type TaskSort = readonly (

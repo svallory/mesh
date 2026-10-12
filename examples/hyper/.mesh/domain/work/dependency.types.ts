@@ -89,11 +89,11 @@ export type DependencyFilter =
   | { and: readonly DependencyFilter[] }
   | { or: readonly DependencyFilter[] }
   | {
-      id?: $Comparison<string>;
-      createdAt?: $Comparison<$Date>;
-      dependentId?: $Comparison<string>;
-      prerequisiteId?: $Comparison<string>;
-      createdById?: $Comparison<string>;
+      id?: $Comparison<string> | undefined;
+      createdAt?: $Comparison<$Date> | undefined;
+      dependentId?: $Comparison<string> | undefined;
+      prerequisiteId?: $Comparison<string> | undefined;
+      createdById?: $Comparison<string> | undefined;
     };
 
 export type DependencySort = readonly (

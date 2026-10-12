@@ -55,11 +55,11 @@ import type {
   ReadSubmissionInput,
 } from "./submission.types";
 import {
-  submitSubmissionInput,
-  withdrawSubmissionInput,
-  settleSubmissionInput,
-  recordAcceptedSubmissionInput,
-  readSubmissionInput,
+  submitSubmissionInputSchema,
+  withdrawSubmissionInputSchema,
+  settleSubmissionInputSchema,
+  recordAcceptedSubmissionInputSchema,
+  readSubmissionInputSchema,
 } from "./submission.validators";
 import { tables } from "../../schema";
 import {
@@ -92,11 +92,11 @@ export function bindSubmissionReads(
       context?: unknown,
       clock?: () => $Date,
       policies?: boolean,
-      cast?: $CastOutput<typeof readSubmissionInput>,
+      cast?: $CastOutput<typeof readSubmissionInputSchema>,
     ): $Promise<L extends unknown ? SubmissionTxWith<SubmissionLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
       // for its policies and hands it over as `cast`; a `privileged` read casts it here.
-      const parsed = cast ?? (await $castInput(layer, readSubmissionInput, input));
+      const parsed = cast ?? (await $castInput(layer, readSubmissionInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.submissions, {
           filter: parsed.filter,
@@ -138,7 +138,7 @@ export function bindSubmission(
       ...[context]: $ContextArgument
     ): $Promise<Submission> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, submitSubmissionInput, input);
+      const parsed = await $castInput(layer, submitSubmissionInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -285,8 +285,9 @@ export function bindSubmission(
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // the input: the member inputs the caller sent, applied now that the checks have passed
-            if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
-            if (parsed.evidence !== undefined)
+            if ($Object.hasOwn(parsed, "task") && parsed.task !== undefined)
+              $changes.taskId = $record.taskId = parsed.task;
+            if ($Object.hasOwn(parsed, "evidence") && parsed.evidence !== undefined)
               $changes.evidence = $record.evidence = parsed.evidence;
             // do: the steps run in written order, each seeing the record as the ones before it left it
             {
@@ -355,7 +356,7 @@ export function bindSubmission(
       ...[context]: $ContextArgument
     ): $Promise<Submission> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, withdrawSubmissionInput, input);
+      const parsed = await $castInput(layer, withdrawSubmissionInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -522,7 +523,7 @@ export function bindSubmission(
       ...[context]: $ContextArgument
     ): $Promise<Submission> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, settleSubmissionInput, input);
+      const parsed = await $castInput(layer, settleSubmissionInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -642,7 +643,7 @@ export function bindSubmission(
       ...[context]: $ContextArgument
     ): $Promise<Submission> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, recordAcceptedSubmissionInput, input);
+      const parsed = await $castInput(layer, recordAcceptedSubmissionInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -718,12 +719,15 @@ export function bindSubmission(
               { clock: $clock },
             ) as unknown as $Scope<RecordAcceptedSubmissionInput>;
             // the input: the member inputs the caller sent, applied now that the checks have passed
-            if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
-            if (parsed.summary !== undefined) $changes.summary = $record.summary = parsed.summary;
-            if (parsed.evidence !== undefined)
+            if ($Object.hasOwn(parsed, "task") && parsed.task !== undefined)
+              $changes.taskId = $record.taskId = parsed.task;
+            if ($Object.hasOwn(parsed, "summary") && parsed.summary !== undefined)
+              $changes.summary = $record.summary = parsed.summary;
+            if ($Object.hasOwn(parsed, "evidence") && parsed.evidence !== undefined)
               $changes.evidence = $record.evidence = parsed.evidence;
-            if (parsed.fence !== undefined) $changes.fence = $record.fence = parsed.fence;
-            if (parsed.taskVersion !== undefined)
+            if ($Object.hasOwn(parsed, "fence") && parsed.fence !== undefined)
+              $changes.fence = $record.fence = parsed.fence;
+            if ($Object.hasOwn(parsed, "taskVersion") && parsed.taskVersion !== undefined)
               $changes.taskVersion = $record.taskVersion = parsed.taskVersion;
             // do: the steps run in written order, each seeing the record as the ones before it left it
             {
@@ -763,7 +767,7 @@ export function bindSubmission(
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $parsed = await $castInput(layer, readSubmissionInput, input);
+      const $parsed = await $castInput(layer, readSubmissionInputSchema, input);
       if (
         !(await $authorizer(
           "work.Submission",

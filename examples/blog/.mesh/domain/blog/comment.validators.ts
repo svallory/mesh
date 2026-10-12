@@ -36,26 +36,26 @@ const comparison = <T extends z.ZodType>(value: T) =>
       message: "a comparison needs an operator",
     });
 
-export const commentFilter: z.ZodType<CommentFilter> = z.lazy(
+export const commentFilterSchema: z.ZodType<CommentFilter> = z.lazy(
   () =>
     z.union([
-      z.strictObject({ and: z.array(commentFilter).readonly() }),
-      z.strictObject({ or: z.array(commentFilter).readonly() }),
+      z.strictObject({ and: z.array(commentFilterSchema).readonly() }),
+      z.strictObject({ or: z.array(commentFilterSchema).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).exactOptional(),
-        body: comparison(z.string()).exactOptional(),
-        postId: comparison(z.uuid()).exactOptional(),
+        id: comparison(z.uuid()).optional(),
+        body: comparison(z.string()).optional(),
+        postId: comparison(z.uuid()).optional(),
       }),
     ]) as unknown as z.ZodType<CommentFilter>,
 );
 
-export const commentSort = z
+export const commentSortSchema = z
   .array(z.enum(["id", "-id", "body", "-body", "postId", "-postId"]))
   .readonly();
 
-export const readCommentInput = z.strictObject({
-  filter: commentFilter.optional(),
-  sort: commentSort.optional(),
+export const readCommentInputSchema = z.strictObject({
+  filter: commentFilterSchema.optional(),
+  sort: commentSortSchema.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
   load: z
@@ -65,5 +65,5 @@ export const readCommentInput = z.strictObject({
 }) satisfies z.ZodType<ReadCommentInput<keyof CommentLoadable>>;
 
 export type ReadCommentInputShape = Assert<
-  SameShape<z.output<typeof readCommentInput>, ReadCommentInput<keyof CommentLoadable>>
+  SameShape<z.output<typeof readCommentInputSchema>, ReadCommentInput<keyof CommentLoadable>>
 >;

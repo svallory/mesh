@@ -50,10 +50,10 @@ import type {
   ReadSessionReferenceInput,
 } from "./sessionReference.types";
 import {
-  recordSessionReferenceInput,
-  setAvailabilitySessionReferenceInput,
-  redactSessionReferenceInput,
-  readSessionReferenceInput,
+  recordSessionReferenceInputSchema,
+  setAvailabilitySessionReferenceInputSchema,
+  redactSessionReferenceInputSchema,
+  readSessionReferenceInputSchema,
 } from "./sessionReference.validators";
 import { tables } from "../../schema";
 import {
@@ -86,13 +86,13 @@ export function bindSessionReferenceReads(
       context?: unknown,
       clock?: () => $Date,
       policies?: boolean,
-      cast?: $CastOutput<typeof readSessionReferenceInput>,
+      cast?: $CastOutput<typeof readSessionReferenceInputSchema>,
     ): $Promise<
       L extends unknown ? SessionReferenceTxWith<SessionReferenceLoadNames<L>>[] : never
     > {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
       // for its policies and hands it over as `cast`; a `privileged` read casts it here.
-      const parsed = cast ?? (await $castInput(layer, readSessionReferenceInput, input));
+      const parsed = cast ?? (await $castInput(layer, readSessionReferenceInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.session_references, {
           filter: parsed.filter,
@@ -136,7 +136,7 @@ export function bindSessionReference(
       ...[context]: $ContextArgument
     ): $Promise<SessionReference> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, recordSessionReferenceInput, input);
+      const parsed = await $castInput(layer, recordSessionReferenceInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -276,16 +276,17 @@ export function bindSessionReference(
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // the input: the member inputs the caller sent, applied now that the checks have passed
-            if (parsed.runtime !== undefined) $changes.runtime = $record.runtime = parsed.runtime;
-            if (parsed.runtimeSessionId !== undefined)
+            if ($Object.hasOwn(parsed, "runtime") && parsed.runtime !== undefined)
+              $changes.runtime = $record.runtime = parsed.runtime;
+            if ($Object.hasOwn(parsed, "runtimeSessionId") && parsed.runtimeSessionId !== undefined)
               $changes.runtimeSessionId = $record.runtimeSessionId = parsed.runtimeSessionId;
-            if (parsed.availability !== undefined)
+            if ($Object.hasOwn(parsed, "availability") && parsed.availability !== undefined)
               $changes.availability = $record.availability = parsed.availability;
-            if (parsed.location !== undefined)
+            if ($Object.hasOwn(parsed, "location") && parsed.location !== undefined)
               $changes.location = $record.location = parsed.location;
-            if (parsed.machine !== undefined)
+            if ($Object.hasOwn(parsed, "machine") && parsed.machine !== undefined)
               $changes.machineId = $record.machineId = parsed.machine;
-            if (parsed.agentProfile !== undefined)
+            if ($Object.hasOwn(parsed, "agentProfile") && parsed.agentProfile !== undefined)
               $changes.agentProfileId = $record.agentProfileId = parsed.agentProfile;
             // do: the steps run in written order, each seeing the record as the ones before it left it
             {
@@ -321,7 +322,7 @@ export function bindSessionReference(
       ...[context]: $ContextArgument
     ): $Promise<SessionReference> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, setAvailabilitySessionReferenceInput, input);
+      const parsed = await $castInput(layer, setAvailabilitySessionReferenceInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -428,9 +429,9 @@ export function bindSessionReference(
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // the input: the member inputs the caller sent, applied now that the checks have passed
-            if (parsed.availability !== undefined)
+            if ($Object.hasOwn(parsed, "availability") && parsed.availability !== undefined)
               $changes.availability = $record.availability = parsed.availability;
-            if (parsed.location !== undefined)
+            if ($Object.hasOwn(parsed, "location") && parsed.location !== undefined)
               $changes.location = $record.location = parsed.location;
             // do: the steps run in written order, each seeing the record as the ones before it left it
             {
@@ -476,7 +477,7 @@ export function bindSessionReference(
       ...[context]: $ContextArgument
     ): $Promise<SessionReference> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, redactSessionReferenceInput, input);
+      const parsed = await $castInput(layer, redactSessionReferenceInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -632,7 +633,7 @@ export function bindSessionReference(
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $parsed = await $castInput(layer, readSessionReferenceInput, input);
+      const $parsed = await $castInput(layer, readSessionReferenceInputSchema, input);
       if (
         !(await $authorizer(
           "execution.SessionReference",

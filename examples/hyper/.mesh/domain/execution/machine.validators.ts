@@ -44,24 +44,24 @@ const comparison = <T extends z.ZodType>(value: T) =>
       message: "a comparison needs an operator",
     });
 
-export const machineFilter: z.ZodType<MachineFilter> = z.lazy(
+export const machineFilterSchema: z.ZodType<MachineFilter> = z.lazy(
   () =>
     z.union([
-      z.strictObject({ and: z.array(machineFilter).readonly() }),
-      z.strictObject({ or: z.array(machineFilter).readonly() }),
+      z.strictObject({ and: z.array(machineFilterSchema).readonly() }),
+      z.strictObject({ or: z.array(machineFilterSchema).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).exactOptional(),
-        name: comparison(z.string()).exactOptional(),
-        platform: comparison(z.string()).exactOptional(),
-        state: comparison(z.enum(["active", "retired"])).exactOptional(),
-        version: comparison(z.int()).exactOptional(),
-        registeredAt: comparison(z.date()).exactOptional(),
-        firstReportedById: comparison(z.uuid()).exactOptional(),
+        id: comparison(z.uuid()).optional(),
+        name: comparison(z.string()).optional(),
+        platform: comparison(z.string()).optional(),
+        state: comparison(z.enum(["active", "retired"])).optional(),
+        version: comparison(z.int()).optional(),
+        registeredAt: comparison(z.date()).optional(),
+        firstReportedById: comparison(z.uuid()).optional(),
       }),
     ]) as unknown as z.ZodType<MachineFilter>,
 );
 
-export const machineSort = z
+export const machineSortSchema = z
   .array(
     z.enum([
       "id",
@@ -82,46 +82,46 @@ export const machineSort = z
   )
   .readonly();
 
-export const registerMachineInput = z.strictObject({
+export const registerMachineInputSchema = z.strictObject({
   name: z.string(),
   platform: z.string().nullable().optional(),
 }) satisfies z.ZodType<RegisterMachineInput>;
 
 export type RegisterMachineInputShape = Assert<
-  SameShape<z.output<typeof registerMachineInput>, RegisterMachineInput>
+  SameShape<z.output<typeof registerMachineInputSchema>, RegisterMachineInput>
 >;
 
-export const reportMachineInput = z.strictObject({
+export const reportMachineInputSchema = z.strictObject({
   name: z.string(),
 }) satisfies z.ZodType<ReportMachineInput>;
 
 export type ReportMachineInputShape = Assert<
-  SameShape<z.output<typeof reportMachineInput>, ReportMachineInput>
+  SameShape<z.output<typeof reportMachineInputSchema>, ReportMachineInput>
 >;
 
-export const updateMachineInput = z.strictObject({
+export const updateMachineInputSchema = z.strictObject({
   id: z.uuid(),
   platform: z.string().nullable().optional(),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<UpdateMachineInput>;
 
 export type UpdateMachineInputShape = Assert<
-  SameShape<z.output<typeof updateMachineInput>, UpdateMachineInput>
+  SameShape<z.output<typeof updateMachineInputSchema>, UpdateMachineInput>
 >;
 
-export const retireMachineInput = z.strictObject({
+export const retireMachineInputSchema = z.strictObject({
   id: z.uuid(),
   reason: z.string().min(1),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<RetireMachineInput>;
 
 export type RetireMachineInputShape = Assert<
-  SameShape<z.output<typeof retireMachineInput>, RetireMachineInput>
+  SameShape<z.output<typeof retireMachineInputSchema>, RetireMachineInput>
 >;
 
-export const readMachineInput = z.strictObject({
-  filter: machineFilter.optional(),
-  sort: machineSort.optional(),
+export const readMachineInputSchema = z.strictObject({
+  filter: machineFilterSchema.optional(),
+  sort: machineSortSchema.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
   load: z
@@ -131,5 +131,5 @@ export const readMachineInput = z.strictObject({
 }) satisfies z.ZodType<ReadMachineInput<keyof MachineLoadable>>;
 
 export type ReadMachineInputShape = Assert<
-  SameShape<z.output<typeof readMachineInput>, ReadMachineInput<keyof MachineLoadable>>
+  SameShape<z.output<typeof readMachineInputSchema>, ReadMachineInput<keyof MachineLoadable>>
 >;

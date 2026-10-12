@@ -43,26 +43,26 @@ const comparison = <T extends z.ZodType>(value: T) =>
       message: "a comparison needs an operator",
     });
 
-export const membershipFilter: z.ZodType<MembershipFilter> = z.lazy(
+export const membershipFilterSchema: z.ZodType<MembershipFilter> = z.lazy(
   () =>
     z.union([
-      z.strictObject({ and: z.array(membershipFilter).readonly() }),
-      z.strictObject({ or: z.array(membershipFilter).readonly() }),
+      z.strictObject({ and: z.array(membershipFilterSchema).readonly() }),
+      z.strictObject({ or: z.array(membershipFilterSchema).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).exactOptional(),
-        role: comparison(z.enum(["owner", "member", "guest"])).exactOptional(),
-        state: comparison(z.enum(["active", "revoked"])).exactOptional(),
-        grantedAt: comparison(z.date()).exactOptional(),
-        revokedAt: comparison(z.date()).exactOptional(),
-        version: comparison(z.int()).exactOptional(),
-        collaboratorId: comparison(z.uuid()).exactOptional(),
-        grantedById: comparison(z.uuid()).exactOptional(),
-        revokedById: comparison(z.uuid()).exactOptional(),
+        id: comparison(z.uuid()).optional(),
+        role: comparison(z.enum(["owner", "member", "guest"])).optional(),
+        state: comparison(z.enum(["active", "revoked"])).optional(),
+        grantedAt: comparison(z.date()).optional(),
+        revokedAt: comparison(z.date()).optional(),
+        version: comparison(z.int()).optional(),
+        collaboratorId: comparison(z.uuid()).optional(),
+        grantedById: comparison(z.uuid()).optional(),
+        revokedById: comparison(z.uuid()).optional(),
       }),
     ]) as unknown as z.ZodType<MembershipFilter>,
 );
 
-export const membershipSort = z
+export const membershipSortSchema = z
   .array(
     z.enum([
       "id",
@@ -87,38 +87,38 @@ export const membershipSort = z
   )
   .readonly();
 
-export const grantMembershipInput = z.strictObject({
+export const grantMembershipInputSchema = z.strictObject({
   collaborator: z.uuid(),
   role: z.enum(["owner", "member", "guest"]),
 }) satisfies z.ZodType<GrantMembershipInput>;
 
 export type GrantMembershipInputShape = Assert<
-  SameShape<z.output<typeof grantMembershipInput>, GrantMembershipInput>
+  SameShape<z.output<typeof grantMembershipInputSchema>, GrantMembershipInput>
 >;
 
-export const changeRoleMembershipInput = z.strictObject({
+export const changeRoleMembershipInputSchema = z.strictObject({
   id: z.uuid(),
   role: z.enum(["owner", "member", "guest"]).optional(),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<ChangeRoleMembershipInput>;
 
 export type ChangeRoleMembershipInputShape = Assert<
-  SameShape<z.output<typeof changeRoleMembershipInput>, ChangeRoleMembershipInput>
+  SameShape<z.output<typeof changeRoleMembershipInputSchema>, ChangeRoleMembershipInput>
 >;
 
-export const revokeMembershipInput = z.strictObject({
+export const revokeMembershipInputSchema = z.strictObject({
   id: z.uuid(),
   reason: z.string().nullable().optional(),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<RevokeMembershipInput>;
 
 export type RevokeMembershipInputShape = Assert<
-  SameShape<z.output<typeof revokeMembershipInput>, RevokeMembershipInput>
+  SameShape<z.output<typeof revokeMembershipInputSchema>, RevokeMembershipInput>
 >;
 
-export const readMembershipInput = z.strictObject({
-  filter: membershipFilter.optional(),
-  sort: membershipSort.optional(),
+export const readMembershipInputSchema = z.strictObject({
+  filter: membershipFilterSchema.optional(),
+  sort: membershipSortSchema.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
   load: z
@@ -128,5 +128,8 @@ export const readMembershipInput = z.strictObject({
 }) satisfies z.ZodType<ReadMembershipInput<keyof MembershipLoadable>>;
 
 export type ReadMembershipInputShape = Assert<
-  SameShape<z.output<typeof readMembershipInput>, ReadMembershipInput<keyof MembershipLoadable>>
+  SameShape<
+    z.output<typeof readMembershipInputSchema>,
+    ReadMembershipInput<keyof MembershipLoadable>
+  >
 >;

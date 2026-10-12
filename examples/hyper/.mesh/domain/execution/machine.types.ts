@@ -89,13 +89,13 @@ export type MachineFilter =
   | { and: readonly MachineFilter[] }
   | { or: readonly MachineFilter[] }
   | {
-      id?: $Comparison<string>;
-      name?: $Comparison<string>;
-      platform?: $Comparison<string>;
-      state?: $Comparison<"active" | "retired">;
-      version?: $Comparison<number>;
-      registeredAt?: $Comparison<$Date>;
-      firstReportedById?: $Comparison<string>;
+      id?: $Comparison<string> | undefined;
+      name?: $Comparison<string> | undefined;
+      platform?: $Comparison<string> | undefined;
+      state?: $Comparison<"active" | "retired"> | undefined;
+      version?: $Comparison<number> | undefined;
+      registeredAt?: $Comparison<$Date> | undefined;
+      firstReportedById?: $Comparison<string> | undefined;
     };
 
 export type MachineSort = readonly (

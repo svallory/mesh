@@ -41,24 +41,24 @@ const comparison = <T extends z.ZodType>(value: T) =>
       message: "a comparison needs an operator",
     });
 
-export const evidenceReferenceFilter: z.ZodType<EvidenceReferenceFilter> = z.lazy(
+export const evidenceReferenceFilterSchema: z.ZodType<EvidenceReferenceFilter> = z.lazy(
   () =>
     z.union([
-      z.strictObject({ and: z.array(evidenceReferenceFilter).readonly() }),
-      z.strictObject({ or: z.array(evidenceReferenceFilter).readonly() }),
+      z.strictObject({ and: z.array(evidenceReferenceFilterSchema).readonly() }),
+      z.strictObject({ or: z.array(evidenceReferenceFilterSchema).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).exactOptional(),
-        kind: comparison(z.string()).exactOptional(),
-        locator: comparison(z.string()).exactOptional(),
-        contentHash: comparison(z.string()).exactOptional(),
-        description: comparison(z.string()).exactOptional(),
-        recordedAt: comparison(z.date()).exactOptional(),
-        recordedById: comparison(z.uuid()).exactOptional(),
+        id: comparison(z.uuid()).optional(),
+        kind: comparison(z.string()).optional(),
+        locator: comparison(z.string()).optional(),
+        contentHash: comparison(z.string()).optional(),
+        description: comparison(z.string()).optional(),
+        recordedAt: comparison(z.date()).optional(),
+        recordedById: comparison(z.uuid()).optional(),
       }),
     ]) as unknown as z.ZodType<EvidenceReferenceFilter>,
 );
 
-export const evidenceReferenceSort = z
+export const evidenceReferenceSortSchema = z
   .array(
     z.enum([
       "id",
@@ -79,7 +79,7 @@ export const evidenceReferenceSort = z
   )
   .readonly();
 
-export const recordEvidenceReferenceInput = z.strictObject({
+export const recordEvidenceReferenceInputSchema = z.strictObject({
   kind: z.string(),
   locator: z.string(),
   contentHash: z.string().nullable().optional(),
@@ -87,12 +87,12 @@ export const recordEvidenceReferenceInput = z.strictObject({
 }) satisfies z.ZodType<RecordEvidenceReferenceInput>;
 
 export type RecordEvidenceReferenceInputShape = Assert<
-  SameShape<z.output<typeof recordEvidenceReferenceInput>, RecordEvidenceReferenceInput>
+  SameShape<z.output<typeof recordEvidenceReferenceInputSchema>, RecordEvidenceReferenceInput>
 >;
 
-export const readEvidenceReferenceInput = z.strictObject({
-  filter: evidenceReferenceFilter.optional(),
-  sort: evidenceReferenceSort.optional(),
+export const readEvidenceReferenceInputSchema = z.strictObject({
+  filter: evidenceReferenceFilterSchema.optional(),
+  sort: evidenceReferenceSortSchema.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
   load: z
@@ -103,7 +103,7 @@ export const readEvidenceReferenceInput = z.strictObject({
 
 export type ReadEvidenceReferenceInputShape = Assert<
   SameShape<
-    z.output<typeof readEvidenceReferenceInput>,
+    z.output<typeof readEvidenceReferenceInputSchema>,
     ReadEvidenceReferenceInput<keyof EvidenceReferenceLoadable>
   >
 >;

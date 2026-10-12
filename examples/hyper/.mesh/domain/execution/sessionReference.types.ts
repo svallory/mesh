@@ -108,16 +108,16 @@ export type SessionReferenceFilter =
   | { and: readonly SessionReferenceFilter[] }
   | { or: readonly SessionReferenceFilter[] }
   | {
-      id?: $Comparison<string>;
-      runtime?: $Comparison<string>;
-      runtimeSessionId?: $Comparison<string>;
-      availability?: $Comparison<"complete" | "partial" | "unavailable" | "redacted">;
-      location?: $Comparison<string>;
-      version?: $Comparison<number>;
-      recordedAt?: $Comparison<$Date>;
-      machineId?: $Comparison<string>;
-      agentProfileId?: $Comparison<string>;
-      recordedById?: $Comparison<string>;
+      id?: $Comparison<string> | undefined;
+      runtime?: $Comparison<string> | undefined;
+      runtimeSessionId?: $Comparison<string> | undefined;
+      availability?: $Comparison<"complete" | "partial" | "unavailable" | "redacted"> | undefined;
+      location?: $Comparison<string> | undefined;
+      version?: $Comparison<number> | undefined;
+      recordedAt?: $Comparison<$Date> | undefined;
+      machineId?: $Comparison<string> | undefined;
+      agentProfileId?: $Comparison<string> | undefined;
+      recordedById?: $Comparison<string> | undefined;
     };
 
 export type SessionReferenceSort = readonly (

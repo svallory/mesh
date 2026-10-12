@@ -46,27 +46,27 @@ const comparison = <T extends z.ZodType>(value: T) =>
       message: "a comparison needs an operator",
     });
 
-export const claimFilter: z.ZodType<ClaimFilter> = z.lazy(
+export const claimFilterSchema: z.ZodType<ClaimFilter> = z.lazy(
   () =>
     z.union([
-      z.strictObject({ and: z.array(claimFilter).readonly() }),
-      z.strictObject({ or: z.array(claimFilter).readonly() }),
+      z.strictObject({ and: z.array(claimFilterSchema).readonly() }),
+      z.strictObject({ or: z.array(claimFilterSchema).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).exactOptional(),
-        fence: comparison(z.int()).exactOptional(),
-        acquiredAt: comparison(z.date()).exactOptional(),
-        expiresAt: comparison(z.date()).exactOptional(),
-        endedAt: comparison(z.date()).exactOptional(),
-        endReason: comparison(z.string()).exactOptional(),
-        state: comparison(z.enum(["active", "released", "revoked", "expired"])).exactOptional(),
-        taskId: comparison(z.uuid()).exactOptional(),
-        holderId: comparison(z.uuid()).exactOptional(),
-        lapsed: comparison(z.boolean()).exactOptional(),
+        id: comparison(z.uuid()).optional(),
+        fence: comparison(z.int()).optional(),
+        acquiredAt: comparison(z.date()).optional(),
+        expiresAt: comparison(z.date()).optional(),
+        endedAt: comparison(z.date()).optional(),
+        endReason: comparison(z.string()).optional(),
+        state: comparison(z.enum(["active", "released", "revoked", "expired"])).optional(),
+        taskId: comparison(z.uuid()).optional(),
+        holderId: comparison(z.uuid()).optional(),
+        lapsed: comparison(z.boolean()).optional(),
       }),
     ]) as unknown as z.ZodType<ClaimFilter>,
 );
 
-export const claimSort = z
+export const claimSortSchema = z
   .array(
     z.enum([
       "id",
@@ -93,26 +93,26 @@ export const claimSort = z
   )
   .readonly();
 
-export const acquireClaimInput = z.strictObject({
+export const acquireClaimInputSchema = z.strictObject({
   task: z.uuid(),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<AcquireClaimInput>;
 
 export type AcquireClaimInputShape = Assert<
-  SameShape<z.output<typeof acquireClaimInput>, AcquireClaimInput>
+  SameShape<z.output<typeof acquireClaimInputSchema>, AcquireClaimInput>
 >;
 
-export const renewClaimInput = z.strictObject({
+export const renewClaimInputSchema = z.strictObject({
   id: z.uuid(),
   fence: z.int(),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<RenewClaimInput>;
 
 export type RenewClaimInputShape = Assert<
-  SameShape<z.output<typeof renewClaimInput>, RenewClaimInput>
+  SameShape<z.output<typeof renewClaimInputSchema>, RenewClaimInput>
 >;
 
-export const releaseClaimInput = z.strictObject({
+export const releaseClaimInputSchema = z.strictObject({
   id: z.uuid(),
   fence: z.int(),
   reason: z.string().nullable().optional(),
@@ -120,39 +120,41 @@ export const releaseClaimInput = z.strictObject({
 }) satisfies z.ZodType<ReleaseClaimInput>;
 
 export type ReleaseClaimInputShape = Assert<
-  SameShape<z.output<typeof releaseClaimInput>, ReleaseClaimInput>
+  SameShape<z.output<typeof releaseClaimInputSchema>, ReleaseClaimInput>
 >;
 
-export const revokeClaimInput = z.strictObject({
+export const revokeClaimInputSchema = z.strictObject({
   id: z.uuid(),
   reason: z.string().min(1),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<RevokeClaimInput>;
 
 export type RevokeClaimInputShape = Assert<
-  SameShape<z.output<typeof revokeClaimInput>, RevokeClaimInput>
+  SameShape<z.output<typeof revokeClaimInputSchema>, RevokeClaimInput>
 >;
 
-export const expireClaimInput = z.strictObject({
+export const expireClaimInputSchema = z.strictObject({
   id: z.uuid(),
   reason: z.string().nullable().optional(),
 }) satisfies z.ZodType<ExpireClaimInput>;
 
 export type ExpireClaimInputShape = Assert<
-  SameShape<z.output<typeof expireClaimInput>, ExpireClaimInput>
+  SameShape<z.output<typeof expireClaimInputSchema>, ExpireClaimInput>
 >;
 
-export const endClaimInput = z.strictObject({
+export const endClaimInputSchema = z.strictObject({
   id: z.uuid(),
   outcome: z.enum(["released", "revoked", "expired"]),
   reason: z.string(),
 }) satisfies z.ZodType<EndClaimInput>;
 
-export type EndClaimInputShape = Assert<SameShape<z.output<typeof endClaimInput>, EndClaimInput>>;
+export type EndClaimInputShape = Assert<
+  SameShape<z.output<typeof endClaimInputSchema>, EndClaimInput>
+>;
 
-export const readClaimInput = z.strictObject({
-  filter: claimFilter.optional(),
-  sort: claimSort.optional(),
+export const readClaimInputSchema = z.strictObject({
+  filter: claimFilterSchema.optional(),
+  sort: claimSortSchema.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
   load: z
@@ -162,5 +164,5 @@ export const readClaimInput = z.strictObject({
 }) satisfies z.ZodType<ReadClaimInput<keyof ClaimLoadable>>;
 
 export type ReadClaimInputShape = Assert<
-  SameShape<z.output<typeof readClaimInput>, ReadClaimInput<keyof ClaimLoadable>>
+  SameShape<z.output<typeof readClaimInputSchema>, ReadClaimInput<keyof ClaimLoadable>>
 >;

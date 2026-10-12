@@ -51,7 +51,12 @@ import type {
   SettleRunInput,
   ReadRunInput,
 } from "./run.types";
-import { startRunInput, cancelRunInput, settleRunInput, readRunInput } from "./run.validators";
+import {
+  startRunInputSchema,
+  cancelRunInputSchema,
+  settleRunInputSchema,
+  readRunInputSchema,
+} from "./run.validators";
 import { tables } from "../../schema";
 import {
   $expressions,
@@ -83,11 +88,11 @@ export function bindRunReads(
       context?: unknown,
       clock?: () => $Date,
       policies?: boolean,
-      cast?: $CastOutput<typeof readRunInput>,
+      cast?: $CastOutput<typeof readRunInputSchema>,
     ): $Promise<L extends unknown ? RunTxWith<RunLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
       // for its policies and hands it over as `cast`; a `privileged` read casts it here.
-      const parsed = cast ?? (await $castInput(layer, readRunInput, input));
+      const parsed = cast ?? (await $castInput(layer, readRunInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.runs, {
           filter: parsed.filter,
@@ -124,7 +129,7 @@ export function bindRun(
   return $Object.freeze({
     async start(input: StartRunInput, ...[context]: $ContextArgument): $Promise<Run> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, startRunInput, input);
+      const parsed = await $castInput(layer, startRunInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -237,9 +242,11 @@ export function bindRun(
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // the input: the member inputs the caller sent, applied now that the checks have passed
-            if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
-            if (parsed.inputs !== undefined) $changes.inputs = $record.inputs = parsed.inputs;
-            if (parsed.parentRun !== undefined)
+            if ($Object.hasOwn(parsed, "task") && parsed.task !== undefined)
+              $changes.taskId = $record.taskId = parsed.task;
+            if ($Object.hasOwn(parsed, "inputs") && parsed.inputs !== undefined)
+              $changes.inputs = $record.inputs = parsed.inputs;
+            if ($Object.hasOwn(parsed, "parentRun") && parsed.parentRun !== undefined)
               $changes.parentRunId = $record.parentRunId = parsed.parentRun;
             // do: the steps run in written order, each seeing the record as the ones before it left it
             {
@@ -289,7 +296,7 @@ export function bindRun(
 
     async cancel(input: CancelRunInput, ...[context]: $ContextArgument): $Promise<Run> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, cancelRunInput, input);
+      const parsed = await $castInput(layer, cancelRunInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -444,7 +451,7 @@ export function bindRun(
 
     async settle(input: SettleRunInput, ...[context]: $ContextArgument): $Promise<Run> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, settleRunInput, input);
+      const parsed = await $castInput(layer, settleRunInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -510,7 +517,8 @@ export function bindRun(
               { clock: $clock },
             ) as unknown as $StoredScope<SettleRunInput>;
             // the input: the member inputs the caller sent, applied now that the checks have passed
-            if (parsed.outcome !== undefined) $changes.outcome = $record.outcome = parsed.outcome;
+            if ($Object.hasOwn(parsed, "outcome") && parsed.outcome !== undefined)
+              $changes.outcome = $record.outcome = parsed.outcome;
             // do: the steps run in written order, each seeing the record as the ones before it left it
             {
               const $value = await $expressions["settle.step.0.set.state"]($s);
@@ -563,7 +571,7 @@ export function bindRun(
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $parsed = await $castInput(layer, readRunInput, input);
+      const $parsed = await $castInput(layer, readRunInputSchema, input);
       if (
         !(await $authorizer(
           "execution.Run",

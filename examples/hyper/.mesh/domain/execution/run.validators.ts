@@ -43,27 +43,27 @@ const comparison = <T extends z.ZodType>(value: T) =>
       message: "a comparison needs an operator",
     });
 
-export const runFilter: z.ZodType<RunFilter> = z.lazy(
+export const runFilterSchema: z.ZodType<RunFilter> = z.lazy(
   () =>
     z.union([
-      z.strictObject({ and: z.array(runFilter).readonly() }),
-      z.strictObject({ or: z.array(runFilter).readonly() }),
+      z.strictObject({ and: z.array(runFilterSchema).readonly() }),
+      z.strictObject({ or: z.array(runFilterSchema).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).exactOptional(),
-        state: comparison(z.enum(["running", "succeeded", "failed", "canceled"])).exactOptional(),
-        cancelReason: comparison(z.string()).exactOptional(),
-        endedAt: comparison(z.date()).exactOptional(),
-        version: comparison(z.int()).exactOptional(),
-        startedAt: comparison(z.date()).exactOptional(),
-        taskId: comparison(z.uuid()).exactOptional(),
-        responsibleId: comparison(z.uuid()).exactOptional(),
-        startedById: comparison(z.uuid()).exactOptional(),
-        parentRunId: comparison(z.uuid()).exactOptional(),
+        id: comparison(z.uuid()).optional(),
+        state: comparison(z.enum(["running", "succeeded", "failed", "canceled"])).optional(),
+        cancelReason: comparison(z.string()).optional(),
+        endedAt: comparison(z.date()).optional(),
+        version: comparison(z.int()).optional(),
+        startedAt: comparison(z.date()).optional(),
+        taskId: comparison(z.uuid()).optional(),
+        responsibleId: comparison(z.uuid()).optional(),
+        startedById: comparison(z.uuid()).optional(),
+        parentRunId: comparison(z.uuid()).optional(),
       }),
     ]) as unknown as z.ZodType<RunFilter>,
 );
 
-export const runSort = z
+export const runSortSchema = z
   .array(
     z.enum([
       "id",
@@ -90,37 +90,39 @@ export const runSort = z
   )
   .readonly();
 
-export const startRunInput = z.strictObject({
+export const startRunInputSchema = z.strictObject({
   task: z.uuid(),
   inputs: (z.json() as z.ZodType<unknown>).nullable().optional(),
   parentRun: z.uuid().nullable().optional(),
 }) satisfies z.ZodType<StartRunInput>;
 
-export type StartRunInputShape = Assert<SameShape<z.output<typeof startRunInput>, StartRunInput>>;
+export type StartRunInputShape = Assert<
+  SameShape<z.output<typeof startRunInputSchema>, StartRunInput>
+>;
 
-export const cancelRunInput = z.strictObject({
+export const cancelRunInputSchema = z.strictObject({
   id: z.uuid(),
   reason: z.string().min(1),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<CancelRunInput>;
 
 export type CancelRunInputShape = Assert<
-  SameShape<z.output<typeof cancelRunInput>, CancelRunInput>
+  SameShape<z.output<typeof cancelRunInputSchema>, CancelRunInput>
 >;
 
-export const settleRunInput = z.strictObject({
+export const settleRunInputSchema = z.strictObject({
   id: z.uuid(),
   result: z.enum(["succeeded", "failed"]),
   outcome: (z.json() as z.ZodType<unknown>).nullable().optional(),
 }) satisfies z.ZodType<SettleRunInput>;
 
 export type SettleRunInputShape = Assert<
-  SameShape<z.output<typeof settleRunInput>, SettleRunInput>
+  SameShape<z.output<typeof settleRunInputSchema>, SettleRunInput>
 >;
 
-export const readRunInput = z.strictObject({
-  filter: runFilter.optional(),
-  sort: runSort.optional(),
+export const readRunInputSchema = z.strictObject({
+  filter: runFilterSchema.optional(),
+  sort: runSortSchema.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
   load: z
@@ -130,5 +132,5 @@ export const readRunInput = z.strictObject({
 }) satisfies z.ZodType<ReadRunInput<keyof RunLoadable>>;
 
 export type ReadRunInputShape = Assert<
-  SameShape<z.output<typeof readRunInput>, ReadRunInput<keyof RunLoadable>>
+  SameShape<z.output<typeof readRunInputSchema>, ReadRunInput<keyof RunLoadable>>
 >;

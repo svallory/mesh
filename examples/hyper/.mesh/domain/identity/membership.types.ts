@@ -96,15 +96,15 @@ export type MembershipFilter =
   | { and: readonly MembershipFilter[] }
   | { or: readonly MembershipFilter[] }
   | {
-      id?: $Comparison<string>;
-      role?: $Comparison<"owner" | "member" | "guest">;
-      state?: $Comparison<"active" | "revoked">;
-      grantedAt?: $Comparison<$Date>;
-      revokedAt?: $Comparison<$Date>;
-      version?: $Comparison<number>;
-      collaboratorId?: $Comparison<string>;
-      grantedById?: $Comparison<string>;
-      revokedById?: $Comparison<string>;
+      id?: $Comparison<string> | undefined;
+      role?: $Comparison<"owner" | "member" | "guest"> | undefined;
+      state?: $Comparison<"active" | "revoked"> | undefined;
+      grantedAt?: $Comparison<$Date> | undefined;
+      revokedAt?: $Comparison<$Date> | undefined;
+      version?: $Comparison<number> | undefined;
+      collaboratorId?: $Comparison<string> | undefined;
+      grantedById?: $Comparison<string> | undefined;
+      revokedById?: $Comparison<string> | undefined;
     };
 
 export type MembershipSort = readonly (

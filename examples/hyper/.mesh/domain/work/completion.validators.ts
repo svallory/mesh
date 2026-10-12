@@ -41,25 +41,25 @@ const comparison = <T extends z.ZodType>(value: T) =>
       message: "a comparison needs an operator",
     });
 
-export const completionFilter: z.ZodType<CompletionFilter> = z.lazy(
+export const completionFilterSchema: z.ZodType<CompletionFilter> = z.lazy(
   () =>
     z.union([
-      z.strictObject({ and: z.array(completionFilter).readonly() }),
-      z.strictObject({ or: z.array(completionFilter).readonly() }),
+      z.strictObject({ and: z.array(completionFilterSchema).readonly() }),
+      z.strictObject({ or: z.array(completionFilterSchema).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).exactOptional(),
+        id: comparison(z.uuid()).optional(),
         rule: comparison(
           z.enum(["review-accepted", "performer-is-reviewer", "review-waived"]),
-        ).exactOptional(),
-        completedAt: comparison(z.date()).exactOptional(),
-        taskId: comparison(z.uuid()).exactOptional(),
-        submissionId: comparison(z.uuid()).exactOptional(),
-        completedById: comparison(z.uuid()).exactOptional(),
+        ).optional(),
+        completedAt: comparison(z.date()).optional(),
+        taskId: comparison(z.uuid()).optional(),
+        submissionId: comparison(z.uuid()).optional(),
+        completedById: comparison(z.uuid()).optional(),
       }),
     ]) as unknown as z.ZodType<CompletionFilter>,
 );
 
-export const completionSort = z
+export const completionSortSchema = z
   .array(
     z.enum([
       "id",
@@ -78,19 +78,19 @@ export const completionSort = z
   )
   .readonly();
 
-export const recordCompletionInput = z.strictObject({
+export const recordCompletionInputSchema = z.strictObject({
   rule: z.enum(["review-accepted", "performer-is-reviewer", "review-waived"]),
   task: z.uuid(),
   submission: z.uuid().nullable().optional(),
 }) satisfies z.ZodType<RecordCompletionInput>;
 
 export type RecordCompletionInputShape = Assert<
-  SameShape<z.output<typeof recordCompletionInput>, RecordCompletionInput>
+  SameShape<z.output<typeof recordCompletionInputSchema>, RecordCompletionInput>
 >;
 
-export const readCompletionInput = z.strictObject({
-  filter: completionFilter.optional(),
-  sort: completionSort.optional(),
+export const readCompletionInputSchema = z.strictObject({
+  filter: completionFilterSchema.optional(),
+  sort: completionSortSchema.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
   load: z
@@ -100,5 +100,8 @@ export const readCompletionInput = z.strictObject({
 }) satisfies z.ZodType<ReadCompletionInput<keyof CompletionLoadable>>;
 
 export type ReadCompletionInputShape = Assert<
-  SameShape<z.output<typeof readCompletionInput>, ReadCompletionInput<keyof CompletionLoadable>>
+  SameShape<
+    z.output<typeof readCompletionInputSchema>,
+    ReadCompletionInput<keyof CompletionLoadable>
+  >
 >;

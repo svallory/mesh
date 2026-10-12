@@ -33,11 +33,11 @@ export type WorkspaceFilter =
   | { and: readonly WorkspaceFilter[] }
   | { or: readonly WorkspaceFilter[] }
   | {
-      id?: $Comparison<string>;
-      name?: $Comparison<string>;
-      location?: $Comparison<"local" | "shared">;
-      state?: $Comparison<"active" | "moved">;
-      version?: $Comparison<number>;
+      id?: $Comparison<string> | undefined;
+      name?: $Comparison<string> | undefined;
+      location?: $Comparison<"local" | "shared"> | undefined;
+      state?: $Comparison<"active" | "moved"> | undefined;
+      version?: $Comparison<number> | undefined;
     };
 
 export type WorkspaceSort = readonly (

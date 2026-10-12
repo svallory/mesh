@@ -35,7 +35,7 @@ import type {
   RecordEventInput,
   ReadEventInput,
 } from "./event.types";
-import { recordEventInput, readEventInput } from "./event.validators";
+import { recordEventInputSchema, readEventInputSchema } from "./event.validators";
 import { tables } from "../../schema";
 import { $expressions } from "./event.expressions";
 import { loadPlan as $loadPlan } from "../../load";
@@ -56,11 +56,11 @@ export function bindEventReads(
       context?: unknown,
       clock?: () => $Date,
       policies?: boolean,
-      cast?: $CastOutput<typeof readEventInput>,
+      cast?: $CastOutput<typeof readEventInputSchema>,
     ): $Promise<L extends unknown ? EventWith<EventLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
       // for its policies and hands it over as `cast`; a `privileged` read casts it here.
-      const parsed = cast ?? (await $castInput(layer, readEventInput, input));
+      const parsed = cast ?? (await $castInput(layer, readEventInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.events, {
           filter: parsed.filter,
@@ -97,7 +97,7 @@ export function bindEvent(
   return $Object.freeze({
     async record(input: RecordEventInput, ...[context]: $ContextArgument): $Promise<Event> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, recordEventInput, input);
+      const parsed = await $castInput(layer, recordEventInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -138,9 +138,12 @@ export function bindEvent(
             // transaction: opens here; what follows commits together or not at all
             const $now = $clock();
             // plan: a create is one insert; nothing is read first
-            const $changes: $Omit<$Record, "seq"> & { seq: $Record["seq"] | null } = {
+            const $changes: $Omit<$Record, "seq"> = {
               type: parsed.type,
-              schemaVersion: parsed.schemaVersion === undefined ? 1 : parsed.schemaVersion,
+              schemaVersion:
+                $Object.hasOwn(parsed, "schemaVersion") && parsed.schemaVersion !== undefined
+                  ? parsed.schemaVersion
+                  : 1,
               workspaceId: parsed.workspaceId,
               recordType: parsed.recordType,
               recordId: parsed.recordId,
@@ -149,11 +152,18 @@ export function bindEvent(
               caller: parsed.caller,
               occurredAt: parsed.occurredAt,
               recordedAt: $now,
-              cause: parsed.cause === undefined ? null : parsed.cause,
-              checks: parsed.checks === undefined ? null : parsed.checks,
-              payload: parsed.payload === undefined ? null : parsed.payload,
-              taskId: parsed.task === undefined ? null : parsed.task,
-              seq: null,
+              cause:
+                $Object.hasOwn(parsed, "cause") && parsed.cause !== undefined ? parsed.cause : null,
+              checks:
+                $Object.hasOwn(parsed, "checks") && parsed.checks !== undefined
+                  ? parsed.checks
+                  : null,
+              payload:
+                $Object.hasOwn(parsed, "payload") && parsed.payload !== undefined
+                  ? parsed.payload
+                  : null,
+              taskId:
+                $Object.hasOwn(parsed, "task") && parsed.task !== undefined ? parsed.task : null,
             };
             // data layer
             const $stored = await tx.insert(tables.events, $changes);
@@ -183,7 +193,7 @@ export function bindEvent(
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $parsed = await $castInput(layer, readEventInput, input);
+      const $parsed = await $castInput(layer, readEventInputSchema, input);
       if (
         !(await $authorizer(
           "audit.Event",

@@ -139,21 +139,21 @@ export type AttemptFilter =
   | { and: readonly AttemptFilter[] }
   | { or: readonly AttemptFilter[] }
   | {
-      id?: $Comparison<string>;
-      step?: $Comparison<string>;
-      number?: $Comparison<number>;
-      claimFence?: $Comparison<number>;
-      runtime?: $Comparison<string>;
-      state?: $Comparison<"running" | "succeeded" | "failed" | "stopped" | "abandoned">;
-      endedAt?: $Comparison<$Date>;
-      version?: $Comparison<number>;
-      startedAt?: $Comparison<$Date>;
-      runId?: $Comparison<string>;
-      taskId?: $Comparison<string>;
-      performerId?: $Comparison<string>;
-      delegatorId?: $Comparison<string>;
-      machineId?: $Comparison<string>;
-      sessionId?: $Comparison<string>;
+      id?: $Comparison<string> | undefined;
+      step?: $Comparison<string> | undefined;
+      number?: $Comparison<number> | undefined;
+      claimFence?: $Comparison<number> | undefined;
+      runtime?: $Comparison<string> | undefined;
+      state?: $Comparison<"running" | "succeeded" | "failed" | "stopped" | "abandoned"> | undefined;
+      endedAt?: $Comparison<$Date> | undefined;
+      version?: $Comparison<number> | undefined;
+      startedAt?: $Comparison<$Date> | undefined;
+      runId?: $Comparison<string> | undefined;
+      taskId?: $Comparison<string> | undefined;
+      performerId?: $Comparison<string> | undefined;
+      delegatorId?: $Comparison<string> | undefined;
+      machineId?: $Comparison<string> | undefined;
+      sessionId?: $Comparison<string> | undefined;
     };
 
 export type AttemptSort = readonly (

@@ -50,37 +50,37 @@ const comparison = <T extends z.ZodType>(value: T) =>
       message: "a comparison needs an operator",
     });
 
-export const taskFilter: z.ZodType<TaskFilter> = z.lazy(
+export const taskFilterSchema: z.ZodType<TaskFilter> = z.lazy(
   () =>
     z.union([
-      z.strictObject({ and: z.array(taskFilter).readonly() }),
-      z.strictObject({ or: z.array(taskFilter).readonly() }),
+      z.strictObject({ and: z.array(taskFilterSchema).readonly() }),
+      z.strictObject({ or: z.array(taskFilterSchema).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).exactOptional(),
-        title: comparison(z.string()).exactOptional(),
-        intent: comparison(z.string()).exactOptional(),
-        priority: comparison(z.int()).exactOptional(),
-        state: comparison(z.enum(["open", "done", "canceled"])).exactOptional(),
-        version: comparison(z.int()).exactOptional(),
-        createdAt: comparison(z.date()).exactOptional(),
-        reopenedAt: comparison(z.date()).exactOptional(),
-        parentId: comparison(z.uuid()).exactOptional(),
-        creatorId: comparison(z.uuid()).exactOptional(),
-        childrenSettled: comparison(z.boolean()).exactOptional(),
-        claimed: comparison(z.boolean()).exactOptional(),
-        lapsedClaim: comparison(z.boolean()).exactOptional(),
-        inReview: comparison(z.boolean()).exactOptional(),
-        assigned: comparison(z.boolean()).exactOptional(),
-        blocked: comparison(z.boolean()).exactOptional(),
-        maxFence: comparison(z.int()).exactOptional(),
+        id: comparison(z.uuid()).optional(),
+        title: comparison(z.string()).optional(),
+        intent: comparison(z.string()).optional(),
+        priority: comparison(z.int()).optional(),
+        state: comparison(z.enum(["open", "done", "canceled"])).optional(),
+        version: comparison(z.int()).optional(),
+        createdAt: comparison(z.date()).optional(),
+        reopenedAt: comparison(z.date()).optional(),
+        parentId: comparison(z.uuid()).optional(),
+        creatorId: comparison(z.uuid()).optional(),
+        childrenSettled: comparison(z.boolean()).optional(),
+        claimed: comparison(z.boolean()).optional(),
+        lapsedClaim: comparison(z.boolean()).optional(),
+        inReview: comparison(z.boolean()).optional(),
+        assigned: comparison(z.boolean()).optional(),
+        blocked: comparison(z.boolean()).optional(),
+        maxFence: comparison(z.int()).optional(),
         derivedState: comparison(
           z.enum(["ready", "blocked", "claimed", "in-review", "done", "canceled"]),
-        ).exactOptional(),
+        ).optional(),
       }),
     ]) as unknown as z.ZodType<TaskFilter>,
 );
 
-export const taskSort = z
+export const taskSortSchema = z
   .array(
     z.enum([
       "id",
@@ -123,7 +123,7 @@ export const taskSort = z
   )
   .readonly();
 
-export const createTaskInput = z.strictObject({
+export const createTaskInputSchema = z.strictObject({
   title: z.string(),
   intent: z.string().nullable().optional(),
   parent: z.uuid().nullable().optional(),
@@ -131,10 +131,10 @@ export const createTaskInput = z.strictObject({
 }) satisfies z.ZodType<CreateTaskInput>;
 
 export type CreateTaskInputShape = Assert<
-  SameShape<z.output<typeof createTaskInput>, CreateTaskInput>
+  SameShape<z.output<typeof createTaskInputSchema>, CreateTaskInput>
 >;
 
-export const updateTaskInput = z.strictObject({
+export const updateTaskInputSchema = z.strictObject({
   id: z.uuid(),
   title: z.string().optional(),
   intent: z.string().nullable().optional(),
@@ -142,56 +142,58 @@ export const updateTaskInput = z.strictObject({
 }) satisfies z.ZodType<UpdateTaskInput>;
 
 export type UpdateTaskInputShape = Assert<
-  SameShape<z.output<typeof updateTaskInput>, UpdateTaskInput>
+  SameShape<z.output<typeof updateTaskInputSchema>, UpdateTaskInput>
 >;
 
-export const setPriorityTaskInput = z.strictObject({
+export const setPriorityTaskInputSchema = z.strictObject({
   id: z.uuid(),
   priority: z.int().nullable().optional(),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<SetPriorityTaskInput>;
 
 export type SetPriorityTaskInputShape = Assert<
-  SameShape<z.output<typeof setPriorityTaskInput>, SetPriorityTaskInput>
+  SameShape<z.output<typeof setPriorityTaskInputSchema>, SetPriorityTaskInput>
 >;
 
-export const moveTaskInput = z.strictObject({
+export const moveTaskInputSchema = z.strictObject({
   id: z.uuid(),
   parent: z.uuid().nullable().optional(),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<MoveTaskInput>;
 
-export type MoveTaskInputShape = Assert<SameShape<z.output<typeof moveTaskInput>, MoveTaskInput>>;
+export type MoveTaskInputShape = Assert<
+  SameShape<z.output<typeof moveTaskInputSchema>, MoveTaskInput>
+>;
 
-export const reopenTaskInput = z.strictObject({
+export const reopenTaskInputSchema = z.strictObject({
   id: z.uuid(),
   reason: z.string(),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<ReopenTaskInput>;
 
 export type ReopenTaskInputShape = Assert<
-  SameShape<z.output<typeof reopenTaskInput>, ReopenTaskInput>
+  SameShape<z.output<typeof reopenTaskInputSchema>, ReopenTaskInput>
 >;
 
-export const touchTaskInput = z.strictObject({
+export const touchTaskInputSchema = z.strictObject({
   id: z.uuid(),
 }) satisfies z.ZodType<TouchTaskInput>;
 
 export type TouchTaskInputShape = Assert<
-  SameShape<z.output<typeof touchTaskInput>, TouchTaskInput>
+  SameShape<z.output<typeof touchTaskInputSchema>, TouchTaskInput>
 >;
 
-export const cancelTaskInput = z.strictObject({
+export const cancelTaskInputSchema = z.strictObject({
   id: z.uuid(),
   reason: z.string().min(1),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<CancelTaskInput>;
 
 export type CancelTaskInputShape = Assert<
-  SameShape<z.output<typeof cancelTaskInput>, CancelTaskInput>
+  SameShape<z.output<typeof cancelTaskInputSchema>, CancelTaskInput>
 >;
 
-export const completeTaskInput = z.strictObject({
+export const completeTaskInputSchema = z.strictObject({
   id: z.uuid(),
   fence: z.int().min(1).nullable().optional(),
   summary: z.string().min(1).nullable().optional(),
@@ -200,10 +202,10 @@ export const completeTaskInput = z.strictObject({
 }) satisfies z.ZodType<CompleteTaskInput>;
 
 export type CompleteTaskInputShape = Assert<
-  SameShape<z.output<typeof completeTaskInput>, CompleteTaskInput>
+  SameShape<z.output<typeof completeTaskInputSchema>, CompleteTaskInput>
 >;
 
-export const assignTaskInput = z.strictObject({
+export const assignTaskInputSchema = z.strictObject({
   id: z.uuid(),
   assignee: z.uuid(),
   waiveReview: z.boolean().nullable().optional(),
@@ -211,22 +213,22 @@ export const assignTaskInput = z.strictObject({
 }) satisfies z.ZodType<AssignTaskInput>;
 
 export type AssignTaskInputShape = Assert<
-  SameShape<z.output<typeof assignTaskInput>, AssignTaskInput>
+  SameShape<z.output<typeof assignTaskInputSchema>, AssignTaskInput>
 >;
 
-export const unassignTaskInput = z.strictObject({
+export const unassignTaskInputSchema = z.strictObject({
   id: z.uuid(),
   reason: z.string().nullable().optional(),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<UnassignTaskInput>;
 
 export type UnassignTaskInputShape = Assert<
-  SameShape<z.output<typeof unassignTaskInput>, UnassignTaskInput>
+  SameShape<z.output<typeof unassignTaskInputSchema>, UnassignTaskInput>
 >;
 
-export const readTaskInput = z.strictObject({
-  filter: taskFilter.optional(),
-  sort: taskSort.optional(),
+export const readTaskInputSchema = z.strictObject({
+  filter: taskFilterSchema.optional(),
+  sort: taskSortSchema.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
   load: z
@@ -257,5 +259,5 @@ export const readTaskInput = z.strictObject({
 }) satisfies z.ZodType<ReadTaskInput<keyof TaskLoadable>>;
 
 export type ReadTaskInputShape = Assert<
-  SameShape<z.output<typeof readTaskInput>, ReadTaskInput<keyof TaskLoadable>>
+  SameShape<z.output<typeof readTaskInputSchema>, ReadTaskInput<keyof TaskLoadable>>
 >;

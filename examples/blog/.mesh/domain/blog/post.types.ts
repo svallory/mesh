@@ -115,21 +115,21 @@ export type PostFilter =
   | { and: readonly PostFilter[] }
   | { or: readonly PostFilter[] }
   | {
-      id?: $Comparison<string>;
-      title?: $Comparison<string>;
-      body?: $Comparison<string>;
-      views?: $Comparison<number>;
-      rating?: $Comparison<number>;
-      price?: $Comparison<number>;
-      featured?: $Comparison<boolean>;
-      publicationDate?: $Comparison<$Date>;
-      publishedAt?: $Comparison<$Date>;
-      state?: $Comparison<"draft" | "published">;
-      insertedAt?: $Comparison<$Date>;
-      updatedAt?: $Comparison<$Date>;
-      authorId?: $Comparison<string>;
-      excerpt?: $Comparison<string>;
-      commentCount?: $Comparison<number>;
+      id?: $Comparison<string> | undefined;
+      title?: $Comparison<string> | undefined;
+      body?: $Comparison<string> | undefined;
+      views?: $Comparison<number> | undefined;
+      rating?: $Comparison<number> | undefined;
+      price?: $Comparison<number> | undefined;
+      featured?: $Comparison<boolean> | undefined;
+      publicationDate?: $Comparison<$Date> | undefined;
+      publishedAt?: $Comparison<$Date> | undefined;
+      state?: $Comparison<"draft" | "published"> | undefined;
+      insertedAt?: $Comparison<$Date> | undefined;
+      updatedAt?: $Comparison<$Date> | undefined;
+      authorId?: $Comparison<string> | undefined;
+      excerpt?: $Comparison<string> | undefined;
+      commentCount?: $Comparison<number> | undefined;
     };
 
 export type PostSort = readonly (

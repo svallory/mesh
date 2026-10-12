@@ -83,12 +83,12 @@ export type LateResultFilter =
   | { and: readonly LateResultFilter[] }
   | { or: readonly LateResultFilter[] }
   | {
-      id?: $Comparison<string>;
-      fence?: $Comparison<number>;
-      summary?: $Comparison<string>;
-      recordedAt?: $Comparison<$Date>;
-      taskId?: $Comparison<string>;
-      submitterId?: $Comparison<string>;
+      id?: $Comparison<string> | undefined;
+      fence?: $Comparison<number> | undefined;
+      summary?: $Comparison<string> | undefined;
+      recordedAt?: $Comparison<$Date> | undefined;
+      taskId?: $Comparison<string> | undefined;
+      submitterId?: $Comparison<string> | undefined;
     };
 
 export type LateResultSort = readonly (

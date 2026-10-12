@@ -40,7 +40,7 @@ import type {
   RecordCompletionInput,
   ReadCompletionInput,
 } from "./completion.types";
-import { recordCompletionInput, readCompletionInput } from "./completion.validators";
+import { recordCompletionInputSchema, readCompletionInputSchema } from "./completion.validators";
 import { tables } from "../../schema";
 import { $expressions, type $work$Completion$Scope as $Scope } from "./completion.expressions";
 import { loadPlan as $loadPlan } from "../../load";
@@ -61,11 +61,11 @@ export function bindCompletionReads(
       context?: unknown,
       clock?: () => $Date,
       policies?: boolean,
-      cast?: $CastOutput<typeof readCompletionInput>,
+      cast?: $CastOutput<typeof readCompletionInputSchema>,
     ): $Promise<L extends unknown ? CompletionTxWith<CompletionLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
       // for its policies and hands it over as `cast`; a `privileged` read casts it here.
-      const parsed = cast ?? (await $castInput(layer, readCompletionInput, input));
+      const parsed = cast ?? (await $castInput(layer, readCompletionInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.completions, {
           filter: parsed.filter,
@@ -107,7 +107,7 @@ export function bindCompletion(
       ...[context]: $ContextArgument
     ): $Promise<Completion> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, recordCompletionInput, input);
+      const parsed = await $castInput(layer, recordCompletionInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -180,9 +180,11 @@ export function bindCompletion(
               { clock: $clock },
             ) as unknown as $Scope<RecordCompletionInput>;
             // the input: the member inputs the caller sent, applied now that the checks have passed
-            if (parsed.rule !== undefined) $changes.rule = $record.rule = parsed.rule;
-            if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
-            if (parsed.submission !== undefined)
+            if ($Object.hasOwn(parsed, "rule") && parsed.rule !== undefined)
+              $changes.rule = $record.rule = parsed.rule;
+            if ($Object.hasOwn(parsed, "task") && parsed.task !== undefined)
+              $changes.taskId = $record.taskId = parsed.task;
+            if ($Object.hasOwn(parsed, "submission") && parsed.submission !== undefined)
               $changes.submissionId = $record.submissionId = parsed.submission;
             // do: the steps run in written order, each seeing the record as the ones before it left it
             {
@@ -221,7 +223,7 @@ export function bindCompletion(
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $parsed = await $castInput(layer, readCompletionInput, input);
+      const $parsed = await $castInput(layer, readCompletionInputSchema, input);
       if (
         !(await $authorizer(
           "work.Completion",

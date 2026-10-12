@@ -36,33 +36,35 @@ const comparison = <T extends z.ZodType>(value: T) =>
       message: "a comparison needs an operator",
     });
 
-export const userFilter: z.ZodType<UserFilter> = z.lazy(
+export const userFilterSchema: z.ZodType<UserFilter> = z.lazy(
   () =>
     z.union([
-      z.strictObject({ and: z.array(userFilter).readonly() }),
-      z.strictObject({ or: z.array(userFilter).readonly() }),
+      z.strictObject({ and: z.array(userFilterSchema).readonly() }),
+      z.strictObject({ or: z.array(userFilterSchema).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).exactOptional(),
-        name: comparison(z.string()).exactOptional(),
+        id: comparison(z.uuid()).optional(),
+        name: comparison(z.string()).optional(),
       }),
     ]) as unknown as z.ZodType<UserFilter>,
 );
 
-export const userSort = z.array(z.enum(["id", "-id", "name", "-name"])).readonly();
+export const userSortSchema = z.array(z.enum(["id", "-id", "name", "-name"])).readonly();
 
-export const createUserInput = z.strictObject({
+export const createUserInputSchema = z.strictObject({
   name: z.string(),
 }) satisfies z.ZodType<CreateUserInput>;
 
 export type CreateUserInputShape = Assert<
-  SameShape<z.output<typeof createUserInput>, CreateUserInput>
+  SameShape<z.output<typeof createUserInputSchema>, CreateUserInput>
 >;
 
-export const readUserInput = z.strictObject({
-  filter: userFilter.optional(),
-  sort: userSort.optional(),
+export const readUserInputSchema = z.strictObject({
+  filter: userFilterSchema.optional(),
+  sort: userSortSchema.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
 }) satisfies z.ZodType<ReadUserInput>;
 
-export type ReadUserInputShape = Assert<SameShape<z.output<typeof readUserInput>, ReadUserInput>>;
+export type ReadUserInputShape = Assert<
+  SameShape<z.output<typeof readUserInputSchema>, ReadUserInput>
+>;

@@ -49,7 +49,11 @@ import type {
   ReturnReviewInput,
   ReadReviewInput,
 } from "./review.types";
-import { acceptReviewInput, returnReviewInput, readReviewInput } from "./review.validators";
+import {
+  acceptReviewInputSchema,
+  returnReviewInputSchema,
+  readReviewInputSchema,
+} from "./review.validators";
 import { tables } from "../../schema";
 import { $expressions, type $work$Review$Scope as $Scope } from "./review.expressions";
 import { loadPlan as $loadPlan } from "../../load";
@@ -70,11 +74,11 @@ export function bindReviewReads(
       context?: unknown,
       clock?: () => $Date,
       policies?: boolean,
-      cast?: $CastOutput<typeof readReviewInput>,
+      cast?: $CastOutput<typeof readReviewInputSchema>,
     ): $Promise<L extends unknown ? ReviewTxWith<ReviewLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
       // for its policies and hands it over as `cast`; a `privileged` read casts it here.
-      const parsed = cast ?? (await $castInput(layer, readReviewInput, input));
+      const parsed = cast ?? (await $castInput(layer, readReviewInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.reviews, {
           filter: parsed.filter,
@@ -111,7 +115,7 @@ export function bindReview(
   return $Object.freeze({
     async accept(input: AcceptReviewInput, ...[context]: $ContextArgument): $Promise<Review> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, acceptReviewInput, input);
+      const parsed = await $castInput(layer, acceptReviewInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -249,7 +253,7 @@ export function bindReview(
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // the input: the member inputs the caller sent, applied now that the checks have passed
-            if (parsed.submission !== undefined)
+            if ($Object.hasOwn(parsed, "submission") && parsed.submission !== undefined)
               $changes.submissionId = $record.submissionId = parsed.submission;
             // do: the steps run in written order, each seeing the record as the ones before it left it
             $changes.decision = $record.decision = "accept";
@@ -308,7 +312,7 @@ export function bindReview(
 
     async return(input: ReturnReviewInput, ...[context]: $ContextArgument): $Promise<Review> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, returnReviewInput, input);
+      const parsed = await $castInput(layer, returnReviewInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -438,7 +442,7 @@ export function bindReview(
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // the input: the member inputs the caller sent, applied now that the checks have passed
-            if (parsed.submission !== undefined)
+            if ($Object.hasOwn(parsed, "submission") && parsed.submission !== undefined)
               $changes.submissionId = $record.submissionId = parsed.submission;
             // do: the steps run in written order, each seeing the record as the ones before it left it
             $changes.decision = $record.decision = "return";
@@ -507,7 +511,7 @@ export function bindReview(
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $parsed = await $castInput(layer, readReviewInput, input);
+      const $parsed = await $castInput(layer, readReviewInputSchema, input);
       if (
         !(await $authorizer(
           "work.Review",

@@ -36,31 +36,31 @@ const comparison = <T extends z.ZodType>(value: T) =>
       message: "a comparison needs an operator",
     });
 
-export const eventFilter: z.ZodType<EventFilter> = z.lazy(
+export const eventFilterSchema: z.ZodType<EventFilter> = z.lazy(
   () =>
     z.union([
-      z.strictObject({ and: z.array(eventFilter).readonly() }),
-      z.strictObject({ or: z.array(eventFilter).readonly() }),
+      z.strictObject({ and: z.array(eventFilterSchema).readonly() }),
+      z.strictObject({ or: z.array(eventFilterSchema).readonly() }),
       z.strictObject({
-        seq: comparison(z.int()).exactOptional(),
-        type: comparison(z.string()).exactOptional(),
-        schemaVersion: comparison(z.int()).exactOptional(),
-        workspaceId: comparison(z.uuid()).exactOptional(),
+        seq: comparison(z.int()).optional(),
+        type: comparison(z.string()).optional(),
+        schemaVersion: comparison(z.int()).optional(),
+        workspaceId: comparison(z.uuid()).optional(),
         recordType: comparison(
           z.enum(["workspace", "collaborator", "membership", "task", "evidence-reference"]),
-        ).exactOptional(),
-        recordId: comparison(z.uuid()).exactOptional(),
-        recordVersion: comparison(z.int()).exactOptional(),
-        actor: comparison(z.string()).exactOptional(),
-        caller: comparison(z.string()).exactOptional(),
-        occurredAt: comparison(z.date()).exactOptional(),
-        recordedAt: comparison(z.date()).exactOptional(),
-        taskId: comparison(z.uuid()).exactOptional(),
+        ).optional(),
+        recordId: comparison(z.uuid()).optional(),
+        recordVersion: comparison(z.int()).optional(),
+        actor: comparison(z.string()).optional(),
+        caller: comparison(z.string()).optional(),
+        occurredAt: comparison(z.date()).optional(),
+        recordedAt: comparison(z.date()).optional(),
+        taskId: comparison(z.uuid()).optional(),
       }),
     ]) as unknown as z.ZodType<EventFilter>,
 );
 
-export const eventSort = z
+export const eventSortSchema = z
   .array(
     z.enum([
       "seq",
@@ -91,7 +91,7 @@ export const eventSort = z
   )
   .readonly();
 
-export const recordEventInput = z.strictObject({
+export const recordEventInputSchema = z.strictObject({
   type: z.string(),
   schemaVersion: z.int().min(1).optional(),
   workspaceId: z.uuid(),
@@ -108,12 +108,12 @@ export const recordEventInput = z.strictObject({
 }) satisfies z.ZodType<RecordEventInput>;
 
 export type RecordEventInputShape = Assert<
-  SameShape<z.output<typeof recordEventInput>, RecordEventInput>
+  SameShape<z.output<typeof recordEventInputSchema>, RecordEventInput>
 >;
 
-export const readEventInput = z.strictObject({
-  filter: eventFilter.optional(),
-  sort: eventSort.optional(),
+export const readEventInputSchema = z.strictObject({
+  filter: eventFilterSchema.optional(),
+  sort: eventSortSchema.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
   load: z
@@ -123,5 +123,5 @@ export const readEventInput = z.strictObject({
 }) satisfies z.ZodType<ReadEventInput<keyof EventLoadable>>;
 
 export type ReadEventInputShape = Assert<
-  SameShape<z.output<typeof readEventInput>, ReadEventInput<keyof EventLoadable>>
+  SameShape<z.output<typeof readEventInputSchema>, ReadEventInput<keyof EventLoadable>>
 >;

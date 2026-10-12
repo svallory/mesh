@@ -44,7 +44,7 @@ import type {
   RecordLateResultInput,
   ReadLateResultInput,
 } from "./lateResult.types";
-import { recordLateResultInput, readLateResultInput } from "./lateResult.validators";
+import { recordLateResultInputSchema, readLateResultInputSchema } from "./lateResult.validators";
 import { tables } from "../../schema";
 import { $expressions, type $work$LateResult$Scope as $Scope } from "./lateResult.expressions";
 import { loadPlan as $loadPlan } from "../../load";
@@ -65,11 +65,11 @@ export function bindLateResultReads(
       context?: unknown,
       clock?: () => $Date,
       policies?: boolean,
-      cast?: $CastOutput<typeof readLateResultInput>,
+      cast?: $CastOutput<typeof readLateResultInputSchema>,
     ): $Promise<L extends unknown ? LateResultTxWith<LateResultLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
       // for its policies and hands it over as `cast`; a `privileged` read casts it here.
-      const parsed = cast ?? (await $castInput(layer, readLateResultInput, input));
+      const parsed = cast ?? (await $castInput(layer, readLateResultInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.late_results, {
           filter: parsed.filter,
@@ -111,7 +111,7 @@ export function bindLateResult(
       ...[context]: $ContextArgument
     ): $Promise<LateResult> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, recordLateResultInput, input);
+      const parsed = await $castInput(layer, recordLateResultInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -219,10 +219,13 @@ export function bindLateResult(
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // the input: the member inputs the caller sent, applied now that the checks have passed
-            if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
-            if (parsed.fence !== undefined) $changes.fence = $record.fence = parsed.fence;
-            if (parsed.summary !== undefined) $changes.summary = $record.summary = parsed.summary;
-            if (parsed.evidence !== undefined)
+            if ($Object.hasOwn(parsed, "task") && parsed.task !== undefined)
+              $changes.taskId = $record.taskId = parsed.task;
+            if ($Object.hasOwn(parsed, "fence") && parsed.fence !== undefined)
+              $changes.fence = $record.fence = parsed.fence;
+            if ($Object.hasOwn(parsed, "summary") && parsed.summary !== undefined)
+              $changes.summary = $record.summary = parsed.summary;
+            if ($Object.hasOwn(parsed, "evidence") && parsed.evidence !== undefined)
               $changes.evidence = $record.evidence = parsed.evidence;
             // do: the steps run in written order, each seeing the record as the ones before it left it
             {
@@ -261,7 +264,7 @@ export function bindLateResult(
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $parsed = await $castInput(layer, readLateResultInput, input);
+      const $parsed = await $castInput(layer, readLateResultInputSchema, input);
       if (
         !(await $authorizer(
           "work.LateResult",

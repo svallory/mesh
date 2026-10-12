@@ -56,12 +56,12 @@ import type {
   DestroyPostInput,
 } from "./post.types";
 import {
-  createPostInput,
-  publishPostInput,
-  archivePostInput,
-  publishedPostInput,
-  readPostInput,
-  destroyPostInput,
+  createPostInputSchema,
+  publishPostInputSchema,
+  archivePostInputSchema,
+  publishedPostInputSchema,
+  readPostInputSchema,
+  destroyPostInputSchema,
 } from "./post.validators";
 import { tables } from "../../schema";
 import { $expressions, type $blog$Post$StoredScope as $StoredScope } from "./post.expressions";
@@ -90,7 +90,7 @@ export function bindPostReads(
       input: $Omit<PublishedPostInput, "load"> & PostLoadArg<L>,
       _context?: unknown,
     ): $Promise<L extends unknown ? PostTxWith<PostLoadNames<L>>[] : never> {
-      await $castInput(layer, publishedPostInput, input);
+      await $castInput(layer, publishedPostInputSchema, input);
       return $failJoined(
         layer,
         new $FrameworkError(
@@ -104,11 +104,11 @@ export function bindPostReads(
       context?: unknown,
       clock?: () => $Date,
       policies?: boolean,
-      cast?: $CastOutput<typeof readPostInput>,
+      cast?: $CastOutput<typeof readPostInputSchema>,
     ): $Promise<L extends unknown ? PostTxWith<PostLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
       // for its policies and hands it over as `cast`; a `privileged` read casts it here.
-      const parsed = cast ?? (await $castInput(layer, readPostInput, input));
+      const parsed = cast ?? (await $castInput(layer, readPostInputSchema, input));
       return layer.transaction(async (tx) => {
         rejectComputedQuery("blog.Post", ["excerpt", "commentCount"], parsed);
         const $rows = (await tx.select(tables.posts, {
@@ -148,7 +148,7 @@ export function bindPost(
       // Not run in this version: on:load published
 
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, createPostInput, input);
+      const parsed = await $castInput(layer, createPostInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -188,7 +188,8 @@ export function bindPost(
             const $changes: $Record = {
               id: $uuidv7(),
               title: parsed.title,
-              body: parsed.body === undefined ? null : parsed.body,
+              body:
+                $Object.hasOwn(parsed, "body") && parsed.body !== undefined ? parsed.body : null,
               views: 0,
               rating: null,
               price: 0,
@@ -196,7 +197,10 @@ export function bindPost(
               publicationDate: null,
               publishedAt: null,
               state: "draft",
-              metadata: parsed.metadata === undefined ? {} : parsed.metadata,
+              metadata:
+                $Object.hasOwn(parsed, "metadata") && parsed.metadata !== undefined
+                  ? parsed.metadata
+                  : {},
               insertedAt: $now,
               updatedAt: $now,
               authorId: parsed.author,
@@ -228,7 +232,7 @@ export function bindPost(
       // Not run in this version: on:load published
 
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, publishPostInput, input);
+      const parsed = await $castInput(layer, publishPostInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -343,7 +347,7 @@ export function bindPost(
 
     async archive(input: ArchivePostInput, ...[context]: $ContextArgument): $Promise<void> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, archivePostInput, input);
+      const parsed = await $castInput(layer, archivePostInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -445,7 +449,7 @@ export function bindPost(
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $parsed = await $castInput(layer, readPostInput, input);
+      const $parsed = await $castInput(layer, readPostInputSchema, input);
       if (
         !(await $authorizer(
           "blog.Post",
@@ -489,7 +493,7 @@ export function bindPost(
 
     async destroy(input: DestroyPostInput, ...[context]: $ContextArgument): $Promise<void> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, destroyPostInput, input);
+      const parsed = await $castInput(layer, destroyPostInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;

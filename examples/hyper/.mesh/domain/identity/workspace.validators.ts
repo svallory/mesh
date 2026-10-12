@@ -41,22 +41,22 @@ const comparison = <T extends z.ZodType>(value: T) =>
       message: "a comparison needs an operator",
     });
 
-export const workspaceFilter: z.ZodType<WorkspaceFilter> = z.lazy(
+export const workspaceFilterSchema: z.ZodType<WorkspaceFilter> = z.lazy(
   () =>
     z.union([
-      z.strictObject({ and: z.array(workspaceFilter).readonly() }),
-      z.strictObject({ or: z.array(workspaceFilter).readonly() }),
+      z.strictObject({ and: z.array(workspaceFilterSchema).readonly() }),
+      z.strictObject({ or: z.array(workspaceFilterSchema).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).exactOptional(),
-        name: comparison(z.string()).exactOptional(),
-        location: comparison(z.enum(["local", "shared"])).exactOptional(),
-        state: comparison(z.enum(["active", "moved"])).exactOptional(),
-        version: comparison(z.int()).exactOptional(),
+        id: comparison(z.uuid()).optional(),
+        name: comparison(z.string()).optional(),
+        location: comparison(z.enum(["local", "shared"])).optional(),
+        state: comparison(z.enum(["active", "moved"])).optional(),
+        version: comparison(z.int()).optional(),
       }),
     ]) as unknown as z.ZodType<WorkspaceFilter>,
 );
 
-export const workspaceSort = z
+export const workspaceSortSchema = z
   .array(
     z.enum([
       "id",
@@ -73,32 +73,32 @@ export const workspaceSort = z
   )
   .readonly();
 
-export const createWorkspaceInput = z.strictObject({
+export const createWorkspaceInputSchema = z.strictObject({
   name: z.string().nullable().optional(),
   location: z.enum(["local", "shared"]).optional(),
 }) satisfies z.ZodType<CreateWorkspaceInput>;
 
 export type CreateWorkspaceInputShape = Assert<
-  SameShape<z.output<typeof createWorkspaceInput>, CreateWorkspaceInput>
+  SameShape<z.output<typeof createWorkspaceInputSchema>, CreateWorkspaceInput>
 >;
 
-export const renameWorkspaceInput = z.strictObject({
+export const renameWorkspaceInputSchema = z.strictObject({
   id: z.uuid(),
   name: z.string().nullable().optional(),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<RenameWorkspaceInput>;
 
 export type RenameWorkspaceInputShape = Assert<
-  SameShape<z.output<typeof renameWorkspaceInput>, RenameWorkspaceInput>
+  SameShape<z.output<typeof renameWorkspaceInputSchema>, RenameWorkspaceInput>
 >;
 
-export const readWorkspaceInput = z.strictObject({
-  filter: workspaceFilter.optional(),
-  sort: workspaceSort.optional(),
+export const readWorkspaceInputSchema = z.strictObject({
+  filter: workspaceFilterSchema.optional(),
+  sort: workspaceSortSchema.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
 }) satisfies z.ZodType<ReadWorkspaceInput>;
 
 export type ReadWorkspaceInputShape = Assert<
-  SameShape<z.output<typeof readWorkspaceInput>, ReadWorkspaceInput>
+  SameShape<z.output<typeof readWorkspaceInputSchema>, ReadWorkspaceInput>
 >;

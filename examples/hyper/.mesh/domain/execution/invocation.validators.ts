@@ -42,38 +42,38 @@ const comparison = <T extends z.ZodType>(value: T) =>
       message: "a comparison needs an operator",
     });
 
-export const invocationFilter: z.ZodType<InvocationFilter> = z.lazy(
+export const invocationFilterSchema: z.ZodType<InvocationFilter> = z.lazy(
   () =>
     z.union([
-      z.strictObject({ and: z.array(invocationFilter).readonly() }),
-      z.strictObject({ or: z.array(invocationFilter).readonly() }),
+      z.strictObject({ and: z.array(invocationFilterSchema).readonly() }),
+      z.strictObject({ or: z.array(invocationFilterSchema).readonly() }),
       z.strictObject({
-        id: comparison(z.uuid()).exactOptional(),
-        requestedProvider: comparison(z.string()).exactOptional(),
-        requestedModel: comparison(z.string()).exactOptional(),
-        actualProvider: comparison(z.string()).exactOptional(),
-        actualModel: comparison(z.string()).exactOptional(),
-        inputTokens: comparison(z.int()).exactOptional(),
-        outputTokens: comparison(z.int()).exactOptional(),
-        cacheReadTokens: comparison(z.int()).exactOptional(),
-        cacheWriteTokens: comparison(z.int()).exactOptional(),
-        usageSource: comparison(z.enum(["runtime", "provider", "estimate"])).exactOptional(),
-        estimatedCost: comparison(z.number()).exactOptional(),
-        pricingBasis: comparison(z.string()).exactOptional(),
-        startedAt: comparison(z.date()).exactOptional(),
-        endedAt: comparison(z.date()).exactOptional(),
-        reason: comparison(z.string()).exactOptional(),
-        recordedAt: comparison(z.date()).exactOptional(),
-        attemptId: comparison(z.uuid()).exactOptional(),
-        taskId: comparison(z.uuid()).exactOptional(),
-        sessionId: comparison(z.uuid()).exactOptional(),
-        correctsId: comparison(z.uuid()).exactOptional(),
-        recordedById: comparison(z.uuid()).exactOptional(),
+        id: comparison(z.uuid()).optional(),
+        requestedProvider: comparison(z.string()).optional(),
+        requestedModel: comparison(z.string()).optional(),
+        actualProvider: comparison(z.string()).optional(),
+        actualModel: comparison(z.string()).optional(),
+        inputTokens: comparison(z.int()).optional(),
+        outputTokens: comparison(z.int()).optional(),
+        cacheReadTokens: comparison(z.int()).optional(),
+        cacheWriteTokens: comparison(z.int()).optional(),
+        usageSource: comparison(z.enum(["runtime", "provider", "estimate"])).optional(),
+        estimatedCost: comparison(z.number()).optional(),
+        pricingBasis: comparison(z.string()).optional(),
+        startedAt: comparison(z.date()).optional(),
+        endedAt: comparison(z.date()).optional(),
+        reason: comparison(z.string()).optional(),
+        recordedAt: comparison(z.date()).optional(),
+        attemptId: comparison(z.uuid()).optional(),
+        taskId: comparison(z.uuid()).optional(),
+        sessionId: comparison(z.uuid()).optional(),
+        correctsId: comparison(z.uuid()).optional(),
+        recordedById: comparison(z.uuid()).optional(),
       }),
     ]) as unknown as z.ZodType<InvocationFilter>,
 );
 
-export const invocationSort = z
+export const invocationSortSchema = z
   .array(
     z.enum([
       "id",
@@ -122,7 +122,7 @@ export const invocationSort = z
   )
   .readonly();
 
-export const recordInvocationInput = z.strictObject({
+export const recordInvocationInputSchema = z.strictObject({
   attempt: z.uuid(),
   requestedProvider: z.string().nullable().optional(),
   requestedModel: z.string().nullable().optional(),
@@ -141,10 +141,10 @@ export const recordInvocationInput = z.strictObject({
 }) satisfies z.ZodType<RecordInvocationInput>;
 
 export type RecordInvocationInputShape = Assert<
-  SameShape<z.output<typeof recordInvocationInput>, RecordInvocationInput>
+  SameShape<z.output<typeof recordInvocationInputSchema>, RecordInvocationInput>
 >;
 
-export const correctInvocationInput = z.strictObject({
+export const correctInvocationInputSchema = z.strictObject({
   corrects: z.uuid().nullable().optional(),
   reason: z.string().nullable().optional(),
   requestedProvider: z.string().nullable().optional(),
@@ -164,12 +164,12 @@ export const correctInvocationInput = z.strictObject({
 }) satisfies z.ZodType<CorrectInvocationInput>;
 
 export type CorrectInvocationInputShape = Assert<
-  SameShape<z.output<typeof correctInvocationInput>, CorrectInvocationInput>
+  SameShape<z.output<typeof correctInvocationInputSchema>, CorrectInvocationInput>
 >;
 
-export const readInvocationInput = z.strictObject({
-  filter: invocationFilter.optional(),
-  sort: invocationSort.optional(),
+export const readInvocationInputSchema = z.strictObject({
+  filter: invocationFilterSchema.optional(),
+  sort: invocationSortSchema.optional(),
   limit: z.int().min(0).optional(),
   offset: z.int().min(0).optional(),
   load: z
@@ -179,5 +179,8 @@ export const readInvocationInput = z.strictObject({
 }) satisfies z.ZodType<ReadInvocationInput<keyof InvocationLoadable>>;
 
 export type ReadInvocationInputShape = Assert<
-  SameShape<z.output<typeof readInvocationInput>, ReadInvocationInput<keyof InvocationLoadable>>
+  SameShape<
+    z.output<typeof readInvocationInputSchema>,
+    ReadInvocationInput<keyof InvocationLoadable>
+  >
 >;

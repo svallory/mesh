@@ -50,10 +50,10 @@ import type {
   ReadMembershipInput,
 } from "./membership.types";
 import {
-  grantMembershipInput,
-  changeRoleMembershipInput,
-  revokeMembershipInput,
-  readMembershipInput,
+  grantMembershipInputSchema,
+  changeRoleMembershipInputSchema,
+  revokeMembershipInputSchema,
+  readMembershipInputSchema,
 } from "./membership.validators";
 import { tables } from "../../schema";
 import {
@@ -86,11 +86,11 @@ export function bindMembershipReads(
       context?: unknown,
       clock?: () => $Date,
       policies?: boolean,
-      cast?: $CastOutput<typeof readMembershipInput>,
+      cast?: $CastOutput<typeof readMembershipInputSchema>,
     ): $Promise<L extends unknown ? MembershipTxWith<MembershipLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
       // for its policies and hands it over as `cast`; a `privileged` read casts it here.
-      const parsed = cast ?? (await $castInput(layer, readMembershipInput, input));
+      const parsed = cast ?? (await $castInput(layer, readMembershipInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.memberships, {
           filter: parsed.filter,
@@ -129,7 +129,7 @@ export function bindMembership(
   return $Object.freeze({
     async grant(input: GrantMembershipInput, ...[context]: $ContextArgument): $Promise<Membership> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, grantMembershipInput, input);
+      const parsed = await $castInput(layer, grantMembershipInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -245,9 +245,10 @@ export function bindMembership(
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // the input: the member inputs the caller sent, applied now that the checks have passed
-            if (parsed.collaborator !== undefined)
+            if ($Object.hasOwn(parsed, "collaborator") && parsed.collaborator !== undefined)
               $changes.collaboratorId = $record.collaboratorId = parsed.collaborator;
-            if (parsed.role !== undefined) $changes.role = $record.role = parsed.role;
+            if ($Object.hasOwn(parsed, "role") && parsed.role !== undefined)
+              $changes.role = $record.role = parsed.role;
             // do: the steps run in written order, each seeing the record as the ones before it left it
             {
               const $value = await $expressions["grant.step.0.set.grantedAt"]($s);
@@ -290,7 +291,7 @@ export function bindMembership(
       ...[context]: $ContextArgument
     ): $Promise<Membership> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, changeRoleMembershipInput, input);
+      const parsed = await $castInput(layer, changeRoleMembershipInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -404,7 +405,8 @@ export function bindMembership(
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // the input: the member inputs the caller sent, applied now that the checks have passed
-            if (parsed.role !== undefined) $changes.role = $record.role = parsed.role;
+            if ($Object.hasOwn(parsed, "role") && parsed.role !== undefined)
+              $changes.role = $record.role = parsed.role;
             // do: the steps run in written order, each seeing the record as the ones before it left it
             {
               const $value = await $expressions["changeRole.step.0.set.version"]($s);
@@ -449,7 +451,7 @@ export function bindMembership(
       ...[context]: $ContextArgument
     ): $Promise<Membership> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, revokeMembershipInput, input);
+      const parsed = await $castInput(layer, revokeMembershipInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -611,7 +613,7 @@ export function bindMembership(
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $parsed = await $castInput(layer, readMembershipInput, input);
+      const $parsed = await $castInput(layer, readMembershipInputSchema, input);
       if (
         !(await $authorizer(
           "identity.Membership",

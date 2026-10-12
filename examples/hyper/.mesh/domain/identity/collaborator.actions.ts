@@ -48,10 +48,10 @@ import type {
   ReadCollaboratorInput,
 } from "./collaborator.types";
 import {
-  registerCollaboratorInput,
-  updateCollaboratorInput,
-  retireCollaboratorInput,
-  readCollaboratorInput,
+  registerCollaboratorInputSchema,
+  updateCollaboratorInputSchema,
+  retireCollaboratorInputSchema,
+  readCollaboratorInputSchema,
 } from "./collaborator.validators";
 import { tables } from "../../schema";
 import {
@@ -84,11 +84,11 @@ export function bindCollaboratorReads(
       context?: unknown,
       clock?: () => $Date,
       policies?: boolean,
-      cast?: $CastOutput<typeof readCollaboratorInput>,
+      cast?: $CastOutput<typeof readCollaboratorInputSchema>,
     ): $Promise<L extends unknown ? CollaboratorWith<CollaboratorLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
       // for its policies and hands it over as `cast`; a `privileged` read casts it here.
-      const parsed = cast ?? (await $castInput(layer, readCollaboratorInput, input));
+      const parsed = cast ?? (await $castInput(layer, readCollaboratorInputSchema, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.collaborators, {
           filter: parsed.filter,
@@ -130,7 +130,7 @@ export function bindCollaborator(
       ...[context]: $ContextArgument
     ): $Promise<Collaborator> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, registerCollaboratorInput, input);
+      const parsed = await $castInput(layer, registerCollaboratorInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -225,8 +225,10 @@ export function bindCollaborator(
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // the input: the member inputs the caller sent, applied now that the checks have passed
-            if (parsed.kind !== undefined) $changes.kind = $record.kind = parsed.kind;
-            if (parsed.name !== undefined) $changes.name = $record.name = parsed.name;
+            if ($Object.hasOwn(parsed, "kind") && parsed.kind !== undefined)
+              $changes.kind = $record.kind = parsed.kind;
+            if ($Object.hasOwn(parsed, "name") && parsed.name !== undefined)
+              $changes.name = $record.name = parsed.name;
             // data layer
             const $stored = await tx.insert(tables.collaborators, $changes);
             $noteWrite(tx);
@@ -252,7 +254,7 @@ export function bindCollaborator(
       ...[context]: $ContextArgument
     ): $Promise<Collaborator> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, updateCollaboratorInput, input);
+      const parsed = await $castInput(layer, updateCollaboratorInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -366,7 +368,8 @@ export function bindCollaborator(
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // the input: the member inputs the caller sent, applied now that the checks have passed
-            if (parsed.name !== undefined) $changes.name = $record.name = parsed.name;
+            if ($Object.hasOwn(parsed, "name") && parsed.name !== undefined)
+              $changes.name = $record.name = parsed.name;
             // do: the steps run in written order, each seeing the record as the ones before it left it
             {
               const $value = await $expressions["update.step.0.set.version"]($s);
@@ -411,7 +414,7 @@ export function bindCollaborator(
       ...[context]: $ContextArgument
     ): $Promise<Collaborator> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
-      const parsed = await $castInput(layer, retireCollaboratorInput, input);
+      const parsed = await $castInput(layer, retireCollaboratorInputSchema, input);
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
@@ -565,7 +568,7 @@ export function bindCollaborator(
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $parsed = await $castInput(layer, readCollaboratorInput, input);
+      const $parsed = await $castInput(layer, readCollaboratorInputSchema, input);
       if (
         !(await $authorizer(
           "identity.Collaborator",
