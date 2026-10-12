@@ -4,6 +4,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
+import { callsOf } from "./calls.ts";
 import { openPolicies } from "./open-policy.ts";
 import { InvalidInputError } from "@meshfw/runtime";
 import build from "../src/build.ts";
@@ -78,7 +79,7 @@ test("a line points at an order by its integer key, and that key reads back as a
   const db = sqlite({ file: ":memory:" });
   try {
     await createSchema(db, tables);
-    const app = bind(db);
+    const app = callsOf(bind(db), await import(join(dir, ".mesh/domain/index.ts")));
     const first = await app.placeOrder({ label: "first" });
     const second = await app.placeOrder({ label: "second" });
     expect([first.id, second.id]).toEqual([1, 2]);

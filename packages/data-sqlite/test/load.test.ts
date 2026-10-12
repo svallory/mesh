@@ -5,6 +5,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
+import { callsOf } from "./calls.ts";
 import { openPolicies } from "./open-policy.ts";
 import { CHUNK, FrameworkError, type DataOperations } from "@meshfw/runtime";
 import build from "../src/build.ts";
@@ -113,6 +114,7 @@ interface Generated {
 
 let dir: string;
 let app: Generated;
+let domain: object;
 let expressions: Record<string, Record<string, (s: never) => unknown>>;
 beforeAll(async () => {
   dir = await mkdtemp(join(import.meta.dir, ".load-"));
@@ -124,8 +126,9 @@ beforeAll(async () => {
   const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: openPolicies(Object.entries(files).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source }))) });
   expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   await writeGeneratedFiles(await generateFiles({ config, document: built.document as ModelDocument }, build), config);
-  // `bind` and `tables` are `#mesh`'s; the load functions are the root module's (`#mesh/domain`).
-  app = { ...await import(join(dir, ".mesh/index.ts")), ...await import(join(dir, ".mesh/domain/index.ts")) } as Generated;
+  // `bind` and `tables` are `#mesh`'s; the entity values and the load functions are the root module's (`#mesh/domain`).
+  domain = await import(join(dir, ".mesh/domain/index.ts"));
+  app = { ...await import(join(dir, ".mesh/index.ts")), ...domain } as Generated;
   expressions = { post: (await import(join(dir, ".mesh/domain/post.expressions.ts"))).expressions };
 });
 afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
@@ -440,7 +443,7 @@ describe("rollups", () => {
   test("filtering or sorting a read by a rollup fails with the not-implemented error that names M10", async () => {
     const db = await fresh();
     try {
-      const authors = app.bind(db);
+      const authors = callsOf(app.bind(db), domain);
       await authors.createAuthor?.({});
       await run(db, async (tx) => { await seed(tx); });
       const refused = (what: "filter" | "sort", name: string) =>

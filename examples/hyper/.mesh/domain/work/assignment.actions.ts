@@ -11,6 +11,7 @@ import {
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
   composed as $composed,
+  entity as $entity,
   guarded as $guarded,
   loadRows as $loadRows,
   noteWrite as $noteWrite,
@@ -31,7 +32,7 @@ import {
   type Row as $Row,
 } from "@meshfw/runtime";
 import type {
-  Assignment,
+  Assignment as $Record,
   AssignmentWith,
   AssignmentTxWith,
   AssignmentLoadNames,
@@ -375,3 +376,27 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
     },
   });
 }
+
+/**
+ * The entity value (CMP-16): `Assignment.<action>(input, context)` runs the action on the binding in scope, the
+ * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
+ */
+const $entityValue = $entity("work.Assignment", bindAssignment, bindAssignmentReads, ($call) => ({
+  start(input: StartAssignmentInput, ...context: $ContextArgument): Promise<Assignment> {
+    return $call("start", input, context);
+  },
+
+  finish(input: FinishAssignmentInput, ...context: $ContextArgument): Promise<Assignment> {
+    return $call("finish", input, context);
+  },
+
+  read<const L extends readonly (keyof AssignmentLoadable)[] = readonly []>(
+    input: Omit<ReadAssignmentInput, "load"> & AssignmentLoadArg<L>,
+    ...context: $ContextArgument
+  ): Promise<L extends unknown ? AssignmentWith<AssignmentLoadNames<L>>[] : never> {
+    return $call("read", input, context);
+  },
+}));
+export { $entityValue as Assignment };
+/** The record type, under the entity value's name. */
+export type Assignment = $Record;

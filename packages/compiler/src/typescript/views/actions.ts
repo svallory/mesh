@@ -11,17 +11,28 @@ import { entityFileComment, txLoadTypes } from "./types.ts";
 
 /**
  * What `actions.ts.jig` renders for one entity: `bind<Entity>(layer, options)`, returning one
- * method per action with its whole body written out, phase by phase (roadmap principle 1, ADR-0003). Every
+ * method per action with its whole body written out, phase by phase (roadmap principle 1, ADR-0003), and the entity
+ * value (CMP-16): a frozen object with one method per action, `Post.publish(input, context)`, that runs the action on
+ * the binding in scope, exported with the record type under the entity's name. Every
  * string is final, statements included; the template prints, loops and branches on
  * these fields and computes nothing. A project's own `actions.ts.jig` depends on this shape.
  */
 export interface ActionsView {
   /** The entity file this file is generated from, project-relative, line terminators escaped as `\uXXXX`. */
   readonly entityFile: string;
-  /** True when the entity has at least one action; when false the file binds an empty object and imports only `DataLayer`. */
+  /** True when the entity has at least one action; when false the file binds an empty object and its entity value has no method. */
   readonly hasActions: boolean;
   /** The exported binding function, e.g. `bindPost`. */
   readonly bindName: string;
+  /**
+   * The entity's name as code writes it, e.g. `Post`: the name the entity value and the record type are exported under
+   * (one name, a value and a type). The record type is imported from the types file as `$Record` and re-exported under it.
+   */
+  readonly entityName: string;
+  /** The entity's FQN as a quoted string literal, e.g. `"blog.Post"`: what the entity value carries under the runtime's `ENTITY` symbol. */
+  readonly fqnLiteral: string;
+  /** The read binder the entity value carries, as printed: `readsBindName`, or `null` when the entity has no read action. */
+  readonly readsBindValue: string;
   /**
    * Value imports from `@meshfw/runtime` as printed inside `import { ... }`, sorted by name.
    * A class is imported under a `$` alias (`NotFoundError as $NotFoundError`): no entity
@@ -30,7 +41,7 @@ export interface ActionsView {
   readonly runtimeValues: readonly string[];
   /** Type imports from `@meshfw/runtime` beyond `ContextArgument`, `DataLayer` and `BindOptions`, aliased with `$`, e.g. `Issue as $Issue`. */
   readonly runtimeTypes: readonly string[];
-  /** Type imports from the types file: the record type, then each input type. */
+  /** Type imports from the types file beyond the record type (`entityName`, imported as `$Record`): each input type and the load types. */
   readonly typeImports: readonly string[];
   /** The types file as a quoted string literal, e.g. `"./post.types"`. */
   readonly typesFromLiteral: string;
@@ -92,9 +103,11 @@ export interface ReadBody {
 
 /** `async <name>(input: <inputType>, ...[context]: ContextArgument): Promise<<returnType>> { ... }` */
 export interface ActionMethod {
-  /** The method key: the action name, lowerCamel, e.g. `publish`. */
+  /** The method key: the action name, lowerCamel, e.g. `publish`; the entity value's member (`Post.publish`). */
   readonly name: string;
-  /** The top-level function the index exports for it: action name + entity name PascalCase, e.g. `publishPost`. */
+  /** `name` as a quoted string literal, which the entity value's method dispatches by. */
+  readonly nameLiteral: string;
+  /** The action's name in `actions` and `tx`, the flat handles of an entity file: action name + entity name PascalCase, e.g. `publishPost`. */
   readonly functionName: string;
   /** The action's input type, e.g. `PublishPostInput`, or `ReadPostInput<N>` for a read that takes `load`. */
   readonly inputType: string;
@@ -282,6 +295,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     const validator = input.name[0]!.toLowerCase() + input.name.slice(1);
     const base = {
       name,
+      nameLiteral: JSON.stringify(name),
       functionName: `${name}${recordName}`,
       inputType: input.name,
       generics: "",
@@ -346,7 +360,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         runtime.add("failJoined");
         const parts = [action.filter ? "filter" : null, action.sort ? "sort" : null].filter(Boolean).join(" and ");
         readBodies.push({ ...body, contextParam: loads ? ", _context?: unknown" : "", usesParsed: false, unsupported: JSON.stringify(
-          `${base.functionName} cannot run in this version: its ${parts} ${action.filter && action.sort ? "are" : "is"} evaluated by the SQL evaluator, which arrives in M10`), statements: [] });
+          `${entity.fqn}#${action.name} cannot run in this version: its ${parts} ${action.filter && action.sort ? "are" : "is"} evaluated by the SQL evaluator, which arrives in M10`), statements: [] });
         return method;
       }
       const query = ["filter", "sort", "limit", "offset"].map((name) => `${name}: ${read("parsed", name)}`).join(", ");
@@ -768,9 +782,12 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     entityFile: entityFileComment(entity),
     hasActions: methods.length > 0,
     bindName: `bind${recordName}`,
-    runtimeValues: [...runtime].sort(compareCode).map(runtimeImport),
+    entityName: recordName,
+    fqnLiteral: JSON.stringify(entity.fqn),
+    readsBindValue: readBodies.length ? `bind${recordName}Reads` : "null",
+    runtimeValues: [...runtime, "entity"].sort(compareCode).map(runtimeImport),
     runtimeTypes: [...runtimeTypes].sort(compareCode).map((name) => `${name} as $${name}`),
-    typeImports: methods.length ? [recordName, ...extraTypes, ...inputs.map((input) => input.name)] : [],
+    typeImports: methods.length ? [...extraTypes, ...inputs.map((input) => input.name)] : [],
     typesFromLiteral: JSON.stringify(`./${entitySegment(entity)}.types`),
     validatorImports: methods.map((method) => method.validator),
     validatorsFromLiteral: JSON.stringify(`./${entitySegment(entity)}.validators`),

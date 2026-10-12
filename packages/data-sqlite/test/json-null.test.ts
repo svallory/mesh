@@ -5,6 +5,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
+import { callsOf } from "./calls.ts";
 import { openPolicies } from "./open-policy.ts";
 import { FrameworkError, InvalidInputError } from "@meshfw/runtime";
 import build from "../src/build.ts";
@@ -40,6 +41,7 @@ const doc = `entity :Doc table="docs"
 
 let dir: string;
 let app: any;
+let domain: object;
 let diagnostics: { severity: string; code: string; position: { line: number; column: number } }[];
 beforeAll(async () => {
   dir = await mkdtemp(join(import.meta.dir, ".jsonnull-"));
@@ -52,13 +54,14 @@ beforeAll(async () => {
   expect(diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   await writeGeneratedFiles(await generateFiles({ config, document: built.document as ModelDocument }, build), config);
   app = await import(join(dir, ".mesh/index.ts"));
+  domain = await import(join(dir, ".mesh/domain/index.ts"));
 });
 afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
 
 async function fresh() {
   const db = sqlite({ file: ":memory:" });
   await createSchema(db, app.tables);
-  return { db, mesh: app.bind(db, {}) };
+  return { db, mesh: callsOf(app.bind(db, {}), domain) };
 }
 async function rejection(call: Promise<unknown>): Promise<unknown> {
   try { await call; } catch (error) { return error; }

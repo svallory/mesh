@@ -5,6 +5,7 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
+import { callsOf } from "./calls.ts";
 import { openPolicies } from "./open-policy.ts";
 import { FrameworkError, InvalidInputError, NotFoundError, type Issue } from "@meshfw/runtime";
 import build from "../src/build.ts";
@@ -320,6 +321,7 @@ entity :Task table="tasks"
 
 let dir: string;
 let app: any;
+let domain: object;
 beforeAll(async () => {
   dir = await mkdtemp(join(import.meta.dir, ".lifecycle-"));
   const config: ResolvedConfig = {
@@ -331,6 +333,7 @@ beforeAll(async () => {
   expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   await writeGeneratedFiles(await generateFiles({ config, document: built.document as ModelDocument }, build), config);
   app = await import(join(dir, ".mesh/index.ts"));
+  domain = await import(join(dir, ".mesh/domain/index.ts"));
 });
 afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
 
@@ -352,10 +355,9 @@ describe("the generated files", () => {
   test("a load nested in when is typed as possibly absent; a top-level load as present", async () => {
     await Bun.write(join(dir, "mesh.config.ts"), "export default { data: { name: 'sqlite', transaction: async () => undefined, close: async () => undefined } };\n");
     await Bun.write(join(dir, "check-types.ts"), [
-      'import type { bind } from "./.mesh/index.ts";',
-      "type Mesh = ReturnType<typeof bind>;",
-      'declare const maybe: Awaited<ReturnType<Mesh["wantOwnerTask"]>>;',
-      'declare const always: Awaited<ReturnType<Mesh["showTask"]>>;',
+      'import type { Task } from "./.mesh/domain/index.ts";',
+      "declare const maybe: Awaited<ReturnType<typeof Task.wantOwner>>;",
+      "declare const always: Awaited<ReturnType<typeof Task.show>>;",
       "// @ts-expect-error owner may be absent, because its load is under a when",
       "export const a: string = maybe.owner.name;",
       "export const b: string | undefined = maybe.owner?.name;",
@@ -387,7 +389,7 @@ async function fresh() {
   await createSchema(db, app.tables);
   const log: string[] = [];
   const ctx = { actor: alice, log };
-  const mesh = app.bind(db, { clock: () => clockNow });
+  const mesh = callsOf(app.bind(db, { clock: () => clockNow }), domain);
   const member = await mesh.joinMember({ name: "Ada", plan: "paid" }, ctx);
   const owner = await mesh.joinMember({ name: "Bo" }, ctx);
   return { db, mesh, ctx, log, member, owner };
@@ -862,7 +864,7 @@ describe("destroy", () => {
         close: () => world.db.close(),
       };
       try {
-        const mesh = app.bind(counting, { clock: () => clockNow, seams });
+        const mesh = callsOf(app.bind(counting, { clock: () => clockNow, seams }), domain);
         const row = await openTask(world);
         await mesh.wipeTask({ id: row.id }, world.ctx);
         expect(await failure(mesh.wipeTask({ id: row.id }, world.ctx))).toBeInstanceOf(NotFoundError);

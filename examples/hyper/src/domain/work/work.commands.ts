@@ -2,8 +2,8 @@
 // `task.complete` and `submission.submit` into, the `warnings` of `task.complete` and `review.accept`, and
 // `task.cancel`, which also cancels the Task's runs, another aggregate (`runs.ex:2`). Each is one application
 // transaction over the generated actions; the effects inside the Task aggregate stay in the entity files. Names follow
-// Hyper's method names in camelCase (`task.complete` is `taskComplete`), so none can be a generated action function,
-// whose names put the action first (`completeTask`, from `#mesh/domain/work`).
+// Hyper's method names in camelCase (`task.complete` is `taskComplete`), so none can be taken for a generated action,
+// which is a method of the entity's value (`Task.complete`, from `#mesh/domain/work`).
 import type { ActionContext } from "@meshfw/runtime";
 import type {
   AcceptReviewInput,

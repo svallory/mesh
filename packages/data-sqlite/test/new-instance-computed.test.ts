@@ -7,6 +7,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
+import { callsOf } from "./calls.ts";
 import { openPolicies } from "./open-policy.ts";
 import build from "../src/build.ts";
 import { InvalidInputError, type Issue } from "@meshfw/runtime";
@@ -45,6 +46,7 @@ const SQLITE: ResolvedConfig["data"] = {
 };
 let dir: string;
 let app: any;
+let domain: object;
 beforeAll(async () => {
   dir = await mkdtemp(join(import.meta.dir, ".new-instance-computed-"));
   const config: ResolvedConfig = { root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"), data: SQLITE };
@@ -53,6 +55,7 @@ beforeAll(async () => {
   await writeGeneratedFiles(await generateFiles({ config, document: built.document as ModelDocument }, build), config);
   await Bun.write(join(dir, "mesh.config.ts"), "export default { data: { name: 'sqlite', transaction: async () => undefined, close: async () => undefined } };\n");
   app = await import(join(dir, ".mesh/index.ts"));
+  domain = await import(join(dir, ".mesh/domain/index.ts"));
 });
 afterAll(async () => { if (dir) await rm(dir, { recursive: true, force: true }); });
 
@@ -66,7 +69,7 @@ describe("a computed field on a create's new instance", () => {
   test("a translated body over a member nothing has filled is null, not undefined and not a throw; one over filled members has its value", async () => {
     const db = sqlite({ file: ":memory:" });
     await createSchema(db, app.tables);
-    const mesh = app.bind(db, {});
+    const mesh = callsOf(app.bind(db, {}), domain);
     const found = issues(await mesh.makeBox({ qty: 4 }, {}).catch((e: unknown) => e));
     // double reads qty (null before the input), twice reads double: both null. isOpen reads the default state.
     expect(found.double).toEqual({ v: null });
@@ -80,7 +83,7 @@ describe("a computed field on a create's new instance", () => {
   test("on an update the same computed fields have the stored record's values", async () => {
     const db = sqlite({ file: ":memory:" });
     await createSchema(db, app.tables);
-    const mesh = app.bind(db, {});
+    const mesh = callsOf(app.bind(db, {}), domain);
     // A create whose checks pass cannot be built from this entity (its checks always fail); insert the row directly.
     const id = "018f0000-0000-7000-8000-000000000001";
     await db.transaction(async (tx: any) => { await tx.insert(app.tables.boxes, { id, qty: 4, state: "open" }); });

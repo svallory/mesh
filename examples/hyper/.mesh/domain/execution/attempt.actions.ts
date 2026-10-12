@@ -11,6 +11,7 @@ import {
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
   composed as $composed,
+  entity as $entity,
   guarded as $guarded,
   loadInto as $loadInto,
   loadRows as $loadRows,
@@ -34,7 +35,7 @@ import {
   type Row as $Row,
 } from "@meshfw/runtime";
 import type {
-  Attempt,
+  Attempt as $Record,
   AttemptWith,
   AttemptTxWith,
   AttemptLoadNames,
@@ -826,3 +827,35 @@ export function bindAttempt(layer: $DataLayer, options: $BindOptions = {}, compo
     },
   });
 }
+
+/**
+ * The entity value (CMP-16): `Attempt.<action>(input, context)` runs the action on the binding in scope, the
+ * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
+ */
+const $entityValue = $entity("execution.Attempt", bindAttempt, bindAttemptReads, ($call) => ({
+  start(input: StartAttemptInput, ...context: $ContextArgument): Promise<Attempt> {
+    return $call("start", input, context);
+  },
+
+  finish(input: FinishAttemptInput, ...context: $ContextArgument): Promise<Attempt> {
+    return $call("finish", input, context);
+  },
+
+  reportStopped(input: ReportStoppedAttemptInput, ...context: $ContextArgument): Promise<Attempt> {
+    return $call("reportStopped", input, context);
+  },
+
+  abandon(input: AbandonAttemptInput, ...context: $ContextArgument): Promise<Attempt> {
+    return $call("abandon", input, context);
+  },
+
+  read<const L extends readonly (keyof AttemptLoadable)[] = readonly []>(
+    input: Omit<ReadAttemptInput, "load"> & AttemptLoadArg<L>,
+    ...context: $ContextArgument
+  ): Promise<L extends unknown ? AttemptWith<AttemptLoadNames<L>>[] : never> {
+    return $call("read", input, context);
+  },
+}));
+export { $entityValue as Attempt };
+/** The record type, under the entity value's name. */
+export type Attempt = $Record;

@@ -112,7 +112,8 @@ describe("the load generator", () => {
   test("a model with no relationship and no computed field writes no load.ts and no loader export", async () => {
     const document = documentOf({ lonely });
     expect(loadGenerator.views(input(document))).toEqual([]);
-    expect(moduleViews(input(document)).map(({ view }) => [view.loaders, view.loadFromLiteral])).toEqual([[[], null]]);
+    // The domain root's barrel and the module's: neither has a loader.
+    expect(moduleViews(input(document)).map(({ view }) => [view.loaders, view.loadFromLiteral])).toEqual([[[], null], [[], null]]);
     const files = await generateFiles(input(document));
     expect(files.map((file) => file.path).some((path) => path.endsWith("/load.ts"))).toBe(false);
     for (const file of files.filter((entry) => entry.path.endsWith("/index.ts"))) expect(file.contents).not.toContain("/load");
@@ -121,7 +122,8 @@ describe("the load generator", () => {
   test("a model with one writes load.ts and the module's index re-exports the loaders and their types; #mesh does not", async () => {
     const document = documentOf();
     expect(loadGenerator.views(input(document)).map((entry) => entry.path)).toEqual(["generated/load.ts"]);
-    expect(moduleViews(input(document)).map(({ view }) => [view.loaders, view.loadFromLiteral])).toEqual([[["loadAuthorFields", "loadPostFields"], '"../../load"']]);
+    // The domain root's barrel first: it holds no entity, so no loader.
+    expect(moduleViews(input(document)).map(({ view }) => [view.loaders, view.loadFromLiteral])).toEqual([[[], null], [["loadAuthorFields", "loadPostFields"], '"../../load"']]);
     const files = await generateFiles(input(document));
     const module = files.find((file) => file.path === "generated/domain/app/index.ts")!.contents;
     expect(module).toContain('export { loadAuthorFields, loadPostFields } from "../../load";');
@@ -136,7 +138,7 @@ describe("the load generator", () => {
     const fields = "entity :AuthorFields table=\"author_fields\"\n  attributes\n    uuid :id primary-key\n  actions\n    read :load\n";
     const document = documentOf({ author, post, lonely, "author-fields": fields });
     await expect(generateFiles(input(document))).rejects.toThrow(
-      /Entity app.Author's load function and Action :load of app.AuthorFields .* both become the top-level name `loadAuthorFields`/);
+      /: the action app.AuthorFields#load \(app\/author-fields.mesh.mx:5:5\) and the load function of entity app.Author would both be named loadAuthorFields in the generated code$/);
     await expect(generateFiles(input(document))).rejects.toBeInstanceOf(EmitError);
   });
 

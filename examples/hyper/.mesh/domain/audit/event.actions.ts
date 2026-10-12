@@ -5,6 +5,7 @@
 import {
   authorizer as $authorizer,
   castInput as $castInput,
+  entity as $entity,
   loadRows as $loadRows,
   noteWrite as $noteWrite,
   pinClock as $pinClock,
@@ -20,7 +21,7 @@ import {
   type Row as $Row,
 } from "@meshfw/runtime";
 import type {
-  Event,
+  Event as $Record,
   EventWith,
   EventLoadNames,
   EventLoadArg,
@@ -194,3 +195,23 @@ export function bindEvent(layer: $DataLayer, options: $BindOptions = {}, _compos
     },
   });
 }
+
+/**
+ * The entity value (CMP-16): `Event.<action>(input, context)` runs the action on the binding in scope, the
+ * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
+ */
+const $entityValue = $entity("audit.Event", bindEvent, bindEventReads, ($call) => ({
+  record(input: RecordEventInput, ...context: $ContextArgument): Promise<Event> {
+    return $call("record", input, context);
+  },
+
+  read<const L extends readonly (keyof EventLoadable)[] = readonly []>(
+    input: Omit<ReadEventInput, "load"> & EventLoadArg<L>,
+    ...context: $ContextArgument
+  ): Promise<L extends unknown ? EventWith<EventLoadNames<L>>[] : never> {
+    return $call("read", input, context);
+  },
+}));
+export { $entityValue as Event };
+/** The record type, under the entity value's name. */
+export type Event = $Record;

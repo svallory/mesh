@@ -10,6 +10,9 @@ import * as audit from "#mesh/domain/audit";
 import * as execution from "#mesh/domain/execution";
 import * as identity from "#mesh/domain/identity";
 import * as work from "#mesh/domain/work";
+import { Attempt, Machine, Run } from "#mesh/domain/execution";
+import { Collaborator, Membership } from "#mesh/domain/identity";
+import { Assignment, Claim, Completion, Dependency, LateResult, Review, Submission, Task } from "#mesh/domain/work";
 import * as executionCommands from "../src/domain/execution/execution.commands";
 import { attemptStart, sessionRecord } from "../src/domain/execution/execution.commands";
 import * as identityCommands from "../src/domain/identity/identity.commands";
@@ -18,12 +21,12 @@ import * as workCommands from "../src/domain/work/work.commands";
 import { reviewAccept, submissionSubmit, taskCancel, taskComplete } from "../src/domain/work/work.commands";
 import { as, asSystem, codes, deniedBy, issuesOf, minutes, NOW, one, within, type World } from "./world";
 
-const taskOf = async (w: World, id: string) => one(w.hyper.readTask({ filter: { id: { eq: id } } }, as(w.alice)));
-const claimsOf = (w: World, taskId: string) => w.hyper.readClaim({ filter: { taskId: { eq: taskId } } }, as(w.alice));
+const taskOf = async (w: World, id: string) => one(Task.read({ filter: { id: { eq: id } } }, as(w.alice)));
+const claimsOf = (w: World, taskId: string) => Claim.read({ filter: { taskId: { eq: taskId } } }, as(w.alice));
 
 /** Bot claims `task` and submits: the pending submission. */
 async function submitted(w: World, task: string) {
-  const held = await w.hyper.acquireClaim({ task }, as(w.bot));
+  const held = await Claim.acquire({ task }, as(w.bot));
   const result = await submissionSubmit({ task, fence: held.fence, summary: "ready" }, as(w.bot), w.binding);
   if (result.outcome !== "submitted") throw new Error(result.outcome);
   return result.submission;
@@ -47,7 +50,7 @@ function refusing(layer: DataLayer, refuse: (table: TableHandle, changes: Record
 
 describe("acceptance 1: task.complete writes the completion, the submission and the claim in one transaction", () => {
   test("with a summary: a Completion, a Submission recorded accepted and the claim released, in one commit", () => within(async (w) => {
-    const claim = await w.hyper.acquireClaim({ task: w.task.id }, as(w.alice));
+    const claim = await Claim.acquire({ task: w.task.id }, as(w.alice));
     const before = await taskOf(w, w.task.id);
     const result = await taskComplete({ id: w.task.id, fence: claim.fence, summary: "shipped" }, as(w.alice), w.binding);
     if (result.outcome !== "completed") throw new Error(result.outcome);
@@ -60,27 +63,27 @@ describe("acceptance 1: task.complete writes the completion, the submission and 
   }));
 
   test("a throw in the last step (releasing the claim) leaves none of the three rows", () => within(async (w) => {
-    const claim = await w.hyper.acquireClaim({ task: w.task.id }, as(w.alice));
+    const claim = await Claim.acquire({ task: w.task.id }, as(w.alice));
     const before = await taskOf(w, w.task.id);
     const failing = bind(refusing(w.db, (table, changes) => table === tables.claims && changes.state === "released"), { clock: w.clock });
     await expect(taskComplete({ id: w.task.id, fence: claim.fence, summary: "shipped" }, as(w.alice), { transaction: failing.transaction, clock: w.clock })).rejects.toThrow("the last step failed");
-    expect(await w.hyper.readCompletion({}, as(w.alice))).toEqual([]);
-    expect(await w.hyper.readSubmission({}, as(w.alice))).toEqual([]);
+    expect(await Completion.read({}, as(w.alice))).toEqual([]);
+    expect(await Submission.read({}, as(w.alice))).toEqual([]);
     expect(await claimsOf(w, w.task.id)).toMatchObject([{ id: claim.id, state: "active", endedAt: null }]);
     expect(await taskOf(w, w.task.id)).toEqual(before);
   }));
 
-  test("the generated action alone does the same: completeTask is the whole effect inside the Task aggregate", () => within(async (w) => {
-    const claim = await w.hyper.acquireClaim({ task: w.task.id }, as(w.alice));
-    const done = await w.hyper.completeTask({ id: w.task.id, fence: claim.fence }, as(w.alice));
+  test("the generated action alone does the same: Task.complete is the whole effect inside the Task aggregate", () => within(async (w) => {
+    const claim = await Claim.acquire({ task: w.task.id }, as(w.alice));
+    const done = await Task.complete({ id: w.task.id, fence: claim.fence }, as(w.alice));
     expect(done.state).toBe("done");
-    expect(await w.hyper.readCompletion({}, as(w.alice))).toMatchObject([{ rule: "performer-is-reviewer", submissionId: null }]);
+    expect(await Completion.read({}, as(w.alice))).toMatchObject([{ rule: "performer-is-reviewer", submissionId: null }]);
     expect(await claimsOf(w, w.task.id)).toMatchObject([{ state: "released", endReason: "completed" }]);
   }));
 
   test("without a summary, the actor's own pending submission is accepted (the assignment waives review)", () => within(async (w) => {
-    await w.hyper.assignTask({ id: w.task.id, assignee: w.bot.id, waiveReview: true }, as(w.alice));
-    const claim = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
+    await Task.assign({ id: w.task.id, assignee: w.bot.id, waiveReview: true }, as(w.alice));
+    const claim = await Claim.acquire({ task: w.task.id }, as(w.bot));
     const submitted = await submissionSubmit({ task: w.task.id, fence: claim.fence, summary: "ready" }, as(w.bot), w.binding);
     if (submitted.outcome !== "submitted") throw new Error(submitted.outcome);
     const result = await taskComplete({ id: w.task.id }, as(w.bot), w.binding);
@@ -90,101 +93,101 @@ describe("acceptance 1: task.complete writes the completion, the submission and 
   }));
 
   test("review.accept settles the submission and completes the task as review-accepted, in one transaction", () => within(async (w) => {
-    const claim = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
+    const claim = await Claim.acquire({ task: w.task.id }, as(w.bot));
     const submitted = await submissionSubmit({ task: w.task.id, fence: claim.fence, summary: "ready" }, as(w.bot), w.binding);
     if (submitted.outcome !== "submitted") throw new Error(submitted.outcome);
     const accepted = await reviewAccept({ submission: submitted.submission.id }, as(w.alice), w.binding);
     expect(accepted.review).toMatchObject({ decision: "accept", reviewerId: w.alice.id, ruleApplied: "task-creator" });
     expect(accepted.completion).toMatchObject({ rule: "review-accepted", submissionId: submitted.submission.id, completedById: w.alice.id });
     expect(accepted.task).toMatchObject({ state: "done", version: submitted.task.version + 1 });
-    expect(await one(w.hyper.readSubmission({}, as(w.alice)))).toMatchObject({ state: "accepted" });
+    expect(await one(Submission.read({}, as(w.alice)))).toMatchObject({ state: "accepted" });
     expect(accepted.warnings).toEqual([]);
   }));
 
   test("a completion context that names a submission review.accept did not just accept is a FrameworkError, and writes nothing", () => within(async (w) => {
     // Another Task's pending submission, the forged call of the PR #65 review (N2).
-    const other = await w.hyper.createTask({ title: "Other" }, as(w.alice));
+    const other = await Task.create({ title: "Other" }, as(w.alice));
     const foreign = await submitted(w, other.id);
     const before = await taskOf(w, w.task.id);
     // A caller that sets `completion` without `system` is refused before the transaction (policy reviewCompletion, C5).
     const fromCaller = { ...as(w.alice), completion: { rule: "review-accepted" as const, submissionId: foreign.id } };
     expect(await deniedBy(taskComplete({ id: w.task.id }, fromCaller, w.binding))).toEqual(["reviewCompletion"]);
-    expect(await deniedBy(w.hyper.completeTask({ id: w.task.id }, fromCaller))).toEqual(["reviewCompletion"]);
+    expect(await deniedBy(Task.complete({ id: w.task.id }, fromCaller))).toEqual(["reviewCompletion"]);
     // With `system`, as only review.accept's nested call sets it, the completion is still checked: the rest of this
     // test is the guard behind the policy, for engine code that names the wrong submission.
     const forged = (submissionId: string, actor: { id: string } = w.alice) => ({ ...asSystem(actor), completion: { rule: "review-accepted" as const, submissionId } });
     await expect(taskComplete({ id: w.task.id }, forged(foreign.id), w.binding)).rejects.toBeInstanceOf(FrameworkError);
-    await expect(w.hyper.completeTask({ id: w.task.id }, forged(foreign.id))).rejects.toThrow(`submission ${foreign.id}`);
+    await expect(Task.complete({ id: w.task.id }, forged(foreign.id))).rejects.toThrow(`submission ${foreign.id}`);
     // Another Task's submission that is accepted (through the exported internal settle, G20, called as the engine) is
     // refused for its Task alone (PR #65 round 2, N2): the `accepted` condition does not cover it.
-    const elsewhere = await w.hyper.createTask({ title: "Elsewhere" }, as(w.alice));
+    const elsewhere = await Task.create({ title: "Elsewhere" }, as(w.alice));
     const acceptedElsewhere = await submitted(w, elsewhere.id);
-    await w.hyper.settleSubmission({ id: acceptedElsewhere.id, outcome: "accepted" }, asSystem(w.alice));
+    await Submission.settle({ id: acceptedElsewhere.id, outcome: "accepted" }, asSystem(w.alice));
     await expect(taskComplete({ id: w.task.id }, forged(acceptedElsewhere.id), w.binding)).rejects.toThrow(`submission ${acceptedElsewhere.id}`);
     // This Task's own submission while it is still pending, named by its submitter, whose assignment waives review.
-    await w.hyper.assignTask({ id: w.task.id, assignee: w.bot.id, waiveReview: true }, as(w.alice));
+    await Task.assign({ id: w.task.id, assignee: w.bot.id, waiveReview: true }, as(w.alice));
     const own = await submitted(w, w.task.id);
-    await expect(w.hyper.completeTask({ id: w.task.id }, forged(own.id, w.bot))).rejects.toThrow(`submission ${own.id}`);
-    expect(await w.hyper.readCompletion({}, as(w.alice))).toEqual([]);
-    expect(await w.hyper.readReview({}, as(w.alice))).toEqual([]);
-    expect(await one(w.hyper.readSubmission({ filter: { id: { eq: foreign.id } } }, as(w.alice)))).toMatchObject({ state: "pending" });
+    await expect(Task.complete({ id: w.task.id }, forged(own.id, w.bot))).rejects.toThrow(`submission ${own.id}`);
+    expect(await Completion.read({}, as(w.alice))).toEqual([]);
+    expect(await Review.read({}, as(w.alice))).toEqual([]);
+    expect(await one(Submission.read({ filter: { id: { eq: foreign.id } } }, as(w.alice)))).toMatchObject({ state: "pending" });
     // The assignment, the claim and the submission bumped the Task once each; the refused completions did not.
     expect((await taskOf(w, w.task.id)).version).toBe(before.version + 3);
     // The honest path still passes: review.accept settles the submission, then completes with it.
     const accepted = await reviewAccept({ submission: own.id }, as(w.alice), w.binding);
     expect(accepted.completion).toMatchObject({ rule: "review-accepted", submissionId: own.id });
     // Once a completion names that submission, it cannot be named again after a reopen.
-    await w.hyper.reopenTask({ id: w.task.id, reason: "again" }, as(w.alice));
-    await expect(w.hyper.completeTask({ id: w.task.id }, forged(own.id))).rejects.toThrow(`submission ${own.id}`);
-    expect(await w.hyper.readCompletion({}, as(w.alice))).toHaveLength(1);
+    await Task.reopen({ id: w.task.id, reason: "again" }, as(w.alice));
+    await expect(Task.complete({ id: w.task.id }, forged(own.id))).rejects.toThrow(`submission ${own.id}`);
+    expect(await Completion.read({}, as(w.alice))).toHaveLength(1);
   }));
 
   test("review.accept that fails in the completion leaves the submission pending and writes no review", () => within(async (w) => {
-    const child = await w.hyper.createTask({ title: "child", parent: w.task.id }, as(w.alice));
-    const claim = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
+    const child = await Task.create({ title: "child", parent: w.task.id }, as(w.alice));
+    const claim = await Claim.acquire({ task: w.task.id }, as(w.bot));
     const submitted = await submissionSubmit({ task: w.task.id, fence: claim.fence, summary: "ready" }, as(w.bot), w.binding);
     if (submitted.outcome !== "submitted") throw new Error(submitted.outcome);
     // The child is open, so the nested completeTask refuses with task.children-settled.
     expect(codes(await issuesOf(reviewAccept({ submission: submitted.submission.id }, as(w.alice), w.binding)))).toEqual(["task.children-settled"]);
-    expect(await w.hyper.readReview({}, as(w.alice))).toEqual([]);
-    expect(await one(w.hyper.readSubmission({}, as(w.alice)))).toMatchObject({ state: "pending" });
+    expect(await Review.read({}, as(w.alice))).toEqual([]);
+    expect(await one(Submission.read({}, as(w.alice)))).toMatchObject({ state: "pending" });
     void child;
   }));
 });
 
 describe("acceptance 2: task.cancel revokes the claims, withdraws the submission and cancels the running runs", () => {
   test("a claimed task with runs: the claim is revoked and only the running runs are canceled", () => within(async (w) => {
-    const claim = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
-    const running = await w.hyper.startRun({ task: w.task.id }, as(w.bot));
-    const finished = await w.hyper.startRun({ task: w.task.id }, as(w.bot));
+    const claim = await Claim.acquire({ task: w.task.id }, as(w.bot));
+    const running = await Run.start({ task: w.task.id }, as(w.bot));
+    const finished = await Run.start({ task: w.task.id }, as(w.bot));
     // Run :settle is internal (only attempt.finish settles a run): called as the engine.
-    await w.hyper.settleRun({ id: finished.id, result: "succeeded" }, asSystem(w.bot));
+    await Run.settle({ id: finished.id, result: "succeeded" }, asSystem(w.bot));
     const before = await taskOf(w, w.task.id);
     const { task } = await taskCancel({ id: w.task.id, reason: "dropped" }, as(w.alice), w.binding);
     expect(task).toMatchObject({ state: "canceled", version: before.version + 1 });
     expect(await claimsOf(w, w.task.id)).toMatchObject([{ id: claim.id, state: "revoked", endReason: "task canceled" }]);
-    const runs = await w.hyper.readRun({ sort: ["startedAt", "id"] }, as(w.alice));
+    const runs = await Run.read({ sort: ["startedAt", "id"] }, as(w.alice));
     expect(runs.find((run) => run.id === running.id)).toMatchObject({ state: "canceled", cancelReason: "task canceled", endedAt: NOW, version: 2 });
     expect(runs.find((run) => run.id === finished.id)).toMatchObject({ state: "succeeded", version: 2 });
   }));
 
   test("a task in review: the pending submission is withdrawn", () => within(async (w) => {
-    const claim = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
+    const claim = await Claim.acquire({ task: w.task.id }, as(w.bot));
     const submitted = await submissionSubmit({ task: w.task.id, fence: claim.fence, summary: "ready" }, as(w.bot), w.binding);
     if (submitted.outcome !== "submitted") throw new Error(submitted.outcome);
     await taskCancel({ id: w.task.id, reason: "dropped" }, as(w.alice), w.binding);
-    expect(await one(w.hyper.readSubmission({}, as(w.alice)))).toMatchObject({ id: submitted.submission.id, state: "withdrawn" });
+    expect(await one(Submission.read({}, as(w.alice)))).toMatchObject({ id: submitted.submission.id, state: "withdrawn" });
   }));
 
-  test("calling the generated cancelTask directly skips the effect across aggregates: the run keeps running", () => within(async (w) => {
-    const run = await w.hyper.startRun({ task: w.task.id }, as(w.bot));
-    await w.hyper.cancelTask({ id: w.task.id, reason: "dropped" }, as(w.alice));
-    expect(await one(w.hyper.readRun({ filter: { id: { eq: run.id } } }, as(w.alice)))).toMatchObject({ state: "running" });
+  test("calling the generated Task.cancel directly skips the effect across aggregates: the run keeps running", () => within(async (w) => {
+    const run = await Run.start({ task: w.task.id }, as(w.bot));
+    await Task.cancel({ id: w.task.id, reason: "dropped" }, as(w.alice));
+    expect(await one(Run.read({ filter: { id: { eq: run.id } } }, as(w.alice)))).toMatchObject({ state: "running" });
   }));
 
   test("a run that fails to cancel rolls the whole cancel back", () => within(async (w) => {
-    const claim = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
-    await w.hyper.startRun({ task: w.task.id }, as(w.bot));
+    const claim = await Claim.acquire({ task: w.task.id }, as(w.bot));
+    await Run.start({ task: w.task.id }, as(w.bot));
     const before = await taskOf(w, w.task.id);
     const failing = bind(refusing(w.db, (table, changes) => table === tables.runs && changes.state === "canceled"), { clock: w.clock });
     await expect(taskCancel({ id: w.task.id, reason: "dropped" }, as(w.alice), { transaction: failing.transaction, clock: w.clock })).rejects.toThrow("the last step failed");
@@ -195,97 +198,97 @@ describe("acceptance 2: task.cancel revokes the claims, withdraws the submission
 
 describe("acceptance 3: claim.acquire assigns an unassigned task; two concurrent acquires have one winner", () => {
   test("the holder is the actor, the fence the highest plus one, the lease ten minutes; an unassigned task gets an Assignment", () => within(async (w) => {
-    const claim = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
+    const claim = await Claim.acquire({ task: w.task.id }, as(w.bot));
     expect(claim).toMatchObject({ holderId: w.bot.id, fence: 1, state: "active", acquiredAt: NOW, expiresAt: minutes(10) });
-    expect(await w.hyper.readAssignment({}, as(w.alice))).toMatchObject([{ taskId: w.task.id, assigneeId: w.bot.id, delegatorId: w.bot.id, reviewWaived: false, endedAt: null, startedAt: NOW }]);
-    await w.hyper.releaseClaim({ id: claim.id, fence: claim.fence }, as(w.bot));
+    expect(await Assignment.read({}, as(w.alice))).toMatchObject([{ taskId: w.task.id, assigneeId: w.bot.id, delegatorId: w.bot.id, reviewWaived: false, endedAt: null, startedAt: NOW }]);
+    await Claim.release({ id: claim.id, fence: claim.fence }, as(w.bot));
     // The release keeps Bot's assignment, so only Bot claims it again (claim.assignee).
-    expect(await deniedBy(w.hyper.acquireClaim({ task: w.task.id }, as(w.bob)))).toEqual(["claimAssignee"]);
-    const second = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
+    expect(await deniedBy(Claim.acquire({ task: w.task.id }, as(w.bob)))).toEqual(["claimAssignee"]);
+    const second = await Claim.acquire({ task: w.task.id }, as(w.bot));
     expect(second.fence).toBe(2);
     // The task already has a current assignment, so no second one starts.
-    expect(await w.hyper.readAssignment({}, as(w.alice))).toHaveLength(1);
+    expect(await Assignment.read({}, as(w.alice))).toHaveLength(1);
   }));
 
   test("two concurrent acquires by the assignee: one claim, one claim.task-ready with the derived state (05:148)", () => within(async (w) => {
-    await w.hyper.assignTask({ id: w.task.id, assignee: w.bot.id }, as(w.alice));
-    const outcomes = await Promise.all([w.bot, w.bot].map((who) => issuesOf(w.hyper.acquireClaim({ task: w.task.id }, as(who)))));
+    await Task.assign({ id: w.task.id, assignee: w.bot.id }, as(w.alice));
+    const outcomes = await Promise.all([w.bot, w.bot].map((who) => issuesOf(Claim.acquire({ task: w.task.id }, as(who)))));
     expect(outcomes.filter((issues) => issues.length === 0)).toHaveLength(1);
     const loser = outcomes.find((issues) => issues.length > 0)!;
     expect(codes(loser)).toEqual(["claim.task-ready"]);
     expect(loser[0]!.details).toEqual({ derivedState: "claimed", reasons: [] });
     expect(await claimsOf(w, w.task.id)).toHaveLength(1);
-    expect(await w.hyper.readAssignment({}, as(w.alice))).toHaveLength(1);
+    expect(await Assignment.read({}, as(w.alice))).toHaveLength(1);
   }));
 
   test("two concurrent acquires of an unassigned task by two members: one claim; the loser is refused (05:130)", () => within(async (w) => {
     // The winner's acquire assigns the task to it, and the loser's policies run inside its transaction, after the
     // winner's commit: the loser is refused by claim.assignee, which the spec's race accepts (permission_denied or
     // rule_violation, 05:139).
-    const outcomes = await Promise.all([w.bot, w.bob].map((who) => deniedBy(w.hyper.acquireClaim({ task: w.task.id }, as(who)))));
+    const outcomes = await Promise.all([w.bot, w.bob].map((who) => deniedBy(Claim.acquire({ task: w.task.id }, as(who)))));
     expect(outcomes.filter((denied) => denied.length === 0)).toHaveLength(1);
     expect(outcomes.find((denied) => denied.length > 0)).toEqual(["claimAssignee"]);
     expect(await claimsOf(w, w.task.id)).toHaveLength(1);
-    expect(await w.hyper.readAssignment({}, as(w.alice))).toHaveLength(1);
+    expect(await Assignment.read({}, as(w.alice))).toHaveLength(1);
   }));
 
   test("an acquire after the lease ran out expires the lapsed claim first, in the same transaction", () => within(async (w) => {
-    const first = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
+    const first = await Claim.acquire({ task: w.task.id }, as(w.bot));
     w.advance(11);
     // Bot is the task's assignee since its first acquire, so it is the one that may claim it again (claim.assignee).
-    const second = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
+    const second = await Claim.acquire({ task: w.task.id }, as(w.bot));
     expect(second.fence).toBe(2);
-    expect(await one(w.hyper.readClaim({ filter: { id: { eq: first.id } } }, as(w.alice)))).toMatchObject({ state: "expired", endReason: "lease expired", endedAt: minutes(11) });
+    expect(await one(Claim.read({ filter: { id: { eq: first.id } } }, as(w.alice)))).toMatchObject({ state: "expired", endReason: "lease expired", endedAt: minutes(11) });
   }));
 });
 
 describe("acceptance 6: a step after the write sees the stored row", () => {
   test("acquire's step reads the holder its `set` stored, not an input", () => within(async (w) => {
-    const claim = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bob));
-    expect(await one(w.hyper.readAssignment({}, as(w.alice)))).toMatchObject({ assigneeId: claim.holderId });
+    const claim = await Claim.acquire({ task: w.task.id }, as(w.bob));
+    expect(await one(Assignment.read({}, as(w.alice)))).toMatchObject({ assigneeId: claim.holderId });
     expect(claim.holderId).toBe(w.bob.id);
   }));
 
   test("attempt.finish's step settles the run with the outcome its `set` stored", () => within(async (w) => {
-    await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
-    const run = await w.hyper.startRun({ task: w.task.id }, as(w.bot));
+    await Claim.acquire({ task: w.task.id }, as(w.bot));
+    const run = await Run.start({ task: w.task.id }, as(w.bot));
     const { attempt } = await attemptStart({ run: run.id }, as(w.bot), w.binding);
-    const finished = await w.hyper.finishAttempt({ id: attempt.id, result: "succeeded", outputs: { pr: 64 }, evidence: [], error: null }, as(w.bot));
+    const finished = await Attempt.finish({ id: attempt.id, result: "succeeded", outputs: { pr: 64 }, evidence: [], error: null }, as(w.bot));
     // Empty and null values are dropped from the stored outcome (`end_attempt.ex:7-15`); the run gets that value.
     expect(finished.outcome).toEqual({ outputs: { pr: 64 } });
-    expect(await one(w.hyper.readRun({ filter: { id: { eq: run.id } } }, as(w.alice)))).toMatchObject({ state: "succeeded", outcome: { outputs: { pr: 64 } }, endedAt: NOW });
+    expect(await one(Run.read({ filter: { id: { eq: run.id } } }, as(w.alice)))).toMatchObject({ state: "succeeded", outcome: { outputs: { pr: 64 } }, endedAt: NOW });
   }));
 
   test("a retryable failure leaves the run running", () => within(async (w) => {
-    await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
-    const run = await w.hyper.startRun({ task: w.task.id }, as(w.bot));
+    await Claim.acquire({ task: w.task.id }, as(w.bot));
+    const run = await Run.start({ task: w.task.id }, as(w.bot));
     const { attempt } = await attemptStart({ run: run.id }, as(w.bot), w.binding);
-    await w.hyper.finishAttempt({ id: attempt.id, result: "failed", error: { message: "timeout", retryable: true } }, as(w.bot));
-    expect(await one(w.hyper.readRun({ filter: { id: { eq: run.id } } }, as(w.alice)))).toMatchObject({ state: "running", outcome: null });
+    await Attempt.finish({ id: attempt.id, result: "failed", error: { message: "timeout", retryable: true } }, as(w.bot));
+    expect(await one(Run.read({ filter: { id: { eq: run.id } } }, as(w.alice)))).toMatchObject({ state: "running", outcome: null });
     const { attempt: retry } = await attemptStart({ run: run.id }, as(w.bot), w.binding);
     expect(retry.number).toBe(2);
-    await w.hyper.finishAttempt({ id: retry.id, result: "failed", error: { message: "bad input" } }, as(w.bot));
-    expect(await one(w.hyper.readRun({ filter: { id: { eq: run.id } } }, as(w.alice)))).toMatchObject({ state: "failed", outcome: { error: { message: "bad input" } } });
+    await Attempt.finish({ id: retry.id, result: "failed", error: { message: "bad input" } }, as(w.bot));
+    expect(await one(Run.read({ filter: { id: { eq: run.id } } }, as(w.alice)))).toMatchObject({ state: "failed", outcome: { error: { message: "bad input" } } });
   }));
 });
 
 describe("acceptance 10: warnings, and a late result instead of a failure", () => {
   async function blockedLater(w: World) {
-    const reopened = await w.hyper.createTask({ title: "Design" }, as(w.alice));
-    const canceled = await w.hyper.createTask({ title: "Docs" }, as(w.alice));
+    const reopened = await Task.create({ title: "Design" }, as(w.alice));
+    const canceled = await Task.create({ title: "Docs" }, as(w.alice));
     for (const prerequisite of [reopened, canceled]) {
       w.advance(1);
-      await w.hyper.addDependency({ dependent: w.task.id, prerequisite: prerequisite.id }, as(w.alice));
-      await w.hyper.completeTask({ id: prerequisite.id }, as(w.alice));
+      await Dependency.add({ dependent: w.task.id, prerequisite: prerequisite.id }, as(w.alice));
+      await Task.complete({ id: prerequisite.id }, as(w.alice));
     }
     return { reopened, canceled };
   }
 
   test("task.complete succeeds over an open and a canceled prerequisite and lists both as warnings", () => within(async (w) => {
     const { reopened, canceled } = await blockedLater(w);
-    const claim = await w.hyper.acquireClaim({ task: w.task.id }, as(w.alice));
-    await w.hyper.reopenTask({ id: reopened.id, reason: "redo" }, as(w.alice));
-    await w.hyper.reopenTask({ id: canceled.id, reason: "redo" }, as(w.alice));
+    const claim = await Claim.acquire({ task: w.task.id }, as(w.alice));
+    await Task.reopen({ id: reopened.id, reason: "redo" }, as(w.alice));
+    await Task.reopen({ id: canceled.id, reason: "redo" }, as(w.alice));
     await taskCancel({ id: canceled.id, reason: "not needed" }, as(w.alice), w.binding);
     const result = await taskComplete({ id: w.task.id, fence: claim.fence }, as(w.alice), w.binding);
     if (result.outcome !== "completed") throw new Error(result.outcome);
@@ -298,38 +301,38 @@ describe("acceptance 10: warnings, and a late result instead of a failure", () =
 
   test("review.accept lists the same warnings", () => within(async (w) => {
     const { reopened } = await blockedLater(w);
-    const claim = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
+    const claim = await Claim.acquire({ task: w.task.id }, as(w.bot));
     const submitted = await submissionSubmit({ task: w.task.id, fence: claim.fence, summary: "ready" }, as(w.bot), w.binding);
     if (submitted.outcome !== "submitted") throw new Error(submitted.outcome);
-    await w.hyper.reopenTask({ id: reopened.id, reason: "redo" }, as(w.alice));
+    await Task.reopen({ id: reopened.id, reason: "redo" }, as(w.alice));
     // The reopen did not change this task, so the submission's task version still matches.
     const accepted = await reviewAccept({ submission: submitted.submission.id }, as(w.alice), w.binding);
     expect(accepted.warnings).toEqual([{ kind: "dependency", taskId: reopened.id, message: "blocked: waiting for Design" }]);
   }));
 
   test("submission.submit with the fence of a revoked claim records a late result and leaves the task unchanged", () => within(async (w) => {
-    const claim = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
-    await w.hyper.revokeClaim({ id: claim.id, reason: "taking over" }, as(w.alice));
+    const claim = await Claim.acquire({ task: w.task.id }, as(w.bot));
+    await Claim.revoke({ id: claim.id, reason: "taking over" }, as(w.alice));
     const before = await taskOf(w, w.task.id);
     const result = await submissionSubmit({ task: w.task.id, fence: claim.fence, summary: "too late" }, as(w.bot), w.binding);
     expect(result).toMatchObject({ outcome: "late-result-recorded", lateResult: { taskId: w.task.id, submitterId: w.bot.id, fence: claim.fence, summary: "too late", evidence: [] } });
     expect(await taskOf(w, w.task.id)).toEqual(before);
-    expect(await w.hyper.readSubmission({}, as(w.alice))).toEqual([]);
+    expect(await Submission.read({}, as(w.alice))).toEqual([]);
   }));
 
   test("task.complete with the fence of a lapsed claim records a late result with no summary", () => within(async (w) => {
-    await w.hyper.assignTask({ id: w.task.id, assignee: w.bot.id, waiveReview: true }, as(w.alice));
-    const claim = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
+    await Task.assign({ id: w.task.id, assignee: w.bot.id, waiveReview: true }, as(w.alice));
+    const claim = await Claim.acquire({ task: w.task.id }, as(w.bot));
     w.advance(15);
     const before = await taskOf(w, w.task.id);
     const result = await taskComplete({ id: w.task.id, fence: claim.fence }, as(w.bot), w.binding);
     expect(result).toMatchObject({ outcome: "late-result-recorded", lateResult: { fence: claim.fence, summary: null, submitterId: w.bot.id } });
     expect(await taskOf(w, w.task.id)).toEqual(before);
-    expect(await w.hyper.readCompletion({}, as(w.alice))).toEqual([]);
+    expect(await Completion.read({}, as(w.alice))).toEqual([]);
   }));
 
   test("a submit queued behind another transaction decides stale or not when it runs, not when it was called", () => within(async (w) => {
-    const claim = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
+    const claim = await Claim.acquire({ task: w.task.id }, as(w.bot));
     w.advance(9);
     // A transaction holds the layer, which runs whole transactions one at a time, so the submit waits behind it.
     let open!: () => void;
@@ -341,78 +344,78 @@ describe("acceptance 10: warnings, and a late result instead of a failure", () =
     open();
     await holding;
     expect(await queued).toMatchObject({ outcome: "late-result-recorded", lateResult: { fence: claim.fence, summary: "late", submitterId: w.bot.id } });
-    expect(await w.hyper.readSubmission({}, as(w.alice))).toEqual([]);
+    expect(await Submission.read({}, as(w.alice))).toEqual([]);
   }));
 
   test("a fence the actor never held is claim.current-fence, not a late result", () => within(async (w) => {
-    const claim = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
-    await w.hyper.revokeClaim({ id: claim.id, reason: "taking over" }, as(w.alice));
+    const claim = await Claim.acquire({ task: w.task.id }, as(w.bot));
+    await Claim.revoke({ id: claim.id, reason: "taking over" }, as(w.alice));
     // Bob never held a claim on the task: claim.holder refuses the submit (PROTOCOL.md:249, C3).
     expect(await deniedBy(submissionSubmit({ task: w.task.id, fence: claim.fence, summary: "mine" }, as(w.bob), w.binding))).toEqual(["claimHolder"]);
     // Once Bob holds a claim of his own (fence 2), fence 1, which he never held, is claim.current-fence.
-    await w.hyper.unassignTask({ id: w.task.id }, as(w.alice));
-    await w.hyper.acquireClaim({ task: w.task.id }, as(w.bob));
+    await Task.unassign({ id: w.task.id }, as(w.alice));
+    await Claim.acquire({ task: w.task.id }, as(w.bob));
     const issues = await issuesOf(submissionSubmit({ task: w.task.id, fence: claim.fence, summary: "mine" }, as(w.bob), w.binding));
     expect(codes(issues)).toEqual(["claim.current-fence"]);
     expect(issues[0]!.details).toEqual({ currentFence: 2, stale: false });
-    expect(await w.hyper.readLateResult({}, as(w.alice))).toEqual([]);
+    expect(await LateResult.read({}, as(w.alice))).toEqual([]);
   }));
 
-  test("the generated recordLateResult refuses a fence that is not stale (claim.stale-fence)", () => within(async (w) => {
-    const claim = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
-    expect(codes(await issuesOf(w.hyper.recordLateResult({ task: w.task.id, fence: claim.fence, summary: "x" }, as(w.bot))))).toEqual(["claim.stale-fence"]);
+  test("the generated LateResult.record refuses a fence that is not stale (claim.stale-fence)", () => within(async (w) => {
+    const claim = await Claim.acquire({ task: w.task.id }, as(w.bot));
+    expect(codes(await issuesOf(LateResult.record({ task: w.task.id, fence: claim.fence, summary: "x" }, as(w.bot))))).toEqual(["claim.stale-fence"]);
   }));
 });
 
 describe("effects across aggregates in the identity commands", () => {
   test("membership.revoke revokes the collaborator's claims and bumps each task once", () => within(async (w) => {
-    const other = await w.hyper.createTask({ title: "Other" }, as(w.alice));
-    const claims = [await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot)), await w.hyper.acquireClaim({ task: other.id }, as(w.bot))];
+    const other = await Task.create({ title: "Other" }, as(w.alice));
+    const claims = [await Claim.acquire({ task: w.task.id }, as(w.bot)), await Claim.acquire({ task: other.id }, as(w.bot))];
     const versions = await Promise.all([w.task.id, other.id].map(async (id) => (await taskOf(w, id)).version));
     const { membership } = await membershipRevoke({ id: w.memberships.bot.id, reason: "left" }, as(w.alice), w.binding);
     expect(membership).toMatchObject({ state: "revoked", revokedById: w.alice.id, revokedAt: NOW, version: 2 });
-    for (const claim of claims) expect(await one(w.hyper.readClaim({ filter: { id: { eq: claim.id } } }, as(w.alice)))).toMatchObject({ state: "revoked", endReason: "membership revoked" });
+    for (const claim of claims) expect(await one(Claim.read({ filter: { id: { eq: claim.id } } }, as(w.alice)))).toMatchObject({ state: "revoked", endReason: "membership revoked" });
     expect(await Promise.all([w.task.id, other.id].map(async (id) => (await taskOf(w, id)).version))).toEqual(versions.map((v) => v + 1));
   }));
 
   test("collaborator.retire revokes the membership and the claims; the generated action alone leaves both", () => within(async (w) => {
-    const claim = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
+    const claim = await Claim.acquire({ task: w.task.id }, as(w.bot));
     const { collaborator } = await collaboratorRetire({ id: w.bot.id }, as(w.alice), w.binding);
     expect(collaborator).toMatchObject({ state: "retired", version: 2 });
-    expect(await one(w.hyper.readMembership({ filter: { id: { eq: w.memberships.bot.id } } }, as(w.alice)))).toMatchObject({ state: "revoked" });
-    expect(await one(w.hyper.readClaim({ filter: { id: { eq: claim.id } } }, as(w.alice)))).toMatchObject({ state: "revoked", endReason: "membership revoked" });
-    await w.hyper.retireCollaborator({ id: w.bob.id }, as(w.alice));
-    expect(await one(w.hyper.readMembership({ filter: { id: { eq: w.memberships.bob.id } } }, as(w.alice)))).toMatchObject({ state: "active" });
+    expect(await one(Membership.read({ filter: { id: { eq: w.memberships.bot.id } } }, as(w.alice)))).toMatchObject({ state: "revoked" });
+    expect(await one(Claim.read({ filter: { id: { eq: claim.id } } }, as(w.alice)))).toMatchObject({ state: "revoked", endReason: "membership revoked" });
+    await Collaborator.retire({ id: w.bob.id }, as(w.alice));
+    expect(await one(Membership.read({ filter: { id: { eq: w.memberships.bob.id } } }, as(w.alice)))).toMatchObject({ state: "active" });
   }));
 
   test("retiring the last owner is refused by membership.last-owner and changes nothing", () => within(async (w) => {
     expect(codes(await issuesOf(collaboratorRetire({ id: w.alice.id }, as(w.alice), w.binding)))).toEqual(["membership.last-owner"]);
     expect(codes(await issuesOf(membershipRevoke({ id: w.memberships.alice.id }, as(w.alice), w.binding)))).toEqual(["membership.last-owner"]);
-    expect(await one(w.hyper.readCollaborator({ filter: { id: { eq: w.alice.id } } }, as(w.alice)))).toMatchObject({ state: "active", version: 1 });
+    expect(await one(Collaborator.read({ filter: { id: { eq: w.alice.id } } }, as(w.alice)))).toMatchObject({ state: "active", version: 1 });
   }));
 });
 
 describe("effects across aggregates in the execution commands: the machine named by a report", () => {
   test("an unknown name records the machine, a known one is reused, a retired one is refused", () => within(async (w) => {
-    await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
-    const run = await w.hyper.startRun({ task: w.task.id }, as(w.bot));
+    await Claim.acquire({ task: w.task.id }, as(w.bot));
+    const run = await Run.start({ task: w.task.id }, as(w.bot));
     const { attempt } = await attemptStart({ run: run.id, machine: "laptop" }, as(w.bot), w.binding);
-    const machine = await one(w.hyper.readMachine({}, as(w.alice)));
+    const machine = await one(Machine.read({}, as(w.alice)));
     expect(machine).toMatchObject({ name: "laptop", firstReportedById: w.bot.id, state: "active" });
     expect(attempt.machineId).toBe(machine.id);
     const { sessionReference } = await sessionRecord({ runtime: "claude", runtimeSessionId: "s-1", availability: "complete", machine: "laptop", agentProfile: w.bot.id }, as(w.bot), w.binding);
     expect(sessionReference).toMatchObject({ machineId: machine.id, recordedById: w.bot.id });
-    await w.hyper.abandonAttempt({ id: attempt.id }, as(w.bot));
-    await w.hyper.retireMachine({ id: machine.id, reason: "sold" }, as(w.alice));
+    await Attempt.abandon({ id: attempt.id }, as(w.bot));
+    await Machine.retire({ id: machine.id, reason: "sold" }, as(w.alice));
     expect(codes(await issuesOf(sessionRecord({ runtime: "claude", runtimeSessionId: "s-2", availability: "complete", machine: "laptop", agentProfile: w.bot.id }, as(w.bot), w.binding)))).toEqual(["machine.retired"]);
-    expect(await w.hyper.readMachine({}, as(w.alice))).toHaveLength(1);
+    expect(await Machine.read({}, as(w.alice))).toHaveLength(1);
   }));
 
   test("a report that fails after recording a new machine leaves no machine", () => within(async (w) => {
     // Bob holds no claim on the task, so the policy attemptClaimer refuses, and the machine the call recorded rolls back.
-    const run = await w.hyper.startRun({ task: w.task.id }, as(w.bob));
+    const run = await Run.start({ task: w.task.id }, as(w.bob));
     expect(await deniedBy(attemptStart({ run: run.id, machine: "desktop" }, as(w.bob), w.binding))).toEqual(["attemptClaimer"]);
-    expect(await w.hyper.readMachine({}, as(w.alice))).toEqual([]);
+    expect(await Machine.read({}, as(w.alice))).toEqual([]);
   }));
 });
 
@@ -421,37 +424,37 @@ describe("PROTOCOL.md §4.5: the Task's version goes up by one per committed com
     const steps: [string, () => Promise<unknown>][] = [];
     let fence = 0;
     let submissionId = "";
-    const prerequisite = await w.hyper.createTask({ title: "Prerequisite" }, as(w.alice));
-    await w.hyper.completeTask({ id: prerequisite.id }, as(w.alice));
+    const prerequisite = await Task.create({ title: "Prerequisite" }, as(w.alice));
+    await Task.complete({ id: prerequisite.id }, as(w.alice));
     steps.push(
-      ["dependency.add", () => w.hyper.addDependency({ dependent: w.task.id, prerequisite: prerequisite.id }, as(w.alice))],
-      ["task.assign", () => w.hyper.assignTask({ id: w.task.id, assignee: w.bot.id }, as(w.alice))],
-      ["claim.acquire", async () => { fence = (await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot))).fence; }],
-      ["claim.renew", async () => w.hyper.renewClaim({ id: (await claimsOf(w, w.task.id)).find((c) => c.fence === fence)!.id, fence }, as(w.bot))],
+      ["dependency.add", () => Dependency.add({ dependent: w.task.id, prerequisite: prerequisite.id }, as(w.alice))],
+      ["task.assign", () => Task.assign({ id: w.task.id, assignee: w.bot.id }, as(w.alice))],
+      ["claim.acquire", async () => { fence = (await Claim.acquire({ task: w.task.id }, as(w.bot))).fence; }],
+      ["claim.renew", async () => Claim.renew({ id: (await claimsOf(w, w.task.id)).find((c) => c.fence === fence)!.id, fence }, as(w.bot))],
       ["submission.submit", async () => { const r = await submissionSubmit({ task: w.task.id, fence, summary: "s" }, as(w.bot), w.binding); submissionId = r.outcome === "submitted" ? r.submission.id : ""; }],
-      ["submission.withdraw", () => w.hyper.withdrawSubmission({ id: submissionId }, as(w.bot))],
-      ["claim.acquire again", async () => { fence = (await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot))).fence; }],
-      ["claim.release", async () => w.hyper.releaseClaim({ id: (await claimsOf(w, w.task.id)).find((c) => c.fence === fence)!.id, fence }, as(w.bot))],
-      ["claim.acquire, then submit", async () => { fence = (await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot))).fence; }],
+      ["submission.withdraw", () => Submission.withdraw({ id: submissionId }, as(w.bot))],
+      ["claim.acquire again", async () => { fence = (await Claim.acquire({ task: w.task.id }, as(w.bot))).fence; }],
+      ["claim.release", async () => Claim.release({ id: (await claimsOf(w, w.task.id)).find((c) => c.fence === fence)!.id, fence }, as(w.bot))],
+      ["claim.acquire, then submit", async () => { fence = (await Claim.acquire({ task: w.task.id }, as(w.bot))).fence; }],
       ["submission.submit again", async () => { const r = await submissionSubmit({ task: w.task.id, fence, summary: "s" }, as(w.bot), w.binding); submissionId = r.outcome === "submitted" ? r.submission.id : ""; }],
-      ["review.return", () => w.hyper.returnReview({ submission: submissionId, reasons: "more tests" }, as(w.alice))],
-      ["task.unassign", () => w.hyper.unassignTask({ id: w.task.id }, as(w.alice))],
-      ["claim.acquire by Alice", async () => { fence = (await w.hyper.acquireClaim({ task: w.task.id }, as(w.alice))).fence; }],
-      ["claim.revoke", async () => w.hyper.revokeClaim({ id: (await claimsOf(w, w.task.id)).find((c) => c.fence === fence)!.id, reason: "stop" }, as(w.alice))],
-      ["claim.acquire, then expire", async () => { fence = (await w.hyper.acquireClaim({ task: w.task.id }, as(w.alice))).fence; }],
+      ["review.return", () => Review.return({ submission: submissionId, reasons: "more tests" }, as(w.alice))],
+      ["task.unassign", () => Task.unassign({ id: w.task.id }, as(w.alice))],
+      ["claim.acquire by Alice", async () => { fence = (await Claim.acquire({ task: w.task.id }, as(w.alice))).fence; }],
+      ["claim.revoke", async () => Claim.revoke({ id: (await claimsOf(w, w.task.id)).find((c) => c.fence === fence)!.id, reason: "stop" }, as(w.alice))],
+      ["claim.acquire, then expire", async () => { fence = (await Claim.acquire({ task: w.task.id }, as(w.alice))).fence; }],
       // Claim :expire is internal (the engine's lease sweeper): called as the engine.
-      ["claim.expire", async () => w.hyper.expireClaim({ id: (await claimsOf(w, w.task.id)).find((c) => c.fence === fence)!.id }, asSystem(w.alice))],
-      ["dependency.remove", async () => w.hyper.removeDependency({ id: (await one(w.hyper.readDependency({}, as(w.alice)))).id }, as(w.alice))],
-      ["task.setPriority", () => w.hyper.setPriorityTask({ id: w.task.id, priority: 2 }, as(w.alice))],
-      ["claim.acquire, then complete", async () => { fence = (await w.hyper.acquireClaim({ task: w.task.id }, as(w.alice))).fence; }],
+      ["claim.expire", async () => Claim.expire({ id: (await claimsOf(w, w.task.id)).find((c) => c.fence === fence)!.id }, asSystem(w.alice))],
+      ["dependency.remove", async () => Dependency.remove({ id: (await one(Dependency.read({}, as(w.alice)))).id }, as(w.alice))],
+      ["task.setPriority", () => Task.setPriority({ id: w.task.id, priority: 2 }, as(w.alice))],
+      ["claim.acquire, then complete", async () => { fence = (await Claim.acquire({ task: w.task.id }, as(w.alice))).fence; }],
       // The completion, the accepted submission and the released claim are three writes in the aggregate: one bump.
       ["task.complete with a summary, releasing the live claim", () => taskComplete({ id: w.task.id, fence, summary: "done" }, as(w.alice), w.binding)],
-      ["task.reopen", () => w.hyper.reopenTask({ id: w.task.id, reason: "again" }, as(w.alice))],
-      ["claim.acquire, then submit for review", async () => { fence = (await w.hyper.acquireClaim({ task: w.task.id }, as(w.alice))).fence; }],
+      ["task.reopen", () => Task.reopen({ id: w.task.id, reason: "again" }, as(w.alice))],
+      ["claim.acquire, then submit for review", async () => { fence = (await Claim.acquire({ task: w.task.id }, as(w.alice))).fence; }],
       ["submission.submit for review", async () => { const r = await submissionSubmit({ task: w.task.id, fence, summary: "s" }, as(w.alice), w.binding); submissionId = r.outcome === "submitted" ? r.submission.id : ""; }],
       // Settling the submission and completing the Task: one bump.
       ["review.accept", () => reviewAccept({ submission: submissionId }, as(w.alice), w.binding)],
-      ["task.reopen again", () => w.hyper.reopenTask({ id: w.task.id, reason: "again" }, as(w.alice))],
+      ["task.reopen again", () => Task.reopen({ id: w.task.id, reason: "again" }, as(w.alice))],
       ["task.cancel", () => taskCancel({ id: w.task.id, reason: "stop" }, as(w.alice), w.binding)],
     );
     for (const [name, step] of steps) {
@@ -462,8 +465,8 @@ describe("PROTOCOL.md §4.5: the Task's version goes up by one per committed com
   }));
 
   test("a late result does not bump the task", () => within(async (w) => {
-    const claim = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
-    await w.hyper.revokeClaim({ id: claim.id, reason: "stop" }, as(w.alice));
+    const claim = await Claim.acquire({ task: w.task.id }, as(w.bot));
+    await Claim.revoke({ id: claim.id, reason: "stop" }, as(w.alice));
     const before = (await taskOf(w, w.task.id)).version;
     expect((await submissionSubmit({ task: w.task.id, fence: claim.fence, summary: "late" }, as(w.bot), w.binding)).outcome).toBe("late-result-recorded");
     expect((await taskOf(w, w.task.id)).version).toBe(before);
@@ -472,7 +475,7 @@ describe("PROTOCOL.md §4.5: the Task's version goes up by one per committed com
 
 describe("the command functions", () => {
   test("follow Hyper's method names in camelCase, and none is a name `#mesh` or a module's index exports", () => {
-    // `#mesh` holds only the framework's names; every action function is its module's.
+    // `#mesh` holds only the framework's names; every entity value is its module's.
     expect(Object.keys(mesh).sort()).toEqual(["bind", "connect", "disconnect", "tables", "transaction"]);
     const exported = new Set([mesh, audit, execution, identity, work].flatMap((module) => Object.keys(module)));
     // The key lists, not a spread of the modules: a name two modules export would be one key of a spread.
@@ -480,7 +483,8 @@ describe("the command functions", () => {
     expect(names.filter((name, at) => names.indexOf(name) !== at)).toEqual([]);
     expect([...names].sort()).toEqual(["attemptStart", "collaboratorRetire", "membershipRevoke", "reviewAccept", "sessionRecord", "submissionSubmit", "taskCancel", "taskComplete"]);
     for (const name of names) expect(exported.has(name), name).toBe(false);
-    // The generated names put the action first, so `<entity><Method>` cannot meet one.
-    expect(exported.has("completeTask") && exported.has("cancelTask") && exported.has("revokeMembership")).toBe(true);
+    // A module exports each entity's value, whose methods are the actions (`Task.complete`), and no function per action.
+    expect(exported.has("Task") && exported.has("Membership")).toBe(true);
+    expect(exported.has("completeTask") || exported.has("cancelTask") || exported.has("revokeMembership")).toBe(false);
   });
 });

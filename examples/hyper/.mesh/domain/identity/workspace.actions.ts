@@ -11,6 +11,7 @@ import {
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
   composed as $composed,
+  entity as $entity,
   noteWrite as $noteWrite,
   pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
@@ -29,7 +30,7 @@ import {
   type Row as $Row,
 } from "@meshfw/runtime";
 import type {
-  Workspace,
+  Workspace as $Record,
   CreateWorkspaceInput,
   RenameWorkspaceInput,
   ReadWorkspaceInput,
@@ -344,3 +345,24 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
     },
   });
 }
+
+/**
+ * The entity value (CMP-16): `Workspace.<action>(input, context)` runs the action on the binding in scope, the
+ * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
+ */
+const $entityValue = $entity("identity.Workspace", bindWorkspace, bindWorkspaceReads, ($call) => ({
+  create(input: CreateWorkspaceInput, ...context: $ContextArgument): Promise<Workspace> {
+    return $call("create", input, context);
+  },
+
+  rename(input: RenameWorkspaceInput, ...context: $ContextArgument): Promise<Workspace> {
+    return $call("rename", input, context);
+  },
+
+  read(input: ReadWorkspaceInput, ...context: $ContextArgument): Promise<Workspace[]> {
+    return $call("read", input, context);
+  },
+}));
+export { $entityValue as Workspace };
+/** The record type, under the entity value's name. */
+export type Workspace = $Record;

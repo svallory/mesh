@@ -10,6 +10,7 @@ import {
   castInput as $castInput,
   checkScope as $checkScope,
   composed as $composed,
+  entity as $entity,
   guarded as $guarded,
   loadInto as $loadInto,
   loadRows as $loadRows,
@@ -31,7 +32,7 @@ import {
   type Row as $Row,
 } from "@meshfw/runtime";
 import type {
-  Dependency,
+  Dependency as $Record,
   DependencyWith,
   DependencyTxWith,
   DependencyLoadNames,
@@ -437,3 +438,27 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
     },
   });
 }
+
+/**
+ * The entity value (CMP-16): `Dependency.<action>(input, context)` runs the action on the binding in scope, the
+ * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
+ */
+const $entityValue = $entity("work.Dependency", bindDependency, bindDependencyReads, ($call) => ({
+  add(input: AddDependencyInput, ...context: $ContextArgument): Promise<Dependency> {
+    return $call("add", input, context);
+  },
+
+  remove(input: RemoveDependencyInput, ...context: $ContextArgument): Promise<void> {
+    return $call("remove", input, context);
+  },
+
+  read<const L extends readonly (keyof DependencyLoadable)[] = readonly []>(
+    input: Omit<ReadDependencyInput, "load"> & DependencyLoadArg<L>,
+    ...context: $ContextArgument
+  ): Promise<L extends unknown ? DependencyWith<DependencyLoadNames<L>>[] : never> {
+    return $call("read", input, context);
+  },
+}));
+export { $entityValue as Dependency };
+/** The record type, under the entity value's name. */
+export type Dependency = $Record;

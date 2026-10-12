@@ -9,6 +9,7 @@ import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } f
 import { openPolicies } from "./open-policy.ts";
 import { FrameworkError, InvalidInputError, NotFoundError } from "@meshfw/runtime";
 import build from "../src/build.ts";
+import { callsOf } from "./calls.ts";
 import { createSchema, sqlite } from "../src/index.ts";
 
 const account = `import { Entry } from "./entry.mesh.mx"
@@ -315,22 +316,23 @@ const doc = `entity :Doc table="docs"
         }
 `;
 
-/** A helper module the entity file imports: it opens an application transaction from inside a \`run\`. */
-const helpers = `type Composition = { readonly actions: { logAudit(input: { what: string }): Promise<unknown> }; readonly tx: { readAudit(input: object): Promise<readonly unknown[]> } };
-type Binding = {
-  transaction<T>(fn: (composition: Composition) => Promise<T>): Promise<T>;
-  depositAccount(input: { id: number; amount: number }): Promise<unknown>;
-};
-let binding: Binding | undefined;
-export function use(given: Binding): void { binding = given; }
-/** A generated function called directly, as an application imports it from \`#mesh/domain\`, not through \`actions\`. */
+/**
+ * A helper module the entity file imports, as an application's would: it calls an entity value and opens an application
+ * transaction from inside a \`run\`, each on the binding in scope. Both are typed by hand and called with no context on
+ * purpose, so the project still type-checks when its context declaration has a required key. Both are read inside the
+ * functions: this module loads while the barrel that defines \`Account\` is still loading.
+ */
+const helpers = `import { Account } from "../../.mesh/domain/index.ts";
+import { transaction } from "../../.mesh/index.ts";
+type Composition = { readonly actions: { logAudit(input: { what: string }): Promise<unknown> }; readonly tx: { readAudit(input: object): Promise<readonly unknown[]> } };
+type Deposit = (input: { id: number; amount: number }) => Promise<unknown>;
+type Transaction = <T>(fn: (composition: Composition) => Promise<T>) => Promise<T>;
+/** An entity value called directly, as an application imports it from \`#mesh/domain\`, not through \`actions\`. */
 export async function directDeposit(id: number, amount: unknown): Promise<void> {
-  if (!binding) throw new Error("no binding");
-  await binding.depositAccount({ id, amount: amount as number });
+  await (Account.deposit as Deposit)({ id, amount: amount as number });
 }
 export async function auditInTransaction(what: string): Promise<number> {
-  if (!binding) throw new Error("no binding");
-  return binding.transaction(async ({ actions, tx }) => {
+  return (transaction as unknown as Transaction)(async ({ actions, tx }) => {
     await actions.logAudit({ what });
     return (await tx.readAudit({})).length;
   });
@@ -375,11 +377,11 @@ async function typeCheck(dir: string, extra: string[] = []): Promise<string> {
 
 let dir: string;
 let app: any;
-let helperModule: { use(binding: unknown): void };
+let domain: object;
 beforeAll(async () => {
   dir = await generate(".composition-", { account, entry, audit });
   app = await import(join(dir, ".mesh/index.ts"));
-  helperModule = await import(join(dir, "src/domain/helpers.ts"));
+  domain = await import(join(dir, ".mesh/domain/index.ts"));
 });
 afterAll(async () => { if (dir) await rm(dir, { recursive: true, force: true }); });
 
@@ -390,8 +392,7 @@ async function fresh() {
   await createSchema(db, app.tables);
   const log: string[] = [];
   const ctx: { actor: { id: string }; log: string[]; stash?: any } = { actor: alice, log };
-  const mesh = app.bind(db);
-  helperModule.use(mesh);
+  const mesh = callsOf(app.bind(db), domain);
   return { db, mesh, ctx, log };
 }
 type World = Awaited<ReturnType<typeof fresh>>;
@@ -417,11 +418,13 @@ describe("the generated files", () => {
   test("type-check when the project's context has a required key: a nested call may still leave it out and carry the caller's", async () => {
     await Bun.write(join(dir, "context.ts"), 'import "@meshfw/runtime";\ndeclare module "@meshfw/runtime" {\n  interface ActionContext {\n    actor: { id: string };\n    log: string[];\n    stash?: unknown;\n  }\n}\nexport {};\n');
     await Bun.write(join(dir, "check-context.ts"), [
+      'import { Account } from "./.mesh/domain/index.ts";',
       'import { bind } from "./.mesh/index.ts";',
       "const mesh = bind(null as never);",
       "export async function calls(): Promise<void> {",
       "  // @ts-expect-error a top-level call needs the context",
-      '  await mesh.openAccount({ name: "x" });',
+      '  await Account.open({ name: "x" });',
+      '  await mesh.run(() => Account.open({ name: "x" }, { actor: { id: "a" }, log: [] }));',
       '  await mesh.transaction(async ({ actions }) => { await actions.openAccount({ name: "x" }); }, { actor: { id: "a" }, log: [] });',
       "}",
       "",
@@ -473,7 +476,7 @@ describe("the generated files", () => {
       "  const copy = cloneValue(s.self);",
       '  copy.name = "mine";',
       "  copy.entries[0]!.amount = 2;",
-      "  // The application's transaction hands out plain records, typed as the top-level functions return them.",
+      "  // The application's transaction hands out plain records, typed as the entity values return them.",
       "  const mesh = bind(null as never);",
       "  const count: number = await mesh.transaction(async ({ actions, tx }) => {",
       '    const opened = await actions.openAccount({ name: "x" });',
@@ -1013,9 +1016,11 @@ describe("a call that joins a failed transaction is refused before it does anyth
 describe("an update that a nested write did not change passes the S3 check, whatever its columns hold (review r2, N9)", () => {
   let docDir: string;
   let docApp: any;
+  let docDomain: object;
   beforeAll(async () => {
     docDir = await generate(".composition-doc-", { doc, audit });
     docApp = await import(join(docDir, ".mesh/index.ts"));
+    docDomain = await import(join(docDir, ".mesh/domain/index.ts"));
   });
   afterAll(async () => { if (docDir) await rm(docDir, { recursive: true, force: true }); });
 
@@ -1029,7 +1034,7 @@ describe("an update that a nested write did not change passes the S3 check, what
     const db = sqlite({ file: ":memory:" });
     await createSchema(db, docApp.tables);
     const ctx = { actor: alice, log: [] as string[] };
-    const mesh = docApp.bind(db);
+    const mesh = callsOf(docApp.bind(db), docDomain);
     try {
       const made = await mesh.makeDoc(values, ctx);
       const other = await mesh.makeDoc({ title: "Other" }, ctx);

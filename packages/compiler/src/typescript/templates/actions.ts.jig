@@ -16,6 +16,7 @@ import {
   @end
 } from "@meshfw/runtime";
 import type {
+  {{ entityName }} as $Record,
   @each(name in typeImports)
   {{ name }},
   @end
@@ -118,10 +119,40 @@ export function {{ bindName }}(layer: $DataLayer, {{ optionsName }}: $BindOption
     @end
   });
 }
+
+/**
+ * The entity value (CMP-16): `{{ entityName }}.<action>(input, context)` runs the action on the binding in scope, the
+ * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
+ */
+const $entityValue = $entity({{ fqnLiteral }}, {{ bindName }}, {{ readsBindValue }}, ($call) => ({
+  @each(method in methods)
+  {{ method.name }}{{ method.generics }}(input: {{ method.inputType }}, ...context: $ContextArgument): Promise<{{ method.returnType }}> {
+    return $call({{ method.nameLiteral }}, input, context);
+  },
+
+  @end
+}));
+export { $entityValue as {{ entityName }} };
+/** The record type, under the entity value's name. */
+export type {{ entityName }} = $Record;
 @else
-import type { BindOptions as $BindOptions, Composer as $Composer, DataLayer as $DataLayer } from "@meshfw/runtime";
+import {
+  @each(name in runtimeValues)
+  {{ name }},
+  @end
+  type BindOptions as $BindOptions,
+  type Composer as $Composer,
+  type DataLayer as $DataLayer,
+} from "@meshfw/runtime";
+import type { {{ entityName }} as $Record } from {{ typesFromLiteral }};
 
 export function {{ bindName }}(_layer: $DataLayer, _options: $BindOptions = {}, _compose?: $Composer) {
   return Object.freeze({});
 }
+
+/** The entity value (CMP-16). The entity has no action, so it has no method. */
+const $entityValue = $entity({{ fqnLiteral }}, {{ bindName }}, null, () => ({}));
+export { $entityValue as {{ entityName }} };
+/** The record type, under the entity value's name. */
+export type {{ entityName }} = $Record;
 @end

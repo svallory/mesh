@@ -4,8 +4,8 @@ import { outputPrefix } from "./order.ts";
 
 /**
  * `<output>/index.ts`, one per build: the file a project's `#mesh` import names (ADR-0058). It re-exports `bind`,
- * `connect`, `disconnect` and `transaction` from `binding.ts`, `Actions` and `Reads` from `composition.ts` and
- * `tables` from the adapter's `schema.ts`, and nothing of any entity: those are each module's (CMP-17).
+ * `connect`, `disconnect`, `transaction` and `Binding` from `binding.ts`, `Actions` and `Reads` from `composition.ts`
+ * and `tables` from the adapter's `schema.ts`, and nothing of any entity: those are each module's (CMP-17).
  */
 export const indexGenerator: Generator<IndexView> = {
   name: "index",

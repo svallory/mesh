@@ -11,6 +11,7 @@ import {
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
   composed as $composed,
+  entity as $entity,
   guarded as $guarded,
   loadRows as $loadRows,
   noteWrite as $noteWrite,
@@ -31,7 +32,7 @@ import {
   type Row as $Row,
 } from "@meshfw/runtime";
 import type {
-  SessionReference,
+  SessionReference as $Record,
   SessionReferenceWith,
   SessionReferenceTxWith,
   SessionReferenceLoadNames,
@@ -589,3 +590,45 @@ export function bindSessionReference(
     },
   });
 }
+
+/**
+ * The entity value (CMP-16): `SessionReference.<action>(input, context)` runs the action on the binding in scope, the
+ * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
+ */
+const $entityValue = $entity(
+  "execution.SessionReference",
+  bindSessionReference,
+  bindSessionReferenceReads,
+  ($call) => ({
+    record(
+      input: RecordSessionReferenceInput,
+      ...context: $ContextArgument
+    ): Promise<SessionReference> {
+      return $call("record", input, context);
+    },
+
+    setAvailability(
+      input: SetAvailabilitySessionReferenceInput,
+      ...context: $ContextArgument
+    ): Promise<SessionReference> {
+      return $call("setAvailability", input, context);
+    },
+
+    redact(
+      input: RedactSessionReferenceInput,
+      ...context: $ContextArgument
+    ): Promise<SessionReference> {
+      return $call("redact", input, context);
+    },
+
+    read<const L extends readonly (keyof SessionReferenceLoadable)[] = readonly []>(
+      input: Omit<ReadSessionReferenceInput, "load"> & SessionReferenceLoadArg<L>,
+      ...context: $ContextArgument
+    ): Promise<L extends unknown ? SessionReferenceWith<SessionReferenceLoadNames<L>>[] : never> {
+      return $call("read", input, context);
+    },
+  }),
+);
+export { $entityValue as SessionReference };
+/** The record type, under the entity value's name. */
+export type SessionReference = $Record;

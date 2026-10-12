@@ -11,6 +11,7 @@ import {
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
   composed as $composed,
+  entity as $entity,
   guarded as $guarded,
   loadInto as $loadInto,
   loadRows as $loadRows,
@@ -35,7 +36,7 @@ import {
   type Row as $Row,
 } from "@meshfw/runtime";
 import type {
-  Task,
+  Task as $Record,
   TaskWith,
   TaskTxWith,
   TaskLoadNames,
@@ -1666,3 +1667,59 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
     },
   });
 }
+
+/**
+ * The entity value (CMP-16): `Task.<action>(input, context)` runs the action on the binding in scope, the
+ * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
+ */
+const $entityValue = $entity("work.Task", bindTask, bindTaskReads, ($call) => ({
+  create(input: CreateTaskInput, ...context: $ContextArgument): Promise<Task> {
+    return $call("create", input, context);
+  },
+
+  update(input: UpdateTaskInput, ...context: $ContextArgument): Promise<Task> {
+    return $call("update", input, context);
+  },
+
+  setPriority(input: SetPriorityTaskInput, ...context: $ContextArgument): Promise<Task> {
+    return $call("setPriority", input, context);
+  },
+
+  move(input: MoveTaskInput, ...context: $ContextArgument): Promise<Task> {
+    return $call("move", input, context);
+  },
+
+  reopen(input: ReopenTaskInput, ...context: $ContextArgument): Promise<Task> {
+    return $call("reopen", input, context);
+  },
+
+  touch(input: TouchTaskInput, ...context: $ContextArgument): Promise<Task> {
+    return $call("touch", input, context);
+  },
+
+  cancel(input: CancelTaskInput, ...context: $ContextArgument): Promise<Task> {
+    return $call("cancel", input, context);
+  },
+
+  complete(input: CompleteTaskInput, ...context: $ContextArgument): Promise<Task> {
+    return $call("complete", input, context);
+  },
+
+  assign(input: AssignTaskInput, ...context: $ContextArgument): Promise<Task> {
+    return $call("assign", input, context);
+  },
+
+  unassign(input: UnassignTaskInput, ...context: $ContextArgument): Promise<Task> {
+    return $call("unassign", input, context);
+  },
+
+  read<const L extends readonly (keyof TaskLoadable)[] = readonly []>(
+    input: Omit<ReadTaskInput, "load"> & TaskLoadArg<L>,
+    ...context: $ContextArgument
+  ): Promise<L extends unknown ? TaskWith<TaskLoadNames<L>>[] : never> {
+    return $call("read", input, context);
+  },
+}));
+export { $entityValue as Task };
+/** The record type, under the entity value's name. */
+export type Task = $Record;

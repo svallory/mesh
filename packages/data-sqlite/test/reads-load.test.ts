@@ -6,6 +6,7 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
+import { callsOf } from "./calls.ts";
 import { openPolicies } from "./open-policy.ts";
 import { FrameworkError, InvalidInputError, type DataOperations } from "@meshfw/runtime";
 import build from "../src/build.ts";
@@ -85,9 +86,11 @@ async function typeCheck(dir: string, extra: string[] = []): Promise<string> {
 
 let dir: string;
 let app: any;
+let domain: object;
 beforeAll(async () => {
   dir = await generate(".reads-load-", { project, task });
   app = await import(join(dir, ".mesh/index.ts"));
+  domain = await import(join(dir, ".mesh/domain/index.ts"));
 });
 afterAll(async () => { if (dir) await rm(dir, { recursive: true, force: true }); });
 
@@ -97,7 +100,7 @@ const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")
 async function fresh() {
   const db = sqlite({ file: ":memory:" });
   await createSchema(db, app.tables);
-  return { db, mesh: app.bind(db) };
+  return { db, mesh: callsOf(app.bind(db), domain) };
 }
 
 /** Two projects. Ada's holds t1 (priority 5), t2 (9), t3 (2), inserted out of key order; Bo's holds nothing. */
@@ -122,30 +125,30 @@ describe("the generated files", () => {
   test("the result of a read is typed to the names passed: a loaded field is readable, an unloaded one is a type error", async () => {
     await Bun.write(join(dir, "check-load.ts"), [
       'import { bind } from "./.mesh/index.ts";',
-      'import { readProject, type ProjectWith, type ReadProjectInput } from "./.mesh/domain/index.ts";',
+      'import { Project, Task, type ProjectWith, type ReadProjectInput } from "./.mesh/domain/index.ts";',
       "const mesh = bind(null as never);",
       "const context = { actor: { id: 'a' } };",
       "export async function calls(): Promise<void> {",
       "  // No load: the bare record, whose relationships and computed fields are not members.",
-      "  const [bare] = await mesh.readProject({}, context);",
+      "  const [bare] = await Project.read({}, context);",
       "  const name: string = bare!.name;",
       "  // @ts-expect-error an unloaded relationship is not readable",
       "  void bare!.tasks;",
       "  // @ts-expect-error an unloaded computed field is not readable",
       "  void bare!.label;",
       "  // A relationship, a computed field and a rollup, with no `as const`.",
-      "  const [loaded] = await mesh.readProject({ load: ['tasks', 'label', 'taskCount'] }, context);",
+      "  const [loaded] = await Project.read({ load: ['tasks', 'label', 'taskCount'] }, context);",
       "  const tasks: readonly { title: string }[] = loaded!.tasks;",
       "  const label: string = loaded!.label;",
       "  const count: number = loaded!.taskCount;",
       "  // @ts-expect-error a field not in the list is still not loaded",
       "  void loaded!.busy;",
       "  // @ts-expect-error a name that is not loadable is a type error",
-      "  await mesh.readProject({ load: ['nope'] }, context);",
+      "  await Project.read({ load: ['nope'] }, context);",
       "  // @ts-expect-error an attribute is already there and is not a loadable name",
-      "  await mesh.readProject({ load: ['name'] }, context);",
-      "  // The module's function is typed the same way.",
-      "  const [viaModule] = await readProject({ load: ['label'] }, context);",
+      "  await Project.read({ load: ['name'] }, context);",
+      "  // Inside `run`, the result keeps its type.",
+      "  const [viaModule] = await mesh.run(() => Project.read({ load: ['label'] }, context));",
       "  const same: ProjectWith<'label'> = viaModule!;",
       "  // The input type names what it lists.",
       "  const input: ReadProjectInput<'label'> = { load: ['label'], limit: 1 };",
@@ -164,7 +167,7 @@ describe("the generated files", () => {
       "    void label; void count;",
       "  }, context);",
       "  // An entity with a relationship and nothing else takes `load` too; Task has both.",
-      "  const [t] = await mesh.readTask({ load: ['project', 'shout'] }, context);",
+      "  const [t] = await Task.read({ load: ['project', 'shout'] }, context);",
       "  // A caller's load runs Project's read policies, so the project can be null (POL-17); through tx it cannot.",
       "  // @ts-expect-error a caller's belongs-to can be null",
       "  void t!.project.name;",
@@ -181,43 +184,41 @@ describe("the generated files", () => {
 
   test("a load that does not name its fields as a tuple claims nothing: a widened list and an input type give the bare record, and a union of tuples gives a union of results", async () => {
     await Bun.write(join(dir, "check-tuple.ts"), [
-      'import { bind } from "./.mesh/index.ts";',
-      'import type { ReadProjectInput } from "./.mesh/domain/index.ts";',
-      "const mesh = bind(null as never);",
+      'import { Project, type ReadProjectInput } from "./.mesh/domain/index.ts";',
       "const context = { actor: { id: 'a' } };",
       "export async function calls(flag: boolean): Promise<void> {",
       "  const names: ('label' | 'taskCount')[] = [];",
-      "  const [widened] = await mesh.readProject({ load: names }, context);",
+      "  const [widened] = await Project.read({ load: names }, context);",
       "  // @ts-expect-error a list that does not say which names it holds loads none, as far as the type knows",
       "  void widened!.label;",
       "  const input: ReadProjectInput<'label'> = { limit: 1 };",
-      "  const [fromInput] = await mesh.readProject(input, context);",
+      "  const [fromInput] = await Project.read(input, context);",
       "  // @ts-expect-error an input typed for a name says nothing about what the value loads",
       "  void fromInput!.label;",
       "  // @ts-expect-error an explicit tuple that lists a name needs the load that lists it",
-      "  await mesh.readProject<readonly ['label']>({}, context);",
-      "  const [explicit] = await mesh.readProject<readonly ['label']>({ load: ['label'] }, context);",
+      "  await Project.read<readonly ['label']>({}, context);",
+      "  const [explicit] = await Project.read<readonly ['label']>({ load: ['label'] }, context);",
       "  const label: string = explicit!.label;",
       "  // A union of tuples gives a union of results: only what every arm loads is readable, the rest is narrowed.",
-      "  const [conditional] = await mesh.readProject({ load: flag ? ['label'] : [] }, context);",
+      "  const [conditional] = await Project.read({ load: flag ? ['label'] : [] }, context);",
       "  // @ts-expect-error a conditional load may not have loaded the label",
       "  void conditional!.label;",
       "  if ('label' in conditional!) { const narrowed: string = conditional.label; void narrowed; }",
       "  const either: readonly ['label'] | readonly ['taskCount'] = flag ? ['label'] : ['taskCount'];",
-      "  const [fromVariable] = await mesh.readProject({ load: either }, context);",
+      "  const [fromVariable] = await Project.read({ load: either }, context);",
       "  // @ts-expect-error a variable of a union-of-tuples type loads one list or the other",
       "  void fromVariable!.label;",
       "  // @ts-expect-error nor the other",
       "  void fromVariable!.taskCount;",
-      "  const [fromArgument] = await mesh.readProject<readonly ['label'] | readonly []>({ load: [] }, context);",
+      "  const [fromArgument] = await Project.read<readonly ['label'] | readonly []>({ load: [] }, context);",
       "  // @ts-expect-error a union type argument is a union of results",
       "  void fromArgument!.label;",
-      "  const [both] = await mesh.readProject({ load: ['label', 'taskCount'] }, context);",
+      "  const [both] = await Project.read({ load: ['label', 'taskCount'] }, context);",
       "  void both!.label; void both!.taskCount;",
-      "  const [empty] = await mesh.readProject({ load: [] }, context);",
+      "  const [empty] = await Project.read({ load: [] }, context);",
       "  // @ts-expect-error an empty list loads nothing",
       "  void empty!.label;",
-      "  const [undef] = await mesh.readProject({ load: undefined, limit: 1 }, context);",
+      "  const [undef] = await Project.read({ load: undefined, limit: 1 }, context);",
       "  void undef!.name; void label;",
       "}",
       "",
@@ -287,13 +288,12 @@ describe("the generated files", () => {
     const plain = await generate(".reads-load-plain-", { note: 'entity :Note table="notes"\n  attributes\n    uuid :id primary-key\n    string :text\n  actions auto=[:read]\n' });
     try {
       await Bun.write(join(plain, "check.ts"), [
-        'import { bind } from "./.mesh/index.ts";',
-        "const mesh = bind(null as never);",
+        'import { Note } from "./.mesh/domain/index.ts";',
         "export async function calls(): Promise<void> {",
-        "  const [note] = await mesh.readNote({ limit: 1 }, { actor: { id: 'a' } });",
+        "  const [note] = await Note.read({ limit: 1 }, { actor: { id: 'a' } });",
         "  const text: string = note!.text;",
         "  // @ts-expect-error nothing to load",
-        "  await mesh.readNote({ load: [] }, { actor: { id: 'a' } });",
+        "  await Note.read({ load: [] }, { actor: { id: 'a' } });",
         "  void text;",
         "}",
         "",
@@ -382,7 +382,7 @@ describe("a caller's read with load", () => {
       }
       // Before any query: a layer that fails on the first query is never reached.
       const layer = { ...db, transaction: () => { throw new Error("a query was made"); }, refuseIfFailed: () => false, close: async () => undefined };
-      const unqueried = app.bind(layer);
+      const unqueried = callsOf(app.bind(layer), domain);
       await expect(unqueried.readProject({ load: ["nope"] }, { actor: alice })).rejects.toBeInstanceOf(InvalidInputError);
       await expect(unqueried.readProject({ load: ["label"] }, { actor: alice })).rejects.toThrow("a query was made");
     } finally { await db.close(); }
@@ -461,11 +461,12 @@ describe("the clock", () => {
     const clockDir = await generate(".reads-load-clock-", source);
     try {
       const clock = await import(join(clockDir, ".mesh/index.ts"));
+      const clockDomain = await import(join(clockDir, ".mesh/domain/index.ts"));
       const db = sqlite({ file: ":memory:" });
       await createSchema(db, clock.tables);
       await db.transaction(async (tx) => { await tx.insert(clock.tables.stamps, { id: id(1), at: new Date(5_000) }); });
-      const early = clock.bind(db, { clock: () => new Date(1_000) });
-      const late = clock.bind(db, { clock: () => new Date(9_000) });
+      const early = callsOf(clock.bind(db, { clock: () => new Date(1_000) }), clockDomain);
+      const late = callsOf(clock.bind(db, { clock: () => new Date(9_000) }), clockDomain);
       const ctx = { actor: alice };
       expect((await early.readStamp({ load: ["past"] }, ctx))[0].past).toBe(false);
       expect((await late.readStamp({ load: ["past"] }, ctx))[0].past).toBe(true);
@@ -482,6 +483,7 @@ describe("the clock", () => {
     const clockDir = await generate(".reads-load-instant-", source);
     try {
       const clock = await import(join(clockDir, ".mesh/index.ts"));
+      const clockDomain = await import(join(clockDir, ".mesh/domain/index.ts"));
       const db = sqlite({ file: ":memory:" });
       await createSchema(db, clock.tables);
       await db.transaction(async (tx) => {
@@ -489,7 +491,7 @@ describe("the clock", () => {
       });
       // An advancing clock: every read of it is one second later than the last.
       let ticks = 0;
-      const mesh = clock.bind(db, { clock: () => new Date(1_000 * ++ticks) });
+      const mesh = callsOf(clock.bind(db, { clock: () => new Date(1_000 * ++ticks) }), clockDomain);
       const ctx = { actor: alice };
       // A top-level read takes one instant for all its rows and fields.
       ticks = 0;

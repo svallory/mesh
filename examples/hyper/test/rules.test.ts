@@ -10,6 +10,9 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { NotFoundError } from "@meshfw/runtime";
+import { Attempt, Invocation, Machine, Run, SessionReference } from "#mesh/domain/execution";
+import { Collaborator, Membership, Workspace } from "#mesh/domain/identity";
+import { Assignment, Claim, Completion, Dependency, EvidenceReference, LateResult, Review, Submission, Task } from "#mesh/domain/work";
 import { attemptStart, sessionRecord } from "../src/domain/execution/execution.commands";
 import { collaboratorRetire, membershipRevoke } from "../src/domain/identity/identity.commands";
 import { reviewAccept, submissionSubmit, taskCancel, taskComplete } from "../src/domain/work/work.commands";
@@ -26,9 +29,9 @@ async function refused(call: Promise<unknown>, code: string, details?: unknown):
   if (details !== undefined) expect(issue!.details).toEqual(details);
 }
 
-const taskOf = (w: World, id: string = w.task.id) => one(w.hyper.readTask({ filter: { id: { eq: id } } }, as(w.alice)));
-const claim = (w: World, who: Who = w.bot, task: string = w.task.id) => w.hyper.acquireClaim({ task }, as(who));
-const evidence = (w: World, who: Who = w.bot) => w.hyper.recordEvidenceReference({ kind: "file", locator: "report.md" }, as(who));
+const taskOf = (w: World, id: string = w.task.id) => one(Task.read({ filter: { id: { eq: id } } }, as(w.alice)));
+const claim = (w: World, who: Who = w.bot, task: string = w.task.id) => Claim.acquire({ task }, as(who));
+const evidence = (w: World, who: Who = w.bot) => EvidenceReference.record({ kind: "file", locator: "report.md" }, as(who));
 
 /** `who` claims the task and submits: a pending submission, and the claim released. */
 async function submitted(w: World, who: Who = w.bot, task: string = w.task.id) {
@@ -48,7 +51,7 @@ async function completed(w: World, task: string = w.task.id) {
 /** Bot claims the task and starts a run on it. */
 async function running(w: World) {
   await claim(w);
-  return w.hyper.startRun({ task: w.task.id }, as(w.bot));
+  return Run.start({ task: w.task.id }, as(w.bot));
 }
 
 const session = async (w: World, runtimeSessionId = "s-1", machine = "laptop") =>
@@ -66,123 +69,123 @@ interface Case {
 const RULES: Record<string, Case> = {
   "workspace.active": {
     pass: async (w) => {
-      const workspace = await w.hyper.createWorkspace({ name: "Home" }, as(w.alice));
-      expect((await w.hyper.renameWorkspace({ id: workspace.id, name: "Base" }, as(w.alice))).name).toBe("Base");
+      const workspace = await Workspace.create({ name: "Home" }, as(w.alice));
+      expect((await Workspace.rename({ id: workspace.id, name: "Base" }, as(w.alice))).name).toBe("Base");
     },
     fail: async (w) => {
-      const workspace = await w.hyper.createWorkspace({ name: "Home" }, as(w.alice));
+      const workspace = await Workspace.create({ name: "Home" }, as(w.alice));
       // No action moves a workspace (export and import are after 1.0), so the state is written as it is.
       await w.force("workspaces", workspace.id, { state: "moved" });
-      await refused(w.hyper.renameWorkspace({ id: workspace.id, name: "Again" }, as(w.alice)), "workspace.active");
+      await refused(Workspace.rename({ id: workspace.id, name: "Again" }, as(w.alice)), "workspace.active");
     },
   },
   "collaborator.active": {
     pass: async (w) => {
-      expect((await w.hyper.updateCollaborator({ id: w.bob.id, name: "Robert" }, as(w.bob))).name).toBe("Robert");
+      expect((await Collaborator.update({ id: w.bob.id, name: "Robert" }, as(w.bob))).name).toBe("Robert");
     },
     fail: async (w) => {
       await collaboratorRetire({ id: w.bob.id, reason: "left" }, as(w.alice), w.binding);
       // Retiring revoked Bob's membership, so his own update is refused by isMember (PROTOCOL.md:88); an owner's reaches the rule.
-      expect(await deniedBy(w.hyper.updateCollaborator({ id: w.bob.id, name: "Ghost" }, as(w.bob)))).toEqual(["isMember"]);
-      await refused(w.hyper.updateCollaborator({ id: w.bob.id, name: "Ghost" }, as(w.alice)), "collaborator.active");
-      await refused(w.hyper.retireCollaborator({ id: w.bob.id }, as(w.alice)), "collaborator.active");
-      await refused(w.hyper.grantMembership({ collaborator: w.bob.id, role: "member" }, as(w.alice)), "collaborator.active");
-      await refused(w.hyper.assignTask({ id: w.task.id, assignee: w.bob.id }, as(w.alice)), "collaborator.active");
+      expect(await deniedBy(Collaborator.update({ id: w.bob.id, name: "Ghost" }, as(w.bob)))).toEqual(["isMember"]);
+      await refused(Collaborator.update({ id: w.bob.id, name: "Ghost" }, as(w.alice)), "collaborator.active");
+      await refused(Collaborator.retire({ id: w.bob.id }, as(w.alice)), "collaborator.active");
+      await refused(Membership.grant({ collaborator: w.bob.id, role: "member" }, as(w.alice)), "collaborator.active");
+      await refused(Task.assign({ id: w.task.id, assignee: w.bob.id }, as(w.alice)), "collaborator.active");
     },
   },
   "collaborator.name-unique": {
     pass: async (w) => {
-      await w.hyper.registerCollaborator({ kind: "human", name: "Carol" }, setup);
-      expect((await w.hyper.updateCollaborator({ id: w.bob.id, name: "Bob" }, as(w.bob))).name).toBe("Bob");
+      await Collaborator.register({ kind: "human", name: "Carol" }, setup);
+      expect((await Collaborator.update({ id: w.bob.id, name: "Bob" }, as(w.bob))).name).toBe("Bob");
     },
     fail: async (w) => {
-      await refused(w.hyper.registerCollaborator({ kind: "human", name: "Alice" }, setup), "collaborator.name-unique");
-      await refused(w.hyper.updateCollaborator({ id: w.bob.id, name: "Alice" }, as(w.bob)), "collaborator.name-unique");
+      await refused(Collaborator.register({ kind: "human", name: "Alice" }, setup), "collaborator.name-unique");
+      await refused(Collaborator.update({ id: w.bob.id, name: "Alice" }, as(w.bob)), "collaborator.name-unique");
     },
   },
   "collaborator.kind-immutable": {
     pass: async (w) => {
-      expect(await w.hyper.updateCollaborator({ id: w.bot.id, name: "Robot", kind: "agent" }, as(w.bot))).toMatchObject({ name: "Robot", kind: "agent" });
+      expect(await Collaborator.update({ id: w.bot.id, name: "Robot", kind: "agent" }, as(w.bot))).toMatchObject({ name: "Robot", kind: "agent" });
     },
     fail: async (w) => {
-      await refused(w.hyper.updateCollaborator({ id: w.bot.id, kind: "human" }, as(w.bot)), "collaborator.kind-immutable");
+      await refused(Collaborator.update({ id: w.bot.id, kind: "human" }, as(w.bot)), "collaborator.kind-immutable");
     },
   },
   "membership.last-owner": {
     pass: async (w) => {
-      await w.hyper.changeRoleMembership({ id: w.memberships.bob.id, role: "owner" }, as(w.alice));
+      await Membership.changeRole({ id: w.memberships.bob.id, role: "owner" }, as(w.alice));
       expect((await membershipRevoke({ id: w.memberships.alice.id }, as(w.bob), w.binding)).membership.state).toBe("revoked");
     },
     fail: async (w) => {
       await refused(membershipRevoke({ id: w.memberships.alice.id }, as(w.alice), w.binding), "membership.last-owner");
-      await refused(w.hyper.changeRoleMembership({ id: w.memberships.alice.id, role: "member" }, as(w.alice)), "membership.last-owner");
+      await refused(Membership.changeRole({ id: w.memberships.alice.id, role: "member" }, as(w.alice)), "membership.last-owner");
       await refused(collaboratorRetire({ id: w.alice.id }, as(w.alice), w.binding), "membership.last-owner");
-      expect(await one(w.hyper.readMembership({ filter: { id: { eq: w.memberships.alice.id } } }, as(w.alice)))).toMatchObject({ state: "active", role: "owner", version: 1 });
+      expect(await one(Membership.read({ filter: { id: { eq: w.memberships.alice.id } } }, as(w.alice)))).toMatchObject({ state: "active", role: "owner", version: 1 });
     },
   },
   "membership.none-active": {
     pass: async (w) => {
-      const carol = await w.hyper.registerCollaborator({ kind: "human", name: "Carol" }, setup);
-      await w.hyper.grantMembership({ collaborator: carol.id, role: "guest" }, as(w.alice));
+      const carol = await Collaborator.register({ kind: "human", name: "Carol" }, setup);
+      await Membership.grant({ collaborator: carol.id, role: "guest" }, as(w.alice));
       // A revoked membership does not count.
       await membershipRevoke({ id: w.memberships.bob.id }, as(w.alice), w.binding);
-      expect((await w.hyper.grantMembership({ collaborator: w.bob.id, role: "member" }, as(w.alice))).state).toBe("active");
+      expect((await Membership.grant({ collaborator: w.bob.id, role: "member" }, as(w.alice))).state).toBe("active");
     },
     fail: async (w) => {
-      await refused(w.hyper.grantMembership({ collaborator: w.bob.id, role: "owner" }, as(w.alice)), "membership.none-active");
+      await refused(Membership.grant({ collaborator: w.bob.id, role: "owner" }, as(w.alice)), "membership.none-active");
     },
   },
   "membership.active": {
     pass: async (w) => {
-      expect((await w.hyper.changeRoleMembership({ id: w.memberships.bob.id, role: "guest" }, as(w.alice))).role).toBe("guest");
+      expect((await Membership.changeRole({ id: w.memberships.bob.id, role: "guest" }, as(w.alice))).role).toBe("guest");
     },
     fail: async (w) => {
       await membershipRevoke({ id: w.memberships.bob.id }, as(w.alice), w.binding);
-      await refused(w.hyper.changeRoleMembership({ id: w.memberships.bob.id, role: "guest" }, as(w.alice)), "membership.active");
+      await refused(Membership.changeRole({ id: w.memberships.bob.id, role: "guest" }, as(w.alice)), "membership.active");
       await refused(membershipRevoke({ id: w.memberships.bob.id }, as(w.alice), w.binding), "membership.active");
     },
   },
   "membership.unchanged": {
     pass: async (w) => {
-      expect((await w.hyper.changeRoleMembership({ id: w.memberships.bob.id, role: "owner" }, as(w.alice))).role).toBe("owner");
+      expect((await Membership.changeRole({ id: w.memberships.bob.id, role: "owner" }, as(w.alice))).role).toBe("owner");
     },
     fail: async (w) => {
-      await refused(w.hyper.changeRoleMembership({ id: w.memberships.bob.id, role: "member" }, as(w.alice)), "membership.unchanged");
+      await refused(Membership.changeRole({ id: w.memberships.bob.id, role: "member" }, as(w.alice)), "membership.unchanged");
     },
   },
   "machine.name-free": {
     pass: async (w) => {
-      await w.hyper.registerMachine({ name: "laptop" }, as(w.alice));
+      await Machine.register({ name: "laptop" }, as(w.alice));
       // Machine :report is internal (a report names its machine through `machineNamed`): called as the engine.
-      expect((await w.hyper.reportMachine({ name: "desktop" }, asSystem(w.bot))).firstReportedById).toBe(w.bot.id);
+      expect((await Machine.report({ name: "desktop" }, asSystem(w.bot))).firstReportedById).toBe(w.bot.id);
     },
     fail: async (w) => {
-      await w.hyper.registerMachine({ name: "laptop" }, as(w.alice));
-      await refused(w.hyper.registerMachine({ name: "laptop" }, as(w.alice)), "machine.name-free");
-      await refused(w.hyper.reportMachine({ name: "laptop" }, asSystem(w.bot)), "machine.name-free");
+      await Machine.register({ name: "laptop" }, as(w.alice));
+      await refused(Machine.register({ name: "laptop" }, as(w.alice)), "machine.name-free");
+      await refused(Machine.report({ name: "laptop" }, asSystem(w.bot)), "machine.name-free");
     },
   },
   "machine.active": {
     pass: async (w) => {
-      const machine = await w.hyper.registerMachine({ name: "laptop" }, as(w.alice));
-      expect((await w.hyper.updateMachine({ id: machine.id, platform: "linux" }, as(w.alice))).platform).toBe("linux");
+      const machine = await Machine.register({ name: "laptop" }, as(w.alice));
+      expect((await Machine.update({ id: machine.id, platform: "linux" }, as(w.alice))).platform).toBe("linux");
     },
     fail: async (w) => {
-      const machine = await w.hyper.registerMachine({ name: "laptop" }, as(w.alice));
-      await w.hyper.retireMachine({ id: machine.id, reason: "sold" }, as(w.alice));
-      await refused(w.hyper.updateMachine({ id: machine.id, platform: "mac" }, as(w.alice)), "machine.active");
-      await refused(w.hyper.retireMachine({ id: machine.id, reason: "again" }, as(w.alice)), "machine.active");
+      const machine = await Machine.register({ name: "laptop" }, as(w.alice));
+      await Machine.retire({ id: machine.id, reason: "sold" }, as(w.alice));
+      await refused(Machine.update({ id: machine.id, platform: "mac" }, as(w.alice)), "machine.active");
+      await refused(Machine.retire({ id: machine.id, reason: "again" }, as(w.alice)), "machine.active");
     },
   },
   "machine.idle": {
     pass: async (w) => {
       const attempt = await started(w, await running(w), { machine: "laptop" });
-      await w.hyper.abandonAttempt({ id: attempt.id }, as(w.bot));
-      expect((await w.hyper.retireMachine({ id: attempt.machineId!, reason: "sold" }, as(w.alice))).state).toBe("retired");
+      await Attempt.abandon({ id: attempt.id }, as(w.bot));
+      expect((await Machine.retire({ id: attempt.machineId!, reason: "sold" }, as(w.alice))).state).toBe("retired");
     },
     fail: async (w) => {
       const attempt = await started(w, await running(w), { machine: "laptop" });
-      await refused(w.hyper.retireMachine({ id: attempt.machineId!, reason: "sold" }, as(w.alice)), "machine.idle");
+      await refused(Machine.retire({ id: attempt.machineId!, reason: "sold" }, as(w.alice)), "machine.idle");
     },
   },
   "session.agent-profile": {
@@ -192,45 +195,45 @@ const RULES: Record<string, Case> = {
     fail: async (w) => {
       await refused(sessionRecord({ runtime: "claude", runtimeSessionId: "s-1", availability: "complete", machine: "laptop", agentProfile: GHOST }, as(w.bot), w.binding), "session.agent-profile");
       // The machine the report recorded rolled back with it.
-      expect(await w.hyper.readMachine({}, as(w.alice))).toEqual([]);
+      expect(await Machine.read({}, as(w.alice))).toEqual([]);
     },
   },
   "session.not-redacted": {
     pass: async (w) => {
       const reference = await session(w);
-      expect(await w.hyper.redactSessionReference({ id: reference.id, reason: "private" }, as(w.alice))).toMatchObject({ availability: "redacted", location: null });
+      expect(await SessionReference.redact({ id: reference.id, reason: "private" }, as(w.alice))).toMatchObject({ availability: "redacted", location: null });
     },
     fail: async (w) => {
       const reference = await session(w);
-      await w.hyper.redactSessionReference({ id: reference.id, reason: "private" }, as(w.alice));
-      await refused(w.hyper.redactSessionReference({ id: reference.id, reason: "again" }, as(w.alice)), "session.not-redacted");
+      await SessionReference.redact({ id: reference.id, reason: "private" }, as(w.alice));
+      await refused(SessionReference.redact({ id: reference.id, reason: "again" }, as(w.alice)), "session.not-redacted");
       // By its recorder, Bot: only the recorder sets the availability (policy sessionRecorder).
-      await refused(w.hyper.setAvailabilitySessionReference({ id: reference.id, availability: "complete" }, as(w.bot)), "session.not-redacted");
+      await refused(SessionReference.setAvailability({ id: reference.id, availability: "complete" }, as(w.bot)), "session.not-redacted");
     },
   },
   "session.availability": {
     pass: async (w) => {
       const reference = await session(w);
-      expect((await w.hyper.setAvailabilitySessionReference({ id: reference.id, availability: "partial" }, as(w.bot))).availability).toBe("partial");
+      expect((await SessionReference.setAvailability({ id: reference.id, availability: "partial" }, as(w.bot))).availability).toBe("partial");
     },
     fail: async (w) => {
       const reference = await session(w);
-      await refused(w.hyper.setAvailabilitySessionReference({ id: reference.id, availability: "redacted" }, as(w.bot)), "session.availability");
+      await refused(SessionReference.setAvailability({ id: reference.id, availability: "redacted" }, as(w.bot)), "session.availability");
     },
   },
   "task.open": {
     pass: async (w) => {
-      expect((await w.hyper.setPriorityTask({ id: w.task.id, priority: 3 }, as(w.alice))).priority).toBe(3);
+      expect((await Task.setPriority({ id: w.task.id, priority: 3 }, as(w.alice))).priority).toBe(3);
     },
     fail: async (w) => {
       // Bot holds and releases a claim first, so its submit below passes claim.holder (C3) and reaches the rule.
       const held = await claim(w);
-      await w.hyper.releaseClaim({ id: held.id, fence: held.fence }, as(w.bot));
+      await Claim.release({ id: held.id, fence: held.fence }, as(w.bot));
       await completed(w);
-      await refused(w.hyper.setPriorityTask({ id: w.task.id, priority: 4 }, as(w.alice)), "task.open");
-      await refused(w.hyper.updateTask({ id: w.task.id, title: "New" }, as(w.alice)), "task.open");
-      await refused(w.hyper.moveTask({ id: w.task.id, parent: null }, as(w.alice)), "task.open");
-      await refused(w.hyper.assignTask({ id: w.task.id, assignee: w.bob.id }, as(w.alice)), "task.open");
+      await refused(Task.setPriority({ id: w.task.id, priority: 4 }, as(w.alice)), "task.open");
+      await refused(Task.update({ id: w.task.id, title: "New" }, as(w.alice)), "task.open");
+      await refused(Task.move({ id: w.task.id, parent: null }, as(w.alice)), "task.open");
+      await refused(Task.assign({ id: w.task.id, assignee: w.bob.id }, as(w.alice)), "task.open");
       await refused(taskCancel({ id: w.task.id, reason: "late" }, as(w.alice), w.binding), "task.open");
       await refused(taskComplete({ id: w.task.id }, as(w.alice), w.binding), "task.open");
       await refused(submissionSubmit({ task: w.task.id, fence: 1, summary: "s" }, as(w.bot), w.binding), "task.open");
@@ -239,13 +242,13 @@ const RULES: Record<string, Case> = {
   "claim.current-fence": {
     pass: async (w) => {
       const held = await claim(w);
-      expect((await w.hyper.renewClaim({ id: held.id, fence: held.fence }, as(w.bot))).fence).toBe(1);
-      expect((await w.hyper.releaseClaim({ id: held.id, fence: held.fence }, as(w.bot))).state).toBe("released");
+      expect((await Claim.renew({ id: held.id, fence: held.fence }, as(w.bot))).fence).toBe(1);
+      expect((await Claim.release({ id: held.id, fence: held.fence }, as(w.bot))).state).toBe("released");
     },
     fail: async (w) => {
       const held = await claim(w);
-      await refused(w.hyper.renewClaim({ id: held.id, fence: 2 }, as(w.bot)), "claim.current-fence", { currentFence: 1, stale: false });
-      await refused(w.hyper.releaseClaim({ id: held.id, fence: 2 }, as(w.bot)), "claim.current-fence");
+      await refused(Claim.renew({ id: held.id, fence: 2 }, as(w.bot)), "claim.current-fence", { currentFence: 1, stale: false });
+      await refused(Claim.release({ id: held.id, fence: 2 }, as(w.bot)), "claim.current-fence");
       // On task.complete and submission.submit: a fence that is not the live claim's.
       await refused(taskComplete({ id: w.task.id, fence: 2 }, as(w.alice), w.binding), "claim.current-fence", { currentFence: 1, stale: false });
       await refused(submissionSubmit({ task: w.task.id, fence: 2, summary: "mine" }, as(w.bot), w.binding), "claim.current-fence", { currentFence: 1, stale: false });
@@ -259,17 +262,17 @@ const RULES: Record<string, Case> = {
   "submission.pending": {
     pass: async (w) => {
       const { submission } = await submitted(w);
-      expect((await w.hyper.withdrawSubmission({ id: submission.id }, as(w.bot))).state).toBe("withdrawn");
+      expect((await Submission.withdraw({ id: submission.id }, as(w.bot))).state).toBe("withdrawn");
     },
     fail: async (w) => {
-      await w.hyper.assignTask({ id: w.task.id, assignee: w.bot.id, waiveReview: true }, as(w.alice));
+      await Task.assign({ id: w.task.id, assignee: w.bot.id, waiveReview: true }, as(w.alice));
       const { submission } = await submitted(w);
       // task.complete with a new summary while the actor's own submission is pending.
       await refused(taskComplete({ id: w.task.id, summary: "again" }, as(w.bot), w.binding), "submission.pending");
-      await w.hyper.withdrawSubmission({ id: submission.id }, as(w.bot));
-      await refused(w.hyper.withdrawSubmission({ id: submission.id }, as(w.bot)), "submission.pending");
+      await Submission.withdraw({ id: submission.id }, as(w.bot));
+      await refused(Submission.withdraw({ id: submission.id }, as(w.bot)), "submission.pending");
       await refused(reviewAccept({ submission: submission.id }, as(w.alice), w.binding), "submission.pending");
-      await refused(w.hyper.returnReview({ submission: submission.id, reasons: "no" }, as(w.alice)), "submission.pending");
+      await refused(Review.return({ submission: submission.id, reasons: "no" }, as(w.alice)), "submission.pending");
     },
   },
   "evidence.exists": {
@@ -287,86 +290,86 @@ const RULES: Record<string, Case> = {
       // Evidence is a list of ids (`schemas/protocol.ts:603`): a value that is not a list is reported, never stored.
       await refused(submissionSubmit({ task: w.task.id, fence: held.fence, summary: "done", evidence: "abc" }, as(w.bot), w.binding), "evidence.exists", { missing: ["abc"] });
       await refused(taskComplete({ id: w.task.id, fence: held.fence, summary: "done", evidence: { id: GHOST } }, as(w.bot), w.binding), "evidence.exists", { missing: [JSON.stringify({ id: GHOST })] });
-      await w.hyper.revokeClaim({ id: held.id, reason: "taking over" }, as(w.alice));
-      await refused(w.hyper.recordLateResult({ task: w.task.id, fence: held.fence, evidence: [GHOST] }, as(w.bot)), "evidence.exists");
+      await Claim.revoke({ id: held.id, reason: "taking over" }, as(w.alice));
+      await refused(LateResult.record({ task: w.task.id, fence: held.fence, evidence: [GHOST] }, as(w.bot)), "evidence.exists");
       // The late result a stale fence records, through both functions.
       await refused(submissionSubmit({ task: w.task.id, fence: held.fence, summary: "late", evidence: "abc" }, as(w.bot), w.binding), "evidence.exists", { missing: ["abc"] });
       await refused(taskComplete({ id: w.task.id, fence: held.fence, evidence: 5 }, as(w.bot), w.binding), "evidence.exists", { missing: ["5"] });
-      expect(await w.hyper.readSubmission({}, as(w.alice))).toEqual([]);
-      expect(await w.hyper.readLateResult({}, as(w.alice))).toEqual([]);
+      expect(await Submission.read({}, as(w.alice))).toEqual([]);
+      expect(await LateResult.read({}, as(w.alice))).toEqual([]);
     },
   },
   "task.settled": {
     pass: async (w) => {
       await taskCancel({ id: w.task.id, reason: "not now" }, as(w.alice), w.binding);
-      expect(await w.hyper.reopenTask({ id: w.task.id, reason: "now" }, as(w.alice))).toMatchObject({ state: "open" });
+      expect(await Task.reopen({ id: w.task.id, reason: "now" }, as(w.alice))).toMatchObject({ state: "open" });
     },
     fail: async (w) => {
-      await refused(w.hyper.reopenTask({ id: w.task.id, reason: "why" }, as(w.alice)), "task.settled");
+      await refused(Task.reopen({ id: w.task.id, reason: "why" }, as(w.alice)), "task.settled");
     },
   },
   "task.unchanged": {
     pass: async (w) => {
-      expect((await w.hyper.updateTask({ id: w.task.id, title: "Ship it" }, as(w.alice))).title).toBe("Ship it");
-      expect((await w.hyper.updateTask({ id: w.task.id, intent: "by Friday" }, as(w.alice))).intent).toBe("by Friday");
-      expect((await w.hyper.updateTask({ id: w.task.id, intent: null }, as(w.alice))).intent).toBeNull();
+      expect((await Task.update({ id: w.task.id, title: "Ship it" }, as(w.alice))).title).toBe("Ship it");
+      expect((await Task.update({ id: w.task.id, intent: "by Friday" }, as(w.alice))).intent).toBe("by Friday");
+      expect((await Task.update({ id: w.task.id, intent: null }, as(w.alice))).intent).toBeNull();
     },
     fail: async (w) => {
       // `validate` sees the stored values; an omitted input keeps them, so nothing differs.
-      await refused(w.hyper.updateTask({ id: w.task.id, title: "Ship" }, as(w.alice)), "task.unchanged");
-      await refused(w.hyper.updateTask({ id: w.task.id, intent: null }, as(w.alice)), "task.unchanged");
+      await refused(Task.update({ id: w.task.id, title: "Ship" }, as(w.alice)), "task.unchanged");
+      await refused(Task.update({ id: w.task.id, intent: null }, as(w.alice)), "task.unchanged");
     },
   },
   "task.parent-open": {
     pass: async (w) => {
-      expect((await w.hyper.createTask({ title: "child", parent: w.task.id }, as(w.alice))).parentId).toBe(w.task.id);
-      const other = await w.hyper.createTask({ title: "other" }, as(w.alice));
-      expect((await w.hyper.moveTask({ id: other.id, parent: w.task.id }, as(w.alice))).parentId).toBe(w.task.id);
+      expect((await Task.create({ title: "child", parent: w.task.id }, as(w.alice))).parentId).toBe(w.task.id);
+      const other = await Task.create({ title: "other" }, as(w.alice));
+      expect((await Task.move({ id: other.id, parent: w.task.id }, as(w.alice))).parentId).toBe(w.task.id);
     },
     fail: async (w) => {
-      const other = await w.hyper.createTask({ title: "other" }, as(w.alice));
+      const other = await Task.create({ title: "other" }, as(w.alice));
       await taskCancel({ id: w.task.id, reason: "not now" }, as(w.alice), w.binding);
-      await refused(w.hyper.createTask({ title: "late child", parent: w.task.id }, as(w.alice)), "task.parent-open");
-      await refused(w.hyper.moveTask({ id: other.id, parent: w.task.id }, as(w.alice)), "task.parent-open");
+      await refused(Task.create({ title: "late child", parent: w.task.id }, as(w.alice)), "task.parent-open");
+      await refused(Task.move({ id: other.id, parent: w.task.id }, as(w.alice)), "task.parent-open");
     },
   },
   "task.no-cycle": {
     pass: async (w) => {
-      const child = await w.hyper.createTask({ title: "child", parent: w.task.id }, as(w.alice));
-      const other = await w.hyper.createTask({ title: "other" }, as(w.alice));
-      expect((await w.hyper.moveTask({ id: child.id, parent: other.id }, as(w.alice))).parentId).toBe(other.id);
+      const child = await Task.create({ title: "child", parent: w.task.id }, as(w.alice));
+      const other = await Task.create({ title: "other" }, as(w.alice));
+      expect((await Task.move({ id: child.id, parent: other.id }, as(w.alice))).parentId).toBe(other.id);
     },
     fail: async (w) => {
-      const child = await w.hyper.createTask({ title: "child", parent: w.task.id }, as(w.alice));
-      const grandchild = await w.hyper.createTask({ title: "grandchild", parent: child.id }, as(w.alice));
-      await refused(w.hyper.moveTask({ id: w.task.id, parent: grandchild.id }, as(w.alice)), "task.no-cycle");
-      await refused(w.hyper.moveTask({ id: w.task.id, parent: w.task.id }, as(w.alice)), "task.no-cycle");
+      const child = await Task.create({ title: "child", parent: w.task.id }, as(w.alice));
+      const grandchild = await Task.create({ title: "grandchild", parent: child.id }, as(w.alice));
+      await refused(Task.move({ id: w.task.id, parent: grandchild.id }, as(w.alice)), "task.no-cycle");
+      await refused(Task.move({ id: w.task.id, parent: w.task.id }, as(w.alice)), "task.no-cycle");
     },
   },
   "task.children-settled": {
     pass: async (w) => {
-      const child = await w.hyper.createTask({ title: "child", parent: w.task.id }, as(w.alice));
-      const canceled = await w.hyper.createTask({ title: "dropped", parent: w.task.id }, as(w.alice));
+      const child = await Task.create({ title: "child", parent: w.task.id }, as(w.alice));
+      const canceled = await Task.create({ title: "dropped", parent: w.task.id }, as(w.alice));
       await completed(w, child.id);
       await taskCancel({ id: canceled.id, reason: "dropped" }, as(w.alice), w.binding);
       expect((await completed(w)).state).toBe("done");
     },
     fail: async (w) => {
-      const child = await w.hyper.createTask({ title: "child", parent: w.task.id }, as(w.alice));
+      const child = await Task.create({ title: "child", parent: w.task.id }, as(w.alice));
       await refused(taskComplete({ id: w.task.id }, as(w.alice), w.binding), "task.children-settled", { openChildren: [child.id] });
     },
   },
   "task.review-required": {
     pass: async (w) => {
       // The reviewer completes without review; so does the assignee of an assignment that waives it.
-      await w.hyper.assignTask({ id: w.task.id, assignee: w.bob.id, waiveReview: true }, as(w.alice));
+      await Task.assign({ id: w.task.id, assignee: w.bob.id, waiveReview: true }, as(w.alice));
       const result = await taskComplete({ id: w.task.id }, as(w.bob), w.binding);
       expect(result).toMatchObject({ outcome: "completed", completion: { rule: "review-waived", completedById: w.bob.id } });
     },
     fail: async (w) => {
       await refused(taskComplete({ id: w.task.id }, as(w.bob), w.binding), "task.review-required", { reviewerId: w.alice.id });
       // The waiver covers its assignee only.
-      await w.hyper.assignTask({ id: w.task.id, assignee: w.bot.id, waiveReview: true }, as(w.alice));
+      await Task.assign({ id: w.task.id, assignee: w.bot.id, waiveReview: true }, as(w.alice));
       await refused(taskComplete({ id: w.task.id }, as(w.bob), w.binding), "task.review-required");
     },
   },
@@ -374,7 +377,7 @@ const RULES: Record<string, Case> = {
     pass: async (w) => {
       // A foreign submission that was returned no longer blocks the reviewer.
       const { submission } = await submitted(w);
-      await w.hyper.returnReview({ submission: submission.id, reasons: "redo" }, as(w.alice));
+      await Review.return({ submission: submission.id, reasons: "redo" }, as(w.alice));
       expect((await completed(w)).state).toBe("done");
     },
     fail: async (w) => {
@@ -384,137 +387,137 @@ const RULES: Record<string, Case> = {
   },
   "task.no-active-claim": {
     pass: async (w) => {
-      const other = await w.hyper.createTask({ title: "other" }, as(w.alice));
+      const other = await Task.create({ title: "other" }, as(w.alice));
       const held = await claim(w);
-      await w.hyper.releaseClaim({ id: held.id, fence: held.fence }, as(w.bot));
-      expect((await w.hyper.moveTask({ id: w.task.id, parent: other.id }, as(w.alice))).parentId).toBe(other.id);
+      await Claim.release({ id: held.id, fence: held.fence }, as(w.bot));
+      expect((await Task.move({ id: w.task.id, parent: other.id }, as(w.alice))).parentId).toBe(other.id);
     },
     fail: async (w) => {
-      const other = await w.hyper.createTask({ title: "other" }, as(w.alice));
+      const other = await Task.create({ title: "other" }, as(w.alice));
       await claim(w);
-      await refused(w.hyper.moveTask({ id: w.task.id, parent: other.id }, as(w.alice)), "task.no-active-claim");
+      await refused(Task.move({ id: w.task.id, parent: other.id }, as(w.alice)), "task.no-active-claim");
     },
   },
   "claim.invalidated": {
     pass: async (w) => {
       // Bot is the assignee of an assignment that waives review, so only the fence rules stand between Bot and done.
-      await w.hyper.assignTask({ id: w.task.id, assignee: w.bot.id, waiveReview: true }, as(w.alice));
+      await Task.assign({ id: w.task.id, assignee: w.bot.id, waiveReview: true }, as(w.alice));
       const revoked = await claim(w);
-      await w.hyper.revokeClaim({ id: revoked.id, reason: "taking over" }, as(w.alice));
+      await Claim.revoke({ id: revoked.id, reason: "taking over" }, as(w.alice));
       // With a fence, the rule does not apply: Bot claims again and completes with the new fence.
       const again = await claim(w);
       w.advance(1);
       expect(await taskComplete({ id: w.task.id, fence: again.fence }, as(w.bot), w.binding)).toMatchObject({ outcome: "completed" });
       // The revoke came before the last completion and the reopen after it, so Bot completes without a fence.
       w.advance(1);
-      await w.hyper.reopenTask({ id: w.task.id, reason: "again" }, as(w.alice));
+      await Task.reopen({ id: w.task.id, reason: "again" }, as(w.alice));
       w.advance(1);
       expect(await taskComplete({ id: w.task.id }, as(w.bot), w.binding)).toMatchObject({ outcome: "completed" });
       // A cancel revokes Bot's claim after that completion; the reopen after the cancel is what clears it, and the Task
       // stores when it was reopened because a reopen leaves no other row.
       w.advance(1);
-      await w.hyper.reopenTask({ id: w.task.id, reason: "again" }, as(w.alice));
+      await Task.reopen({ id: w.task.id, reason: "again" }, as(w.alice));
       await claim(w);
       w.advance(1);
       await taskCancel({ id: w.task.id, reason: "paused" }, as(w.alice), w.binding);
       w.advance(1);
-      expect((await w.hyper.reopenTask({ id: w.task.id, reason: "resumed" }, as(w.alice))).reopenedAt).toEqual(minutes(6));
+      expect((await Task.reopen({ id: w.task.id, reason: "resumed" }, as(w.alice))).reopenedAt).toEqual(minutes(6));
       w.advance(1);
       expect(await taskComplete({ id: w.task.id }, as(w.bot), w.binding)).toMatchObject({ outcome: "completed" });
 
       // A claim counts from its lease end even when a later command marks it expired (PROTOCOL.md:312), not from when
       // it was marked, as the Elixir engine's `ended_at` would (PR #65 round 2, N2). Bot's claim lapses; Alice
       // completes and reopens; Bot's next acquire, after the reopen, marks the lapsed claim expired.
-      const later = await w.hyper.createTask({ title: "Lapsed before the reopen" }, as(w.alice));
-      await w.hyper.assignTask({ id: later.id, assignee: w.bot.id, waiveReview: true }, as(w.alice));
+      const later = await Task.create({ title: "Lapsed before the reopen" }, as(w.alice));
+      await Task.assign({ id: later.id, assignee: w.bot.id, waiveReview: true }, as(w.alice));
       const lapsed = await claim(w, w.bot, later.id);
       w.advance(12);
       await completed(w, later.id);
       w.advance(1);
-      await w.hyper.reopenTask({ id: later.id, reason: "again" }, as(w.alice));
+      await Task.reopen({ id: later.id, reason: "again" }, as(w.alice));
       w.advance(1);
       const fresh = await claim(w, w.bot, later.id);
-      const marked = await one(w.hyper.readClaim({ filter: { id: { eq: lapsed.id } } }, as(w.alice)));
+      const marked = await one(Claim.read({ filter: { id: { eq: lapsed.id } } }, as(w.alice)));
       expect(marked).toMatchObject({ state: "expired", endedAt: w.time.now, expiresAt: lapsed.expiresAt });
-      await w.hyper.releaseClaim({ id: fresh.id, fence: fresh.fence }, as(w.bot));
+      await Claim.release({ id: fresh.id, fence: fresh.fence }, as(w.bot));
       expect(await taskComplete({ id: later.id }, as(w.bot), w.binding)).toMatchObject({ outcome: "completed" });
 
       // The completion review.accept makes is not subject to the rule (PROTOCOL.md:283, :332; PR #65 round 2, F1): the
       // reviewer once held a claim, revoked when she handed the Task to Bot, and the accept still succeeds.
-      const reviewed = await w.hyper.createTask({ title: "Claimed, then delegated" }, as(w.alice));
+      const reviewed = await Task.create({ title: "Claimed, then delegated" }, as(w.alice));
       const hers = await claim(w, w.alice, reviewed.id);
-      await w.hyper.assignTask({ id: reviewed.id, assignee: w.bot.id }, as(w.alice));
-      expect(await one(w.hyper.readClaim({ filter: { id: { eq: hers.id } } }, as(w.alice)))).toMatchObject({ state: "revoked", endReason: "reassigned" });
+      await Task.assign({ id: reviewed.id, assignee: w.bot.id }, as(w.alice));
+      expect(await one(Claim.read({ filter: { id: { eq: hers.id } } }, as(w.alice)))).toMatchObject({ state: "revoked", endReason: "reassigned" });
       const { submission } = await submitted(w, w.bot, reviewed.id);
       expect(await reviewAccept({ submission: submission.id }, as(w.alice), w.binding)).toMatchObject({ completion: { rule: "review-accepted", submissionId: submission.id } });
       // The same when her earlier claim lapsed instead.
-      const lapsedReview = await w.hyper.createTask({ title: "Claimed, lapsed, then delegated" }, as(w.alice));
+      const lapsedReview = await Task.create({ title: "Claimed, lapsed, then delegated" }, as(w.alice));
       await claim(w, w.alice, lapsedReview.id);
       w.advance(11);
-      await w.hyper.assignTask({ id: lapsedReview.id, assignee: w.bot.id }, as(w.alice));
+      await Task.assign({ id: lapsedReview.id, assignee: w.bot.id }, as(w.alice));
       const second = await submitted(w, w.bot, lapsedReview.id);
       expect(await reviewAccept({ submission: second.submission.id }, as(w.alice), w.binding)).toMatchObject({ completion: { rule: "review-accepted" } });
     },
     fail: async (w) => {
-      await w.hyper.assignTask({ id: w.task.id, assignee: w.bot.id, waiveReview: true }, as(w.alice));
+      await Task.assign({ id: w.task.id, assignee: w.bot.id, waiveReview: true }, as(w.alice));
       // Revoked: an unfenced completion after the actor's claim was revoked is refused, and changes nothing.
       const revoked = await claim(w);
-      await w.hyper.revokeClaim({ id: revoked.id, reason: "taking over" }, as(w.alice));
+      await Claim.revoke({ id: revoked.id, reason: "taking over" }, as(w.alice));
       const before = await taskOf(w);
       const issues = await issuesOf(taskComplete({ id: w.task.id }, as(w.bot), w.binding));
       expect(codes(issues)).toEqual(["claim.invalidated"]);
       expect(issues[0]!.details).toEqual({ fences: [revoked.fence] });
       expect(await taskOf(w)).toEqual(before);
-      expect(await w.hyper.readCompletion({}, as(w.alice))).toEqual([]);
+      expect(await Completion.read({}, as(w.alice))).toEqual([]);
       // Expired: a claim whose lease ran out counts from its lease end, whether or not it was marked expired yet.
       const lapsed = await claim(w);
       w.advance(11);
       await refused(taskComplete({ id: w.task.id }, as(w.bot), w.binding), "claim.invalidated", { fences: [revoked.fence, lapsed.fence] });
       // The next acquire marks it expired; Bot releases the new claim, and both earlier fences still count.
       const third = await claim(w);
-      expect(await one(w.hyper.readClaim({ filter: { id: { eq: lapsed.id } } }, as(w.alice)))).toMatchObject({ state: "expired", endedAt: minutes(11) });
-      await w.hyper.releaseClaim({ id: third.id, fence: third.fence }, as(w.bot));
+      expect(await one(Claim.read({ filter: { id: { eq: lapsed.id } } }, as(w.alice)))).toMatchObject({ state: "expired", endedAt: minutes(11) });
+      await Claim.release({ id: third.id, fence: third.fence }, as(w.bot));
       await refused(taskComplete({ id: w.task.id }, as(w.bot), w.binding), "claim.invalidated", { fences: [revoked.fence, lapsed.fence] });
       // The generated action alone applies the rule too.
-      await refused(w.hyper.completeTask({ id: w.task.id }, as(w.bot)), "claim.invalidated");
+      await refused(Task.complete({ id: w.task.id }, as(w.bot)), "claim.invalidated");
     },
   },
   "assignment.assignee-role": {
     pass: async (w) => {
-      await w.hyper.assignTask({ id: w.task.id, assignee: w.bob.id }, as(w.alice));
-      expect(await w.hyper.readAssignment({}, as(w.alice))).toMatchObject([{ assigneeId: w.bob.id, delegatorId: w.alice.id }]);
+      await Task.assign({ id: w.task.id, assignee: w.bob.id }, as(w.alice));
+      expect(await Assignment.read({}, as(w.alice))).toMatchObject([{ assigneeId: w.bob.id, delegatorId: w.alice.id }]);
     },
     fail: async (w) => {
-      const carol = await w.hyper.registerCollaborator({ kind: "human", name: "Carol" }, setup);
-      await refused(w.hyper.assignTask({ id: w.task.id, assignee: carol.id }, as(w.alice)), "assignment.assignee-role");
-      await w.hyper.grantMembership({ collaborator: carol.id, role: "guest" }, as(w.alice));
-      await refused(w.hyper.assignTask({ id: w.task.id, assignee: carol.id }, as(w.alice)), "assignment.assignee-role");
+      const carol = await Collaborator.register({ kind: "human", name: "Carol" }, setup);
+      await refused(Task.assign({ id: w.task.id, assignee: carol.id }, as(w.alice)), "assignment.assignee-role");
+      await Membership.grant({ collaborator: carol.id, role: "guest" }, as(w.alice));
+      await refused(Task.assign({ id: w.task.id, assignee: carol.id }, as(w.alice)), "assignment.assignee-role");
     },
   },
   "assignment.unchanged": {
     pass: async (w) => {
-      await w.hyper.assignTask({ id: w.task.id, assignee: w.bob.id }, as(w.alice));
-      await w.hyper.assignTask({ id: w.task.id, assignee: w.bob.id, waiveReview: true }, as(w.alice));
-      expect(await w.hyper.readAssignment({ sort: ["startedAt", "id"] }, as(w.alice))).toMatchObject([{ reviewWaived: false, endReason: "reassigned" }, { reviewWaived: true, endedAt: null }]);
+      await Task.assign({ id: w.task.id, assignee: w.bob.id }, as(w.alice));
+      await Task.assign({ id: w.task.id, assignee: w.bob.id, waiveReview: true }, as(w.alice));
+      expect(await Assignment.read({ sort: ["startedAt", "id"] }, as(w.alice))).toMatchObject([{ reviewWaived: false, endReason: "reassigned" }, { reviewWaived: true, endedAt: null }]);
     },
     fail: async (w) => {
-      await w.hyper.assignTask({ id: w.task.id, assignee: w.bob.id }, as(w.alice));
-      await refused(w.hyper.assignTask({ id: w.task.id, assignee: w.bob.id, waiveReview: false }, as(w.alice)), "assignment.unchanged");
+      await Task.assign({ id: w.task.id, assignee: w.bob.id }, as(w.alice));
+      await refused(Task.assign({ id: w.task.id, assignee: w.bob.id, waiveReview: false }, as(w.alice)), "assignment.unchanged");
     },
   },
   "assignment.current": {
     pass: async (w) => {
-      await w.hyper.assignTask({ id: w.task.id, assignee: w.bob.id }, as(w.alice));
-      await w.hyper.unassignTask({ id: w.task.id }, as(w.alice));
-      expect(await w.hyper.readAssignment({}, as(w.alice))).toMatchObject([{ endReason: "unassigned", endedAt: NOW }]);
+      await Task.assign({ id: w.task.id, assignee: w.bob.id }, as(w.alice));
+      await Task.unassign({ id: w.task.id }, as(w.alice));
+      expect(await Assignment.read({}, as(w.alice))).toMatchObject([{ endReason: "unassigned", endedAt: NOW }]);
     },
     fail: async (w) => {
-      await refused(w.hyper.unassignTask({ id: w.task.id }, as(w.alice)), "assignment.current");
-      await w.hyper.assignTask({ id: w.task.id, assignee: w.bob.id }, as(w.alice));
-      const [assignment] = await w.hyper.readAssignment({}, as(w.alice));
-      await w.hyper.unassignTask({ id: w.task.id }, as(w.alice));
+      await refused(Task.unassign({ id: w.task.id }, as(w.alice)), "assignment.current");
+      await Task.assign({ id: w.task.id, assignee: w.bob.id }, as(w.alice));
+      const [assignment] = await Assignment.read({}, as(w.alice));
+      await Task.unassign({ id: w.task.id }, as(w.alice));
       // Assignment :finish is internal (task.assign and task.unassign end an assignment): called as the engine.
-      await refused(w.hyper.finishAssignment({ id: assignment!.id, reason: "unassigned" }, asSystem(w.alice)), "assignment.current");
+      await refused(Assignment.finish({ id: assignment!.id, reason: "unassigned" }, asSystem(w.alice)), "assignment.current");
     },
   },
   "claim.task-ready": {
@@ -525,25 +528,25 @@ const RULES: Record<string, Case> = {
       await claim(w);
       // Bot, the assignee its claim made it, claims again: Bob would be refused by claim.assignee first (05:148).
       await refused(claim(w), "claim.task-ready", { derivedState: "claimed", reasons: [] });
-      const prerequisite = await w.hyper.createTask({ title: "Design" }, as(w.alice));
-      const other = await w.hyper.createTask({ title: "Build" }, as(w.alice));
-      await w.hyper.addDependency({ dependent: other.id, prerequisite: prerequisite.id }, as(w.alice));
+      const prerequisite = await Task.create({ title: "Design" }, as(w.alice));
+      const other = await Task.create({ title: "Build" }, as(w.alice));
+      await Dependency.add({ dependent: other.id, prerequisite: prerequisite.id }, as(w.alice));
       await refused(claim(w, w.bob, other.id), "claim.task-ready", { derivedState: "blocked", reasons: [{ kind: "dependency", taskId: prerequisite.id, message: "blocked: waiting for Design" }] });
     },
   },
   "claim.active": {
     pass: async (w) => {
       const held = await claim(w);
-      expect(await w.hyper.revokeClaim({ id: held.id, reason: "taking over" }, as(w.alice))).toMatchObject({ state: "revoked", endReason: "taking over", endedAt: NOW });
+      expect(await Claim.revoke({ id: held.id, reason: "taking over" }, as(w.alice))).toMatchObject({ state: "revoked", endReason: "taking over", endedAt: NOW });
     },
     fail: async (w) => {
       const held = await claim(w);
-      await w.hyper.releaseClaim({ id: held.id, fence: held.fence, reason: "done" }, as(w.bot));
-      await refused(w.hyper.releaseClaim({ id: held.id, fence: held.fence }, as(w.bot)), "claim.active");
-      await refused(w.hyper.renewClaim({ id: held.id, fence: held.fence }, as(w.bot)), "claim.active");
-      await refused(w.hyper.revokeClaim({ id: held.id, reason: "late" }, as(w.alice)), "claim.active");
+      await Claim.release({ id: held.id, fence: held.fence, reason: "done" }, as(w.bot));
+      await refused(Claim.release({ id: held.id, fence: held.fence }, as(w.bot)), "claim.active");
+      await refused(Claim.renew({ id: held.id, fence: held.fence }, as(w.bot)), "claim.active");
+      await refused(Claim.revoke({ id: held.id, reason: "late" }, as(w.alice)), "claim.active");
       // Claim :expire is internal (the engine's lease sweeper): called as the engine.
-      await refused(w.hyper.expireClaim({ id: held.id }, asSystem(w.alice)), "claim.active");
+      await refused(Claim.expire({ id: held.id }, asSystem(w.alice)), "claim.active");
     },
   },
   "claim.expired": {
@@ -551,20 +554,20 @@ const RULES: Record<string, Case> = {
       const held = await claim(w);
       w.advance(9);
       // The lease runs ten minutes from the renewal.
-      expect((await w.hyper.renewClaim({ id: held.id, fence: held.fence }, as(w.bot))).expiresAt).toEqual(minutes(19));
+      expect((await Claim.renew({ id: held.id, fence: held.fence }, as(w.bot))).expiresAt).toEqual(minutes(19));
     },
     fail: async (w) => {
       const held = await claim(w);
       w.advance(10);
-      await refused(w.hyper.renewClaim({ id: held.id, fence: held.fence }, as(w.bot)), "claim.expired");
-      await refused(w.hyper.releaseClaim({ id: held.id, fence: held.fence }, as(w.bot)), "claim.expired");
-      expect(await one(w.hyper.readClaim({ filter: { id: { eq: held.id } } }, as(w.alice)))).toMatchObject({ state: "active", expiresAt: minutes(10) });
+      await refused(Claim.renew({ id: held.id, fence: held.fence }, as(w.bot)), "claim.expired");
+      await refused(Claim.release({ id: held.id, fence: held.fence }, as(w.bot)), "claim.expired");
+      expect(await one(Claim.read({ filter: { id: { eq: held.id } } }, as(w.alice)))).toMatchObject({ state: "active", expiresAt: minutes(10) });
     },
   },
   "submission.none-pending": {
     pass: async (w) => {
       const first = await submitted(w);
-      await w.hyper.returnReview({ submission: first.submission.id, reasons: "redo" }, as(w.alice));
+      await Review.return({ submission: first.submission.id, reasons: "redo" }, as(w.alice));
       const second = await submitted(w);
       expect(second.claim.fence).toBe(2);
     },
@@ -587,116 +590,116 @@ const RULES: Record<string, Case> = {
     },
     fail: async (w) => {
       const { submission } = await submitted(w);
-      await w.hyper.setPriorityTask({ id: w.task.id, priority: 1 }, as(w.alice));
+      await Task.setPriority({ id: w.task.id, priority: 1 }, as(w.alice));
       await refused(reviewAccept({ submission: submission.id }, as(w.alice), w.binding), "submission.task-version");
     },
   },
   "expected-version": {
     pass: async (w) => {
-      expect((await w.hyper.setPriorityTask({ id: w.task.id, priority: 1, expectedVersion: 1 }, as(w.alice))).version).toBe(2);
+      expect((await Task.setPriority({ id: w.task.id, priority: 1, expectedVersion: 1 }, as(w.alice))).version).toBe(2);
       // A command on a record of the Task aggregate checks the Task's version.
-      expect((await w.hyper.acquireClaim({ task: w.task.id, expectedVersion: 2 }, as(w.bot))).fence).toBe(1);
+      expect((await Claim.acquire({ task: w.task.id, expectedVersion: 2 }, as(w.bot))).fence).toBe(1);
     },
     fail: async (w) => {
-      await w.hyper.setPriorityTask({ id: w.task.id, priority: 1 }, as(w.alice));
-      await refused(w.hyper.setPriorityTask({ id: w.task.id, priority: 2, expectedVersion: 1 }, as(w.alice)), "expected-version", { expectedVersion: 1, actualVersion: 2 });
-      await refused(w.hyper.acquireClaim({ task: w.task.id, expectedVersion: 1 }, as(w.bot)), "expected-version");
-      await refused(w.hyper.addDependency({ dependent: w.task.id, prerequisite: (await w.hyper.createTask({ title: "pre" }, as(w.alice))).id, expectedVersion: 1 }, as(w.alice)), "expected-version", { expectedVersion: 1, actualVersion: 2 });
+      await Task.setPriority({ id: w.task.id, priority: 1 }, as(w.alice));
+      await refused(Task.setPriority({ id: w.task.id, priority: 2, expectedVersion: 1 }, as(w.alice)), "expected-version", { expectedVersion: 1, actualVersion: 2 });
+      await refused(Claim.acquire({ task: w.task.id, expectedVersion: 1 }, as(w.bot)), "expected-version");
+      await refused(Dependency.add({ dependent: w.task.id, prerequisite: (await Task.create({ title: "pre" }, as(w.alice))).id, expectedVersion: 1 }, as(w.alice)), "expected-version", { expectedVersion: 1, actualVersion: 2 });
       expect(await taskOf(w)).toMatchObject({ priority: 1, version: 2 });
     },
   },
   "claim.stale-fence": {
     pass: async (w) => {
       const held = await claim(w);
-      await w.hyper.revokeClaim({ id: held.id, reason: "taking over" }, as(w.alice));
+      await Claim.revoke({ id: held.id, reason: "taking over" }, as(w.alice));
       const result = await submissionSubmit({ task: w.task.id, fence: held.fence, summary: "late" }, as(w.bot), w.binding);
       expect(result).toMatchObject({ outcome: "late-result-recorded", lateResult: { fence: held.fence } });
     },
     fail: async (w) => {
       // The command functions record a late result only for a stale fence; the generated action refuses any other.
       const held = await claim(w);
-      await refused(w.hyper.recordLateResult({ task: w.task.id, fence: held.fence, summary: "x" }, as(w.bot)), "claim.stale-fence");
-      await refused(w.hyper.recordLateResult({ task: w.task.id, fence: 7, summary: "x" }, as(w.bot)), "claim.stale-fence");
+      await refused(LateResult.record({ task: w.task.id, fence: held.fence, summary: "x" }, as(w.bot)), "claim.stale-fence");
+      await refused(LateResult.record({ task: w.task.id, fence: 7, summary: "x" }, as(w.bot)), "claim.stale-fence");
     },
   },
   "dependency.exists": {
     pass: async (w) => {
-      const prerequisite = await w.hyper.createTask({ title: "pre" }, as(w.alice));
-      expect(await w.hyper.addDependency({ dependent: w.task.id, prerequisite: prerequisite.id }, as(w.alice))).toMatchObject({ dependentId: w.task.id, createdById: w.alice.id });
+      const prerequisite = await Task.create({ title: "pre" }, as(w.alice));
+      expect(await Dependency.add({ dependent: w.task.id, prerequisite: prerequisite.id }, as(w.alice))).toMatchObject({ dependentId: w.task.id, createdById: w.alice.id });
     },
     fail: async (w) => {
-      await refused(w.hyper.addDependency({ dependent: w.task.id, prerequisite: GHOST }, as(w.alice)), "dependency.exists", { missing: [GHOST] });
-      await refused(w.hyper.addDependency({ dependent: GHOST, prerequisite: w.task.id, expectedVersion: 3 }, as(w.alice)), "dependency.exists", { missing: [GHOST] });
-      expect(await w.hyper.readDependency({}, as(w.alice))).toEqual([]);
+      await refused(Dependency.add({ dependent: w.task.id, prerequisite: GHOST }, as(w.alice)), "dependency.exists", { missing: [GHOST] });
+      await refused(Dependency.add({ dependent: GHOST, prerequisite: w.task.id, expectedVersion: 3 }, as(w.alice)), "dependency.exists", { missing: [GHOST] });
+      expect(await Dependency.read({}, as(w.alice))).toEqual([]);
     },
   },
   "dependency.distinct": {
     pass: async (w) => {
-      const other = await w.hyper.createTask({ title: "other" }, as(w.alice));
-      await w.hyper.addDependency({ dependent: w.task.id, prerequisite: other.id }, as(w.alice));
+      const other = await Task.create({ title: "other" }, as(w.alice));
+      await Dependency.add({ dependent: w.task.id, prerequisite: other.id }, as(w.alice));
     },
     fail: async (w) => {
-      await refused(w.hyper.addDependency({ dependent: w.task.id, prerequisite: w.task.id }, as(w.alice)), "dependency.distinct");
+      await refused(Dependency.add({ dependent: w.task.id, prerequisite: w.task.id }, as(w.alice)), "dependency.distinct");
     },
   },
   "dependency.duplicate": {
     pass: async (w) => {
-      const other = await w.hyper.createTask({ title: "other" }, as(w.alice));
-      const first = await w.hyper.addDependency({ dependent: w.task.id, prerequisite: other.id }, as(w.alice));
-      await w.hyper.removeDependency({ id: first.id }, as(w.alice));
-      await w.hyper.addDependency({ dependent: w.task.id, prerequisite: other.id }, as(w.alice));
+      const other = await Task.create({ title: "other" }, as(w.alice));
+      const first = await Dependency.add({ dependent: w.task.id, prerequisite: other.id }, as(w.alice));
+      await Dependency.remove({ id: first.id }, as(w.alice));
+      await Dependency.add({ dependent: w.task.id, prerequisite: other.id }, as(w.alice));
     },
     fail: async (w) => {
-      const other = await w.hyper.createTask({ title: "other" }, as(w.alice));
-      await w.hyper.addDependency({ dependent: w.task.id, prerequisite: other.id }, as(w.alice));
-      await refused(w.hyper.addDependency({ dependent: w.task.id, prerequisite: other.id }, as(w.alice)), "dependency.duplicate");
+      const other = await Task.create({ title: "other" }, as(w.alice));
+      await Dependency.add({ dependent: w.task.id, prerequisite: other.id }, as(w.alice));
+      await refused(Dependency.add({ dependent: w.task.id, prerequisite: other.id }, as(w.alice)), "dependency.duplicate");
     },
   },
   "dependency.no-cycle": {
     pass: async (w) => {
-      const [b, c] = [await w.hyper.createTask({ title: "b" }, as(w.alice)), await w.hyper.createTask({ title: "c" }, as(w.alice))];
-      await w.hyper.addDependency({ dependent: w.task.id, prerequisite: b.id }, as(w.alice));
-      await w.hyper.addDependency({ dependent: b.id, prerequisite: c.id }, as(w.alice));
+      const [b, c] = [await Task.create({ title: "b" }, as(w.alice)), await Task.create({ title: "c" }, as(w.alice))];
+      await Dependency.add({ dependent: w.task.id, prerequisite: b.id }, as(w.alice));
+      await Dependency.add({ dependent: b.id, prerequisite: c.id }, as(w.alice));
       // A diamond is not a cycle.
-      await w.hyper.addDependency({ dependent: w.task.id, prerequisite: c.id }, as(w.alice));
+      await Dependency.add({ dependent: w.task.id, prerequisite: c.id }, as(w.alice));
     },
     fail: async (w) => {
-      const [b, c] = [await w.hyper.createTask({ title: "b" }, as(w.alice)), await w.hyper.createTask({ title: "c" }, as(w.alice))];
-      await w.hyper.addDependency({ dependent: w.task.id, prerequisite: b.id }, as(w.alice));
-      await w.hyper.addDependency({ dependent: b.id, prerequisite: c.id }, as(w.alice));
-      await refused(w.hyper.addDependency({ dependent: c.id, prerequisite: w.task.id }, as(w.alice)), "dependency.no-cycle");
-      await refused(w.hyper.addDependency({ dependent: b.id, prerequisite: w.task.id }, as(w.alice)), "dependency.no-cycle");
+      const [b, c] = [await Task.create({ title: "b" }, as(w.alice)), await Task.create({ title: "c" }, as(w.alice))];
+      await Dependency.add({ dependent: w.task.id, prerequisite: b.id }, as(w.alice));
+      await Dependency.add({ dependent: b.id, prerequisite: c.id }, as(w.alice));
+      await refused(Dependency.add({ dependent: c.id, prerequisite: w.task.id }, as(w.alice)), "dependency.no-cycle");
+      await refused(Dependency.add({ dependent: b.id, prerequisite: w.task.id }, as(w.alice)), "dependency.no-cycle");
     },
   },
   "run.task-open": {
     pass: async (w) => {
-      expect(await w.hyper.startRun({ task: w.task.id }, as(w.bot))).toMatchObject({ state: "running", startedById: w.bot.id });
+      expect(await Run.start({ task: w.task.id }, as(w.bot))).toMatchObject({ state: "running", startedById: w.bot.id });
     },
     fail: async (w) => {
       await taskCancel({ id: w.task.id, reason: "not now" }, as(w.alice), w.binding);
-      await refused(w.hyper.startRun({ task: w.task.id }, as(w.bot)), "run.task-open");
+      await refused(Run.start({ task: w.task.id }, as(w.bot)), "run.task-open");
     },
   },
   "run.parent-running": {
     pass: async (w) => {
-      const parent = await w.hyper.startRun({ task: w.task.id }, as(w.bot));
-      expect((await w.hyper.startRun({ task: w.task.id, parentRun: parent.id }, as(w.bot))).parentRunId).toBe(parent.id);
+      const parent = await Run.start({ task: w.task.id }, as(w.bot));
+      expect((await Run.start({ task: w.task.id, parentRun: parent.id }, as(w.bot))).parentRunId).toBe(parent.id);
     },
     fail: async (w) => {
-      const parent = await w.hyper.startRun({ task: w.task.id }, as(w.bot));
-      await w.hyper.cancelRun({ id: parent.id, reason: "stop" }, as(w.alice));
-      await refused(w.hyper.startRun({ task: w.task.id, parentRun: parent.id }, as(w.bot)), "run.parent-running");
+      const parent = await Run.start({ task: w.task.id }, as(w.bot));
+      await Run.cancel({ id: parent.id, reason: "stop" }, as(w.alice));
+      await refused(Run.start({ task: w.task.id, parentRun: parent.id }, as(w.bot)), "run.parent-running");
     },
   },
   "run.cancelable": {
     pass: async (w) => {
-      const run = await w.hyper.startRun({ task: w.task.id }, as(w.bot));
-      expect((await w.hyper.cancelRun({ id: run.id, reason: "stop" }, as(w.alice))).state).toBe("canceled");
+      const run = await Run.start({ task: w.task.id }, as(w.bot));
+      expect((await Run.cancel({ id: run.id, reason: "stop" }, as(w.alice))).state).toBe("canceled");
     },
     fail: async (w) => {
-      const run = await w.hyper.startRun({ task: w.task.id }, as(w.bot));
-      await w.hyper.cancelRun({ id: run.id, reason: "stop" }, as(w.alice));
-      await refused(w.hyper.cancelRun({ id: run.id, reason: "again" }, as(w.alice)), "run.cancelable");
+      const run = await Run.start({ task: w.task.id }, as(w.bot));
+      await Run.cancel({ id: run.id, reason: "stop" }, as(w.alice));
+      await refused(Run.cancel({ id: run.id, reason: "again" }, as(w.alice)), "run.cancelable");
     },
   },
   "attempt.claimer": {
@@ -722,7 +725,7 @@ const RULES: Record<string, Case> = {
     },
     fail: async (w) => {
       const run = await running(w);
-      await w.hyper.cancelRun({ id: run.id, reason: "stop" }, as(w.alice));
+      await Run.cancel({ id: run.id, reason: "stop" }, as(w.alice));
       await refused(attemptStart({ run: run.id }, as(w.bot), w.binding), "attempt.run-running");
     },
   },
@@ -732,7 +735,7 @@ const RULES: Record<string, Case> = {
       const first = await started(w, run, { step: "build" });
       expect((await started(w, run, { step: "test" })).number).toBe(1);
       // A retryable failure leaves the run running, so the step can be tried again.
-      await w.hyper.finishAttempt({ id: first.id, result: "failed", error: { message: "flaky", retryable: true } }, as(w.bot));
+      await Attempt.finish({ id: first.id, result: "failed", error: { message: "flaky", retryable: true } }, as(w.bot));
       expect((await started(w, run, { step: "build" })).number).toBe(2);
     },
     fail: async (w) => {
@@ -754,89 +757,89 @@ const RULES: Record<string, Case> = {
     pass: async (w) => {
       const run = await running(w);
       const attempt = await started(w, run);
-      expect((await w.hyper.reportStoppedAttempt({ id: attempt.id, reason: "host rebooted" }, as(w.bot))).state).toBe("stopped");
+      expect((await Attempt.reportStopped({ id: attempt.id, reason: "host rebooted" }, as(w.bot))).state).toBe("stopped");
     },
     fail: async (w) => {
       const attempt = await started(w, await running(w));
-      await w.hyper.abandonAttempt({ id: attempt.id }, as(w.bot));
-      await refused(w.hyper.finishAttempt({ id: attempt.id, result: "succeeded" }, as(w.bot)), "attempt.running");
-      await refused(w.hyper.reportStoppedAttempt({ id: attempt.id, reason: "x" }, as(w.bot)), "attempt.running");
-      await refused(w.hyper.abandonAttempt({ id: attempt.id }, as(w.bot)), "attempt.running");
+      await Attempt.abandon({ id: attempt.id }, as(w.bot));
+      await refused(Attempt.finish({ id: attempt.id, result: "succeeded" }, as(w.bot)), "attempt.running");
+      await refused(Attempt.reportStopped({ id: attempt.id, reason: "x" }, as(w.bot)), "attempt.running");
+      await refused(Attempt.abandon({ id: attempt.id }, as(w.bot)), "attempt.running");
     },
   },
   "attempt.error": {
     pass: async (w) => {
       const attempt = await started(w, await running(w));
-      expect(await w.hyper.finishAttempt({ id: attempt.id, result: "failed", error: { message: "boom" } }, as(w.bot))).toMatchObject({ state: "failed" });
+      expect(await Attempt.finish({ id: attempt.id, result: "failed", error: { message: "boom" } }, as(w.bot))).toMatchObject({ state: "failed" });
     },
     fail: async (w) => {
       const attempt = await started(w, await running(w));
-      await refused(w.hyper.finishAttempt({ id: attempt.id, result: "succeeded", error: { message: "boom" } }, as(w.bot)), "attempt.error");
+      await refused(Attempt.finish({ id: attempt.id, result: "succeeded", error: { message: "boom" } }, as(w.bot)), "attempt.error");
     },
   },
   "attempt.evidence": {
     pass: async (w) => {
       const reference = await evidence(w);
       const attempt = await started(w, await running(w));
-      expect((await w.hyper.finishAttempt({ id: attempt.id, result: "succeeded", evidence: [reference.id] }, as(w.bot))).state).toBe("succeeded");
+      expect((await Attempt.finish({ id: attempt.id, result: "succeeded", evidence: [reference.id] }, as(w.bot))).state).toBe("succeeded");
     },
     fail: async (w) => {
       const attempt = await started(w, await running(w));
-      await refused(w.hyper.finishAttempt({ id: attempt.id, result: "succeeded", evidence: [GHOST] }, as(w.bot)), "attempt.evidence");
+      await refused(Attempt.finish({ id: attempt.id, result: "succeeded", evidence: [GHOST] }, as(w.bot)), "attempt.evidence");
     },
   },
   "invocation.session": {
     pass: async (w) => {
       const reference = await session(w);
       const attempt = await started(w, await running(w), { session: reference.id });
-      expect((await w.hyper.recordInvocation({ attempt: attempt.id, session: reference.id, usageSource: "runtime" }, as(w.bot))).sessionId).toBe(reference.id);
-      expect((await w.hyper.recordInvocation({ attempt: attempt.id, usageSource: "runtime" }, as(w.bot))).sessionId).toBeNull();
+      expect((await Invocation.record({ attempt: attempt.id, session: reference.id, usageSource: "runtime" }, as(w.bot))).sessionId).toBe(reference.id);
+      expect((await Invocation.record({ attempt: attempt.id, usageSource: "runtime" }, as(w.bot))).sessionId).toBeNull();
     },
     fail: async (w) => {
       const [mine, other] = [await session(w, "s-1"), await session(w, "s-2")];
       const attempt = await started(w, await running(w), { session: mine.id });
-      await refused(w.hyper.recordInvocation({ attempt: attempt.id, session: other.id, usageSource: "runtime" }, as(w.bot)), "invocation.session");
+      await refused(Invocation.record({ attempt: attempt.id, session: other.id, usageSource: "runtime" }, as(w.bot)), "invocation.session");
     },
   },
   "invocation.cost-unknown": {
     pass: async (w) => {
       const attempt = await started(w, await running(w));
-      expect((await w.hyper.recordInvocation({ attempt: attempt.id, inputTokens: 10, outputTokens: 5, estimatedCost: 0.25, usageSource: "estimate" }, as(w.bot))).estimatedCost).toBe(0.25);
-      await w.hyper.recordInvocation({ attempt: attempt.id, inputTokens: 10, usageSource: "runtime" }, as(w.bot));
+      expect((await Invocation.record({ attempt: attempt.id, inputTokens: 10, outputTokens: 5, estimatedCost: 0.25, usageSource: "estimate" }, as(w.bot))).estimatedCost).toBe(0.25);
+      await Invocation.record({ attempt: attempt.id, inputTokens: 10, usageSource: "runtime" }, as(w.bot));
     },
     fail: async (w) => {
       const attempt = await started(w, await running(w));
-      await refused(w.hyper.recordInvocation({ attempt: attempt.id, inputTokens: 10, estimatedCost: 0.25, usageSource: "estimate" }, as(w.bot)), "invocation.cost-unknown");
-      const original = await w.hyper.recordInvocation({ attempt: attempt.id, usageSource: "runtime" }, as(w.bot));
-      await refused(w.hyper.correctInvocation({ corrects: original.id, reason: "cost", estimatedCost: 1, usageSource: "estimate" }, as(w.alice)), "invocation.cost-unknown");
+      await refused(Invocation.record({ attempt: attempt.id, inputTokens: 10, estimatedCost: 0.25, usageSource: "estimate" }, as(w.bot)), "invocation.cost-unknown");
+      const original = await Invocation.record({ attempt: attempt.id, usageSource: "runtime" }, as(w.bot));
+      await refused(Invocation.correct({ corrects: original.id, reason: "cost", estimatedCost: 1, usageSource: "estimate" }, as(w.alice)), "invocation.cost-unknown");
     },
   },
   "invocation.not-corrected": {
     pass: async (w) => {
       const attempt = await started(w, await running(w));
-      const original = await w.hyper.recordInvocation({ attempt: attempt.id, usageSource: "runtime" }, as(w.bot));
-      const correction = await w.hyper.correctInvocation({ corrects: original.id, reason: "tokens", inputTokens: 3, usageSource: "provider" }, as(w.alice));
+      const original = await Invocation.record({ attempt: attempt.id, usageSource: "runtime" }, as(w.bot));
+      const correction = await Invocation.correct({ corrects: original.id, reason: "tokens", inputTokens: 3, usageSource: "provider" }, as(w.alice));
       // A correction can itself be corrected, once.
-      expect((await w.hyper.correctInvocation({ corrects: correction.id, reason: "again", usageSource: "provider" }, as(w.alice))).correctsId).toBe(correction.id);
+      expect((await Invocation.correct({ corrects: correction.id, reason: "again", usageSource: "provider" }, as(w.alice))).correctsId).toBe(correction.id);
     },
     fail: async (w) => {
       const attempt = await started(w, await running(w));
-      const original = await w.hyper.recordInvocation({ attempt: attempt.id, usageSource: "runtime" }, as(w.bot));
-      await w.hyper.correctInvocation({ corrects: original.id, reason: "tokens", usageSource: "provider" }, as(w.alice));
-      await refused(w.hyper.correctInvocation({ corrects: original.id, reason: "twice", usageSource: "provider" }, as(w.alice)), "invocation.not-corrected");
+      const original = await Invocation.record({ attempt: attempt.id, usageSource: "runtime" }, as(w.bot));
+      await Invocation.correct({ corrects: original.id, reason: "tokens", usageSource: "provider" }, as(w.alice));
+      await refused(Invocation.correct({ corrects: original.id, reason: "twice", usageSource: "provider" }, as(w.alice)), "invocation.not-corrected");
     },
   },
   "invocation.reason": {
     pass: async (w) => {
       const attempt = await started(w, await running(w));
-      const original = await w.hyper.recordInvocation({ attempt: attempt.id, usageSource: "runtime" }, as(w.bot));
-      expect((await w.hyper.correctInvocation({ corrects: original.id, reason: "tokens", usageSource: "provider" }, as(w.alice))).reason).toBe("tokens");
+      const original = await Invocation.record({ attempt: attempt.id, usageSource: "runtime" }, as(w.bot));
+      expect((await Invocation.correct({ corrects: original.id, reason: "tokens", usageSource: "provider" }, as(w.alice))).reason).toBe("tokens");
     },
     fail: async (w) => {
       const attempt = await started(w, await running(w));
-      const original = await w.hyper.recordInvocation({ attempt: attempt.id, usageSource: "runtime" }, as(w.bot));
-      await refused(w.hyper.correctInvocation({ corrects: original.id, usageSource: "provider" }, as(w.alice)), "invocation.reason");
-      await refused(w.hyper.correctInvocation({ corrects: original.id, reason: "", usageSource: "provider" }, as(w.alice)), "invocation.reason");
+      const original = await Invocation.record({ attempt: attempt.id, usageSource: "runtime" }, as(w.bot));
+      await refused(Invocation.correct({ corrects: original.id, usageSource: "provider" }, as(w.alice)), "invocation.reason");
+      await refused(Invocation.correct({ corrects: original.id, reason: "", usageSource: "provider" }, as(w.alice)), "invocation.reason");
     },
   },
 };
@@ -849,8 +852,8 @@ const PORT_ONLY: Record<string, Case> = {
       expect(attempt.machineId).not.toBeNull();
     },
     fail: async (w) => {
-      const machine = await w.hyper.registerMachine({ name: "laptop" }, as(w.alice));
-      await w.hyper.retireMachine({ id: machine.id, reason: "sold" }, as(w.alice));
+      const machine = await Machine.register({ name: "laptop" }, as(w.alice));
+      await Machine.retire({ id: machine.id, reason: "sold" }, as(w.alice));
       await refused(attemptStart({ run: (await running(w)).id, machine: "laptop" }, as(w.bot), w.binding), "machine.retired");
       await refused(sessionRecord({ runtime: "claude", runtimeSessionId: "s-1", availability: "complete", machine: "laptop", agentProfile: w.bot.id }, as(w.bot), w.binding), "machine.retired");
     },
@@ -867,23 +870,23 @@ const PORT_ONLY: Record<string, Case> = {
 const POLICIES: Record<string, Case> = {
   role: {
     pass: async (w) => {
-      expect((await w.hyper.createTask({ title: "Mine" }, as(w.bot))).creatorId).toBe(w.bot.id);
+      expect((await Task.create({ title: "Mine" }, as(w.bot))).creatorId).toBe(w.bot.id);
     },
     fail: async (w) => {
       const run = await running(w);
       const attempt = await started(w, run);
-      await w.hyper.changeRoleMembership({ id: w.memberships.bot.id, role: "guest" }, as(w.alice));
+      await Membership.changeRole({ id: w.memberships.bot.id, role: "guest" }, as(w.alice));
       // The six actions whose rules list `role` (claim.ex:56, task.ex:90-92, run.ex:49-50, invocation.ex:53-54,
       // session_reference.ex:39, machine.ex:34), by a guest: each is refused by ownerOrMember, before any rule.
       const guest = as(w.bot);
-      expect(await deniedBy(w.hyper.acquireClaim({ task: w.task.id }, guest))).toEqual(["ownerOrMember"]);
+      expect(await deniedBy(Claim.acquire({ task: w.task.id }, guest))).toEqual(["ownerOrMember"]);
       expect(await deniedBy(taskComplete({ id: w.task.id, fence: 1 }, guest, w.binding))).toEqual(["ownerOrMember"]);
-      expect(await deniedBy(w.hyper.startRun({ task: w.task.id }, guest))).toEqual(["ownerOrMember"]);
-      expect(await deniedBy(w.hyper.recordInvocation({ attempt: attempt.id, usageSource: "runtime" }, guest))).toEqual(["ownerOrMember"]);
+      expect(await deniedBy(Run.start({ task: w.task.id }, guest))).toEqual(["ownerOrMember"]);
+      expect(await deniedBy(Invocation.record({ attempt: attempt.id, usageSource: "runtime" }, guest))).toEqual(["ownerOrMember"]);
       expect(await deniedBy(sessionRecord({ runtime: "claude", runtimeSessionId: "s-9", availability: "complete", machine: "laptop", agentProfile: w.bot.id }, guest, w.binding))).toEqual(["ownerOrMember"]);
-      expect(await deniedBy(w.hyper.registerMachine({ name: "desktop" }, guest))).toEqual(["ownerOrMember"]);
+      expect(await deniedBy(Machine.register({ name: "desktop" }, guest))).toEqual(["ownerOrMember"]);
       // The refused session report rolled back the machine it recorded.
-      expect(await w.hyper.readMachine({}, as(w.alice))).toEqual([]);
+      expect(await Machine.read({}, as(w.alice))).toEqual([]);
     },
   },
 };
@@ -935,20 +938,20 @@ describe("roadmap M5 test 9: each of Hyper's rules, a passing and a failing case
 describe("rules together, and the version rule on the other entities", () => {
   test("every failing rule of one call is reported together", () => within(async (w) => {
     await completed(w);
-    const issues = await issuesOf(w.hyper.updateTask({ id: w.task.id, title: "Ship", expectedVersion: 1 }, as(w.alice)));
+    const issues = await issuesOf(Task.update({ id: w.task.id, title: "Ship", expectedVersion: 1 }, as(w.alice)));
     expect(codes(issues)).toEqual(["task.open", "task.unchanged", "expected-version"]);
   }));
 
   test("expected-version guards Workspace, Collaborator, Membership, Machine and SessionReference, and a write bumps by one", () => within(async (w) => {
-    const workspace = await w.hyper.createWorkspace({ name: "Home" }, as(w.alice));
-    const machine = await w.hyper.registerMachine({ name: "laptop" }, as(w.alice));
+    const workspace = await Workspace.create({ name: "Home" }, as(w.alice));
+    const machine = await Machine.register({ name: "laptop" }, as(w.alice));
     const reference = await session(w, "s-1", "desktop");
     const calls = [
-      (v: number) => w.hyper.renameWorkspace({ id: workspace.id, name: `n${v}`, expectedVersion: v }, as(w.alice)),
-      (v: number) => w.hyper.updateCollaborator({ id: w.alice.id, name: `a${v}`, expectedVersion: v }, as(w.alice)),
-      (v: number) => w.hyper.changeRoleMembership({ id: w.memberships.bob.id, role: v === 1 ? "owner" : "guest", expectedVersion: v }, as(w.alice)),
-      (v: number) => w.hyper.updateMachine({ id: machine.id, platform: `p${v}`, expectedVersion: v }, as(w.alice)),
-      (v: number) => w.hyper.setAvailabilitySessionReference({ id: reference.id, availability: v === 1 ? "partial" : "unavailable", expectedVersion: v }, as(w.bot)),
+      (v: number) => Workspace.rename({ id: workspace.id, name: `n${v}`, expectedVersion: v }, as(w.alice)),
+      (v: number) => Collaborator.update({ id: w.alice.id, name: `a${v}`, expectedVersion: v }, as(w.alice)),
+      (v: number) => Membership.changeRole({ id: w.memberships.bob.id, role: v === 1 ? "owner" : "guest", expectedVersion: v }, as(w.alice)),
+      (v: number) => Machine.update({ id: machine.id, platform: `p${v}`, expectedVersion: v }, as(w.alice)),
+      (v: number) => SessionReference.setAvailability({ id: reference.id, availability: v === 1 ? "partial" : "unavailable", expectedVersion: v }, as(w.bot)),
     ];
     for (const call of calls) {
       expect((await call(1)).version).toBe(2);
@@ -961,18 +964,18 @@ describe("rules together, and the version rule on the other entities", () => {
 // The two rules where that differs are plain code (`taskChanges` and `movedParent` in work.helpers.ts); these pin both.
 describe("a value sent as null is not a value left out", () => {
   test("task.unchanged: an intent sent as null clears it, one left out keeps it", () => within(async (w) => {
-    await w.hyper.updateTask({ id: w.task.id, intent: "by Friday" }, as(w.alice));
-    expect(await w.hyper.updateTask({ id: w.task.id, title: "Ship it" }, as(w.alice))).toMatchObject({ title: "Ship it", intent: "by Friday" });
-    await refused(w.hyper.updateTask({ id: w.task.id, title: "Ship it" }, as(w.alice)), "task.unchanged");
-    expect((await w.hyper.updateTask({ id: w.task.id, title: "Ship it", intent: null }, as(w.alice))).intent).toBeNull();
-    await refused(w.hyper.updateTask({ id: w.task.id, title: "Ship it", intent: null }, as(w.alice)), "task.unchanged");
+    await Task.update({ id: w.task.id, intent: "by Friday" }, as(w.alice));
+    expect(await Task.update({ id: w.task.id, title: "Ship it" }, as(w.alice))).toMatchObject({ title: "Ship it", intent: "by Friday" });
+    await refused(Task.update({ id: w.task.id, title: "Ship it" }, as(w.alice)), "task.unchanged");
+    expect((await Task.update({ id: w.task.id, title: "Ship it", intent: null }, as(w.alice))).intent).toBeNull();
+    await refused(Task.update({ id: w.task.id, title: "Ship it", intent: null }, as(w.alice)), "task.unchanged");
   }));
 
   test("task.parent-open: a parent sent as null moves the Task to the top, one left out keeps the stored parent", () => within(async (w) => {
-    const child = await w.hyper.createTask({ title: "child", parent: w.task.id }, as(w.alice));
+    const child = await Task.create({ title: "child", parent: w.task.id }, as(w.alice));
     await taskCancel({ id: w.task.id, reason: "not now" }, as(w.alice), w.binding);
-    await refused(w.hyper.moveTask({ id: child.id }, as(w.alice)), "task.parent-open");
-    expect((await w.hyper.moveTask({ id: child.id, parent: null }, as(w.alice))).parentId).toBeNull();
+    await refused(Task.move({ id: child.id }, as(w.alice)), "task.parent-open");
+    expect((await Task.move({ id: child.id, parent: null }, as(w.alice))).parentId).toBeNull();
   }));
 });
 
@@ -980,32 +983,32 @@ describe("what the rules leave in place", () => {
   test("release ends the claim with the time and reason; revoke needs a reason and stores it", () => within(async (w) => {
     const held = await claim(w);
     w.advance(3);
-    expect(await w.hyper.releaseClaim({ id: held.id, fence: held.fence, reason: "done" }, as(w.bot))).toMatchObject({ state: "released", endReason: "done", endedAt: minutes(3) });
+    expect(await Claim.release({ id: held.id, fence: held.fence, reason: "done" }, as(w.bot))).toMatchObject({ state: "released", endReason: "done", endedAt: minutes(3) });
     const again = await claim(w);
-    expect((await issuesOf(w.hyper.revokeClaim({ id: again.id, reason: "" }, as(w.alice)))).map((issue) => issue.path)).toEqual([["reason"]]);
+    expect((await issuesOf(Claim.revoke({ id: again.id, reason: "" }, as(w.alice)))).map((issue) => issue.path)).toEqual([["reason"]]);
   }));
 
   test("redact clears the location, and the redaction is final", () => within(async (w) => {
     const reference = await session(w);
     expect(reference.location).toBe("/home/s");
-    expect(await w.hyper.redactSessionReference({ id: reference.id, reason: "private" }, as(w.alice))).toMatchObject({ availability: "redacted", location: null, version: 2 });
+    expect(await SessionReference.redact({ id: reference.id, reason: "private" }, as(w.alice))).toMatchObject({ availability: "redacted", location: null, version: 2 });
   }));
 
   test("an unknown claim is NotFoundError, not an issue", () => within(async (w) => {
-    await expect(w.hyper.revokeClaim({ id: GHOST, reason: "x" }, as(w.alice))).rejects.toThrow("not found");
+    await expect(Claim.revoke({ id: GHOST, reason: "x" }, as(w.alice))).rejects.toThrow("not found");
   }));
 
   test("a related id that names no row, where no rule asks, is a FrameworkError (the `exists` check is M8's permission phase)", () => within(async (w) => {
-    // No check of `recordInvocation` reads the attempt when no session is sent; its `set` step loads it and finds no row.
-    await expect(w.hyper.recordInvocation({ attempt: GHOST, usageSource: "runtime" }, as(w.bot))).rejects.toThrow("which does not exist");
+    // No check of `Invocation.record` reads the attempt when no session is sent; its `set` step loads it and finds no row.
+    await expect(Invocation.record({ attempt: GHOST, usageSource: "runtime" }, as(w.bot))).rejects.toThrow("which does not exist");
   }));
 
   test("a rule that reads the record a create names reads it through tx, so an id that names no row fails the rule (ACT-27)", () => within(async (w) => {
     // A caller's acquire of a Task that does not exist is not_found in the permission phase (PROTOCOL.md:110, PR #70 N4):
     // policy claimAssignee throws NotFoundError before any rule runs.
-    await expect(w.hyper.acquireClaim({ task: GHOST }, as(w.bot))).rejects.toBeInstanceOf(NotFoundError);
+    await expect(Claim.acquire({ task: GHOST }, as(w.bot))).rejects.toBeInstanceOf(NotFoundError);
     // A call as the engine skips the policies: a create's checks see `self` before the input, so `claim.task-ready`
     // reads the Task by `input.task` and finds none.
-    await refused(w.hyper.acquireClaim({ task: GHOST }, asSystem(w.bot)), "claim.task-ready", { derivedState: null, reasons: [] });
+    await refused(Claim.acquire({ task: GHOST }, asSystem(w.bot)), "claim.task-ready", { derivedState: null, reasons: [] });
   }));
 });
