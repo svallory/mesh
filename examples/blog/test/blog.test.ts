@@ -188,7 +188,7 @@ describe("policies (M8a): every action is covered, and a caller the policies do 
       const author = await blog.createUser({ name: "Alice" }, context);
       const post = await blog.createPost({ title: "Hello", author: author.id }, context);
       // A title `titlePresent` rejects, which no create can store (`min=1`): written past the actions.
-      await db.transaction((tx) => tx.updateByKey(tables.post, { id: post.id }, { title: "" }));
+      await db.transaction((tx) => tx.updateByKey(tables.posts, { id: post.id }, { title: "" }));
       const other = await blog.createUser({ name: "Bob" }, context);
       await expect(blog.publishPost({ id: post.id }, as(other))).rejects.toBeInstanceOf(ForbiddenError);
       // The author passes the policy and meets validate.
@@ -203,7 +203,7 @@ describe("policies (M8a): every action is covered, and a caller the policies do 
       const author = await blog.createUser({ name: "Alice" }, context);
       const post = await blog.createPost({ title: "Hello", author: author.id }, context);
       // Comment has no create action: the row is written past the actions.
-      await db.transaction((tx) => tx.insert(tables.comment, { id: crypto.randomUUID(), body: "First", postId: post.id }));
+      await db.transaction((tx) => tx.insert(tables.comments, { id: crypto.randomUUID(), body: "First", postId: post.id }));
       const load = ["comments", "author", "commentCount"] as const;
       // A guest may read posts (`:public`) but not users or comments (`:signedIn`).
       const guest = { actor: {} } as unknown as typeof context;

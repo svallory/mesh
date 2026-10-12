@@ -91,7 +91,7 @@ import type { Task, TaskLoadable, TaskTxWith } from "./domain/work/task.types";
  */
 export const loadPlan = {
   "audit.Event": {
-    table: tables.event,
+    table: tables.events,
     key: "seq",
     relations: {
       task: { kind: "belongs-to", target: "work.Task", column: "taskId", nullable: true },
@@ -113,7 +113,7 @@ export const loadPlan = {
     ],
   },
   "execution.Attempt": {
-    table: tables.attempt,
+    table: tables.attempts,
     key: "id",
     relations: {
       run: { kind: "belongs-to", target: "execution.Run", column: "runId", nullable: false },
@@ -160,7 +160,7 @@ export const loadPlan = {
     ],
   },
   "execution.Invocation": {
-    table: tables.invocation,
+    table: tables.invocations,
     key: "id",
     relations: {
       attempt: {
@@ -206,7 +206,7 @@ export const loadPlan = {
     ],
   },
   "execution.Machine": {
-    table: tables.machine,
+    table: tables.machines,
     key: "id",
     relations: {
       firstReportedBy: {
@@ -234,7 +234,7 @@ export const loadPlan = {
     ],
   },
   "execution.Run": {
-    table: tables.run,
+    table: tables.runs,
     key: "id",
     relations: {
       task: { kind: "belongs-to", target: "work.Task", column: "taskId", nullable: false },
@@ -275,7 +275,7 @@ export const loadPlan = {
     ],
   },
   "execution.SessionReference": {
-    table: tables.sessionReference,
+    table: tables.session_references,
     key: "id",
     relations: {
       machine: {
@@ -314,7 +314,7 @@ export const loadPlan = {
     ],
   },
   "identity.Collaborator": {
-    table: tables.collaborator,
+    table: tables.collaborators,
     key: "id",
     relations: {
       memberships: { kind: "has-many", target: "identity.Membership", column: "collaboratorId" },
@@ -336,7 +336,7 @@ export const loadPlan = {
     ],
   },
   "identity.Membership": {
-    table: tables.membership,
+    table: tables.memberships,
     key: "id",
     relations: {
       collaborator: {
@@ -375,7 +375,7 @@ export const loadPlan = {
     ],
   },
   "identity.Workspace": {
-    table: tables.workspace,
+    table: tables.workspaces,
     key: "id",
     relations: {},
     computed: {},
@@ -395,7 +395,7 @@ export const loadPlan = {
     ],
   },
   "work.Assignment": {
-    table: tables.assignment,
+    table: tables.assignments,
     key: "id",
     relations: {
       task: { kind: "belongs-to", target: "work.Task", column: "taskId", nullable: false },
@@ -429,7 +429,7 @@ export const loadPlan = {
     ],
   },
   "work.Claim": {
-    table: tables.claim,
+    table: tables.claims,
     key: "id",
     relations: {
       task: { kind: "belongs-to", target: "work.Task", column: "taskId", nullable: false },
@@ -459,7 +459,7 @@ export const loadPlan = {
     ],
   },
   "work.Completion": {
-    table: tables.completion,
+    table: tables.completions,
     key: "id",
     relations: {
       task: { kind: "belongs-to", target: "work.Task", column: "taskId", nullable: false },
@@ -493,7 +493,7 @@ export const loadPlan = {
     ],
   },
   "work.Dependency": {
-    table: tables.dependency,
+    table: tables.dependencies,
     key: "id",
     relations: {
       dependent: {
@@ -532,7 +532,7 @@ export const loadPlan = {
     ],
   },
   "work.EvidenceReference": {
-    table: tables.evidenceReference,
+    table: tables.evidence_references,
     key: "id",
     relations: {
       recordedBy: {
@@ -559,7 +559,7 @@ export const loadPlan = {
     ],
   },
   "work.LateResult": {
-    table: tables.lateResult,
+    table: tables.late_results,
     key: "id",
     relations: {
       task: { kind: "belongs-to", target: "work.Task", column: "taskId", nullable: false },
@@ -587,7 +587,7 @@ export const loadPlan = {
     ],
   },
   "work.Review": {
-    table: tables.review,
+    table: tables.reviews,
     key: "id",
     relations: {
       submission: {
@@ -620,7 +620,7 @@ export const loadPlan = {
     ],
   },
   "work.Submission": {
-    table: tables.submission,
+    table: tables.submissions,
     key: "id",
     relations: {
       task: { kind: "belongs-to", target: "work.Task", column: "taskId", nullable: false },
@@ -648,7 +648,7 @@ export const loadPlan = {
     ],
   },
   "work.Task": {
-    table: tables.task,
+    table: tables.tasks,
     key: "id",
     relations: {
       parent: { kind: "belongs-to", target: "work.Task", column: "parentId", nullable: true },

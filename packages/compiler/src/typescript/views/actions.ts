@@ -140,16 +140,10 @@ function fromLiteral(entity: Entity, target: string): string {
   return JSON.stringify(path);
 }
 
-/** The entity's key in the schema's `tables` map: its name, camelCase (the data adapter's rule). */
-export function tableKey(entity: Entity): string {
-  return camelCase(entity.name);
-}
-
-/** `tables.post`, or `tables["..."]` when the key is not an identifier. */
-function tableAccess(entity: Entity): string {
-  const key = tableKey(entity);
-  const printed = propertyName(key);
-  return printed === key ? `tables.${key}` : `tables[${printed}]`;
+/** `tables.posts`, or `tables["late-result"]` when the table name is not an identifier: `tables` is keyed by the table name as stored (DAT-16). */
+export function tableAccess(entity: Entity): string {
+  const printed = propertyName(entity.table);
+  return printed === entity.table ? `tables.${entity.table}` : `tables[${printed}]`;
 }
 
 /** `parsed.title`, or `parsed["..."]` when the name is not an identifier. */

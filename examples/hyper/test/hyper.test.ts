@@ -128,7 +128,7 @@ describe("one row of every entity round-trips through its generated functions", 
       const { dependency, machine } = await populate(fresh);
       // machine.name-free refuses first; past the rule, the unique index still refuses the row.
       await expect(hyper.registerMachine({ name: "laptop" }, context)).rejects.toBeInstanceOf(InvalidInputError);
-      const refused = await fresh.insert("machine", { ...machine, id: crypto.randomUUID() }).then(() => undefined, (caught: unknown) => caught);
+      const refused = await fresh.insert("machines", { ...machine, id: crypto.randomUUID() }).then(() => undefined, (caught: unknown) => caught);
       expect(refused).toBeInstanceOf(FrameworkError);
       expect(String((refused as FrameworkError).cause)).toContain("UNIQUE constraint failed: machines.name");
       await hyper.removeDependency({ id: dependency.id }, context);

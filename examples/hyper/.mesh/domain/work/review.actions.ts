@@ -63,7 +63,7 @@ export function bindReviewReads(layer: $DataLayer, options: $BindOptions = {}) {
       // for its policies and hands it over as `cast`; a read through `tx` casts it here.
       const parsed = cast ?? (await $castInput(layer, readReviewInput, input));
       return layer.transaction(async (tx) => {
-        const $rows = (await tx.select(tables.review, {
+        const $rows = (await tx.select(tables.reviews, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
@@ -240,7 +240,7 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
           }
           $unloadFrom($loadPlan, "work.Review", $record);
           // data layer
-          const $stored = await tx.insert(tables.review, $changes);
+          const $stored = await tx.insert(tables.reviews, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
@@ -262,7 +262,7 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
           });
           await $expressions["accept.step.1.run"]($after);
           // the result: the row as the steps after the write left it, read again by key
-          const $result = await tx.selectByKey(tables.review, { id: $stored.id });
+          const $result = await tx.selectByKey(tables.reviews, { id: $stored.id });
           if ($result === undefined)
             throw new $FrameworkError(
               "work.Review#accept: a step after the write deleted the row this action returns",
@@ -417,7 +417,7 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
           }
           $unloadFrom($loadPlan, "work.Review", $record);
           // data layer
-          const $stored = await tx.insert(tables.review, $changes);
+          const $stored = await tx.insert(tables.reviews, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
@@ -439,7 +439,7 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
           });
           await $expressions["return.step.1.run"]($after);
           // the result: the row as the steps after the write left it, read again by key
-          const $result = await tx.selectByKey(tables.review, { id: $stored.id });
+          const $result = await tx.selectByKey(tables.reviews, { id: $stored.id });
           if ($result === undefined)
             throw new $FrameworkError(
               "work.Review#return: a step after the write deleted the row this action returns",

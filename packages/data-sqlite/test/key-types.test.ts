@@ -57,9 +57,9 @@ test("the record, the input and the schema column all take the integer key's typ
   expect(schema).toMatch(/replacesId: integer\("replacesId"\),/);
   await writeFile(join(dir, "check.ts"), `import type { Line } from "./.mesh/domain/line.types";
 import type { LineFilter } from "./.mesh/domain/line.types";
-import { lineTable } from "./.mesh/schema";
+import { tables } from "./.mesh/schema";
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
-export const same: Equal<typeof lineTable.$inferSelect, Line> = true;
+export const same: Equal<typeof tables.lines.$inferSelect, Line> = true;
 export const orderIsNumber: Equal<Line["orderId"], number> = true;
 export const replacesIsNullable: Equal<Line["replacesId"], number | null> = true;
 // The filter on the key column takes numbers, not strings.

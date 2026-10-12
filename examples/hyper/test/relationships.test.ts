@@ -37,13 +37,13 @@ async function people(hyper: Hyper) {
 function rows(insert: Empty["insert"]) {
   return {
     claim: (taskId: string, holderId: string, fence: number, expiresAt: Date, state: "active" | "released" | "revoked" | "expired" = "active") =>
-      insert("claim", { taskId, holderId, fence, state, acquiredAt: minutes(-60), expiresAt, endedAt: state === "active" ? null : minutes(-1), endReason: null }),
+      insert("claims", { taskId, holderId, fence, state, acquiredAt: minutes(-60), expiresAt, endedAt: state === "active" ? null : minutes(-1), endReason: null }),
     submission: (taskId: string, submitterId: string, state: "pending" | "accepted" | "returned" | "withdrawn" = "pending") =>
-      insert("submission", { taskId, submitterId, state, summary: "s", evidence: [], fence: null, taskVersion: 1, submittedAt: minutes(-30) }),
+      insert("submissions", { taskId, submitterId, state, summary: "s", evidence: [], fence: null, taskVersion: 1, submittedAt: minutes(-30) }),
     assignment: (taskId: string, assigneeId: string, delegatorId: string) =>
-      insert("assignment", { taskId, assigneeId, delegatorId, reviewWaived: false, startedAt: minutes(-60), endedAt: null, endReason: null }),
+      insert("assignments", { taskId, assigneeId, delegatorId, reviewWaived: false, startedAt: minutes(-60), endedAt: null, endReason: null }),
     dependency: (dependentId: string, prerequisiteId: string, createdById: string) =>
-      insert("dependency", { dependentId, prerequisiteId, createdById, createdAt: minutes(-60) }),
+      insert("dependencies", { dependentId, prerequisiteId, createdById, createdAt: minutes(-60) }),
   };
 }
 
@@ -68,7 +68,7 @@ describe("acceptance 1: self-reference with no import, and the rows load", () =>
       const a = await hyper.createTask({ title: "a", parent: root.id }, as(alice));
       const b = await hyper.createTask({ title: "b", parent: root.id }, as(alice));
       const leaf = await hyper.createTask({ title: "leaf", parent: a.id }, as(alice));
-      const loaded = await load(db, async (tx) => loadTaskFields(tx, await tx.select(tables.task) as Task[], ["parent", "children"]));
+      const loaded = await load(db, async (tx) => loadTaskFields(tx, await tx.select(tables.tasks) as Task[], ["parent", "children"]));
       const byTitle = Object.fromEntries(loaded.map((task) => [task.title, task]));
       expect(byTitle.root!.parent).toBeNull();
       expect(ids(byTitle.root!.children)).toEqual([a.id, b.id].sort());
@@ -86,8 +86,8 @@ describe("acceptance 1: self-reference with no import, and the rows load", () =>
       const task = await hyper.createTask({ title: "ouroboros" }, as(alice));
       // task.no-cycle refuses the move, so the row is written as it is: a loader must still finish on it.
       expect(codes(await issuesOf(hyper.moveTask({ id: task.id, parent: task.id }, as(alice))))).toEqual(["task.no-cycle"]);
-      await force("task", task.id, { parentId: task.id });
-      const [loaded] = await load(db, async (tx) => loadTaskFields(tx, await tx.select(tables.task) as Task[], ["parent", "children", "childrenSettled", "derivedState"]));
+      await force("tasks", task.id, { parentId: task.id });
+      const [loaded] = await load(db, async (tx) => loadTaskFields(tx, await tx.select(tables.tasks) as Task[], ["parent", "children", "childrenSettled", "derivedState"]));
       expect(loaded!.parent!.id).toBe(task.id);
       expect(ids(loaded!.children)).toEqual([task.id]);
       // The child is itself and is open, so the children are not settled.
@@ -218,15 +218,15 @@ describe("acceptance 4: derivedState is Hyper's DerivedState for the same rows",
         canceled: await hyper.createTask({ title: "pre canceled" }, as(alice)),
       };
       await load(db, async (tx) => {
-        await tx.updateByKey(tables.task, { id: pre.done.id }, { state: "done" });
-        await tx.updateByKey(tables.task, { id: pre.canceled.id }, { state: "canceled" });
+        await tx.updateByKey(tables.tasks, { id: pre.done.id }, { state: "done" });
+        await tx.updateByKey(tables.tasks, { id: pre.canceled.id }, { state: "canceled" });
       });
       const expected = new Map<string, string>();
       let fence = 0;
       for (const state of stored) for (const submission of submissions) for (const claim of claims) for (const wait of prerequisites) {
         const title = `${state}/${submission}/${claim}/${wait.join("+") || "-"}`;
         const task = await hyper.createTask({ title }, as(alice));
-        if (state !== "open") await load(db, (tx) => tx.updateByKey(tables.task, { id: task.id }, { state }));
+        if (state !== "open") await load(db, (tx) => tx.updateByKey(tables.tasks, { id: task.id }, { state }));
         if (submission !== "none") await insert.submission(task.id, bot.id, submission === "settled" ? "accepted" : "pending");
         if (claim !== "none") await insert.claim(task.id, bot.id, ++fence, claim === "lapsed" ? minutes(-5) : minutes(30), claim === "released" ? "released" : "active");
         for (const prerequisite of wait) await hyper.addDependency({ dependent: task.id, prerequisite: pre[prerequisite].id }, as(alice));
@@ -239,7 +239,7 @@ describe("acceptance 4: derivedState is Hyper's DerivedState for the same rows",
       expect(expected.size).toBe(3 * 3 * 4 * 5);
       const { rows, calls } = await load(db, async (tx) => {
         const counting = counted(tx);
-        const rows = await loadTaskFields(counting.tx, await tx.select(tables.task) as Task[], ["derivedState"], { clock });
+        const rows = await loadTaskFields(counting.tx, await tx.select(tables.tasks) as Task[], ["derivedState"], { clock });
         return { rows, calls: counting.calls };
       });
       let checked = 0;
@@ -280,8 +280,8 @@ describe("acceptance 4: derivedState is Hyper's DerivedState for the same rows",
       const third = await hyper.createTask({ title: "third" }, as(alice));
       await hyper.addDependency({ dependent: second.id, prerequisite: first.id }, as(alice));
       await hyper.addDependency({ dependent: third.id, prerequisite: second.id }, as(alice));
-      await load(db, (tx) => tx.updateByKey(tables.task, { id: second.id }, { state: "done" }));
-      const loaded = await load(db, async (tx) => loadTaskFields(tx, await tx.select(tables.task) as Task[], ["derivedState", "blocked"]));
+      await load(db, (tx) => tx.updateByKey(tables.tasks, { id: second.id }, { state: "done" }));
+      const loaded = await load(db, async (tx) => loadTaskFields(tx, await tx.select(tables.tasks) as Task[], ["derivedState", "blocked"]));
       // second is done (stored wins) though its own prerequisite is open; third waits for a done task, so it is ready.
       expect(loaded.map((task) => [task.title, task.derivedState, task.blocked])).toEqual([["first", "ready", false], ["second", "done", true], ["third", "ready", false]]);
     } finally { await db.close(); }
@@ -424,8 +424,8 @@ describe("derivedState with several rows of each kind", () => {
         canceled: await hyper.createTask({ title: "pre canceled" }, as(alice)),
       };
       await load(db, async (tx) => {
-        await tx.updateByKey(tables.task, { id: pre.done.id }, { state: "done" });
-        await tx.updateByKey(tables.task, { id: pre.canceled.id }, { state: "canceled" });
+        await tx.updateByKey(tables.tasks, { id: pre.done.id }, { state: "done" });
+        await tx.updateByKey(tables.tasks, { id: pre.canceled.id }, { state: "canceled" });
       });
       const expected = new Map<string, { name: string; state: string }>();
       let fence = 0;
@@ -447,7 +447,7 @@ describe("derivedState with several rows of each kind", () => {
           }),
         });
       }
-      const rows = await load(db, async (tx) => loadTaskFields(tx, await tx.select(tables.task) as Task[], ["derivedState"], { clock }));
+      const rows = await load(db, async (tx) => loadTaskFields(tx, await tx.select(tables.tasks) as Task[], ["derivedState"], { clock }));
       const got = new Map(rows.filter((task) => expected.has(task.id)).map((task) => [task.id, task.derivedState]));
       for (const [id, { name, state }] of expected) expect(got.get(id), name).toBe(state as never);
       // The cases reach every value an open task can have.

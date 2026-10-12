@@ -105,7 +105,7 @@ export function bindTaskReads(layer: $DataLayer, options: $BindOptions = {}) {
           ],
           parsed,
         );
-        const $rows = (await tx.select(tables.task, {
+        const $rows = (await tx.select(tables.tasks, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
@@ -238,7 +238,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
             $changes.creatorId = $record.creatorId = $value;
           }
           // data layer
-          const $stored = await tx.insert(tables.task, $changes);
+          const $stored = await tx.insert(tables.tasks, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
@@ -306,7 +306,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.task, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.tasks, $key);
           if ($before === undefined) throw new $NotFoundError("work.Task", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -371,8 +371,8 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           }
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "work.Task#update");
-          const $stored = await tx.updateByKey(tables.task, $key, $changes);
+          await $checkUnchanged(tx, $writes, tables.tasks, $key, $before, "work.Task#update");
+          const $stored = await tx.updateByKey(tables.tasks, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("work.Task", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
@@ -445,7 +445,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.task, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.tasks, $key);
           if ($before === undefined) throw new $NotFoundError("work.Task", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -502,8 +502,8 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           }
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "work.Task#setPriority");
-          const $stored = await tx.updateByKey(tables.task, $key, $changes);
+          await $checkUnchanged(tx, $writes, tables.tasks, $key, $before, "work.Task#setPriority");
+          const $stored = await tx.updateByKey(tables.tasks, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("work.Task", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
@@ -572,7 +572,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.task, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.tasks, $key);
           if ($before === undefined) throw new $NotFoundError("work.Task", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -654,8 +654,8 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           $unloadFrom($loadPlan, "work.Task", $record);
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "work.Task#move");
-          const $stored = await tx.updateByKey(tables.task, $key, $changes);
+          await $checkUnchanged(tx, $writes, tables.tasks, $key, $before, "work.Task#move");
+          const $stored = await tx.updateByKey(tables.tasks, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("work.Task", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
@@ -737,7 +737,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.task, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.tasks, $key);
           if ($before === undefined) throw new $NotFoundError("work.Task", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -797,8 +797,8 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           }
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "work.Task#reopen");
-          const $stored = await tx.updateByKey(tables.task, $key, $changes);
+          await $checkUnchanged(tx, $writes, tables.tasks, $key, $before, "work.Task#reopen");
+          const $stored = await tx.updateByKey(tables.tasks, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("work.Task", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
@@ -854,7 +854,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.task, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.tasks, $key);
           if ($before === undefined) throw new $NotFoundError("work.Task", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -888,8 +888,8 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           }
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "work.Task#touch");
-          const $stored = await tx.updateByKey(tables.task, $key, $changes);
+          await $checkUnchanged(tx, $writes, tables.tasks, $key, $before, "work.Task#touch");
+          const $stored = await tx.updateByKey(tables.tasks, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("work.Task", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
@@ -971,7 +971,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.task, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.tasks, $key);
           if ($before === undefined) throw new $NotFoundError("work.Task", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -1027,8 +1027,8 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           }
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "work.Task#cancel");
-          const $stored = await tx.updateByKey(tables.task, $key, $changes);
+          await $checkUnchanged(tx, $writes, tables.tasks, $key, $before, "work.Task#cancel");
+          const $stored = await tx.updateByKey(tables.tasks, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("work.Task", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
@@ -1051,7 +1051,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           });
           await $expressions["cancel.step.1.run"]($after);
           // the result: the row as the steps after the write left it, read again by key
-          const $result = await tx.selectByKey(tables.task, { id: $stored.id });
+          const $result = await tx.selectByKey(tables.tasks, { id: $stored.id });
           if ($result === undefined)
             throw new $FrameworkError(
               "work.Task#cancel: a step after the write deleted the row this action returns",
@@ -1141,7 +1141,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.task, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.tasks, $key);
           if ($before === undefined) throw new $NotFoundError("work.Task", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -1262,8 +1262,8 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           $unloadFrom($loadPlan, "work.Task", $record);
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "work.Task#complete");
-          const $stored = await tx.updateByKey(tables.task, $key, $changes);
+          await $checkUnchanged(tx, $writes, tables.tasks, $key, $before, "work.Task#complete");
+          const $stored = await tx.updateByKey(tables.tasks, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("work.Task", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
@@ -1286,7 +1286,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           });
           await $expressions["complete.step.1.run"]($after);
           // the result: the row as the steps after the write left it, read again by key
-          const $result = await tx.selectByKey(tables.task, { id: $stored.id });
+          const $result = await tx.selectByKey(tables.tasks, { id: $stored.id });
           if ($result === undefined)
             throw new $FrameworkError(
               "work.Task#complete: a step after the write deleted the row this action returns",
@@ -1347,7 +1347,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.task, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.tasks, $key);
           if ($before === undefined) throw new $NotFoundError("work.Task", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -1426,8 +1426,8 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           $unloadFrom($loadPlan, "work.Task", $record);
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "work.Task#assign");
-          const $stored = await tx.updateByKey(tables.task, $key, $changes);
+          await $checkUnchanged(tx, $writes, tables.tasks, $key, $before, "work.Task#assign");
+          const $stored = await tx.updateByKey(tables.tasks, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("work.Task", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
@@ -1450,7 +1450,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           });
           await $expressions["assign.step.1.run"]($after);
           // the result: the row as the steps after the write left it, read again by key
-          const $result = await tx.selectByKey(tables.task, { id: $stored.id });
+          const $result = await tx.selectByKey(tables.tasks, { id: $stored.id });
           if ($result === undefined)
             throw new $FrameworkError(
               "work.Task#assign: a step after the write deleted the row this action returns",
@@ -1528,7 +1528,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.task, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.tasks, $key);
           if ($before === undefined) throw new $NotFoundError("work.Task", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -1586,8 +1586,8 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           $unloadFrom($loadPlan, "work.Task", $record);
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "work.Task#unassign");
-          const $stored = await tx.updateByKey(tables.task, $key, $changes);
+          await $checkUnchanged(tx, $writes, tables.tasks, $key, $before, "work.Task#unassign");
+          const $stored = await tx.updateByKey(tables.tasks, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("work.Task", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
@@ -1610,7 +1610,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           });
           await $expressions["unassign.step.1.run"]($after);
           // the result: the row as the steps after the write left it, read again by key
-          const $result = await tx.selectByKey(tables.task, { id: $stored.id });
+          const $result = await tx.selectByKey(tables.tasks, { id: $stored.id });
           if ($result === undefined)
             throw new $FrameworkError(
               "work.Task#unassign: a step after the write deleted the row this action returns",

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { ATTRIBUTE_TYPES, type ModelDocument } from "@meshfw/model";
 import { EmitError, buildModel, generateFiles, type EmitInput, type ResolvedConfig } from "@meshfw/compiler";
-import build, { SQLITE_COLUMNS, camelCase, schemaGenerator, schemaView } from "../src/build.ts";
+import build, { SQLITE_COLUMNS, schemaGenerator, schemaView } from "../src/build.ts";
 
 const config: ResolvedConfig = {
   root: "/project", configFile: "/project/mesh.config.ts", entityFiles: [], domainRoot: "/project/src/domain",
@@ -43,12 +43,12 @@ const user = `entity :User table="users"
 `;
 
 describe("schemaView", () => {
-  test("one table per entity, sorted by export, with every column printed from the view", () => {
+  test("one table per entity, sorted by entity name, with every column printed from the view", () => {
     const view = schemaView(input({ "blog/post.mesh.mx": post, "blog/user.mesh.mx": user }));
     expect(view.builders).toEqual(["integer", "real", "text"]);
-    expect(view.tables.map((table) => [table.entity, table.exportName, table.key, table.nameLiteral])).toEqual([
-      ["Post", "postTable", "post", '"posts"'],
-      ["User", "userTable", "user", '"users"'],
+    expect(view.tables.map((table) => [table.entity, table.key, table.nameLiteral])).toEqual([
+      ["Post", "posts", '"posts"'],
+      ["User", "users", '"users"'],
     ]);
     expect(view.tables[0]!.columns).toEqual([
       { key: "id", builder: "text", nameLiteral: '"id"', options: null, notNull: true, primaryKey: true, unique: false },
@@ -74,11 +74,19 @@ describe("schemaView", () => {
     expect(schemaView(input({ "user.mesh.mx": "entity :User\n  attributes\n    uuid :id primary-key\n" })).builders).toEqual(["text"]);
   });
 
-  test("the entity's default table is used, and the export is the camelCase entity name", () => {
-    const view = schemaView(input({ "blog_post.mesh.mx": "entity :BlogPost\n  attributes\n    uuid :id primary-key\n" }));
-    expect(view.tables[0]).toMatchObject({ entity: "BlogPost", exportName: "blogPostTable", key: "blogPost", nameLiteral: '"blog_post"' });
-    expect(camelCase("_Post")).toBe("_post");
-    expect(camelCase("first-name")).toBe("firstName");
+  test("the key is the table name as stored: the default table, a table= that differs from the entity name, and one that is not an identifier", () => {
+    const view = schemaView(input({
+      "blog_post.mesh.mx": "entity :BlogPost\n  attributes\n    uuid :id primary-key\n",
+      "claim.mesh.mx": 'entity :Claim table="claim"\n  attributes\n    uuid :id primary-key\n',
+      "late.mesh.mx": 'entity :LateResult table="late-result"\n  attributes\n    uuid :id primary-key\n',
+      "odd.mesh.mx": 'entity :Odd table="2 odd"\n  attributes\n    uuid :id primary-key\n',
+    }));
+    expect(view.tables.map((table) => [table.entity, table.key, table.nameLiteral])).toEqual([
+      ["BlogPost", "blog_post", '"blog_post"'],
+      ["Claim", "claim", '"claim"'],
+      ["LateResult", '"late-result"', '"late-result"'],
+      ["Odd", '"2 odd"', '"2 odd"'],
+    ]);
   });
 
   test("the type map covers every registered attribute type and nothing else", () => {
@@ -127,17 +135,12 @@ describe("MESH_SCHEMA_* build errors", () => {
     });
   });
 
-  test("MESH_SCHEMA_DUPLICATE_EXPORT: same-named entities in two modules", () => {
-    const error = emitError(() => schemaView(input({
+  test("same-named entities in two modules build when their tables differ: nothing is exported under the entity name", () => {
+    const view = schemaView(input({
       "sales/post.mesh.mx": 'entity :Post table="sales_posts"\n  attributes\n    uuid :id primary-key\n',
       "blog/post.mesh.mx": 'entity :Post table="blog_posts"\n  attributes\n    uuid :id primary-key\n',
-    })));
-    expect(error.diagnostic).toEqual({
-      severity: "error", code: "MESH_SCHEMA_DUPLICATE_EXPORT",
-      message: "Entities blog.Post (src/domain/blog/post.mesh.mx) and sales.Post (src/domain/sales/post.mesh.mx) both become the schema export postTable",
-      position: { file: "src/domain/sales/post.mesh.mx", line: 1, column: 0, offset: 0 },
-      fix: "Rename one entity: schema.ts exports one table per entity name",
-    });
+    }));
+    expect(view.tables.map((table) => table.key)).toEqual(["blog_posts", "sales_posts"]);
   });
 
   test("MESH_SCHEMA_DUPLICATE_COLUMN: names that differ only in ASCII case", () => {
@@ -152,12 +155,12 @@ describe("MESH_SCHEMA_* build errors", () => {
     });
   });
 
-  test("negative: case-distinct tables, distinct exports and distinct columns build", () => {
+  test("negative: distinct tables and distinct columns build", () => {
     const view = schemaView(input({
       "sales/order.mesh.mx": 'entity :Order table="sales_orders"\n  attributes\n    uuid :id primary-key\n    string :title\n    string :subtitle\n',
       "blog/post.mesh.mx": 'entity :Post table="posts_2"\n  attributes\n    uuid :id primary-key\n',
     }));
-    expect(view.tables.map((table) => table.exportName)).toEqual(["orderTable", "postTable"]);
+    expect(view.tables.map((table) => table.key)).toEqual(["sales_orders", "posts_2"]);
   });
 });
 
@@ -180,25 +183,21 @@ describe("the schema generator", () => {
 
 import { sqliteTable as _meshSqlite, integer, real, text } from "drizzle-orm/sqlite-core";
 
-export const postTable = _meshSqlite("posts", {
-  id: text("id").notNull().primaryKey(),
-  title: text("title").notNull(),
-  body: text("body"),
-  featured: integer("featured", { mode: "boolean" }).notNull(),
-  state: text("state", { enum: ["draft", "published"] }).notNull(),
-  publishedAt: integer("publishedAt", { mode: "timestamp_ms" }),
-  authorId: text("authorId").notNull(),
-  editorId: text("editorId"),
-});
-
-export const userTable = _meshSqlite("users", {
-  id: text("id").notNull().primaryKey(),
-  score: real("score").notNull(),
-});
-
 export const tables = {
-  post: postTable,
-  user: userTable,
+  posts: _meshSqlite("posts", {
+    id: text("id").notNull().primaryKey(),
+    title: text("title").notNull(),
+    body: text("body"),
+    featured: integer("featured", { mode: "boolean" }).notNull(),
+    state: text("state", { enum: ["draft", "published"] }).notNull(),
+    publishedAt: integer("publishedAt", { mode: "timestamp_ms" }),
+    authorId: text("authorId").notNull(),
+    editorId: text("editorId"),
+  }),
+  users: _meshSqlite("users", {
+    id: text("id").notNull().primaryKey(),
+    score: real("score").notNull(),
+  }),
 };
 `);
   });

@@ -91,7 +91,7 @@ describe("a create and a json", () => {
     const config = configOf(root);
     const files = await generateFiles({ document: built.document!, config });
     await writeGeneratedFiles(files, config);
-    await writeFile(resolve(root, "generated/schema.ts"), "export const tables = { note: {} };\n");
+    await writeFile(resolve(root, "generated/schema.ts"), "export const tables = { notes: {} };\n");
     return { root, document: built.document!, files };
   }
 

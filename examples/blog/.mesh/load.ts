@@ -21,7 +21,7 @@ import type { Post, PostLoadable, PostTxWith } from "./domain/blog/post.types";
  */
 export const loadPlan = {
   "blog.Comment": {
-    table: tables.comment,
+    table: tables.comments,
     key: "id",
     relations: {
       post: { kind: "belongs-to", target: "blog.Post", column: "postId", nullable: false },
@@ -43,7 +43,7 @@ export const loadPlan = {
     ],
   },
   "blog.Post": {
-    table: tables.post,
+    table: tables.posts,
     key: "id",
     relations: {
       author: { kind: "belongs-to", target: "blog.User", column: "authorId", nullable: false },
@@ -74,7 +74,7 @@ export const loadPlan = {
     ],
   },
   "blog.User": {
-    table: tables.user,
+    table: tables.users,
     key: "id",
     relations: {},
     computed: {},

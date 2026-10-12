@@ -4,7 +4,7 @@ import type { AttributeType, Entity, SourcePosition } from "@meshfw/model";
 import { sqliteNameKey, sqliteNameProblem } from "./identifiers.ts";
 
 /**
- * What `schema.ts.jig` renders: the Drizzle SQLite table of every entity and the
+ * What `schema.ts.jig` renders: the Drizzle SQLite table of every entity, the
  * `tables` map that `createSchema` and `mesh db push` take. Every string is final;
  * the template prints, loops and branches on these fields and computes nothing.
  * A project's own `schema.ts.jig` depends on this shape.
@@ -12,17 +12,15 @@ import { sqliteNameKey, sqliteNameProblem } from "./identifiers.ts";
 export interface SchemaView {
   /** The column builders the tables use, sorted, for the `drizzle-orm/sqlite-core` import. */
   readonly builders: readonly string[];
-  /** One table per entity, sorted by `exportName`. */
+  /** One table per entity, sorted by entity name, module and file. */
   readonly tables: readonly TableView[];
 }
 
-/** `export const <exportName> = _meshSqlite(<nameLiteral>, { ...columns });` and its `tables` entry. */
+/** `<key>: _meshSqlite(<nameLiteral>, { ...columns }),`, one entry of the `tables` map. */
 export interface TableView {
   /** The entity's name as authored, e.g. `Post`. */
   readonly entity: string;
-  /** The exported table constant: the entity name, camelCase, plus `Table`, e.g. `postTable`. */
-  readonly exportName: string;
-  /** The entity's `tables` key as printed: the camelCase entity name, e.g. `post`. */
+  /** The entity's `tables` key as printed: its table name as stored (DAT-16), quoted when not an identifier, e.g. `posts` or `"late-result"`. */
   readonly key: string;
   /** The SQL table name (the entity's `table`) as a string literal, e.g. `"posts"`. */
   readonly nameLiteral: string;
@@ -77,14 +75,6 @@ function fail(code: string, message: string, position: SourcePosition, fix: stri
   throw new EmitError({ severity: "error", code, message, position, fix });
 }
 
-/** The same word rule as the `types` generator's PascalCase, with the first letter lower-cased. */
-export function camelCase(name: string): string {
-  const leading = /^_*/.exec(name)?.[0] ?? "";
-  const words = name.slice(leading.length).split(/[^A-Za-z0-9]+/).filter(Boolean);
-  return leading + words.map((word, index) =>
-    (index === 0 ? word[0]!.toLowerCase() : word[0]!.toUpperCase()) + word.slice(1)).join("");
-}
-
 function column(name: string, type: AttributeType, nullable: boolean, primaryKey: boolean, values: readonly string[], unique = false): ColumnView {
   const { builder, options } = SQLITE_COLUMNS[type];
   return {
@@ -125,9 +115,7 @@ function tableView(entity: Entity): TableView {
   for (const relation of entity.relationships) {
     if (relation.keyColumn) add(relation.keyColumn, relation.position, column(relation.keyColumn, relation.keyType ?? "string", relation.nullable, false, []));
   }
-  // Entity names are MX identifiers (`:blog-post`), so the camelCase name always is one.
-  const key = camelCase(entity.name);
-  return { entity: entity.name, exportName: `${key}Table`, key: propertyKey(key), nameLiteral: JSON.stringify(entity.table), columns };
+  return { entity: entity.name, key: propertyKey(entity.table), nameLiteral: JSON.stringify(entity.table), columns };
 }
 
 /** The schema view of the whole model. Pure and synchronous; a model it cannot store is an `EmitError`. */
@@ -136,7 +124,6 @@ export function schemaView({ document }: EmitInput): SchemaView {
     compare(a.name, b.name) || compare(a.module, b.module) || compare(a.file, b.file));
   const tables: TableView[] = [];
   const tableOwners = new Map<string, Entity>();
-  const exportOwners = new Map<string, Entity>();
   const describe = (entity: Entity) => `${entity.fqn} (${entity.file})`;
   for (const entity of sorted) {
     const view = tableView(entity);
@@ -146,14 +133,7 @@ export function schemaView({ document }: EmitInput): SchemaView {
         `Entities ${describe(sameTable)} and ${describe(entity)} both use the SQLite table "${entity.table}"`,
         entity.position, 'Set table="..." on one of the two entities');
     }
-    const sameExport = exportOwners.get(view.exportName);
-    if (sameExport) {
-      fail("MESH_SCHEMA_DUPLICATE_EXPORT",
-        `Entities ${describe(sameExport)} and ${describe(entity)} both become the schema export ${view.exportName}`,
-        entity.position, "Rename one entity: schema.ts exports one table per entity name");
-    }
     tableOwners.set(sqliteNameKey(entity.table), entity);
-    exportOwners.set(view.exportName, entity);
     tables.push(view);
   }
   const builders = [...new Set(tables.flatMap((table) => table.columns.map((column) => column.builder)))].sort(compare);

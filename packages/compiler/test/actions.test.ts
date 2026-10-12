@@ -148,7 +148,7 @@ describe("actions view", () => {
       "// do: the steps run in written order, each seeing the record as the ones before it left it",
       "$changes.pinned = $record.pinned = true;",
       "// data layer",
-      "const $stored = await tx.insert(tables.article, $changes);",
+      "const $stored = await tx.insert(tables.articles, $changes);",
       "$noteWrite(tx);",
       "// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write",
       'await $recordWrite(tx, options.seams, { entity: "blog.Article", action: "create" }, null, $stored, parsed, context);',
@@ -169,7 +169,7 @@ describe("actions view", () => {
   test("update reads the row under the lock, runs the checks, then applies the accepted input and writes only what changed", () => {
     const [, rename, publish] = viewOf("Article").methods;
     const text = rename!.statements.join("\n");
-    expect(text).toContain("const $before = await tx.selectByKeyForUpdate(tables.article, $key);");
+    expect(text).toContain("const $before = await tx.selectByKeyForUpdate(tables.articles, $key);");
     expect(text).toContain('if ($before === undefined) throw new $NotFoundError("blog.Article", $key);');
     expect(text).toContain("if (parsed.title !== undefined) $changes.title = $record.title = parsed.title;");
     expect(text).toContain("if (parsed.editor !== undefined) $changes.editorId = $record.editorId = parsed.editor;");
@@ -179,7 +179,7 @@ describe("actions view", () => {
     expect(at("if (parsed.title !== undefined)")).toBeGreaterThan(at("if ($issues.length > 0)"));
     expect(at("const $stored = await tx.updateByKey")).toBeGreaterThan(at("if (parsed.editor !== undefined)"));
     expect(text).toContain("$changes.updatedAt = $now;");
-    expect(text).toContain("const $stored = await tx.updateByKey(tables.article, $key, $changes);");
+    expect(text).toContain("const $stored = await tx.updateByKey(tables.articles, $key, $changes);");
     // always types=[:update]: its check runs on every update, before the action's own
     expect(rename!.statements.filter((line) => line.startsWith("await $runCheck"))).toHaveLength(1);
     expect(publish!.statements.filter((line) => line.startsWith("await $runCheck")).map((line) => /label: "(\w+)"/.exec(line)![1])).toEqual(["fresh", "titled"]);
@@ -200,7 +200,7 @@ describe("actions view", () => {
     expect(live.statements).toEqual([]);
     const read = view.reads.find((m) => m.name === "read")!;
     expect(read).toMatchObject({ unsupported: null, usesParsed: true, statements: [
-      "const $rows = (await tx.select(tables.article, { filter: parsed.filter, sort: parsed.sort, limit: parsed.limit, offset: parsed.offset })) as Article[];",
+      "const $rows = (await tx.select(tables.articles, { filter: parsed.filter, sort: parsed.sort, limit: parsed.limit, offset: parsed.offset })) as Article[];",
       // Through `tx` no policy runs, so the author is always there: the body is typed with `ArticleTxWith` (POL-17).
       "if (!parsed.load?.length) return $rows as unknown as (L extends unknown ? ArticleTxWith<ArticleLoadNames<L>>[] : never);",
       "const $context = (context ?? {}) as unknown as Record<string, unknown>;",
@@ -230,10 +230,10 @@ describe("actions view", () => {
     expect(destroy.statements.slice(2)).toEqual([
       "const $key = { id: parsed.id };",
       // a seam that wants the changes reads the row first, so `before` is never null on a destroy (M6 ruling 4)
-      "const $before = $wantsChanges(options.seams) ? await tx.selectByKeyForUpdate(tables.article, $key) : undefined;",
+      "const $before = $wantsChanges(options.seams) ? await tx.selectByKeyForUpdate(tables.articles, $key) : undefined;",
       'if ($wantsChanges(options.seams) && $before === undefined) throw new $NotFoundError("blog.Article", $key);',
       "// data layer",
-      'if (!(await tx.deleteByKey(tables.article, $key))) throw new $NotFoundError("blog.Article", $key);',
+      'if (!(await tx.deleteByKey(tables.articles, $key))) throw new $NotFoundError("blog.Article", $key);',
       "$noteWrite(tx);",
       "// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write",
       'await $recordWrite(tx, options.seams, { entity: "blog.Article", action: "destroy" }, $before ?? null, null, parsed, context);',
@@ -276,7 +276,7 @@ describe("build errors", () => {
     const view = viewOf("Article", inputOf(documentOf({ "blog/author.mesh.mx": author, "blog/article.mesh.mx": source })));
     const purge = view.methods.find((m) => m.name === "purge")!;
     expect(purge.inputType).toBe("PurgeArticleInput");
-    expect(purge.statements.join("\n")).toContain("tx.selectByKeyForUpdate(tables.article, $key)");
+    expect(purge.statements.join("\n")).toContain("tx.selectByKeyForUpdate(tables.articles, $key)");
     expect(purge.statements.join("\n")).toContain('label: "reasoned"');
   });
 
@@ -335,7 +335,7 @@ describe("the generated file", () => {
     await writeGeneratedFiles(files, config);
     // A schema stub in place of the data adapter's: each handle carries the rows the memory layer reads.
     await writeFile(resolve(root, "generated/schema.ts"),
-      "export const articleTable = { rows: new Map() };\nexport const authorTable = { rows: new Map() };\nexport const tables = { article: articleTable, author: authorTable };\n");
+      "export const tables = { articles: { rows: new Map() }, authors: { rows: new Map() } };\n");
     await writeFile(resolve(root, "mesh.config.ts"), "export default { data: { kind: \"data-adapter\", name: \"memory\", build: \"./none\", options: {} } };\n");
     return { root, files };
   }
@@ -451,10 +451,10 @@ describe("explain", () => {
     // The count is taken after the locked read and before any function runs, and checked just before the write.
     expect(at("const $writes = $writeCount(tx);")).toBeGreaterThan(at("const $before = await tx.selectByKeyForUpdate"));
     expect(at("const $writes = $writeCount(tx);")).toBeLessThan(at("const $self = "));
-    expect(rename[at("const $stored = await tx.updateByKey(") - 1]).toBe('await $checkUnchanged(tx, $writes, tables.article, $key, $before, "blog.Article#rename");');
+    expect(rename[at("const $stored = await tx.updateByKey(") - 1]).toBe('await $checkUnchanged(tx, $writes, tables.articles, $key, $before, "blog.Article#rename");');
     expect(rename[at("const $stored = ") + 2]).toBe("$noteWrite(tx);");
     // The row is read again after the after-write steps, and that is what the call returns.
-    expect(at("const $result = await tx.selectByKey(tables.article, ")).toBeGreaterThan(at("const $stored = "));
+    expect(at("const $result = await tx.selectByKey(tables.articles, ")).toBeGreaterThan(at("const $stored = "));
     expect(rename.at(-1)).toMatch(/^return \$result as /);
     // A destroy returns nothing, so it reads nothing again.
     expect(methods.find((m) => m.name === "purge")!.statements.some((line) => line.includes("$result"))).toBe(false);

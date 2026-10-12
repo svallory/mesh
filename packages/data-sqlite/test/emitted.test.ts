@@ -66,13 +66,13 @@ afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
 test("each column's inferred TypeScript type equals the record type the types generator writes", async () => {
   await writeFile(join(dir, "check.ts"), `import type { Owner } from "./.mesh/domain/owner.types";
 import type { Sample } from "./.mesh/domain/sample.types";
-import { ownerTable, sampleTable, tables } from "./.mesh/schema";
+import { tables } from "./.mesh/schema";
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
-export const sampleMatches: Equal<typeof sampleTable.$inferSelect, Sample> = true;
-export const ownerMatches: Equal<typeof ownerTable.$inferSelect, Owner> = true;
+export const sampleMatches: Equal<typeof tables.samples.$inferSelect, Sample> = true;
+export const ownerMatches: Equal<typeof tables.owners.$inferSelect, Owner> = true;
 // The comparison is strict: one changed member makes it false.
-export const strict: Equal<typeof sampleTable.$inferSelect, Omit<Sample, "dueOn"> & { dueOn: string }> = false;
-export const map: Equal<keyof typeof tables, "owner" | "sample"> = true;
+export const strict: Equal<typeof tables.samples.$inferSelect, Omit<Sample, "dueOn"> & { dueOn: string }> = false;
+export const map: Equal<keyof typeof tables, "owners" | "samples"> = true;
 `);
   const tsc = join(import.meta.dir, "../../../node_modules/.bin/tsc");
   const result = Bun.spawnSync([tsc, "--ignoreConfig", "--noEmit", "--strict", "--exactOptionalPropertyTypes", "--skipLibCheck",
@@ -81,8 +81,15 @@ export const map: Equal<keyof typeof tables, "owner" | "sample"> = true;
   expect(result.exitCode).toBe(0);
 }, 30_000);
 
+test("the schema module exports nothing but `tables`, keyed by the stored table names", async () => {
+  const schema = await import(join(dir, ".mesh/schema.ts")) as Record<string, unknown>;
+  expect(Object.keys(schema)).toEqual(["tables"]);
+  expect(Object.keys(schema.tables as object)).toEqual(["owners", "samples"]);
+});
+
 test("the emitted schema is usable as-is: createSchema, then every type round-trips through the adapter", async () => {
-  const { tables, sampleTable, ownerTable } = await import(join(dir, ".mesh/schema.ts")) as Record<string, TableHandle> & { tables: Record<string, TableHandle> };
+  const { tables } = await import(join(dir, ".mesh/schema.ts")) as { tables: Record<string, TableHandle> };
+  const sampleTable = tables.samples!, ownerTable = tables.owners!;
   const db = sqlite({ file: ":memory:" });
   try {
     await createSchema(db, tables);
@@ -125,7 +132,8 @@ test("an attribute declared unique is a UNIQUE column: a second row with the val
   const schema = await Bun.file(join(dir, ".mesh/schema.ts")).text();
   expect(schema).toMatch(/slug: text\("slug"\)\s*\.notNull\(\)\s*\.unique\(\)/);
   expect(schema.match(/\.unique\(\)/g)).toHaveLength(1);
-  const { tables, sampleTable, ownerTable } = await import(join(dir, ".mesh/schema.ts")) as Record<string, TableHandle> & { tables: Record<string, TableHandle> };
+  const { tables } = await import(join(dir, ".mesh/schema.ts")) as { tables: Record<string, TableHandle> };
+  const sampleTable = tables.samples!, ownerTable = tables.owners!;
   const db = sqlite({ file: ":memory:" });
   try {
     await createSchema(db, tables);

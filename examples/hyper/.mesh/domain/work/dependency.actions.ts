@@ -71,7 +71,7 @@ export function bindDependencyReads(layer: $DataLayer, options: $BindOptions = {
       // for its policies and hands it over as `cast`; a read through `tx` casts it here.
       const parsed = cast ?? (await $castInput(layer, readDependencyInput, input));
       return layer.transaction(async (tx) => {
-        const $rows = (await tx.select(tables.dependency, {
+        const $rows = (await tx.select(tables.dependencies, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
@@ -239,7 +239,7 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
             $changes.createdById = $record.createdById = $value;
           }
           // data layer
-          const $stored = await tx.insert(tables.dependency, $changes);
+          const $stored = await tx.insert(tables.dependencies, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
@@ -261,7 +261,7 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
           });
           await $expressions["add.step.1.run"]($after);
           // the result: the row as the steps after the write left it, read again by key
-          const $result = await tx.selectByKey(tables.dependency, { id: $stored.id });
+          const $result = await tx.selectByKey(tables.dependencies, { id: $stored.id });
           if ($result === undefined)
             throw new $FrameworkError(
               "work.Dependency#add: a step after the write deleted the row this action returns",
@@ -326,7 +326,7 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.dependency, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.dependencies, $key);
           if ($before === undefined) throw new $NotFoundError("work.Dependency", $key);
           const $record: $Row = { ...$before };
           const $load = { actor: $actor, context: $context, clock: $clock };
@@ -364,7 +364,7 @@ export function bindDependency(layer: $DataLayer, options: $BindOptions = {}, co
           });
           if ($issues.length > 0) throw new $InvalidInputError($issues);
           // data layer
-          if (!(await tx.deleteByKey(tables.dependency, $key)))
+          if (!(await tx.deleteByKey(tables.dependencies, $key)))
             throw new $NotFoundError("work.Dependency", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write

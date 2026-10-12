@@ -4,6 +4,7 @@ import { emitError } from "../emit-error.ts";
 import type { EmitInput } from "../emit.ts";
 import { orderedEntities } from "../emitters/order.ts";
 import { camelCase, entityPath, propertyName, typeName } from "./inputs.ts";
+import { tableAccess } from "./actions.ts";
 import { loadPolicies } from "../../model/policies.ts";
 import { expressionIds, policySpecs } from "./expressions.ts";
 import { relationTarget, txLoadTypes } from "./types.ts";
@@ -29,7 +30,7 @@ export interface LoadView {
 export interface LoadEntity {
   /** The entity's FQN (e.g. `blog.Post`) as a quoted string literal: the key of its plan entry and the target other entries name. */
   readonly nameLiteral: string;
-  /** The entity's table handle in the schema file, e.g. `tables.task`. */
+  /** The entity's table handle in the schema file, e.g. `tables.tasks`. */
   readonly table: string;
   /** The primary key's attribute name as a quoted string literal. */
   readonly keyLiteral: string;
@@ -118,7 +119,7 @@ export function loadView(input: EmitInput, generatedPath: string): LoadView {
     }
     return {
       nameLiteral: JSON.stringify(entity.fqn),
-      table: `tables.${camelCase(entity.name)}`,
+      table: tableAccess(entity),
       keyLiteral: JSON.stringify(key.name),
       relations, computed, reads, loader,
     };

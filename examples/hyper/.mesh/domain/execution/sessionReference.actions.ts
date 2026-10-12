@@ -73,7 +73,7 @@ export function bindSessionReferenceReads(layer: $DataLayer, options: $BindOptio
       // for its policies and hands it over as `cast`; a read through `tx` casts it here.
       const parsed = cast ?? (await $castInput(layer, readSessionReferenceInput, input));
       return layer.transaction(async (tx) => {
-        const $rows = (await tx.select(tables.sessionReference, {
+        const $rows = (await tx.select(tables.session_references, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
@@ -237,7 +237,7 @@ export function bindSessionReference(
             $changes.recordedById = $record.recordedById = $value;
           }
           // data layer
-          const $stored = await tx.insert(tables.sessionReference, $changes);
+          const $stored = await tx.insert(tables.session_references, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
@@ -300,7 +300,7 @@ export function bindSessionReference(
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.sessionReference, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.session_references, $key);
           if ($before === undefined) throw new $NotFoundError("execution.SessionReference", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -375,12 +375,12 @@ export function bindSessionReference(
           await $checkUnchanged(
             tx,
             $writes,
-            tables.sessionReference,
+            tables.session_references,
             $key,
             $before,
             "execution.SessionReference#setAvailability",
           );
-          const $stored = await tx.updateByKey(tables.sessionReference, $key, $changes);
+          const $stored = await tx.updateByKey(tables.session_references, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("execution.SessionReference", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
@@ -456,7 +456,7 @@ export function bindSessionReference(
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.sessionReference, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.session_references, $key);
           if ($before === undefined) throw new $NotFoundError("execution.SessionReference", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -516,12 +516,12 @@ export function bindSessionReference(
           await $checkUnchanged(
             tx,
             $writes,
-            tables.sessionReference,
+            tables.session_references,
             $key,
             $before,
             "execution.SessionReference#redact",
           );
-          const $stored = await tx.updateByKey(tables.sessionReference, $key, $changes);
+          const $stored = await tx.updateByKey(tables.session_references, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("execution.SessionReference", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write

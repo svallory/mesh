@@ -63,7 +63,7 @@ export function bindWorkspaceReads(layer: $DataLayer, _options: $BindOptions = {
       // for its policies and hands it over as `cast`; a read through `tx` casts it here.
       const parsed = cast ?? (await $castInput(layer, readWorkspaceInput, input));
       return layer.transaction(async (tx) => {
-        return (await tx.select(tables.workspace, {
+        return (await tx.select(tables.workspaces, {
           filter: parsed.filter,
           sort: parsed.sort,
           limit: parsed.limit,
@@ -158,7 +158,7 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
           // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
           await $policies.inside($checkScope($s));
           // data layer
-          const $stored = await tx.insert(tables.workspace, $changes);
+          const $stored = await tx.insert(tables.workspaces, $changes);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
@@ -230,7 +230,7 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
           // transaction: opens here; what follows commits together or not at all
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.workspace, $key);
+          const $before = await tx.selectByKeyForUpdate(tables.workspaces, $key);
           if ($before === undefined) throw new $NotFoundError("identity.Workspace", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
@@ -284,12 +284,12 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
           await $checkUnchanged(
             tx,
             $writes,
-            tables.workspace,
+            tables.workspaces,
             $key,
             $before,
             "identity.Workspace#rename",
           );
-          const $stored = await tx.updateByKey(tables.workspace, $key, $changes);
+          const $stored = await tx.updateByKey(tables.workspaces, $key, $changes);
           if ($stored === undefined) throw new $NotFoundError("identity.Workspace", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write

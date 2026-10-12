@@ -88,7 +88,7 @@ test("generated types and validators typecheck with strict exact-optional flags 
   const files = await generateFiles({ document: documentOf(), config });
   await writeGeneratedFiles(files, config);
   // The data adapter writes schema.ts; a stub stands in for it with the same `tables` keys.
-  await writeFile(resolve(root, "generated/schema.ts"), "export const listTable = {};\nexport const todoTable = {};\nexport const tables = { list: listTable, todo: todoTable };\n");
+  await writeFile(resolve(root, "generated/schema.ts"), "export const tables = { list: {}, todos: {} };\n");
   await writeFile(resolve(root, "mesh.config.ts"), "export default { data: { kind: \"data-adapter\", name: \"memory\", build: \"./none\", options: {} } };\n");
   await writeFile(
     resolve(root, "consumer.ts"),

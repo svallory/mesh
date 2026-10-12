@@ -152,17 +152,17 @@ function counted(tx: DataOperations) {
 
 async function seed(tx: DataOperations) {
   const t = app.tables;
-  await tx.insert(t.author, { id: id(1), name: "Ada", retired: false });
-  await tx.insert(t.author, { id: id(2), name: "Bo", retired: false });
-  await tx.insert(t.author, { id: id(3), name: "Cy", retired: true });
-  await tx.insert(t.profile, { id: id(1), bio: "mathematician", authorId: id(1) });
+  await tx.insert(t.authors, { id: id(1), name: "Ada", retired: false });
+  await tx.insert(t.authors, { id: id(2), name: "Bo", retired: false });
+  await tx.insert(t.authors, { id: id(3), name: "Cy", retired: true });
+  await tx.insert(t.profiles, { id: id(1), bio: "mathematician", authorId: id(1) });
   // Ada: p1 (score 5), p2 (no score). Bo: p3 (score 9), reviewed by Ada. Cy: nothing.
-  await tx.insert(t.post, { id: id(11), title: "p1", score: 5, postedAt: at(1_000), authorId: id(1), reviewerId: null, replyToId: null });
-  await tx.insert(t.post, { id: id(12), title: "p2", score: null, postedAt: at(3_000), authorId: id(1), reviewerId: null, replyToId: id(11) });
-  await tx.insert(t.post, { id: id(13), title: "p3", score: 9, postedAt: at(2_000), authorId: id(2), reviewerId: id(1), replyToId: id(11) });
-  await tx.insert(t.comment, { id: id(21), body: "first", pinned: false, postId: id(11) });
-  await tx.insert(t.comment, { id: id(22), body: "second", pinned: true, postId: id(11) });
-  await tx.insert(t.comment, { id: id(23), body: "third", pinned: false, postId: id(13) });
+  await tx.insert(t.posts, { id: id(11), title: "p1", score: 5, postedAt: at(1_000), authorId: id(1), reviewerId: null, replyToId: null });
+  await tx.insert(t.posts, { id: id(12), title: "p2", score: null, postedAt: at(3_000), authorId: id(1), reviewerId: null, replyToId: id(11) });
+  await tx.insert(t.posts, { id: id(13), title: "p3", score: 9, postedAt: at(2_000), authorId: id(2), reviewerId: id(1), replyToId: id(11) });
+  await tx.insert(t.comments, { id: id(21), body: "first", pinned: false, postId: id(11) });
+  await tx.insert(t.comments, { id: id(22), body: "second", pinned: true, postId: id(11) });
+  await tx.insert(t.comments, { id: id(23), body: "third", pinned: false, postId: id(13) });
 }
 
 const run = async <T>(db: ReturnType<typeof sqlite>, work: (tx: DataOperations) => Promise<T>) => db.transaction(work);
@@ -174,14 +174,14 @@ describe("belongs-to", () => {
     try {
       await run(db, async (tx) => {
         await seed(tx);
-        const posts = await rowsOf(tx, "post");
+        const posts = await rowsOf(tx, "posts");
         const loaded = await app.loadPostFields(tx, posts, ["author", "reviewer", "replyTo"]);
         expect(loaded.map((p) => [p.title, p.author.name, p.reviewer?.name ?? null, p.replyTo?.title ?? null])).toEqual([
           ["p1", "Ada", null, null], ["p2", "Ada", null, "p1"], ["p3", "Bo", "Ada", "p1"],
         ]);
         expect(loaded[0]!.reviewer).toBeNull();
         // The loaded record is the stored row, nothing added.
-        expect(loaded[0]!.author).toEqual(await tx.selectByKey(app.tables.author, { id: id(1) }));
+        expect(loaded[0]!.author).toEqual(await tx.selectByKey(app.tables.authors, { id: id(1) }));
       });
     } finally { await db.close(); }
   });
@@ -191,7 +191,7 @@ describe("belongs-to", () => {
     try {
       await run(db, async (tx) => {
         await seed(tx);
-        const posts = await rowsOf(tx, "post");
+        const posts = await rowsOf(tx, "posts");
         const before = structuredClone(posts);
         const [first] = await app.loadPostFields(tx, posts, ["authorName"]);
         expect(posts).toEqual(before);
@@ -217,8 +217,8 @@ describe("belongs-to", () => {
     const db = await fresh();
     try {
       await run(db, async (tx) => {
-        await tx.insert(app.tables.post, { id: id(11), title: "lost", score: null, postedAt: at(1), authorId: id(99), reviewerId: null, replyToId: null });
-        await expect(app.loadPostFields(tx, await rowsOf(tx, "post"), ["author"])).rejects.toThrow(
+        await tx.insert(app.tables.posts, { id: id(11), title: "lost", score: null, postedAt: at(1), authorId: id(99), reviewerId: null, replyToId: null });
+        await expect(app.loadPostFields(tx, await rowsOf(tx, "posts"), ["author"])).rejects.toThrow(
           `belongs-to :author of Post points at Author "${id(99)}", which does not exist`);
       });
     } finally { await db.close(); }
@@ -230,12 +230,12 @@ describe("belongs-to", () => {
       await run(db, async (tx) => {
         await seed(tx);
         const { tx: counting, calls } = counted(tx);
-        await app.loadPostFields(counting, await rowsOf(tx, "post"), ["author", "reviewer", "replyTo"]);
+        await app.loadPostFields(counting, await rowsOf(tx, "posts"), ["author", "reviewer", "replyTo"]);
         expect(calls).toEqual(["select", "select", "select"]);
         const many = CHUNK * 2 + 1;
-        for (let n = 0; n < many; n++) await tx.insert(app.tables.author, { id: id(1000 + n), name: `a${n}`, retired: false });
-        for (let n = 0; n < many; n++) await tx.insert(app.tables.profile, { id: id(5000 + n), bio: `b${n}`, authorId: id(1000 + n) });
-        const profiles = await rowsOf(tx, "profile");
+        for (let n = 0; n < many; n++) await tx.insert(app.tables.authors, { id: id(1000 + n), name: `a${n}`, retired: false });
+        for (let n = 0; n < many; n++) await tx.insert(app.tables.profiles, { id: id(5000 + n), bio: `b${n}`, authorId: id(1000 + n) });
+        const profiles = await rowsOf(tx, "profiles");
         const { tx: counting2, calls: calls2 } = counted(tx);
         const loaded = await app.loadProfileFields(counting2, profiles, ["author"]);
         expect(calls2).toEqual(["select", "select", "select"]);
@@ -251,7 +251,7 @@ describe("has-many and has-one", () => {
     try {
       await run(db, async (tx) => {
         await seed(tx);
-        const authors = await rowsOf(tx, "author");
+        const authors = await rowsOf(tx, "authors");
         const loaded = await app.loadAuthorFields(tx, authors, ["posts"]);
         expect(loaded.map((a) => [a.name, a.posts.map((p: Row) => p.title)])).toEqual([["Ada", ["p1", "p2"]], ["Bo", ["p3"]], ["Cy", []]]);
         expect(Array.isArray(loaded[2]!.posts)).toBe(true);
@@ -264,7 +264,7 @@ describe("has-many and has-one", () => {
     try {
       await run(db, async (tx) => {
         await seed(tx);
-        const loaded = await app.loadAuthorFields(tx, await rowsOf(tx, "author"), ["posts", "reviews"]);
+        const loaded = await app.loadAuthorFields(tx, await rowsOf(tx, "authors"), ["posts", "reviews"]);
         expect(loaded.map((a) => [a.name, a.posts.map((p: Row) => p.title), a.reviews.map((p: Row) => p.title)])).toEqual([
           ["Ada", ["p1", "p2"], ["p3"]], ["Bo", ["p3"], []], ["Cy", [], []],
         ]);
@@ -277,10 +277,10 @@ describe("has-many and has-one", () => {
     try {
       await run(db, async (tx) => {
         await seed(tx);
-        const loaded = await app.loadAuthorFields(tx, await rowsOf(tx, "author"), ["profile"]);
+        const loaded = await app.loadAuthorFields(tx, await rowsOf(tx, "authors"), ["profile"]);
         expect(loaded.map((a) => a.profile?.bio ?? null)).toEqual(["mathematician", null, null]);
-        await tx.insert(app.tables.profile, { id: id(2), bio: "second", authorId: id(1) });
-        await expect(app.loadAuthorFields(tx, await rowsOf(tx, "author"), ["profile"])).rejects.toThrow(
+        await tx.insert(app.tables.profiles, { id: id(2), bio: "second", authorId: id(1) });
+        await expect(app.loadAuthorFields(tx, await rowsOf(tx, "authors"), ["profile"])).rejects.toThrow(
           `has-one :profile of Author found 2 rows for "${id(1)}", and a has-one is for at most one`);
       });
     } finally { await db.close(); }
@@ -291,7 +291,7 @@ describe("has-many and has-one", () => {
     try {
       await run(db, async (tx) => {
         await seed(tx);
-        await expect(app.loadAuthorFields(tx, await rowsOf(tx, "author"), ["orphans"])).rejects.toThrow(
+        await expect(app.loadAuthorFields(tx, await rowsOf(tx, "authors"), ["orphans"])).rejects.toThrow(
           "has-many :orphans of Author cannot be loaded: Orphan has no belongs-to back to Author");
       });
     } finally { await db.close(); }
@@ -303,7 +303,7 @@ describe("has-many and has-one", () => {
       await run(db, async (tx) => {
         await seed(tx);
         const { tx: counting, calls } = counted(tx);
-        await app.loadAuthorFields(counting, await rowsOf(tx, "author"), ["posts", "reviews", "profile"]);
+        await app.loadAuthorFields(counting, await rowsOf(tx, "authors"), ["posts", "reviews", "profile"]);
         expect(calls).toEqual(["select", "select", "select"]);
       });
     } finally { await db.close(); }
@@ -316,7 +316,7 @@ describe("self-reference", () => {
     try {
       await run(db, async (tx) => {
         await seed(tx);
-        const [p1] = await tx.select(app.tables.post, { filter: { id: { eq: id(11) } } });
+        const [p1] = await tx.select(app.tables.posts, { filter: { id: { eq: id(11) } } });
         const [loaded] = await app.loadPostFields(tx, [p1!], ["replies", "replyTo"]);
         expect(loaded!.replyTo).toBeNull();
         expect(loaded!.replies.map((r: Row) => r.title)).toEqual(["p2", "p3"]);
@@ -330,9 +330,9 @@ describe("self-reference", () => {
     const db = await fresh();
     try {
       await run(db, async (tx) => {
-        await tx.insert(app.tables.author, { id: id(1), name: "Ada", retired: false });
-        await tx.insert(app.tables.post, { id: id(11), title: "loop", score: null, postedAt: at(1), authorId: id(1), reviewerId: null, replyToId: id(11) });
-        const [loaded] = await app.loadPostFields(tx, await rowsOf(tx, "post"), ["replyTo", "replies", "answered", "lonely"]);
+        await tx.insert(app.tables.authors, { id: id(1), name: "Ada", retired: false });
+        await tx.insert(app.tables.posts, { id: id(11), title: "loop", score: null, postedAt: at(1), authorId: id(1), reviewerId: null, replyToId: id(11) });
+        const [loaded] = await app.loadPostFields(tx, await rowsOf(tx, "posts"), ["replyTo", "replies", "answered", "lonely"]);
         expect(loaded!.replyTo.id).toBe(id(11));
         expect(loaded!.replies.map((r: Row) => r.id)).toEqual([id(11)]);
         expect(loaded!.answered).toBe(true);
@@ -345,7 +345,7 @@ describe("self-reference", () => {
     const db = await fresh();
     try {
       await run(db, async (tx) => {
-        const t = app.tables.ticket;
+        const t = app.tables.tickets;
         await tx.insert(t, { title: "one", duplicateOfId: null });
         await tx.insert(t, { title: "two", duplicateOfId: 1 });
         await tx.insert(t, { title: "three", duplicateOfId: 1 });
@@ -364,7 +364,7 @@ describe("rollups", () => {
     try {
       await run(db, async (tx) => {
         await seed(tx);
-        const loaded = await app.loadAuthorFields(tx, await rowsOf(tx, "author"), ["postCount", "topScore"]);
+        const loaded = await app.loadAuthorFields(tx, await rowsOf(tx, "authors"), ["postCount", "topScore"]);
         expect(loaded.map((a) => [a.name, a.postCount, a.topScore])).toEqual([["Ada", 2, 5], ["Bo", 1, 9], ["Cy", 0, null]]);
       });
     } finally { await db.close(); }
@@ -375,7 +375,7 @@ describe("rollups", () => {
     try {
       await run(db, async (tx) => {
         await seed(tx);
-        const loaded = await app.loadAuthorFields(tx, await rowsOf(tx, "author"), ["lastPostedAt"]);
+        const loaded = await app.loadAuthorFields(tx, await rowsOf(tx, "authors"), ["lastPostedAt"]);
         expect(loaded[0]!.lastPostedAt).toEqual(at(3_000));
         expect(loaded[0]!.lastPostedAt).toBeInstanceOf(Date);
         expect(loaded[1]!.lastPostedAt).toEqual(at(2_000));
@@ -388,10 +388,10 @@ describe("rollups", () => {
     const db = await fresh();
     try {
       await run(db, async (tx) => {
-        await tx.insert(app.tables.author, { id: id(1), name: "Ada", retired: false });
-        await tx.insert(app.tables.post, { id: id(11), title: "a", score: null, postedAt: at(1), authorId: id(1), reviewerId: null, replyToId: null });
-        await tx.insert(app.tables.post, { id: id(12), title: "b", score: null, postedAt: at(2), authorId: id(1), reviewerId: null, replyToId: null });
-        const [loaded] = await app.loadAuthorFields(tx, await rowsOf(tx, "author"), ["topScore", "postCount"]);
+        await tx.insert(app.tables.authors, { id: id(1), name: "Ada", retired: false });
+        await tx.insert(app.tables.posts, { id: id(11), title: "a", score: null, postedAt: at(1), authorId: id(1), reviewerId: null, replyToId: null });
+        await tx.insert(app.tables.posts, { id: id(12), title: "b", score: null, postedAt: at(2), authorId: id(1), reviewerId: null, replyToId: null });
+        const [loaded] = await app.loadAuthorFields(tx, await rowsOf(tx, "authors"), ["topScore", "postCount"]);
         expect([loaded!.topScore, loaded!.postCount]).toEqual([null, 2]);
       });
     } finally { await db.close(); }
@@ -403,7 +403,7 @@ describe("rollups", () => {
       await run(db, async (tx) => {
         await seed(tx);
         const { tx: counting, calls } = counted(tx);
-        await app.loadAuthorFields(counting, await rowsOf(tx, "author"), ["postCount", "lastPostedAt"]);
+        await app.loadAuthorFields(counting, await rowsOf(tx, "authors"), ["postCount", "lastPostedAt"]);
         expect(calls.sort()).toEqual(["count", "count", "count", "max", "max", "max"]);
       });
     } finally { await db.close(); }
@@ -414,8 +414,8 @@ describe("rollups", () => {
     try {
       await run(db, async (tx) => {
         await seed(tx);
-        await tx.insert(app.tables.post, { id: id(14), title: "p4", score: null, postedAt: at(500), authorId: id(2), reviewerId: null, replyToId: null });
-        const authors = await rowsOf(tx, "author");
+        await tx.insert(app.tables.posts, { id: id(14), title: "p4", score: null, postedAt: at(500), authorId: id(2), reviewerId: null, replyToId: null });
+        const authors = await rowsOf(tx, "authors");
         const viaLayer = await app.loadAuthorFields(tx, authors, ["postCount", "lastPostedAt", "topScore"]);
         const { tx: counting, calls } = counted(tx);
         const fromRows = await app.loadAuthorFields(counting, authors, ["postCount", "lastPostedAt", "topScore", "posts"]);
@@ -431,7 +431,7 @@ describe("rollups", () => {
     try {
       await run(db, async (tx) => {
         await seed(tx);
-        const loaded = await app.loadAuthorFields(tx, await rowsOf(tx, "author"), ["prolific"]);
+        const loaded = await app.loadAuthorFields(tx, await rowsOf(tx, "authors"), ["prolific"]);
         expect(loaded.map((a) => a.prolific)).toEqual([true, false, false]);
       });
     } finally { await db.close(); }
@@ -461,7 +461,7 @@ describe("computed fields with a body", () => {
     try {
       await run(db, async (tx) => {
         await seed(tx);
-        const loaded = await app.loadPostFields(tx, await rowsOf(tx, "post"), ["answered", "hasPinned"]);
+        const loaded = await app.loadPostFields(tx, await rowsOf(tx, "posts"), ["answered", "hasPinned"]);
         expect(loaded.map((p) => [p.title, p.answered, p.hasPinned])).toEqual([["p1", true, true], ["p2", false, false], ["p3", false, false]]);
       });
     } finally { await db.close(); }
@@ -474,7 +474,7 @@ describe("computed fields with a body", () => {
         await seed(tx);
         const { tx: counting, calls } = counted(tx);
         // authorIsProlific reads author.prolific, and prolific reads postCount: a relationship, then two computed fields.
-        const loaded = await app.loadPostFields(counting, await rowsOf(tx, "post"), ["authorIsProlific"]);
+        const loaded = await app.loadPostFields(counting, await rowsOf(tx, "posts"), ["authorIsProlific"]);
         expect(loaded.map((p) => p.authorIsProlific)).toEqual([true, true, false]);
         expect(calls.filter((c) => c === "select")).toHaveLength(1);
         expect(calls.filter((c) => c === "count")).toHaveLength(2);
@@ -488,8 +488,8 @@ describe("computed fields with a body", () => {
       await run(db, async (tx) => {
         await seed(tx);
         // p3 is by Bo and reviewed by Ada; the other two have no reviewer, so the comparison is unknown (null).
-        await tx.insert(app.tables.post, { id: id(14), title: "p4", score: null, postedAt: at(4_000), authorId: id(1), reviewerId: id(1), replyToId: null });
-        const loaded = await app.loadPostFields(tx, await rowsOf(tx, "post"), ["reviewedBySelf"]);
+        await tx.insert(app.tables.posts, { id: id(14), title: "p4", score: null, postedAt: at(4_000), authorId: id(1), reviewerId: id(1), replyToId: null });
+        const loaded = await app.loadPostFields(tx, await rowsOf(tx, "posts"), ["reviewedBySelf"]);
         expect(loaded.map((p) => [p.title, p.reviewedBySelf])).toEqual([["p1", null], ["p2", null], ["p3", false], ["p4", true]]);
       });
     } finally { await db.close(); }
@@ -500,9 +500,9 @@ describe("computed fields with a body", () => {
     try {
       await run(db, async (tx) => {
         await seed(tx);
-        const early = await app.loadPostFields(tx, await rowsOf(tx, "post"), ["isOld"], { clock: () => at(1_500) });
+        const early = await app.loadPostFields(tx, await rowsOf(tx, "posts"), ["isOld"], { clock: () => at(1_500) });
         expect(early.map((p) => p.isOld)).toEqual([true, false, false]);
-        const late = await app.loadPostFields(tx, await rowsOf(tx, "post"), ["isOld"], { clock: () => at(10_000) });
+        const late = await app.loadPostFields(tx, await rowsOf(tx, "posts"), ["isOld"], { clock: () => at(10_000) });
         expect(late.map((p) => p.isOld)).toEqual([true, true, true]);
       });
     } finally { await db.close(); }
@@ -513,7 +513,7 @@ describe("computed fields with a body", () => {
     try {
       await run(db, async (tx) => {
         await seed(tx);
-        const [p1] = await rowsOf(tx, "post");
+        const [p1] = await rowsOf(tx, "posts");
         const { scope } = await import("@meshfw/runtime");
         expect(() => expressions.post!["computed.answered"]!(scope({ self: p1 }) as never)).toThrow("the list was not loaded");
         expect(() => expressions.post!["computed.hasPinned"]!(scope({ self: p1 }) as never)).toThrow("the list was not loaded");
@@ -526,7 +526,7 @@ describe("computed fields with a body", () => {
     try {
       await run(db, async (tx) => {
         await seed(tx);
-        const loaded = await app.loadPostFields(tx, await rowsOf(tx, "post"), ["lonely"]);
+        const loaded = await app.loadPostFields(tx, await rowsOf(tx, "posts"), ["lonely"]);
         // p1 has no parent and has replies; p2 and p3 have a parent; unknown (null === null is not used) stays false.
         expect(loaded.map((p) => p.lonely)).toEqual([false, false, false]);
       });
@@ -536,8 +536,8 @@ describe("computed fields with a body", () => {
 
 describe("a computed body that runs as plain code", () => {
   async function chain(tx: DataOperations) {
-    await tx.insert(app.tables.author, { id: id(1), name: "Ada", retired: false });
-    const post = (n: number, replyToId: string | null) => tx.insert(app.tables.post, { id: id(n), title: `p${n}`, score: null, postedAt: at(n), authorId: id(1), reviewerId: null, replyToId });
+    await tx.insert(app.tables.authors, { id: id(1), name: "Ada", retired: false });
+    const post = (n: number, replyToId: string | null) => tx.insert(app.tables.posts, { id: id(n), title: `p${n}`, score: null, postedAt: at(n), authorId: id(1), reviewerId: null, replyToId });
     await post(11, null); await post(12, id(11)); await post(13, id(12)); await post(14, id(13));
     // p11 has a reply, so it is answered; p14 has none. The chain p14 -> p13 -> p12 -> p11.
   }
@@ -546,7 +546,7 @@ describe("a computed body that runs as plain code", () => {
     try {
       await run(db, async (tx) => {
         await chain(tx);
-        const loaded = await app.loadPostFields(tx, await rowsOf(tx, "post"), ["replyToAnswered"]);
+        const loaded = await app.loadPostFields(tx, await rowsOf(tx, "posts"), ["replyToAnswered"]);
         // p11 has no parent: undefined, which JSON.stringify gives as undefined (not a loaded value); p12..p14 have an answered parent.
         expect(loaded.map((p) => p.replyToAnswered)).toEqual([undefined, "true", "true", "true"]);
       });
@@ -557,7 +557,7 @@ describe("a computed body that runs as plain code", () => {
     try {
       await run(db, async (tx) => {
         await chain(tx);
-        const loaded = await app.loadPostFields(tx, await rowsOf(tx, "post"), ["grandReplyToAnswered"]);
+        const loaded = await app.loadPostFields(tx, await rowsOf(tx, "posts"), ["grandReplyToAnswered"]);
         expect(loaded.map((p) => p.grandReplyToAnswered)).toEqual([undefined, undefined, "true", "true"]);
       });
     } finally { await db.close(); }
@@ -573,9 +573,9 @@ describe("a computed body that runs as plain code", () => {
     try {
       await run(db, async (tx) => {
         await chain(tx);
-        await expect(app.loadPostFields(tx, await rowsOf(tx, "post"), ["viaVariable"])).rejects.toThrow(
+        await expect(app.loadPostFields(tx, await rowsOf(tx, "posts"), ["viaVariable"])).rejects.toThrow(
           "A plain computed body read Post#answered, which was not loaded");
-        await expect(app.loadPostFields(tx, await rowsOf(tx, "post"), ["viaVariable"])).rejects.toBeInstanceOf(FrameworkError);
+        await expect(app.loadPostFields(tx, await rowsOf(tx, "posts"), ["viaVariable"])).rejects.toBeInstanceOf(FrameworkError);
       });
     } finally { await db.close(); }
   });
@@ -584,7 +584,7 @@ describe("a computed body that runs as plain code", () => {
     try {
       await run(db, async (tx) => {
         await chain(tx);
-        expect((await app.loadPostFields(tx, await rowsOf(tx, "post"), ["plainTitle"])).map((p) => p.plainTitle)).toEqual(['"p11"', '"p12"', '"p13"', '"p14"']);
+        expect((await app.loadPostFields(tx, await rowsOf(tx, "posts"), ["plainTitle"])).map((p) => p.plainTitle)).toEqual(['"p11"', '"p12"', '"p13"', '"p14"']);
       });
     } finally { await db.close(); }
   });
@@ -605,7 +605,7 @@ describe("what cannot be loaded is an error", () => {
     try {
       await run(db, async (tx) => {
         await seed(tx);
-        await expect(app.loadAuthorFields(tx, await rowsOf(tx, "author"), ["orphans"])).rejects.toBeInstanceOf(FrameworkError);
+        await expect(app.loadAuthorFields(tx, await rowsOf(tx, "authors"), ["orphans"])).rejects.toBeInstanceOf(FrameworkError);
       });
     } finally { await db.close(); }
   });
@@ -668,12 +668,12 @@ export type Keys = keyof PostLoadable;
 
 describe("the guarded record of a plain body", () => {
   async function pair(tx: DataOperations) {
-    await tx.insert(app.tables.author, { id: id(1), name: "Ada", retired: false });
-    await tx.insert(app.tables.post, { id: id(11), title: "p11", score: null, postedAt: at(11), authorId: id(1), reviewerId: null, replyToId: null });
-    await tx.insert(app.tables.post, { id: id(12), title: "p12", score: null, postedAt: at(12), authorId: id(1), reviewerId: null, replyToId: id(11) });
+    await tx.insert(app.tables.authors, { id: id(1), name: "Ada", retired: false });
+    await tx.insert(app.tables.posts, { id: id(11), title: "p11", score: null, postedAt: at(11), authorId: id(1), reviewerId: null, replyToId: null });
+    await tx.insert(app.tables.posts, { id: id(12), title: "p12", score: null, postedAt: at(12), authorId: id(1), reviewerId: null, replyToId: id(11) });
   }
   const only = async (tx: DataOperations, name: string) => {
-    const rows = (await app.loadPostFields(tx, await rowsOf(tx, "post"), [name])).filter((p) => p.title === "p12");
+    const rows = (await app.loadPostFields(tx, await rowsOf(tx, "posts"), [name])).filter((p) => p.title === "p12");
     return rows[0]![name];
   };
 
@@ -707,9 +707,9 @@ describe("the guarded record of a plain body", () => {
       await run(db, async (tx) => {
         await pair(tx);
         expect(await only(tx, "parentHasTitle")).toBe(true);
-        await expect(app.loadPostFields(tx, await rowsOf(tx, "post"), ["parentHasReplies"])).rejects.toThrow(
+        await expect(app.loadPostFields(tx, await rowsOf(tx, "posts"), ["parentHasReplies"])).rejects.toThrow(
           "A plain computed body read Post#replies, which was not loaded");
-        await expect(app.loadPostFields(tx, await rowsOf(tx, "post"), ["keyOfSelf"])).rejects.toThrow(
+        await expect(app.loadPostFields(tx, await rowsOf(tx, "posts"), ["keyOfSelf"])).rejects.toThrow(
           "A plain computed body read Post#comments, which was not loaded");
       });
     } finally { await db.close(); }
@@ -719,15 +719,15 @@ describe("the guarded record of a plain body", () => {
     const db = await fresh();
     try {
       await run(db, async (tx) => {
-        await tx.insert(app.tables.author, { id: id(1), name: "Ada", retired: false });
+        await tx.insert(app.tables.authors, { id: id(1), name: "Ada", retired: false });
         const posts = [12].map((n) => ({ id: id(n), title: `p${n}`, score: null, postedAt: at(n), authorId: id(1), reviewerId: null, replyToId: null }));
-        for (const post of posts) await tx.insert(app.tables.post, post);
+        for (const post of posts) await tx.insert(app.tables.posts, post);
         const comments = async (count: number, post: number) => {
-          for (let n = 0; n < count; n++) await tx.insert(app.tables.comment, { id: id(1000 + post * 10_000 + n), body: "ab", pinned: false, postId: id(post) });
+          for (let n = 0; n < count; n++) await tx.insert(app.tables.comments, { id: id(1000 + post * 10_000 + n), body: "ab", pinned: false, postId: id(post) });
         };
         await comments(3_000, 12);
         const walk = async (post: number) => {
-          const rows = (await rowsOf(tx, "post")).filter((p) => p.id === id(post));
+          const rows = (await rowsOf(tx, "posts")).filter((p) => p.id === id(post));
           const loaded = await app.loadPostFields(tx, rows, ["comments"]);
           const started = performance.now();
           const [row] = await app.loadPostFields(tx, loaded.map(({ comments: _drop, ...rest }) => rest), ["walk"]);

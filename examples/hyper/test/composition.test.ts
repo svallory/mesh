@@ -62,7 +62,7 @@ describe("acceptance 1: task.complete writes the completion, the submission and 
   test("a throw in the last step (releasing the claim) leaves none of the three rows", () => within(async (w) => {
     const claim = await w.hyper.acquireClaim({ task: w.task.id }, as(w.alice));
     const before = await taskOf(w, w.task.id);
-    const failing = bind(refusing(w.db, (table, changes) => table === tables.claim && changes.state === "released"), { clock: w.clock });
+    const failing = bind(refusing(w.db, (table, changes) => table === tables.claims && changes.state === "released"), { clock: w.clock });
     await expect(taskComplete({ id: w.task.id, fence: claim.fence, summary: "shipped" }, as(w.alice), { transaction: failing.transaction, clock: w.clock })).rejects.toThrow("the last step failed");
     expect(await w.hyper.readCompletion({}, as(w.alice))).toEqual([]);
     expect(await w.hyper.readSubmission({}, as(w.alice))).toEqual([]);
@@ -186,7 +186,7 @@ describe("acceptance 2: task.cancel revokes the claims, withdraws the submission
     const claim = await w.hyper.acquireClaim({ task: w.task.id }, as(w.bot));
     await w.hyper.startRun({ task: w.task.id }, as(w.bot));
     const before = await taskOf(w, w.task.id);
-    const failing = bind(refusing(w.db, (table, changes) => table === tables.run && changes.state === "canceled"), { clock: w.clock });
+    const failing = bind(refusing(w.db, (table, changes) => table === tables.runs && changes.state === "canceled"), { clock: w.clock });
     await expect(taskCancel({ id: w.task.id, reason: "dropped" }, as(w.alice), { transaction: failing.transaction, clock: w.clock })).rejects.toThrow("the last step failed");
     expect(await taskOf(w, w.task.id)).toEqual(before);
     expect(await claimsOf(w, w.task.id)).toMatchObject([{ id: claim.id, state: "active" }]);
