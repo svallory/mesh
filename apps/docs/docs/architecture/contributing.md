@@ -75,7 +75,7 @@ This section is for contributors. Nothing under [Docs](../docs/index.md) says an
 - **`packages/cli`** (`meshfw`) holds the Bun-only `mesh` developer command, still a thin compiler shell. It re-exports `defineConfig`, which takes `{ domain, output, data, extensions? }`, from `@meshfw/runtime`; a project's `mesh.config.ts` imports it from `@meshfw/runtime`, because `connect()` loads the config at run time and `meshfw` is a dev dependency.
 - **`packages/data-sqlite`** (`@meshfw/data-sqlite`, private) returns a frozen `sqlite({ file })` descriptor and opens no connection.
 - **`packages/create-meshfw`** (`create-meshfw`) is the starter behind `bun create meshfw`; today a placeholder bin that prints "Mesh is coming soon".
-- **`examples/blog`** is the fixture project: entity files under `src/domain/blog/`. `mesh build` there writes `.mesh/` (`model.json`, `schema.ts`, `binding.ts`, `composition.ts` and `index.ts`, which `#mesh` maps to, and under `.mesh/domain/blog/` the `types`, `validators` and `actions` files per entity and the module's `index.ts`, which `#mesh/domain/blog` maps to), which is committed.
+- **`examples/blog`** is the fixture project: entity files under `src/domain/blog/`. `mesh build` there writes `.mesh/` (`model.json`, `schema.ts`, `binding.ts` and `index.ts`, which `#mesh` maps to, and under `.mesh/domain/blog/` the `types`, `validators` and `actions` files per entity and the folder's barrel `index.ts`, which `#mesh/domain/blog` maps to), which is committed.
 - **`apps/docs`** is this site.
 
 From the repository root:

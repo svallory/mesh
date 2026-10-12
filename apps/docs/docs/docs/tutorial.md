@@ -161,32 +161,32 @@ The two ids are UUIDs because `ownerId` has type `uuid`. An application with sig
 ```ts "src/main.ts"
 import { InvalidInputError, NotFoundError } from "@meshfw/runtime";
 import { connect, disconnect } from "#mesh";
-import { createList, createTodo, completeTodo, pendingTodo } from "#mesh/domain/todo";
+import { List, Todo } from "#mesh/domain/todo";
 import { alice, bob } from "./context";
 
 await connect();
 
-const list = await createList({ name: "Groceries" }, { actor: alice });
+const list = await List.create({ name: "Groceries" }, { actor: alice });
 
-const milk = await createTodo({ title: "Buy milk", list: list.id }, { actor: alice });
-await createTodo({ title: "Buy bread", list: list.id }, { actor: alice });
-await createTodo({ title: "Buy coffee", list: list.id }, { actor: alice });
+const milk = await Todo.create({ title: "Buy milk", list: list.id }, { actor: alice });
+await Todo.create({ title: "Buy bread", list: list.id }, { actor: alice });
+await Todo.create({ title: "Buy coffee", list: list.id }, { actor: alice });
 
-await completeTodo({ id: milk.id }, { actor: alice });
+await Todo.complete({ id: milk.id }, { actor: alice });
 
-for (const todo of await pendingTodo({ load: ["label"] }, { actor: alice })) {
+for (const todo of await Todo.pending({ load: ["label"] }, { actor: alice })) {
   console.log(todo.label);
 }
 
 try {
-  await completeTodo({ id: milk.id }, { actor: bob });
+  await Todo.complete({ id: milk.id }, { actor: bob });
 } catch (error) {
   if (!(error instanceof NotFoundError)) throw error;
   console.log(error.code);
 }
 
 try {
-  await createTodo({ title: "", list: list.id }, { actor: alice });
+  await Todo.create({ title: "", list: list.id }, { actor: alice });
 } catch (error) {
   if (!(error instanceof InvalidInputError)) throw error;
   console.log(error.code, error.issues[0]?.code, error.issues[0]?.message);
@@ -206,9 +206,9 @@ An empty title is refused at run time by `string :title min=1`, with Mesh's own 
 
 Four things to notice:
 
-- **`createList` takes only `name`.** `ownerId` is not in the input type, so a call that sends it does not compile.
+- **`List.create` takes only `name`.** `ownerId` is not in the input type, so a call that sends it does not compile.
 - **`load: ["label"]` is what types `todo.label`.** Without it, reading the property is a type error rather than `undefined`.
-- **Bob gets `NotFoundError`, not `ForbiddenError`.** The policy reads the stored row, so it becomes a filter on the statement, and a row he may not change does not exist as far as he is concerned. Ask first and you get the reason instead: `canCompleteTodo({ id }, { actor: bob })` returns `{ allowed: false, breakdown }`.
+- **Bob gets `NotFoundError`, not `ForbiddenError`.** The policy reads the stored row, so it becomes a filter on the statement, and a row he may not change does not exist as far as he is concerned. Ask first and you get the reason instead: `Todo.canComplete({ id }, { actor: bob })` returns `{ allowed: false, breakdown }`.
 - **The empty title is refused before anything is written**, with Mesh's standard code and message and the position of the line that carries the rule.
 
 ## Build and run
@@ -232,22 +232,25 @@ import { expect, test } from "bun:test";
 import { createSchema, sqlite } from "@meshfw/data-sqlite";
 import { InvalidInputError } from "@meshfw/runtime";
 import { bind, tables } from "#mesh";
+import { List, Todo } from "#mesh/domain/todo";
 import { alice, bob } from "../src/context";
 
 test("only the owner sees a todo", async () => {
   const db = sqlite({ file: ":memory:" });
   await createSchema(db, tables);
-  const todo = bind(db);
+  const app = bind(db);
 
-  const list = await todo.createList({ name: "Groceries" }, { actor: alice });
-  await todo.createTodo({ title: "Buy milk", list: list.id }, { actor: alice });
+  await app.run(async () => {
+    const list = await List.create({ name: "Groceries" }, { actor: alice });
+    await Todo.create({ title: "Buy milk", list: list.id }, { actor: alice });
 
-  const mine = await todo.pendingTodo({ load: ["label"] }, { actor: alice });
-  expect(mine.map((row) => row.label)).toEqual(["[ ] Buy milk"]);
+    const mine = await Todo.pending({ load: ["label"] }, { actor: alice });
+    expect(mine.map((row) => row.label)).toEqual(["[ ] Buy milk"]);
 
-  // Bob's read is allowed; the policy is part of the query, so it simply
-  // returns the rows he owns, which here are none.
-  expect(await todo.pendingTodo({}, { actor: bob })).toEqual([]);
+    // Bob's read is allowed; the policy is part of the query, so it simply
+    // returns the rows he owns, which here are none.
+    expect(await Todo.pending({}, { actor: bob })).toEqual([]);
+  });
 
   await db.close();
 });
@@ -255,19 +258,21 @@ test("only the owner sees a todo", async () => {
 test("a title cannot be empty", async () => {
   const db = sqlite({ file: ":memory:" });
   await createSchema(db, tables);
-  const todo = bind(db);
+  const app = bind(db);
 
-  const list = await todo.createList({ name: "Groceries" }, { actor: alice });
+  await app.run(async () => {
+    const list = await List.create({ name: "Groceries" }, { actor: alice });
 
-  await expect(
-    todo.createTodo({ title: "", list: list.id }, { actor: alice }),
-  ).rejects.toBeInstanceOf(InvalidInputError);
+    await expect(
+      Todo.create({ title: "", list: list.id }, { actor: alice }),
+    ).rejects.toBeInstanceOf(InvalidInputError);
+  });
 
   await db.close();
 });
 ```
 
-`bind(dataLayer)` returns every action function with the same names and the same `(input, context)` signatures as the top-level ones, bound to that data layer. Two tests above bind two databases in one process and neither sees the other's rows. `bun test` runs them:
+`bind(dataLayer)` returns `{ run, transaction }`. Every entity call made inside `app.run(…)` goes to that data layer, with the same `(input, context)` signatures as outside it. Two tests above bind two databases in one process and neither sees the other's rows. `bun test` runs them:
 
 ```bash
 bun test

@@ -22,8 +22,8 @@ mesh <command> [options]
 | `mesh init` | Writes `mesh.config.ts` and the folders, asking where your entity files are and where generated code goes |
 | `mesh build` | Reads the entity files and writes `.mesh/` |
 | `mesh build --check` | The guard: rebuilds in memory, writes nothing, fails on any difference with what is committed |
-| `mesh inspect [entity]` | Prints the model as JSON, with the source position of every declaration |
-| `mesh explain <entity> <action>` | Prints the plan that action's handler follows |
+| `mesh inspect [entity]` | Prints the model as JSON, with the source position of every declaration. `entity` may be shortened to the fewest qualifiers that pick one entity |
+| `mesh explain <entity> <action>` | Prints the plan that action's handler follows. `entity` may be shortened the same way |
 | `mesh db push` | Pushes the schema straight to the database. Development only |
 | `mesh migrate generate [--allow <change>]` | Writes a SQL migration into `migrations/` |
 | `mesh migrate apply` | Applies the migrations that have not been applied |
@@ -57,7 +57,7 @@ Reads your entity files, checks them and writes the types, action functions, inp
 Every diagnostic names the file, the line and the column, both 1-based, and says what to do:
 
 ```text
-src/domain/todo/todo.mesh.mx:22:9 error &titel is not a member of :Todo. Did you mean &title?
+src/domain/todo/todo.mesh.mx:22:9 error &titel is not a member of todo.Todo. Did you mean &title?
 ```
 
 The same shape is used for an unknown declaration, one the build does not implement, a duplicate input name, a free variable in an expression and a capability the adapter does not declare. Nothing is silently dropped.
@@ -84,7 +84,9 @@ Put it in the same script as your tests:
 mesh inspect Todo
 ```
 
-Prints the model as JSON: every attribute with its type and constraints, every action with what it accepts, every relationship, computed field and policy, each with the source position of the declaration it came from. Omit `Todo` to inspect the whole domain. It is the first thing to look at when a build error mentions a rule you did not expect, and it is what to paste into a [bug report](https://github.com/svallory/mesh/issues).
+Prints the model as JSON: every attribute with its type and constraints, every action with what it accepts, every relationship, computed field and policy, each with the source position of the declaration it came from. Omit `Todo` to inspect the whole domain.
+
+**Naming an entity.** What you type is shortened as far as it stays unambiguous. With `school/homework/task.mesh.mx` and `work/project/task.mesh.mx` each declaring `Task`, `project.Task` is enough to pick the second, and `Task` alone is accepted while only one `Task` exists. When a name matches more than one entity, `mesh` picks none of them and lists the candidates: `Did you mean school.homework.Task or work.project.Task?`. A name that matches none lists the entities there are. What `mesh` prints is always the full name, the module's folders as written, a dot and the entity's name (`work.project.Task`), which is also what errors and seams carry. It is the first thing to look at when a build error mentions a rule you did not expect, and it is what to paste into a [bug report](https://github.com/svallory/mesh/issues).
 
 ## explain
 
@@ -92,10 +94,10 @@ Prints the model as JSON: every attribute with its type and constraints, every a
 mesh explain Todo complete
 ```
 
-Prints the plan the generated handler follows. The plan is chosen at build time; the handler then performs it without deciding anything at run time.
+Prints the plan the generated handler follows. The entity is named as `inspect` takes it; the action is a second argument. The plan is chosen at build time; the handler then performs it without deciding anything at run time.
 
 ```text
-Todo.complete (update)
+todo.Todo#complete (update)
   strategy     read-then-write: every update reads the row under the write lock, checks it, changes it, then writes it
   input        none
   checks       notDoneYet (todo.done)

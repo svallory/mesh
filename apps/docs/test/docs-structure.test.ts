@@ -44,7 +44,7 @@ test("Quick start is requirements, installation, running and a short domain call
   expect(quick).not.toContain("```mx");
   expect(quick).toContain("bun create meshfw todo-app");
   expect(quick).toContain("mesh build\nmesh db push\nbun run demo");
-  expect(quick).toContain('import { connect, disconnect } from "#mesh";\nimport { createList } from "#mesh/domain/todo";');
+  expect(quick).toContain('import { connect, disconnect } from "#mesh";\nimport { List } from "#mesh/domain/todo";');
   const prompt = /Let an agent check[\s\S]*?```text\n([\s\S]*?)```/.exec(quick)![1]!;
   expect(prompt.trim().split("\n").length).toBeLessThanOrEqual(6);
   for (const requirement of ["Bun 1.4.2", "Git 2.x", "Visual Studio Code", "Verify", "Install", "Report"]) {
@@ -79,7 +79,7 @@ test("integration snippets are explicitly excerpts rather than claimed type-chec
   expect(integrations).toContain('"use server";');
   const solidStartSection = integrations.split("## In a web app")[1]!;
   const solidStart = /```ts[^\n]*\n([\s\S]*?)```/.exec(solidStartSection)![1]!;
-  expect(solidStart).toContain('return { data: await createList({ name }, { actor }) };');
+  expect(solidStart).toContain('return { data: await List.create({ name }, { actor }) };');
   for (const error of ["InvalidInputError", "ForbiddenError"]) {
     expect(solidStart).toContain(`if (error instanceof ${error}) return { error: { code: error.code } };`);
   }
@@ -87,7 +87,7 @@ test("integration snippets are explicitly excerpts rather than claimed type-chec
 });
 
 test("a page imports action functions from their module, and only the framework's names from #mesh (CMP-17)", () => {
-  const framework = new Set(["bind", "connect", "disconnect", "transaction", "tables", "Actions", "Reads"]);
+  const framework = new Set(["bind", "connect", "disconnect", "transaction", "privileged", "tables", "Binding", "Privileged"]);
   const modules = new Set<string>();
   let seen = 0;
   for (const name of readdirSync(docs).filter((name) => name.endsWith(".md"))) {

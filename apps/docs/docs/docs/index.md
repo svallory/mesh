@@ -41,14 +41,14 @@ entity :Todo table="todos"
       return (&done ? "[x] " : "[ ] ") + &title
     }
 
-// @create: Calling createTodo — you call `createTodo(input, context)`. A field it does not accept never reaches your code, and a rule about one field is one word on that field's line.
+// @create: Calling Todo.create — you call `Todo.create(input, context)`. A field it does not accept never reaches your code, and a rule about one field is one word on that field's line.
   actions auto=[:read, :destroy]
     create :create
       input
         &title
         &list
 
-// @complete: Rule and change — `completeTodo({ id }, context)` refuses a todo that is already done, then writes it in one turn.
+// @complete: Rule and change — `Todo.complete({ id }, context)` refuses a todo that is already done, then writes it in one turn.
     update :complete
       validate
         check :notDoneYet [
@@ -60,12 +60,12 @@ entity :Todo table="todos"
         set
           &done=true
 
-// @rename: One more action — `renameTodo({ id, title }, context)` accepts a field and changes nothing else.
+// @rename: One more action — `Todo.rename({ id, title }, context)` accepts a field and changes nothing else.
     update :rename
       input
         &title
 
-// @pending: A query — `pendingTodo(input, context)` filters in SQL, and your call can narrow it with its own `filter`.
+// @pending: A query — `Todo.pending(input, context)` filters in SQL, and your call can narrow it with its own `filter`.
     read :pending
       filter=() => &done === false
       sort
@@ -79,12 +79,12 @@ entity :Todo table="todos"
 
 ## What you call
 
-An action becomes an ordinary TypeScript function. Its name is the action name followed by the entity name: `create` on `entity :Todo` becomes `createTodo`, and `read :pending` becomes `pendingTodo`. You import it from the entity's module: `src/domain/todo/` is `#mesh/domain/todo`.
+An action becomes an ordinary TypeScript function on its entity. You import the entity from its module and call the action by name: `create` on `entity :Todo` is `Todo.create`, and `read :pending` is `Todo.pending`. The module is the entity's folder: `src/domain/todo/` is `#mesh/domain/todo`.
 
 ```ts "src/main.ts (excerpt)"
-import { createTodo } from "#mesh/domain/todo";
+import { Todo } from "#mesh/domain/todo";
 
-const todo = await createTodo({ title: "Buy milk", list: list.id }, { actor });
+const todo = await Todo.create({ title: "Buy milk", list: list.id }, { actor });
 ```
 
 There is no server, no route and no client to generate. Mesh serves a command line, a worker, a daemon or an HTTP endpoint equally, because the function is the whole interface.

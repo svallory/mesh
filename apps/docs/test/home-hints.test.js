@@ -27,7 +27,7 @@ const families = {
 families.kind = families.kind.replaceAll('`', '');
 const contexts = {
   entity: 'Declares the entity this file is about: one file, one entity.',
-  'entity-name': "The entity's name. It shows up in everything Mesh builds: the `Todo` type, the `createTodo` function.",
+  'entity-name': "The entity's name. It shows up in everything Mesh builds: the `Todo` type, the `Todo` value that holds its actions.",
   table: 'The database table. Mesh writes its schema and its migrations.',
   attributes: 'What a `Todo` stores: one line per column.',
   uuid: "The attribute's type: `uuid`, which becomes `string` in TypeScript.",
@@ -49,19 +49,19 @@ const contexts = {
   'entity-option': 'The entity on the other side.',
   'entity-list': 'Imported at the top of the file.',
   'import-list': 'Lives in `list.mesh.mx`, next to this file.',
-  actions: 'Everything you can do with a `Todo`. Each action becomes one function.',
-  auto: 'Two actions Mesh writes for you: `readTodo` and `destroyTodo`.',
-  'auto-read': 'The generated `readTodo`.',
-  'auto-destroy': 'The generated `destroyTodo`.',
+  actions: 'Everything you can do with a `Todo`. Each action becomes one function on `Todo`.',
+  auto: 'Two actions Mesh writes for you: `Todo.read` and `Todo.destroy`.',
+  'auto-read': 'The generated `Todo.read`.',
+  'auto-destroy': 'The generated `Todo.destroy`.',
   create: 'An action that creates one record.',
-  'create-name': "The action's name. Call it as `createTodo(input, context)`.",
+  'create-name': "The action's name. Call it as `Todo.create(input, context)`.",
   input: 'What the caller must send, one line per field. Nothing else gets in.',
   title: 'Takes `title` exactly as declared above: a string, at least one character.',
   list: 'The relationship declared by `belongs-to` above. The caller sends the id of a `List`; Mesh stores it in `listId`.',
   update: 'An action that changes one existing record.',
-  'rename-name': "The action's name. Call it as `renameTodo({ id, title }, context)`.",
+  'rename-name': "The action's name. Call it as `Todo.rename({ id, title }, context)`.",
   read: 'A query with a name.',
-  'pending-name': "The action's name. Call it as `pendingTodo(input, context)`; it returns the matching records.",
+  'pending-name': "The action's name. Call it as `Todo.pending(input, context)`; it returns the matching records.",
   filter: 'Which records come back. Mesh turns this into the SQL `WHERE`.',
   done: 'Reads `done` on each record.',
   sort: 'The order of the results.',
@@ -70,10 +70,10 @@ const contexts = {
   policy: 'One rule.',
   'owner-name': "The rule's name. It shows in the breakdown when a call is refused.",
   types: 'The action types this rule applies to.',
-  'types-create': 'Actions with type `create`: here, `createTodo`.',
-  'types-read': 'Actions with type `read`: here, `readTodo` and `pendingTodo`.',
-  'types-update': 'Actions with type `update`: here, `renameTodo`.',
-  'types-destroy': 'Actions with type `destroy`: here, `destroyTodo`.',
+  'types-create': 'Actions with type `create`: here, `Todo.create`.',
+  'types-read': 'Actions with type `read`: here, `Todo.read` and `Todo.pending`.',
+  'types-update': 'Actions with type `update`: here, `Todo.rename`.',
+  'types-destroy': 'Actions with type `destroy`: here, `Todo.destroy`.',
   authorize: 'Allowed when this returns true. For a read it becomes part of the query, so a caller only ever sees their own lists.',
   actor: 'Whoever is calling. Your app passes it on every call; Mesh never guesses.',
   'list-owner': 'Follows the `list` relationship to its `ownerId`. Mesh writes the join.',
@@ -117,7 +117,7 @@ test('all fragments are highlighted at build time, with exact text and no backti
   expect(highlightHintFragment('&list', 'option-value')).toBe('<span class="ts-member">&amp;list</span>');
   expect(highlightHintFragment(':value', 'option-value')).toContain('class="ts-atom"');
   expect(highlightHintFragment(':name', 'declaration')).toContain('class="ts-name"');
-  expect(highlightHintFragment('createTodo', 'call')).toContain('class="ts-function"');
+  expect(highlightHintFragment('Todo.create', 'call')).toContain('class="ts-function-method"');
   const file = 'import { List } from "./list.mesh.mx"';
   expect(highlightHintFragment('List', 'import')).toBe(mxHighlighter(file)(9, 13));
   expect(highlightHintFragment('kind :name options', 'line')).toBe(mxHighlighter('kind :name options')(0, 18));

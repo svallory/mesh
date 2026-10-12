@@ -58,7 +58,7 @@ test('home line count and the planted typo position match its file', () => {
   const row = lines.findIndex((line) => line.trim() === '&title');
   const column = lines[row].indexOf('&title') + 1;
   expect(page).toContain(`src/domain/todo/todo.mesh.mx:${row + 1}:${column} error &amp;titel`);
-  for (const name of ['createTodo', 'renameTodo', 'pendingTodo', 'readTodo', 'destroyTodo']) expect(page).toContain(name);
+  for (const name of ['Todo.create', 'Todo.rename', 'Todo.pending', 'Todo.read', 'Todo.destroy']) expect(page).toContain(name);
 });
 
 test('cards name real sections and the same groups; the headline keeps its two blocks', async () => {
@@ -76,7 +76,7 @@ test('rules box quotes the rules sample and diagnostics quote Command line', () 
   const rules = /## The rules file[\s\S]*?```text\n([\s\S]*?)```/.exec(docsPage('ai-agents.md'))[1];
   const box = /data-box="rules"[\s\S]*?<div class="mh-snip"><code>([\s\S]*?)<\/code><\/div>/.exec(page)[1].replace(/&amp;/g, '&');
   for (const line of box.split('\n')) expect(rules).toContain(line.trim());
-  const message = 'error &titel is not a member of :Todo. Did you mean &title?';
+  const message = 'error &titel is not a member of todo.Todo. Did you mean &title?';
   expect(docsPage('command-line.md')).toContain(message);
   expect(page.replace(/&amp;/g, '&').replace(/\n/g, ' ')).toContain(message);
 });
