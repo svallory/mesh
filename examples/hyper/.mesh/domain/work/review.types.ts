@@ -13,12 +13,14 @@ import type {
   CollaboratorLoaded as $identity$Collaborator$Loaded,
 } from "../identity/collaborator.types";
 
+import type { $Date, $Pick } from "../../$globals";
+
 export type Review = {
   id: string;
   decision: "accept" | "return";
   reasons: string | null;
   ruleApplied: "parent-assignee" | "parent-creator" | "task-creator";
-  decidedAt: Date;
+  decidedAt: $Date;
   submissionId: string;
   reviewerId: string;
 };
@@ -54,7 +56,7 @@ export type ReviewLoadable = {
 };
 
 /** A Review with the relationships and computed fields named in N loaded. */
-export type ReviewWith<N extends keyof ReviewLoadable> = Review & Pick<ReviewLoadable, N>;
+export type ReviewWith<N extends keyof ReviewLoadable> = Review & $Pick<ReviewLoadable, N>;
 
 /** What a load through `privileged` attaches to a Review: it runs no policy, so every related record the key names is there. */
 export type ReviewTxLoadable = {
@@ -63,7 +65,7 @@ export type ReviewTxLoadable = {
 };
 
 /** A Review loaded through `privileged`, with the relationships and computed fields named in N. */
-export type ReviewTxWith<N extends keyof ReviewLoadable> = Review & Pick<ReviewTxLoadable, N>;
+export type ReviewTxWith<N extends keyof ReviewLoadable> = Review & $Pick<ReviewTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type ReviewLoadNames<L extends readonly (keyof ReviewLoadable)[]> =
@@ -90,7 +92,7 @@ export type ReviewFilter =
       decision?: $Comparison<"accept" | "return">;
       reasons?: $Comparison<string>;
       ruleApplied?: $Comparison<"parent-assignee" | "parent-creator" | "task-creator">;
-      decidedAt?: $Comparison<Date>;
+      decidedAt?: $Comparison<$Date>;
       submissionId?: $Comparison<string>;
       reviewerId?: $Comparison<string>;
     };

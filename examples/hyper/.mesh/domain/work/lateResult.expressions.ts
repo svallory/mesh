@@ -13,6 +13,7 @@ import type {
   LateResultLoaded as $work$LateResult$Loaded,
   RecordLateResultInput as $work$LateResult$RecordLateResultInput,
 } from "./lateResult.types";
+import type { $Omit } from "../../$globals";
 
 /** What every expression of LateResult reads; `I` is the input of the action it runs in. */
 export type $work$LateResult$Scope<I = unknown> = $Scope<{
@@ -27,14 +28,14 @@ export type $work$LateResult$StoredScope<I = unknown> = $work$LateResult$Scope<I
   before: $DeepReadonly<$work$LateResult$Record>;
 };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type $work$LateResult$CheckScope<I = unknown> = Omit<$work$LateResult$Scope<I>, "before">;
+export type $work$LateResult$CheckScope<I = unknown> = $Omit<$work$LateResult$Scope<I>, "before">;
 /** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
-export type $work$LateResult$NewScope<I = unknown> = Omit<
+export type $work$LateResult$NewScope<I = unknown> = $Omit<
   $work$LateResult$CheckScope<I>,
   "self"
 > & {
   self: $DeepReadonly<
-    Omit<$work$LateResult$Loaded, "fence" | "taskId" | "task" | "submitterId" | "submitter"> & {
+    $Omit<$work$LateResult$Loaded, "fence" | "taskId" | "task" | "submitterId" | "submitter"> & {
       [K in "fence" | "taskId" | "task" | "submitterId" | "submitter"]:
         | $work$LateResult$Loaded[K]
         | null;

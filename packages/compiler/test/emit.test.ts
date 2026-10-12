@@ -223,7 +223,7 @@ test.each(["", "sales/billing"])("module %j emits verbatim relative paths", asyn
   expect(files.map((file) => file.path)).toContain(`${prefix}/index.ts`);
 });
 
-test("Date type shadows are diagnosed only where the global is used", async () => {
+test("an entity named Date with date attributes builds: generated code names the global as $Date (PRJ-20)", async () => {
   const document = documentOf();
   const entity = todo(document);
   document.entities = [entity];
@@ -231,15 +231,15 @@ test("Date type shadows are diagnosed only where the global is used", async () =
   entity.actions = [];
   entity.auto = [];
   entity.name = "Date";
-  await expect(
-    generateFiles({ document, config: configOf("/project") }),
-  ).rejects.toBeInstanceOf(EmitError);
-  entity.attributes = entity.attributes.filter(
-    (a) => !["date", "datetime", "timestamp"].includes(a.type),
-  );
-  expect(
-    (await generateFiles({ document, config: configOf("/project") })).length,
-  ).toBe(10); // model.json, types, validators, expressions, load, actions, binding, the module's barrel, the domain root's barrel and index for one entity
+  expect(entity.attributes.some((a) => ["date", "datetime", "timestamp"].includes(a.type))).toBe(true);
+  const files = await generateFiles({ document, config: configOf("/project") });
+  // model.json, types, validators, expressions, load, actions, binding, the module's barrel, the domain root's barrel,
+  // index and $globals for one entity
+  expect(files.length).toBe(11);
+  const typesFile = files.find((file) => file.path.endsWith("date.types.ts"))!.contents;
+  expect(typesFile).toContain("export type Date = {");
+  expect(typesFile).toMatch(/import type \{ \$Date(, \$Pick)? \} from "(\.\.\/)+\$globals";/);
+  expect(typesFile).not.toMatch(/[^$]\bDate \| null|: Date;/);
 });
 
 test("source path line terminators are escaped in headers", async () => {

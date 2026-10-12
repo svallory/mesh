@@ -11,6 +11,7 @@ import {
 } from "@meshfw/model";
 import { emitError } from "../emit-error.ts";
 import { pathSegment } from "../emitters/order.ts";
+import { globalAlias } from "./globals.ts";
 
 /**
  * The decisions the types and validators views share: how names are cased and
@@ -118,12 +119,17 @@ export interface PlannedInput {
   position: SourcePosition;
   fields: PlannedField[];
 }
+/** The TypeScript type of an attribute type's values as generated code prints it: `Date` through its `$` alias. */
+export function tsTypeOf(type: AttributeType): string {
+  const tsType = attributeTypeInfo(type).tsType;
+  return tsType === "Date" ? globalAlias("Date") : tsType;
+}
 /** The TypeScript type of an attribute's values, without `null`: an enum's union, or its type's own. */
 export function baseType(field: Pick<FieldShape, "type" | "values">): string {
   return field.type === "enum"
     ? (field.values ?? []).map((a) => JSON.stringify(a.value)).join(" | ") ||
         "never"
-    : attributeTypeInfo(field.type).tsType;
+    : tsTypeOf(field.type);
 }
 export function valueType(field: FieldShape): string {
   const base = baseType(field);

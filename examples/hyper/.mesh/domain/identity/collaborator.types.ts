@@ -8,6 +8,8 @@ import type {
   MembershipLoaded as $identity$Membership$Loaded,
 } from "./membership.types";
 
+import type { $Pick } from "../../$globals";
+
 export type Collaborator = {
   id: string;
   kind: "human" | "agent";
@@ -54,7 +56,7 @@ export type CollaboratorLoadable = {
 
 /** A Collaborator with the relationships and computed fields named in N loaded. */
 export type CollaboratorWith<N extends keyof CollaboratorLoadable> = Collaborator &
-  Pick<CollaboratorLoadable, N>;
+  $Pick<CollaboratorLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type CollaboratorLoadNames<L extends readonly (keyof CollaboratorLoadable)[]> =

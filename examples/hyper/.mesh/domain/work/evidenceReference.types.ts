@@ -8,13 +8,15 @@ import type {
   CollaboratorLoaded as $identity$Collaborator$Loaded,
 } from "../identity/collaborator.types";
 
+import type { $Date, $Pick } from "../../$globals";
+
 export type EvidenceReference = {
   id: string;
   kind: string;
   locator: string;
   contentHash: string | null;
   description: string | null;
-  recordedAt: Date;
+  recordedAt: $Date;
   recordedById: string;
 };
 
@@ -45,7 +47,7 @@ export type EvidenceReferenceLoadable = {
 
 /** A EvidenceReference with the relationships and computed fields named in N loaded. */
 export type EvidenceReferenceWith<N extends keyof EvidenceReferenceLoadable> = EvidenceReference &
-  Pick<EvidenceReferenceLoadable, N>;
+  $Pick<EvidenceReferenceLoadable, N>;
 
 /** What a load through `privileged` attaches to a EvidenceReference: it runs no policy, so every related record the key names is there. */
 export type EvidenceReferenceTxLoadable = {
@@ -54,7 +56,7 @@ export type EvidenceReferenceTxLoadable = {
 
 /** A EvidenceReference loaded through `privileged`, with the relationships and computed fields named in N. */
 export type EvidenceReferenceTxWith<N extends keyof EvidenceReferenceLoadable> = EvidenceReference &
-  Pick<EvidenceReferenceTxLoadable, N>;
+  $Pick<EvidenceReferenceTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type EvidenceReferenceLoadNames<L extends readonly (keyof EvidenceReferenceLoadable)[]> =
@@ -81,7 +83,7 @@ export type EvidenceReferenceFilter =
       locator?: $Comparison<string>;
       contentHash?: $Comparison<string>;
       description?: $Comparison<string>;
-      recordedAt?: $Comparison<Date>;
+      recordedAt?: $Comparison<$Date>;
       recordedById?: $Comparison<string>;
     };
 

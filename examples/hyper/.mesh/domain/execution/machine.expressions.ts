@@ -21,6 +21,7 @@ import type {
   RetireMachineInput as $execution$Machine$RetireMachineInput,
   UpdateMachineInput as $execution$Machine$UpdateMachineInput,
 } from "./machine.types";
+import type { $Omit } from "../../$globals";
 
 /** What every expression of Machine reads; `I` is the input of the action it runs in. */
 export type $execution$Machine$Scope<I = unknown> = $Scope<{
@@ -35,17 +36,19 @@ export type $execution$Machine$StoredScope<I = unknown> = $execution$Machine$Sco
   before: $DeepReadonly<$execution$Machine$Record>;
 };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type $execution$Machine$CheckScope<I = unknown> = Omit<
+export type $execution$Machine$CheckScope<I = unknown> = $Omit<
   $execution$Machine$Scope<I>,
   "before"
 >;
 /** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
-export type $execution$Machine$NewScope<I = unknown> = Omit<
+export type $execution$Machine$NewScope<I = unknown> = $Omit<
   $execution$Machine$CheckScope<I>,
   "self"
 > & {
   self: $DeepReadonly<
-    Omit<$execution$Machine$Loaded, "name"> & { [K in "name"]: $execution$Machine$Loaded[K] | null }
+    $Omit<$execution$Machine$Loaded, "name"> & {
+      [K in "name"]: $execution$Machine$Loaded[K] | null;
+    }
   >;
 };
 

@@ -10,9 +10,11 @@ import type {
   CollaboratorLoaded as $identity$Collaborator$Loaded,
 } from "../identity/collaborator.types";
 
+import type { $Date, $Pick } from "../../$globals";
+
 export type Dependency = {
   id: string;
-  createdAt: Date;
+  createdAt: $Date;
   dependentId: string;
   prerequisiteId: string;
   createdById: string;
@@ -52,7 +54,7 @@ export type DependencyLoadable = {
 
 /** A Dependency with the relationships and computed fields named in N loaded. */
 export type DependencyWith<N extends keyof DependencyLoadable> = Dependency &
-  Pick<DependencyLoadable, N>;
+  $Pick<DependencyLoadable, N>;
 
 /** What a load through `privileged` attaches to a Dependency: it runs no policy, so every related record the key names is there. */
 export type DependencyTxLoadable = {
@@ -63,7 +65,7 @@ export type DependencyTxLoadable = {
 
 /** A Dependency loaded through `privileged`, with the relationships and computed fields named in N. */
 export type DependencyTxWith<N extends keyof DependencyLoadable> = Dependency &
-  Pick<DependencyTxLoadable, N>;
+  $Pick<DependencyTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type DependencyLoadNames<L extends readonly (keyof DependencyLoadable)[]> =
@@ -88,7 +90,7 @@ export type DependencyFilter =
   | { or: readonly DependencyFilter[] }
   | {
       id?: $Comparison<string>;
-      createdAt?: $Comparison<Date>;
+      createdAt?: $Comparison<$Date>;
       dependentId?: $Comparison<string>;
       prerequisiteId?: $Comparison<string>;
       createdById?: $Comparison<string>;

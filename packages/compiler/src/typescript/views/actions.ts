@@ -5,6 +5,7 @@ import { policiesCovering, policyExpressions, readsRecord } from "../../model/po
 import { emitError } from "../emit-error.ts";
 import type { EmitInput } from "../emit.ts";
 import { expressionIds, policySpecs } from "./expressions.ts";
+import { globalAlias, globalsImport, type GlobalsImport } from "./globals.ts";
 import { hasLoader, loaderName } from "./load.ts";
 import { camelCase, computedColumns, effectiveActions, entityInputs, entityLocal, entityPath, entitySegment, loadGenerics, propertyName, takesLoad, typeName, valueName } from "./inputs.ts";
 import { entityFileComment, txLoadTypes } from "./types.ts";
@@ -87,6 +88,8 @@ export interface ActionsView {
   readonly readsOptionsName: string;
   /** One body per read action, without its policies: what `privileged` calls and what the read method calls after evaluating them. */
   readonly reads: readonly ReadBody[];
+  /** The globals the file names (`$Promise`, `$Object`), from `$globals.ts`; null when it names none. */
+  readonly globals: GlobalsImport | null;
 }
 
 /**
@@ -114,7 +117,7 @@ export interface ReadBody {
   /** The type parameter list as printed (`<const N extends keyof PostLoadable = never>` when the read takes `load`), or the empty string. */
   readonly generics: string;
   /**
-   * What follows `input` in the parameter list: `, context?: unknown, clock?: () => Date, policies?: boolean` when the body
+   * What follows `input` in the parameter list: `, context?: unknown, clock?: () => $Date, policies?: boolean` when the body
    * loads and so reads the caller's context, then `cast` on a read that runs; `, _context?: unknown` or the empty string on
    * one that fails naming M10.
    */
@@ -215,7 +218,7 @@ function printValue(value: Literal | Atom, type: Attribute["type"]): string {
   const plain = isAtom(value) ? value.value : value;
   const json = JSON.stringify(plain);
   const dated = type === "date" || type === "datetime" || type === "timestamp";
-  return dated && (typeof plain === "string" || typeof plain === "number") ? `new Date(${json})` : json;
+  return dated && (typeof plain === "string" || typeof plain === "number") ? `new ${globalAlias("Date")}(${json})` : json;
 }
 
 /**
@@ -255,9 +258,6 @@ function columnOf(entity: Entity, name: string, position: SourcePosition): { nam
   throw emitError("MESH_UNKNOWN_MEMBER", `Unknown member &${name} in entity ${entity.fqn}`, position);
 }
 
-/** Global types the generated actions and index files name; an entity's record type must not shadow them. */
-export const GLOBAL_TYPES: readonly string[] = Object.freeze(["Partial", "Promise", "ReturnType"]);
-
 /** Names that stay unprefixed in the actions file, as they were before the lifecycle added the others. */
 const PLAIN_IMPORTS: ReadonlySet<string> = new Set(["rejectComputedQuery"]);
 
@@ -282,9 +282,6 @@ const KEY = "$key";
 /** The actions view of one entity. Pure and synchronous; a model it cannot render is an `EmitError`. */
 export function actionsView({ document }: EmitInput, entity: Entity): ActionsView {
   const recordName = typeName(entity.name, entity.position);
-  if (GLOBAL_TYPES.includes(recordName))
-    throw emitError("MESH_EMIT_NAME", `Entity ${entity.fqn} would generate the type ${recordName}, which shadows the global ${recordName} the generated code uses`,
-      entity.position, "Rename the entity");
   const key = entity.attributes.find((a) => a.primaryKey)!;
   const inputs = entityInputs(entity, document);
   const actions = effectiveActions(entity);
@@ -351,7 +348,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       // A read that takes `load` is generic in the names it lists: the result is the record with exactly those loaded.
       const loads = takesLoad(input);
       // The `load` member comes from the tuple `L` itself, so that TypeScript infers the names written.
-      const inputType = loads ? `Omit<${input.name}, "load"> & ${recordName}LoadArg<L>` : input.name;
+      const inputType = loads ? `$Omit<${input.name}, "load"> & ${recordName}LoadArg<L>` : input.name;
       const generics = loads ? loadGenerics(entity, true) : "";
       // A caller's load runs the read policies of what it reaches (POL-17), so a `belongs-to` it may not read is null; `privileged` runs none.
       const tx = txLoadTypes(entity);
@@ -368,7 +365,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       // The read action casts the input for its policies and hands the result over as `cast` (R2-N4), so it is cast once.
       const castParam = `, cast?: $CastOutput<typeof ${validator}>`;
       const body = { name, inputType, generics,
-        contextParam: loads ? `, context?: unknown, clock?: () => Date, policies?: boolean${castParam}` : `, _context?: unknown, _clock?: () => Date, _policies?: boolean${castParam}`,
+        contextParam: loads ? `, context?: unknown, clock?: () => $Date, policies?: boolean${castParam}` : `, _context?: unknown, _clock?: () => $Date, _policies?: boolean${castParam}`,
         validator, returnType: txReturnType };
       // ---- policies (M8): a read's policies are a filter on the read (ADR-0022, lead ruling 2 of M8a) --------------
       // A read the SQL evaluator must run (M10) fails in its body whatever the policies say, so they are not evaluated.
@@ -379,7 +376,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       }
       const preCheck = unsupportedRead ? [] : [
         "// pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them",
-        "const $context = (context ?? {}) as unknown as Record<string, unknown>;",
+        "const $context = (context ?? {}) as unknown as { [key: string]: unknown };",
         "const $actor = $context.actor;",
         "const $clock = $pinClock(options.clock);",
         // The checks see the input as the action does, cast; an invalid input is reported as one, denied or not.
@@ -419,7 +416,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
             ? [
               `const $rows = (${select}) as ${recordName}[];`,
               `if (!parsed.load?.length) return $rows as unknown as ${txReturnType};`,
-              "const $context = (context ?? {}) as unknown as Record<string, unknown>;",
+              "const $context = (context ?? {}) as unknown as { [key: string]: unknown };",
               // One instant per call: the caller's (a `privileged` read inside an action carries the action's), else this read's own.
               "const $clock = clock ?? $pinClock(options.clock);",
               // From the read action, what the rows load runs the read policies of the entity it reaches (POL-17).
@@ -686,7 +683,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         }
       }
     };
-    if (anyLoad) emit("const $loads = new Set<string>();");
+    if (anyLoad) emit("const $loads = new $Set<string>();");
     if (hasBeforeWrite(steps) || whenFlags.size > 0) {
       emit("// do: the steps run in written order, each seeing the record as the ones before it left it");
       emit(...[...whenFlags.values()].map((flag) => `let ${flag} = false;`));
@@ -757,7 +754,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
           extraTypes.add(`${recordName}With`);
           if (maybeLoadNames.length) extraTypes.add(`${recordName}Loadable`);
           const present = loadNames.length ? `${recordName}With<${loadNames.map((name) => JSON.stringify(name)).join(" | ")}>` : recordName;
-          returnType = maybeLoadNames.length ? `${present} & Partial<Pick<${recordName}Loadable, ${maybeLoadNames.map((name) => JSON.stringify(name)).join(" | ")}>>` : present;
+          returnType = maybeLoadNames.length ? `${present} & $Partial<$Pick<${recordName}Loadable, ${maybeLoadNames.map((name) => JSON.stringify(name)).join(" | ")}>>` : present;
         }
         // The caller gets the result, so what it loads runs the read policies of the entity it reaches (POL-17).
         emit(`return (await $loadRows($loadPlan, ${JSON.stringify(entity.fqn)}, tx, [${result}], [...$loads], { ...$load, policies: true }))[0] as unknown as ${returnType};`);
@@ -798,7 +795,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     // ---- policies (M8): the pre-check, before the transaction opens -------------------------------------------
     const preCheck = [
       "// pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam",
-      "const $context = (context ?? {}) as unknown as Record<string, unknown>;",
+      "const $context = (context ?? {}) as unknown as { [key: string]: unknown };",
       "const $actor = $context.actor;",
       "const $clock = $pinClock(options.clock);",
       `const $policies = ${authorizerCall(action, covering)};`,
@@ -818,13 +815,13 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
   // read-only loaded members, since a deep-readonly conditional type over the generic `L` cannot be related to its twin.
   const txTypes = txLoadTypes(entity);
   const readOnly = (method: ActionMethod, loadable: string, returnType: string) => method.isRead && method.generics
-    ? `(L extends unknown ? readonly ($DeepReadonly<${recordName}> & Pick<$DeepReadonly<${loadable}>, ${recordName}LoadNames<L>>)[] : never)`
+    ? `(L extends unknown ? readonly ($DeepReadonly<${recordName}> & $Pick<$DeepReadonly<${loadable}>, ${recordName}LoadNames<L>>)[] : never)`
     : returnType === "void" ? "void" : `$DeepReadonly<${returnType}>`;
   const reads = methods.filter((method) => method.isRead);
   if (reads.some((method) => method.generics)) extraTypes.add(txTypes.loadable);
-  const privilegedMembers = reads.map((method) => `${method.name}${method.generics}(input: ${method.inputType}, context?: $ActionContext): Promise<${method.txReturnType}>;`);
-  const privilegedReadOnlyMembers = reads.map((method) => `${method.name}${method.generics}(input: ${method.inputType}, context?: $ActionContext): Promise<${readOnly(method, txTypes.loadable, method.txReturnType)}>;`);
-  const readOnlyMembers = methods.map((method) => `${method.name}${method.generics}(input: ${method.inputType}, ...context: $ContextArgument): Promise<${readOnly(method, `${recordName}Loadable`, method.returnType)}>;`);
+  const privilegedMembers = reads.map((method) => `${method.name}${method.generics}(input: ${method.inputType}, context?: $ActionContext): $Promise<${method.txReturnType}>;`);
+  const privilegedReadOnlyMembers = reads.map((method) => `${method.name}${method.generics}(input: ${method.inputType}, context?: $ActionContext): $Promise<${readOnly(method, txTypes.loadable, method.txReturnType)}>;`);
+  const readOnlyMembers = methods.map((method) => `${method.name}${method.generics}(input: ${method.inputType}, ...context: $ContextArgument): $Promise<${readOnly(method, `${recordName}Loadable`, method.returnType)}>;`);
   if (readBodies.length) frameUsed = true;
   // The load function lives here, beside the entity value, so the barrel re-exports both from this file; it reads the plan
   // from the load file, which imports no actions file.
@@ -837,7 +834,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     extraTypes.add(loadFunction.loadable).add(loadFunction.with);
     planUsed = true;
   }
-  return {
+  const view = {
     entityFile: entityFileComment(entity),
     hasActions: methods.length > 0,
     bindName: `bind${recordName}`,
@@ -866,6 +863,9 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     readsOptionsName: readsLoad ? "options" : "_options",
     reads: readBodies,
   };
+  // The template prints `$Object.freeze` and, around the methods and the load function, `$Promise` and `$Omit` itself.
+  const fixed = [...(["Object"] as const), ...(methods.length || loadFunction ? (["Promise"] as const) : []), ...(loadFunction ? (["Omit"] as const) : [])];
+  return { ...view, globals: globalsImport(`${entityPath(entity)}.actions`, view, fixed) };
 }
 
 /** True when a `run [after=:write]` is among the steps, at any depth. */

@@ -10,6 +10,8 @@ import type {
   CommentLoaded as $blog$Comment$Loaded,
 } from "./comment.types";
 
+import type { $Date, $Pick } from "../../$globals";
+
 export type Post = {
   id: string;
   title: string;
@@ -18,12 +20,12 @@ export type Post = {
   rating: number | null;
   price: number;
   featured: boolean;
-  publicationDate: Date | null;
-  publishedAt: Date | null;
+  publicationDate: $Date | null;
+  publishedAt: $Date | null;
   state: "draft" | "published";
   metadata: unknown;
-  insertedAt: Date;
-  updatedAt: Date;
+  insertedAt: $Date;
+  updatedAt: $Date;
   authorId: string;
 };
 
@@ -76,7 +78,7 @@ export type PostLoadable = {
 };
 
 /** A Post with the relationships and computed fields named in N loaded. */
-export type PostWith<N extends keyof PostLoadable> = Post & Pick<PostLoadable, N>;
+export type PostWith<N extends keyof PostLoadable> = Post & $Pick<PostLoadable, N>;
 
 /** What a load through `privileged` attaches to a Post: it runs no policy, so every related record the key names is there. */
 export type PostTxLoadable = {
@@ -87,7 +89,7 @@ export type PostTxLoadable = {
 };
 
 /** A Post loaded through `privileged`, with the relationships and computed fields named in N. */
-export type PostTxWith<N extends keyof PostLoadable> = Post & Pick<PostTxLoadable, N>;
+export type PostTxWith<N extends keyof PostLoadable> = Post & $Pick<PostTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type PostLoadNames<L extends readonly (keyof PostLoadable)[]> = number extends L["length"]
@@ -120,11 +122,11 @@ export type PostFilter =
       rating?: $Comparison<number>;
       price?: $Comparison<number>;
       featured?: $Comparison<boolean>;
-      publicationDate?: $Comparison<Date>;
-      publishedAt?: $Comparison<Date>;
+      publicationDate?: $Comparison<$Date>;
+      publishedAt?: $Comparison<$Date>;
       state?: $Comparison<"draft" | "published">;
-      insertedAt?: $Comparison<Date>;
-      updatedAt?: $Comparison<Date>;
+      insertedAt?: $Comparison<$Date>;
+      updatedAt?: $Comparison<$Date>;
       authorId?: $Comparison<string>;
       excerpt?: $Comparison<string>;
       commentCount?: $Comparison<number>;

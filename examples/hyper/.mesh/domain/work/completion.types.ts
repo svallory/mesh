@@ -15,10 +15,12 @@ import type {
   CollaboratorLoaded as $identity$Collaborator$Loaded,
 } from "../identity/collaborator.types";
 
+import type { $Date, $Pick } from "../../$globals";
+
 export type Completion = {
   id: string;
   rule: "review-accepted" | "performer-is-reviewer" | "review-waived";
-  completedAt: Date;
+  completedAt: $Date;
   taskId: string;
   submissionId: string | null;
   completedById: string;
@@ -52,7 +54,7 @@ export type CompletionLoadable = {
 
 /** A Completion with the relationships and computed fields named in N loaded. */
 export type CompletionWith<N extends keyof CompletionLoadable> = Completion &
-  Pick<CompletionLoadable, N>;
+  $Pick<CompletionLoadable, N>;
 
 /** What a load through `privileged` attaches to a Completion: it runs no policy, so every related record the key names is there. */
 export type CompletionTxLoadable = {
@@ -63,7 +65,7 @@ export type CompletionTxLoadable = {
 
 /** A Completion loaded through `privileged`, with the relationships and computed fields named in N. */
 export type CompletionTxWith<N extends keyof CompletionLoadable> = Completion &
-  Pick<CompletionTxLoadable, N>;
+  $Pick<CompletionTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type CompletionLoadNames<L extends readonly (keyof CompletionLoadable)[]> =
@@ -89,7 +91,7 @@ export type CompletionFilter =
   | {
       id?: $Comparison<string>;
       rule?: $Comparison<"review-accepted" | "performer-is-reviewer" | "review-waived">;
-      completedAt?: $Comparison<Date>;
+      completedAt?: $Comparison<$Date>;
       taskId?: $Comparison<string>;
       submissionId?: $Comparison<string>;
       completedById?: $Comparison<string>;

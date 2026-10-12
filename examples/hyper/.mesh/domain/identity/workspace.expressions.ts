@@ -13,6 +13,7 @@ import type {
   CreateWorkspaceInput as $identity$Workspace$CreateWorkspaceInput,
   RenameWorkspaceInput as $identity$Workspace$RenameWorkspaceInput,
 } from "./workspace.types";
+import type { $Omit } from "../../$globals";
 
 /** What every expression of Workspace reads; `I` is the input of the action it runs in. */
 export type $identity$Workspace$Scope<I = unknown> = $Scope<{
@@ -27,7 +28,7 @@ export type $identity$Workspace$StoredScope<I = unknown> = $identity$Workspace$S
   before: $DeepReadonly<$identity$Workspace$Record>;
 };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type $identity$Workspace$CheckScope<I = unknown> = Omit<
+export type $identity$Workspace$CheckScope<I = unknown> = $Omit<
   $identity$Workspace$Scope<I>,
   "before"
 >;

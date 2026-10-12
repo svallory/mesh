@@ -86,7 +86,7 @@ describe("two entities named List in modules a and b", () => {
   test("build writes one set of files per module, and each barrel exports its own List", async () => {
     const files = (await readdir(join(root, ".mesh"), { recursive: true })).filter((name) => name.endsWith(".ts")).sort();
     expect(files).toEqual([
-      "binding.ts", "domain/a/index.ts", "domain/a/list.actions.ts", "domain/a/list.expressions.ts", "domain/a/list.types.ts",
+      "$globals.ts", "binding.ts", "domain/a/index.ts", "domain/a/list.actions.ts", "domain/a/list.expressions.ts", "domain/a/list.types.ts",
       "domain/a/list.validators.ts", "domain/b/index.ts", "domain/b/list.actions.ts", "domain/b/list.expressions.ts",
       "domain/b/list.types.ts", "domain/b/list.validators.ts", "domain/index.ts", "index.ts", "load.ts", "schema.ts",
     ]);

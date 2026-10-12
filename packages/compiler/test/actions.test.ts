@@ -107,9 +107,9 @@ describe("actions view", () => {
       ["rename", '"blog.Article#rename"', "RenameArticleInput", "renameArticleInput", "Article"],
       ["publish", '"blog.Article#publish"', "PublishArticleInput", "publishArticleInput", 'ArticleWith<"author">'],
       ["purge", '"blog.Article#purge"', "PurgeArticleInput", "purgeArticleInput", "void"],
-      ["live", '"blog.Article#live"', 'Omit<LiveArticleInput, "load"> & ArticleLoadArg<L>', "liveArticleInput", "(L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)"],
-      ["load", '"blog.Article#load"', 'Omit<LoadArticleInput, "load"> & ArticleLoadArg<L>', "loadArticleInput", "(L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)"],
-      ["read", '"blog.Article#read"', 'Omit<ReadArticleInput, "load"> & ArticleLoadArg<L>', "readArticleInput", "(L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)"],
+      ["live", '"blog.Article#live"', '$Omit<LiveArticleInput, "load"> & ArticleLoadArg<L>', "liveArticleInput", "(L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)"],
+      ["load", '"blog.Article#load"', '$Omit<LoadArticleInput, "load"> & ArticleLoadArg<L>', "loadArticleInput", "(L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)"],
+      ["read", '"blog.Article#read"', '$Omit<ReadArticleInput, "load"> & ArticleLoadArg<L>', "readArticleInput", "(L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)"],
       ["destroy", '"blog.Article#destroy"', "DestroyArticleInput", "destroyArticleInput", "void"],
     ]);
     expect(view.runtimeValues).toEqual([
@@ -158,7 +158,7 @@ describe("actions view", () => {
     // M8: the policies run before the transaction (the context and the clock are read there, once, for the whole call).
     expect(create.preCheck).toEqual([
       expect.stringMatching(/^\/\/ pre-check: /),
-      "const $context = (context ?? {}) as unknown as Record<string, unknown>;",
+      "const $context = (context ?? {}) as unknown as { [key: string]: unknown };",
       "const $actor = $context.actor;",
       "const $clock = $pinClock(options.clock);",
       'const $policies = $authorizer("blog.Article", "create", [{ name: "everyone", when: null, checks: [{ kind: "authorize-if", check: "() => true", record: false, run: $expressions["policy.everyone.authorize-if.0"] }] }]);',
@@ -203,12 +203,12 @@ describe("actions view", () => {
       "const $rows = (await tx.select(tables.articles, { filter: parsed.filter, sort: parsed.sort, limit: parsed.limit, offset: parsed.offset })) as Article[];",
       // Through `tx` no policy runs, so the author is always there: the body is typed with `ArticleTxWith` (POL-17).
       "if (!parsed.load?.length) return $rows as unknown as (L extends unknown ? ArticleTxWith<ArticleLoadNames<L>>[] : never);",
-      "const $context = (context ?? {}) as unknown as Record<string, unknown>;",
+      "const $context = (context ?? {}) as unknown as { [key: string]: unknown };",
       'const $clock = clock ?? $pinClock(options.clock);',
       'return (await $loadRows($loadPlan, "blog.Article", tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock, policies, frame })) as unknown as (L extends unknown ? ArticleTxWith<ArticleLoadNames<L>>[] : never);'],
       generics: "<const L extends readonly (keyof ArticleLoadable)[] = readonly []>",
       // The read action casts its input once, for its policies, and hands it over as `cast` (R2-N4); a `privileged` read casts it in the body.
-      contextParam: ", context?: unknown, clock?: () => Date, policies?: boolean, cast?: $CastOutput<typeof readArticleInput>" });
+      contextParam: ", context?: unknown, clock?: () => $Date, policies?: boolean, cast?: $CastOutput<typeof readArticleInput>" });
     // The read action asks for the load's policies (`true`); a caller's result is typed with `ArticleWith`, where the author may be null.
     expect(view.methods.filter((m) => m.isRead).map((m) => [m.name, m.readsCall, m.statements])).toEqual([
       ["live", "$reads.live(input, context)", []],

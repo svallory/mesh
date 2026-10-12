@@ -21,6 +21,7 @@ import type {
   GrantMembershipInput as $identity$Membership$GrantMembershipInput,
   RevokeMembershipInput as $identity$Membership$RevokeMembershipInput,
 } from "./membership.types";
+import type { $Omit } from "../../$globals";
 
 /** What every expression of Membership reads; `I` is the input of the action it runs in. */
 export type $identity$Membership$Scope<I = unknown> = $Scope<{
@@ -35,17 +36,17 @@ export type $identity$Membership$StoredScope<I = unknown> = $identity$Membership
   before: $DeepReadonly<$identity$Membership$Record>;
 };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type $identity$Membership$CheckScope<I = unknown> = Omit<
+export type $identity$Membership$CheckScope<I = unknown> = $Omit<
   $identity$Membership$Scope<I>,
   "before"
 >;
 /** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
-export type $identity$Membership$NewScope<I = unknown> = Omit<
+export type $identity$Membership$NewScope<I = unknown> = $Omit<
   $identity$Membership$CheckScope<I>,
   "self"
 > & {
   self: $DeepReadonly<
-    Omit<
+    $Omit<
       $identity$Membership$Loaded,
       "role" | "grantedAt" | "collaboratorId" | "collaborator" | "grantedById" | "grantedBy"
     > & {

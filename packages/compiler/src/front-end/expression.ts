@@ -43,13 +43,25 @@ const GLOBALS = new Set([
 /**
  * The functions Mesh registers by name, which a function in an entity file calls without importing them. `privileged`
  * (TXN-16) has no `fn`: a function that calls it is plain code, since what it reads is not an expression over the record.
+ * They behave as JavaScript's globals do (PRJ-20): a name the function binds or the file imports (a helper, or an entity
+ * under an alias) is that, and hides the registered function of that name (`registeredCall`).
  */
-const REGISTERED_CALLS: Record<string, { fn?: FunctionId; arity: number; example: string }> = {
-  now: { fn: "now", arity: 0, example: "now()" },
-  today: { fn: "today", arity: 0, example: "today()" },
-  isSystem: { fn: "isSystem", arity: 1, example: "isSystem(context)" },
-  privileged: { arity: 1, example: "privileged(Task)" },
-};
+const REGISTERED_CALLS: ReadonlyMap<string, { fn?: FunctionId; arity: number; example: string }> = new Map([
+  ["now", { fn: "now", arity: 0, example: "now()" }],
+  ["today", { fn: "today", arity: 0, example: "today()" }],
+  ["isSystem", { fn: "isSystem", arity: 1, example: "isSystem(context)" }],
+  ["privileged", { arity: 1, example: "privileged(Task)" }],
+]);
+/**
+ * The registered function a free `name` is, or undefined when something nearer has the name: `bound` (a binding of the
+ * function in scope where the name is read), an import of the file (a helper, or an entity under an alias such as
+ * `import { List as now }`) or the file's own entity. One name has one meaning, so the printed function binds the
+ * registered function only where nothing else has its name.
+ */
+function registeredCall(name: string, bound: (name: string) => boolean, ctx: ConvertContext) {
+  if (bound(name) || ctx.imported.has(name) || ctx.helpers.has(name) || ctx.entities?.has(name)) return undefined;
+  return REGISTERED_CALLS.get(name);
+}
 const FREE_VARIABLE = (name: string) =>
   `\`${name}\` is not defined here: a function in an entity file may use its parameters, \`&members\`, imported helpers, its own entity and the imported ones, \`now()\`, \`today()\`, \`isSystem()\` and \`privileged()\``;
 const BINARY: Record<string, FunctionId> = {
@@ -163,7 +175,7 @@ function freeVariables(fn: N, ctx: ConvertContext, clock: Set<string>, names: Na
   const roots = new Set<string>();
   const entities = ctx.entities ?? new Set<string>();
   const known = (name: string) =>
-    bound.has(name) || ctx.imported.has(name) || entities.has(name) || SCOPE_NAMES.has(name) || GLOBALS.has(name) || name in REGISTERED_CALLS;
+    bound.has(name) || ctx.imported.has(name) || entities.has(name) || SCOPE_NAMES.has(name) || GLOBALS.has(name) || REGISTERED_CALLS.has(name);
   const walk = (value: unknown, parent: N | undefined, key: string | undefined, scope: ReadonlySet<string>): void => {
     if (!value || typeof value !== "object") return;
     if (Array.isArray(value)) { for (const v of value) walk(v, parent, key, scope); return; }
@@ -175,8 +187,8 @@ function freeVariables(fn: N, ctx: ConvertContext, clock: Set<string>, names: Na
       const objectKey = parent && (parent.type === "ObjectProperty" || parent.type === "ObjectMethod" || parent.type === "ClassMethod" || parent.type === "ClassProperty") && key === "key" && !parent.computed;
       const label = parent && /^(LabeledStatement|BreakStatement|ContinueStatement)$/.test(parent.type) && key === "label";
       if (!property && !objectKey && !label && SCOPE_NAMES.has(n.name!) && !scope.has(n.name!)) roots.add(n.name!);
-      // An imported `now` or `today` is the import, as it is in translated code (`convert`).
-      if (!property && !objectKey && !label && n.name! in REGISTERED_CALLS && !scope.has(n.name!) && !ctx.helpers.has(n.name!)) {
+      // An imported `now` or `today`, a helper or an entity's alias, is the import, as it is in translated code (`convert`).
+      if (!property && !objectKey && !label && registeredCall(n.name!, (name) => scope.has(name), ctx)) {
         clock.add(n.name!);
         if (n.name === "privileged") (names.privileged ??= []).push(ctx.at(start(n)));
       }
@@ -197,7 +209,7 @@ function freeVariables(fn: N, ctx: ConvertContext, clock: Set<string>, names: Na
     }
     // A registered function called with the wrong number of arguments is an error, translated or plain (N3 of the M8a review).
     const callee = n.type === "CallExpression" || n.type === "OptionalCallExpression" ? n.callee as N : undefined;
-    const registered = callee?.type === "Identifier" && !scope.has(callee.name!) && !ctx.imported.has(callee.name!) && !ctx.helpers.has(callee.name!) ? REGISTERED_CALLS[callee.name!] : undefined;
+    const registered = callee?.type === "Identifier" ? registeredCall(callee.name!, (name) => scope.has(name), ctx) : undefined;
     const args = (n.arguments ?? []) as N[];
     if (registered && args.length !== registered.arity)
       ctx.report({
@@ -380,8 +392,8 @@ function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode 
       const args = (n.arguments ?? []) as N[];
       if (callee.type === "Identifier") {
         const name = callee.name!;
-        const registered = REGISTERED_CALLS[name];
-        if (registered && !env.roots.has(name) && !env.locals.has(name) && !ctx.helpers.has(name)) {
+        const registered = registeredCall(name, (local) => env.roots.has(local) || env.locals.has(local), ctx);
+        if (registered) {
           if (args.length !== registered.arity)
             throw new Plain("unsupported-construct", registered.arity === 0 ? `\`${name}()\` takes no arguments` : `\`${name}()\` takes ${registered.arity} argument`, n);
           if (!registered.fn) throw new Plain("uses-privileged", "reads through `privileged`", n);

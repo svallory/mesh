@@ -25,6 +25,7 @@ import type {
   AcceptReviewInput as $work$Review$AcceptReviewInput,
   ReturnReviewInput as $work$Review$ReturnReviewInput,
 } from "./review.types";
+import type { $Omit } from "../../$globals";
 
 /** What every expression of Review reads; `I` is the input of the action it runs in. */
 export type $work$Review$Scope<I = unknown> = $Scope<{
@@ -39,11 +40,11 @@ export type $work$Review$StoredScope<I = unknown> = $work$Review$Scope<I> & {
   before: $DeepReadonly<$work$Review$Record>;
 };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type $work$Review$CheckScope<I = unknown> = Omit<$work$Review$Scope<I>, "before">;
+export type $work$Review$CheckScope<I = unknown> = $Omit<$work$Review$Scope<I>, "before">;
 /** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
-export type $work$Review$NewScope<I = unknown> = Omit<$work$Review$CheckScope<I>, "self"> & {
+export type $work$Review$NewScope<I = unknown> = $Omit<$work$Review$CheckScope<I>, "self"> & {
   self: $DeepReadonly<
-    Omit<
+    $Omit<
       $work$Review$Loaded,
       "decision" | "ruleApplied" | "submissionId" | "submission" | "reviewerId" | "reviewer"
     > & {

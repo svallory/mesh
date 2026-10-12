@@ -1,7 +1,8 @@
 import { dirname, relative, resolve } from "node:path";
-import { attributeTypeInfo, type Entity } from "@meshfw/model";
+import type { Entity } from "@meshfw/model";
 import { emitError } from "../emit-error.ts";
 import type { EmitInput } from "../emit.ts";
+import { globalsImport, type GlobalsImport } from "./globals.ts";
 import { hasLoader } from "./load.ts";
 import {
   baseType,
@@ -13,6 +14,7 @@ import {
   loadGenerics,
   propertyName,
   takesLoad,
+  tsTypeOf,
   queryColumns,
   sortTypeName,
   typeName,
@@ -41,6 +43,8 @@ export interface TypesView {
   readonly query: QueryDeclaration | null;
   /** What `load` can attach to the record: one member per relationship and computed field; `null` when the entity has neither. */
   readonly loadable: LoadableDeclaration | null;
+  /** The globals the file names (`$Date`, `$Pick`), from `$globals.ts`; null when it names none. */
+  readonly globals: GlobalsImport | null;
 }
 
 /**
@@ -172,10 +176,6 @@ export function typesView({ document }: EmitInput, entity: Entity): TypesView {
     const found = imported.get(target.file);
     if (found && hasLoader(target)) found.loaded = true;
   }
-  const allFields = [...entity.attributes, ...inputs.flatMap((i) => i.fields.map((f) => f.attribute))];
-  if (allFields.some((f) => attributeTypeInfo(f.type).tsType === "Date") && declared.has("Date"))
-    throw emitError("MESH_EMIT_NAME", "Generated Date would shadow the Date type", entity.position);
-
   const imports = [...imported.values()].map(({ target, local, loadedLocal, loaded }): TypeImport => {
     let path = relative(dirname(entityPath(entity)), entityPath(target)).replace(/\\/g, "/");
     if (!path.startsWith(".")) path = `./${path}`;
@@ -196,9 +196,9 @@ export function typesView({ document }: EmitInput, entity: Entity): TypesView {
         name: relation.keyColumn,
         optional: false,
         key: propertyName(relation.keyColumn),
-        type: `${attributeTypeInfo(relation.keyType ?? "string").tsType}${relation.nullable ? " | null" : ""}`,
+        type: `${tsTypeOf(relation.keyType ?? "string")}${relation.nullable ? " | null" : ""}`,
       });
-  return {
+  const view = {
     entityFile: entityFileComment(entity),
     imports,
     record: { name: recordName, members: recordMembers },
@@ -206,6 +206,8 @@ export function typesView({ document }: EmitInput, entity: Entity): TypesView {
     query: hasRead(entity) ? queryDeclaration(entity) : null,
     loadable: loadableDeclaration(document, entity, recordName, locals),
   };
+  // The template prints `$Pick` in the loaded types itself.
+  return { ...view, globals: globalsImport(`${entityPath(entity)}.types`, view, view.loadable ? ["Pick"] : [], true) };
 }
 
 /** The entity a relationship points at; a model that has none was not checked by the build. */

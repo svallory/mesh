@@ -21,6 +21,7 @@ import type {
   AddDependencyInput as $work$Dependency$AddDependencyInput,
   RemoveDependencyInput as $work$Dependency$RemoveDependencyInput,
 } from "./dependency.types";
+import type { $Omit } from "../../$globals";
 
 /** What every expression of Dependency reads; `I` is the input of the action it runs in. */
 export type $work$Dependency$Scope<I = unknown> = $Scope<{
@@ -35,14 +36,14 @@ export type $work$Dependency$StoredScope<I = unknown> = $work$Dependency$Scope<I
   before: $DeepReadonly<$work$Dependency$Record>;
 };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type $work$Dependency$CheckScope<I = unknown> = Omit<$work$Dependency$Scope<I>, "before">;
+export type $work$Dependency$CheckScope<I = unknown> = $Omit<$work$Dependency$Scope<I>, "before">;
 /** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
-export type $work$Dependency$NewScope<I = unknown> = Omit<
+export type $work$Dependency$NewScope<I = unknown> = $Omit<
   $work$Dependency$CheckScope<I>,
   "self"
 > & {
   self: $DeepReadonly<
-    Omit<
+    $Omit<
       $work$Dependency$Loaded,
       "dependentId" | "dependent" | "prerequisiteId" | "prerequisite" | "createdById" | "createdBy"
     > & {

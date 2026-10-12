@@ -1,0 +1,26 @@
+import { Object } from "./object.mesh.mx"
+
+entity :Date
+  attributes
+    uuid :id primary-key
+    string :name min=1 max=40 match=/^[A-Z]/
+    timestamp :at on=:create
+  relationships
+    belongs-to :next entity=Object nullable
+  computed
+    boolean :past() { return &at <= now() }
+  actions auto=[:read]
+    create :create
+      input
+        &name
+        &next
+    update :rename
+      input
+        &name
+      validate
+        check :long that=({ input }) => input.name === null || input.name.length > 3 code="short" message="The name is too short"
+  policies
+    policy :anyone types=[:create, :read, :update]
+      authorize-if=() => true
+    policy :keeper actions=[&rename]
+      forbid-if=({ actor }) => actor.id === "intruder"

@@ -21,6 +21,7 @@ import type {
   RedactSessionReferenceInput as $execution$SessionReference$RedactSessionReferenceInput,
   SetAvailabilitySessionReferenceInput as $execution$SessionReference$SetAvailabilitySessionReferenceInput,
 } from "./sessionReference.types";
+import type { $Omit } from "../../$globals";
 
 /** What every expression of SessionReference reads; `I` is the input of the action it runs in. */
 export type $execution$SessionReference$Scope<I = unknown> = $Scope<{
@@ -36,17 +37,17 @@ export type $execution$SessionReference$StoredScope<I = unknown> =
     before: $DeepReadonly<$execution$SessionReference$Record>;
   };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type $execution$SessionReference$CheckScope<I = unknown> = Omit<
+export type $execution$SessionReference$CheckScope<I = unknown> = $Omit<
   $execution$SessionReference$Scope<I>,
   "before"
 >;
 /** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
-export type $execution$SessionReference$NewScope<I = unknown> = Omit<
+export type $execution$SessionReference$NewScope<I = unknown> = $Omit<
   $execution$SessionReference$CheckScope<I>,
   "self"
 > & {
   self: $DeepReadonly<
-    Omit<
+    $Omit<
       $execution$SessionReference$Loaded,
       | "runtime"
       | "runtimeSessionId"

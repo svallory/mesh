@@ -10,6 +10,7 @@ import type {
   Comment as $blog$Comment$Record,
   CommentLoaded as $blog$Comment$Loaded,
 } from "./comment.types";
+import type { $Omit } from "../../$globals";
 
 /** What every expression of Comment reads; `I` is the input of the action it runs in. */
 export type $blog$Comment$Scope<I = unknown> = $Scope<{
@@ -24,7 +25,7 @@ export type $blog$Comment$StoredScope<I = unknown> = $blog$Comment$Scope<I> & {
   before: $DeepReadonly<$blog$Comment$Record>;
 };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type $blog$Comment$CheckScope<I = unknown> = Omit<$blog$Comment$Scope<I>, "before">;
+export type $blog$Comment$CheckScope<I = unknown> = $Omit<$blog$Comment$Scope<I>, "before">;
 
 export const $expressions = {
   // policy :signedIn authorize-if, translated (src/domain/blog/comment.mesh.mx:12:20)

@@ -13,6 +13,8 @@ import type {
   CollaboratorLoaded as $identity$Collaborator$Loaded,
 } from "../identity/collaborator.types";
 
+import type { $Date, $Pick } from "../../$globals";
+
 export type SessionReference = {
   id: string;
   runtime: string;
@@ -20,7 +22,7 @@ export type SessionReference = {
   availability: "complete" | "partial" | "unavailable" | "redacted";
   location: string | null;
   version: number;
-  recordedAt: Date;
+  recordedAt: $Date;
   machineId: string;
   agentProfileId: string;
   recordedById: string;
@@ -71,7 +73,7 @@ export type SessionReferenceLoadable = {
 
 /** A SessionReference with the relationships and computed fields named in N loaded. */
 export type SessionReferenceWith<N extends keyof SessionReferenceLoadable> = SessionReference &
-  Pick<SessionReferenceLoadable, N>;
+  $Pick<SessionReferenceLoadable, N>;
 
 /** What a load through `privileged` attaches to a SessionReference: it runs no policy, so every related record the key names is there. */
 export type SessionReferenceTxLoadable = {
@@ -82,7 +84,7 @@ export type SessionReferenceTxLoadable = {
 
 /** A SessionReference loaded through `privileged`, with the relationships and computed fields named in N. */
 export type SessionReferenceTxWith<N extends keyof SessionReferenceLoadable> = SessionReference &
-  Pick<SessionReferenceTxLoadable, N>;
+  $Pick<SessionReferenceTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type SessionReferenceLoadNames<L extends readonly (keyof SessionReferenceLoadable)[]> =
@@ -112,7 +114,7 @@ export type SessionReferenceFilter =
       availability?: $Comparison<"complete" | "partial" | "unavailable" | "redacted">;
       location?: $Comparison<string>;
       version?: $Comparison<number>;
-      recordedAt?: $Comparison<Date>;
+      recordedAt?: $Comparison<$Date>;
       machineId?: $Comparison<string>;
       agentProfileId?: $Comparison<string>;
       recordedById?: $Comparison<string>;

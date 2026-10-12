@@ -10,6 +10,8 @@ import type {
   CollaboratorLoaded as $identity$Collaborator$Loaded,
 } from "../identity/collaborator.types";
 
+import type { $Date, $Pick } from "../../$globals";
+
 export type Submission = {
   id: string;
   summary: string | null;
@@ -17,7 +19,7 @@ export type Submission = {
   fence: number | null;
   taskVersion: number;
   state: "pending" | "accepted" | "returned" | "withdrawn";
-  submittedAt: Date;
+  submittedAt: $Date;
   taskId: string;
   submitterId: string;
 };
@@ -70,7 +72,7 @@ export type SubmissionLoadable = {
 
 /** A Submission with the relationships and computed fields named in N loaded. */
 export type SubmissionWith<N extends keyof SubmissionLoadable> = Submission &
-  Pick<SubmissionLoadable, N>;
+  $Pick<SubmissionLoadable, N>;
 
 /** What a load through `privileged` attaches to a Submission: it runs no policy, so every related record the key names is there. */
 export type SubmissionTxLoadable = {
@@ -80,7 +82,7 @@ export type SubmissionTxLoadable = {
 
 /** A Submission loaded through `privileged`, with the relationships and computed fields named in N. */
 export type SubmissionTxWith<N extends keyof SubmissionLoadable> = Submission &
-  Pick<SubmissionTxLoadable, N>;
+  $Pick<SubmissionTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type SubmissionLoadNames<L extends readonly (keyof SubmissionLoadable)[]> =
@@ -108,7 +110,7 @@ export type SubmissionFilter =
       fence?: $Comparison<number>;
       taskVersion?: $Comparison<number>;
       state?: $Comparison<"pending" | "accepted" | "returned" | "withdrawn">;
-      submittedAt?: $Comparison<Date>;
+      submittedAt?: $Comparison<$Date>;
       taskId?: $Comparison<string>;
       submitterId?: $Comparison<string>;
     };

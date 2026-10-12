@@ -33,6 +33,7 @@ import type {
   SubmitSubmissionInput as $work$Submission$SubmitSubmissionInput,
   WithdrawSubmissionInput as $work$Submission$WithdrawSubmissionInput,
 } from "./submission.types";
+import type { $Omit } from "../../$globals";
 
 /** What every expression of Submission reads; `I` is the input of the action it runs in. */
 export type $work$Submission$Scope<I = unknown> = $Scope<{
@@ -47,14 +48,14 @@ export type $work$Submission$StoredScope<I = unknown> = $work$Submission$Scope<I
   before: $DeepReadonly<$work$Submission$Record>;
 };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type $work$Submission$CheckScope<I = unknown> = Omit<$work$Submission$Scope<I>, "before">;
+export type $work$Submission$CheckScope<I = unknown> = $Omit<$work$Submission$Scope<I>, "before">;
 /** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
-export type $work$Submission$NewScope<I = unknown> = Omit<
+export type $work$Submission$NewScope<I = unknown> = $Omit<
   $work$Submission$CheckScope<I>,
   "self"
 > & {
   self: $DeepReadonly<
-    Omit<
+    $Omit<
       $work$Submission$Loaded,
       "taskVersion" | "taskId" | "task" | "submitterId" | "submitter"
     > & {

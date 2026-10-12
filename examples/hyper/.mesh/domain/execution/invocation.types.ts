@@ -23,6 +23,8 @@ import type {
   CollaboratorLoaded as $identity$Collaborator$Loaded,
 } from "../identity/collaborator.types";
 
+import type { $Date, $Pick } from "../../$globals";
+
 export type Invocation = {
   id: string;
   requestedProvider: string | null;
@@ -36,10 +38,10 @@ export type Invocation = {
   usageSource: "runtime" | "provider" | "estimate";
   estimatedCost: number | null;
   pricingBasis: string | null;
-  startedAt: Date | null;
-  endedAt: Date | null;
+  startedAt: $Date | null;
+  endedAt: $Date | null;
   reason: string | null;
-  recordedAt: Date;
+  recordedAt: $Date;
   attemptId: string;
   taskId: string;
   sessionId: string | null;
@@ -60,8 +62,8 @@ export type RecordInvocationInput = {
   usageSource: "runtime" | "provider" | "estimate";
   estimatedCost?: number | null | undefined;
   pricingBasis?: string | null | undefined;
-  startedAt?: Date | null | undefined;
-  endedAt?: Date | null | undefined;
+  startedAt?: $Date | null | undefined;
+  endedAt?: $Date | null | undefined;
   session?: $execution$SessionReference$Record["id"] | null | undefined;
 };
 
@@ -79,8 +81,8 @@ export type CorrectInvocationInput = {
   usageSource: "runtime" | "provider" | "estimate";
   estimatedCost?: number | null | undefined;
   pricingBasis?: string | null | undefined;
-  startedAt?: Date | null | undefined;
-  endedAt?: Date | null | undefined;
+  startedAt?: $Date | null | undefined;
+  endedAt?: $Date | null | undefined;
   session?: $execution$SessionReference$Record["id"] | null | undefined;
 };
 
@@ -108,7 +110,7 @@ export type InvocationLoadable = {
 
 /** A Invocation with the relationships and computed fields named in N loaded. */
 export type InvocationWith<N extends keyof InvocationLoadable> = Invocation &
-  Pick<InvocationLoadable, N>;
+  $Pick<InvocationLoadable, N>;
 
 /** What a load through `privileged` attaches to a Invocation: it runs no policy, so every related record the key names is there. */
 export type InvocationTxLoadable = {
@@ -121,7 +123,7 @@ export type InvocationTxLoadable = {
 
 /** A Invocation loaded through `privileged`, with the relationships and computed fields named in N. */
 export type InvocationTxWith<N extends keyof InvocationLoadable> = Invocation &
-  Pick<InvocationTxLoadable, N>;
+  $Pick<InvocationTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type InvocationLoadNames<L extends readonly (keyof InvocationLoadable)[]> =
@@ -159,10 +161,10 @@ export type InvocationFilter =
       usageSource?: $Comparison<"runtime" | "provider" | "estimate">;
       estimatedCost?: $Comparison<number>;
       pricingBasis?: $Comparison<string>;
-      startedAt?: $Comparison<Date>;
-      endedAt?: $Comparison<Date>;
+      startedAt?: $Comparison<$Date>;
+      endedAt?: $Comparison<$Date>;
       reason?: $Comparison<string>;
-      recordedAt?: $Comparison<Date>;
+      recordedAt?: $Comparison<$Date>;
       attemptId?: $Comparison<string>;
       taskId?: $Comparison<string>;
       sessionId?: $Comparison<string>;

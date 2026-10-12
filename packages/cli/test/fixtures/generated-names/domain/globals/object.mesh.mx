@@ -1,0 +1,31 @@
+import { Promise as now } from "./promise.mesh.mx"
+import { Record } from "./record.mesh.mx"
+
+entity :Object
+  attributes
+    uuid :id primary-key
+    string :name min=1 max=40 match=/^[A-Z]/
+    integer :counted nullable
+  relationships
+    belongs-to :next entity=Record nullable
+  computed
+    string :initial() { return &name.slice(0, 1) }
+  actions auto=[:read]
+    create :create
+      input
+        &name
+        &next
+    update :rename
+      input
+        &name
+      validate
+        check :long that=({ input }) => input.name === null || input.name.length > 3 code="short" message="The name is too short"
+    update :count
+      do
+        set
+          &counted=async () => (await now.read({})).length
+  policies
+    policy :anyone types=[:create, :read, :update]
+      authorize-if=() => true
+    policy :keeper actions=[&rename]
+      forbid-if=({ actor }) => actor.id === "intruder"

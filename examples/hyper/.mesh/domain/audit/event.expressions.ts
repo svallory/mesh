@@ -11,6 +11,7 @@ import type {
   EventLoaded as $audit$Event$Loaded,
   RecordEventInput as $audit$Event$RecordEventInput,
 } from "./event.types";
+import type { $Omit } from "../../$globals";
 
 /** What every expression of Event reads; `I` is the input of the action it runs in. */
 export type $audit$Event$Scope<I = unknown> = $Scope<{
@@ -25,11 +26,11 @@ export type $audit$Event$StoredScope<I = unknown> = $audit$Event$Scope<I> & {
   before: $DeepReadonly<$audit$Event$Record>;
 };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type $audit$Event$CheckScope<I = unknown> = Omit<$audit$Event$Scope<I>, "before">;
+export type $audit$Event$CheckScope<I = unknown> = $Omit<$audit$Event$Scope<I>, "before">;
 /** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
-export type $audit$Event$NewScope<I = unknown> = Omit<$audit$Event$CheckScope<I>, "self"> & {
+export type $audit$Event$NewScope<I = unknown> = $Omit<$audit$Event$CheckScope<I>, "self"> & {
   self: $DeepReadonly<
-    Omit<
+    $Omit<
       $audit$Event$Loaded,
       | "seq"
       | "type"

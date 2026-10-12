@@ -10,11 +10,13 @@ import type {
   CollaboratorLoaded as $identity$Collaborator$Loaded,
 } from "../identity/collaborator.types";
 
+import type { $Date, $Pick } from "../../$globals";
+
 export type Assignment = {
   id: string;
   reviewWaived: boolean;
-  startedAt: Date;
-  endedAt: Date | null;
+  startedAt: $Date;
+  endedAt: $Date | null;
   endReason: "reassigned" | "unassigned" | null;
   taskId: string;
   assigneeId: string;
@@ -54,7 +56,7 @@ export type AssignmentLoadable = {
 
 /** A Assignment with the relationships and computed fields named in N loaded. */
 export type AssignmentWith<N extends keyof AssignmentLoadable> = Assignment &
-  Pick<AssignmentLoadable, N>;
+  $Pick<AssignmentLoadable, N>;
 
 /** What a load through `privileged` attaches to a Assignment: it runs no policy, so every related record the key names is there. */
 export type AssignmentTxLoadable = {
@@ -65,7 +67,7 @@ export type AssignmentTxLoadable = {
 
 /** A Assignment loaded through `privileged`, with the relationships and computed fields named in N. */
 export type AssignmentTxWith<N extends keyof AssignmentLoadable> = Assignment &
-  Pick<AssignmentTxLoadable, N>;
+  $Pick<AssignmentTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type AssignmentLoadNames<L extends readonly (keyof AssignmentLoadable)[]> =
@@ -91,8 +93,8 @@ export type AssignmentFilter =
   | {
       id?: $Comparison<string>;
       reviewWaived?: $Comparison<boolean>;
-      startedAt?: $Comparison<Date>;
-      endedAt?: $Comparison<Date>;
+      startedAt?: $Comparison<$Date>;
+      endedAt?: $Comparison<$Date>;
       endReason?: $Comparison<"reassigned" | "unassigned">;
       taskId?: $Comparison<string>;
       assigneeId?: $Comparison<string>;

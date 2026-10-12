@@ -11,6 +11,7 @@ import type {
   CompletionLoaded as $work$Completion$Loaded,
   RecordCompletionInput as $work$Completion$RecordCompletionInput,
 } from "./completion.types";
+import type { $Omit } from "../../$globals";
 
 /** What every expression of Completion reads; `I` is the input of the action it runs in. */
 export type $work$Completion$Scope<I = unknown> = $Scope<{
@@ -25,14 +26,14 @@ export type $work$Completion$StoredScope<I = unknown> = $work$Completion$Scope<I
   before: $DeepReadonly<$work$Completion$Record>;
 };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type $work$Completion$CheckScope<I = unknown> = Omit<$work$Completion$Scope<I>, "before">;
+export type $work$Completion$CheckScope<I = unknown> = $Omit<$work$Completion$Scope<I>, "before">;
 /** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
-export type $work$Completion$NewScope<I = unknown> = Omit<
+export type $work$Completion$NewScope<I = unknown> = $Omit<
   $work$Completion$CheckScope<I>,
   "self"
 > & {
   self: $DeepReadonly<
-    Omit<$work$Completion$Loaded, "rule" | "taskId" | "task" | "completedById" | "completedBy"> & {
+    $Omit<$work$Completion$Loaded, "rule" | "taskId" | "task" | "completedById" | "completedBy"> & {
       [K in "rule" | "taskId" | "task" | "completedById" | "completedBy"]:
         | $work$Completion$Loaded[K]
         | null;

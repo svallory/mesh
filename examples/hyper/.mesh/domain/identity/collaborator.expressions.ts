@@ -20,6 +20,7 @@ import type {
   RetireCollaboratorInput as $identity$Collaborator$RetireCollaboratorInput,
   UpdateCollaboratorInput as $identity$Collaborator$UpdateCollaboratorInput,
 } from "./collaborator.types";
+import type { $Omit } from "../../$globals";
 
 /** What every expression of Collaborator reads; `I` is the input of the action it runs in. */
 export type $identity$Collaborator$Scope<I = unknown> = $Scope<{
@@ -34,17 +35,17 @@ export type $identity$Collaborator$StoredScope<I = unknown> = $identity$Collabor
   before: $DeepReadonly<$identity$Collaborator$Record>;
 };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type $identity$Collaborator$CheckScope<I = unknown> = Omit<
+export type $identity$Collaborator$CheckScope<I = unknown> = $Omit<
   $identity$Collaborator$Scope<I>,
   "before"
 >;
 /** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
-export type $identity$Collaborator$NewScope<I = unknown> = Omit<
+export type $identity$Collaborator$NewScope<I = unknown> = $Omit<
   $identity$Collaborator$CheckScope<I>,
   "self"
 > & {
   self: $DeepReadonly<
-    Omit<$identity$Collaborator$Loaded, "kind" | "name"> & {
+    $Omit<$identity$Collaborator$Loaded, "kind" | "name"> & {
       [K in "kind" | "name"]: $identity$Collaborator$Loaded[K] | null;
     }
   >;

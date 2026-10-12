@@ -67,7 +67,7 @@ describe("the layout", () => {
     expect(paths).toContain(".mesh/domain/tag.actions.ts");
     expect(paths).toContain(".mesh/domain/sales/orders/order.actions.ts");
     expect(paths).toContain(".mesh/domain/schema/schemaThing.types.ts");
-    expect(paths.filter((path) => !path.startsWith(".mesh/domain/")).sort()).toEqual([".mesh/binding.ts", ".mesh/index.ts", ".mesh/model.json"]);
+    expect(paths.filter((path) => !path.startsWith(".mesh/domain/")).sort()).toEqual([".mesh/$globals.ts", ".mesh/binding.ts", ".mesh/index.ts", ".mesh/model.json"]);
   });
 
   test("a folder that holds only folders, not entities, has a barrel of namespaces: sales/ reaches sales/orders/", async () => {
@@ -277,7 +277,7 @@ describe("names across modules", () => {
     "  actions auto=[:read]\n    create :create\n      input\n        &label\n" +
     "  policies\n    policy :open\n      authorize-if=() => true\n";
   // A root entity that names three Lists: the root one by its own name, the others under the aliases its imports wrote.
-  // `Pick` is a global the types file uses (`Pick<...>`): an alias is never a module-level local in generated code.
+  // `Pick` is a global the types file uses, as `$Pick` from `$globals.ts`: an alias is never a module-level local in generated code.
   const board = [
     'import { List } from "./list.mesh.mx"',
     'import { List as OrderList } from "./order-management/list.mesh.mx"',
@@ -319,7 +319,7 @@ describe("names across modules", () => {
     expect(types).toContain('import type { List as $List$Record, ListLoaded as $List$Loaded } from "./list.types";');
     expect(types).toMatch(/import type \{\s*List as \$order_management\$List\$Record,\s*ListLoaded as \$order_management\$List\$Loaded,?\s*\} from "\.\/order-management\/list\.types";/);
     expect(types).toMatch(/import type \{\s*List as \$billing\$List\$Record,\s*ListLoaded as \$billing\$List\$Loaded,?\s*\} from "\.\/billing\/list\.types";/);
-    expect(types).not.toMatch(/\b(OrderList|Pick)\b(?!<)/);
+    expect(types).not.toMatch(/(?<![\w$])(OrderList|Pick)\b/);
     // Each barrel exports its own List and its load function, from its own actions file.
     expect(code(contents(".mesh/domain/order-management/index.ts"))).toContain('export { List, loadListFields } from "./list.actions";');
     expect(code(contents(".mesh/domain/index.ts"))).toContain('export { List, loadListFields } from "./list.actions";');
@@ -351,11 +351,11 @@ describe("names across modules", () => {
     });
   });
 
-  // No name is project-wide and no generated file imports under an authored name, so an entity file reaches
-  // MESH_EMIT_NAME in four ways only: two exports of one barrel (above), a global type (an entity named `Promise`,
-  // `Partial` or `ReturnType`, index.test.ts), `Date` (an entity named `Date` with a timestamp, views.test.ts) and a
+  // No name is project-wide, no generated file imports under an authored name and generated code reaches every global
+  // it uses through `$globals.ts` under a `$` name (PRJ-20: an entity named `Promise`, `Partial` or `Date` builds,
+  // index.test.ts), so an entity file reaches MESH_EMIT_NAME in two ways only: two exports of one barrel (above) and a
   // duplicate generated type (here). An invalid identifier cannot come from an entity file: every name atom is one.
-  test("MESH_EMIT_NAME is left for two exports of one barrel, a global type, Date and a duplicate generated type: two actions whose input types are spelled alike name the entity by FQN (PRJ-17)", async () => {
+  test("MESH_EMIT_NAME is left for two exports of one barrel and a duplicate generated type: two actions whose input types are spelled alike name the entity by FQN (PRJ-17)", async () => {
     const item = "entity :Item\n  attributes\n    uuid :id primary-key\n  actions\n    create :fooBar\n    create :foo_bar\n";
     const error = await generateFiles({ document: documentOf({ "sales/item.mesh.mx": item }), config: configOf("/project", ".mesh") })
       .then(() => undefined, (cause: unknown) => cause);

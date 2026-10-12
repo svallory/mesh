@@ -5,6 +5,7 @@ import type { EmitInput } from "../emit.ts";
 import { emitError } from "../emit-error.ts";
 import { newInstanceComputed, newInstanceGaps, newInstanceMembers } from "../../model/new-instance.ts";
 import { mentioned, printExpression, type EntityLocals } from "../expression-printer.ts";
+import { globalsImport, type GlobalsImport } from "./globals.ts";
 import { hasLoader } from "./load.ts";
 import { entityFileComment } from "./types.ts";
 import { effectiveActions, entityInputs, entityLocal, entityPath, entitySegment, typeName } from "./inputs.ts";
@@ -43,7 +44,7 @@ export interface ExpressionsView {
    */
   readonly entityImports: readonly { names: string; fromLiteral: string }[];
   /**
-   * True when a plain function mentions `structuredClone` and no helper import has that name: the file imports `cloneValue`
+   * True when a plain function mentions `structuredClone` and no import has that name: the file imports `cloneValue`
    * as `$cloneValue`, and each such function binds `structuredClone` to it, since it copies a read-only record.
    */
   readonly shadowsStructuredClone: boolean;
@@ -69,6 +70,8 @@ export interface ExpressionsView {
   readonly helperImports: readonly { names: string; fromLiteral: string }[];
   /** One function per expression, in the order of the entity file. */
   readonly entries: readonly ExpressionEntry[];
+  /** The globals the scope types name (`$Omit`), from `$globals.ts`; null when they name none. */
+  readonly globals: GlobalsImport | null;
 }
 /** A scope type the file declares: its exported name and its definition, a generic over `I`, the input. */
 export interface ScopeDeclaration {
@@ -216,7 +219,7 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
   const gaps = newInstanceGaps(entity);
   const withNulls = (members: readonly string[]) => {
     const names = members.map((name) => JSON.stringify(name)).join(" | ");
-    return `$DeepReadonly<Omit<${selfType}, ${names}> & { [K in ${names}]: ${selfType}[K] | null }>`;
+    return `$DeepReadonly<$Omit<${selfType}, ${names}> & { [K in ${names}]: ${selfType}[K] | null }>`;
   };
   const unfilled = newInstanceMembers(gaps, loaded);
   // A computed field that reads one of them is evaluated over the nulls: null too, whatever its stored type says.
@@ -228,11 +231,11 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
           : kind === "stored" ? storedScopeName : scopeName;
   const usedScopes = new Set(found.map((f) => scopeOf(f.scope)));
   const checkScope = usedScopes.has(checkScopeName) || usedScopes.has(newScopeName)
-    ? { name: checkScopeName, type: `Omit<${scopeName}<I>, "before">` } : null;
+    ? { name: checkScopeName, type: `$Omit<${scopeName}<I>, "before">` } : null;
   const newScope = usedScopes.has(newScopeName)
-    ? { name: newScopeName, type: `Omit<${checkScopeName}<I>, "self"> & { self: ${withNulls(nullOnNew)} }` } : null;
+    ? { name: newScopeName, type: `$Omit<${checkScopeName}<I>, "self"> & { self: ${withNulls(nullOnNew)} }` } : null;
   const createScope = usedScopes.has(createScopeName) && gaps.key
-    ? { name: createScopeName, type: `Omit<${scopeName}<I>, "self"> & { self: ${withNulls([gaps.key])} }` } : null;
+    ? { name: createScopeName, type: `$Omit<${scopeName}<I>, "self"> & { self: ${withNulls([gaps.key])} }` } : null;
   // The input an expression reads: its action's, the fields the covered actions share for an `always` block or a policy, none for a computed field.
   const inputs = entityInputs(entity, document);
   const inputNames = new Map(effectiveActions(entity).map((action, index) => [action.name, inputs[index]!.name]));
@@ -286,8 +289,10 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     return hit;
   };
   // `structuredClone` cannot copy the read-only views a function is handed (they are proxies), so a function that
-  // mentions it binds it to `cloneValue`, unless the entity file imports its own `structuredClone`.
-  const clones = (expression: Expression) => !expression.tree && !helperFrom.has("structuredClone") && mentioned(expression, ["structuredClone"]).length > 0;
+  // mentions it binds it to `cloneValue`, unless the entity file imports something under that name, a helper or an
+  // entity: then the name is the import, as a JavaScript global is hidden by an import of its name.
+  const importsClone = entity.imports.some((imported) => imported.identifiers.includes("structuredClone"));
+  const clones = (expression: Expression) => !expression.tree && !importsClone && mentioned(expression, ["structuredClone"]).length > 0;
   const entries = found.map((f) => ({
       key: JSON.stringify(f.id),
       comment: `${f.what}, ${f.expression.tree ? "translated" : `plain (${f.expression.plain!.why})`} (${entity.file}:${f.expression.position.line}:${f.expression.position.column + 1})`
@@ -319,5 +324,7 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     createScope,
     helperImports: [...byModule].map(([from, names]) => ({ names: names.join(", "), fromLiteral: JSON.stringify(from) })),
     entries,
+    // Only the scope types: the functions' code is authored, and a `$Omit` in a string there is no reference.
+    globals: globalsImport(`${entityPath(entity)}.expressions`, { checkScope, newScope, createScope }),
   };
 }

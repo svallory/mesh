@@ -188,7 +188,7 @@ describe("the types and the read views name what is loadable", () => {
       members: [
         { name: "posts", optional: false, key: "posts", type: "$app$Post$Record[]" },
         { name: "postCount", optional: false, key: "postCount", type: "number" },
-        { name: "lastPostedAt", optional: false, key: "lastPostedAt", type: "Date | null" },
+        { name: "lastPostedAt", optional: false, key: "lastPostedAt", type: "$Date | null" },
         { name: "prolific", optional: false, key: "prolific", type: "boolean" },
         { name: "tier", optional: false, key: "tier", type: '"small" | "large"' },
         { name: "extra", optional: false, key: "extra", type: "unknown" },
@@ -198,7 +198,7 @@ describe("the types and the read views name what is loadable", () => {
       loadedMembers: [
         { name: "posts", optional: false, key: "posts", type: "$app$Post$Loaded[]" },
         { name: "postCount", optional: false, key: "postCount", type: "number" },
-        { name: "lastPostedAt", optional: false, key: "lastPostedAt", type: "Date | null" },
+        { name: "lastPostedAt", optional: false, key: "lastPostedAt", type: "$Date | null" },
         { name: "prolific", optional: false, key: "prolific", type: "boolean" },
         { name: "tier", optional: false, key: "tier", type: '"small" | "large"' },
         { name: "extra", optional: false, key: "extra", type: "unknown" },
