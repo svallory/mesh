@@ -134,11 +134,13 @@ entity :Invoice
       authorize-if=({ actor }) => isStaff(actor)
 ```
 
-Only relative, named imports of files inside `src/domain/` are allowed. An imported helper in a translated expression must be pure: it may not read the clock, the network or anything Mesh did not hand it. A helper that does not read the record, such as `isStaff(actor)`, runs once before the query and enters SQL as a bound value. A `run` step is different: it is plain code and may call anything.
+Only relative, named imports of files inside `src/domain/` are allowed. An import name, whether a helper or an alias for another entity, may not start with `$` or `l$`: Mesh uses those prefixes for the names it generates, and the build refuses the binding (`MESH_HELPER_NAME`). An imported helper in a translated expression must be pure: it may not read the clock, the network or anything Mesh did not hand it. A helper that does not read the record, such as `isStaff(actor)`, runs once before the query and enters SQL as a bound value. A `run` step is different: it is plain code and may call anything.
 
 ### What a translated arrow may use
 
-Comparisons, `&&`, `||`, `!`, numeric `+ - * /`, `.length`, `today()`, member reads such as `&amount`, the function's parameters, and imported pure helpers that do not read the record. String concatenation, a conditional on a string and helpers that read the record run in memory. The build tells you if one appears where the database is required. Do not add a second statement to opt out of translation: Mesh already makes that decision.
+Comparisons, `&&`, `||`, `!`, numeric `+ - * /`, `.length`, `Mesh.today()`, member reads such as `&amount`, the function's parameters, and imported pure helpers that do not read the record. String concatenation, a conditional on a string and helpers that read the record run in memory. The build tells you if one appears where the database is required. Do not add a second statement to opt out of translation: Mesh already makes that decision.
+
+Names in an expression resolve as JavaScript resolves them. Mesh's own functions are members of `Mesh` (`Mesh.today()`, `Mesh.now()`, `Mesh.isSystem(context)`, imported with `import { Mesh } from "meshfw"`), so no bare name in an expression is Mesh's and an import never shadows one. The roots `self`, `input`, `actor`, `context` and `before` are like the expression's parameters: inside an expression they shadow an import of the same name, which stays usable everywhere else in the file. No name is refused.
 
 ## The entity line
 
@@ -147,7 +149,7 @@ Comparisons, `&&`, `||`, `!`, numeric `+ - * /`, `.length`, `today()`, member re
 | `:Todo` | yes | The entity's declared name, in PascalCase; also its named export |
 | `table` | no | The database table; defaults to the entity's name in snake_case |
 
-The folder that holds the file is the module. Entities in `src/domain/todo/` belong together; no line repeats the folder's name. A plain nested folder is a submodule (`todo/reminders`), while a folder starting with `_` only organises files and is left out of the module (`todo/_scheduling/` is module `todo`); the `ignore` option in `mesh.config.ts` excludes files from Mesh. Another entity is imported by relative path. Two folders may each declare an `entity :List` without conflict: their paths distinguish them, and each module's import specifier (`#mesh/domain/<module>`) exports its own action functions. How the project-wide `actions`, `tx` and what `bind` returns, which hold every action function by name, tell two same-named ones apart is still open ([finding 21](../architecture/open-questions.md#dx-findings)). See [Project structure](./project-structure.md#the-domain).
+The folder that holds the file is the module. Entities in `src/domain/todo/` belong together; no line repeats the folder's name. A plain nested folder is a submodule (`todo/reminders`), while a folder starting with `_` only organises files and is left out of the module (`todo/_scheduling/` is module `todo`); the `ignore` option in `mesh.config.ts` excludes files from Mesh. Another entity is imported by relative path. Two folders may each declare an `entity :List` without conflict: their paths distinguish them, each module's import specifier (`#mesh/domain/<module>`) exports its own entity value `List`, and Mesh names them by their fully qualified names, `school.List` and `work.List`, wherever it writes an entity's name (errors, seams, `mesh inspect`). When both would be stored in the table `list`, the build fails naming both by those names, and a `table=` on one of them resolves it. No name Mesh generates is unique across the project: two modules may declare entities of one name, and the generated files tell them apart internally. See [Project structure](./project-structure.md#the-domain).
 
 ## attributes
 
@@ -203,7 +205,7 @@ entity :Post
 
 `on=:create` and `on=:update` are unrelated to `on:load` on `actions`, which chooses a read.
 
-A field name may not be one of JavaScript's built-in object property names: `__proto__`, `constructor`, `prototype`, `hasOwnProperty`, `isPrototypeOf`, `propertyIsEnumerable`, `toLocaleString`, `toString`, `valueOf`, `__defineGetter__`, `__defineSetter__`, `__lookupGetter__` or `__lookupSetter__`. Mesh cannot validate a value safely against those.
+A member (an attribute, relationship, computed field, action or policy) may take any name except `__proto__`, which sets an object's prototype instead of adding a property and is the build error `MESH_ATTRIBUTE_NAME`. `constructor`, `toString` and `valueOf` work, with two costs on an entity that uses such a name: a typed caller passes `toString: undefined` instead of leaving the field out, and `String(record)` misbehaves on a record with a string attribute named `toString`. An action keeps the name you wrote as the method of its entity value: `publish_post` stays `publish_post`.
 
 ## relationships
 
@@ -254,6 +256,7 @@ Two entity files may import each other: `todo.mesh.mx` imports `List` while `lis
 Values Mesh derives rather than stores. Two kinds of line, one section:
 
 ```mx "src/domain/billing/invoice.mesh.mx"
+import { Mesh } from "meshfw"
 import { InvoiceLine } from "./invoice-line.mesh.mx"
 import { formatMoney } from "./invoice.helpers"
 
@@ -270,7 +273,7 @@ entity :Invoice
 
   computed
     boolean :isOverdue() {
-      return &status === :sent && &dueOn < today()
+      return &status === :sent && &dueOn < Mesh.today()
     }
     string :label() {
       return &number + " · " + formatMoney(&amount)
@@ -371,10 +374,10 @@ A failed check throws `InvalidInputError`, whose own code is always `invalid_inp
 
 ```text "src/domain/work/claim.mesh.mx (excerpt)"
 check :taskReady [
-  that=({ input, tx }) => taskIsReady(input.task, tx)
+  that=({ input }) => taskIsReady(input.task)
   code="claim.task-ready"
   message="the task is not ready"
-  details=({ input, tx }) => taskReasons(input.task, tx)
+  details=({ input }) => taskReasons(input.task)
 ]
 ```
 
@@ -441,6 +444,7 @@ entity :Note
 A check may read a related record, including a rollup on it. This one limits a free-plan owner to 20 todos:
 
 ```mx "src/domain/todo/todo.mesh.mx"
+import { Mesh } from "meshfw"
 import { User } from "./user.mesh.mx"
 
 entity :Todo
@@ -458,8 +462,8 @@ entity :Todo
         &owner
       validate
         check :underQuota [
-          that=async ({ input, tx }) => {
-            const [owner] = await tx.readUser({ filter: { id: { eq: input.owner } }, load: ["todoCount"] });
+          that=async ({ input }) => {
+            const [owner] = await Mesh.privileged(User).read({ filter: { id: { eq: input.owner } }, load: ["todoCount"] });
             return owner.plan !== :free || owner.todoCount < 20;
           }
           code="quota_exceeded"
@@ -467,7 +471,7 @@ entity :Todo
         ]
 ```
 
-A check sees the record before the input, and on a create that record has no owner yet: the caller names the owner in `input.owner`, and Mesh stores it once the checks pass. So the check reads that user through `tx`, inside the transaction, as a policy's related-row read does, and asks `load` for the rollup. On an update or destroy the stored record has its owner, and a check reads it through the relationship: `&owner.todoCount < 20`, with `when=() => &owner.plan === :free`. That is the stored owner, so an update that changes the owner (one that takes `&owner`) must read the new one as the create does, from `input.owner` through `tx`. Reading `&owner` in a create's check draws a warning (`MESH_VALIDATE_NOT_APPLIED`), because it is never the owner the caller sent. The rollup lives on `User`, which also holds the `plan` the check compares with an atom. That comparison works because `plan` is an [`enum`](#the-types).
+A check sees the record before the input, and on a create that record has no owner yet: the caller names the owner in `input.owner`, and Mesh stores it once the checks pass. So the check reads that user through `Mesh.privileged(User)`, the reads without policies, inside the transaction, as a policy's related-row read does, and asks `load` for the rollup. `Mesh.privileged` is a function of `Mesh`, imported with `import { Mesh } from "meshfw"` like any import in an entity file, and its argument is an entity the file declares or imports. On an update or destroy the stored record has its owner, and a check reads it through the relationship: `&owner.todoCount < 20`, with `when=() => &owner.plan === :free`. That is the stored owner, so an update that changes the owner (one that takes `&owner`) must read the new one as the create does, from `input.owner` through `Mesh.privileged`. Reading `&owner` in a create's check draws a warning (`MESH_VALIDATE_NOT_APPLIED`), because it is never the owner the caller sent. The rollup lives on `User`, which also holds the `plan` the check compares with an atom. That comparison works because `plan` is an [`enum`](#the-types).
 
 ```mx "src/domain/todo/user.mesh.mx"
 import { Todo } from "./todo.mesh.mx"
@@ -505,7 +509,7 @@ Steps run top to bottom after validation, on the record with the member inputs a
 | `set` | Assigns fields with `&field=value` lines; a value is a literal or a one-expression arrow. A line may name a relationship, `&creator=({ actor }) => actor.id`, and stores its key |
 | `when=cond` | Runs the nested steps only when the condition holds |
 | `load=[&customer]` | Loads relationships or computed fields onto the returned record; writes nothing |
-| `run(…) { }` | Plain code inside the transaction; `self`, `before`, `input` and the records reached through them are read-only in it (a change throws, so use `set`); it can call other actions |
+| `run(…) { }` | Plain code inside the transaction; `self`, `before`, `input` and the records reached through them are read-only in it (a change throws, so use `set`); it can call other entities' actions |
 
 The larger example below shows `set`, `when` and `load`. For the work a field assignment cannot express, use `run`:
 
@@ -528,14 +532,16 @@ A `run` body may call anything, including logging or messaging code. The pure-he
 
 ### Calling other actions
 
-A `run` step, and a function-valued `check`, `when` or `set` value, receive two more things beside `self`, `input`, `actor` and `context`:
+An action is called on its entity, `Receipt.record(...)`, in an entity file as everywhere else, and the entity is in scope the way every name in an entity file is: it is the file's own entity or one the file imports. A `run` step, and a function-valued `check`, `when` or `set` value, call the entities they import:
 
-| Name | What it is |
+| Call | What it is |
 |:--|:--|
-| `actions` | Every action function of the project, bound to the running transaction: `actions.recordReceipt({ invoice: self.id })` |
-| `tx` | The reads of the running transaction, one function per read action, with the same `filter`, `sort`, `limit` and `load` as a caller's: `tx.readClaim({ filter: { taskId: { eq: self.id } } })` |
+| `Receipt.record({ invoice: self.id }, { ...context, system: true })` | The action of an imported entity, as an application calls it: its input, then its context |
+| `Mesh.privileged(Claim).read({ filter: { taskId: { eq: self.id } } })` | The reads of an entity without read policies, with the same `filter`, `sort`, `limit` and `load` as a caller's |
 
 ```mx "src/domain/billing/invoice.mesh.mx"
+import { Receipt } from "./receipt.mesh.mx"
+
 entity :Invoice
   attributes
     uuid :id primary-key
@@ -547,22 +553,22 @@ entity :Invoice
       do
         set
           &status=:paid
-        run({ self, actions }) {
-          await actions.recordReceipt({ invoiceId: self.id, amount: self.amount });
+        run({ self, context }) {
+          await Receipt.record({ invoiceId: self.id, amount: self.amount }, { ...context, system: true });
         }
 ```
 
-Use `actions` for the root writing its own parts. An effect across aggregates goes in a service or, until services exist, in plain code over `transaction` from `#mesh` ([Using your domain](./using-your-domain.md#several-actions-in-one-transaction)); an effect that may happen later is a `publish` and a listener. Mesh warns when an entity action calls another aggregate's action.
+Use another entity's value for the root writing its own parts. An effect across aggregates goes in a service or, until services exist, in plain code over `transaction` from `#mesh` ([Using your domain](./using-your-domain.md#several-actions-in-one-transaction)); an effect that may happen later is a `publish` and a listener. Mesh warns when an entity action calls another aggregate's action.
 
-A call through `actions` is an ordinary call with three differences. It joins the running transaction, so a throw anywhere rolls back the payment and the receipt together. That includes a call that fails inside a `try`: the whole action fails even if your code catches the error, so decide before you call, with a `tx` read or its `can<Action>` check. It carries your `context` unless you pass another as its second argument. And it is checked like any other call: the action it names runs its own validation, policies and steps, so a cascade can never do what its target forbids. A reason to keep `recordReceipt` for internal use is a policy that says so; see [internal writes](./using-your-domain.md#internal-writes).
+A call to another entity's action is an ordinary call with three differences. It joins the running transaction, so a throw anywhere rolls back the payment and the receipt together. That includes a call that fails inside a `try`: the whole action fails even if your code catches the error, so decide before you call, with a `Mesh.privileged` read or `Mesh.can(Receipt.record, input, context)`. Its results are read-only, like `self`. And it carries only the context you pass it: nothing is inherited from the calling action, so write `{ ...context, system: true }` to act for the system, with the human `actor` still on it, and `context` alone to act as the caller. Where your project declares a required context key, a call without a context does not compile. The call is checked like any other: the action it names runs its own validation, policies and steps, so a cascade can never do what its target forbids. A reason to keep `Receipt.record` for internal use is a policy that says so; see [internal writes](./using-your-domain.md#internal-writes).
 
-`tx` reads the stored rows as they are inside the transaction. It does not run read policies: it is the rule's own view of the data, available only to code you wrote in the entity file.
+`Mesh.privileged` reads the stored rows as they are inside the transaction, at the instant the running action pinned, so `Mesh.now()` means the same in the rule and in what it reads. It does not run read policies: it is the rule's own view of the data. Its results are read-only too. A computed field may not call it: that is the build error `MESH_COMPUTED_COMPOSES`, because a computed field is the entity's own rule over the record. A computed body may not be `async` or use `await` either (`MESH_COMPUTED_ASYNC`); one that returns a promise anyway is refused at run time, naming the field. A read policy that calls `Mesh.privileged` directly is the build error `MESH_READ_POLICY_PRIVILEGED`, at the call. A helper hides the call from the build, so `Mesh.privileged`, and an entity's action too, also throw a `FrameworkError` naming the field or policy when they run while a computed field or a read policy is being evaluated. A leftover `tx` or `actions` parameter in an entity file is the build error `MESH_REMOVED_SCOPE_NAME`, which names what replaces it: `Mesh.privileged` and a call on the entity value.
 
 Steps run in written order, before the action's own row is written. A `run` step with `after=:write` runs after that row is written, still inside the transaction, and sees the stored record as `self`. Use it when what you call must see the result, or when the records it writes must follow the action's own:
 
 ```text "src/domain/billing/invoice.mesh.mx (excerpt)"
-run [after=:write] ({ self, actions }) {
-  await actions.recordReceipt({ invoiceId: self.id, amount: self.amount });
+run [after=:write] ({ self, context }) {
+  await Receipt.record({ invoiceId: self.id, amount: self.amount }, { ...context, system: true });
 }
 ```
 
@@ -615,11 +621,11 @@ One policy per line, with a name, a scope and checks. The larger example below s
 | neither | Every action in the entity |
 | `when=` | Apply the policy only when the condition holds |
 
-A policy passes when none of its `forbid-if` checks holds and, if it has any `authorize-if`, at least one holds. The checks combine without order. A policy with only `forbid-if` passes until one is true. Every policy covering the action must pass; an action no policy covers is forbidden, including every action in an entity with no policies. A check whose answer is unknown, because a value it reads is null, fails closed: an unknown `forbid-if` forbids, an unknown `authorize-if` does not authorize, and an unknown `when=` fails its policy. Which policies cover an action is decided by `types=` and `actions=` alone; `when=` decides whether a covering policy applies to the call, and a call that none of the covering policies applies to is denied. A policy needs at least one `authorize-if` or `forbid-if`: one with neither would let every caller through, so it is a build error, and a policy meant to admit everyone says so with `authorize-if=() => true`. `actions=` names the entity's own actions, auto ones included; any other name, and an empty list, is a build error. A policy decides and does not act: it reads neither `before` nor `actions`, and either is a build error.
+A policy passes when none of its `forbid-if` checks holds and, if it has any `authorize-if`, at least one holds. The checks combine without order. A policy with only `forbid-if` passes until one is true. Every policy covering the action must pass; an action no policy covers is forbidden, including every action in an entity with no policies. A check whose answer is unknown, because a value it reads is null, fails closed: an unknown `forbid-if` forbids, an unknown `authorize-if` does not authorize, and an unknown `when=` fails its policy. Which policies cover an action is decided by `types=` and `actions=` alone; `when=` decides whether a covering policy applies to the call, and a call that none of the covering policies applies to is denied. A policy needs at least one `authorize-if` or `forbid-if`: one with neither would let every caller through, so it is a build error, and a policy meant to admit everyone says so with `authorize-if=() => true`. `actions=` names the entity's own actions, auto ones included; any other name, and an empty list, is a build error. A policy decides and does not act: it neither reads `before` nor calls another entity's action, and either is a build error.
 
 An exemption belongs in the condition: `forbid-if=({ actor }) => &status === :paid && !isStaff(actor)` forbids destroying a paid invoice except for staff.
 
-A policy on a write may also read other entities through `tx`, the reads of the running transaction. It runs inside the transaction, on the locked row, so a value it reads, such as the actor's current role, cannot go stale between the check and the write:
+A policy on a write may also read other entities through `Mesh.privileged`, the reads without policies, usually inside a helper. A write action's check that calls `Mesh.privileged`, or any function the file imports (the build cannot see what an imported function reads), counts as reading the record: it runs inside the transaction, on the locked row, so a value it reads, such as the actor's current role, cannot go stale between the check and the write. The cost is that a check calling a pure imported helper also waits for the lock:
 
 ```mx "src/domain/work/task.mesh.mx"
 import { isActiveOwner } from "./task.helpers"
@@ -633,14 +639,27 @@ entity :Task
 
   policies
     policy :ownersWrite types=[:update]
-      authorize-if=({ actor, tx }) => isActiveOwner(actor, tx)
+      authorize-if=async ({ actor }) => await isActiveOwner(actor)
 ```
 
-A read policy has no `tx`: it is a filter on the query. It also decides what a caller loads from another entity: a relationship or a rollup that reaches this entity runs its read policies, and a caller they do not admit gets `[]`, `null` or `0` there, never an error.
+The helper reads the membership itself:
 
-On a load, a read policy's `input` is empty (`{}`): a load has no read input, so a policy that decides loads too reads `actor` and `context`. A computed field's body runs no policy on what it reads: it is the entity's own rule, worked out the same for every caller, as `tx` is, and its value is shown to whoever may read the record. So on a post, `count :n of="comments"` counts the comments the caller may read, while `integer :n() { return &comments.length }` counts every comment. A relationship to an entity whose policies cover other actions but not its `read` (only `actions=[&list]`, say) loads nothing for any caller, and the build warns at the relationship (`MESH_LOAD_NO_POLICY`).
+```ts "src/domain/work/task.helpers.ts (excerpt)"
+import { Mesh } from "meshfw";
 
-When a check reads the stored row, Mesh folds it into the statement's filter. A row the caller cannot see is reported as not found rather than forbidden; `can<Action>` asks for the reason instead. A policy sees `self` as a check does, before the input is applied: on an update or destroy the stored record, on a create the new record with its defaults and a `uuid` or `string` key, and the caller's values in `input`. So a create policy on a list's todos reads `input.list`, not `&list`, and a related-row read there is a query inside the transaction before the insert; reading `&list` in a create policy draws a warning (`MESH_POLICY_NOT_APPLIED`), as it does in a check. An update or destroy of a row that does not exist is reported as not found before any policy that reads the record runs. A policy check that reads the record runs inside the transaction, after the row is read under the lock and before `validate`, so a caller who may not run the action is told forbidden, never that their input is invalid.
+export async function isActiveOwner(actor: { id: string }) {
+  const [membership] = await Mesh.privileged(Membership).read({ filter: { userId: { eq: actor.id } }, limit: 1 });
+  return membership?.role === "owner";
+}
+```
+
+A helper that reads data is `async`, so the check awaits it inside an `async` arrow, as above. That check is plain code: it runs in memory inside the transaction, after the locked read (POL-21). Calling an `async` helper without `await` is a mistake: the check would get a promise instead of a boolean. Type-check the project including `.mesh/` (`tsc --noEmit`) and the compiler refuses it for a typed helper (TS2345, in the generated expressions file); an untyped helper throws a `FrameworkError` that names the helper at run time.
+
+A read policy reads no other entity: it is a filter on the query. An imported function there is a pure call, evaluated once and bound as a parameter, with no lock to wait for, and a helper there that calls `Mesh.privileged` throws at run time (`Mesh.privileged` called directly in the policy is a build error). It also decides what a caller loads from another entity: a relationship or a rollup that reaches this entity runs its read policies, and a caller they do not admit gets `[]`, `null` or `0` there, never an error.
+
+On a load, a read policy's `input` is empty (`{}`): a load has no read input, so a policy that decides loads too reads `actor` and `context`. A computed field's body runs no policy on what it reads: it is the entity's own rule, worked out the same for every caller, as `Mesh.privileged` is, and its value is shown to whoever may read the record. So on a post, `count :n of="comments"` counts the comments the caller may read, while `integer :n() { return &comments.length }` counts every comment. A relationship to an entity whose policies cover other actions but not its `read` (only `actions=[&list]`, say) loads nothing for any caller, and the build warns at the relationship (`MESH_LOAD_NO_POLICY`).
+
+When a check reads the stored row, Mesh folds it into the statement's filter. A row the caller cannot see is reported as not found rather than forbidden; `Mesh.checkPolicies(Task.update, input, context)` asks for the reason instead. A policy sees `self` as a check does, before the input is applied: on an update or destroy the stored record, on a create the new record with its defaults and a `uuid` or `string` key, and the caller's values in `input`. So a create policy on a list's todos reads `input.list`, not `&list`, and a related-row read there is a query inside the transaction before the insert; reading `&list` in a create policy draws a warning (`MESH_POLICY_NOT_APPLIED`), as it does in a check. An update or destroy of a row that does not exist is reported as not found before any policy that reads the record runs. A policy check that reads the record runs inside the transaction, after the row is read under the lock and before `validate`, so a caller who may not run the action is told forbidden, never that their input is invalid.
 
 ## Building one
 
@@ -651,7 +670,7 @@ mesh build
 The build rejects unknown declarations, options and members, a member input with options, duplicate input names, two entities in one file, a check without `that`, an `on:load` that does not name a read, an expression that cannot run in SQL where it must, and a capability the adapter does not declare. Each diagnostic names the file, line and column:
 
 ```text
-src/domain/todo/todo.mesh.mx:22:9 error &titel is not a member of :Todo. Did you mean &title?
+src/domain/todo/todo.mesh.mx:22:9 error &titel is not a member of todo.Todo. Did you mean &title?
 ```
 
 Run `mesh inspect Todo` to see the declarations with source positions, and `mesh explain Todo complete` to see the action's plan. Both are in [Command line](./command-line.md).
@@ -687,6 +706,7 @@ One file that puts most of the above together. It is here to check your understa
 
 ```mx "src/domain/billing/invoice.mesh.mx"
 // src/domain/billing/invoice.mesh.mx
+import { Mesh } from "meshfw"
 import { Customer } from "./customer.mesh.mx"
 import { InvoiceLine } from "./invoice-line.mesh.mx"
 import { Payment } from "./payment.mesh.mx"
@@ -714,7 +734,7 @@ entity :Invoice table="invoices"
 
   computed
     boolean :isOverdue() {
-      return &status === :sent && &dueOn < today()
+      return &status === :sent && &dueOn < Mesh.today()
     }
     string :label() {
       return &number + " · " + formatMoney(&total)

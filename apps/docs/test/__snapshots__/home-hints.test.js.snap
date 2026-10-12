@@ -7,6 +7,10 @@ exports[`every authored fragment retains its pre-refactor highlighted HTML 1`] =
       "fragment": "Todo",
       "html": "<span class="ts-type">Todo</span>",
     },
+    {
+      "fragment": "Todo",
+      "html": "<span class="ts-type">Todo</span>",
+    },
   ],
   "context:attributes": [
     {
@@ -16,24 +20,24 @@ exports[`every authored fragment retains its pre-refactor highlighted HTML 1`] =
   ],
   "context:auto": [
     {
-      "fragment": "readTodo",
-      "html": "<span class="ts-function">readTodo</span>",
+      "fragment": "Todo.read",
+      "html": "<span class="ts-type">Todo</span><span class="ts-punctuation-delimiter">.</span><span class="ts-function-method">read</span>",
     },
     {
-      "fragment": "destroyTodo",
-      "html": "<span class="ts-function">destroyTodo</span>",
+      "fragment": "Todo.destroy",
+      "html": "<span class="ts-type">Todo</span><span class="ts-punctuation-delimiter">.</span><span class="ts-function-method">destroy</span>",
     },
   ],
   "context:auto-destroy": [
     {
-      "fragment": "destroyTodo",
-      "html": "<span class="ts-function">destroyTodo</span>",
+      "fragment": "Todo.destroy",
+      "html": "<span class="ts-type">Todo</span><span class="ts-punctuation-delimiter">.</span><span class="ts-function-method">destroy</span>",
     },
   ],
   "context:auto-read": [
     {
-      "fragment": "readTodo",
-      "html": "<span class="ts-function">readTodo</span>",
+      "fragment": "Todo.read",
+      "html": "<span class="ts-type">Todo</span><span class="ts-punctuation-delimiter">.</span><span class="ts-function-method">read</span>",
     },
   ],
   "context:boolean": [
@@ -48,8 +52,8 @@ exports[`every authored fragment retains its pre-refactor highlighted HTML 1`] =
   ],
   "context:create-name": [
     {
-      "fragment": "createTodo(input, context)",
-      "html": "<span class="ts-function">createTodo</span><span class="ts-punctuation-bracket">(</span><span class="ts-variable">input</span><span class="ts-punctuation-delimiter">,</span> <span class="ts-variable">context</span><span class="ts-punctuation-bracket">)</span>",
+      "fragment": "Todo.create(input, context)",
+      "html": "<span class="ts-type">Todo</span><span class="ts-punctuation-delimiter">.</span><span class="ts-function-method">create</span><span class="ts-punctuation-bracket">(</span><span class="ts-variable">input</span><span class="ts-punctuation-delimiter">,</span> <span class="ts-variable">context</span><span class="ts-punctuation-bracket">)</span>",
     },
   ],
   "context:done": [
@@ -64,8 +68,8 @@ exports[`every authored fragment retains its pre-refactor highlighted HTML 1`] =
       "html": "<span class="ts-type">Todo</span>",
     },
     {
-      "fragment": "createTodo",
-      "html": "<span class="ts-function">createTodo</span>",
+      "fragment": "Todo",
+      "html": "<span class="ts-type">Todo</span>",
     },
   ],
   "context:filter": [
@@ -122,8 +126,8 @@ exports[`every authored fragment retains its pre-refactor highlighted HTML 1`] =
   ],
   "context:pending-name": [
     {
-      "fragment": "pendingTodo(input, context)",
-      "html": "<span class="ts-function">pendingTodo</span><span class="ts-punctuation-bracket">(</span><span class="ts-variable">input</span><span class="ts-punctuation-delimiter">,</span> <span class="ts-variable">context</span><span class="ts-punctuation-bracket">)</span>",
+      "fragment": "Todo.pending(input, context)",
+      "html": "<span class="ts-type">Todo</span><span class="ts-punctuation-delimiter">.</span><span class="ts-function-method">pending</span><span class="ts-punctuation-bracket">(</span><span class="ts-variable">input</span><span class="ts-punctuation-delimiter">,</span> <span class="ts-variable">context</span><span class="ts-punctuation-bracket">)</span>",
     },
   ],
   "context:relationship": [
@@ -152,8 +156,8 @@ exports[`every authored fragment retains its pre-refactor highlighted HTML 1`] =
   ],
   "context:rename-name": [
     {
-      "fragment": "renameTodo({ id, title }, context)",
-      "html": "<span class="ts-function">renameTodo</span><span class="ts-punctuation-bracket">({</span> id<span class="ts-punctuation-delimiter">,</span> title <span class="ts-punctuation-bracket">}</span><span class="ts-punctuation-delimiter">,</span> <span class="ts-variable">context</span><span class="ts-punctuation-bracket">)</span>",
+      "fragment": "Todo.rename({ id, title }, context)",
+      "html": "<span class="ts-type">Todo</span><span class="ts-punctuation-delimiter">.</span><span class="ts-function-method">rename</span><span class="ts-punctuation-bracket">({</span> id<span class="ts-punctuation-delimiter">,</span> title <span class="ts-punctuation-bracket">}</span><span class="ts-punctuation-delimiter">,</span> <span class="ts-variable">context</span><span class="ts-punctuation-bracket">)</span>",
     },
   ],
   "context:string": [
@@ -188,8 +192,8 @@ exports[`every authored fragment retains its pre-refactor highlighted HTML 1`] =
       "html": "<span class="ts-tag">create</span>",
     },
     {
-      "fragment": "createTodo",
-      "html": "<span class="ts-function">createTodo</span>",
+      "fragment": "Todo.create",
+      "html": "<span class="ts-type">Todo</span><span class="ts-punctuation-delimiter">.</span><span class="ts-function-method">create</span>",
     },
   ],
   "context:types-destroy": [
@@ -198,8 +202,8 @@ exports[`every authored fragment retains its pre-refactor highlighted HTML 1`] =
       "html": "<span class="ts-tag">destroy</span>",
     },
     {
-      "fragment": "destroyTodo",
-      "html": "<span class="ts-function">destroyTodo</span>",
+      "fragment": "Todo.destroy",
+      "html": "<span class="ts-type">Todo</span><span class="ts-punctuation-delimiter">.</span><span class="ts-function-method">destroy</span>",
     },
   ],
   "context:types-read": [
@@ -208,12 +212,12 @@ exports[`every authored fragment retains its pre-refactor highlighted HTML 1`] =
       "html": "<span class="ts-tag">read</span>",
     },
     {
-      "fragment": "readTodo",
-      "html": "<span class="ts-function">readTodo</span>",
+      "fragment": "Todo.read",
+      "html": "<span class="ts-type">Todo</span><span class="ts-punctuation-delimiter">.</span><span class="ts-function-method">read</span>",
     },
     {
-      "fragment": "pendingTodo",
-      "html": "<span class="ts-function">pendingTodo</span>",
+      "fragment": "Todo.pending",
+      "html": "<span class="ts-type">Todo</span><span class="ts-punctuation-delimiter">.</span><span class="ts-function-method">pending</span>",
     },
   ],
   "context:types-update": [
@@ -222,8 +226,8 @@ exports[`every authored fragment retains its pre-refactor highlighted HTML 1`] =
       "html": "<span class="ts-tag">update</span>",
     },
     {
-      "fragment": "renameTodo",
-      "html": "<span class="ts-function">renameTodo</span>",
+      "fragment": "Todo.rename",
+      "html": "<span class="ts-type">Todo</span><span class="ts-punctuation-delimiter">.</span><span class="ts-function-method">rename</span>",
     },
   ],
   "context:uuid": [

@@ -49,7 +49,7 @@ Two folder rules decide a file's module:
 
 To keep files out of Mesh altogether, list them under `ignore` in `mesh.config.ts`. It takes globs relative to the project root, and ignored files are not read, so errors in them are not reported. See [Configuration](./configuration.md#ignoring-files).
 
-An entity file holds exactly one entity and ends in `.mesh.mx`. Two entities in one file is a build error. Another entity is imported by relative path: `import { List } from "./list.mesh.mx"`, then `belongs-to :list entity=List`. Each file exports its declared entity name. Two folders may each declare an `entity :List` without conflict; the import path distinguishes them, and each module's specifier exports its own `createList`. How the project-wide `actions`, `tx` and what `bind` returns, which hold every action function by name, tell the two apart is still open ([finding 21](../architecture/open-questions.md#dx-findings)).
+An entity file holds exactly one entity and ends in `.mesh.mx`. Two entities in one file is a build error. Another entity is imported by relative path: `import { List } from "./list.mesh.mx"`, then `belongs-to :list entity=List`. Each file exports its declared entity name. Two folders may each declare an `entity :List` without conflict: the import path distinguishes them, each module's specifier exports its own `List`, and Mesh writes the two as `school.List` and `work.List` wherever it names an entity. The one thing they cannot share is a table: both would be stored in `list`, so give one of them `table=` (that is a build error, naming both, until you do).
 
 A hand-written helper next to the entity that uses it is the ordinary way to keep an entity file small. `todo.helpers.ts` is a normal TypeScript module; a `check` or a `do` step in `todo.mesh.mx` calls into it.
 
@@ -67,31 +67,33 @@ The entry points, in `package.json`:
 }
 ```
 
-Your code imports a module's action functions and types from that module's specifier, and what belongs to the whole project from `#mesh`:
+Your code imports a module's entities from that module's specifier, and what belongs to the whole project from `#mesh`:
 
 ```ts "src/main.ts (excerpt)"
 import { connect, disconnect } from "#mesh";
-import { createList, createTodo } from "#mesh/domain/todo";
+import { List, Todo } from "#mesh/domain/todo";
 ```
 
-- **`#mesh`** exports `connect`, `disconnect`, `transaction`, `bind`, the `Actions` and `Reads` types and `tables`. It exports no action function and no entity type.
-- **`#mesh/domain/<module>`** exports the action functions and the types of the entities in that module: `#mesh/domain/todo` for `src/domain/todo/`, `#mesh/domain/todo/reminders` for the submodule. It never re-exports another module.
-- **`#mesh/domain`** is the same for the entities directly in `src/domain/`, the domain root.
+- **`#mesh`** exports `connect`, `disconnect`, `bind`, `transaction`, `tables` and the `Binding` and `Privileged` types. It exports no entity.
+- **`#mesh/domain/<module>`** exports the entities in that module, each as its entity value (`Todo`, whose methods are its actions) and its record type under the same name: `#mesh/domain/todo` for `src/domain/todo/`, `#mesh/domain/todo/reminders` for the submodule. It also exports one namespace for each submodule folder below it, so `import * as domain from "#mesh/domain"` reaches `domain.todo.reminders.Reminder`.
+- **`#mesh/domain`** is the same for the entities directly in `src/domain/`, the domain root, and one namespace for each folder under it.
 
-Each module has exactly one specifier, and only a folder that holds an entity has one: a folder of submodules alone is not imported. The modules live under `.mesh/domain/`, apart from Mesh's own files, so a module may be called `schema` or `load` and still be `#mesh/domain/schema`. Never import a path into `.mesh` any other way: the paths behind the specifiers are an implementation detail and the specifiers are what stays stable.
+Every folder of `src/domain/` that is a module, or that holds one below it, has a generated `index.ts`: its entities and one namespace per module folder in it. A folder of submodules alone (`src/domain/sales/` holding only `billing/`) has an index with namespaces only, so `#mesh/domain/sales` works. The modules live under `.mesh/domain/`, apart from Mesh's own files, so a module may be called `schema` or `load` and still be `#mesh/domain/schema`. Never import a path into `.mesh` any other way: the paths behind the specifiers are an implementation detail and the specifiers are what stays stable.
+
+**Folder names.** Your folder names are yours: Mesh imposes no case or style on them. A folder's name is written as it is in an import path (`#mesh/domain/order-management`) and in an entity's fully qualified name (`order-management.Invoice`). Only the namespace in a barrel needs a name that is a valid JavaScript identifier, so each character that is not valid in one becomes `_`, and a name that starts with a digit gets `_` in front: `order-management` is `domain.order_management` and `2024-reports` is `domain._2024_reports`. A folder named like a reserved word needs nothing: `domain.class` and `domain.default` work. Two sibling folders that come out the same (`order-management` and `order_management`) are a build error naming both, as is an entity and a folder of the same folder that would export one name (`entity :Billing` in `sales/billing.mesh.mx` beside a folder `sales/Billing/`).
 
 What is inside, for the tutorial's two entities:
 
 | File | What it is |
 |:--|:--|
-| `.mesh/index.ts` | `#mesh`: `connect`, `disconnect`, `transaction`, `bind`, `Actions`, `Reads` and `tables`, re-exported |
-| `.mesh/binding.ts` | `bind`, which binds every entity to one data layer, and the binding `connect()` opens, which every module's functions call |
-| `.mesh/domain/todo/index.ts` | `#mesh/domain/todo`: the module's action functions and its entities' types |
+| `.mesh/index.ts` | `#mesh`: `connect`, `disconnect`, `bind`, `transaction`, `tables`, `Binding` and `Privileged`, re-exported |
+| `.mesh/binding.ts` | `bind`, which binds every entity to one data layer by walking the barrels, and the binding `connect()` opens, which an entity call outside `run` and `transaction` uses |
+| `.mesh/domain/todo/index.ts` | `#mesh/domain/todo`, the module's barrel: its entities' values and types, and a namespace for each folder in it |
 | `.mesh/domain/todo/list.types.ts` | `List` and the input types of its actions |
-| `.mesh/domain/todo/list.actions.ts` | One function per action, with the whole lifecycle written out |
+| `.mesh/domain/todo/list.actions.ts` | The entity value `List` and one function per action, with the whole lifecycle written out |
 | `.mesh/domain/todo/list.validators.ts` | The schema each input is checked against |
 | `.mesh/domain/todo/todo.types.ts` | `Todo`, `TodoInput`, and the same for each action |
-| `.mesh/domain/todo/todo.actions.ts` | `createTodo`, `completeTodo`, `pendingTodo`, and the rest |
+| `.mesh/domain/todo/todo.actions.ts` | The entity value `Todo`: `create`, `complete`, `pending`, and the rest |
 | `.mesh/domain/todo/todo.validators.ts` | The input schemas for those actions |
 | `.mesh/schema.ts` | The database tables, written by the data adapter |
 | `.mesh/model.json` | One document per entity, with the source position of every declaration |
@@ -103,7 +105,7 @@ That is the whole of it. You should not have to think about any of it day to day
 - **A reviewer reads what runs.** An entity file is a small declarative change. The TypeScript beside it is what the program actually executes, and reading the two diffs together is how you review a change to a rule.
 - **`git diff` is the record of behaviour.** Adding an attribute shows up as a new column, a new type field and a new input key in one diff, in the file you changed.
 
-Entity references are scoped to the importing file, not a project-wide index of names. A folder stays the module; no top-level application name or fully qualified entity name is needed.
+Entity references are scoped to the importing file, not a project-wide index of names. A folder stays the module, and no top-level application name is needed: an entity's fully qualified name is its module's folders as written, a dot, and its name (`todo.List`, `sales.billing.Invoice`), and it is what Mesh prints in errors and seams.
 
 ## Configuration
 

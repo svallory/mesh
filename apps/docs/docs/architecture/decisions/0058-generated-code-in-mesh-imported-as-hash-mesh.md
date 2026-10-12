@@ -1,6 +1,6 @@
 ---
 title: "0058. Generated code lives in `.mesh/`, is committed, and is imported as `#mesh`"
-description: "Decision record 0058: the generated folder's name, its place in version control, and the import specifier. Status: Accepted, amended 2026-10-11 (generated imports follow folder modules)."
+description: "Decision record 0058: the generated folder's name, its place in version control, and the import specifier. Status: Accepted, amended 2026-10-11 (generated imports follow folder modules), amended 2026-10-12 (entity values and barrels)."
 ---
 
 # 0058. Generated code lives in `.mesh/`, is committed, and is imported as `#mesh`
@@ -20,6 +20,8 @@ Accepted
 ```
 
 Each module's generated files, its `index.ts` among them, live in `.mesh/domain/<module>/`, apart from Mesh's own top-level files, so a module named `schema`, `load` or `index` cannot collide with them. Application code still never imports a folder path. An action function's name stays unique across the project, because `actions`, `tx` and what `bind` returns are flat records ([finding 21](../open-questions.md#dx-findings) stays open). The operator ruled the move (CMP-12) and the folder-module rule (CMP-17) on 2026-10-11, recorded in the project's decision log; that `#mesh` keeps only the framework's names is the lead's reading of CMP-17, for operator review. See [generated code and the guard](../in-depth/generated-code-and-guard.md#what-mesh-generates-and-commits). The rest of this record is unchanged and kept as history.
+
+**Amended 2026-10-12 (operator, CMP-16, CMP-18).** The export list of the 2026-10-11 amendment (`bind`, `connect`, `disconnect`, `transaction`, the `Actions` and `Reads` types and `tables`) is replaced: `#mesh` exports `bind`, `connect`, `disconnect`, `transaction`, `privileged`, `tables` and the types `Binding` and `Privileged` (the exact list is a lead reading of CMP-17, for operator review). A folder's entities, each a value with its actions, are imported from `#mesh/domain/<folder>`. An action function's name no longer has to be unique across the project, so [finding 21](../open-questions.md#dx-findings) is settled. Each domain folder has one barrel `index.ts` (its entities, plus one namespace per subfolder), which `.mesh/binding.ts` walks. See [ADR-0086](./0086-entity-values-privileged-barrels-and-fqns.md). The rest of this record is unchanged and kept as history.
 
 ## Date
 

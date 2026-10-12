@@ -1,6 +1,6 @@
 ---
 title: "0067. Members are &name, entities are imports, one input section, static files"
-description: "Decision record 0067: entity file syntax v4 separates declarations, member references and imported entities, unifies action input and keeps files static. Status: Accepted."
+description: "Decision record 0067: entity file syntax v4 separates declarations, member references and imported entities, unifies action input and keeps files static. Status: Accepted. Amended 2026-10-12 (colliding action exports)."
 ---
 
 # 0067. Members are `&name`, entities are imports, one `input` section, static files
@@ -8,6 +8,8 @@ description: "Decision record 0067: entity file syntax v4 separates declarations
 ## Status
 
 Accepted. Amends [ADR-0050](./0050-entity-file-syntax.md), [ADR-0051](./0051-mesh-mx-files-and-the-mesh-host.md) and [ADR-0066](./0066-names-and-references-are-atoms.md). The action-input portions of [ADR-0052](./0052-actions-auto-and-on-load.md) and [ADR-0053](./0053-validate-then-do.md) follow this amendment too.
+
+**Amended 2026-10-12 (operator, CMP-18).** The last consequence's open question, how the generated aggregate entry point exposes colliding action exports, is settled by [ADR-0086](./0086-entity-values-privileged-barrels-and-fqns.md): each domain folder's barrel exports its own entities, so same-named entities in different folders never meet. The rest of this record is unchanged and kept as history.
 
 ## Date
 

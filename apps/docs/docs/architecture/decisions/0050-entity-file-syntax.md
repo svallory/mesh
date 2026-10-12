@@ -61,6 +61,7 @@ This is the worked reference the user docs and the code follow. It uses every v1
 
 ```mx
 // src/domain/billing/invoice.mesh.mx
+import { Mesh } from "meshfw"
 import { Customer } from "./customer.mesh.mx"
 import { InvoiceLine } from "./invoice-line.mesh.mx"
 import { Payment } from "./payment.mesh.mx"
@@ -88,7 +89,7 @@ entity :Invoice table="invoices"
 
   computed
     boolean :isOverdue() {
-      return &status === :sent && &dueOn < today()
+      return &status === :sent && &dueOn < Mesh.today()
     }
     string :label() {
       return &number + " · " + formatMoney(&total)

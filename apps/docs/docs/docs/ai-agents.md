@@ -62,7 +62,7 @@ mesh explain Todo complete
 ```
 
 ```text
-Todo.complete (update)
+todo.Todo#complete (update)
   strategy     read-then-write: every update reads the row under the write lock, checks it, changes it, then writes it
   input        none
   checks       notDoneYet (todo.done)

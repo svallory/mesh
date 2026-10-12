@@ -1,6 +1,6 @@
 ---
 title: "0074. A write policy may read other entities through `tx`"
-description: "Decision record 0074: how a policy reads the actor's membership inside the transaction, so a revoked role cannot go stale. Status: Accepted."
+description: "Decision record 0074: how a policy reads the actor's membership inside the transaction, so a revoked role cannot go stale. Status: Accepted. Amended 2026-10-12 (`tx` becomes `privileged`)."
 ---
 
 # 0074. A write policy may read other entities through `tx`
@@ -8,6 +8,8 @@ description: "Decision record 0074: how a policy reads the actor's membership in
 ## Status
 
 Accepted. Amends [ADR-0022](./0022-policies-simple-tier-as-extension.md) and [ADR-0055](./0055-policies-are-core.md) (what a policy on a write may read).
+
+**Amended 2026-10-12 (operator, TXN-16, POL-21).** The `tx` handle in the text below no longer exists: a policy reads other entities through `privileged(Entity).read(...)`, and "`tx`" in the body reads as `privileged`. A check that calls `privileged`, or any function its entity file imports, counts as reading the record and runs inside the transaction after the locked read, so the race this record closed stays closed (POL-20); the cost is that a check calling a pure imported helper also waits for the lock. See [ADR-0086](./0086-entity-values-privileged-barrels-and-fqns.md). The rest of this record is unchanged and kept as history.
 
 ## Date
 

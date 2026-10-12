@@ -426,7 +426,7 @@ This was the opening of the page while the vocabulary copied Ash ([ADR-0034](../
 
 **Decision record.** 2026-10-04, recorded in [rulings of 2026-10-04](../decisions/rulings-2026-10-04.md), section "Lead decisions of the architecture-docs brief"; a working decision (not an operator ruling); the operator may overrule. Alternative considered: Ash's exact spelling with `_` where MX allows it (`belongs_to`) and a different spelling only for booleans, which would have renamed every tag on `main` and left two conventions. Kebab-case matches what is on `main`, avoids renaming twice, and the operator revisits naming for MX after v1 ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md)). Consequence: names that differ from Ash only by this rule are not deviations and are not listed in Section 4.
 
-**Attribute-name safety (M2).** The builder rejects these fixed built-in object property names for every attribute-declaring tag, even when no action accepts the field: `__proto__`, `constructor`, `prototype`, `hasOwnProperty`, `isPrototypeOf`, `propertyIsEnumerable`, `toLocaleString`, `toString`, `valueOf`, `__defineGetter__`, `__defineSetter__`, `__lookupGetter__`, `__lookupSetter__`. This is a restriction on author-chosen field names, not a vocabulary spelling change; it prevents prototype-sensitive input validation from silently losing or misreading fields.
+**Attribute-name safety (M2).** The builder refuses one member name, `__proto__`, for every attribute-declaring tag (`MESH_ATTRIBUTE_NAME`), because it sets an object's prototype instead of adding a property; every other name is accepted, `constructor`, `toString` and `valueOf` included (ENT-18). This is a restriction on author-chosen names, not a vocabulary spelling change.
 
 ### C.1 Introduction
 

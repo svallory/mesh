@@ -57,11 +57,11 @@ entity :Todo table="todos"
   insertedAt: Date }
 interface CreateTodoInput {
   title: string; list: List["id"] }</code></div></div>
-<div class="mh-box" data-box="functions" data-from="actions" data-group="Your app"><h3>Functions <code>todo.actions.ts</code></h3><p class="mh-from">one per action, from <code>actions</code>, imported from <code>#mesh/domain/todo</code></p><div class="mh-snip"><code>createTodo(input, context)
-pendingTodo(input, context)
-renameTodo, readTodo, destroyTodo</code></div></div>
+<div class="mh-box" data-box="functions" data-from="actions" data-group="Your app"><h3>Functions <code>todo.actions.ts</code></h3><p class="mh-from">one per action, from <code>actions</code>, imported from <code>#mesh/domain/todo</code></p><div class="mh-snip"><code>Todo.create(input, context)
+Todo.pending(input, context)
+Todo.rename, Todo.read, Todo.destroy</code></div></div>
 <div class="mh-box" data-box="validation" data-from="attributes actions" data-group="Your app"><h3>Input validation <code>todo.validators.ts</code></h3><p>Every input is checked before your code runs: no empty title, and no field the action does not accept.</p><p class="mh-from">from <code>attributes</code>, <code>actions</code></p></div>
-<div class="mh-box" data-box="authorization" data-from="policies" data-group="Your app"><h3>Authorization <span>in every function</span></h3><p>A write is checked before it runs; a read gets the policy in its query. <code>canCreateTodo</code> asks first.</p><p class="mh-from">from <code>policies</code></p></div>
+<div class="mh-box" data-box="authorization" data-from="policies" data-group="Your app"><h3>Authorization <span>in every function</span></h3><p>A write is checked before it runs; a read gets the policy in its query. <code>Mesh.can(Todo.create, …)</code> asks first.</p><p class="mh-from">from <code>policies</code></p></div>
 <p class="mh-group" data-group="The database">The database</p>
 <div class="mh-box" data-box="table" data-from="entity attributes relationships" data-group="The database"><h3>The table <code>schema.ts</code></h3><p>The <code>todos</code> table, its columns and the foreign key to <code>List</code>, written by the data adapter.</p><p class="mh-from">from the entity line, <code>attributes</code>, <code>relationships</code></p></div>
 <div class="mh-box" data-box="migrations" data-from="entity attributes relationships" data-via="mesh migrate generate" data-group="The database"><h3>Migrations <code>migrations/*.sql</code></h3><p>Plain SQL from <code>mesh migrate generate</code> when the table changes; applied by <code>mesh migrate apply</code>.</p><p class="mh-from">from the table</p></div>
@@ -121,7 +121,7 @@ mark();
 <div class="mh-tally">
 <h3>What the agent writes, and what it does not</h3>
 <p>It writes the 28 lines of <code>todo.mesh.mx</code> above. It does not write the types, the action functions, the input validators, the authorization checks, the table schema, the migration SQL, the rules file or the model: the diagram above shows where each comes from.</p>
-<pre><code>src/domain/todo/todo.mesh.mx:16:9 error &amp;titel is not a member of :Todo.
+<pre><code>src/domain/todo/todo.mesh.mx:16:9 error &amp;titel is not a member of todo.Todo.
 Did you mean &amp;title?</code></pre>
 </div>
 <p class="mh-more">More in <a href="/docs/ai-agents/">Working with AI agents</a>: the rules file, <code>mesh inspect</code>, <code>mesh explain</code>, and what Mesh does not solve for an agent.</p>

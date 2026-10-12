@@ -1,6 +1,6 @@
 ---
 title: "Using your domain"
-description: "The generated functions, the action context, filters, sort, paging, load, the error classes and can."
+description: "The generated functions, the action context, filters, sort, paging, load, the error classes and Mesh.can."
 ---
 
 # Using your domain
@@ -9,26 +9,26 @@ description: "The generated functions, the action context, filters, sort, paging
 Mesh is not released yet. These pages describe Mesh 1.0.
 :::
 
-An action is one named operation on an entity, and in Mesh it is an ordinary TypeScript function. A command line, a worker, a cron job and an HTTP handler all call the same function with the same two arguments. There is no server, no route and no request object.
+An action is one named operation on an entity, and in Mesh it is an ordinary TypeScript function: a method of the entity you import. A command line, a worker, a cron job and an HTTP handler all call the same method with the same two arguments. There is no server, no route and no request object.
 
-Every function has the same shape:
+Every call has the same shape:
 
 ```ts "src/main.ts (excerpt)"
-const todo = await createTodo({ title: "Buy milk", list: list.id }, { actor });
+const todo = await Todo.create({ title: "Buy milk", list: list.id }, { actor });
 ```
 
 **The input, and the action context.** The input is always required. The context is a plain object too, and it is required as soon as your project has declared a required key on it: `@meshfw/runtime` exports an empty `ActionContext` interface, your project adds its keys, and while every key you declare is optional the parameter is optional too. A call with no context at all compiles exactly when a call with one does.
 
-## Where the functions come from
+## Where the entities come from
 
-`mesh build` writes the functions into `.mesh/`, and your `package.json` maps three import specifiers to it. Each module of your domain has its own: the functions and types of the entities in `src/domain/todo/` come from `#mesh/domain/todo`, those of `src/domain/billing/` from `#mesh/domain/billing`, and those of the entities at the domain root from `#mesh/domain`. `#mesh` holds only what belongs to the whole project: `connect`, `disconnect`, `transaction`, `bind`, `tables` and the `Actions` and `Reads` types.
+`mesh build` writes the generated code into `.mesh/`, and your `package.json` maps three import specifiers to it. Each module of your domain has its own: the entities in `src/domain/todo/` come from `#mesh/domain/todo`, those in `src/domain/billing/` from `#mesh/domain/billing`, and those at the domain root from `#mesh/domain`. Import an entity by name and you get two things under that name: the **entity value**, an object whose methods are the entity's actions (`Todo.create`, `Todo.complete`, `Todo.read`), and the record type. `#mesh` holds only what belongs to the whole project: `connect`, `disconnect`, `bind`, `transaction`, `tables` and the `Binding` and `Privileged` types.
 
 ```ts "src/main.ts (excerpt)"
 import { connect, disconnect } from "#mesh";
-import { createList, createTodo } from "#mesh/domain/todo";
+import { List, Todo } from "#mesh/domain/todo";
 ```
 
-An action function's name is still unique across the project, because `actions`, `tx` and what `bind` returns hold every function by name; see [Project structure](./project-structure.md#generated-code).
+Nothing in the generated code is global to the project. Two entities with the same name in two folders are two modules, and you import the one you mean from its own folder (`work.List` from `#mesh/domain/work`, `school.List` from `#mesh/domain/school`); see [Project structure](./project-structure.md#generated-code). A call also goes to one place, the *binding in scope*: the one opened by `connect()`, or the one of the `run` or `transaction` you are inside ([Testing](./testing.md)).
 
 ## Connect once
 
@@ -44,7 +44,7 @@ await disconnect();
 
 An application connects once at start-up. Calling an action before `connect`, or after `disconnect`, throws `FrameworkError`: that is a mistake in the program, not a caller's mistake, so it is not reported as a rejected input.
 
-In a test you do not connect at all. You bind a data layer, and every action function comes back bound to it. See [Testing](./testing.md).
+In a test you do not connect at all. You bind a data layer, and run your calls inside the binding. See [Testing](./testing.md).
 
 ## The action context
 
@@ -52,16 +52,16 @@ The second argument says who is calling, and carries whatever else the call need
 
 ```ts "src/main.ts"
 import { connect, disconnect } from "#mesh";
-import { createList, createTodo } from "#mesh/domain/todo";
+import { List, Todo } from "#mesh/domain/todo";
 import { alice, bob } from "./context";
 
 await connect();
 
-const aliceList = await createList({ name: "Alice's errands" }, { actor: alice });
-const bobList = await createList({ name: "Bob's errands" }, { actor: bob });
+const aliceList = await List.create({ name: "Alice's errands" }, { actor: alice });
+const bobList = await List.create({ name: "Bob's errands" }, { actor: bob });
 
-await createTodo({ title: "Buy milk", list: aliceList.id }, { actor: alice });
-await createTodo({ title: "Buy bread", list: bobList.id }, { actor: bob });
+await Todo.create({ title: "Buy milk", list: aliceList.id }, { actor: alice });
+await Todo.create({ title: "Buy bread", list: bobList.id }, { actor: bob });
 
 await disconnect();
 ```
@@ -86,11 +86,11 @@ Two keys are reserved. **`actor`** is what the `authorize-if` checks in your pol
 
 ```ts "src/main.ts"
 import { connect, disconnect } from "#mesh";
-import { createList } from "#mesh/domain/todo";
+import { List } from "#mesh/domain/todo";
 import { alice } from "./context";
 
 await connect();
-await createList({ name: "Groceries" }, { actor: alice, tenantId: "t1", locale: "en-GB" });
+await List.create({ name: "Groceries" }, { actor: alice, tenantId: "t1", locale: "en-GB" });
 await disconnect();
 ```
 
@@ -112,26 +112,26 @@ entity :Todo table="todos"
 
 ## Signatures
 
-| Action | Function | Input | Returns |
+| Action | Method | Input | Returns |
 |:--|:--|:--|:--|
-| create | `createTodo(input, context)` | the accepted fields | `Todo` |
-| read, from `auto` | `readTodo(input, context)` | `{ filter?, sort?, limit?, offset?, load? }` | `Todo[]` |
-| read named `pending` | `pendingTodo(input, context)` | the same | `Todo[]` |
-| update | `completeTodo(input, context)` | `{ id, ...accepted }` | `Todo` |
-| destroy | `destroyTodo(input, context)` | `{ id }` | `void` |
+| create | `Todo.create(input, context)` | the accepted fields | `Todo` |
+| read, from `auto` | `Todo.read(input, context)` | `{ filter?, sort?, limit?, offset?, load? }` | `Todo[]` |
+| read named `pending` | `Todo.pending(input, context)` | the same | `Todo[]` |
+| update | `Todo.complete(input, context)` | `{ id, ...accepted }` | `Todo` |
+| destroy | `Todo.destroy(input, context)` | `{ id }` | `void` |
 
-The name is the action's name followed by the entity's name in PascalCase. An action generated by `auto` is named after its type, so the auto read is `readTodo` and the auto destroy is `destroyTodo`.
+A method is named as the action is declared. An action generated by `auto` is named after its type, so the auto read is `Todo.read` and the auto destroy is `Todo.destroy`. `Mesh.checkPolicies` and `Mesh.can` take an action function such as `Todo.complete` and ask whether a call would be allowed, covered under [asking instead of calling](#asking-instead-of-calling).
 
 **One `input` section describes the whole input.** A member line such as `&title` takes a declared field; a typed line such as `uuid :customerId` declares an argument that is not stored as sent. A read's caller sends these beside `filter`, `sort` and the rest:
 
 ```ts "src/main.ts"
 import { connect, disconnect } from "#mesh";
-import { forCustomerInvoice } from "#mesh/domain/billing";
+import { Invoice } from "#mesh/domain/billing";
 import { alice } from "./context";
 
 await connect();
 
-for (const invoice of await forCustomerInvoice({ customerId: "…", sort: ["-dueOn"] }, { actor: alice })) {
+for (const invoice of await Invoice.forCustomer({ customerId: "…", sort: ["-dueOn"] }, { actor: alice })) {
   console.log(invoice.number);
 }
 
@@ -144,17 +144,17 @@ A read returns an array even when the filter can match one row. There is no sepa
 
 ### Create
 
-The input has exactly the fields in the action's `input` section. With the tutorial's `todo.mesh.mx`, `createTodo` takes `title` and `list`:
+The input has exactly the fields in the action's `input` section. With the tutorial's `todo.mesh.mx`, `Todo.create` takes `title` and `list`:
 
 ```ts "src/main.ts"
 import { connect, disconnect } from "#mesh";
-import { createList, createTodo } from "#mesh/domain/todo";
+import { List, Todo } from "#mesh/domain/todo";
 import { alice } from "./context";
 
 await connect();
 
-const list = await createList({ name: "Groceries" }, { actor: alice });
-const todo = await createTodo({ title: "Buy milk", list: list.id }, { actor: alice });
+const list = await List.create({ name: "Groceries" }, { actor: alice });
+const todo = await Todo.create({ title: "Buy milk", list: list.id }, { actor: alice });
 
 console.log(todo.id, todo.insertedAt);
 
@@ -165,8 +165,8 @@ Two calls that do not compile, against that `todo.mesh.mx`:
 
 | Call | Why |
 |:--|:--|
-| `createTodo({ title, list, done: true }, …)` | `done` is not in `input`, so it is not on the input type |
-| `createTodo({ title: "Buy milk" }, …)` | `list` is missing; a create needs every input member that is required and has no default |
+| `Todo.create({ title, list, done: true }, …)` | `done` is not in `input`, so it is not on the input type |
+| `Todo.create({ title: "Buy milk" }, …)` | `list` is missing; a create needs every input member that is required and has no default |
 
 An unknown field is an error at run time, not a field dropped. If a call gets past the type checker anyway, the generated validator rejects it.
 
@@ -182,17 +182,17 @@ The same rule makes `customerId` on an Invoice record. These key-column names ar
 
 ```ts "src/main.ts"
 import { connect, disconnect } from "#mesh";
-import { completeTodo } from "#mesh/domain/todo";
+import { Todo } from "#mesh/domain/todo";
 import { alice } from "./context";
 
 await connect();
 
-await completeTodo({ id: "00000000-0000-4000-8000-0000000000aa" }, { actor: alice });
+await Todo.complete({ id: "00000000-0000-4000-8000-0000000000aa" }, { actor: alice });
 
 await disconnect();
 ```
 
-**One statement or two.** A create is always one `INSERT`. An update is a read followed by a write: the action reads the row under the write lock, runs the checks on it, applies the steps, and writes the result, all in one transaction. Because a transaction holds the lock until it commits, two callers cannot both pass a check on the same stored row, which is what makes the [version recipe](./entities.md#a-version-number-that-refuses-a-stale-update) safe. A destroy reads the row only when its checks or steps can see it; `renameTodo` is one read and one write, and a destroy with no `validate` or `do` is one `DELETE`. `mesh explain` prints which one an action is.
+**One statement or two.** A create is always one `INSERT`. An update is a read followed by a write: the action reads the row under the write lock, runs the checks on it, applies the steps, and writes the result, all in one transaction. Because a transaction holds the lock until it commits, two callers cannot both pass a check on the same stored row, which is what makes the [version recipe](./entities.md#a-version-number-that-refuses-a-stale-update) safe. A destroy reads the row only when its checks or steps can see it; `Todo.rename` is one read and one write, and a destroy with no `validate` or `do` is one `DELETE`. `mesh explain` prints which one an action is.
 
 ### Destroy
 
@@ -206,13 +206,13 @@ A read's input is plain data: a field name, an operator and a value.
 
 ```ts "src/main.ts"
 import { connect, disconnect } from "#mesh";
-import { createList, readTodo } from "#mesh/domain/todo";
+import { List, Todo } from "#mesh/domain/todo";
 import { alice } from "./context";
 
 await connect();
 
-const list = await createList({ name: "Groceries" }, { actor: alice });
-const mine = await readTodo({ filter: { listId: { eq: list.id } } }, { actor: alice });
+const list = await List.create({ name: "Groceries" }, { actor: alice });
+const mine = await Todo.read({ filter: { listId: { eq: list.id } } }, { actor: alice });
 console.log(mine.map((todo) => todo.title));
 
 await disconnect();
@@ -229,13 +229,13 @@ Filters combine with `and` and `or`:
 
 ```ts "src/main.ts"
 import { connect, disconnect } from "#mesh";
-import { createList, readTodo } from "#mesh/domain/todo";
+import { List, Todo } from "#mesh/domain/todo";
 import { alice } from "./context";
 
 await connect();
 
-const list = await createList({ name: "Groceries" }, { actor: alice });
-const page = await readTodo(
+const list = await List.create({ name: "Groceries" }, { actor: alice });
+const page = await Todo.read(
   {
     filter: { and: [{ listId: { eq: list.id } }, { done: { eq: false } }] },
     sort: ["-insertedAt"],
@@ -260,21 +260,21 @@ Anything derived is computed only when you name it in `load`:
 
 ```ts "src/main.ts"
 import { connect, disconnect } from "#mesh";
-import { pendingTodo } from "#mesh/domain/todo";
+import { Todo } from "#mesh/domain/todo";
 import { alice } from "./context";
 
 await connect();
 
-const todos = await pendingTodo({ load: ["label"] }, { actor: alice });
+const todos = await Todo.pending({ load: ["label"] }, { actor: alice });
 for (const todo of todos) console.log(todo.label);
 
 await disconnect();
 ```
 
 `load` takes relationship names (`load: ["list"]`) and computed names (`load: ["label"]` on a todo, `load: ["todoCount"]` on a list). Reading one that was not loaded is a **type error**, not `undefined`, and a load that cannot be served at run time is an error, never silently skipped.
-A loaded `has-many` comes back in primary-key order, which is creation order for the keys Mesh generates (UUIDv7 and integers). The type follows the names as written in the call, so pass the list itself: `load` is required whenever it names something, and a list that Mesh cannot read as a tuple (a widened `string[]`) types as loading nothing. A list that is one of several (`flag ? ["label"] : []`, or a variable of a union-of-tuples type) gives a union of results, one per possible list, so you read `label` only after narrowing (`"label" in row`). The reads that `tx` gives a function of an entity file take the same `load`, typed the same way: `tx.readTask({ filter, load: ["derivedState"] })` reads the computed field inside the check's transaction.
+A loaded `has-many` comes back in primary-key order, which is creation order for the keys Mesh generates (UUIDv7 and integers). The type follows the names as written in the call, so pass the list itself: `load` is required whenever it names something, and a list that Mesh cannot read as a tuple (a widened `string[]`) types as loading nothing. A list that is one of several (`flag ? ["label"] : []`, or a variable of a union-of-tuples type) gives a union of results, one per possible list, so you read `label` only after narrowing (`"label" in row`). The reads that `Mesh.privileged` gives take the same `load`, typed the same way: `Mesh.privileged(Task).read({ filter, load: ["derivedState"] })` reads the computed field inside the check's transaction.
 
-What you load runs the read policies of the entity it reaches, with your context: a relationship whose entity's read policies do not admit you comes back empty, never as an error. A `has-many` is `[]`, a `belongs-to` or `has-one` is `null`, a `count` is `0` and the other rollups are `null`. So the type of a loaded `belongs-to` is `T | null` even when the relationship is required: `todo.list?.name`. The same holds for a write's `load=` step and for a read nested through `actions`. Through `tx` no policy runs, and the type of a required `belongs-to` stays `T`. Neither does a computed field's body: it is the entity's own rule, worked out the same whoever asks, so what it reads through a relationship is every related record, as through `tx`, and its value is shown to everyone who may read the record. On a list, `count :todoCount of="todos"` counts the todos you may read, while a body that returns `&todos.length` counts every todo: write a body to return only what each caller who may read the record may see.
+What you load runs the read policies of the entity it reaches, with your context: a relationship whose entity's read policies do not admit you comes back empty, never as an error. A `has-many` is `[]`, a `belongs-to` or `has-one` is `null`, a `count` is `0` and the other rollups are `null`. So the type of a loaded `belongs-to` is `T | null` even when the relationship is required: `todo.list?.name`. The same holds for a write's `load=` step and for a read nested in an action, `Todo.read(...)` called from a step. Through `Mesh.privileged` no policy runs, and the type of a required `belongs-to` stays `T`. Neither does a computed field's body: it is the entity's own rule, worked out the same whoever asks, so what it reads through a relationship is every related record, as through `Mesh.privileged`, and its value is shown to everyone who may read the record. On a list, `count :todoCount of="todos"` counts the todos you may read, while a body that returns `&todos.length` counts every todo: write a body to return only what each caller who may read the record may see.
 
 Three things meet in `load`, and they are not one thing:
 
@@ -291,23 +291,23 @@ Every action throws on failure. All four classes come from `@meshfw/runtime`, ex
 | `InvalidInputError` | `invalid_input` | The input does not fit the action, or a `check` failed |
 | `NotFoundError` | `not_found` | The row the call names does not exist, or is not visible to this actor |
 | `ForbiddenError` | `forbidden` | A policy denied the call, no policy covers the action, or none of the policies that cover it applies (each one's `when` was false). Names the `entity`, the `action` and the `policies`, says which of the three in `reason` (`failed`, `not-covered` or `not-applied`), and carries a `breakdown` of the checks that ran |
-| `FrameworkError` | `framework` | A mistake in the program: an action called before `connect`, a load that cannot be served |
+| `FrameworkError` | `framework` | A mistake in the program: an action called before `connect` and outside any `run` or `transaction`, a load that cannot be served |
 
 `InvalidInputError.issues` holds every failure it collected, one entry each. An entry has a `label` (the label you gave the `check`), the `code` and `message` you wrote, the `details` the check returned (or `null`), a `path` into the input, and, when the failure came from a rule you declared, the file, line and column of the declaration that carried it. The code you declared is on the issue rather than on the error because several checks can fail in one call, and one code on the error could only name one of them.
 
 ```ts "src/main.ts"
 import { InvalidInputError } from "@meshfw/runtime";
 import { connect, disconnect } from "#mesh";
-import { completeTodo, createList, createTodo } from "#mesh/domain/todo";
+import { Todo, List } from "#mesh/domain/todo";
 import { alice } from "./context";
 
 await connect();
 
 try {
-  const list = await createList({ name: "Groceries" }, { actor: alice });
-  const todo = await createTodo({ title: "Buy milk", list: list.id }, { actor: alice });
-  await completeTodo({ id: todo.id }, { actor: alice });
-  await completeTodo({ id: todo.id }, { actor: alice });
+  const list = await List.create({ name: "Groceries" }, { actor: alice });
+  const todo = await Todo.create({ title: "Buy milk", list: list.id }, { actor: alice });
+  await Todo.complete({ id: todo.id }, { actor: alice });
+  await Todo.complete({ id: todo.id }, { actor: alice });
 } catch (error) {
   if (!(error instanceof InvalidInputError)) throw error;
   for (const issue of error.issues) {
@@ -330,29 +330,32 @@ A caught error has type `unknown` in strict TypeScript, so narrow it before read
 
 ## Several actions in one transaction
 
-Actions that call other actions do it inside the entity file, through `actions` ([Entities: calling other actions](./entities.md#calling-other-actions)), for the root writing its own parts. An effect across aggregates is a service or, until services exist, plain code like the example below; an effect that may happen later is a `publish` and a listener. Your application can use `transaction` when a method must answer with more than a record. `transaction` opens a transaction, or joins the one that is running, and hands you the same `actions` and `tx`:
+Actions that call other actions do it inside the entity file, by calling the other entity's value ([Entities: calling other actions](./entities.md#calling-other-actions)), for the root writing its own parts. An effect across aggregates is a service or, until services exist, plain code like the example below; an effect that may happen later is a `publish` and a listener. Your application can use `transaction` when a method must answer with more than a record. `transaction` opens a transaction, or joins the one that is running, and runs the function you give it inside. The function gets nothing, and neither does the call take a context: you call the entities you imported, and each call passes its own.
 
 ```ts "src/main.ts"
+import { Mesh } from "meshfw";
 import { connect, disconnect, transaction } from "#mesh";
-import { createList } from "#mesh/domain/todo";
+import { List, Todo } from "#mesh/domain/todo";
 import { alice } from "./context";
 
 await connect();
 
-const list = await createList({ name: "Groceries" }, { actor: alice });
+const list = await List.create({ name: "Groceries" }, { actor: alice });
 
-const todo = await transaction(async ({ actions, tx }) => {
-  const open = await tx.readTodo({ filter: { and: [{ listId: { eq: list.id } }, { done: { eq: false } }] } });
+const todo = await transaction(async () => {
+  const open = await Mesh.privileged(Todo).read({ filter: { and: [{ listId: { eq: list.id } }, { done: { eq: false } }] } });
   if (open.length >= 20) throw new Error("this list already has 20 open todos");
-  return actions.createTodo({ title: "Buy milk", list: list.id });
-}, { actor: alice });
+  return Todo.create({ title: "Buy milk", list: list.id }, { actor: alice });
+});
 
 console.log(todo.id);
 
 await disconnect();
 ```
 
-`actions` holds every action function of the project, the ones you import from each module's `#mesh/domain/<module>`, bound to this transaction and carrying the context you passed; each still validates its input and runs its own policies. `tx` reads inside the transaction and does not run read policies. A throw rolls back every call, and so does a failed call you catch: if an action you call fails, the whole transaction fails even when your code handles the error, so decide before you call, with a `tx` read or its `can<Action>` check. An action that calls `transaction` while another is running joins it rather than opening a second one.
+Every call inside joins this transaction, and each still validates its input and runs its own policies. Nothing is inherited: a call carries the context you pass it and no other, so the transaction itself needs none. A function you declare elsewhere takes the context as a parameter, as Hyper's commands do (`attemptStart(input, context, binding)`), rather than finding it in scope. `Mesh.privileged(Todo)` is the reads of `Todo` without read policies: `Mesh.privileged(Todo).read(...)` and `Mesh.privileged(Todo).pending(...)` take the same `filter`, `sort`, `limit` and `load` as the entity's own reads and return what they return, but check nothing, so use it for the rule's view of stored data and never to answer a caller. A throw rolls back every call, and so does a failed call you catch: if an action you call fails, the whole transaction fails even when your code handles the error, so decide before you call, with a `Mesh.privileged` read or `Mesh.can`. An action that calls `transaction` while another is running joins it rather than opening a second one.
+
+A test uses the `transaction` of its own binding, and the `transaction` you import from `#mesh` uses the binding in scope, or the one `connect()` opened: see [Testing](./testing.md).
 
 ## Internal writes
 
@@ -360,28 +363,30 @@ Some writes are not a person's: a timer that expires leases, the bootstrap that 
 
 ```ts "src/sweeper.ts"
 import { connect, disconnect } from "#mesh";
-import { readTodo, renameTodo } from "#mesh/domain/todo";
+import { Todo } from "#mesh/domain/todo";
 import { alice } from "./context";
 
 await connect();
 
 // A timer acts for the system. The actor is still the person whose record this is.
-const open = await readTodo({ filter: { done: { eq: false } } }, { actor: alice, system: true });
+const open = await Todo.read({ filter: { done: { eq: false } } }, { actor: alice, system: true });
 for (const todo of open) {
-  await renameTodo({ id: todo.id, title: `${todo.title} (stale)` }, { actor: alice, system: true });
+  await Todo.rename({ id: todo.id, title: `${todo.title} (stale)` }, { actor: alice, system: true });
 }
 
 await disconnect();
 ```
 
-Mesh does nothing with `system` by itself: no policy is skipped. A policy admits an internal write by testing the key with `isSystem(context)`, a built-in function that is true only when `context.system` is the boolean `true`:
+Mesh does nothing with `system` by itself: no policy is skipped. A policy admits an internal write by testing the key with `Mesh.isSystem(context)`, a function of `Mesh` that is true only when `context.system` is the boolean `true`:
 
 ```text "src/domain/work/completion.mesh.mx (excerpt)"
+import { Mesh } from "meshfw"
+
 policy :recordedByCascade types=[:create]
-  authorize-if=({ actor, context }) => hasRole(actor, ["owner"]) || isSystem(context)
+  authorize-if=({ actor, context }) => hasRole(actor, ["owner"]) || Mesh.isSystem(context)
 ```
 
-An action that only another action should call carries a policy like this one. A call made through `actions` keeps the caller's context, `system` included, and keeps the person as the `actor`, so a record written by a cascade still names who caused it. Treat `system` as you treat any flag in your own context: it is as trustworthy as the code that builds the context.
+An action that only another action should call carries a policy like this one. A nested call carries the context its caller passes it: a `run` step writes `Completion.record(input, { ...context, system: true })` to act for the system, and the person stays the `actor`, so a record written by a cascade still names who caused it. Treat `system` as you treat any flag in your own context: it is as trustworthy as the code that builds the context.
 
 ## Seams
 
@@ -417,43 +422,45 @@ export default defineConfig({
 });
 ```
 
-`entity` and `action` are the names as written in the entity file (`Review`, `accept`). `input` is the call's validated input and `context` its context (`{}` when the call passed none). A seam sees only plain data, never the read handle, the data layer or a function of your entity files.
+`entity` is the entity's fully qualified name: the folders of its module as written, a dot, and its name (`work.Review`, `sales.billing.Invoice`; an entity at the domain root is just `Review`). `action` is the action's name as written in the entity file (`accept`). `input` is the call's validated input and `context` its context (`{}` when the call passed none). A seam sees only plain data, never the read handle, the data layer or a function of your entity files.
 
 In `afterWrite`, `db` is the transaction's data operations, only the four that work on one row by key (`insert`, `selectByKey`, `updateByKey`, `deleteByKey`, with the tables exported as `tables` from `#mesh`), so a seam can write a row of its own, such as an audit row for each write, without calling an action. (It is not the place for Hyper's idempotency record, which holds a command's whole result and is written in the application `transaction` after the action returns.) A write through `db` runs no seams and is not a change in `afterCommit`. Domain events do not go through a seam: an action raises one with `publish`, which writes it to the outbox in the same transaction, and an event bus delivers it after commit. (The outbox is a permanent, ordered log of the events, not a table emptied after delivery; see the [amendment to ADR-0079](../architecture/decisions/0079-commands-events-and-the-outbox.md).) `before` is the row as it was, or `null` for a create; `after` is the row as written, or `null` for a destroy. A destroy's `before` is never `null`: while an `afterWrite` or `afterCommit` seam is registered, a destroy reads the locked row first, even when nothing in its body could see it, so the seam gets the row that was deleted (with none registered the delete is one statement by key, as before). A read runs no seam.
 
 ```ts "src/seams.ts (excerpt)"
 async afterWrite(db, { entity, action, after }) {
-  await db.insert(tables.writeLog, { type: `${entity}.${action}`, payload: after });
+  await db.insert(tables.write_log, { type: `${entity}#${action}`, payload: after });
 },
 ```
 
 What a throw does:
 
 - In `beforeTransaction`, the call rejects with your error before any transaction opens: nothing is written.
-- In `afterWrite`, the whole outermost transaction rolls back and the call rejects with your error, as a failed call inside a transaction does (when the throw is in a call that another action made and caught, the outermost call rejects with a `FrameworkError` whose `cause` is your error). That includes the rows written by calls the action made through `actions`, and by seams through `db`.
+- In `afterWrite`, the whole outermost transaction rolls back and the call rejects with your error, as a failed call inside a transaction does (when the throw is in a call that another action made and caught, the outermost call rejects with a `FrameworkError` whose `cause` is your error). That includes the rows written by the calls the action made to other entities, and by seams through `db`.
 - In `afterCommit`, nothing is undone: the data is committed and the call resolves with its result. Mesh reports the error with `console.error`, naming the seam, and does not retry. Put anything that must not be lost in the transaction (an `afterWrite` that writes through `db`), not here. The call waits for `afterCommit` before it resolves, so a slow seam delays the call, and `disconnect()`, which waits for calls in flight.
 
 The policies run before the seams that a denial would skip. A policy check that reads only the caller and the input runs before `beforeTransaction`, so a call it denies runs no seam: nothing is written. A check that reads the record runs inside the transaction, before the row is written, so a call it denies has run `beforeTransaction` and runs neither `afterWrite` nor `afterCommit`.
 
-A call that another action makes through `actions` runs the seams for its own writes, with the caller's `context`, so a `commandId` or `caller` you put in the context reaches every seam call. Such a call joins the caller's transaction, so it has no "before the transaction": `beforeTransaction` runs only for the call that opens the transaction, a call you make at top level, and `afterCommit` runs once for the transaction as a whole, with the changes of the outer action and of every call nested in it, in the order the rows were written. The `transaction(fn, context)` you import from `#mesh` is such a transaction too: `afterCommit` runs once when it commits, with every change made inside it, and the actions you call there are joined, so none of them runs `beforeTransaction`. If it rolls back, or writes nothing, `afterCommit` does not run. `mesh explain <entity> <action>` lists where the three seams run in an action's plan. Each binding (each `bind` call) tracks the changes made through its own seams, so a call through a second binding on the same layer, made inside the first binding's transaction, is not in the first binding's `afterCommit`. A seam receives deeply frozen copies of the input, `before` and `after` (a date in them is read-only), so it cannot change what Mesh writes or what another seam sees. The context is the application's own: a seam gets a frozen copy of its top level (it cannot swap `actor` or `commandId` for what runs next), and what it holds, such as a logger, a class instance or a buffer, is passed as the same objects, never copied and never frozen.
+A call that another action makes to an entity runs the seams for its own writes, with the context that call was given, so a `commandId` or `caller` you put in the context reaches every seam call as long as each nested call passes it on. Such a call joins the caller's transaction, so it has no "before the transaction": `beforeTransaction` runs only for the call that opens the transaction, a call you make at top level, and `afterCommit` runs once for the transaction as a whole, with the changes of the outer action and of every call nested in it, in the order the rows were written. `transaction(fn)` is such a transaction too: `afterCommit` runs once when it commits, with every change made inside it, and the actions you call there are joined, so none of them runs `beforeTransaction`. If it rolls back, or writes nothing, `afterCommit` does not run. `mesh explain <entity> <action>` lists where the three seams run in an action's plan. Each binding (each `bind` call) tracks the changes made through its own seams, so a call through a second binding on the same layer, made inside the first binding's transaction, is not in the first binding's `afterCommit`. A seam receives deeply frozen copies of the input, `before` and `after` (a date in them is read-only), so it cannot change what Mesh writes or what another seam sees. The context is the application's own: a seam gets a frozen copy of its top level (it cannot swap `actor` or `commandId` for what runs next), and what it holds, such as a logger, a class instance or a buffer, is passed as the same objects, never copied and never frozen.
 
-## Asking instead of calling: `can`
+## Asking instead of calling
 
-Every action has a `can` function with the same arguments, returning `{ allowed, breakdown }` and changing nothing.
+`Mesh.checkPolicies(Todo.complete, input, context)` takes the action function first and then the arguments of the call you are asking about. It resolves to `{ allowed, breakdown }` and changes nothing. `Mesh.can(Todo.complete, input, context)` is the shortcut for the yes or no: it resolves to `true` exactly when `Mesh.checkPolicies` for the same arguments resolves with `allowed` `true`. The name is `checkPolicies`, not `authorize`, because in Pundit, CanCanCan and Laravel `authorize` throws when the caller is denied, so `await Mesh.authorize(...)` written as a guard would look like one and let every call through; `checkPolicies` says it returns a result. Mesh recognises the action function in a registry it keeps itself, so the function carries nothing extra.
 
 ```ts "src/main.ts"
+import { Mesh } from "meshfw";
 import { connect, disconnect } from "#mesh";
-import { canCompleteTodo, createList, createTodo } from "#mesh/domain/todo";
+import { Todo, List } from "#mesh/domain/todo";
 import { alice, bob } from "./context";
 
 await connect();
 
-const list = await createList({ name: "Groceries" }, { actor: alice });
-const todo = await createTodo({ title: "Buy milk", list: list.id }, { actor: alice });
+const list = await List.create({ name: "Groceries" }, { actor: alice });
+const todo = await Todo.create({ title: "Buy milk", list: list.id }, { actor: alice });
 
-const answer = await canCompleteTodo({ id: todo.id }, { actor: bob });
+const answer = await Mesh.checkPolicies(Todo.complete, { id: todo.id }, { actor: bob });
 console.log(answer.allowed);
 console.log(answer.breakdown);
+console.log(await Mesh.can(Todo.complete, { id: todo.id }, { actor: bob }));
 
 await disconnect();
 ```
@@ -469,11 +476,12 @@ false
     decisive: true,
   },
 ]
+false
 ```
 
-`breakdown` is a list, one entry per check that ran: `{ policy, kind, check, result, decisive }`. `policy` is the name of the policy that carried the check, `kind` is `authorize-if`, `forbid-if` or `when`, `check` is the function as written, `result` is whether it held (`true`, `false`, or `null` when the answer was unknown, which fails closed), and `decisive` marks the checks that decided the answer. Only the checks that ran are listed: a check the call never reached, because an earlier one already denied it or because its policy's `when` was false, is not in the list. A check written as plain code that returns anything but `true` or `false` counts as unknown. A `ForbiddenError` carries the same list. It is data, so a test can assert on it. Prefer it to asserting on an error class: when a call is denied on an action that runs as one statement, the row is reported as not found, and `can` is where the reason is.
+`breakdown` is a list, one entry per check that ran: `{ policy, kind, check, result, decisive }`. `policy` is the name of the policy that carried the check, `kind` is `authorize-if`, `forbid-if` or `when`, `check` is the function as written, `result` is whether it held (`true`, `false`, or `null` when the answer was unknown, which fails closed), and `decisive` marks the checks that decided the answer. Only the checks that ran are listed: a check the call never reached, because an earlier one already denied it or because its policy's `when` was false, is not in the list. A check written as plain code that returns anything but `true` or `false` counts as unknown. A `ForbiddenError` carries the same list. It is data, so a test can assert on it. Prefer it to asserting on an error class: when a call is denied on an action that runs as one statement, the row is reported as not found, and `Mesh.checkPolicies` is where the reason is.
 
-**What `can` means for a read.** A read's policies usually read the stored row, and that makes them part of the query rather than a per-row decision, so there is no row for `can` to rule on: `canPendingTodo({}, { actor: bob })` answers whether the read is allowed at all, which for the tutorial's todo it is. What Bob does not get is Alice's rows — `pendingTodo({}, { actor: bob })` returns an empty array, not an error. The denials worth asking about are the ones on an action that writes, or a read policy that cannot be folded into the query; use `can` there, and assert on the empty result for a read.
+**What the check means for a read.** A read's policies usually read the stored row, and that makes them part of the query rather than a per-row decision, so there is no row for the check to rule on: `Mesh.can(Todo.pending, {}, { actor: bob })` answers whether the read is allowed at all, which for the tutorial's todo it is. What Bob does not get is Alice's rows — `Todo.pending({}, { actor: bob })` returns an empty array, not an error. The denials worth asking about are the ones on an action that writes, or a read policy that cannot be folded into the query; use `Mesh.checkPolicies` there, and assert on the empty result for a read.
 
 ## From a command line
 
@@ -482,7 +490,7 @@ An [oclif command](https://oclif.io/docs/args) can call the same action. This ex
 ```ts "src/commands/list/create.ts (excerpt)"
 import { Args, Command } from "@oclif/core";
 import { connect, disconnect } from "#mesh";
-import { createList } from "#mesh/domain/todo";
+import { List } from "#mesh/domain/todo";
 import { alice } from "../../context";
 
 export default class CreateList extends Command {
@@ -492,7 +500,7 @@ export default class CreateList extends Command {
     const { args } = await this.parse(CreateList);
     await connect();
     try {
-      this.log(JSON.stringify(await createList({ name: args.name }, { actor: alice })));
+      this.log(JSON.stringify(await List.create({ name: args.name }, { actor: alice })));
     } finally {
       await disconnect();
     }
@@ -508,14 +516,14 @@ An [Elysia handler](https://elysiajs.com/essential/handler) calls an action and 
 import { Elysia, t } from "elysia";
 import { InvalidInputError, ForbiddenError } from "@meshfw/runtime";
 import { connect } from "#mesh";
-import { createList } from "#mesh/domain/todo";
+import { List } from "#mesh/domain/todo";
 import { requireActor } from "./auth";
 
 await connect();
 const app = new Elysia().post("/lists", async ({ body, request, status }) => {
   const actor = await requireActor(request);
   try {
-    return await createList(body, { actor });
+    return await List.create(body, { actor });
   } catch (error) {
     if (error instanceof InvalidInputError) return status(400, { code: error.code });
     if (error instanceof ForbiddenError) return status(403, { code: error.code });
@@ -534,12 +542,12 @@ The [error classes](#errors) stay the same: `invalid_input` is a bad request, `f
 ```ts "src/domain-actions.ts (excerpt)"
 export async function addList(name: string) {
   "use server";
-  const { createList } = await import("#mesh/domain/todo");
+  const { List } = await import("#mesh/domain/todo");
   const { InvalidInputError, ForbiddenError } = await import("@meshfw/runtime");
   const { requireActor } = await import("./auth");
   const actor = await requireActor();
   try {
-    return { data: await createList({ name }, { actor }) };
+    return { data: await List.create({ name }, { actor }) };
   } catch (error) {
     if (error instanceof InvalidInputError) return { error: { code: error.code } };
     if (error instanceof ForbiddenError) return { error: { code: error.code } };
