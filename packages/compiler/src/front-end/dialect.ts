@@ -25,12 +25,18 @@
  * passes the dialect to `lowerSource`; tools find it through `meshfw`'s
  * `mx.dialect` registration, whose built module re-exports this value.
  *
+ * `contracts`, `structural`, `unknownTags` and `imports` are the dialect's own fields (MX 0.1.0-alpha.21), so a caller passes none
+ * of them to `lowerSource` and the editor checks a Mesh file exactly as the CLI does. `meshfw`'s manifest closes the
+ * file to the project's `mx.tags`, `mx.contracts` and `tags/` and reserves the vocabulary (`mx.dialect` in
+ * `packages/cli/package.json`).
+ *
  * `tagRules: "none"` makes `input`, `script` or `title` an ordinary Mesh tag
  * (`input` is a section of an action). The preset applies when the dialect is
  * passed directly; `test/dialect.test.ts` asserts it.
  */
 import type { Dialect, UnknownTag, UnknownTagExplanation } from "@mxlang/core";
 import { MESH_SYNTAX } from "./syntax/mesh.ts";
+import MESH_CONTRACTS from "./contracts.ts";
 
 /** The message, from the tag name alone: `uuid:id` is written `uuid :id`; `:x` has no kind, the parent's default tag names it. */
 function unspacedMessage(name: string, defaultTag: string | undefined): string {
@@ -48,7 +54,7 @@ function unspacedMessage(name: string, defaultTag: string | undefined): string {
  * Since MX 0.1.0-alpha.17 a colon in a tag head is part of the tag name (`uuid:id`, `<string:title/>`, `entity:Todo`,
  * `<:x/>`), so such a tag is an unknown tag to MX. Mesh's error replaces MX's for it, since a line is `kind :name`.
  * Every other unknown tag keeps MX's own error (`undefined`). `Dialect.explainUnknownTag` is `@unstable` in MX
- * (alpha.19, #511). The error sits at the tag name, as MX's does.
+ * (MX #511). The error sits at the tag name, as MX's does.
  */
 function explainUnknownTag(tag: UnknownTag): UnknownTagExplanation | undefined {
   if (!tag.name.includes(":")) return undefined;
@@ -64,6 +70,13 @@ export const MESH_DIALECT: Dialect = Object.freeze({
   id: "mesh",
   name: "Mesh",
   tagRules: "none",
+  // Mesh's vocabulary. `Dialect.contracts` is `@unstable` in MX (alpha.21). Every file of the dialect is checked against it, in the
+  // compiler and in every tool, so `lowerSource` is never given `customTags`.
+  contracts: MESH_CONTRACTS,
+  // How strict Mesh files are: the one place these are stated (a caller's option would override them).
+  structural: "reject",
+  unknownTags: "reject",
+  imports: "pass",
   ...MESH_SYNTAX,
   explainUnknownTag,
 });

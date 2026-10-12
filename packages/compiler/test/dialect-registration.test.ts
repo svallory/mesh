@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { MESH_EXTENSIONS } from "../src/front-end/extensions.ts";
 import contracts from "../src/front-end/contracts.ts";
+import { MESH_DIALECT } from "../src/front-end/dialect.ts";
 
 // `meshfw` registers Mesh's dialect for MX tooling (`mx.dialect` in its package.json, MX 0.1.0-alpha.17):
 // a project that lists `meshfw` as a direct dependency gets its `.mesh.mx` files routed to the `mesh`
@@ -55,19 +56,24 @@ test("a project without meshfw gets no dialect", () => {
   expect(discoverDialects(join(root, "package.json"))).toEqual([]);
 });
 
-test("MX loads the registered module: with no dialect option, tag rules are none and the member sigil lowers", () => {
+test("MX loads the registered module: with no options, the vocabulary, tag rules and strictness are the dialect's", () => {
   const root = project("lowered", { meshfw: "*" });
   const file = join(root, "domain/todo.mesh.mx");
-  // Under MX's default `html` rules `input` is void and cannot hold children; `&title` needs Mesh's row.
-  const registered = lowerSource("input\n  string :title\n  &title=1\n", file, { customTags: undefined });
+  // Under MX's default `html` rules `input` is void and cannot hold children; `&title` needs Mesh's row; the file is
+  // checked against Mesh's contracts (the module's `contracts`), with no `customTags` passed.
+  const source = "entity :Todo\n  attributes\n    string :title\n  actions\n    create :open\n      input\n        &title\n";
+  const registered = lowerSource(source, file, {});
   expect(registered.diagnostics).toEqual([]);
   const [node] = registered.ir!.body;
   if (node?.kind !== "DelegatedTag") throw new Error(String(node?.kind));
-  expect(node.tag.name).toBe("input");
-  expect(node.tag.children.length).toBeGreaterThan(0);
+  expect(node.tag.name).toBe("entity");
+  // The module carries the vocabulary: a tag outside it is refused with the dialect named, and a top-level input is misplaced.
+  expect(lowerSource("bogus :x\n", file, {}).diagnostics.map((d) => [d.code, d.message])).toEqual([
+    ["MX_UNKNOWN_TAG", "`<bogus>` is not a known tag in the `mesh` dialect"],
+  ]);
   // The same file under a project that does not register Mesh is plain MX, which rejects `:title` as a line.
   const plain = join(project("plain", {}), "domain/todo.mesh.mx");
-  expect(lowerSource("input\n  string :title\n", plain, {}).diagnostics.length).toBeGreaterThan(0);
+  expect(lowerSource(source, plain, {}).diagnostics.length).toBeGreaterThan(0);
 });
 
 test("the module is built JavaScript Node can load, and no TypeScript ships beside it", async () => {
@@ -108,8 +114,105 @@ test("the build refuses a manifest whose extensions drift from MESH_EXTENSIONS",
   expect(renamed.stderr.toString()).toContain('mx.dialect.id must be "mesh"');
 }, 30_000);
 
-test("mx.contracts stays on @meshfw/compiler and is the only mx key there", async () => {
-  const compiler = await Bun.file(join(import.meta.dir, "../package.json")).json();
-  expect(compiler.mx).toEqual({ contracts: "./src/front-end/contracts.ts" });
-  expect(contracts).toBeDefined();
+// The manifest closes Mesh files to the project (MX 0.1.0-alpha.21; decision MX-15): `mxConfigTags: false` takes `mx.tags` and
+// `mx.contracts` away, `tagDirs: []` closes `tags/`, and `reservedTags` names the vocabulary so a project cannot redefine it.
+// https://github.com/svallory/mx docs: apps/docs/docs/custom-tags/dialects.md ("mxConfigTags", "The manifest fields", "Reserved names").
+const manifest = async () => (await Bun.file(join(cli, "package.json")).json()).mx.dialect;
+
+test("the manifest reserves exactly the contracts' keys, closes the project's config and the tags/ directory", async () => {
+  const dialect = await manifest();
+  expect([...dialect.reservedTags].sort()).toEqual(Object.keys(contracts).sort());
+  expect(new Set(dialect.reservedTags).size).toBe(dialect.reservedTags.length);
+  expect(dialect.mxConfigTags).toBe(false);
+  expect(dialect.tagDirs).toEqual([]);
+  // The dialect module carries the same vocabulary.
+  expect(Object.keys(MESH_DIALECT.contracts ?? {}).sort()).toEqual(Object.keys(contracts).sort());
+});
+
+/** A project whose `package.json` has the given `mx` key and whose extra files are written beside it. */
+function configured(name: string, mx: unknown, files: Record<string, string>): string {
+  const root = project(name, { meshfw: "*" });
+  writeFileSync(join(root, "package.json"), JSON.stringify({ name, private: true, type: "module", dependencies: { meshfw: "*" }, mx }));
+  for (const [path, text] of Object.entries(files)) {
+    mkdirSync(join(root, path, ".."), { recursive: true });
+    writeFileSync(join(root, path), text);
+  }
+  return root;
+}
+
+const callCodes = (root: string, file: string, tag: string) =>
+  lowerSource(`entity :T\n  ${tag} :x\n`, join(root, "domain", file), {}).diagnostics.map((d) => [d.code, d.message]);
+
+test("a project's mx.tags, mx.contracts and tags/ directory do not reach a .mesh.mx file, and do reach a .mx file", () => {
+  const root = configured(
+    "closed",
+    { tags: [{ dir: "shared" }], contracts: "./contracts.mjs" },
+    {
+      "shared/widget.mx": "<div/>\n",
+      "tags/gadget.mx": "<div/>\n",
+      "contracts.mjs": "export default { gizmo: {} };\n",
+    },
+  );
+  for (const tag of ["widget", "gadget", "gizmo"]) {
+    // Control: the project's own `.mx` file sees all three definitions (an open vocabulary, so no error at all).
+    expect(callCodes(root, "page.mx", tag), `${tag} in .mx`).toEqual([]);
+    expect(callCodes(root, "todo.mesh.mx", tag), `${tag} in .mesh.mx`).toEqual([
+      ["MX_UNKNOWN_TAG", `\`<${tag}>\` is not a known tag in the \`mesh\` dialect`],
+    ]);
+  }
+});
+
+test("a project definition named like a Mesh tag never replaces Mesh's contract", () => {
+  const root = configured(
+    "shadow",
+    { tags: [{ dir: "shared" }], contracts: "./contracts.mjs" },
+    { "shared/entity.mx": "<div/>\n", "contracts.mjs": "export default { sort: { attributes: { bogus: { type: 'boolean' } } } };\n" },
+  );
+  const source = "entity :T\n  attributes\n    string :title\n  actions\n    read :all\n      sort\n        asc &title\n";
+  expect(lowerSource(source, join(root, "domain/todo.mesh.mx"), {}).diagnostics).toEqual([]);
+});
+
+// MX reports `MX_RESERVED_TAG` for a project's `mx.tags` entry, tag file or `mx.contracts` key only in the tools' project scan
+// (the language server, `checkDialectFile`), which this repository does not run. What the compiler's path reaches is a `customTags`
+// entry handed to `lowerSource` for a file routed to the dialect: the one place in `packages/` that passes `customTags` on purpose.
+test("a customTags entry that names a Mesh vocabulary key is MX_RESERVED_TAG, naming the dialect", () => {
+  const root = project("reserved", { meshfw: "*" });
+  const file = join(root, "domain/todo.mesh.mx");
+  for (const name of ["entity", "sort", "belongs-to"]) {
+    const found = lowerSource("entity :T\n", file, { customTags: { [name]: {} } }).diagnostics;
+    expect(found.map((d) => [d.code, d.message]), name).toEqual([["MX_RESERVED_TAG", `\`<${name}>\` cannot be defined by \`customTags\`: Mesh reserves it`]]);
+  }
+  expect(lowerSource("entity :T\n", file, { customTags: { widget: {} } }).diagnostics.map((d) => d.code)).not.toContain("MX_RESERVED_TAG");
+});
+
+test("lowering a .mesh.mx file with no options is as strict as the compiler was with its options spelled out", () => {
+  const root = project("strict", { meshfw: "*" });
+  const file = join(root, "domain/todo.mesh.mx");
+  const spelled = { structural: "reject", unknownTags: "reject", imports: "pass" } as const;
+  const sources: [string, string][] = [
+    ["an unknown tag", "entity :T\n  bogus :x\n"],
+    ["text", "<div>hello</div>\n"],
+    ["an interpolation", "entity :T\n  ${x}\n"],
+    ["an if", "<if=true>\n</if>\n"],
+    ["a const", "<const/x=1/>\n"],
+    ["an export", "export const x = 1\nentity :T\n"],
+    ["an import", "import { x } from './x.ts'\nentity :T\n"],
+    ["a valid entity", "entity :T\n  attributes\n    string :title\n"],
+  ];
+  for (const [label, source] of sources) {
+    const bare = lowerSource(source, file, {}).diagnostics;
+    expect(bare, label).toEqual(lowerSource(source, file, spelled).diagnostics);
+    // The dialect passed directly (what the compiler does) says the same as the registered module.
+    expect(lowerSource(source, file, { dialect: MESH_DIALECT }).diagnostics, label).toEqual(bare);
+  }
+  const messages = (source: string) => lowerSource(source, file, {}).diagnostics.map((d) => d.message);
+  expect(messages("entity :T\n  bogus :x\n")).toEqual(["`<bogus>` is not a known tag in the `mesh` dialect"]);
+  const static_ = (what: string) => ["the data tree is static; this file's consumer does not evaluate " + what];
+  expect(messages("<if=true>\n</if>\n")).toEqual(static_("`<if>`"));
+  expect(messages("<const/x=1/>\n")).toEqual(static_("`<const>`"));
+  expect(messages("export const x = 1\nentity :T\n")).toEqual(static_("`export`"));
+  expect(messages("<div>hello</div>\n")).toHaveLength(2);
+  expect(messages("entity :T\n  attributes\n    string :title\n")).toEqual([]);
+  // `imports: "pass"`: an import is not refused for being an import, although `structural` rejects the rest.
+  expect(messages("import { x } from './x.ts'\nentity :T\n")).toEqual([]);
 });

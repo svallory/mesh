@@ -10,16 +10,17 @@ export const CORPUS = join(import.meta.dir, "fixtures/mesh-corpus");
 export const GOLDEN = join(CORPUS, "__golden__/golden.json");
 const contracts = contractsModule as Record<string, CustomTag>;
 
+const withContracts = new WeakMap<Dialect, Dialect>();
+/** The frozen contracts replace the live ones on the dialect; its strictness and tag rules stay the dialect's own. One object per dialect, because MX checks a frozen dialect object once and re-checks an unfrozen one on every call (46 ms against 3 ms). */
+function withCorpusContracts(dialect: Dialect): Dialect {
+  let found = withContracts.get(dialect);
+  if (!found) withContracts.set(dialect, (found = Object.freeze({ ...dialect, contracts })));
+  return found;
+}
+
 /** `parseEntitySource` (`src/front-end/build.ts`) with the contracts of the corpus and the dialect as a parameter. */
 export function parseEntity(source: string, file: string, dialect: Dialect = MESH_DIALECT): LowerSourceResult {
-  return lowerSource(source, file, {
-    dialect,
-    customTags: contracts,
-    tagRules: "none",
-    structural: "reject",
-    unknownTags: "reject",
-    imports: "pass",
-  });
+  return lowerSource(source, file, { dialect: withCorpusContracts(dialect) });
 }
 
 /** Every `.mesh.mx` file under the corpus, by its path relative to it, sorted. */

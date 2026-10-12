@@ -1,4 +1,4 @@
-// Mesh's atoms and name sugar through `lowerSource` with `MESH_DIALECT` (ported from MX's `atoms-sugars-syntax.test.ts` at MX
+// Mesh's atoms and name sugar through `lowerSource` with `SYNTAX_DIALECT` (ported from MX's `atoms-sugars-syntax.test.ts` at MX
 // commit 750c80ec1). MX's copy compared the module with core's built-in path; that path is core's to delete, so the texts and
 // positions it gave are pinned here as literals (checked equal to the built-in path when this was ported, less the decision
 // numbers, which Mesh's messages never quote). Tests of core's trigger hook contract (`ctx.shorthand`, `ctx.use`, `ctx.fail`
@@ -6,12 +6,12 @@
 import type { Attr, DelegatedTag, Spanned } from "@mxlang/core";
 import { lowerSource } from "@mxlang/core";
 import { describe, expect, test } from "bun:test";
-import { MESH_DIALECT } from "../src/front-end/dialect.ts";
+import { SYNTAX_DIALECT } from "./syntax-dialect.ts";
 import { ATOM, NAME_SUGAR, atomsHooks } from "../src/front-end/syntax/atoms-sugars.ts";
 import { MEMBER } from "../src/front-end/syntax/member.ts";
 import { ATOM_VALUE, MESH_SYNTAX } from "../src/front-end/syntax/mesh.ts";
 
-const lower = (source: string) => lowerSource(source, "/v/x.mesh.mx", { dialect: MESH_DIALECT });
+const lower = (source: string) => lowerSource(source, "/v/x.mesh.mx", { dialect: SYNTAX_DIALECT });
 
 function firstTag(source: string): Spanned<DelegatedTag> {
   const result = lower(source);
@@ -153,15 +153,15 @@ describe("what the atom rows refuse, in Mesh's words", () => {
 describe("the rows", () => {
   test("are frozen data a manifest can name", () => {
     for (const row of [ATOM, NAME_SUGAR, MEMBER, ATOM_VALUE]) expect(Object.isFrozen(row)).toBe(true);
-    expect(Object.isFrozen(MESH_DIALECT)).toBe(true);
+    expect(Object.isFrozen(SYNTAX_DIALECT)).toBe(true);
     expect(Object.isFrozen(MESH_SYNTAX.table)).toBe(true);
   });
 
   test("the hooks that carry the atom contracts are all there", () => {
     expect(Object.keys(atomsHooks).sort()).toEqual(["afterLower", "checkContract", "contractFields", "describeAttribute", "lowerTrigger"]);
-    expect(MESH_DIALECT.contractFields).toEqual({ attribute: ["values", "pattern", "ref"], tag: ["declares"] });
-    expect(typeof MESH_DIALECT.checkContract).toBe("function");
-    expect(typeof MESH_DIALECT.afterLower).toBe("function");
-    expect(typeof MESH_DIALECT.describeAttribute).toBe("function");
+    expect(SYNTAX_DIALECT.contractFields).toEqual({ attribute: ["values", "pattern", "ref"], tag: ["declares"] });
+    expect(typeof SYNTAX_DIALECT.checkContract).toBe("function");
+    expect(typeof SYNTAX_DIALECT.afterLower).toBe("function");
+    expect(typeof SYNTAX_DIALECT.describeAttribute).toBe("function");
   });
 });

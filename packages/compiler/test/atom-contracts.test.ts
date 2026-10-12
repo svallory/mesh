@@ -1,9 +1,9 @@
 // The atom contract checks (`values`, `pattern`, `ref`, `declares`) as Mesh's dialect runs them (ported from MX's
 // `lowered-unit.test.ts`, `ir-entry/contract-fields.test.ts` and `ir-entry/lower-source.test.ts` at MX commit 750c80ec1).
-// `MESH_DIALECT` claims those contract keys (`contractFields`) and checks them in `checkContract` and `afterLower`.
+// `SYNTAX_DIALECT` claims those contract keys (`contractFields`) and checks them in `checkContract` and `afterLower`.
 // The expected diagnostics are literal data in `fixtures/atom-contracts.json` (message, line, column, offset, code, one
 // entry per source), generated once from the output MX's reference module and core's built-in path agreed on. Nothing
-// here lowers without `MESH_DIALECT`, so the tests do not depend on core's own Mesh behaviour (core is dropping it).
+// here lowers without `SYNTAX_DIALECT`, so the tests do not depend on core's own Mesh behaviour (core is dropping it).
 //
 //   MESH_CONTRACTS_UPDATE=1 bun test packages/compiler/test/atom-contracts.test.ts
 //
@@ -12,10 +12,10 @@ import { lowerSource, type CustomTag, type Dialect, type LowerSourceOptions } fr
 import { afterAll, describe, expect, test } from "bun:test";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { MESH_DIALECT } from "../src/front-end/dialect.ts";
+import { SYNTAX_DIALECT } from "./syntax-dialect.ts";
 import { FAILING, PASSING, REGISTRATION, vocab } from "./atom-contract-cases.ts";
 
-const MESH: LowerSourceOptions = { dialect: MESH_DIALECT };
+const MESH: LowerSourceOptions = { dialect: SYNTAX_DIALECT };
 
 const DATA = join(import.meta.dir, "fixtures/atom-contracts.json");
 const update = process.env.MESH_CONTRACTS_UPDATE === "1";
@@ -29,6 +29,8 @@ function expectRecorded(key: string, actual: unknown): void {
   expect(actual).toEqual(recorded[key]);
 }
 
+// Deliberately `customTags`: these cases pin what the dialect's contract hooks do with a contract MX is handed per call. A malformed
+// contract in `Dialect.contracts` instead stops the whole dialect (`MX_INVALID_DIALECT_CONTRACT`), pinned in `dialect-contracts.test.ts`.
 const diagnosticsOf = (source: string, tags: Record<string, CustomTag>, options: LowerSourceOptions, file = "/v/x.mx") =>
   lowerSource(source, file, { ...options, customTags: tags }).diagnostics;
 
@@ -132,11 +134,11 @@ describe("a dialect's own contract key", () => {
       index: { attributes: { on: { type: "atom", unique: true } }, relations: "many" },
     } as unknown as Record<string, CustomTag>;
     // Without a dialect that claims it, `unique` is an unknown key.
-    expect(diagnosticsOf(source, tags, MESH)[0]?.message).toMatch(/Unknown key "unique"/);
+    expect(diagnosticsOf(source, tags, MESH)[0]?.message).toMatch(/Unknown key "(relations|unique)"/);
 
     const seen: unknown[] = [];
     const extended: Dialect = {
-      ...MESH_DIALECT,
+      ...SYNTAX_DIALECT,
       contractFields: { attribute: ["unique"], tag: ["relations"] },
       afterLower(unit) {
         for (const call of unit.calls) {

@@ -1,4 +1,4 @@
-// Mesh's v4 reference file through `lowerSource` with `MESH_DIALECT` (ported from MX's `ir-entry/mesh-syntax.test.ts` at MX
+// Mesh's v4 reference file through `lowerSource` with `SYNTAX_DIALECT` (ported from MX's `ir-entry/mesh-syntax.test.ts` at MX
 // commit 750c80ec1; Mesh owns the syntax now): atoms and the name sugar as layer-2 triggers plus the `&` member rows. The shapes
 // the front end reads: a whole-value atom is a `static` attribute carrying `atom`, an atom inside an expression a `StringLiteral`
 // marked `extra.mxAtom`, a member a `static` attribute carrying `member` or `extra.mxMember`. The "dialect package" loader is
@@ -6,7 +6,7 @@
 import type { Attr, DelegatedTag, LowerSourceOptions, Spanned } from "@mxlang/core";
 import { lowerSource } from "@mxlang/core";
 import { describe, expect, test } from "bun:test";
-import { MESH_DIALECT } from "../src/front-end/dialect.ts";
+import { SYNTAX_DIALECT } from "./syntax-dialect.ts";
 
 const BASE: LowerSourceOptions = { structural: "reject", imports: "pass" };
 
@@ -68,9 +68,9 @@ function attr(tag: SpannedTag, name: string): SpannedAttr {
   return found;
 }
 
-describe("Mesh's v4 reference file through MESH_DIALECT", () => {
+describe("Mesh's v4 reference file through SYNTAX_DIALECT", () => {
   function parsed() {
-    const result = lowerSource(INVOICE, "/v/invoice.mesh.mx", { dialect: MESH_DIALECT, ...BASE });
+    const result = lowerSource(INVOICE, "/v/invoice.mesh.mx", { dialect: SYNTAX_DIALECT, ...BASE });
     expect(result.diagnostics).toEqual([]);
     return result.ir as NonNullable<typeof result.ir>;
   }
@@ -148,7 +148,7 @@ describe("a diagnostic in the parsed file has no `file` (it names only another f
   const SOURCES = ["enum values=[::x]\n", "<x :a:b/>", "<y x=(/>", "entity :A\n  <for of=[1]|x|>\n  </for>\n"];
   test.each(SOURCES)("%j", (source) => {
     for (const file of ["/v/x.mesh.mx", "relative/x.mesh.mx"]) {
-      const { diagnostics } = lowerSource(source, file, { ...BASE, dialect: MESH_DIALECT });
+      const { diagnostics } = lowerSource(source, file, { ...BASE, dialect: SYNTAX_DIALECT });
       expect(diagnostics.length, file).toBeGreaterThan(0);
       for (const diagnostic of diagnostics) expect(diagnostic, file).not.toHaveProperty("file");
     }
@@ -158,9 +158,9 @@ describe("a diagnostic in the parsed file has no `file` (it names only another f
 describe("what Mesh's dialect does not read", () => {
   // MX's reference module also carried the `#id` and `.class` shorthand rows; Mesh's copy drops them.
   test("`#` and `.` are no trigger rows", () => {
-    const rows = MESH_DIALECT.table.attributeTriggers ?? [];
+    const rows = SYNTAX_DIALECT.table.attributeTriggers ?? [];
     expect(rows.map((row) => row.id)).toEqual(["name", "member"]);
-    expect((MESH_DIALECT.table.expressionTriggers ?? []).map((row) => row.id)).toEqual(["atom", "member"]);
-    expect((MESH_DIALECT.table.lineTriggers ?? []).map((row) => row.id)).toEqual(["member"]);
+    expect((SYNTAX_DIALECT.table.expressionTriggers ?? []).map((row) => row.id)).toEqual(["atom", "member"]);
+    expect((SYNTAX_DIALECT.table.lineTriggers ?? []).map((row) => row.id)).toEqual(["member"]);
   });
 });

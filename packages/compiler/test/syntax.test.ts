@@ -3,11 +3,12 @@ import { lowerSource } from "@mxlang/core";
 import type { Attr, Tag } from "../src/front-end/tree.ts";
 import type { SpannedIr } from "@mxlang/core";
 import { MESH_DIALECT } from "../src/front-end/dialect.ts";
+import { SYNTAX_DIALECT } from "./syntax-dialect.ts";
 
 // The module alone, without contracts: these pin the four tree shapes the
 // compiler reads, on one Mesh sample each.
 function parse(source: string) {
-  const result = lowerSource(source, "todo/todo.mesh.mx", { dialect: MESH_DIALECT });
+  const result = lowerSource(source, "todo/todo.mesh.mx", { dialect: SYNTAX_DIALECT });
   expect(result.diagnostics).toEqual([]);
   return result.ir!;
 }

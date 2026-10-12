@@ -4,7 +4,7 @@
 import { lowerSource } from "@mxlang/core";
 import { expect, test } from "bun:test";
 import { parseEntitySource } from "../src/front-end/build.ts";
-import { MESH_DIALECT } from "../src/front-end/dialect.ts";
+import { SYNTAX_DIALECT } from "./syntax-dialect.ts";
 import { tags } from "../src/front-end/tree.ts";
 
 const entity = (step: string) =>
@@ -27,7 +27,7 @@ test("run [after=:write] (...) { ... } lowers to one value and no warning", () =
 });
 
 test("a real duplicate attribute warns with the code MX_DUPLICATE_ATTRIBUTE", () => {
-  const { diagnostics } = lowerSource("<x a=1 a=2/>", "/v/x.mesh.mx", { dialect: MESH_DIALECT });
+  const { diagnostics } = lowerSource("<x a=1 a=2/>", "/v/x.mesh.mx", { dialect: SYNTAX_DIALECT });
   expect(diagnostics).toHaveLength(1);
   expect(diagnostics[0]).toMatchObject({ severity: "warning", code: "MX_DUPLICATE_ATTRIBUTE" });
 });

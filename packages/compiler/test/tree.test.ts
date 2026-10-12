@@ -3,7 +3,7 @@ import { lowerSource } from "@mxlang/core";
 import type { Tag } from "../src/front-end/tree.ts";
 import type { SpannedIr } from "@mxlang/core";
 import { positionAt } from "../src/model/index.ts";
-import { MESH_DIALECT } from "../src/front-end/dialect.ts";
+import { SYNTAX_DIALECT } from "./syntax-dialect.ts";
 import {
   attr,
   expression,
@@ -14,12 +14,12 @@ import {
   type MemberAssignment,
 } from "../src/front-end/tree.ts";
 
-// Real lowered trees from MESH_DIALECT (no contracts): the readers take members
+// Real lowered trees from SYNTAX_DIALECT (no contracts): the readers take members
 // from MX's shapes only, never from `code` or the text.
 const tagsOf = (nodes: SpannedIr["body"]): Tag[] =>
   nodes.flatMap((n) => (n.kind === "DelegatedTag" ? [n.tag] : []));
 function lowered(source: string) {
-  const result = lowerSource(source, "todo.mesh.mx", { dialect: MESH_DIALECT });
+  const result = lowerSource(source, "todo.mesh.mx", { dialect: SYNTAX_DIALECT });
   expect(result.diagnostics).toEqual([]);
   const at = (offset: number) => positionAt(source, "todo.mesh.mx", offset);
   return { root: tagsOf(result.ir!.body)[0]!, at };
