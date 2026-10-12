@@ -292,8 +292,10 @@ export function namespaceName(folder: string): string {
  * Two entities never get one local, and no local is one of Mesh's own. The last part is the role and the one before it
  * the entity's name, so two equal locals name entities with one name in folders whose namespace names are equal, and
  * each barrel refuses two folders that normalise alike (PRJ-21, `MESH_EMIT_NAME` in `moduleView`): those are one entity,
- * since FQNs are unique. `$` appears in no folder name (PRJ-20) and no entity name (`MESH_ENTITY_NAME`), CMP-06 keeps it
- * out of helper names, and every such local has at least two `$`, where Mesh's own imports (`$Comparison`) have one.
+ * since FQNs are unique. `$` appears in no folder name (PRJ-20) and no entity name (`MESH_ENTITY_NAME`), and CMP-06 keeps
+ * it out of the front of every name an entity file imports, a helper or an entity's alias (`MESH_HELPER_NAME` in
+ * `front-end/build.ts`), so no authored name is one of these locals; every such local has at least two `$`, where
+ * Mesh's own imports (`$Comparison`) have one.
  */
 export function entityLocal(entity: Entity, role: string): string {
   const segments = entity.module === "" ? [] : entity.module.split("/").map(namespaceName);

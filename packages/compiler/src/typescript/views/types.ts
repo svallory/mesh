@@ -1,5 +1,5 @@
 import { dirname, relative, resolve } from "node:path";
-import { attributeTypeInfo, type Entity, type SourcePosition } from "@meshfw/model";
+import { attributeTypeInfo, type Entity } from "@meshfw/model";
 import { emitError } from "../emit-error.ts";
 import type { EmitInput } from "../emit.ts";
 import { hasLoader } from "./load.ts";
@@ -29,8 +29,8 @@ export interface TypesView {
   /** The entity file this file is generated from, project-relative, line terminators escaped as `\uXXXX`. */
   readonly entityFile: string;
   /**
-   * Type-only imports of other entities' record types, ordered as they are first referenced, each under a local that
-   * cannot clash with another entity's (CMP-05): the alias the entity file's import wrote, else the FQN-derived local.
+   * Type-only imports of other entities' record types, ordered as they are first referenced, each under its FQN-derived
+   * local (CMP-05, `entityLocal`), which cannot clash with another entity's or with a name the file uses.
    */
   readonly imports: readonly TypeImport[];
   /** The entity's stored record: its attributes, then one key column per relationship that has one. */
@@ -89,13 +89,13 @@ export interface QueryDeclaration {
 /** `import type { <names> } from <fromLiteral>;` */
 export interface TypeImport {
   /**
-   * The local the record type is imported under: the alias the entity file's import wrote (`BList`), else the entity's
-   * FQN-derived local (`$identity$Member$Record`, `entityLocal`).
+   * The local the record type is imported under, the entity's FQN-derived local (`$identity$Member$Record`,
+   * `entityLocal`), whatever alias the entity file's import wrote. Not the target's type name (`Member`).
    */
   readonly name: string;
   /**
    * What the import names, as printed: the record type, then its fully loaded type when the file needs it, e.g.
-   * `Member as $identity$Member$Record, MemberLoaded as $identity$Member$Loaded`; under an alias, `List as BList, ListLoaded as BList$Loaded`.
+   * `Member as $identity$Member$Record, MemberLoaded as $identity$Member$Loaded`.
    */
   readonly names: string;
   /** The module specifier as a quoted string literal, e.g. `"./user.types"`. */
@@ -140,62 +140,40 @@ export function typesView({ document }: EmitInput, entity: Entity): TypesView {
   const inputs = entityInputs(entity, document);
   const declared = new Set([recordName]);
   for (const input of inputs) {
-    if (declared.has(input.name)) throw emitError("MESH_EMIT_NAME", `Duplicate generated type ${input.name}`, input.position);
+    if (declared.has(input.name)) throw emitError("MESH_EMIT_NAME", `Entity ${entity.fqn} would generate the type ${input.name} twice`, input.position);
     declared.add(input.name);
   }
   if (entity.relationships.length + entity.computed.length > 0)
     for (const name of [`${recordName}Loadable`, `${recordName}With`, `${recordName}LoadNames`, `${recordName}LoadArg`, `${recordName}Loaded`, ...(hasTxLoadable(entity) ? [`${recordName}TxLoadable`, `${recordName}TxWith`] : [])]) {
-      if (declared.has(name)) throw emitError("MESH_EMIT_NAME", `Duplicate generated type ${name}`, entity.position);
+      if (declared.has(name)) throw emitError("MESH_EMIT_NAME", `Entity ${entity.fqn} would generate the type ${name} twice`, entity.position);
       declared.add(name);
     }
-  // Another entity's types are imported under a local that cannot clash with this file's own names or with another
-  // entity's (CMP-05: generated locals never use a bare entity name): the alias the entity file's import wrote
-  // (`import { List as BList }` gives `BList` and `BList$Loaded`), else `entityLocal` (`$b$List$Record`, `$b$List$Loaded`).
-  // Only an alias can still meet one of the file's own names, which is MESH_EMIT_NAME.
-  const taken = new Map<string, string>([...declared].map((name) => [name, `the type ${name} of entity ${entity.fqn}`]));
-  if (hasRead(entity))
-    for (const name of [filterTypeName(entity), sortTypeName(entity)]) taken.set(name, `the type ${name} of entity ${entity.fqn}`);
-  if (hasRead(entity)) taken.set("$Comparison", "Mesh's import $Comparison");
+  // Another entity's types are imported under its FQN-derived locals (`$b$List$Record`, `$b$List$Loaded`; CMP-05:
+  // generated locals never use a bare entity name, and never the alias the entity file's import wrote, which could
+  // hide a global the file uses, such as `Pick`). No such local is one of this file's own names or another entity's.
   const imported = new Map<string, { target: Entity; local: string; loadedLocal: string; loaded: boolean }>();
-  const localOf = (target: Entity, identifier: string, position: SourcePosition): string => {
+  const localOf = (target: Entity): string => {
     if (target.file === entity.file) return recordName;
     let found = imported.get(target.file);
     if (!found) {
-      const aliased = identifier !== target.name;
-      const local = aliased ? identifier : entityLocal(target, "Record");
-      found = { target, local, loadedLocal: aliased ? `${identifier}$Loaded` : entityLocal(target, "Loaded"), loaded: false };
+      found = { target, local: entityLocal(target, "Record"), loadedLocal: entityLocal(target, "Loaded"), loaded: false };
       imported.set(target.file, found);
-      claimLocal(local, target, position);
     }
     return found.local;
   };
-  const claimLocal = (local: string, target: Entity, position: SourcePosition) => {
-    const other = taken.get(local);
-    if (other !== undefined)
-      throw emitError("MESH_EMIT_NAME", `The types file of entity ${entity.fqn} would import entity ${target.fqn} as ${local}, which is already ${other}`,
-        position, `Import ${target.name} under another name in ${entity.file}`);
-    taken.set(local, `the import of entity ${target.fqn}`);
-  };
-  const relationOf = (name: string) => entity.relationships.find((relation) => relation.name === name && relation.kind === "belongs-to");
   for (const input of inputs)
     for (const field of input.fields)
-      if (field.reference) {
-        const relation = relationOf(field.attribute.name);
-        localOf(field.reference, relation?.entity.identifier ?? field.reference.name, relation?.position ?? entity.position);
-      }
+      if (field.reference) localOf(field.reference);
   // A relationship's record type is imported when the target is another file; its own type needs no import.
   // So is its fully loaded type, which this entity's own fully loaded type names.
   for (const relation of entity.relationships) {
     const target = relationTarget(document, entity, relation);
-    localOf(target, relation.entity.identifier, relation.position);
+    localOf(target);
     const found = imported.get(target.file);
-    if (found && hasLoader(target) && !found.loaded) {
-      found.loaded = true;
-      claimLocal(found.loadedLocal, target, relation.position);
-    }
+    if (found && hasLoader(target)) found.loaded = true;
   }
   const allFields = [...entity.attributes, ...inputs.flatMap((i) => i.fields.map((f) => f.attribute))];
-  if (allFields.some((f) => attributeTypeInfo(f.type).tsType === "Date") && taken.has("Date"))
+  if (allFields.some((f) => attributeTypeInfo(f.type).tsType === "Date") && declared.has("Date"))
     throw emitError("MESH_EMIT_NAME", "Generated Date would shadow the Date type", entity.position);
 
   const imports = [...imported.values()].map(({ target, local, loadedLocal, loaded }): TypeImport => {

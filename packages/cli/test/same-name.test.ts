@@ -95,12 +95,14 @@ describe("two entities named List in modules a and b", () => {
     expect(await readFile(join(root, ".mesh/domain/b/index.ts"), "utf8")).toContain('export { List } from "./list.actions";');
     // load.ts holds one registry keyed by FQN and imports each entity's expressions under a local derived from it.
     const load = await readFile(join(root, ".mesh/load.ts"), "utf8");
-    expect(load).toContain('import { expressions as $a$List$expressions } from "./domain/a/list.expressions";');
-    expect(load).toContain('import { expressions as $b$List$expressions } from "./domain/b/list.expressions";');
+    expect(load).toContain('import { $expressions as $a$List$expressions } from "./domain/a/list.expressions";');
+    expect(load).toContain('import { $expressions as $b$List$expressions } from "./domain/b/list.expressions";');
     expect(load).toContain('"a.List": {');
     expect(load).toContain('"b.List": {');
-    // a's types file names b's List by the alias a/list.mesh.mx gives it.
-    expect(await readFile(join(root, ".mesh/domain/a/list.types.ts"), "utf8")).toContain('import type { List as BList } from "../b/list.types";');
+    // a's types file names b's List by its FQN-derived local, not by the alias a/list.mesh.mx gives it.
+    const aTypes = await readFile(join(root, ".mesh/domain/a/list.types.ts"), "utf8");
+    expect(aTypes).toContain('import type { List as $b$List$Record } from "../b/list.types";');
+    expect(aTypes).not.toContain("BList");
   });
 
   test("tsc type-checks the generated tree and the specifiers under the strictest flags", async () => {

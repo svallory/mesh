@@ -37,7 +37,7 @@ import {
 import { tables } from {{ schemaFromLiteral }};
 @if(expressionsFromLiteral)
 import {
-  expressions as $expressions,
+  $expressions,
   @each(name in scopeImports)
   type {{ name }},
   @end

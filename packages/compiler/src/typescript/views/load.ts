@@ -22,7 +22,7 @@ export interface LoadView {
   readonly schemaFromLiteral: string;
   /**
    * Imports of each entity's expressions file, for the entities with a computed field that has a body or a read policy
-   * a load runs. The local is `entityLocal(entity, "expressions")`, e.g. `$work$Task$expressions`.
+   * a load runs: the file's `$expressions` under `entityLocal(entity, "expressions")`, e.g. `$work$Task$expressions`.
    */
   readonly expressionImports: readonly { readonly local: string; readonly fromLiteral: string }[];
   /** Every entity, in the fixed entity order: the plan has one entry per entity, because a relationship may point at any of them. */

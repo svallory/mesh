@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { scope } from "@meshfw/runtime";
-import { expressions as claim } from "../.mesh/domain/work/claim.expressions.ts";
-import { expressions as task } from "../.mesh/domain/work/task.expressions.ts";
+import { $expressions as claim } from "../.mesh/domain/work/claim.expressions.ts";
+import { $expressions as task } from "../.mesh/domain/work/task.expressions.ts";
 
 // M4: the computed fields Hyper's rules need, evaluated in memory on loaded rows.
 test("task.children-settled: no open child, an empty list included", () => {

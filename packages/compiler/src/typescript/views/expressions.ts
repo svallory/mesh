@@ -21,11 +21,17 @@ export interface ExpressionsView {
   readonly usesExpr: boolean;
   /** True when a scope names `$SharedInput`: an `always` block or a policy covers actions with different inputs. */
   readonly usesSharedInput: boolean;
-  /** The entity's record type name, e.g. `Invoice`. */
+  /** The entity's record type name, e.g. `Invoice`, for the comments. */
   readonly recordName: string;
+  /** The local the file imports the record type under, `entityLocal(entity, "Record")`, e.g. `$billing$Invoice$Record`. */
+  readonly recordLocal: string;
   /** The module specifier of the entity's types file as a quoted string literal. */
   readonly typesFromLiteral: string;
-  /** What the file imports from the types file: the record type, its fully loaded type and the input types the scopes name. */
+  /**
+   * What the file imports from the types file, as printed: the record type, its fully loaded type and the input types the
+   * scopes name, each under its `entityLocal` (`Invoice as $billing$Invoice$Record`, `PayInvoiceInput as
+   * $billing$Invoice$PayInvoiceInput`), so that no generated name at module level is one a helper import could have.
+   */
   readonly typeImports: readonly string[];
   /** True when a function calls `privileged(Entity)` (TXN-16): the file imports it from `@meshfw/runtime` as `$privileged`. */
   readonly usesPrivileged: boolean;
@@ -36,9 +42,15 @@ export interface ExpressionsView {
    * each under the name the entity file gives it, the alias its import wrote included (`const BList: ... = $b$List$value`).
    */
   readonly entityImports: readonly { names: string; fromLiteral: string }[];
-  /** True when an expression mentions `structuredClone`: the file then shadows it with `cloneValue`, which copies a read-only record. */
+  /**
+   * True when a plain function mentions `structuredClone` and no helper import has that name: the file imports `cloneValue`
+   * as `$cloneValue`, and each such function binds `structuredClone` to it, since it copies a read-only record.
+   */
   readonly shadowsStructuredClone: boolean;
-  /** The scope type's exported name, e.g. `InvoiceScope`; it takes the input type as its parameter. */
+  /**
+   * The scope type's exported name, `entityLocal(entity, "Scope")`, e.g. `$billing$Invoice$Scope`; it takes the input type
+   * as its parameter. Every scope type is named the same way (`StoredScope`, `CheckScope`, `NewScope`, `CreateScope`).
+   */
   readonly scopeName: string;
   /** The scope type's definition, a generic over `I`, the input. */
   readonly scopeType: string;
@@ -68,7 +80,7 @@ export interface ExpressionEntry {
   readonly key: string;
   /** One line saying what it is and where it was written. */
   readonly comment: string;
-  /** `(s: InvoiceScope<PayInvoiceInput>) => ...`. */
+  /** `(s: $billing$Invoice$CheckScope<$billing$Invoice$PayInvoiceInput>) => ...`. */
   readonly code: string;
 }
 
@@ -184,12 +196,20 @@ export function hasExpressions(entity: Entity): boolean {
 
 export function expressionsView({ document }: EmitInput, entity: Entity, generatedPath: string): ExpressionsView {
   const recordName = typeName(entity.name, entity.position);
-  const scopeName = `${recordName}Scope`;
-  const storedScopeName = `${recordName}StoredScope`;
+  // Every module-level name the file takes from generated code is a `$` local (CMP-05, CMP-06): Mesh's own imports have
+  // one `$`, and the entity's own types and scopes, like the entity values it imports, are `entityLocal`s. The only
+  // names without one are the entity file's helper imports, which cannot start with `$`.
+  const recordLocal = entityLocal(entity, "Record");
+  const scopeName = entityLocal(entity, "Scope");
+  const storedScopeName = entityLocal(entity, "StoredScope");
+  const checkScopeName = entityLocal(entity, "CheckScope");
+  const newScopeName = entityLocal(entity, "NewScope");
+  const createScopeName = entityLocal(entity, "CreateScope");
   // `self` carries every relationship and computed field, each related record the same way (M7): the action loads what
   // a function reads before calling it, and a member that was not loaded throws instead of being undefined.
-  const selfType = hasLoader(entity) ? `${recordName}Loaded` : recordName;
-  const scopeType = `$Scope<{ self: $DeepReadonly<${selfType}>; input: $DeepReadonly<I>; actor: any; context: any; before: $DeepReadonly<${recordName}> | null }>`;
+  const loaded = hasLoader(entity);
+  const selfType = loaded ? entityLocal(entity, "Loaded") : recordLocal;
+  const scopeType = `$Scope<{ self: $DeepReadonly<${selfType}>; input: $DeepReadonly<I>; actor: any; context: any; before: $DeepReadonly<${recordLocal}> | null }>`;
   const found = collect(entity);
   // On a create, `self` is the new instance (ACT-27): the members nothing has filled yet are null there, so the scopes
   // of the functions that can run on one say so.
@@ -198,21 +218,21 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     const names = members.map((name) => JSON.stringify(name)).join(" | ");
     return `$DeepReadonly<Omit<${selfType}, ${names}> & { [K in ${names}]: ${selfType}[K] | null }>`;
   };
-  const unfilled = newInstanceMembers(gaps, selfType !== recordName);
+  const unfilled = newInstanceMembers(gaps, loaded);
   // A computed field that reads one of them is evaluated over the nulls: null too, whatever its stored type says.
   const nullOnNew = [...unfilled, ...newInstanceComputed(entity, new Set(unfilled))];
   const scopeOf = (kind: ScopeKind): string =>
-    kind === "new" ? (unfilled.length ? `${recordName}NewScope` : `${recordName}CheckScope`)
-      : kind === "check" ? `${recordName}CheckScope`
-        : kind === "create" ? (gaps.key ? `${recordName}CreateScope` : scopeName)
+    kind === "new" ? (unfilled.length ? newScopeName : checkScopeName)
+      : kind === "check" ? checkScopeName
+        : kind === "create" ? (gaps.key ? createScopeName : scopeName)
           : kind === "stored" ? storedScopeName : scopeName;
   const usedScopes = new Set(found.map((f) => scopeOf(f.scope)));
-  const checkScope = usedScopes.has(`${recordName}CheckScope`) || usedScopes.has(`${recordName}NewScope`)
-    ? { name: `${recordName}CheckScope`, type: `Omit<${scopeName}<I>, "before">` } : null;
-  const newScope = usedScopes.has(`${recordName}NewScope`)
-    ? { name: `${recordName}NewScope`, type: `Omit<${recordName}CheckScope<I>, "self"> & { self: ${withNulls(nullOnNew)} }` } : null;
-  const createScope = usedScopes.has(`${recordName}CreateScope`) && gaps.key
-    ? { name: `${recordName}CreateScope`, type: `Omit<${scopeName}<I>, "self"> & { self: ${withNulls([gaps.key])} }` } : null;
+  const checkScope = usedScopes.has(checkScopeName) || usedScopes.has(newScopeName)
+    ? { name: checkScopeName, type: `Omit<${scopeName}<I>, "before">` } : null;
+  const newScope = usedScopes.has(newScopeName)
+    ? { name: newScopeName, type: `Omit<${checkScopeName}<I>, "self"> & { self: ${withNulls(nullOnNew)} }` } : null;
+  const createScope = usedScopes.has(createScopeName) && gaps.key
+    ? { name: createScopeName, type: `Omit<${scopeName}<I>, "self"> & { self: ${withNulls([gaps.key])} }` } : null;
   // The input an expression reads: its action's, the fields the covered actions share for an `always` block or a policy, none for a computed field.
   const inputs = entityInputs(entity, document);
   const inputNames = new Map(effectiveActions(entity).map((action, index) => [action.name, inputs[index]!.name]));
@@ -221,10 +241,11 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
   const inputOf = (actions: readonly Action[]): string => {
     const names = [...new Set(actions.map((action) => inputNames.get(action.name)!))];
     names.forEach((name) => usedInputs.add(name));
-    if (names.length === 0) return "unknown";
-    if (names.length === 1) return names[0]!;
+    const locals = names.map((name) => entityLocal(entity, name));
+    if (locals.length === 0) return "unknown";
+    if (locals.length === 1) return locals[0]!;
     shared = true;
-    return `$SharedInput<${names.join(" | ")}>`;
+    return `$SharedInput<${locals.join(" | ")}>`;
   };
   // Helper imports: the entity file's non-entity imports, rewritten relative to the generated file.
   const helperFrom = new Map<string, string>();
@@ -264,22 +285,29 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     if (!hit) throw emitError("MESH_UNKNOWN_ENTITY", `Entity ${name} is not imported by ${entity.file}`, entity.position);
     return hit;
   };
+  // `structuredClone` cannot copy the read-only views a function is handed (they are proxies), so a function that
+  // mentions it binds it to `cloneValue`, unless the entity file imports its own `structuredClone`.
+  const clones = (expression: Expression) => !expression.tree && !helperFrom.has("structuredClone") && mentioned(expression, ["structuredClone"]).length > 0;
   const entries = found.map((f) => ({
       key: JSON.stringify(f.id),
       comment: `${f.what}, ${f.expression.tree ? "translated" : `plain (${f.expression.plain!.why})`} (${entity.file}:${f.expression.position.line}:${f.expression.position.column + 1})`
         .replace(/[\r\n\u2028\u2029]/g, " "),
-      code: printExpression(f.expression, `${scopeOf(f.scope)}<${inputOf(f.actions)}>`, f.boolean, f.run === true, locals),
+      code: printExpression(f.expression, `${scopeOf(f.scope)}<${inputOf(f.actions)}>`, f.boolean, f.run === true, locals, clones(f.expression)),
     }));
   const usesExpr = entries.some((e) => e.code.includes("$."));
-  // `structuredClone` cannot copy the read-only views a function is handed (they are proxies), so the file shadows it.
-  const shadowsStructuredClone = found.some(({ expression }) => !expression.tree && mentioned(expression, ["structuredClone"]).length > 0);
+  const shadowsStructuredClone = found.some(({ expression }) => clones(expression));
   return {
     entityFile: entityFileComment(entity),
     usesExpr,
     usesSharedInput: shared,
     recordName,
+    recordLocal,
     typesFromLiteral: JSON.stringify(`./${entitySegment(entity)}.types`),
-    typeImports: [recordName, ...(selfType === recordName ? [] : [selfType]), ...[...usedInputs].sort()],
+    typeImports: [
+      `${recordName} as ${recordLocal}`,
+      ...(loaded ? [`${recordName}Loaded as ${selfType}`] : []),
+      ...[...usedInputs].sort().map((name) => `${name} as ${entityLocal(entity, name)}`),
+    ],
     usesPrivileged: found.some(({ expression }) => expression.plain?.privileged === true),
     entityImports: [...entityFrom].map(([from, names]) => ({ names: [...names].join(", "), fromLiteral: JSON.stringify(from) })),
     shadowsStructuredClone,

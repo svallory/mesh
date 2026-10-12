@@ -481,9 +481,9 @@ describe("the generated files", () => {
   test("`input`, related records, `before` and what entity calls and `privileged` return in an entity file are deep read-only; inputs are checked", async () => {
     await Bun.write(join(dir, "check-types.ts"), [
       'import { cloneValue } from "@meshfw/runtime";',
-      'import type { AccountStoredScope } from "./.mesh/domain/account.expressions.ts";',
+      'import type { $Account$StoredScope as AccountStoredScope } from "./.mesh/domain/account.expressions.ts";',
       'import type { DepositAccountInput } from "./.mesh/domain/account.types.ts";',
-      'import type { EntryScope } from "./.mesh/domain/entry.expressions.ts";',
+      'import type { $Entry$Scope as EntryScope } from "./.mesh/domain/entry.expressions.ts";',
       'import type { PostEntryInput } from "./.mesh/domain/entry.types.ts";',
       'import type { $ReadOnly as AccountView } from "./.mesh/domain/account.actions.ts";',
       'import type { $ReadOnly as EntryView } from "./.mesh/domain/entry.actions.ts";',

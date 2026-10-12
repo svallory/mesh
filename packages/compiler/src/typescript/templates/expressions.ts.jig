@@ -28,16 +28,11 @@ import type {
   {{ name }},
   @end
 } from {{ typesFromLiteral }};
-@if(shadowsStructuredClone)
-
-// The records a function is handed are read-only views, which the global `structuredClone` cannot copy; this one can.
-const structuredClone = $cloneValue;
-@end
 
 /** What every expression of {{ recordName }} reads; `I` is the input of the action it runs in. */
 export type {{ scopeName }}<I = unknown> = {{ scopeType }};
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
-export type {{ storedScopeName }}<I = unknown> = {{ scopeName }}<I> & { before: $DeepReadonly<{{ recordName }}> };
+export type {{ storedScopeName }}<I = unknown> = {{ scopeName }}<I> & { before: $DeepReadonly<{{ recordLocal }}> };
 @if(checkScope)
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
 export type {{ checkScope.name }}<I = unknown> = {{ checkScope.type }};
@@ -51,7 +46,7 @@ export type {{ newScope.name }}<I = unknown> = {{ newScope.type }};
 export type {{ createScope.name }}<I = unknown> = {{ createScope.type }};
 @end
 
-export const expressions = {
+export const $expressions = {
   @each(entry in entries)
   // {{ entry.comment }}
   {{ entry.key }}: {{ entry.code }},

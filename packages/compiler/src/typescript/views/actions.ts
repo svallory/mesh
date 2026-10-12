@@ -6,7 +6,7 @@ import { emitError } from "../emit-error.ts";
 import type { EmitInput } from "../emit.ts";
 import { expressionIds, policySpecs } from "./expressions.ts";
 import { hasLoader, loaderName } from "./load.ts";
-import { camelCase, computedColumns, effectiveActions, entityInputs, entityPath, entitySegment, loadGenerics, propertyName, takesLoad, typeName, valueName } from "./inputs.ts";
+import { camelCase, computedColumns, effectiveActions, entityInputs, entityLocal, entityPath, entitySegment, loadGenerics, propertyName, takesLoad, typeName, valueName } from "./inputs.ts";
 import { entityFileComment, txLoadTypes } from "./types.ts";
 
 /**
@@ -53,7 +53,7 @@ export interface ActionsView {
   readonly schemaFromLiteral: string;
   /** The entity's expressions file as a quoted string literal, or `null` when it has no expression an action runs. */
   readonly expressionsFromLiteral: string | null;
-  /** The scope types the actions read the expressions with, from the expressions file, aliased `$Scope` and `$StoredScope`: `PostScope as $Scope`. */
+  /** The scope types the actions read the expressions with, from the expressions file, aliased `$Scope` and `$StoredScope`: `$blog$Post$Scope as $Scope`. */
   readonly scopeImports: readonly string[];
   /** The load file as a quoted string literal, imported for its plan (`loadPlan as $loadPlan`), or `null` when nothing here reads the plan. */
   readonly loadFromLiteral: string | null;
@@ -778,7 +778,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       // An update or a destroy reads a stored record, so `before` is never null for its functions.
       const stored = action.kind !== "create";
       const scopeAlias = stored ? "$StoredScope" : "$Scope";
-      scopes.add(stored ? `${recordName}StoredScope as $StoredScope` : `${recordName}Scope as $Scope`);
+      scopes.add(stored ? `${entityLocal(entity, "StoredScope")} as $StoredScope` : `${entityLocal(entity, "Scope")} as $Scope`);
       runtime.add("readOnlyRecord");
       if (loader) {
         used.plan = true;

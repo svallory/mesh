@@ -267,8 +267,9 @@ describe("names in one barrel (CMP-05)", () => {
 
 describe("names across modules", () => {
   // PRJ-15: nothing global in the syntax. Entities of one name in several folders build: each barrel keeps its own names
-  // unique (CMP-05), and every file that names another entity does so by the alias its entity file wrote or by a local
-  // derived from the FQN (`entityLocal`). The whole case run on SQLite is the CLI's same-name fixture
+  // unique (CMP-05), and every file that names another entity does so at module level by a local derived from the FQN
+  // (`entityLocal`); the alias an entity file wrote is bound only inside the functions of its expressions file. The
+  // whole case run on SQLite is the CLI's same-name fixture
   // (packages/cli/test/same-name.test.ts).
   const listOf = (table: string | null, extra = "") =>
     `${extra}entity :List${table ? ` table="${table}"` : ""}\n  attributes\n    uuid :id primary-key\n    string :label\n` +
@@ -276,13 +277,14 @@ describe("names across modules", () => {
     "  actions auto=[:read]\n    create :create\n      input\n        &label\n" +
     "  policies\n    policy :open\n      authorize-if=() => true\n";
   // A root entity that names three Lists: the root one by its own name, the others under the aliases its imports wrote.
+  // `Pick` is a global the types file uses (`Pick<...>`): an alias is never a module-level local in generated code.
   const board = [
     'import { List } from "./list.mesh.mx"',
     'import { List as OrderList } from "./order-management/list.mesh.mx"',
-    'import { List as BillingList } from "./billing/list.mesh.mx"',
+    'import { List as Pick } from "./billing/list.mesh.mx"',
     "entity :Board",
     "  attributes\n    uuid :id primary-key\n    string :label",
-    "  relationships\n    belongs-to :list entity=List nullable\n    belongs-to :orderList entity=OrderList nullable\n    belongs-to :billingList entity=BillingList nullable",
+    "  relationships\n    belongs-to :list entity=List nullable\n    belongs-to :orderList entity=OrderList nullable\n    belongs-to :billingList entity=Pick nullable",
     "  actions auto=[:read]\n    create :create\n      input\n        &label\n        &list\n        &orderList\n        &billingList",
     "  policies\n    policy :open\n      authorize-if=() => true",
     "",
@@ -310,13 +312,14 @@ describe("names across modules", () => {
     // load.ts: one expressions local per entity, each from its FQN; a root entity's has no folder part.
     const load = contents(".mesh/load.ts");
     for (const local of ["$List$expressions", "$order_management$List$expressions", "$billing$List$expressions"])
-      expect(load).toContain(`import { expressions as ${local} } from`);
+      expect(load).toContain(`import { $expressions as ${local} } from`);
     expect(load).not.toMatch(/\b(list|List)Expressions\b/);
-    // Board's types file: the unaliased List by its FQN-derived local, the others by the aliases its entity file wrote.
+    // Board's types file: every List by its FQN-derived local, whatever alias the entity file wrote.
     const types = contents(".mesh/domain/board.types.ts");
     expect(types).toContain('import type { List as $List$Record, ListLoaded as $List$Loaded } from "./list.types";');
-    expect(types).toMatch(/import type \{\s*List as OrderList,\s*ListLoaded as OrderList\$Loaded,?\s*\} from "\.\/order-management\/list\.types";/);
-    expect(types).toContain('import type { List as BillingList, ListLoaded as BillingList$Loaded } from "./billing/list.types";');
+    expect(types).toMatch(/import type \{\s*List as \$order_management\$List\$Record,\s*ListLoaded as \$order_management\$List\$Loaded,?\s*\} from "\.\/order-management\/list\.types";/);
+    expect(types).toMatch(/import type \{\s*List as \$billing\$List\$Record,\s*ListLoaded as \$billing\$List\$Loaded,?\s*\} from "\.\/billing\/list\.types";/);
+    expect(types).not.toMatch(/\b(OrderList|Pick)\b(?!<)/);
     // Each barrel exports its own List and its load function, from its own actions file.
     expect(code(contents(".mesh/domain/order-management/index.ts"))).toContain('export { List, loadListFields } from "./list.actions";');
     expect(code(contents(".mesh/domain/index.ts"))).toContain('export { List, loadListFields } from "./list.actions";');
@@ -348,15 +351,18 @@ describe("names across modules", () => {
     });
   });
 
-  test("an alias that is one of the file's own type names is the one clash left inside a file: MESH_EMIT_NAME naming both", async () => {
-    const clash = 'import { List as BoardFilter } from "./list.mesh.mx"\n' + board.replace(/^import .*\n/gm, "").replace("entity=List ", "entity=BoardFilter ").replace(/\n    belongs-to :(orderList|billingList).*/g, "").replace(/\n        &(orderList|billingList)/g, "");
-    const error = await generateFiles({ document: documentOf({ "list.mesh.mx": listOf(null), "board.mesh.mx": clash }), config: configOf("/project", ".mesh") })
+  // No name is project-wide and no generated file imports under an authored name, so an entity file reaches
+  // MESH_EMIT_NAME in four ways only: two exports of one barrel (above), a global type (an entity named `Promise`,
+  // `Partial` or `ReturnType`, index.test.ts), `Date` (an entity named `Date` with a timestamp, views.test.ts) and a
+  // duplicate generated type (here). An invalid identifier cannot come from an entity file: every name atom is one.
+  test("MESH_EMIT_NAME is left for two exports of one barrel, a global type, Date and a duplicate generated type: two actions whose input types are spelled alike name the entity by FQN (PRJ-17)", async () => {
+    const item = "entity :Item\n  attributes\n    uuid :id primary-key\n  actions\n    create :fooBar\n    create :foo_bar\n";
+    const error = await generateFiles({ document: documentOf({ "sales/item.mesh.mx": item }), config: configOf("/project", ".mesh") })
       .then(() => undefined, (cause: unknown) => cause);
     expect(error).toBeInstanceOf(EmitError);
     expect((error as EmitError).diagnostic).toMatchObject({
       code: "MESH_EMIT_NAME",
-      message: "The types file of entity Board would import entity List as BoardFilter, which is already the type BoardFilter of entity Board",
-      fix: "Import List under another name in board.mesh.mx",
+      message: "Entity sales.Item would generate the type FooBarItemInput twice",
     });
   });
 

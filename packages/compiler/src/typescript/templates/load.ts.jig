@@ -5,7 +5,7 @@
 import type { LoadPlan as $LoadPlan } from "@meshfw/runtime";
 import { tables } from {{ schemaFromLiteral }};
 @each(source in expressionImports)
-import { expressions as {{ source.local }} } from {{ source.fromLiteral }};
+import { $expressions as {{ source.local }} } from {{ source.fromLiteral }};
 @end
 
 /**

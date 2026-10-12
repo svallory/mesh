@@ -246,20 +246,22 @@ function buildEntity(
     return ref;
   };
   const helperImports = new Map<string, string>();
-  for (const entry of entity.imports)
-    if (!hasMeshExtension(entry.from))
-      for (const [index, name] of entry.identifiers.entries()) {
-        helperImports.set(name, entry.from);
-        // Generated code names its own internals `$...` and prints every authored local as `l$...`.
-        if (/^(\$|l\$)/.test(name)) {
-          const localOffset = importDetails.get(entry)?.bindings[index]?.localOffset;
-          fail(
-            "MESH_HELPER_NAME",
-            `The helper name ${name} cannot start with $ or l$: generated code uses those prefixes for its own names`,
-            localOffset === undefined ? entry.position : at(localOffset),
-          );
-        }
+  for (const entry of entity.imports) {
+    const helper = !hasMeshExtension(entry.from);
+    for (const [index, name] of entry.identifiers.entries()) {
+      if (helper) helperImports.set(name, entry.from);
+      // Generated code names its own internals `$...` (an entity's locals `$work$Task$value`) and prints every authored
+      // local as `l$...` (CMP-06): no name an import binds, a helper's or an entity's alias, may start with either.
+      if (/^(\$|l\$)/.test(name)) {
+        const localOffset = importDetails.get(entry)?.bindings[index]?.localOffset;
+        fail(
+          "MESH_HELPER_NAME",
+          `The ${helper ? "helper" : "entity import"} name ${name} cannot start with $ or l$: generated code uses those prefixes for its own names`,
+          localOffset === undefined ? entry.position : at(localOffset),
+        );
       }
+    }
+  }
   // The entities a function in this file can name (CMP-16): its own and each one it imports, by the name the file gives it.
   const entities = new Set([entity.name, ...entity.imports.filter((entry) => !entry.helper).flatMap((entry) => entry.identifiers)]);
   const expr = (a: Attr | undefined, scope: "expression" | "filter" = "expression", runStep = false): Expression =>
