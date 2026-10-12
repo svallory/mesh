@@ -1,0 +1,20 @@
+import { Fields } from "./fields.mesh.mx"
+
+// A relationship and computed fields named like members of Object.prototype, loaded by a read.
+entity :Loads
+  attributes
+    uuid :id primary-key
+    string :label min=1 max=40
+  relationships
+    belongs-to :constructor entity=Fields nullable
+  computed
+    string :toString() { return &label.toUpperCase() }
+    string :valueOf() { return `${&toString}:${&constructor?.toString ?? "none"}` }
+  actions auto=[:read]
+    create :create
+      input
+        &label
+        &constructor
+  policies
+    policy :anyone types=[:create, :read]
+      authorize-if=() => true
