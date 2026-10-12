@@ -55,13 +55,13 @@ describe("binding, module and index views", () => {
     const [root, notes] = views.map(({ view }) => view);
     expect(root).toEqual({
       module: "", specifier: "#mesh/domain", description: "the domain root",
-      entities: [{ name: "Tag", actionsFromLiteral: '"./tag.actions"', types: [], hasTypes: false, typesFromLiteral: '"./tag.types"' }],
-      loaders: [], loadFromLiteral: null, namespaces: [{ name: "notes", fromLiteral: '"./notes/index"' }] });
+      entities: [{ name: "Tag", values: ["Tag"], actionsFromLiteral: '"./tag.actions"', types: [], hasTypes: false, typesFromLiteral: '"./tag.types"' }],
+      namespaces: [{ name: "notes", fromLiteral: '"./notes/index"' }] });
     expect(notes).toEqual({
       module: "notes", specifier: "#mesh/domain/notes", description: 'module "notes"',
-      entities: [{ name: "Note", actionsFromLiteral: '"./note.actions"', hasTypes: true, typesFromLiteral: '"./note.types"',
+      entities: [{ name: "Note", values: ["Note"], actionsFromLiteral: '"./note.actions"', hasTypes: true, typesFromLiteral: '"./note.types"',
         types: ["CreateNoteInput", "EditNoteInput", "ReadNoteInput", "DestroyNoteInput", "NoteFilter", "NoteSort"] }],
-      loaders: [], loadFromLiteral: null, namespaces: [] });
+      namespaces: [] });
   });
 
   test("the index view names every module's specifier and nothing of an entity", () => {

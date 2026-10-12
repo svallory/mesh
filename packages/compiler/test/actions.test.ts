@@ -116,7 +116,7 @@ describe("actions view", () => {
       "FrameworkError as $FrameworkError", "InvalidInputError as $InvalidInputError", "NO_FRAME as $NO_FRAME", "NotFoundError as $NotFoundError", "authorizer as $authorizer", "castInput as $castInput", "checkScope as $checkScope",
       "checkUnchanged as $checkUnchanged", "entity as $entity", "failJoined as $failJoined", "guarded as $guarded", "loadRows as $loadRows",
       "noteWrite as $noteWrite", "pinClock as $pinClock", "readOnlyRecord as $readOnlyRecord", "recordWrite as $recordWrite", "runAction as $runAction", "runCheck as $runCheck", "scope as $scope", "uuidv7 as $uuidv7", "wantsChanges as $wantsChanges", "writeCount as $writeCount"]);
-    expect(view.runtimeTypes).toEqual(["CastOutput as $CastOutput", "Issue as $Issue", "Row as $Row"]);
+    expect(view.runtimeTypes).toEqual(["CastOutput as $CastOutput", "DataOperations as $DataOperations", "Issue as $Issue", "LoadOptions as $LoadOptions", "Row as $Row"]);
     expect(view.typesFromLiteral).toBe('"./article.types"');
     expect(view.validatorsFromLiteral).toBe('"./article.validators"');
     expect(view.schemaFromLiteral).toBe('"../../schema"');
@@ -283,13 +283,14 @@ describe("build errors", () => {
     expect(purge.statements.join("\n")).toContain('label: "reasoned"');
   });
 
-  test("MESH_EMIT_NAME: two entities of one name in two modules, naming both positions", () => {
+  test("two entities of one name in two modules build: each actions file declares its own bindAb and value (PRJ-15)", () => {
+    // The whole case, built and run on SQLite, is the CLI's same-name fixture (packages/cli/test/same-name.test.ts).
     const a = "entity :Ab\n  attributes\n    uuid :id primary-key\n  actions\n    read :cd\n";
-    const twice = { "x/ab.mesh.mx": a, "y/ab.mesh.mx": a };
-    const error = emitErrorOf(() => actionsGenerator.views(inputOf(documentOf(twice))));
-    expect(error.diagnostic.code).toBe("MESH_EMIT_NAME");
-    expect(error.diagnostic.message).toBe("the bind function of entity x.Ab (x/ab.mesh.mx:1:1) and the bind function of entity y.Ab would both be named bindAb in the generated code");
-    expect(error.diagnostic.position.file).toBe("y/ab.mesh.mx");
+    const files = actionsGenerator.views(inputOf(documentOf({ "x/ab.mesh.mx": a, "y/ab.mesh.mx": a.replace("entity :Ab", "entity :Ab table=\"y_ab\"") })));
+    expect(files.map((file) => [file.path, file.view.bindName, file.view.fqnLiteral])).toEqual([
+      ["generated/domain/x/ab.actions.ts", "bindAb", '"x.Ab"'],
+      ["generated/domain/y/ab.actions.ts", "bindAb", '"y.Ab"'],
+    ]);
   });
 
   test("actions that one flat name would have spelled alike build: an action is called on its entity (CMP-16)", () => {

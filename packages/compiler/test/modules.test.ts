@@ -266,16 +266,97 @@ describe("names in one barrel (CMP-05)", () => {
 });
 
 describe("names across modules", () => {
-  // The behaviour before CMP-17 is kept until same-named entities are allowed: a project-wide name is still
-  // project-wide (`bind<Entity>`), even though the barrels would not clash.
-  test("two entities of one name in two modules build a model, then fail the build on `bind<Entity>`", async () => {
-    const document = documentOf({ "a/note.mesh.mx": entity("Note"), "b/note.mesh.mx": entity("Note") });
-    expect(document.entities.map((e) => `${e.module}/${e.name}`)).toEqual(["a/Note", "b/Note"]);
-    const error = await generateFiles({ document, config: configOf("/project", ".mesh") }).then(() => undefined, (cause: unknown) => cause);
+  // PRJ-15: nothing global in the syntax. Entities of one name in several folders build: each barrel keeps its own names
+  // unique (CMP-05), and every file that names another entity does so by the alias its entity file wrote or by a local
+  // derived from the FQN (`entityLocal`). The whole case run on SQLite is the CLI's same-name fixture
+  // (packages/cli/test/same-name.test.ts).
+  const listOf = (table: string | null, extra = "") =>
+    `${extra}entity :List${table ? ` table="${table}"` : ""}\n  attributes\n    uuid :id primary-key\n    string :label\n` +
+    "  computed\n    string :shout value=({ self }) => self.label.toUpperCase()\n" +
+    "  actions auto=[:read]\n    create :create\n      input\n        &label\n" +
+    "  policies\n    policy :open\n      authorize-if=() => true\n";
+  // A root entity that names three Lists: the root one by its own name, the others under the aliases its imports wrote.
+  const board = [
+    'import { List } from "./list.mesh.mx"',
+    'import { List as OrderList } from "./order-management/list.mesh.mx"',
+    'import { List as BillingList } from "./billing/list.mesh.mx"',
+    "entity :Board",
+    "  attributes\n    uuid :id primary-key\n    string :label",
+    "  relationships\n    belongs-to :list entity=List nullable\n    belongs-to :orderList entity=OrderList nullable\n    belongs-to :billingList entity=BillingList nullable",
+    "  actions auto=[:read]\n    create :create\n      input\n        &label\n        &list\n        &orderList\n        &billingList",
+    "  policies\n    policy :open\n      authorize-if=() => true",
+    "",
+  ].join("\n");
+  const project = {
+    "list.mesh.mx": listOf(null),
+    "board.mesh.mx": board,
+    "order-management/list.mesh.mx": listOf("om_list"),
+    "billing/list.mesh.mx": listOf("billing_list"),
+  };
+
+  test("a List at the root and in order-management/ and billing/ build, type-check strictly, and each writes its own table", async () => {
+    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-modules-same-name-"));
+    roots.push(root);
+    const config = configOf(root, ".mesh");
+    const document = documentOf(project);
+    expect(document.entities.map((e) => e.fqn).sort()).toEqual(["Board", "List", "billing.List", "order-management.List"]);
+    const files = await generateFiles({ document, config });
+    await writeGeneratedFiles(files, config);
+    await writeFile(resolve(root, ".mesh/schema.ts"),
+      'export const tables = { list: { name: "list" }, board: { name: "board" }, om_list: { name: "om_list" }, billing_list: { name: "billing_list" } };\n');
+    await writeFile(resolve(root, "mesh.config.ts"),
+      'export default { data: { kind: "data-adapter", name: "remote", build: "./none", capabilities: { adapter: "remote", capabilities: [] }, options: {} } };\n');
+    const contents = (path: string) => files.find((file) => file.path === path)!.contents;
+    // load.ts: one expressions local per entity, each from its FQN; a root entity's has no folder part.
+    const load = contents(".mesh/load.ts");
+    for (const local of ["$List$expressions", "$order_management$List$expressions", "$billing$List$expressions"])
+      expect(load).toContain(`import { expressions as ${local} } from`);
+    expect(load).not.toMatch(/\b(list|List)Expressions\b/);
+    // Board's types file: the unaliased List by its FQN-derived local, the others by the aliases its entity file wrote.
+    const types = contents(".mesh/domain/board.types.ts");
+    expect(types).toContain('import type { List as $List$Record, ListLoaded as $List$Loaded } from "./list.types";');
+    expect(types).toMatch(/import type \{\s*List as OrderList,\s*ListLoaded as OrderList\$Loaded,?\s*\} from "\.\/order-management\/list\.types";/);
+    expect(types).toContain('import type { List as BillingList, ListLoaded as BillingList$Loaded } from "./billing/list.types";');
+    // Each barrel exports its own List and its load function, from its own actions file.
+    expect(code(contents(".mesh/domain/order-management/index.ts"))).toContain('export { List, loadListFields } from "./list.actions";');
+    expect(code(contents(".mesh/domain/index.ts"))).toContain('export { List, loadListFields } from "./list.actions";');
+    expect(checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts")).map((f) => f.path), ".mesh/schema.ts", "mesh.config.ts"]))
+      .toEqual({ code: 0, output: "" });
+    const domain = await import(resolve(root, ".mesh/domain/index.ts"));
+    const mesh = await import(resolve(root, ".mesh/index.ts"));
+    const written: string[] = [];
+    const bound = mesh.bind({
+      transaction: (run: (tx: object) => Promise<unknown>) => run({ insert: async (table: { name: string }, row: object) => { written.push(table.name); return row; } }),
+      refuseIfFailed: () => false, close: async () => {},
+    });
+    await bound.run(() => domain.List.create({ label: "root" }));
+    await bound.run(() => domain.order_management.List.create({ label: "orders" }));
+    await bound.run(() => domain.billing.List.create({ label: "bills" }));
+    expect(written).toEqual(["list", "om_list", "billing_list"]);
+    expect([domain.List, domain.order_management.List, domain.billing.List].every((value, index, all) => all.indexOf(value) === index)).toBe(true);
+  }, 60_000);
+
+  test("order-management/ and order_management/ still clash as barrels, however their entities are named", async () => {
+    const error = await generateFiles({
+      document: documentOf({ "order-management/list.mesh.mx": listOf(null), "order_management/list.mesh.mx": listOf("other_list") }),
+      config: configOf("/project", ".mesh"),
+    }).then(() => undefined, (cause: unknown) => cause);
     expect(error).toBeInstanceOf(EmitError);
     expect((error as EmitError).diagnostic).toMatchObject({
       code: "MESH_EMIT_NAME",
-      message: "the bind function of entity a.Note (a/note.mesh.mx:1:1) and the bind function of entity b.Note would both be named bindNote in the generated code",
+      message: "the folder order-management and the folder order_management would both be exported as order_management from #mesh/domain",
+    });
+  });
+
+  test("an alias that is one of the file's own type names is the one clash left inside a file: MESH_EMIT_NAME naming both", async () => {
+    const clash = 'import { List as BoardFilter } from "./list.mesh.mx"\n' + board.replace(/^import .*\n/gm, "").replace("entity=List ", "entity=BoardFilter ").replace(/\n    belongs-to :(orderList|billingList).*/g, "").replace(/\n        &(orderList|billingList)/g, "");
+    const error = await generateFiles({ document: documentOf({ "list.mesh.mx": listOf(null), "board.mesh.mx": clash }), config: configOf("/project", ".mesh") })
+      .then(() => undefined, (cause: unknown) => cause);
+    expect(error).toBeInstanceOf(EmitError);
+    expect((error as EmitError).diagnostic).toMatchObject({
+      code: "MESH_EMIT_NAME",
+      message: "The types file of entity Board would import entity List as BoardFilter, which is already the type BoardFilter of entity Board",
+      fix: "Import List under another name in board.mesh.mx",
     });
   });
 

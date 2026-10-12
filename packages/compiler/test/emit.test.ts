@@ -26,7 +26,7 @@ test("v4 record and input types preserve the legacy layout and action names", as
   const document = documentOf();
   const files = await generateFiles({ document, config: configOf("/project") });
   const output = files.find((f) => f.path.endsWith("/todo.types.ts"))!.contents;
-  expect(output).toContain('import type { List, ListLoaded } from "./list.types"');
+  expect(output).toContain('import type { List as $todo$List$Record, ListLoaded as $todo$List$Loaded } from "./list.types"');
   expect(output).toContain("export type Todo");
   expect(output).toContain("title: string;");
   expect(output).toContain("rating: number | null;");
@@ -34,7 +34,7 @@ test("v4 record and input types preserve the legacy layout and action names", as
   // A computed field is not on the stored record; it is what `load` attaches (TodoLoadable).
   expect(/export type Todo = \{[^}]*\};/.exec(output)![0]).not.toContain("largest:");
   expect(output).toContain("largest: number | null;");
-  expect(output).toContain('list: List["id"]');
+  expect(output).toContain('list: $todo$List$Record["id"]');
   const inputs = entityInputs(todo(document), document);
   expect(inputs.map((input) => input.name)).toEqual(
     expect.arrayContaining([
@@ -288,7 +288,7 @@ test("relationship input uses the actual target key and never inherits its creat
   expect(relation.attribute.default).toBeUndefined();
   expect(key.default).toBeDefined();
   const files = await generateFiles({ document, config: configOf("/project") });
-  expect(files.find((file) => file.path.endsWith("todo.types.ts"))!.contents).toContain('list: List["code"]');
+  expect(files.find((file) => file.path.endsWith("todo.types.ts"))!.contents).toContain('list: $todo$List$Record["code"]');
 });
 
 test("writer produces the exact planned bytes", async () => {

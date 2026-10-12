@@ -4,6 +4,7 @@ import { buildModel } from "../src/front-end/build.ts";
 import { generateFiles, type EmitInput } from "../src/typescript/emit.ts";
 import { loadGenerator } from "../src/typescript/emitters/load.ts";
 import { loadView } from "../src/typescript/views/load.ts";
+import { actionsView } from "../src/typescript/views/actions.ts";
 import { moduleViews } from "../src/typescript/views/module.ts";
 import { queryColumns } from "../src/typescript/views/inputs.ts";
 import { typesView } from "../src/typescript/views/types.ts";
@@ -50,10 +51,12 @@ const config = configOf("/project", "generated");
 const input = (document: ModelDocument): EmitInput => ({ document, config });
 
 describe("the load view", () => {
-  test("one plan entry per entity, in the fixed entity order, and a loader only for an entity with something to load", () => {
-    const view = loadView(input(documentOf()), "generated/load.ts");
+  test("one plan entry per entity, in the fixed entity order; a loader, in the actions file, only for an entity with something to load", () => {
+    const document = documentOf();
+    const view = loadView(input(document), "generated/load.ts");
     expect(view.entities.map((entity) => entity.nameLiteral)).toEqual(['"app.Author"', '"app.Lonely"', '"app.Post"']);
-    expect(view.entities.map((entity) => entity.loader?.name ?? null)).toEqual(["loadAuthorFields", null, "loadPostFields"]);
+    const loaderOf = (name: string) => actionsView(input(document), document.entities.find((entity) => entity.name === name)!).loader?.name ?? null;
+    expect(["Author", "Lonely", "Post"].map(loaderOf)).toEqual(["loadAuthorFields", null, "loadPostFields"]);
     expect(view.entities[0]!.table).toBe("tables.authors");
     expect(view.entities[0]!.keyLiteral).toBe('"id"');
     expect(view.entities[1]).toMatchObject({ relations: [], computed: [] });
@@ -88,18 +91,26 @@ describe("the load view", () => {
     expect(entry.computed).toEqual([
       { key: "postCount", plan: '{ kind: "rollup", fn: "count", of: ["posts"] }' },
       { key: "lastPostedAt", plan: '{ kind: "rollup", fn: "max", of: ["posts","postedAt"] }' },
-      { key: "prolific", plan: '{ kind: "body", needs: ["postCount"], evaluate: ($s: never) => authorExpressions["computed.prolific"]($s) }' },
-      { key: "tier", plan: '{ kind: "body", needs: ["postCount"], evaluate: ($s: never) => authorExpressions["computed.tier"]($s) }' },
-      { key: "extra", plan: '{ kind: "body", needs: [], evaluate: ($s: never) => authorExpressions["computed.extra"]($s) }' },
+      { key: "prolific", plan: '{ kind: "body", needs: ["postCount"], evaluate: ($s: never) => $app$Author$expressions["computed.prolific"]($s) }' },
+      { key: "tier", plan: '{ kind: "body", needs: ["postCount"], evaluate: ($s: never) => $app$Author$expressions["computed.tier"]($s) }' },
+      { key: "extra", plan: '{ kind: "body", needs: [], evaluate: ($s: never) => $app$Author$expressions["computed.extra"]($s) }' },
     ]);
   });
 
   test("the expressions file is imported once, and only for an entity with a body", () => {
     const view = loadView(input(documentOf()), "generated/load.ts");
-    expect(view.expressionImports).toEqual([{ local: "authorExpressions", fromLiteral: '"./domain/app/author.expressions"' }]);
-        // A loader runs no policy, so it is typed as a load through `privileged`: Post's belongs-to is never null there (POL-17).
-    expect(view.typeImports.map((entry) => entry.names)).toEqual(["Author, AuthorLoadable, AuthorWith", "Post, PostLoadable, PostTxWith"]);
+    expect(view.expressionImports).toEqual([{ local: "$app$Author$expressions", fromLiteral: '"./domain/app/author.expressions"' }]);
     expect(view.schemaFromLiteral).toBe('"./schema"');
+  });
+
+  test("the loader is typed from the actions file: a load through `privileged`, so Post's belongs-to is never null there (POL-17)", () => {
+    const document = documentOf();
+    const [authorView, postView] = ["Author", "Post"].map((name) => actionsView(input(document), document.entities.find((entity) => entity.name === name)!));
+    expect(authorView!.loader).toEqual({ name: "loadAuthorFields", loadable: "AuthorLoadable", with: "AuthorWith", entityLiteral: '"app.Author"' });
+    expect(postView!.loader).toEqual({ name: "loadPostFields", loadable: "PostLoadable", with: "PostTxWith", entityLiteral: '"app.Post"' });
+    expect(postView!.typeImports).toEqual(expect.arrayContaining(["PostLoadable", "PostTxWith"]));
+    expect(postView!.runtimeTypes).toEqual(expect.arrayContaining(["DataOperations as $DataOperations", "LoadOptions as $LoadOptions"]));
+    expect(postView!.loadFromLiteral).toBe('"../../load"');
   });
 
   test("it is plain data", () => {
@@ -113,20 +124,26 @@ describe("the load generator", () => {
     const document = documentOf({ lonely });
     expect(loadGenerator.views(input(document))).toEqual([]);
     // The domain root's barrel and the module's: neither has a loader.
-    expect(moduleViews(input(document)).map(({ view }) => [view.loaders, view.loadFromLiteral])).toEqual([[[], null], [[], null]]);
+    expect(moduleViews(input(document)).map(({ view }) => view.entities.map((entity) => entity.values))).toEqual([[], [["Lonely"]]]);
     const files = await generateFiles(input(document));
     expect(files.map((file) => file.path).some((path) => path.endsWith("/load.ts"))).toBe(false);
     for (const file of files.filter((entry) => entry.path.endsWith("/index.ts"))) expect(file.contents).not.toContain("/load");
   });
 
-  test("a model with one writes load.ts and the module's index re-exports the loaders and their types; #mesh does not", async () => {
+  test("a model with one writes load.ts and the module's index re-exports the loaders, from the actions files, and their types; #mesh does not", async () => {
     const document = documentOf();
     expect(loadGenerator.views(input(document)).map((entry) => entry.path)).toEqual(["generated/load.ts"]);
     // The domain root's barrel first: it holds no entity, so no loader.
-    expect(moduleViews(input(document)).map(({ view }) => [view.loaders, view.loadFromLiteral])).toEqual([[[], null], [["loadAuthorFields", "loadPostFields"], '"../../load"']]);
+    expect(moduleViews(input(document)).map(({ view }) => view.entities.map((entity) => entity.values)))
+      .toEqual([[], [["Author", "loadAuthorFields"], ["Lonely"], ["Post", "loadPostFields"]]]);
     const files = await generateFiles(input(document));
     const module = files.find((file) => file.path === "generated/domain/app/index.ts")!.contents;
-    expect(module).toContain('export { loadAuthorFields, loadPostFields } from "../../load";');
+    expect(module).toContain('export { Author, loadAuthorFields } from "./author.actions";');
+    expect(module).toContain('export { Post, loadPostFields } from "./post.actions";');
+    // load.ts holds the plan only: it imports no actions file, so an import cycle through it never reaches an entity value.
+    const load = files.find((file) => file.path === "generated/load.ts")!.contents;
+    expect(load).not.toContain(".actions");
+    expect(load).not.toContain("export async function");
     expect(module).toMatch(/AuthorLoadable,\s+AuthorWith,/);
     const index = files.find((file) => file.path === "generated/index.ts")!.contents;
     expect(index).not.toContain("load");
@@ -139,7 +156,8 @@ describe("the load generator", () => {
     const fields = "entity :AuthorFields table=\"author_fields\"\n  attributes\n    uuid :id primary-key\n  actions\n    read :load\n";
     const document = documentOf({ author, post, lonely, "author-fields": fields });
     const files = await generateFiles(input(document));
-    expect(files.find((file) => file.path === "generated/load.ts")!.contents).toContain("loadAuthorFields");
+    expect(files.find((file) => file.path === "generated/domain/app/author.actions.ts")!.contents).toContain("export async function loadAuthorFields");
+    expect(files.find((file) => file.path === "generated/domain/app/authorFields.actions.ts")!.contents).toContain("async load(");
   });
 
   test("the generated load.ts and the files it imports type-check under the strictest flags", async () => {
@@ -152,7 +170,8 @@ describe("the load generator", () => {
       await writeGeneratedFiles(files, emitted);
       // The load file imports `./schema`, which the adapter writes; a stand-in with the same table names is enough here.
       await Bun.write(resolve(root, "generated/schema.ts"), "export const tables = { authors: {}, lonelies: {}, posts: {} };\n");
-      const result = checkTypes(root, ["generated/load.ts", "generated/domain/app/author.expressions.ts", "generated/domain/app/post.types.ts"]);
+      const result = checkTypes(root, ["generated/load.ts", "generated/domain/app/author.expressions.ts", "generated/domain/app/post.types.ts",
+        "generated/domain/app/author.actions.ts", "generated/domain/app/lonely.actions.ts", "generated/domain/app/post.actions.ts", "generated/domain/app/index.ts"]);
       expect(result.output).toBe("");
       expect(result.code).toBe(0);
     } finally { await rm(root, { recursive: true, force: true }); }
@@ -167,7 +186,7 @@ describe("the types and the read views name what is loadable", () => {
     expect(authorView.loadable).toEqual({
       name: "AuthorLoadable", withName: "AuthorWith", tx: null, namesName: "AuthorLoadNames", argName: "AuthorLoadArg",
       members: [
-        { name: "posts", optional: false, key: "posts", type: "Post[]" },
+        { name: "posts", optional: false, key: "posts", type: "$app$Post$Record[]" },
         { name: "postCount", optional: false, key: "postCount", type: "number" },
         { name: "lastPostedAt", optional: false, key: "lastPostedAt", type: "Date | null" },
         { name: "prolific", optional: false, key: "prolific", type: "boolean" },
@@ -177,7 +196,7 @@ describe("the types and the read views name what is loadable", () => {
       // `self` in a function of the entity file: the same members, a related record typed as loaded too.
       loadedName: "AuthorLoaded",
       loadedMembers: [
-        { name: "posts", optional: false, key: "posts", type: "PostLoaded[]" },
+        { name: "posts", optional: false, key: "posts", type: "$app$Post$Loaded[]" },
         { name: "postCount", optional: false, key: "postCount", type: "number" },
         { name: "lastPostedAt", optional: false, key: "lastPostedAt", type: "Date | null" },
         { name: "prolific", optional: false, key: "prolific", type: "boolean" },
@@ -185,19 +204,20 @@ describe("the types and the read views name what is loadable", () => {
         { name: "extra", optional: false, key: "extra", type: "unknown" },
       ],
     });
-    expect(authorView.imports).toEqual([{ name: "Post", names: "Post, PostLoaded", fromLiteral: '"./post.types"' }]);
+    // Another entity's types come in under its FQN-derived locals (CMP-05), never its bare name.
+    expect(authorView.imports).toEqual([{ name: "$app$Post$Record", names: "Post as $app$Post$Record, PostLoaded as $app$Post$Loaded", fromLiteral: '"./post.types"' }]);
   });
 
   test("a nullable belongs-to is nullable, a self-reference imports nothing for itself; a caller's belongs-to is nullable too (POL-17)", () => {
     const document = documentOf();
     const postView = typesView(input(document), document.entities.find((e) => e.name === "Post")!);
     // A caller's load runs the read policies of what it reaches: an author it may not read is null.
-    expect(postView.loadable!.members.map((m) => [m.name, m.type])).toEqual([["author", "Author | null"], ["replyTo", "Post | null"], ["replies", "Post[]"]]);
+    expect(postView.loadable!.members.map((m) => [m.name, m.type])).toEqual([["author", "$app$Author$Record | null"], ["replyTo", "Post | null"], ["replies", "Post[]"]]);
     // Through `privileged` no policy runs, so the key always finds its author.
     expect(postView.loadable!.tx).toMatchObject({ name: "PostTxLoadable", withName: "PostTxWith" });
-    expect(postView.loadable!.tx!.members.map((m) => [m.name, m.type])).toEqual([["author", "Author"], ["replyTo", "Post | null"], ["replies", "Post[]"]]);
-    expect(postView.loadable!.loadedMembers.map((m) => [m.name, m.type])).toEqual([["author", "AuthorLoaded"], ["replyTo", "PostLoaded | null"], ["replies", "PostLoaded[]"]]);
-    expect(postView.imports).toEqual([{ name: "Author", names: "Author, AuthorLoaded", fromLiteral: '"./author.types"' }]);
+    expect(postView.loadable!.tx!.members.map((m) => [m.name, m.type])).toEqual([["author", "$app$Author$Record"], ["replyTo", "Post | null"], ["replies", "Post[]"]]);
+    expect(postView.loadable!.loadedMembers.map((m) => [m.name, m.type])).toEqual([["author", "$app$Author$Loaded"], ["replyTo", "PostLoaded | null"], ["replies", "PostLoaded[]"]]);
+    expect(postView.imports).toEqual([{ name: "$app$Author$Record", names: "Author as $app$Author$Record, AuthorLoaded as $app$Author$Loaded", fromLiteral: '"./author.types"' }]);
   });
 
   test("an entity with neither has no loadable declaration", () => {

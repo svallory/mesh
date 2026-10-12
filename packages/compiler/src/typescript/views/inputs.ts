@@ -272,6 +272,33 @@ export function modulePath(module: string, position: SourcePosition): string {
 export function moduleSpecifier(module: string): string {
   return module === "" ? DOMAIN_SPECIFIER : `${DOMAIN_SPECIFIER}/${module}`;
 }
+/**
+ * A folder name as an export name (PRJ-21): every character that cannot appear in a JavaScript identifier becomes `_`,
+ * and `_` goes in front of a first character that cannot start one (`order-management` gives `order_management`,
+ * `2024-reports` gives `_2024_reports`). A reserved word stays as it is: `export * as class` and `domain.class` are valid.
+ */
+export function namespaceName(folder: string): string {
+  const name = folder.replace(/[^\p{ID_Continue}$‌‍]/gu, "_");
+  return /^[\p{ID_Start}$_]/u.test(name) ? name : `_${name}`;
+}
+/**
+ * The one rule for a local that generated code derives from an entity in a file that may name other entities (CMP-05:
+ * generated locals never use a bare entity name): `$`, then the entity's path from the root barrel with `$` in place of
+ * `.` (each module folder as its barrel's namespace name, `namespaceName`, then the entity's name as its barrel exports
+ * it), then `$` and the local's role. `work.Task`'s expressions are `$work$Task$expressions` and its record type
+ * `$work$Task$Record`; a root entity's are `$List$expressions` and `$List$Record`; `order-management.Invoice`'s loaded
+ * type is `$order_management$Invoice$Loaded`.
+ *
+ * Two entities never get one local, and no local is one of Mesh's own. The last part is the role and the one before it
+ * the entity's name, so two equal locals name entities with one name in folders whose namespace names are equal, and
+ * each barrel refuses two folders that normalise alike (PRJ-21, `MESH_EMIT_NAME` in `moduleView`): those are one entity,
+ * since FQNs are unique. `$` appears in no folder name (PRJ-20) and no entity name (`MESH_ENTITY_NAME`), CMP-06 keeps it
+ * out of helper names, and every such local has at least two `$`, where Mesh's own imports (`$Comparison`) have one.
+ */
+export function entityLocal(entity: Entity, role: string): string {
+  const segments = entity.module === "" ? [] : entity.module.split("/").map(namespaceName);
+  return `$${[...segments, typeName(entity.name, entity.position), role].join("$")}`;
+}
 /** An entity's generated files below the output directory, without the kind and extension: `domain/work/task`. */
 export function entityPath(entity: Entity): string {
   return `${modulePath(entity.module, entity.position)}/${entitySegment(entity)}`;

@@ -682,14 +682,14 @@ test("importing meshfw loads the runtime's defineConfig and no compiler code (AD
 // exit 1 with the diagnostic on stderr and nothing on stdout (a follow-up of PR #69 reported `inspect` exiting 0; it does not on main).
 test.each([["build"], ["build", "--check"], ["inspect"], ["inspect", "Item"], ["explain", "Item", "forUser"]].map((args) => ({ args })))("MESH_EMIT_NAME exits 1 with the diagnostic on stderr: mesh $args", async ({ args }) => {
   const root = await project();
-  await mkdir(join(root, "domain/other"), { recursive: true });
-  // Two entities named Item in two modules: both bind functions would be bindItem (per-barrel names are PR 5's).
+  await mkdir(join(root, "domain/todos/Item"), { recursive: true });
+  // An entity and a folder of one name in one barrel (CMP-05): both would be exported as Item from #mesh/domain/todos.
   await writeFile(join(root, "domain/todos/item.mesh.mx"), "entity :Item\n  attributes\n    uuid :id primary-key\n  actions\n    read :forUser\n");
-  await writeFile(join(root, "domain/other/item.mesh.mx"), "entity :Item table=\"other_items\"\n  attributes\n    uuid :id primary-key\n  actions\n    read :for\n");
+  await writeFile(join(root, "domain/todos/Item/part.mesh.mx"), "entity :Part\n  attributes\n    uuid :id primary-key\n  actions\n    read :for\n");
   const result = run(root, ...args);
   expect(result.code).toBe(1);
   expect(result.stdout).toBe("");
-  expect(result.stderr).toContain("domain/todos/item.mesh.mx:1:1 error the bind function of entity other.Item (domain/other/item.mesh.mx:1:1) and the bind function of entity todos.Item would both be named bindItem in the generated code");
+  expect(result.stderr).toContain("domain/todos/Item/part.mesh.mx:1:1 error entity todos.Item and the folder domain/todos/Item would both be exported as Item from #mesh/domain/todos");
   expect(result.stderr).toEndWith("1 error, 0 warnings\n");
   expect(await Bun.file(join(root, "generated/model.json")).exists()).toBe(false);
 }, 30_000);

@@ -5,7 +5,7 @@ import type { EmitInput } from "../emit.ts";
 import { compareText, orderedEntities } from "../emitters/order.ts";
 import { hasLoader, loaderName } from "./load.ts";
 import { hasTxLoadable } from "./types.ts";
-import { DOMAIN_FOLDER, entityInputs, entitySegment, filterTypeName, hasRead, modulePath, moduleSpecifier, sortTypeName, typeName } from "./inputs.ts";
+import { DOMAIN_FOLDER, entityInputs, entitySegment, filterTypeName, hasRead, modulePath, moduleSpecifier, namespaceName, sortTypeName, typeName } from "./inputs.ts";
 
 /**
  * What `module.ts.jig` renders: a barrel, `.mesh/domain/<path>/index.ts`, one per folder of the domain that holds an
@@ -26,10 +26,6 @@ export interface ModuleView {
   readonly description: string;
   /** One entry per entity of the module, in the fixed entity order of the other generators. */
   readonly entities: readonly ModuleEntity[];
-  /** The module's load functions (`loadTaskFields`), re-exported from `.mesh/load.ts`; empty when no entity of the module has one. */
-  readonly loaders: readonly string[];
-  /** `.mesh/load.ts` from this file, quoted, e.g. `"../../load"`, or null when `loaders` is empty. */
-  readonly loadFromLiteral: string | null;
   /** One namespace per subfolder that has a barrel, by folder name. */
   readonly namespaces: readonly ModuleNamespace[];
 }
@@ -38,7 +34,9 @@ export interface ModuleView {
 export interface ModuleEntity {
   /** The name the entity value and the record type are exported under, e.g. `Post`. */
   readonly name: string;
-  /** The entity's actions file, which defines both, quoted, e.g. `"./post.actions"`. */
+  /** What the barrel exports from the actions file: `name`, then the entity's load function when it has one (`loadPostFields`). */
+  readonly values: readonly string[];
+  /** The entity's actions file, which defines them, quoted, e.g. `"./post.actions"`. */
   readonly actionsFromLiteral: string;
   /** The entity's other types (inputs, filter and sort, load types), re-exported with `export type`. */
   readonly types: readonly string[];
@@ -63,21 +61,7 @@ export function modulesOf(entities: readonly Entity[]): { module: string; entiti
   return [...byModule].sort(([a], [b]) => compareText(a, b)).map(([module, members]) => ({ module, entities: members }));
 }
 
-/**
- * A folder name as an export name (PRJ-21): every character that cannot appear in a JavaScript identifier becomes `_`,
- * and `_` goes in front of a first character that cannot start one (`order-management` gives `order_management`,
- * `2024-reports` gives `_2024_reports`). A reserved word stays as it is: `export * as class` and `domain.class` are valid.
- */
-export function namespaceName(folder: string): string {
-  const name = folder.replace(/[^\p{ID_Continue}$‌‍]/gu, "_");
-  return /^[\p{ID_Start}$_]/u.test(name) ? name : `_${name}`;
-}
-
-/** A path relative to the barrel's folder, both below the output folder, quoted: `"../../load"`. */
-const fromModule = (folder: string, target: string) => {
-  const path = posix.relative(folder, target);
-  return JSON.stringify(path.startsWith(".") ? path : `./${path}`);
-};
+export { namespaceName };
 
 /** One folder that gets a barrel: its path below the domain root, its entities, and the folders below it that get one. */
 export interface BarrelFolder {
@@ -121,10 +105,8 @@ export function barrelFolders(entities: readonly Entity[]): BarrelFolder[] {
  * subfolders whose names normalise alike, a generated type and either) are `MESH_EMIT_NAME` naming both (CMP-05):
  * an entity by FQN, a folder by its path in the project.
  */
-export function moduleView(input: EmitInput, module: string, entities: readonly Entity[], children: readonly BarrelFolder[] = [], position?: SourcePosition): ModuleView {
+export function moduleView(input: EmitInput, module: string, entities: readonly Entity[], children: readonly BarrelFolder[] = []): ModuleView {
   const { document, config } = input;
-  const at = position ?? entities[0]?.position ?? NOWHERE;
-  const folder = modulePath(module, at);
   const folderName = (path: string) => relative(config.root, posix.join(config.domainRoot, path)).replace(/\\/g, "/") || ".";
   const owners = new Map<string, string>();
   const claim = (name: string, owner: string, where: SourcePosition) => {
@@ -135,7 +117,6 @@ export function moduleView(input: EmitInput, module: string, entities: readonly 
     owners.set(name, owner);
   };
   const exported: ModuleEntity[] = [];
-  const loaders: string[] = [];
   for (const entity of entities) {
     const record = typeName(entity.name, entity.position);
     const types = [
@@ -146,17 +127,19 @@ export function moduleView(input: EmitInput, module: string, entities: readonly 
     ];
     claim(record, `entity ${entity.fqn}`, entity.position);
     for (const type of types) claim(type, `the type ${type} of entity ${entity.fqn}`, entity.position);
+    const values = [record];
+    if (hasLoader(entity)) {
+      claim(loaderName(entity), `the load function ${loaderName(entity)} of entity ${entity.fqn}`, entity.position);
+      values.push(loaderName(entity));
+    }
     exported.push({
       name: record,
+      values,
       actionsFromLiteral: JSON.stringify(`./${entitySegment(entity)}.actions`),
       types,
       hasTypes: types.length > 0,
       typesFromLiteral: JSON.stringify(`./${entitySegment(entity)}.types`),
     });
-    if (hasLoader(entity)) {
-      claim(loaderName(entity), `the load function ${loaderName(entity)} of entity ${entity.fqn}`, entity.position);
-      loaders.push(loaderName(entity));
-    }
   }
   const namespaces = children.map((child): ModuleNamespace => {
     const segment = child.module.slice(child.module.lastIndexOf("/") + 1);
@@ -169,8 +152,6 @@ export function moduleView(input: EmitInput, module: string, entities: readonly 
     specifier: moduleSpecifier(module),
     description: module === "" ? "the domain root" : `${entities.length ? "module" : "folder"} ${JSON.stringify(module)}`,
     entities: exported,
-    loaders,
-    loadFromLiteral: loaders.length ? fromModule(folder, "load") : null,
     namespaces,
   };
 }
@@ -179,6 +160,6 @@ export function moduleView(input: EmitInput, module: string, entities: readonly 
 export function moduleViews(input: EmitInput): { path: string; view: ModuleView }[] {
   return barrelFolders(orderedEntities(input.document)).map(({ module, entities, children, position }) => ({
     path: module === "" ? `${DOMAIN_FOLDER}/index.ts` : `${modulePath(module, position)}/index.ts`,
-    view: moduleView(input, module, entities, children, position),
+    view: moduleView(input, module, entities, children),
   }));
 }

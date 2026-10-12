@@ -2,11 +2,12 @@ import { dirname, posix, relative } from "node:path";
 import type { Action, Entity, Expression, ExprNode, Policy, Step } from "@meshfw/model";
 import { policyExpressions, readsRecord } from "../../model/policies.ts";
 import type { EmitInput } from "../emit.ts";
+import { emitError } from "../emit-error.ts";
 import { newInstanceComputed, newInstanceGaps, newInstanceMembers } from "../../model/new-instance.ts";
-import { entityType, entityValue, mentioned, printExpression } from "../expression-printer.ts";
+import { mentioned, printExpression, type EntityLocals } from "../expression-printer.ts";
 import { hasLoader } from "./load.ts";
 import { entityFileComment } from "./types.ts";
-import { effectiveActions, entityInputs, entityPath, entitySegment, typeName } from "./inputs.ts";
+import { effectiveActions, entityInputs, entityLocal, entityPath, entitySegment, typeName } from "./inputs.ts";
 
 /**
  * What `expressions.ts.jig` renders for one entity: every expression in its entity file as
@@ -29,8 +30,10 @@ export interface ExpressionsView {
   /** True when a function calls `privileged(Entity)` (TXN-16): the file imports it from `@meshfw/runtime` as `$privileged`. */
   readonly usesPrivileged: boolean;
   /**
-   * The entity values the functions name (CMP-16), one import per entity's actions file: the value as `$e$<local>` and its
-   * read-only type as `$t$<local>`, under the name the entity file gives it.
+   * The entity values the functions name (CMP-16), one import per entity's actions file: the value as
+   * `entityLocal(target, "value")` and its read-only type as `entityLocal(target, "ReadOnly")` (`Task as $work$Task$value,
+   * type $ReadOnly as $work$Task$ReadOnly`), so that two entities with one name never share a local. A function binds
+   * each under the name the entity file gives it, the alias its import wrote included (`const BList: ... = $b$List$value`).
    */
   readonly entityImports: readonly { names: string; fromLiteral: string }[];
   /** True when an expression mentions `structuredClone`: the file then shadows it with `cloneValue`, which copies a read-only record. */
@@ -239,18 +242,11 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     if (!relativePath.startsWith(".")) relativePath = `./${relativePath}`;
     byModule.set(relativePath, [...(byModule.get(relativePath) ?? []), name]);
   }
-  const entries = found.map((f) => ({
-      key: JSON.stringify(f.id),
-      comment: `${f.what}, ${f.expression.tree ? "translated" : `plain (${f.expression.plain!.why})`} (${entity.file}:${f.expression.position.line}:${f.expression.position.column + 1})`
-        .replace(/[\r\n\u2028\u2029]/g, " "),
-      code: printExpression(f.expression, `${scopeOf(f.scope)}<${inputOf(f.actions)}>`, f.boolean, f.run === true),
-    }));
-  const usesExpr = entries.some((e) => e.code.includes("$."));
-  // `structuredClone` cannot copy the read-only views a function is handed (they are proxies), so the file shadows it.
-  const shadowsStructuredClone = found.some(({ expression }) => !expression.tree && mentioned(expression, ["structuredClone"]).length > 0);
-  // The entities the functions name, each from its actions file, by the name the entity file gives it (CMP-16).
+  // The entities the functions name, each from its actions file, imported under its FQN-derived locals and bound in each
+  // function under the name the entity file gives it (CMP-16).
   const named = new Set(found.flatMap(({ expression }) => expression.plain?.entities ?? []));
-  const entityFrom = new Map<string, string[]>();
+  const entityFrom = new Map<string, Set<string>>();
+  const entityLocals = new Map<string, { value: string; type: string }>();
   for (const local of [...named].sort()) {
     const imported = entity.imports.find((entry) => !entry.helper && entry.identifiers.includes(local));
     const file = imported ? posix.normalize(posix.join(dirname(entity.file), imported.from)) : entity.file;
@@ -258,9 +254,25 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     if (!target) continue; // the front end reported the import
     let from = relative(dirname(entityPath(entity)), `${entityPath(target)}.actions`).replace(/\\/g, "/");
     if (!from.startsWith(".")) from = `./${from}`;
-    const exported = typeName(target.name, target.position);
-    entityFrom.set(from, [...(entityFrom.get(from) ?? []), `${exported} as ${entityValue(local)}`, `type $ReadOnly as ${entityType(local)}`]);
+    const value = entityLocal(target, "value");
+    const type = entityLocal(target, "ReadOnly");
+    entityLocals.set(local, { value, type });
+    entityFrom.set(from, (entityFrom.get(from) ?? new Set()).add(`${typeName(target.name, target.position)} as ${value}`).add(`type $ReadOnly as ${type}`));
   }
+  const locals: EntityLocals = (name) => {
+    const hit = entityLocals.get(name);
+    if (!hit) throw emitError("MESH_UNKNOWN_ENTITY", `Entity ${name} is not imported by ${entity.file}`, entity.position);
+    return hit;
+  };
+  const entries = found.map((f) => ({
+      key: JSON.stringify(f.id),
+      comment: `${f.what}, ${f.expression.tree ? "translated" : `plain (${f.expression.plain!.why})`} (${entity.file}:${f.expression.position.line}:${f.expression.position.column + 1})`
+        .replace(/[\r\n\u2028\u2029]/g, " "),
+      code: printExpression(f.expression, `${scopeOf(f.scope)}<${inputOf(f.actions)}>`, f.boolean, f.run === true, locals),
+    }));
+  const usesExpr = entries.some((e) => e.code.includes("$."));
+  // `structuredClone` cannot copy the read-only views a function is handed (they are proxies), so the file shadows it.
+  const shadowsStructuredClone = found.some(({ expression }) => !expression.tree && mentioned(expression, ["structuredClone"]).length > 0);
   return {
     entityFile: entityFileComment(entity),
     usesExpr,
@@ -269,7 +281,7 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     typesFromLiteral: JSON.stringify(`./${entitySegment(entity)}.types`),
     typeImports: [recordName, ...(selfType === recordName ? [] : [selfType]), ...[...usedInputs].sort()],
     usesPrivileged: found.some(({ expression }) => expression.plain?.privileged === true),
-    entityImports: [...entityFrom].map(([from, names]) => ({ names: names.join(", "), fromLiteral: JSON.stringify(from) })),
+    entityImports: [...entityFrom].map(([from, names]) => ({ names: [...names].join(", "), fromLiteral: JSON.stringify(from) })),
     shadowsStructuredClone,
     scopeName,
     scopeType,

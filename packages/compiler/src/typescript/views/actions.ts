@@ -5,7 +5,7 @@ import { policiesCovering, policyExpressions, readsRecord } from "../../model/po
 import { emitError } from "../emit-error.ts";
 import type { EmitInput } from "../emit.ts";
 import { expressionIds, policySpecs } from "./expressions.ts";
-import { hasLoader } from "./load.ts";
+import { hasLoader, loaderName } from "./load.ts";
 import { camelCase, computedColumns, effectiveActions, entityInputs, entityPath, entitySegment, loadGenerics, propertyName, takesLoad, typeName, valueName } from "./inputs.ts";
 import { entityFileComment, txLoadTypes } from "./types.ts";
 
@@ -55,8 +55,10 @@ export interface ActionsView {
   readonly expressionsFromLiteral: string | null;
   /** The scope types the actions read the expressions with, from the expressions file, aliased `$Scope` and `$StoredScope`: `PostScope as $Scope`. */
   readonly scopeImports: readonly string[];
-  /** The load file as a quoted string literal, or `null` when the entity has no relationship and no computed field. */
+  /** The load file as a quoted string literal, imported for its plan (`loadPlan as $loadPlan`), or `null` when nothing here reads the plan. */
   readonly loadFromLiteral: string | null;
+  /** The entity's load function, or `null` when it has no relationship and no computed field. */
+  readonly loader: LoadFunction | null;
   /** What `bind<Entity>` names its second parameter: `options`, or `_options` when no action reads it. */
   readonly optionsName: string;
   /**
@@ -85,6 +87,22 @@ export interface ActionsView {
   readonly readsOptionsName: string;
   /** One body per read action, without its policies: what `privileged` calls and what the read method calls after evaluating them. */
   readonly reads: readonly ReadBody[];
+}
+
+/**
+ * `export async function <name><const N extends keyof <loadable>>(tx, rows: readonly $Record[], names: readonly N[], options?): Promise<<with><N>[]>`:
+ * the entity's load function (`loadTaskFields`), which the module's barrel re-exports. It runs no policy, as `privileged`
+ * loads, so it is typed with the entity's `TxWith` when it has one.
+ */
+export interface LoadFunction {
+  /** The function's name, e.g. `loadTaskFields`. */
+  readonly name: string;
+  /** The map of what it can load, e.g. `TaskLoadable`. */
+  readonly loadable: string;
+  /** The loaded record's generic type, e.g. `TaskTxWith`. */
+  readonly with: string;
+  /** The entity's FQN (e.g. `blog.Post`) as a quoted string literal: its entry in the load plan. */
+  readonly entityLiteral: string;
 }
 
 /** `async <name>(input: <inputType>): Promise<<returnType>> { ... }` inside `bind<Entity>Reads`: a read without its policies. */
@@ -808,6 +826,17 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
   const privilegedReadOnlyMembers = reads.map((method) => `${method.name}${method.generics}(input: ${method.inputType}, context?: $ActionContext): Promise<${readOnly(method, txTypes.loadable, method.txReturnType)}>;`);
   const readOnlyMembers = methods.map((method) => `${method.name}${method.generics}(input: ${method.inputType}, ...context: $ContextArgument): Promise<${readOnly(method, `${recordName}Loadable`, method.returnType)}>;`);
   if (readBodies.length) frameUsed = true;
+  // The load function lives here, beside the entity value, so the barrel re-exports both from this file; it reads the plan
+  // from the load file, which imports no actions file.
+  const loadFunction: LoadFunction | null = loader
+    ? { name: loaderName(entity), loadable: `${recordName}Loadable`, with: txTypes.with, entityLiteral: JSON.stringify(entity.fqn) }
+    : null;
+  if (loadFunction) {
+    runtime.add("loadRows");
+    runtimeTypes.add("DataOperations").add("LoadOptions");
+    extraTypes.add(loadFunction.loadable).add(loadFunction.with);
+    planUsed = true;
+  }
   return {
     entityFile: entityFileComment(entity),
     hasActions: methods.length > 0,
@@ -817,7 +846,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     readsBindValue: readBodies.length ? `bind${recordName}Reads as $EntityReadsBind<$Privileged>` : "null",
     runtimeValues: [...runtime, "entity", ...(methods.length ? ["NO_FRAME"] : [])].sort(compareCode).map(runtimeImport),
     runtimeTypes: [...runtimeTypes].sort(compareCode).map((name) => `${name} as $${name}`),
-    typeImports: methods.length ? [...extraTypes, ...inputs.map((input) => input.name)] : [],
+    typeImports: [...extraTypes, ...(methods.length ? inputs.map((input) => input.name) : [])],
     typesFromLiteral: JSON.stringify(`./${entitySegment(entity)}.types`),
     validatorImports: methods.map((method) => method.validator),
     validatorsFromLiteral: JSON.stringify(`./${entitySegment(entity)}.validators`),
@@ -825,6 +854,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     expressionsFromLiteral: usesExpressions ? JSON.stringify(`./${entitySegment(entity)}.expressions`) : null,
     scopeImports: [...scopes].sort(compareCode),
     loadFromLiteral: planUsed ? fromLiteral(entity, "load") : null,
+    loader: loadFunction,
     optionsName: optionsUsed || readBodies.length > 0 ? "options" : "_options",
     frameName: frameUsed ? "frame" : "_frame",
     readsFrameName: readsLoad ? "frame" : "_frame",

@@ -6,7 +6,11 @@
 // implementation detail.
 
 @each(entity in entities)
-export { {{ entity.name }} } from {{ entity.actionsFromLiteral }};
+export {
+  @each(name in entity.values)
+  {{ name }},
+  @end
+} from {{ entity.actionsFromLiteral }};
 @if(entity.hasTypes)
 export type {
   @each(name in entity.types)
@@ -14,13 +18,6 @@ export type {
   @end
 } from {{ entity.typesFromLiteral }};
 @end
-@end
-@if(loadFromLiteral)
-export {
-  @each(name in loaders)
-  {{ name }},
-  @end
-} from {{ loadFromLiteral }};
 @end
 @each(namespace in namespaces)
 export * as {{ namespace.name }} from {{ namespace.fromLiteral }};
